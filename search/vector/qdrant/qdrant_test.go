@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -27,8 +26,6 @@ import (
 )
 
 const qdrantImage = "qdrant/qdrant:v1.13.0"
-
-var runningContainerTests = strings.ToLower(os.Getenv("RUN_CONTAINER_TESTS")) == "true"
 
 type doc struct {
 	Kind  string `json:"kind"`
@@ -991,9 +988,7 @@ func buildContainerBackedQdrant(t *testing.T) (cfg *Config, shutdown func(contex
 func TestQdrantIndex_Container(T *testing.T) {
 	T.Parallel()
 
-	if !runningContainerTests {
-		T.SkipNow()
-	}
+	containers.SkipIfNotRunning(T)
 
 	cfg, shutdown := buildContainerBackedQdrant(T)
 	T.Cleanup(func() { _ = shutdown(context.Background()) })

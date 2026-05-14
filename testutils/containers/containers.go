@@ -9,6 +9,9 @@ package containers
 
 import (
 	"context"
+	"os"
+	"strings"
+	"testing"
 	"time"
 
 	"github.com/primandproper/platform/retry"
@@ -18,6 +21,23 @@ const (
 	defaultMaxAttempts  = 5
 	defaultInitialDelay = time.Second
 )
+
+// RunningTests reports whether RUN_CONTAINER_TESTS=true is set in the
+// environment. Container-backed tests across the repo should gate on this
+// (typically via `if !containers.RunningTests { t.SkipNow() }`) so a default
+// `go test ./...` does not require a Docker daemon. The variable is read once
+// at package init.
+var RunningTests = strings.TrimSpace(strings.ToLower(os.Getenv("RUN_CONTAINER_TESTS"))) == "true"
+
+// SkipIfNotRunning skips the current test (via t.SkipNow) when RunningTests
+// is false. It is the one-line equivalent of `if !containers.RunningTests {
+// t.SkipNow() }` that every container-backed test in the repo needs.
+func SkipIfNotRunning(t *testing.T) {
+	t.Helper()
+	if !RunningTests {
+		t.SkipNow()
+	}
+}
 
 // DefaultRetryConfig returns the retry.Config used by StartWithRetry. Callers
 // that need bespoke retry behavior can start from this and tweak individual

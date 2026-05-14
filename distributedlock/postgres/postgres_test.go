@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -30,8 +28,6 @@ import (
 )
 
 const postgresImage = "postgres:17-alpine"
-
-var runningContainerTests = strings.ToLower(os.Getenv("RUN_CONTAINER_TESTS")) == "true"
 
 // testDBClient is a minimal database.Client backed by a single *sql.DB. It exists
 // only to avoid pulling in database/postgres for tests in this leaf package.
@@ -602,9 +598,7 @@ func TestHashLockID(T *testing.T) {
 func TestPostgresLocker_Container(T *testing.T) {
 	T.Parallel()
 
-	if !runningContainerTests {
-		T.SkipNow()
-	}
+	containers.SkipIfNotRunning(T)
 
 	client, shutdown := buildContainerBackedPostgres(T)
 	T.Cleanup(func() { _ = shutdown(context.Background()) })

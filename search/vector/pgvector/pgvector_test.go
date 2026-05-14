@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -50,8 +48,6 @@ func newCounterProviderMock(t *testing.T, results map[string]counterResult) *moc
 }
 
 const pgvectorImage = "pgvector/pgvector:pg17"
-
-var runningContainerTests = strings.ToLower(os.Getenv("RUN_CONTAINER_TESTS")) == "true"
 
 // testDBClient is a minimal database.Client backed by a single *sql.DB. It exists
 // only to avoid pulling in database/postgres for tests in this leaf package.
@@ -445,9 +441,7 @@ func TestValidateWithContext(T *testing.T) {
 func TestPgvectorIndex_Container(T *testing.T) {
 	T.Parallel()
 
-	if !runningContainerTests {
-		T.SkipNow()
-	}
+	containers.SkipIfNotRunning(T)
 
 	client, shutdown := buildContainerBackedPgvector(T)
 	T.Cleanup(func() {

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/gob"
 	"errors"
-	"strings"
 	"testing"
 	"time"
 
@@ -16,21 +15,15 @@ import (
 	mockmetrics "github.com/primandproper/platform/observability/metrics/mock"
 	metricsnoop "github.com/primandproper/platform/observability/metrics/noop"
 	"github.com/primandproper/platform/observability/tracing"
-	"github.com/primandproper/platform/testutils/containers"
+	"github.com/primandproper/platform/testutils/containers/redistest"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
-	"github.com/testcontainers/testcontainers-go"
-	rediscontainers "github.com/testcontainers/testcontainers-go/modules/redis"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"go.opentelemetry.io/otel/metric"
 )
 
-const (
-	exampleKey = "example"
-	redisImage = "docker.io/redis:7-bullseye"
-)
+const exampleKey = "example"
 
 type example struct {
 	Name string `json:"name"`
@@ -108,41 +101,13 @@ func newCounterProviderMock(t *testing.T, results map[string]counterResult) *moc
 	}
 }
 
-func buildContainerBackedRedisConfig(t *testing.T) (config *Config, shutdownFunction func(context.Context) error) {
+func buildContainerBackedRedisConfig(t *testing.T) *Config {
 	t.Helper()
 
-	containerCtx := t.Context()
-
-	// Explicitly wait for both the TCP port and the "Ready to accept connections"
-	// log line so we don't race the redis-server bootstrap. The module's default
-	// wait strategy is implementation-defined, so pin it here for predictability.
-	redisContainer, err := containers.StartWithRetry(containerCtx, func(ctx context.Context) (*rediscontainers.RedisContainer, error) {
-		return rediscontainers.Run(ctx,
-			redisImage,
-			rediscontainers.WithLogLevel(rediscontainers.LogLevelNotice),
-			testcontainers.WithWaitStrategyAndDeadline(2*time.Minute, wait.ForAll(
-				wait.ForListeningPort("6379/tcp"),
-				wait.ForLog("Ready to accept connections"),
-			)),
-		)
-	})
-	must.NoError(t, err)
-	must.NotNil(t, redisContainer)
-
-	redisAddress, err := redisContainer.ConnectionString(containerCtx)
-	must.NoError(t, err)
-
-	cfg := &Config{
-		QueueAddresses: []string{
-			strings.TrimPrefix(redisAddress, "redis://"),
-		},
+	container := redistest.Start(t)
+	return &Config{
+		QueueAddresses: []string{redistest.Address(t, container)},
 	}
-
-	shutdownFunc := func(shutdownCtx context.Context) error {
-		return redisContainer.Terminate(shutdownCtx)
-	}
-
-	return cfg, shutdownFunc
 }
 
 func TestNewRedisCache(T *testing.T) {
@@ -290,10 +255,7 @@ func Test_redisCacheImpl_Get(T *testing.T) {
 
 		ctx := t.Context()
 
-		cfg, containerShutdown := buildContainerBackedRedisConfig(t)
-		defer func() {
-			test.NoError(t, containerShutdown(ctx))
-		}()
+		cfg := buildContainerBackedRedisConfig(t)
 		c, err := NewRedisCache[example](cfg, 0, nil, nil, nil, nil)
 		must.NoError(t, err)
 
@@ -407,10 +369,7 @@ func Test_redisCacheImpl_Set(T *testing.T) {
 
 		ctx := t.Context()
 
-		cfg, containerShutdown := buildContainerBackedRedisConfig(t)
-		defer func() {
-			test.NoError(t, containerShutdown(ctx))
-		}()
+		cfg := buildContainerBackedRedisConfig(t)
 		c, err := NewRedisCache[example](cfg, 0, nil, nil, nil, nil)
 		must.NoError(t, err)
 
@@ -494,10 +453,7 @@ func Test_redisCacheImpl_Delete(T *testing.T) {
 
 		ctx := t.Context()
 
-		cfg, containerShutdown := buildContainerBackedRedisConfig(t)
-		defer func() {
-			test.NoError(t, containerShutdown(ctx))
-		}()
+		cfg := buildContainerBackedRedisConfig(t)
 		c, err := NewRedisCache[example](cfg, 0, nil, nil, nil, nil)
 		must.NoError(t, err)
 

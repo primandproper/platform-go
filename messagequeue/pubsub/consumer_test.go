@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -32,8 +30,6 @@ import (
 )
 
 const pubsubEmulatorImage = "gcr.io/google.com/cloudsdktool/cloud-sdk:emulators"
-
-var runningContainerTests = strings.ToLower(os.Getenv("RUN_CONTAINER_TESTS")) == "true"
 
 type pubsubTestInfra struct {
 	client    *pubsub.Client
@@ -185,9 +181,7 @@ func TestPubSubConsumerProvider_ProvideConsumer(T *testing.T) {
 func TestPubSub_Container(T *testing.T) {
 	T.Parallel()
 
-	if !runningContainerTests {
-		T.SkipNow()
-	}
+	containers.SkipIfNotRunning(T)
 
 	infra := buildPubSubTestInfra(T)
 	T.Cleanup(func() { _ = infra.shutdown(context.Background()) })
