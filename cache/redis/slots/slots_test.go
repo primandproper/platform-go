@@ -186,6 +186,18 @@ func TestDistribute_internal(T *testing.T) {
 		_, err := distribute("p", "s", nodes, 0)
 		must.Error(t, err)
 	})
+
+	T.Run("returns error when candidates are exhausted", func(t *testing.T) {
+		t.Parallel()
+
+		// A node owning exactly one slot can never yield 2 distinct slots,
+		// so distribute must exhaust its candidate budget and return an error.
+		nodes := []NodeSlots{
+			{{Start: 100, End: 100}},
+		}
+		_, err := distribute("p", "s", nodes, 2)
+		must.Error(t, err)
+	})
 }
 
 func TestNewKeyGenerator(T *testing.T) {
@@ -203,6 +215,18 @@ func TestNewKeyGenerator(T *testing.T) {
 
 		// FromClusterConfig with a non-positive node count fails at resolve time.
 		_, err := NewKeyGenerator("p:", "", FromClusterConfig(0, 1))
+		must.Error(t, err)
+	})
+
+	T.Run("wraps distribute errors", func(t *testing.T) {
+		t.Parallel()
+
+		// TopologySource succeeds but returns an empty node list, which
+		// causes distribute to fail. NewKeyGenerator must propagate that error.
+		src := func() (Topology, error) {
+			return Topology{Nodes: []NodeSlots{}, SlotsPerNode: 1}, nil
+		}
+		_, err := NewKeyGenerator("p:", "", src)
 		must.Error(t, err)
 	})
 
