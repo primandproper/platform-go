@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 
@@ -27,8 +25,6 @@ import (
 )
 
 const elasticsearchImage = "elasticsearch:8.10.2"
-
-var runningContainerTests = strings.ToLower(os.Getenv("RUN_CONTAINER_TESTS")) == "true"
 
 // esTestInfra holds a single shared Elasticsearch container for all container-
 // backed subtests inside a package run. Subtests use unique index names to stay
@@ -123,9 +119,7 @@ func buildEsTestInfra(t *testing.T) *esTestInfra {
 func TestElasticsearch_Container(T *testing.T) {
 	T.Parallel()
 
-	if !runningContainerTests {
-		T.SkipNow()
-	}
+	containers.SkipIfNotRunning(T)
 
 	// The elasticsearch:8.x images crash with SIGILL inside the bundled JDK
 	// when run under linux/arm64 on Docker Desktop for Mac, so the cert wait

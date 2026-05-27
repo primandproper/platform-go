@@ -3,8 +3,6 @@ package redis
 import (
 	"context"
 	"errors"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -19,48 +17,22 @@ import (
 	"github.com/primandproper/platform/observability/tracing"
 	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
 	"github.com/primandproper/platform/testutils/containers"
+	"github.com/primandproper/platform/testutils/containers/redistest"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
-	"github.com/testcontainers/testcontainers-go"
-	rediscontainers "github.com/testcontainers/testcontainers-go/modules/redis"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"go.opentelemetry.io/otel/metric"
 )
 
-const redisImage = "docker.io/redis:7-bullseye"
-
-var runningContainerTests = strings.ToLower(os.Getenv("RUN_CONTAINER_TESTS")) == "true"
-
-func buildContainerBackedRedisConfig(t *testing.T) (cfg *Config, shutdown func(context.Context) error) {
+func buildContainerBackedRedisConfig(t *testing.T) *Config {
 	t.Helper()
 
-	ctx := t.Context()
-	// Explicitly wait for both the TCP port and the "Ready to accept connections"
-	// log line so we don't race the redis-server bootstrap. The module's default
-	// wait strategy is implementation-defined, so pin it here for predictability.
-	container, err := containers.StartWithRetry(ctx, func(ctx context.Context) (*rediscontainers.RedisContainer, error) {
-		return rediscontainers.Run(ctx,
-			redisImage,
-			rediscontainers.WithLogLevel(rediscontainers.LogLevelNotice),
-			testcontainers.WithWaitStrategyAndDeadline(2*time.Minute, wait.ForAll(
-				wait.ForListeningPort("6379/tcp"),
-				wait.ForLog("Ready to accept connections"),
-			)),
-		)
-	})
-	must.NoError(t, err)
-	must.NotNil(t, container)
-
-	addr, err := container.ConnectionString(ctx)
-	must.NoError(t, err)
-
-	cfg = &Config{
-		Addresses: []string{strings.TrimPrefix(addr, "redis://")},
+	container := redistest.Start(t)
+	return &Config{
+		Addresses: []string{redistest.Address(t, container)},
 		KeyPrefix: "lock:",
 	}
-	return cfg, func(ctx context.Context) error { return container.Terminate(ctx) }
 }
 
 func newTestLocker(t *testing.T, cfg *Config) distributedlock.Locker {
@@ -553,12 +525,9 @@ func TestBuildRedisClient(T *testing.T) {
 func TestRedisLocker_Container(T *testing.T) {
 	T.Parallel()
 
-	if !runningContainerTests {
-		T.SkipNow()
-	}
+	containers.SkipIfNotRunning(T)
 
-	cfg, shutdown := buildContainerBackedRedisConfig(T)
-	T.Cleanup(func() { _ = shutdown(context.Background()) })
+	cfg := buildContainerBackedRedisConfig(T)
 
 	T.Run("Acquire happy path", func(t *testing.T) {
 		t.Parallel()
