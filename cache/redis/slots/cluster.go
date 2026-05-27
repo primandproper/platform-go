@@ -12,7 +12,7 @@ import (
 // FromClusterClient needs. It exists so tests can supply a fake without
 // depending on a live cluster.
 //
-//go:generate moq -out clustershardsclient_mock_test.go -pkg slots -fmt goimports . ClusterShardsClient
+//go:generate go tool github.com/matryer/moq -out clustershardsclient_mock_test.go -pkg slots -fmt goimports . ClusterShardsClient
 type ClusterShardsClient interface {
 	ClusterShards(ctx context.Context) *redis.ClusterShardsCmd
 }
