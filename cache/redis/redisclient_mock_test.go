@@ -24,8 +24,14 @@ var _ redisClient = &redisClientMock{}
 //			DelFunc: func(ctx context.Context, keys ...string) *redis.IntCmd {
 //				panic("mock out the Del method")
 //			},
+//			EvalFunc: func(ctx context.Context, script string, keys []string, args ...any) *redis.Cmd {
+//				panic("mock out the Eval method")
+//			},
 //			GetFunc: func(ctx context.Context, key string) *redis.StringCmd {
 //				panic("mock out the Get method")
+//			},
+//			MGetFunc: func(ctx context.Context, keys ...string) *redis.SliceCmd {
+//				panic("mock out the MGet method")
 //			},
 //			PingFunc: func(ctx context.Context) *redis.StatusCmd {
 //				panic("mock out the Ping method")
@@ -43,8 +49,14 @@ type redisClientMock struct {
 	// DelFunc mocks the Del method.
 	DelFunc func(ctx context.Context, keys ...string) *redis.IntCmd
 
+	// EvalFunc mocks the Eval method.
+	EvalFunc func(ctx context.Context, script string, keys []string, args ...any) *redis.Cmd
+
 	// GetFunc mocks the Get method.
 	GetFunc func(ctx context.Context, key string) *redis.StringCmd
+
+	// MGetFunc mocks the MGet method.
+	MGetFunc func(ctx context.Context, keys ...string) *redis.SliceCmd
 
 	// PingFunc mocks the Ping method.
 	PingFunc func(ctx context.Context) *redis.StatusCmd
@@ -61,12 +73,30 @@ type redisClientMock struct {
 			// Keys is the keys argument value.
 			Keys []string
 		}
+		// Eval holds details about calls to the Eval method.
+		Eval []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Script is the script argument value.
+			Script string
+			// Keys is the keys argument value.
+			Keys []string
+			// Args is the args argument value.
+			Args []any
+		}
 		// Get holds details about calls to the Get method.
 		Get []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Key is the key argument value.
 			Key string
+		}
+		// MGet holds details about calls to the MGet method.
+		MGet []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Keys is the keys argument value.
+			Keys []string
 		}
 		// Ping holds details about calls to the Ping method.
 		Ping []struct {
@@ -86,7 +116,9 @@ type redisClientMock struct {
 		}
 	}
 	lockDel  sync.RWMutex
+	lockEval sync.RWMutex
 	lockGet  sync.RWMutex
+	lockMGet sync.RWMutex
 	lockPing sync.RWMutex
 	lockSet  sync.RWMutex
 }
@@ -127,6 +159,50 @@ func (mock *redisClientMock) DelCalls() []struct {
 	return calls
 }
 
+// Eval calls EvalFunc.
+func (mock *redisClientMock) Eval(ctx context.Context, script string, keys []string, args ...any) *redis.Cmd {
+	if mock.EvalFunc == nil {
+		panic("redisClientMock.EvalFunc: method is nil but redisClient.Eval was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Script string
+		Keys   []string
+		Args   []any
+	}{
+		Ctx:    ctx,
+		Script: script,
+		Keys:   keys,
+		Args:   args,
+	}
+	mock.lockEval.Lock()
+	mock.calls.Eval = append(mock.calls.Eval, callInfo)
+	mock.lockEval.Unlock()
+	return mock.EvalFunc(ctx, script, keys, args...)
+}
+
+// EvalCalls gets all the calls that were made to Eval.
+// Check the length with:
+//
+//	len(mockedredisClient.EvalCalls())
+func (mock *redisClientMock) EvalCalls() []struct {
+	Ctx    context.Context
+	Script string
+	Keys   []string
+	Args   []any
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Script string
+		Keys   []string
+		Args   []any
+	}
+	mock.lockEval.RLock()
+	calls = mock.calls.Eval
+	mock.lockEval.RUnlock()
+	return calls
+}
+
 // Get calls GetFunc.
 func (mock *redisClientMock) Get(ctx context.Context, key string) *redis.StringCmd {
 	if mock.GetFunc == nil {
@@ -160,6 +236,42 @@ func (mock *redisClientMock) GetCalls() []struct {
 	mock.lockGet.RLock()
 	calls = mock.calls.Get
 	mock.lockGet.RUnlock()
+	return calls
+}
+
+// MGet calls MGetFunc.
+func (mock *redisClientMock) MGet(ctx context.Context, keys ...string) *redis.SliceCmd {
+	if mock.MGetFunc == nil {
+		panic("redisClientMock.MGetFunc: method is nil but redisClient.MGet was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Keys []string
+	}{
+		Ctx:  ctx,
+		Keys: keys,
+	}
+	mock.lockMGet.Lock()
+	mock.calls.MGet = append(mock.calls.MGet, callInfo)
+	mock.lockMGet.Unlock()
+	return mock.MGetFunc(ctx, keys...)
+}
+
+// MGetCalls gets all the calls that were made to MGet.
+// Check the length with:
+//
+//	len(mockedredisClient.MGetCalls())
+func (mock *redisClientMock) MGetCalls() []struct {
+	Ctx  context.Context
+	Keys []string
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Keys []string
+	}
+	mock.lockMGet.RLock()
+	calls = mock.calls.MGet
+	mock.lockMGet.RUnlock()
 	return calls
 }
 
