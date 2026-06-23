@@ -13,7 +13,33 @@ import (
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	circuit "github.com/rubyist/circuitbreaker"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
+
+// ProvideOption customizes how a CircuitBreaker is provided.
+type ProvideOption func(*provideOptions)
+
+type provideOptions struct {
+	metricAttributes []attribute.KeyValue
+}
+
+func (o *provideOptions) addOptions() []metric.AddOption {
+	if len(o.metricAttributes) == 0 {
+		return nil
+	}
+
+	return []metric.AddOption{metric.WithAttributes(o.metricAttributes...)}
+}
+
+// WithMetricAttributes attaches a fixed set of attributes to every metric the
+// circuit breaker emits. It is used to distinguish breakers that share counter
+// names (for example, tagging a per-key breaker with its partition).
+func WithMetricAttributes(attrs ...attribute.KeyValue) ProvideOption {
+	return func(o *provideOptions) {
+		o.metricAttributes = append(o.metricAttributes, attrs...)
+	}
+}
 
 type Config struct {
 	Name                   string  `env:"NAME"                     json:"name"`
@@ -74,9 +100,14 @@ func (b *baseImplementation) CannotProceed() bool {
 }
 
 // ProvideCircuitBreaker provides a CircuitBreaker.
-func (cfg *Config) ProvideCircuitBreaker(ctx context.Context, logger logging.Logger, metricsProvider metrics.Provider) (circuitbreaking.CircuitBreaker, error) {
+func (cfg *Config) ProvideCircuitBreaker(ctx context.Context, logger logging.Logger, metricsProvider metrics.Provider, opts ...ProvideOption) (circuitbreaking.CircuitBreaker, error) {
 	if cfg == nil {
 		return nil, errors.ErrNilInputParameter
+	}
+
+	options := &provideOptions{}
+	for _, opt := range opts {
+		opt(options)
 	}
 
 	logger = logging.EnsureLogger(logger).WithValue("circuit_breaker", cfg.Name)
@@ -113,7 +144,7 @@ func (cfg *Config) ProvideCircuitBreaker(ctx context.Context, logger logging.Log
 
 	events := cb.Subscribe()
 
-	go handleCircuitBreakerEvents(ctx, logger, events, failureCounter, resetCounter, brokenCounter)
+	go handleCircuitBreakerEvents(ctx, logger, events, failureCounter, resetCounter, brokenCounter, options.addOptions()...)
 
 	return &baseImplementation{
 		circuitBreaker: cb,
@@ -121,8 +152,8 @@ func (cfg *Config) ProvideCircuitBreaker(ctx context.Context, logger logging.Log
 }
 
 // ProvideCircuitBreakerFromConfig provides a CircuitBreaker from config.
-func ProvideCircuitBreakerFromConfig(ctx context.Context, cfg *Config, logger logging.Logger, metricsProvider metrics.Provider) (circuitbreaking.CircuitBreaker, error) {
-	return cfg.ProvideCircuitBreaker(ctx, logger, metricsProvider)
+func ProvideCircuitBreakerFromConfig(ctx context.Context, cfg *Config, logger logging.Logger, metricsProvider metrics.Provider, opts ...ProvideOption) (circuitbreaking.CircuitBreaker, error) {
+	return cfg.ProvideCircuitBreaker(ctx, logger, metricsProvider, opts...)
 }
 
 func handleCircuitBreakerEvents(
@@ -132,15 +163,16 @@ func handleCircuitBreakerEvents(
 	failureCounter,
 	resetCounter,
 	brokenCounter metrics.Int64Counter,
+	addOptions ...metric.AddOption,
 ) {
 	for be := range events {
 		switch be {
 		case circuit.BreakerTripped:
-			brokenCounter.Add(ctx, 1)
+			brokenCounter.Add(ctx, 1, addOptions...)
 		case circuit.BreakerReset:
-			resetCounter.Add(ctx, 1)
+			resetCounter.Add(ctx, 1, addOptions...)
 		case circuit.BreakerFail:
-			failureCounter.Add(ctx, 1)
+			failureCounter.Add(ctx, 1, addOptions...)
 		case circuit.BreakerReady:
 			logger.Debug("circuit breaker is ready")
 		}
