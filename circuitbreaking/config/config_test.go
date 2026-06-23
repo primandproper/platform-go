@@ -15,6 +15,7 @@ import (
 
 	circuit "github.com/rubyist/circuitbreaker"
 	"github.com/shoenig/test"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -101,6 +102,18 @@ func TestProvideCircuitBreakerFromConfig(T *testing.T) {
 		ctx := t.Context()
 
 		cb, err := ProvideCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		test.NotNil(t, cb)
+		test.NoError(t, err)
+	})
+
+	T.Run("with metric attributes", func(t *testing.T) {
+		cfg := &Config{}
+		cfg.EnsureDefaults()
+
+		ctx := t.Context()
+
+		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider(),
+			WithMetricAttributes(attribute.String("partition", "123")))
 		test.NotNil(t, cb)
 		test.NoError(t, err)
 	})

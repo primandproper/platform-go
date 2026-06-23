@@ -122,6 +122,34 @@ func TestProvideKeyedCircuitBreakerFromConfig(T *testing.T) {
 		test.Nil(t, cb)
 		test.Error(t, err)
 	})
+
+	T.Run("with error building a keyed breaker", func(t *testing.T) {
+		cfg := &Config{
+			Base: circuitbreakingcfg.Config{Name: t.Name()},
+			Keys: []string{"123"},
+		}
+		cfg.EnsureDefaults()
+
+		ctx := t.Context()
+
+		// the global breaker creates 3 counters successfully; fail the next one so the
+		// per-key breaker build errors.
+		var calls int
+		mp := &mockmetrics.ProviderMock{
+			NewInt64CounterFunc: func(_ string, _ ...metric.Int64CounterOption) (metrics.Int64Counter, error) {
+				calls++
+				if calls > 3 {
+					return &mockmetrics.Int64CounterMock{}, errors.New("arbitrary")
+				}
+
+				return &mockmetrics.Int64CounterMock{}, nil
+			},
+		}
+
+		cb, err := ProvideKeyedCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), mp)
+		test.Nil(t, cb)
+		test.Error(t, err)
+	})
 }
 
 //nolint:paralleltest // race condition in the core circuit breaker library, I think?
