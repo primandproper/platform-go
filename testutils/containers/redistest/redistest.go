@@ -44,25 +44,26 @@ func WithClusterEnabled() Option {
 }
 
 // Start brings up a redis container with the shared retry policy and wait
-// strategy, and registers termination as a t.Cleanup so callers do not have
+// strategy, and registers termination as a tb.Cleanup so callers do not have
 // to remember to shut it down. The returned container exposes
 // ConnectionString and the rest of the rediscontainers.RedisContainer API.
+// It accepts testing.TB so both tests and benchmarks can use it.
 //
-// Failures during startup call t.Fatal via must.NoError. Callers that need
+// Failures during startup call tb.Fatal via must.NoError. Callers that need
 // to handle startup failure differently (e.g. skip the test instead of
 // failing it) should use Try.
-func Start(t *testing.T, opts ...Option) *rediscontainers.RedisContainer {
-	t.Helper()
+func Start(tb testing.TB, opts ...Option) *rediscontainers.RedisContainer {
+	tb.Helper()
 
-	container, shutdown, err := Try(t.Context(), opts...)
-	must.NoError(t, err)
-	must.NotNil(t, container)
+	container, shutdown, err := Try(tb.Context(), opts...)
+	must.NoError(tb, err)
+	must.NotNil(tb, container)
 
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		shutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if sErr := shutdown(shutCtx); sErr != nil {
-			t.Logf("redistest: container shutdown error: %v", sErr)
+			tb.Logf("redistest: container shutdown error: %v", sErr)
 		}
 	})
 	return container
@@ -106,10 +107,10 @@ func Try(ctx context.Context, opts ...Option) (container *rediscontainers.RedisC
 // Address returns the container's host:port string, suitable for
 // dial-style config (i.e. ConnectionString with the "redis://" scheme
 // trimmed). Most callers want this over ConnectionString.
-func Address(t *testing.T, container *rediscontainers.RedisContainer) string {
-	t.Helper()
+func Address(tb testing.TB, container *rediscontainers.RedisContainer) string {
+	tb.Helper()
 
-	addr, err := container.ConnectionString(t.Context())
-	must.NoError(t, err)
+	addr, err := container.ConnectionString(tb.Context())
+	must.NoError(tb, err)
 	return strings.TrimPrefix(addr, "redis://")
 }

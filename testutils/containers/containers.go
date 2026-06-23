@@ -29,13 +29,15 @@ const (
 // at package init.
 var RunningTests = strings.TrimSpace(strings.ToLower(os.Getenv("RUN_CONTAINER_TESTS"))) == "true"
 
-// SkipIfNotRunning skips the current test (via t.SkipNow) when RunningTests
-// is false. It is the one-line equivalent of `if !containers.RunningTests {
-// t.SkipNow() }` that every container-backed test in the repo needs.
-func SkipIfNotRunning(t *testing.T) {
-	t.Helper()
+// SkipIfNotRunning skips the current test or benchmark (via SkipNow) when
+// RunningTests is false. It is the one-line equivalent of `if
+// !containers.RunningTests { tb.SkipNow() }` that every container-backed test
+// and benchmark in the repo needs. It accepts testing.TB so both *testing.T
+// and *testing.B can use it.
+func SkipIfNotRunning(tb testing.TB) {
+	tb.Helper()
 	if !RunningTests {
-		t.SkipNow()
+		tb.SkipNow()
 	}
 }
 
