@@ -104,3 +104,7 @@ build:
 .PHONY: test
 test: $(ARTIFACTS_DIR) vendor
 	$(SCRIPTS_DIR)/test.sh
+
+.PHONY: bench
+bench:
+	$(SCRIPTS_DIR)/benchmark.sh
