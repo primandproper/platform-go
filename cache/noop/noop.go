@@ -6,7 +6,7 @@ import (
 	"github.com/primandproper/platform/cache"
 )
 
-var _ cache.Cache[any] = (*Cache[any])(nil)
+var _ cache.BatchCache[any] = (*Cache[any])(nil)
 
 // Cache is a no-op Cache.
 type Cache[T any] struct{}
@@ -28,6 +28,16 @@ func (*Cache[T]) Set(context.Context, string, *T) error {
 
 // Delete is a no-op.
 func (*Cache[T]) Delete(context.Context, string) error {
+	return nil
+}
+
+// GetMany always returns an empty map.
+func (*Cache[T]) GetMany(context.Context, []string) (map[string]*T, error) {
+	return map[string]*T{}, nil
+}
+
+// SetMany is a no-op.
+func (*Cache[T]) SetMany(context.Context, map[string]*T) error {
 	return nil
 }
 

@@ -563,6 +563,271 @@ func Test_redisCacheImpl_Ping_Unit(T *testing.T) {
 	})
 }
 
+func Test_redisCacheImpl_GetMany_Unit(T *testing.T) {
+	T.Parallel()
+
+	T.Run("standard with hit and miss", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, cb := buildTestImpl(t)
+
+		found := &example{Name: "found"}
+		encoded := gobEncodeExample(t, found)
+
+		cb.CannotProceedFunc = func() bool { return false }
+		cb.SucceededFunc = func() {}
+
+		client.MGetFunc = func(_ context.Context, keys ...string) *redis.SliceCmd {
+			test.Eq(t, []string{"hit", "miss"}, keys)
+			cmd := redis.NewSliceCmd(ctx)
+			cmd.SetVal([]any{encoded, nil})
+			return cmd
+		}
+
+		out, err := impl.GetMany(ctx, []string{"hit", "miss"})
+		test.NoError(t, err)
+		test.MapLen(t, 1, out)
+		test.Eq(t, found, out["hit"])
+
+		test.SliceLen(t, 1, client.MGetCalls())
+		test.SliceLen(t, 1, cb.SucceededCalls())
+	})
+
+	T.Run("empty keys short-circuits", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, _ := buildTestImpl(t)
+
+		out, err := impl.GetMany(ctx, nil)
+		test.NoError(t, err)
+		test.MapLen(t, 0, out)
+		test.SliceLen(t, 0, client.MGetCalls())
+	})
+
+	T.Run("when circuit breaker cannot proceed", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, cb := buildTestImpl(t)
+
+		cb.CannotProceedFunc = func() bool { return true }
+
+		out, err := impl.GetMany(ctx, []string{"a", "b"})
+		test.NoError(t, err)
+		test.MapLen(t, 0, out)
+		test.SliceLen(t, 0, client.MGetCalls())
+		test.SliceLen(t, 1, cb.CannotProceedCalls())
+	})
+
+	T.Run("with redis error", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, cb := buildTestImpl(t)
+
+		cb.CannotProceedFunc = func() bool { return false }
+		cb.FailedFunc = func() {}
+
+		client.MGetFunc = func(_ context.Context, _ ...string) *redis.SliceCmd {
+			cmd := redis.NewSliceCmd(ctx)
+			cmd.SetErr(errors.New("redis error"))
+			return cmd
+		}
+
+		out, err := impl.GetMany(ctx, []string{"a"})
+		test.Error(t, err)
+		test.Nil(t, out)
+		test.SliceLen(t, 1, cb.FailedCalls())
+	})
+
+	T.Run("with decode error", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, cb := buildTestImpl(t)
+
+		cb.CannotProceedFunc = func() bool { return false }
+
+		client.MGetFunc = func(_ context.Context, _ ...string) *redis.SliceCmd {
+			cmd := redis.NewSliceCmd(ctx)
+			cmd.SetVal([]any{"not valid gob data"})
+			return cmd
+		}
+
+		out, err := impl.GetMany(ctx, []string{"a"})
+		test.Error(t, err)
+		test.Nil(t, out)
+	})
+
+	T.Run("cluster mode issues one MGET per slot", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, cb := buildTestImpl(t)
+		impl.isCluster = true
+
+		cb.CannotProceedFunc = func() bool { return false }
+		cb.SucceededFunc = func() {}
+
+		// Distinct hashtags spread the keys across more than one slot.
+		keys := []string{"{alpha}1", "{beta}2", "{alpha}3"}
+		expectedGroups := len(groupBySlot(keys))
+		must.Greater(t, 1, expectedGroups)
+
+		client.MGetFunc = func(_ context.Context, mgetKeys ...string) *redis.SliceCmd {
+			cmd := redis.NewSliceCmd(ctx)
+			vals := make([]any, len(mgetKeys))
+			cmd.SetVal(vals)
+			return cmd
+		}
+
+		_, err := impl.GetMany(ctx, keys)
+		test.NoError(t, err)
+		test.SliceLen(t, expectedGroups, client.MGetCalls())
+	})
+}
+
+func Test_redisCacheImpl_SetMany_Unit(T *testing.T) {
+	T.Parallel()
+
+	T.Run("standard", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, cb := buildTestImpl(t)
+
+		cb.CannotProceedFunc = func() bool { return false }
+		cb.SucceededFunc = func() {}
+
+		client.EvalFunc = func(_ context.Context, script string, keys []string, args ...any) *redis.Cmd {
+			test.EqOp(t, batchSetScript, script)
+			// ARGV[1] is the TTL in milliseconds; buildTestImpl uses a minute.
+			ttl, ok := args[0].(int64)
+			test.True(t, ok)
+			test.EqOp(t, time.Minute.Milliseconds(), ttl)
+			// One TTL arg plus one encoded value per key.
+			test.SliceLen(t, len(keys)+1, args)
+			cmd := redis.NewCmd(ctx)
+			cmd.SetVal(int64(len(keys)))
+			return cmd
+		}
+
+		err := impl.SetMany(ctx, map[string]*example{
+			"a": {Name: "a"},
+			"b": {Name: "b"},
+		})
+		test.NoError(t, err)
+		test.SliceLen(t, 1, client.EvalCalls())
+		test.SliceLen(t, 1, cb.SucceededCalls())
+	})
+
+	T.Run("empty items short-circuits", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, _ := buildTestImpl(t)
+
+		test.NoError(t, impl.SetMany(ctx, nil))
+		test.SliceLen(t, 0, client.EvalCalls())
+	})
+
+	T.Run("when circuit breaker cannot proceed", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, cb := buildTestImpl(t)
+
+		cb.CannotProceedFunc = func() bool { return true }
+
+		test.NoError(t, impl.SetMany(ctx, map[string]*example{"a": {Name: "a"}}))
+		test.SliceLen(t, 0, client.EvalCalls())
+		test.SliceLen(t, 1, cb.CannotProceedCalls())
+	})
+
+	T.Run("with redis error", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, cb := buildTestImpl(t)
+
+		cb.CannotProceedFunc = func() bool { return false }
+		cb.FailedFunc = func() {}
+
+		client.EvalFunc = func(_ context.Context, _ string, _ []string, _ ...any) *redis.Cmd {
+			cmd := redis.NewCmd(ctx)
+			cmd.SetErr(errors.New("redis error"))
+			return cmd
+		}
+
+		err := impl.SetMany(ctx, map[string]*example{"a": {Name: "a"}})
+		test.Error(t, err)
+		test.SliceLen(t, 1, cb.FailedCalls())
+	})
+
+	T.Run("cluster mode issues one EVAL per slot", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, cb := buildTestImpl(t)
+		impl.isCluster = true
+
+		cb.CannotProceedFunc = func() bool { return false }
+		cb.SucceededFunc = func() {}
+
+		items := map[string]*example{
+			"{alpha}1": {Name: "1"},
+			"{beta}2":  {Name: "2"},
+			"{alpha}3": {Name: "3"},
+		}
+		keys := make([]string, 0, len(items))
+		for k := range items {
+			keys = append(keys, k)
+		}
+		expectedGroups := len(groupBySlot(keys))
+		must.Greater(t, 1, expectedGroups)
+
+		client.EvalFunc = func(_ context.Context, _ string, keys []string, _ ...any) *redis.Cmd {
+			cmd := redis.NewCmd(ctx)
+			cmd.SetVal(int64(len(keys)))
+			return cmd
+		}
+
+		test.NoError(t, impl.SetMany(ctx, items))
+		test.SliceLen(t, expectedGroups, client.EvalCalls())
+	})
+}
+
+func Test_redisCacheImpl_SetMany_GetMany(T *testing.T) {
+	T.Parallel()
+
+	T.Run("round trip against a real redis", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		cfg := buildContainerBackedRedisConfig(t)
+		c, err := NewRedisCache[example](cfg, time.Minute, nil, nil, nil, nil)
+		must.NoError(t, err)
+
+		bc, ok := c.(cache.BatchCache[example])
+		must.True(t, ok)
+
+		items := map[string]*example{
+			"k1": {Name: "one"},
+			"k2": {Name: "two"},
+		}
+		test.NoError(t, bc.SetMany(ctx, items))
+
+		out, getErr := bc.GetMany(ctx, []string{"k1", "k2", "k3"})
+		test.NoError(t, getErr)
+		test.MapLen(t, 2, out)
+		test.Eq(t, items["k1"], out["k1"])
+		test.Eq(t, items["k2"], out["k2"])
+	})
+}
+
 func Test_buildRedisClient(T *testing.T) {
 	T.Parallel()
 

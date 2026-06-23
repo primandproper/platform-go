@@ -15,6 +15,8 @@ import (
 
 const name = "in_memory_cache"
 
+var _ cache.BatchCache[struct{}] = (*inMemoryCacheImpl[struct{}])(nil)
+
 type inMemoryCacheImpl[T any] struct {
 	logger           logging.Logger
 	tracer           tracing.Tracer
@@ -122,6 +124,52 @@ func (i *inMemoryCacheImpl[T]) Delete(ctx context.Context, key string) error {
 
 	delete(i.cache, key)
 	i.cacheDelCounter.Add(ctx, 1)
+
+	return nil
+}
+
+func (i *inMemoryCacheImpl[T]) GetMany(ctx context.Context, keys []string) (map[string]*T, error) {
+	_, span := i.tracer.StartSpan(ctx)
+	defer span.End()
+
+	startTime := time.Now()
+	defer func() {
+		i.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
+	}()
+
+	i.cacheMu.RLock()
+	defer i.cacheMu.RUnlock()
+
+	out := make(map[string]*T, len(keys))
+	for _, key := range keys {
+		if val, ok := i.cache[key]; ok {
+			out[key] = val
+			i.cacheHitCounter.Add(ctx, 1)
+			continue
+		}
+
+		i.cacheMissCounter.Add(ctx, 1)
+	}
+
+	return out, nil
+}
+
+func (i *inMemoryCacheImpl[T]) SetMany(ctx context.Context, items map[string]*T) error {
+	_, span := i.tracer.StartSpan(ctx)
+	defer span.End()
+
+	startTime := time.Now()
+	defer func() {
+		i.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
+	}()
+
+	i.cacheMu.Lock()
+	defer i.cacheMu.Unlock()
+
+	for key, value := range items {
+		i.cache[key] = value
+		i.cacheSetCounter.Add(ctx, 1)
+	}
 
 	return nil
 }
