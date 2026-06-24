@@ -97,13 +97,10 @@ func MustGenerateRawBytes(ctx context.Context, length int) []byte {
 	return x
 }
 
-// generateSecret generates a securely random byte array of a given length.
-func (g *standardGenerator) generateSecret(ctx context.Context, length int) ([]byte, error) {
-	_, span := g.tracer.StartSpan(ctx)
-	defer span.End()
-
-	tracing.AttachToSpan(span, "generated_string.requested_length", length)
-
+// generateSecret fills a securely random byte array of a given length. It does not
+// open its own span; the caller owns the span it passes in so that each public
+// method produces a single span rather than nesting one per internal hop.
+func (g *standardGenerator) generateSecret(span tracing.Span, length int) ([]byte, error) {
 	b := make([]byte, length)
 	if _, err := g.randReader.Read(b); err != nil {
 		return nil, observability.PrepareError(err, span, "reading from secure random source")
@@ -114,23 +111,23 @@ func (g *standardGenerator) generateSecret(ctx context.Context, length int) ([]b
 
 // GenerateRawBytes generates a securely random byte array.
 func (g *standardGenerator) GenerateRawBytes(ctx context.Context, length int) ([]byte, error) {
-	ctx, span := g.tracer.StartSpan(ctx)
+	_, span := g.tracer.StartSpan(ctx)
 	defer span.End()
 
 	tracing.AttachToSpan(span, "rand_gen.requested_length", length)
 
-	return g.generateSecret(ctx, length)
+	return g.generateSecret(span, length)
 }
 
 // GenerateHexEncodedString generates a base64-encoded string of a securely random byte array of a given length.
 func (g *standardGenerator) GenerateHexEncodedString(ctx context.Context, length int) (string, error) {
-	ctx, span := g.tracer.StartSpan(ctx)
+	_, span := g.tracer.StartSpan(ctx)
 	defer span.End()
 
 	logger := g.logger.WithValue("length", length)
 	tracing.AttachToSpan(span, "rand_gen.requested_length", length)
 
-	b, err := g.GenerateRawBytes(ctx, length)
+	b, err := g.generateSecret(span, length)
 	if err != nil {
 		return "", observability.PrepareAndLogError(err, logger, span, "reading from secure random source")
 	}
@@ -140,13 +137,13 @@ func (g *standardGenerator) GenerateHexEncodedString(ctx context.Context, length
 
 // GenerateBase32EncodedString generates a base64-encoded string of a securely random byte array of a given length.
 func (g *standardGenerator) GenerateBase32EncodedString(ctx context.Context, length int) (string, error) {
-	ctx, span := g.tracer.StartSpan(ctx)
+	_, span := g.tracer.StartSpan(ctx)
 	defer span.End()
 
 	logger := g.logger.WithValue("length", length)
 	tracing.AttachToSpan(span, "rand_gen.requested_length", length)
 
-	b, err := g.GenerateRawBytes(ctx, length)
+	b, err := g.generateSecret(span, length)
 	if err != nil {
 		return "", observability.PrepareAndLogError(err, logger, span, "reading from secure random source")
 	}
@@ -156,13 +153,13 @@ func (g *standardGenerator) GenerateBase32EncodedString(ctx context.Context, len
 
 // GenerateBase64EncodedString generates a base64-encoded string of a securely random byte array of a given length.
 func (g *standardGenerator) GenerateBase64EncodedString(ctx context.Context, length int) (string, error) {
-	ctx, span := g.tracer.StartSpan(ctx)
+	_, span := g.tracer.StartSpan(ctx)
 	defer span.End()
 
 	logger := g.logger.WithValue("length", length)
 	tracing.AttachToSpan(span, "rand_gen.requested_length", length)
 
-	b, err := g.GenerateRawBytes(ctx, length)
+	b, err := g.generateSecret(span, length)
 	if err != nil {
 		return "", observability.PrepareAndLogError(err, logger, span, "reading from secure random source")
 	}
