@@ -61,6 +61,35 @@ func TestCache_Delete(T *testing.T) {
 	})
 }
 
+func TestCache_GetMany(T *testing.T) {
+	T.Parallel()
+
+	T.Run("returns empty map", func(t *testing.T) {
+		t.Parallel()
+
+		c := &Cache[string]{}
+		vals, err := c.GetMany(t.Context(), []string{"a", "b"})
+
+		test.NoError(t, err)
+		test.NotNil(t, vals)
+		test.MapEmpty(t, vals)
+	})
+}
+
+func TestCache_SetMany(T *testing.T) {
+	T.Parallel()
+
+	T.Run("returns no error", func(t *testing.T) {
+		t.Parallel()
+
+		c := &Cache[string]{}
+		v := "value"
+		err := c.SetMany(t.Context(), map[string]*string{"any-key": &v})
+
+		test.NoError(t, err)
+	})
+}
+
 func TestCache_Ping(T *testing.T) {
 	T.Parallel()
 
