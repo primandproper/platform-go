@@ -3,12 +3,14 @@ package sse
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/primandproper/platform/eventstream"
+	"github.com/primandproper/platform/observability/tracing"
 	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
 
 	"github.com/shoenig/test"
@@ -368,6 +370,58 @@ type nonFlushableResponseWriter struct {
 func (w *nonFlushableResponseWriter) Header() http.Header         { return w.header }
 func (w *nonFlushableResponseWriter) Write(b []byte) (int, error) { return len(b), nil }
 func (w *nonFlushableResponseWriter) WriteHeader(int)             {}
+
+// failingResponseWriter is a flushable ResponseWriter whose Write always fails.
+type failingResponseWriter struct {
+	header http.Header
+}
+
+func (w *failingResponseWriter) Header() http.Header       { return w.header }
+func (w *failingResponseWriter) Write([]byte) (int, error) { return 0, errWriteFailed }
+func (w *failingResponseWriter) WriteHeader(int)           {}
+func (w *failingResponseWriter) Flush()                    {}
+
+var errWriteFailed = errors.New("write failed")
+
+func newFailingStream() *sseStream {
+	w := &failingResponseWriter{header: http.Header{}}
+	return &sseStream{
+		w:       w,
+		flusher: w,
+		done:    make(chan struct{}),
+		tracer:  tracing.NewNamedTracer(tracingnoop.NewTracerProvider(), "sse_stream"),
+	}
+}
+
+func TestSSEStream_Send_writeErrors(T *testing.T) {
+	T.Parallel()
+
+	T.Run("error writing event type", func(t *testing.T) {
+		t.Parallel()
+
+		s := newFailingStream()
+
+		err := s.Send(t.Context(), &eventstream.Event{
+			Type:    "boom",
+			Payload: json.RawMessage(`{}`),
+		})
+		test.Error(t, err)
+		test.StrContains(t, err.Error(), "writing event type")
+	})
+
+	T.Run("error writing event data", func(t *testing.T) {
+		t.Parallel()
+
+		s := newFailingStream()
+
+		// Empty Type skips the type write and reaches the data write directly.
+		err := s.Send(t.Context(), &eventstream.Event{
+			Payload: json.RawMessage(`{}`),
+		})
+		test.Error(t, err)
+		test.StrContains(t, err.Error(), "writing event data")
+	})
+}
 
 func TestSSEStream_Send_verifies_SSE_format(T *testing.T) {
 	T.Parallel()
