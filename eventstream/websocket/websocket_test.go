@@ -8,11 +8,14 @@ import (
 	"time"
 
 	"github.com/primandproper/platform/eventstream"
+	"github.com/primandproper/platform/observability/logging"
+	"github.com/primandproper/platform/observability/tracing"
 	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
 
 	gorillawebsocket "github.com/gorilla/websocket"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestNewUpgrader(T *testing.T) {
@@ -100,6 +103,178 @@ func TestUpgrader_UpgradeToBidirectionalStream(T *testing.T) {
 		defer stream.Close()
 
 		test.NotNil(t, stream.Receive())
+	})
+}
+
+func TestUpgrader_UpgradeToEventStream_upgradeError(T *testing.T) {
+	T.Parallel()
+
+	T.Run("non-websocket request returns error", func(t *testing.T) {
+		t.Parallel()
+
+		u := NewUpgrader(nil, tracingnoop.NewTracerProvider(), nil)
+		errCh := make(chan error, 1)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, upgradeErr := u.UpgradeToEventStream(w, r)
+			errCh <- upgradeErr
+		}))
+		defer server.Close()
+
+		// A plain HTTP GET lacks the WebSocket upgrade headers, so the handshake fails.
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, http.NoBody)
+		must.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		must.NoError(t, err)
+		defer resp.Body.Close()
+
+		gotErr := <-errCh
+		test.Error(t, gotErr)
+		test.StrContains(t, gotErr.Error(), "upgrading to websocket")
+	})
+}
+
+func TestUpgrader_UpgradeToBidirectionalStream_upgradeError(T *testing.T) {
+	T.Parallel()
+
+	T.Run("non-websocket request returns error", func(t *testing.T) {
+		t.Parallel()
+
+		u := NewUpgrader(nil, tracingnoop.NewTracerProvider(), nil)
+		errCh := make(chan error, 1)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, upgradeErr := u.UpgradeToBidirectionalStream(w, r)
+			errCh <- upgradeErr
+		}))
+		defer server.Close()
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, http.NoBody)
+		must.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		must.NoError(t, err)
+		defer resp.Body.Close()
+
+		gotErr := <-errCh
+		test.Error(t, gotErr)
+		test.StrContains(t, gotErr.Error(), "upgrading to websocket")
+	})
+}
+
+func TestWSStream_heartbeatLoop_writeError(T *testing.T) {
+	T.Parallel()
+
+	T.Run("logs and stops when the ping write fails", func(t *testing.T) {
+		t.Parallel()
+
+		spy := newSpyLogger()
+		conn := rawServerConn(t)
+		tracer := tracing.NewNamedTracer(tracingnoop.NewTracerProvider(), "websocket_stream")
+
+		stream := newWSStream(conn, time.Millisecond, spy, tracer)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		// Break the underlying connection so the next heartbeat ping write fails.
+		must.NoError(t, conn.Close())
+
+		select {
+		case <-spy.errored:
+			// expected: the heartbeat write error was logged and the loop stopped.
+		case <-time.After(2 * time.Second):
+			t.Fatalf("heartbeat write error was never logged")
+		}
+	})
+}
+
+func TestBidirectionalWSStream_readLoop_malformedMessage(T *testing.T) {
+	T.Parallel()
+
+	T.Run("skips unparseable messages and continues", func(t *testing.T) {
+		t.Parallel()
+
+		u := NewUpgrader(nil, tracingnoop.NewTracerProvider(), &Config{HeartbeatInterval: time.Hour})
+		streamReady := make(chan eventstream.BidirectionalEventStream, 1)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stream, err := u.UpgradeToBidirectionalStream(w, r)
+			if err != nil {
+				return
+			}
+			streamReady <- stream
+			<-stream.Done()
+		}))
+		defer server.Close()
+
+		conn, _, err := gorillawebsocket.DefaultDialer.Dial("ws"+server.URL[4:], http.Header{"Origin": {server.URL}})
+		must.NoError(t, err)
+		defer conn.Close()
+
+		stream := <-streamReady
+		defer stream.Close()
+
+		// First message is not valid JSON and must be skipped.
+		must.NoError(t, conn.WriteMessage(gorillawebsocket.TextMessage, []byte("this is not json")))
+		// Second message is valid; receiving it proves the read loop continued past the bad one.
+		must.NoError(t, conn.WriteJSON(&eventstream.Event{Type: "good", Payload: json.RawMessage(`{"ok":true}`)}))
+
+		select {
+		case event := <-stream.Receive():
+			must.NotNil(t, event)
+			test.EqOp(t, "good", event.Type)
+		case <-time.After(2 * time.Second):
+			t.Fatalf("did not receive the valid event after a malformed one")
+		}
+	})
+}
+
+func TestBidirectionalWSStream_readLoop_doneWhileBuffered(T *testing.T) {
+	T.Parallel()
+
+	T.Run("returns when closed while the incoming buffer is full", func(t *testing.T) {
+		t.Parallel()
+
+		u := NewUpgrader(nil, tracingnoop.NewTracerProvider(), &Config{HeartbeatInterval: time.Hour})
+		streamReady := make(chan eventstream.BidirectionalEventStream, 1)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stream, err := u.UpgradeToBidirectionalStream(w, r)
+			if err != nil {
+				return
+			}
+			streamReady <- stream
+			<-stream.Done()
+		}))
+		defer server.Close()
+
+		conn, _, err := gorillawebsocket.DefaultDialer.Dial("ws"+server.URL[4:], http.Header{"Origin": {server.URL}})
+		must.NoError(t, err)
+		defer conn.Close()
+
+		stream := <-streamReady
+		incoming := stream.Receive()
+
+		// Flood without reading so the incoming buffer fills and readLoop parks in the
+		// select trying to enqueue the next event.
+		for range incomingChannelBuffer * 2 {
+			must.NoError(t, conn.WriteJSON(&eventstream.Event{Type: "flood"}))
+		}
+
+		// Let readLoop fill the buffer and block on the pending send.
+		time.Sleep(200 * time.Millisecond)
+
+		// With the buffer full, the only ready case after Close is <-s.done, so readLoop
+		// takes the done path and returns.
+		must.NoError(t, stream.Close())
+		time.Sleep(50 * time.Millisecond)
+
+		// Draining must eventually observe the closed channel, proving readLoop returned.
+		timeout := time.After(2 * time.Second)
+		for {
+			select {
+			case _, open := <-incoming:
+				if !open {
+					return
+				}
+			case <-timeout:
+				t.Fatalf("incoming channel was not closed after stream.Close()")
+			}
+		}
 	})
 }
 
@@ -312,3 +487,56 @@ func TestBidirectionalWSStream_Receive(T *testing.T) {
 		}
 	})
 }
+
+// rawServerConn dials a throwaway httptest WebSocket server and returns the
+// server-side gorilla connection, so a stream can be constructed directly and
+// its connection broken from the test.
+func rawServerConn(t *testing.T) *gorillawebsocket.Conn {
+	t.Helper()
+
+	connCh := make(chan *gorillawebsocket.Conn, 1)
+	upgrader := gorillawebsocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		connCh <- c
+		<-r.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+
+	client, _, err := gorillawebsocket.DefaultDialer.Dial("ws"+server.URL[4:], http.Header{"Origin": {server.URL}})
+	must.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+
+	return <-connCh
+}
+
+// spyLogger is a logging.Logger that signals when Error is called.
+type spyLogger struct {
+	errored chan struct{}
+}
+
+func newSpyLogger() *spyLogger {
+	return &spyLogger{errored: make(chan struct{}, 1)}
+}
+
+func (l *spyLogger) Error(string, error) {
+	select {
+	case l.errored <- struct{}{}:
+	default:
+	}
+}
+
+func (l *spyLogger) Info(string)                                {}
+func (l *spyLogger) Debug(string)                               {}
+func (l *spyLogger) SetRequestIDFunc(logging.RequestIDFunc)     {}
+func (l *spyLogger) Clone() logging.Logger                      { return l }
+func (l *spyLogger) WithName(string) logging.Logger             { return l }
+func (l *spyLogger) WithValues(map[string]any) logging.Logger   { return l }
+func (l *spyLogger) WithValue(string, any) logging.Logger       { return l }
+func (l *spyLogger) WithRequest(*http.Request) logging.Logger   { return l }
+func (l *spyLogger) WithResponse(*http.Response) logging.Logger { return l }
+func (l *spyLogger) WithError(error) logging.Logger             { return l }
+func (l *spyLogger) WithSpan(trace.Span) logging.Logger         { return l }

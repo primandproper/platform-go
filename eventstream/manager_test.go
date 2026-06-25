@@ -214,6 +214,25 @@ func TestStreamManager_BroadcastToGroupFiltered(T *testing.T) {
 
 		test.SliceEmpty(t, s1.sentEvents())
 	})
+
+	T.Run("continues past a failing included stream", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		s1 := &failingStream{}
+		s2 := newMockStream()
+		m := NewStreamManager[EventStream](nil, nil)
+		m.Add(ctx, "g1", "m1", s1)
+		m.Add(ctx, "g1", "m2", s2)
+
+		// Include every member so the failing stream's Send error is exercised.
+		m.BroadcastToGroupFiltered(ctx, "g1", &Event{Type: "filtered"}, func(string) bool { return true })
+
+		// The non-failing stream still receives the event despite s1's error.
+		test.SliceLen(t, 1, s2.sentEvents())
+		test.EqOp(t, "filtered", s2.sentEvents()[0].Type)
+	})
 }
 
 func TestStreamManager_SendToMember(T *testing.T) {

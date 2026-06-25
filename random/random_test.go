@@ -181,3 +181,31 @@ func TestGenerateHexEncodedString(T *testing.T) {
 		test.NotEq(t, "", result)
 	})
 }
+
+//nolint:paralleltest // mutates package-level defaultGenerator; subtests must run sequentially
+func TestMustGenerateHexEncodedString(T *testing.T) {
+	T.Run("standard", func(t *testing.T) { //nolint:paralleltest // mutates package-level defaultGenerator; subtests must run sequentially
+		ctx := t.Context()
+
+		var result string
+		test.NotPanic(t, func() {
+			result = MustGenerateHexEncodedString(ctx, 32)
+		})
+		test.NotEq(t, "", result)
+		test.EqOp(t, 64, len(result))
+	})
+
+	T.Run("panics on error", func(t *testing.T) { //nolint:paralleltest // mutates package-level defaultGenerator; subtests must run sequentially
+		ctx := t.Context()
+
+		original := defaultGenerator.(*standardGenerator).randReader
+		defaultGenerator.(*standardGenerator).randReader = &erroneousReader{}
+		t.Cleanup(func() {
+			defaultGenerator.(*standardGenerator).randReader = original
+		})
+
+		test.Panic(t, func() {
+			_ = MustGenerateHexEncodedString(ctx, 32)
+		})
+	})
+}

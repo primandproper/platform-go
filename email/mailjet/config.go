@@ -18,7 +18,7 @@ var _ validation.ValidatableWithContext = (*Config)(nil)
 
 // ValidateWithContext validates a Config struct.
 func (s *Config) ValidateWithContext(ctx context.Context) error {
-	return validation.ValidateStructWithContext(ctx, &s,
+	return validation.ValidateStructWithContext(ctx, s,
 		validation.Field(&s.APIKey, validation.Required),
 		validation.Field(&s.SecretKey, validation.Required),
 	)
