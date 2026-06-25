@@ -2,7 +2,7 @@
 // reference table. It reads benchmark output on stdin and writes one markdown
 // table per package to the file named by -out (default BENCHMARKS.md).
 //
-// It is intentionally dependency-free and lives under cmd/ (excluded from
+// It is intentionally dependency-free and lives under internal/cmd/ (excluded from
 // `make test`). The script .scripts/benchmark.sh drives it; refresh the
 // committed table by re-running `make bench`.
 package main

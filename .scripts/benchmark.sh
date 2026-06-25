@@ -74,4 +74,4 @@ for pkg in "${pkgs[@]}"; do
     tee -a "${tmp}" || echo "benchmark.sh: ${pkg} failed" >&2
 done
 
-go run ./cmd/benchtable -out "${OUTPUT_FILE}" -containers "${container_pkgs}" <"${tmp}"
+go run ./internal/cmd/benchtable -out "${OUTPUT_FILE}" -containers "${container_pkgs}" <"${tmp}"
