@@ -1,7 +1,7 @@
 package encryption
 
 import (
-	"github.com/primandproper/platform/errors"
+	"github.com/primandproper/platform-go/errors"
 )
 
 var (

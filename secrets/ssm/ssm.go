@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
-	"github.com/primandproper/platform/secrets"
+	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/secrets"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"

@@ -3,10 +3,10 @@ package msgconfig
 import (
 	"context"
 
-	"github.com/primandproper/platform/messagequeue"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/messagequeue"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/samber/do/v2"
 )

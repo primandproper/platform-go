@@ -3,8 +3,8 @@ package healthcheck
 import (
 	"context"
 
-	"github.com/primandproper/platform/database"
-	"github.com/primandproper/platform/errors"
+	"github.com/primandproper/platform-go/database"
+	"github.com/primandproper/platform-go/errors"
 )
 
 // DatabaseReadyChecker checks if a database client is ready.

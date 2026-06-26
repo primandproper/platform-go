@@ -3,11 +3,11 @@ package embeddingscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform/embeddings/cohere"
-	"github.com/primandproper/platform/embeddings/ollama"
-	"github.com/primandproper/platform/embeddings/openai"
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/embeddings/cohere"
+	"github.com/primandproper/platform-go/embeddings/ollama"
+	"github.com/primandproper/platform-go/embeddings/openai"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

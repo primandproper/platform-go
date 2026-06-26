@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	textsearch "github.com/primandproper/platform/search/text"
+	textsearch "github.com/primandproper/platform-go/search/text"
 )
 
 // Ensure, that IndexMock does implement textsearch.Index.

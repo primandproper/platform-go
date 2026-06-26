@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/primandproper/platform/errors"
+	"github.com/primandproper/platform-go/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

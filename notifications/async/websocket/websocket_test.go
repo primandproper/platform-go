@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform/notifications/async"
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
+	"github.com/primandproper/platform-go/notifications/async"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	gorillawebsocket "github.com/gorilla/websocket"
 	"github.com/shoenig/test"

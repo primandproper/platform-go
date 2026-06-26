@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform/cryptography/encryption"
+	"github.com/primandproper/platform-go/cryptography/encryption"
 )
 
 // Ensure, that EncryptorDecryptorMock does implement encryption.EncryptorDecryptor.

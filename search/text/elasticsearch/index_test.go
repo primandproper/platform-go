@@ -7,10 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/primandproper/platform/circuitbreaking"
-	mockcircuitbreaking "github.com/primandproper/platform/circuitbreaking/mock"
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/circuitbreaking"
+	mockcircuitbreaking "github.com/primandproper/platform-go/circuitbreaking/mock"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/shoenig/test"

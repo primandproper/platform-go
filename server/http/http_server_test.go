@@ -19,10 +19,10 @@ import (
 	"testing"
 	"time"
 
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
-	"github.com/primandproper/platform/panicking"
-	"github.com/primandproper/platform/routing"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	"github.com/primandproper/platform-go/panicking"
+	"github.com/primandproper/platform-go/routing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

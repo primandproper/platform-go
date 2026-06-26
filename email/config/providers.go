@@ -4,11 +4,11 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/primandproper/platform/email"
-	"github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/email"
+	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
 )
 
 // ProvideEmailer provides an email.Emailer from a config.

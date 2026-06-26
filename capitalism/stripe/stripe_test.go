@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	mockencoding "github.com/primandproper/platform/encoding/mock"
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
-	"github.com/primandproper/platform/random"
+	mockencoding "github.com/primandproper/platform-go/encoding/mock"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	"github.com/primandproper/platform-go/random"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

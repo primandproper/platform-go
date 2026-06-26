@@ -3,8 +3,8 @@ package partitioned
 import (
 	"testing"
 
-	"github.com/primandproper/platform/circuitbreaking"
-	cbmock "github.com/primandproper/platform/circuitbreaking/mock"
+	"github.com/primandproper/platform-go/circuitbreaking"
+	cbmock "github.com/primandproper/platform-go/circuitbreaking/mock"
 
 	"github.com/shoenig/test"
 )

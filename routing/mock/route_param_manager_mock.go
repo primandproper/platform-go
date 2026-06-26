@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/routing"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/routing"
 )
 
 // Ensure, that RouteParamManagerMock does implement routing.RouteParamManager.

@@ -8,12 +8,12 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/observability"
-	"github.com/primandproper/platform/observability/keys"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
-	"github.com/primandproper/platform/panicking"
+	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/panicking"
 
 	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"

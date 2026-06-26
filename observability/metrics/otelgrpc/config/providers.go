@@ -3,9 +3,9 @@ package config
 import (
 	"context"
 
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/metrics/otelgrpc"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/metrics/otelgrpc"
 )
 
 // ProvideMetricsProvider provides a metrics.Provider from the config.

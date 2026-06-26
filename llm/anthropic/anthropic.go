@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/llm"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
-	"github.com/primandproper/platform/pointer"
+	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/llm"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/pointer"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
 	anyllmanthropic "github.com/mozilla-ai/any-llm-go/providers/anthropic"

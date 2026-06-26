@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform/observability/metrics"
-	mockmetrics "github.com/primandproper/platform/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform/observability/metrics/noop"
+	"github.com/primandproper/platform-go/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shoenig/test"

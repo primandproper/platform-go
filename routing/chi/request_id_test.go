@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/primandproper/platform/identifiers"
+	"github.com/primandproper/platform-go/identifiers"
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/shoenig/test"

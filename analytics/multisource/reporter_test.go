@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform/analytics"
-	analyticsmock "github.com/primandproper/platform/analytics/mock"
-	"github.com/primandproper/platform/analytics/noop"
+	"github.com/primandproper/platform-go/analytics"
+	analyticsmock "github.com/primandproper/platform-go/analytics/mock"
+	"github.com/primandproper/platform-go/analytics/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

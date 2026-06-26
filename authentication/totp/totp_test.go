@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	authtotp "github.com/primandproper/platform/authentication/totp"
-	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
+	authtotp "github.com/primandproper/platform-go/authentication/totp"
+	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/pquerna/otp/totp"
 	"github.com/shoenig/test"

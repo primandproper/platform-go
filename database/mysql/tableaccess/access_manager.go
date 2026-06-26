@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/primandproper/platform/database"
-	"github.com/primandproper/platform/errors"
+	"github.com/primandproper/platform-go/database"
+	"github.com/primandproper/platform-go/errors"
 )
 
 type Privilege string

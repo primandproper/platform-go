@@ -3,7 +3,7 @@ package routing
 import (
 	"net/http"
 
-	"github.com/primandproper/platform/observability/logging"
+	"github.com/primandproper/platform-go/observability/logging"
 )
 
 // all interfaces HEAVILY inspired by github.com/go-chi/chi.

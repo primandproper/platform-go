@@ -1,8 +1,8 @@
 package observability
 
 import (
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
 )
 
 func ObserveValues(values map[string]any, span tracing.Span, logger logging.Logger) logging.Logger {

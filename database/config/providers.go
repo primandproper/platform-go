@@ -1,7 +1,7 @@
 package databasecfg
 
 import (
-	"github.com/primandproper/platform/database"
+	"github.com/primandproper/platform-go/database"
 )
 
 // ProvideClientConfig converts Config to database.ClientConfig.

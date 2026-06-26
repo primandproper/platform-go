@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform/circuitbreaking"
-	"github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/observability"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
-	textsearch "github.com/primandproper/platform/search/text"
+	"github.com/primandproper/platform-go/circuitbreaking"
+	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
+	textsearch "github.com/primandproper/platform-go/search/text"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"

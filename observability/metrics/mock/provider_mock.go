@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform/observability/metrics"
+	"github.com/primandproper/platform-go/observability/metrics"
 
 	"go.opentelemetry.io/otel/metric"
 )

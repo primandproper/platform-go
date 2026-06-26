@@ -11,14 +11,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform/circuitbreaking"
-	circuitbreakingcfg "github.com/primandproper/platform/circuitbreaking/config"
-	platformerrors "github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/observability"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
-	vectorsearch "github.com/primandproper/platform/search/vector"
+	"github.com/primandproper/platform-go/circuitbreaking"
+	circuitbreakingcfg "github.com/primandproper/platform-go/circuitbreaking/config"
+	platformerrors "github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
+	vectorsearch "github.com/primandproper/platform-go/search/vector"
 )
 
 const serviceName = "qdrant_index"

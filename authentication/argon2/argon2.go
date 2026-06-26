@@ -6,10 +6,10 @@ import (
 	"math"
 	"runtime"
 
-	"github.com/primandproper/platform/authentication"
-	"github.com/primandproper/platform/observability"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/authentication"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/alexedwards/argon2id"
 )

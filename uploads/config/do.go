@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/primandproper/platform/uploads/objectstorage"
+	"github.com/primandproper/platform-go/uploads/objectstorage"
 
 	"github.com/samber/do/v2"
 )

@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform/email"
+	"github.com/primandproper/platform-go/email"
 )
 
 // Ensure, that EmailerMock does implement email.Emailer.

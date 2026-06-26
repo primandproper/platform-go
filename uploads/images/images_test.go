@@ -16,8 +16,8 @@ import (
 	"strconv"
 	"testing"
 
-	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
-	"github.com/primandproper/platform/testutils"
+	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	"github.com/primandproper/platform-go/testutils"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

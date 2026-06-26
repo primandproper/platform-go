@@ -3,10 +3,10 @@ package llmcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform/llm"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/llm"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
 )
 
 // ProvideLLMProvider provides an LLM provider from config.

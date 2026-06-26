@@ -4,12 +4,12 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/primandproper/platform/eventstream"
-	essse "github.com/primandproper/platform/eventstream/sse"
-	"github.com/primandproper/platform/notifications/async"
-	"github.com/primandproper/platform/observability"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/eventstream"
+	essse "github.com/primandproper/platform-go/eventstream/sse"
+	"github.com/primandproper/platform-go/notifications/async"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
 )
 
 const o11yName = "async_notifications_sse"

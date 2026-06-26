@@ -8,10 +8,10 @@ import (
 	"encoding/xml"
 	"io"
 
-	"github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/observability"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/BurntSushi/toml"
 	"github.com/keith-turner/ecoji/v2"

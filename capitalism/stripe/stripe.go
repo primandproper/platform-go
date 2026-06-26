@@ -4,11 +4,11 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/primandproper/platform/capitalism"
-	"github.com/primandproper/platform/capitalism/noop"
-	"github.com/primandproper/platform/encoding"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/capitalism"
+	"github.com/primandproper/platform-go/capitalism/noop"
+	"github.com/primandproper/platform-go/encoding"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/stripe/stripe-go/v75"
 	"github.com/stripe/stripe-go/v75/webhook"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 
-	"github.com/primandproper/platform/observability"
+	"github.com/primandproper/platform-go/observability"
 
 	"golang.org/x/crypto/salsa20"
 )

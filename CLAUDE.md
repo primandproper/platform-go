@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Go library/framework (`github.com/primandproper/platform`) providing infrastructure abstractions for cloud-native services: database, caching, messaging, observability, secrets, uploads, email, payments, and more. Single module, ~40 packages, Go 1.26.
+Go library/framework (`github.com/primandproper/platform-go`) providing infrastructure abstractions for cloud-native services: database, caching, messaging, observability, secrets, uploads, email, payments, and more. Single module, ~40 packages, Go 1.26.
 
 ## Common Commands
 
@@ -36,11 +36,11 @@ Linting runs in Docker (`golangci/golangci-lint` image). Formatting runs locally
 Import ordering uses `gci` with four sections, separated by blank lines:
 
 1. Standard library
-2. `github.com/primandproper/platform` (this module)
+2. `github.com/primandproper/platform-go` (this module)
 2. `github.com/primandproper` (org-level packages)
 4. Everything else (third-party)
 
-The Makefile `THIS` variable must be the full module path (`github.com/primandproper/platform`) because `format_imports.sh` uses `dirname` to derive the org prefix. If `THIS` is too short, `dirname` produces `github.com` which creates a spurious `prefix(github.com)` gci section.
+The Makefile `THIS` variable must be the full module path (`github.com/primandproper/platform-go`) because `format_imports.sh` uses `dirname` to derive the org prefix. If `THIS` is too short, `dirname` produces `github.com` which creates a spurious `prefix(github.com)` gci section.
 
 ## Architecture Patterns
 

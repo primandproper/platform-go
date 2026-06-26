@@ -3,8 +3,8 @@ package partitioned
 import (
 	"testing"
 
-	"github.com/primandproper/platform/circuitbreaking"
-	cbnoop "github.com/primandproper/platform/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/circuitbreaking"
+	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
 )
 
 func BenchmarkKeyedCircuitBreaker(b *testing.B) {

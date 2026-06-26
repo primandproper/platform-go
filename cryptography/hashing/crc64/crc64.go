@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"hash/crc64"
 
-	"github.com/primandproper/platform/cryptography/hashing"
+	"github.com/primandproper/platform-go/cryptography/hashing"
 )
 
 var _ hashing.Hasher = (*crc64Hasher)(nil)

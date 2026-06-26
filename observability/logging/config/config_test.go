@@ -3,8 +3,8 @@ package loggingcfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/logging/otelgrpc"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/logging/otelgrpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

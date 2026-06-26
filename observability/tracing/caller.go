@@ -12,7 +12,7 @@ const (
 )
 
 var (
-	PackagePrefix = "github.com/primandproper/platform/"
+	PackagePrefix = "github.com/primandproper/platform-go/"
 )
 
 // GetCallerName returns the name of the function that opened the current span,

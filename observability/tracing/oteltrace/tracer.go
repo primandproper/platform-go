@@ -3,10 +3,10 @@ package oteltrace
 import (
 	"context"
 
-	"github.com/primandproper/platform/observability/logging"
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	"github.com/primandproper/platform/observability/tracing"
-	o11yutils "github.com/primandproper/platform/observability/utils"
+	"github.com/primandproper/platform-go/observability/logging"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	"github.com/primandproper/platform-go/observability/tracing"
+	o11yutils "github.com/primandproper/platform-go/observability/utils"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"

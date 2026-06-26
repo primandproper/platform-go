@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform/uploads"
+	"github.com/primandproper/platform-go/uploads"
 )
 
 var _ uploads.UploadManager = (*UploadManager)(nil)

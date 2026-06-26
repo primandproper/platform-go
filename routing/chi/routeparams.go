@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/routing"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/routing"
 
 	"github.com/go-chi/chi/v5"
 )

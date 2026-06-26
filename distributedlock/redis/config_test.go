@@ -3,7 +3,7 @@ package redis
 import (
 	"testing"
 
-	platformerrors "github.com/primandproper/platform/errors"
+	platformerrors "github.com/primandproper/platform-go/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

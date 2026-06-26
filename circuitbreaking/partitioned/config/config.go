@@ -3,13 +3,13 @@ package partitionedcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform/circuitbreaking"
-	circuitbreakingcfg "github.com/primandproper/platform/circuitbreaking/config"
-	"github.com/primandproper/platform/circuitbreaking/partitioned"
-	"github.com/primandproper/platform/circuitbreaking/partitioned/noop"
-	"github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
+	"github.com/primandproper/platform-go/circuitbreaking"
+	circuitbreakingcfg "github.com/primandproper/platform-go/circuitbreaking/config"
+	"github.com/primandproper/platform-go/circuitbreaking/partitioned"
+	"github.com/primandproper/platform-go/circuitbreaking/partitioned/noop"
+	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"go.opentelemetry.io/otel/attribute"

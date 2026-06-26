@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/eventstream"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/eventstream"
+	"github.com/primandproper/platform-go/observability/tracing"
 )
 
 var (

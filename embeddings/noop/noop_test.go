@@ -3,7 +3,7 @@ package noop
 import (
 	"testing"
 
-	"github.com/primandproper/platform/embeddings"
+	"github.com/primandproper/platform-go/embeddings"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

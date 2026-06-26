@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"image/png"
 
-	"github.com/primandproper/platform/observability"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/boombuler/barcode"
 	"github.com/boombuler/barcode/qr"

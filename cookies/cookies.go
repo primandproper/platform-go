@@ -5,9 +5,9 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	perrors "github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/observability"
-	"github.com/primandproper/platform/observability/tracing"
+	perrors "github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/gorilla/securecookie"
 )

@@ -4,12 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform/analytics"
-	analyticscfg "github.com/primandproper/platform/analytics/config"
-	"github.com/primandproper/platform/analytics/noop"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/analytics"
+	analyticscfg "github.com/primandproper/platform-go/analytics/config"
+	"github.com/primandproper/platform-go/analytics/noop"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
 )
 
 // ProvideMultiSourceEventReporter builds a MultiSourceEventReporter from proxy sources config.
