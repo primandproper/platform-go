@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/ratelimiting"
+	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/ratelimiting"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/redis/go-redis/v9"

@@ -3,8 +3,8 @@ package metricscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
 )
 
 // ProvideMetricsProvider provides a metrics.Provider from config.

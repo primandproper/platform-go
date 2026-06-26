@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform/embeddings"
+	"github.com/primandproper/platform-go/embeddings"
 )
 
 // Ensure, that EmbedderMock does implement embeddings.Embedder.

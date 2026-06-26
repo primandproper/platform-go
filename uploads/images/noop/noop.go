@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/primandproper/platform/uploads/images"
+	"github.com/primandproper/platform-go/uploads/images"
 )
 
 var _ images.MediaUploadProcessor = (*MediaUploadProcessor)(nil)

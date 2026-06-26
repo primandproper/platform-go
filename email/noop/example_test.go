@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/primandproper/platform/email"
-	"github.com/primandproper/platform/email/noop"
+	"github.com/primandproper/platform-go/email"
+	"github.com/primandproper/platform-go/email/noop"
 )
 
 func ExampleNewEmailer() {

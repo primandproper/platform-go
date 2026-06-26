@@ -3,9 +3,9 @@ package embeddingscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform/embeddings"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/embeddings"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/samber/do/v2"
 )

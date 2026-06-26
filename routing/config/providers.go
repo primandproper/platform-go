@@ -1,10 +1,10 @@
 package routingcfg
 
 import (
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
-	"github.com/primandproper/platform/routing"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/routing"
 )
 
 // ProvideRouterViaConfig provides a Router from config.

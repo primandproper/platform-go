@@ -5,8 +5,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/primandproper/platform/circuitbreaking"
-	"github.com/primandproper/platform/errors"
+	"github.com/primandproper/platform-go/circuitbreaking"
+	"github.com/primandproper/platform-go/errors"
 )
 
 // SaveFile saves a file to the blob.

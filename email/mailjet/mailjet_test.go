@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	cbnoop "github.com/primandproper/platform/circuitbreaking/noop"
-	"github.com/primandproper/platform/email"
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
+	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/email"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/mailjet/mailjet-apiv3-go/v4"
 	"github.com/shoenig/test/must"

@@ -132,8 +132,8 @@ Do not guess a name you're not confident about.
 After editing, the final import block must satisfy gci's custom-order rules:
 
 1. Standard library
-2. `prefix(github.com/primandproper/platform)` — this module
-3. `prefix(github.com/primandproper/platform)` — org-level (usually empty for this repo)
+2. `prefix(github.com/primandproper/platform-go)` — this module
+3. `prefix(github.com/primandproper/platform-go)` — org-level (usually empty for this repo)
 4. default — third-party
 
 shoenig/test imports go in section 4 (third-party), separated from the platform imports by a blank line. Example:
@@ -143,7 +143,7 @@ import (
     "context"
     "testing"
 
-    "github.com/primandproper/platform/some/package"
+    "github.com/primandproper/platform-go/some/package"
 
     "github.com/shoenig/test"
     "github.com/shoenig/test/must"
@@ -163,8 +163,8 @@ CGO_ENABLED=1 go test -race -vet=all -shuffle=on ./<target>/... 2>&1
 gofmt -l <target>/
 go tool github.com/daixiang0/gci diff --skip-generated --custom-order \
   --section standard \
-  --section "prefix(github.com/primandproper/platform)" \
-  --section "prefix(github.com/primandproper/platform)" \
+  --section "prefix(github.com/primandproper/platform-go)" \
+  --section "prefix(github.com/primandproper/platform-go)" \
   --section default \
   <target>/
 ```

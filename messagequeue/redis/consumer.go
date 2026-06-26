@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/primandproper/platform/messagequeue"
-	"github.com/primandproper/platform/observability"
-	"github.com/primandproper/platform/observability/keys"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/messagequeue"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/redis/go-redis/v9"
 )

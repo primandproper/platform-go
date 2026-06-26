@@ -3,10 +3,10 @@ package partitionedcfg
 import (
 	"testing"
 
-	circuitbreakingcfg "github.com/primandproper/platform/circuitbreaking/config"
-	"github.com/primandproper/platform/circuitbreaking/partitioned"
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform/observability/metrics/noop"
+	circuitbreakingcfg "github.com/primandproper/platform-go/circuitbreaking/config"
+	"github.com/primandproper/platform-go/circuitbreaking/partitioned"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

@@ -4,13 +4,13 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform/llm"
-	"github.com/primandproper/platform/llm/anthropic"
-	llmnoop "github.com/primandproper/platform/llm/noop"
-	"github.com/primandproper/platform/llm/openai"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/llm"
+	"github.com/primandproper/platform-go/llm/anthropic"
+	llmnoop "github.com/primandproper/platform-go/llm/noop"
+	"github.com/primandproper/platform-go/llm/openai"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/primandproper/platform/encoding"
+	"github.com/primandproper/platform-go/encoding"
 )
 
 // Ensure, that ServerEncoderDecoderMock does implement encoding.ServerEncoderDecoder.

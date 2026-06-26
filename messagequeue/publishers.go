@@ -3,7 +3,7 @@ package messagequeue
 import (
 	"context"
 
-	platformerrors "github.com/primandproper/platform/errors"
+	platformerrors "github.com/primandproper/platform-go/errors"
 )
 
 type (

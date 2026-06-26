@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform/distributedlock"
+	"github.com/primandproper/platform-go/distributedlock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

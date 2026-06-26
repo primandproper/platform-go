@@ -4,7 +4,7 @@ MYSELF   := $(shell id -u)
 MY_GROUP := $(shell id -g)
 
 # PATHS
-THIS          := github.com/primandproper/platform
+THIS          := github.com/primandproper/platform-go
 ARTIFACTS_DIR := artifacts
 SCRIPTS_DIR   := .scripts
 COVERAGE_OUT  := $(ARTIFACTS_DIR)/coverage.out

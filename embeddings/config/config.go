@@ -3,12 +3,12 @@ package embeddingscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform/embeddings"
-	"github.com/primandproper/platform/embeddings/cohere"
-	"github.com/primandproper/platform/embeddings/ollama"
-	"github.com/primandproper/platform/embeddings/openai"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/embeddings"
+	"github.com/primandproper/platform-go/embeddings/cohere"
+	"github.com/primandproper/platform-go/embeddings/ollama"
+	"github.com/primandproper/platform-go/embeddings/openai"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

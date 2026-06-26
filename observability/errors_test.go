@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	"github.com/primandproper/platform/observability/tracing"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/shoenig/test"
 	"google.golang.org/grpc/codes"

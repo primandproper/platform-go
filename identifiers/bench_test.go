@@ -3,7 +3,7 @@ package identifiers_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform/identifiers"
+	"github.com/primandproper/platform-go/identifiers"
 )
 
 func BenchmarkNew(b *testing.B) {

@@ -4,7 +4,7 @@ import (
 	"encoding/hex"
 	"hash/fnv"
 
-	"github.com/primandproper/platform/cryptography/hashing"
+	"github.com/primandproper/platform-go/cryptography/hashing"
 )
 
 var _ hashing.Hasher = (*fnvHasher)(nil)

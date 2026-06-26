@@ -1,8 +1,8 @@
 package ratelimitingcfg
 
 import (
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/ratelimiting"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/ratelimiting"
 
 	"github.com/samber/do/v2"
 )

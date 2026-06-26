@@ -3,11 +3,11 @@ package msgconfig
 import (
 	"testing"
 
-	"github.com/primandproper/platform/messagequeue/kafka"
-	"github.com/primandproper/platform/messagequeue/pubsub"
-	"github.com/primandproper/platform/messagequeue/sqs"
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
+	"github.com/primandproper/platform-go/messagequeue/kafka"
+	"github.com/primandproper/platform-go/messagequeue/pubsub"
+	"github.com/primandproper/platform-go/messagequeue/sqs"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

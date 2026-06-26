@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"testing"
 
-	cbnoop "github.com/primandproper/platform/circuitbreaking/noop"
-	"github.com/primandproper/platform/email"
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
+	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/email"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	"github.com/shoenig/test"

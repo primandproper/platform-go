@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/primandproper/platform/analytics"
-	"github.com/primandproper/platform/circuitbreaking"
-	platformerrors "github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/analytics"
+	"github.com/primandproper/platform-go/circuitbreaking"
+	platformerrors "github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	rudderstack "github.com/rudderlabs/analytics-go/v4"
 )

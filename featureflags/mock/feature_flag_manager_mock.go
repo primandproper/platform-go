@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform/featureflags"
+	"github.com/primandproper/platform-go/featureflags"
 )
 
 // Ensure, that FeatureFlagManagerMock does implement featureflags.FeatureFlagManager.

@@ -51,8 +51,8 @@ Known-good as of the pilot:
 
 | Shared package | Testify type | Moq type | Import |
 |---|---|---|---|
-| `circuitbreaking/mock` | `MockCircuitBreaker` | `CircuitBreakerMock` | `mockcircuitbreaking "github.com/primandproper/platform/circuitbreaking/mock"` (alias required — package name is `mock`) |
-| `observability/metrics/mock` | `MetricsProvider` | `ProviderMock` | `"github.com/primandproper/platform/observability/metrics/mock"` (no alias — package name is already `mockmetrics`) |
+| `circuitbreaking/mock` | `MockCircuitBreaker` | `CircuitBreakerMock` | `mockcircuitbreaking "github.com/primandproper/platform-go/circuitbreaking/mock"` (alias required — package name is `mock`) |
+| `observability/metrics/mock` | `MetricsProvider` | `ProviderMock` | `"github.com/primandproper/platform-go/observability/metrics/mock"` (no alias — package name is already `mockmetrics`) |
 
 To confirm a shared mock package has a moq version: look for a `*_mock.go` file (not `_test.go`) in the package, or grep for `//go:generate go tool github.com/matryer/moq` in its `doc.go`.
 
@@ -201,8 +201,8 @@ After editing, the file's imports may need adjustment:
 Import ordering follows `gci --custom-order`:
 
 1. std
-2. `prefix(github.com/primandproper/platform)` — blank-line separator after
-3. `prefix(github.com/primandproper/platform)` — org-level (usually empty)
+2. `prefix(github.com/primandproper/platform-go)` — blank-line separator after
+3. `prefix(github.com/primandproper/platform-go)` — org-level (usually empty)
 4. default (third-party)
 
 ## Verification
@@ -230,8 +230,8 @@ gci format check:
 ```bash
 go tool github.com/daixiang0/gci diff --skip-generated --custom-order \
   --section standard \
-  --section "prefix(github.com/primandproper/platform)" \
-  --section "prefix(github.com/primandproper/platform)" \
+  --section "prefix(github.com/primandproper/platform-go)" \
+  --section "prefix(github.com/primandproper/platform-go)" \
   --section default \
   <target>/
 ```

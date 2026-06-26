@@ -3,7 +3,7 @@ package noop
 import (
 	"net/http"
 
-	"github.com/primandproper/platform/capitalism"
+	"github.com/primandproper/platform-go/capitalism"
 )
 
 var _ capitalism.PaymentManager = (*paymentManager)(nil)

@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/eventstream"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/eventstream"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	gorillawebsocket "github.com/gorilla/websocket"
 )

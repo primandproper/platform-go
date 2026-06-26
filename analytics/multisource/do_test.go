@@ -3,12 +3,12 @@ package multisource
 import (
 	"testing"
 
-	analyticscfg "github.com/primandproper/platform/analytics/config"
-	"github.com/primandproper/platform/analytics/segment"
-	loggingnoop "github.com/primandproper/platform/observability/logging/noop"
-	"github.com/primandproper/platform/observability/metrics"
-	metricsnoop "github.com/primandproper/platform/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform/observability/tracing/noop"
+	analyticscfg "github.com/primandproper/platform-go/analytics/config"
+	"github.com/primandproper/platform-go/analytics/segment"
+	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	"github.com/primandproper/platform-go/observability/metrics"
+	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

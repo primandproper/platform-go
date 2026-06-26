@@ -3,7 +3,7 @@ package config
 import (
 	"context"
 
-	"github.com/primandproper/platform/uploads/objectstorage"
+	"github.com/primandproper/platform-go/uploads/objectstorage"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

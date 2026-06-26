@@ -9,7 +9,7 @@ import (
 	"image/png"
 	"strings"
 
-	"github.com/primandproper/platform/errors"
+	"github.com/primandproper/platform-go/errors"
 
 	"github.com/nfnt/resize"
 )

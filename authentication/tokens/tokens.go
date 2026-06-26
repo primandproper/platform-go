@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	platformerrors "github.com/primandproper/platform/errors"
+	platformerrors "github.com/primandproper/platform-go/errors"
 )
 
 // ErrReservedClaim indicates that a caller passed a JWT registered-claim key in extraClaims.

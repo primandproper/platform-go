@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/primandproper/platform/errors"
+	"github.com/primandproper/platform-go/errors"
 )
 
 // GetTagNameByValue searches struct s (or *s) for a field whose value equals fieldValue

@@ -4,12 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/notifications/mobile/apns"
-	"github.com/primandproper/platform/notifications/mobile/fcm"
-	"github.com/primandproper/platform/observability"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/notifications/mobile/apns"
+	"github.com/primandproper/platform-go/notifications/mobile/fcm"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/tracing"
 )
 
 // ErrPlatformNotSupported is returned when attempting to send to a platform

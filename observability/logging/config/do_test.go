@@ -3,7 +3,7 @@ package loggingcfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform/observability/logging"
+	"github.com/primandproper/platform-go/observability/logging"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

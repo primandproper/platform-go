@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/primandproper/platform/eventstream"
+	"github.com/primandproper/platform-go/eventstream"
 )
 
 var (

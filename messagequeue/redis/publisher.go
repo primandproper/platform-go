@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform/encoding"
-	platformerrors "github.com/primandproper/platform/errors"
-	"github.com/primandproper/platform/messagequeue"
-	"github.com/primandproper/platform/observability"
-	"github.com/primandproper/platform/observability/logging"
-	"github.com/primandproper/platform/observability/metrics"
-	"github.com/primandproper/platform/observability/tracing"
+	"github.com/primandproper/platform-go/encoding"
+	platformerrors "github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/messagequeue"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability/metrics"
+	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/redis/go-redis/v9"
 )
