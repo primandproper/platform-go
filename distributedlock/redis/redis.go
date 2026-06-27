@@ -57,8 +57,7 @@ var (
 )
 
 type locker struct {
-	logger         logging.Logger
-	tracer         tracing.Tracer
+	o11y           observability.Observer
 	client         redisClient
 	circuitBreaker circuitbreaking.CircuitBreaker
 	acquireCounter metrics.Int64Counter
@@ -110,8 +109,7 @@ func NewRedisLocker(
 	}
 
 	return &locker{
-		logger:         logging.NewNamedLogger(logging.EnsureLogger(logger), serviceName),
-		tracer:         tracing.NewNamedTracer(tracerProvider, serviceName),
+		o11y:           observability.NewObserver(serviceName, logger, tracerProvider),
 		client:         buildRedisClient(cfg),
 		circuitBreaker: circuitbreakingcfg.EnsureCircuitBreaker(cb),
 		acquireCounter: acquireCounter,
@@ -126,8 +124,8 @@ func NewRedisLocker(
 
 // Acquire implements distributedlock.Locker.
 func (l *locker) Acquire(ctx context.Context, key string, ttl time.Duration) (distributedlock.Lock, error) {
-	_, span := l.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := l.o11y.Begin(ctx)
+	defer op.End()
 
 	if key == "" {
 		return nil, distributedlock.ErrEmptyKey
@@ -150,7 +148,7 @@ func (l *locker) Acquire(ctx context.Context, key string, ttl time.Duration) (di
 	if err != nil {
 		l.errCounter.Add(ctx, 1)
 		l.circuitBreaker.Failed()
-		return nil, observability.PrepareAndLogError(err, l.logger, span, "acquiring lock %q", key)
+		return nil, op.Error(err, "acquiring lock %q", key)
 	}
 	if !ok {
 		// Backend healthy, contention is the expected outcome — don't fail the breaker.
@@ -183,8 +181,8 @@ func (l *locker) Close() error {
 
 // release runs the compare-and-delete release script and translates the result.
 func (l *locker) release(ctx context.Context, fullKey, token string) error {
-	_, span := l.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := l.o11y.Begin(ctx)
+	defer op.End()
 
 	if l.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -199,7 +197,7 @@ func (l *locker) release(ctx context.Context, fullKey, token string) error {
 	if err != nil {
 		l.errCounter.Add(ctx, 1)
 		l.circuitBreaker.Failed()
-		return observability.PrepareAndLogError(err, l.logger, span, "releasing lock")
+		return op.Error(err, "releasing lock")
 	}
 	if res == 0 {
 		return distributedlock.ErrLockNotHeld
@@ -212,8 +210,8 @@ func (l *locker) release(ctx context.Context, fullKey, token string) error {
 
 // refresh runs the compare-and-pexpire refresh script and translates the result.
 func (l *locker) refresh(ctx context.Context, fullKey, token string, ttl time.Duration) error {
-	_, span := l.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := l.o11y.Begin(ctx)
+	defer op.End()
 
 	if ttl <= 0 {
 		return distributedlock.ErrInvalidTTL
@@ -231,7 +229,7 @@ func (l *locker) refresh(ctx context.Context, fullKey, token string, ttl time.Du
 	if err != nil {
 		l.errCounter.Add(ctx, 1)
 		l.circuitBreaker.Failed()
-		return observability.PrepareAndLogError(err, l.logger, span, "refreshing lock")
+		return op.Error(err, "refreshing lock")
 	}
 	if res == 0 {
 		return distributedlock.ErrLockNotHeld

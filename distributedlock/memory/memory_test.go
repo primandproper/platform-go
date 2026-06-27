@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/distributedlock"
+	"github.com/primandproper/platform-go/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -18,6 +19,23 @@ func newTestLocker(t *testing.T) distributedlock.Locker {
 	must.NoError(t, err)
 	must.NotNil(t, l)
 	return l
+}
+
+// newRecordingLocker builds a locker with a RecordingObserver swapped in, so a
+// test can both drive the locker and assert which fields it observed.
+func newRecordingLocker(t *testing.T) (*locker, *observability.RecordingObserver) {
+	t.Helper()
+	l, err := NewLocker(nil, nil, nil)
+	must.NoError(t, err)
+	must.NotNil(t, l)
+
+	concrete, ok := l.(*locker)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	concrete.o11y = obs
+
+	return concrete, obs
 }
 
 func TestNewLocker(T *testing.T) {
@@ -36,12 +54,17 @@ func TestLocker_Acquire(T *testing.T) {
 
 	T.Run("happy path", func(t *testing.T) {
 		t.Parallel()
-		l := newTestLocker(t)
+		l, obs := newRecordingLocker(t)
 		lock, err := l.Acquire(t.Context(), "k", time.Second)
 		must.NoError(t, err)
 		must.NotNil(t, lock)
 		test.EqOp(t, "k", lock.Key())
 		test.EqOp(t, time.Second, lock.TTL())
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"lock.key": "k",
+			"lock.ttl": time.Second,
+		})
 	})
 
 	T.Run("contended", func(t *testing.T) {
@@ -65,16 +88,27 @@ func TestLocker_Acquire(T *testing.T) {
 
 	T.Run("rejects empty key", func(t *testing.T) {
 		t.Parallel()
-		l := newTestLocker(t)
+		l, obs := newRecordingLocker(t)
 		_, err := l.Acquire(t.Context(), "", time.Second)
 		must.ErrorIs(t, err, distributedlock.ErrEmptyKey)
+
+		// Even on the rejection path, the inputs are still observed.
+		obs.ObservedOperationWithData(t, map[string]any{
+			"lock.key": "",
+			"lock.ttl": time.Second,
+		})
 	})
 
 	T.Run("rejects zero TTL", func(t *testing.T) {
 		t.Parallel()
-		l := newTestLocker(t)
-		_, err := l.Acquire(t.Context(), "k", 0)
+		l, obs := newRecordingLocker(t)
+		_, err := l.Acquire(t.Context(), "k", time.Duration(0))
 		must.ErrorIs(t, err, distributedlock.ErrInvalidTTL)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"lock.key": "k",
+			"lock.ttl": time.Duration(0),
+		})
 	})
 
 	T.Run("rejects negative TTL", func(t *testing.T) {

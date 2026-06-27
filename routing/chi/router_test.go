@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
-	"github.com/primandproper/platform-go/observability/tracing"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 	"github.com/primandproper/platform-go/routing"
 
@@ -36,7 +36,7 @@ func Test_buildChiMux(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		test.NotNil(t, buildChiMux(loggingnoop.NewLogger(), tracing.NewTracerForTest(t.Name()), metricsnoop.NewMetricsProvider(), &Config{}))
+		test.NotNil(t, buildChiMux(observability.NewObserverForTest(t.Name()), metricsnoop.NewMetricsProvider(), &Config{}))
 	})
 }
 

@@ -9,6 +9,8 @@ import (
 
 	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
 	"github.com/primandproper/platform-go/email"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
@@ -22,6 +24,34 @@ const (
 type sendMessageResponse struct {
 	Message string `json:"message"`
 	Id      string `json:"id"`
+}
+
+// newRecordingEmailer builds an Emailer with a RecordingObserver swapped in, so a
+// test can both drive SendEmail and assert which fields it observed.
+func newRecordingEmailer(t *testing.T, cfg *Config, client *http.Client) (*Emailer, *observability.RecordingObserver) {
+	t.Helper()
+
+	c, err := NewMailgunEmailer(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), client, cbnoop.NewCircuitBreaker(), nil)
+	must.NotNil(t, c)
+	must.NoError(t, err)
+
+	obs := observability.NewRecordingObserver()
+	c.o11y = obs
+
+	return c, obs
+}
+
+func testEmailMessage(t *testing.T) *email.OutboundEmailMessage {
+	t.Helper()
+
+	return &email.OutboundEmailMessage{
+		ToAddress:   t.Name(),
+		ToName:      t.Name(),
+		FromAddress: t.Name(),
+		FromName:    t.Name(),
+		Subject:     t.Name(),
+		HTMLContent: t.Name(),
+	}
 }
 
 func TestNewMailgunEmailer(T *testing.T) {
@@ -92,40 +122,30 @@ func TestMailgunEmailer_SendEmail(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		logger := loggingnoop.NewLogger()
-
 		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
-			json.NewEncoder(res).Encode(sendMessageResponse{
+			must.NoError(t, json.NewEncoder(res).Encode(sendMessageResponse{
 				Message: "Queued. Thank you.",
 				Id:      t.Name(),
-			})
+			}))
 		}))
 
 		cfg := &Config{Domain: exampleDomain, PrivateAPIKey: t.Name()}
 
-		c, err := NewMailgunEmailer(cfg, logger, tracingnoop.NewTracerProvider(), ts.Client(), cbnoop.NewCircuitBreaker(), nil)
-		must.NotNil(t, c)
-		must.NoError(t, err)
+		c, obs := newRecordingEmailer(t, cfg, ts.Client())
 
 		c.client.SetAPIBase(ts.URL + "/v4")
 
-		ctx := t.Context()
-		details := &email.OutboundEmailMessage{
-			ToAddress:   t.Name(),
-			ToName:      t.Name(),
-			FromAddress: t.Name(),
-			FromName:    t.Name(),
-			Subject:     t.Name(),
-			HTMLContent: t.Name(),
-		}
+		details := testEmailMessage(t)
+		must.NoError(t, c.SendEmail(t.Context(), details))
 
-		must.NoError(t, c.SendEmail(ctx, details))
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.EmailSubjectKey:   details.Subject,
+			keys.EmailToAddressKey: details.ToAddress,
+		})
 	})
 
 	T.Run("with error executing request", func(t *testing.T) {
 		t.Parallel()
-
-		logger := loggingnoop.NewLogger()
 
 		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 			time.Sleep(time.Hour)
@@ -136,27 +156,22 @@ func TestMailgunEmailer_SendEmail(T *testing.T) {
 
 		cfg := &Config{Domain: exampleDomain, PrivateAPIKey: t.Name()}
 
-		c, err := NewMailgunEmailer(cfg, logger, tracingnoop.NewTracerProvider(), client, cbnoop.NewCircuitBreaker(), nil)
-		must.NotNil(t, c)
-		must.NoError(t, err)
-		ctx := t.Context()
-		details := &email.OutboundEmailMessage{
-			ToAddress:   t.Name(),
-			ToName:      t.Name(),
-			FromAddress: t.Name(),
-			FromName:    t.Name(),
-			Subject:     t.Name(),
-			HTMLContent: t.Name(),
-		}
+		c, obs := newRecordingEmailer(t, cfg, client)
 
-		err = c.SendEmail(ctx, details)
-		must.Error(t, err)
+		details := testEmailMessage(t)
+		must.Error(t, c.SendEmail(t.Context(), details))
+
+		// Even though the send failed, the values must still have been observed,
+		// and the failure itself recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.EmailSubjectKey:   details.Subject,
+			keys.EmailToAddressKey: details.ToAddress,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with invalid response code", func(t *testing.T) {
 		t.Parallel()
-
-		logger := loggingnoop.NewLogger()
 
 		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 			res.WriteHeader(http.StatusInternalServerError)
@@ -164,21 +179,17 @@ func TestMailgunEmailer_SendEmail(T *testing.T) {
 
 		cfg := &Config{Domain: exampleDomain, PrivateAPIKey: t.Name()}
 
-		c, err := NewMailgunEmailer(cfg, logger, tracingnoop.NewTracerProvider(), ts.Client(), cbnoop.NewCircuitBreaker(), nil)
-		must.NotNil(t, c)
-		must.NoError(t, err)
+		c, obs := newRecordingEmailer(t, cfg, ts.Client())
 
-		ctx := t.Context()
-		details := &email.OutboundEmailMessage{
-			ToAddress:   t.Name(),
-			ToName:      t.Name(),
-			FromAddress: t.Name(),
-			FromName:    t.Name(),
-			Subject:     t.Name(),
-			HTMLContent: t.Name(),
-		}
+		c.client.SetAPIBase(ts.URL + "/v4")
 
-		err = c.SendEmail(ctx, details)
-		must.Error(t, err)
+		details := testEmailMessage(t)
+		must.Error(t, c.SendEmail(t.Context(), details))
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.EmailSubjectKey:   details.Subject,
+			keys.EmailToAddressKey: details.ToAddress,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }

@@ -16,12 +16,25 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 	"github.com/primandproper/platform-go/testutils"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// newRecordingProcessor builds a uploadProcessor with a RecordingObserver swapped
+// in, so a test can both drive the processor and assert which fields it observed.
+func newRecordingProcessor(t *testing.T) (*uploadProcessor, *observability.RecordingObserver) {
+	t.Helper()
+
+	obs := observability.NewRecordingObserver()
+	p := &uploadProcessor{o11y: obs}
+
+	return p, obs
+}
 
 // errorWriter is an http.ResponseWriter whose Write always returns an error.
 type errorWriter struct {
@@ -325,7 +338,7 @@ func Test_uploadProcessor_Process(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		p := NewMediaUploadProcessor(nil, tracingnoop.NewTracerProvider())
+		p, obs := newRecordingProcessor(t)
 		expectedFieldName := "avatar"
 
 		imgBytes := buildPNGBytes(t)
@@ -338,13 +351,17 @@ func Test_uploadProcessor_Process(T *testing.T) {
 		test.NoError(t, err)
 
 		test.Eq(t, expected, actual.Data)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.FilenameKey: expectedFieldName,
+		})
 	})
 
 	T.Run("with missing form file", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		p := NewMediaUploadProcessor(nil, tracingnoop.NewTracerProvider())
+		p, obs := newRecordingProcessor(t)
 		expectedFieldName := "avatar"
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://tests.verygoodsoftwarenotvirus.ru", http.NoBody)
@@ -353,13 +370,20 @@ func Test_uploadProcessor_Process(T *testing.T) {
 		actual, err := p.ProcessFile(ctx, req, expectedFieldName)
 		test.Nil(t, actual)
 		test.Error(t, err)
+
+		// The FormFile failure is reported via PrepareAndLogError (it carries
+		// request data the op's Error helper does not), so it is not recorded on
+		// the operation; we still assert the filename was observed before failure.
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.FilenameKey: expectedFieldName,
+		})
 	})
 
 	T.Run("with error decoding image", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		p := NewMediaUploadProcessor(nil, tracingnoop.NewTracerProvider())
+		p, obs := newRecordingProcessor(t)
 		expectedFieldName := "avatar"
 
 		req := newAvatarUploadRequest(t, "avatar.png", bytes.NewBufferString(""))
@@ -367,6 +391,20 @@ func Test_uploadProcessor_Process(T *testing.T) {
 		actual, err := p.ProcessFile(ctx, req, expectedFieldName)
 		test.Nil(t, actual)
 		test.Error(t, err)
+
+		// The decode failure flows through the inner operation's Error helper, so
+		// some recorded operation observed the filename and recorded the error.
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.FilenameKey: expectedFieldName,
+		})
+
+		var sawError bool
+		for _, op := range obs.Operations {
+			if len(op.Errors) > 0 {
+				sawError = true
+			}
+		}
+		test.True(t, sawError)
 	})
 
 	T.Run("with non-image file", func(t *testing.T) {

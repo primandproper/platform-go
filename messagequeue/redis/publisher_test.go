@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/messagequeue"
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
@@ -85,6 +86,9 @@ func Test_redisPublisher_Publish(T *testing.T) {
 		actual, ok := a.(*redisPublisher)
 		must.True(t, ok)
 
+		obs := observability.NewRecordingObserver()
+		actual.o11y = obs
+
 		inputData := &struct {
 			Name string `json:"name"`
 		}{
@@ -103,6 +107,10 @@ func Test_redisPublisher_Publish(T *testing.T) {
 		must.SliceLen(t, 1, mmp.publishArgs)
 		test.EqOp(t, actual.topic, mmp.publishArgs[0].channel)
 		test.Eq(t, any(fmt.Appendf(nil, `{"name":%q}%s`, t.Name(), string(byte(10)))), mmp.publishArgs[0].message)
+
+		// The publish opened and ended an observed operation with no recorded error.
+		op := obs.ObservedOperationWithKeys(t)
+		test.SliceEmpty(t, op.Errors)
 	})
 
 	T.Run("with error encoding value", func(t *testing.T) {
@@ -124,6 +132,9 @@ func Test_redisPublisher_Publish(T *testing.T) {
 		actual, ok := a.(*redisPublisher)
 		must.True(t, ok)
 
+		obs := observability.NewRecordingObserver()
+		actual.o11y = obs
+
 		inputData := &struct {
 			Name json.Number `json:"name"`
 		}{
@@ -132,6 +143,11 @@ func Test_redisPublisher_Publish(T *testing.T) {
 
 		err = actual.Publish(ctx, inputData)
 		test.Error(t, err)
+
+		// Even though the publish failed, the operation must have ended and the
+		// failure must have been recorded on it.
+		op := obs.ObservedOperationWithKeys(t)
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 

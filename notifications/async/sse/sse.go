@@ -23,8 +23,7 @@ var (
 // Note that AcceptConnection blocks the calling goroutine for the lifetime of the
 // client connection, as SSE uses the HTTP response writer directly.
 type Notifier struct {
-	logger   logging.Logger
-	tracer   tracing.Tracer
+	o11y     observability.Observer
 	upgrader *essse.Upgrader
 	manager  *eventstream.StreamManager[eventstream.EventStream]
 }
@@ -32,8 +31,7 @@ type Notifier struct {
 // NewNotifier creates a new SSE-backed AsyncNotifier.
 func NewNotifier(_ *Config, logger logging.Logger, tracerProvider tracing.TracerProvider) (*Notifier, error) {
 	return &Notifier{
-		logger:   logging.NewNamedLogger(logger, o11yName),
-		tracer:   tracing.NewNamedTracer(tracerProvider, o11yName),
+		o11y:     observability.NewObserver(o11yName, logger, tracerProvider),
 		upgrader: essse.NewUpgrader(tracerProvider),
 		manager:  eventstream.NewStreamManager[eventstream.EventStream](tracerProvider, logger),
 	}, nil
@@ -41,8 +39,8 @@ func NewNotifier(_ *Config, logger logging.Logger, tracerProvider tracing.Tracer
 
 // Publish sends an event to all connected clients on the given channel.
 func (n *Notifier) Publish(ctx context.Context, channel string, event *async.Event) error {
-	_, span := n.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := n.o11y.Begin(ctx)
+	defer op.End()
 
 	esEvent := &eventstream.Event{
 		Type:    event.Type,
@@ -58,13 +56,12 @@ func (n *Notifier) Publish(ctx context.Context, channel string, event *async.Eve
 // under the given channel and memberID. This method blocks the calling goroutine
 // for the lifetime of the client connection.
 func (n *Notifier) AcceptConnection(w http.ResponseWriter, r *http.Request, channel, memberID string) error {
-	ctx := r.Context()
-	_, span := n.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := n.o11y.Begin(r.Context())
+	defer op.End()
 
 	stream, err := n.upgrader.UpgradeToEventStream(w, r)
 	if err != nil {
-		return observability.PrepareAndLogError(err, n.logger, span, "upgrading SSE connection")
+		return op.Error(err, "upgrading SSE connection")
 	}
 
 	n.manager.Add(ctx, channel, memberID, stream)

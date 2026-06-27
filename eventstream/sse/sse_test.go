@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/eventstream"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/observability"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/shoenig/test"
@@ -383,14 +383,18 @@ func (w *failingResponseWriter) Flush()                    {}
 
 var errWriteFailed = errors.New("write failed")
 
-func newFailingStream() *sseStream {
+// newFailingStream builds an sseStream whose writes always fail, with a
+// RecordingObserver swapped in so a test can assert the failure was observed on
+// the operation.
+func newFailingStream() (*sseStream, *observability.RecordingObserver) {
 	w := &failingResponseWriter{header: http.Header{}}
+	obs := observability.NewRecordingObserver()
 	return &sseStream{
 		w:       w,
 		flusher: w,
 		done:    make(chan struct{}),
-		tracer:  tracing.NewNamedTracer(tracingnoop.NewTracerProvider(), "sse_stream"),
-	}
+		o11y:    obs,
+	}, obs
 }
 
 func TestSSEStream_Send_writeErrors(T *testing.T) {
@@ -399,7 +403,7 @@ func TestSSEStream_Send_writeErrors(T *testing.T) {
 	T.Run("error writing event type", func(t *testing.T) {
 		t.Parallel()
 
-		s := newFailingStream()
+		s, obs := newFailingStream()
 
 		err := s.Send(t.Context(), &eventstream.Event{
 			Type:    "boom",
@@ -407,12 +411,15 @@ func TestSSEStream_Send_writeErrors(T *testing.T) {
 		})
 		test.Error(t, err)
 		test.StrContains(t, err.Error(), "writing event type")
+
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("error writing event data", func(t *testing.T) {
 		t.Parallel()
 
-		s := newFailingStream()
+		s, obs := newFailingStream()
 
 		// Empty Type skips the type write and reaches the data write directly.
 		err := s.Send(t.Context(), &eventstream.Event{
@@ -420,6 +427,9 @@ func TestSSEStream_Send_writeErrors(T *testing.T) {
 		})
 		test.Error(t, err)
 		test.StrContains(t, err.Error(), "writing event data")
+
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 

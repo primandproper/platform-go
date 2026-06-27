@@ -7,16 +7,20 @@ import (
 
 	"github.com/primandproper/platform-go/authentication/tokens"
 	"github.com/primandproper/platform-go/identifiers"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/o1egl/paseto/v2"
 )
 
+const (
+	name = "paseto_signer"
+)
+
 type (
 	signer struct {
-		tracer     tracing.Tracer
-		logger     logging.Logger
+		o11y       observability.Observer
 		issuer     string
 		audience   string
 		signingKey []byte
@@ -28,8 +32,7 @@ func NewPASETOSigner(logger logging.Logger, tracerProvider tracing.TracerProvide
 		issuer:     issuer,
 		audience:   audience,
 		signingKey: signingKey,
-		logger:     logging.EnsureLogger(logger),
-		tracer:     tracing.NewNamedTracer(tracerProvider, "paseto_signer"),
+		o11y:       observability.NewObserver(name, logger, tracerProvider),
 	}
 
 	return s, nil
@@ -40,8 +43,8 @@ func NewPASETOSigner(logger logging.Logger, tracerProvider tracing.TracerProvide
 // claims via extraClaims. Passing a reserved-claim key in extraClaims returns
 // ErrReservedClaim.
 func (s *signer) IssueToken(ctx context.Context, subject string, expiry time.Duration, extraClaims map[string]any) (tokenStr, jti string, err error) {
-	_, span := s.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := s.o11y.Begin(ctx)
+	defer op.End()
 
 	if expiry <= 0 {
 		expiry = time.Minute * 10
@@ -75,10 +78,10 @@ func (s *signer) IssueToken(ctx context.Context, subject string, expiry time.Dur
 
 // ParseToken parses and decrypts a PASETO token and returns its claims.
 func (s *signer) ParseToken(ctx context.Context, providedToken string) (tokens.Claims, error) {
-	_, span := s.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := s.o11y.Begin(ctx)
+	defer op.End()
 
-	parsed, err := s.decryptToken(providedToken)
+	parsed, err := s.decryptToken(op, providedToken)
 	if err != nil {
 		return nil, err
 	}
@@ -86,14 +89,13 @@ func (s *signer) ParseToken(ctx context.Context, providedToken string) (tokens.C
 	return pasetoClaims(parsed), nil
 }
 
-func (s *signer) decryptToken(providedToken string) (map[string]any, error) {
+func (s *signer) decryptToken(op observability.Operation, providedToken string) (map[string]any, error) {
 	var (
 		parsedToken map[string]any
 		footer      string
 	)
 	if err := paseto.NewV2().Decrypt(providedToken, s.signingKey, &parsedToken, &footer); err != nil {
-		s.logger.Error("parsing PASETO token", err)
-		return nil, err
+		return nil, op.Error(err, "parsing PASETO token")
 	}
 
 	return parsedToken, nil

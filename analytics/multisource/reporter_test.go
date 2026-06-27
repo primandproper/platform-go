@@ -2,15 +2,34 @@ package multisource
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/primandproper/platform-go/analytics"
 	analyticsmock "github.com/primandproper/platform-go/analytics/mock"
 	"github.com/primandproper/platform-go/analytics/noop"
+	"github.com/primandproper/platform-go/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+var errArbitrary = errors.New("arbitrary")
+
+// newRecordingReporter builds a MultiSourceEventReporter with a RecordingObserver
+// swapped in, so a test can both drive the tracking methods and assert which
+// fields it observed.
+func newRecordingReporter(t *testing.T, reporters map[string]analytics.EventReporter) (*MultiSourceEventReporter, *observability.RecordingObserver) {
+	t.Helper()
+
+	m := NewMultiSourceEventReporter(reporters, nil, nil)
+	must.NotNil(t, m)
+
+	obs := observability.NewRecordingObserver()
+	m.o11y = obs
+
+	return m, obs
+}
 
 func TestNewMultiSourceEventReporter(T *testing.T) {
 	T.Parallel()
@@ -92,12 +111,18 @@ func TestMultiSourceEventReporter_TrackEvent(T *testing.T) {
 		reporters := map[string]analytics.EventReporter{
 			"ios": mockReporter,
 		}
-		m := NewMultiSourceEventReporter(reporters, nil, nil)
+		m, obs := newRecordingReporter(t, reporters)
 
-		err := m.TrackEvent(context.Background(), "ios", "signup", "user1", map[string]any{"plan": "pro"})
+		err := m.TrackEvent(t.Context(), "ios", "signup", "user1", map[string]any{"plan": "pro"})
 		test.NoError(t, err)
 
 		test.SliceLen(t, 1, mockReporter.EventOccurredCalls())
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"source":  "ios",
+			"event":   "signup",
+			"user_id": "user1",
+		})
 	})
 
 	T.Run("uses noop for unknown source", func(t *testing.T) {
@@ -107,6 +132,30 @@ func TestMultiSourceEventReporter_TrackEvent(T *testing.T) {
 
 		err := m.TrackEvent(context.Background(), "unknown", "signup", "user1", nil)
 		test.NoError(t, err)
+	})
+
+	T.Run("records values even when reporter errors", func(t *testing.T) {
+		t.Parallel()
+
+		mockReporter := &analyticsmock.EventReporterMock{
+			EventOccurredFunc: func(_ context.Context, _, _ string, _ map[string]any) error {
+				return errArbitrary
+			},
+		}
+
+		reporters := map[string]analytics.EventReporter{
+			"ios": mockReporter,
+		}
+		m, obs := newRecordingReporter(t, reporters)
+
+		err := m.TrackEvent(t.Context(), "ios", "signup", "user1", nil)
+		test.Error(t, err)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"source":  "ios",
+			"event":   "signup",
+			"user_id": "user1",
+		})
 	})
 }
 
@@ -128,12 +177,18 @@ func TestMultiSourceEventReporter_TrackAnonymousEvent(T *testing.T) {
 		reporters := map[string]analytics.EventReporter{
 			"web": mockReporter,
 		}
-		m := NewMultiSourceEventReporter(reporters, nil, nil)
+		m, obs := newRecordingReporter(t, reporters)
 
-		err := m.TrackAnonymousEvent(context.Background(), "web", "page_view", "anon1", map[string]any{})
+		err := m.TrackAnonymousEvent(t.Context(), "web", "page_view", "anon1", map[string]any{})
 		test.NoError(t, err)
 
 		test.SliceLen(t, 1, mockReporter.EventOccurredAnonymousCalls())
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"source":       "web",
+			"event":        "page_view",
+			"anonymous_id": "anon1",
+		})
 	})
 }
 

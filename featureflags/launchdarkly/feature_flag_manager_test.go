@@ -11,9 +11,10 @@ import (
 	mockCircuitBreaker "github.com/primandproper/platform-go/circuitbreaking/mock"
 	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
 	"github.com/primandproper/platform-go/featureflags"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
-	"github.com/primandproper/platform-go/observability/tracing"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
@@ -151,12 +152,20 @@ func buildTestManagerWithFlags(t *testing.T, flags []ldstoretypes.KeyedItemDescr
 		ldClient:       client,
 		ofClient:       ofClient,
 		circuitBreaker: cbnoop.NewCircuitBreaker(),
-		logger:         loggingnoop.NewLogger(),
-		tracer:         tracing.NewNamedTracer(tracingnoop.NewTracerProvider(), serviceName),
+		o11y:           observability.NewObserver(serviceName, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider()),
 		evalCounter:    evalCounter,
 		errorCounter:   errorCounter,
 		latencyHist:    latencyHist,
 	}
+}
+
+// withRecordingObserver swaps a RecordingObserver into the manager and returns it,
+// so a test can assert which fields an evaluation observed.
+func withRecordingObserver(ffm *featureFlagManager) *observability.RecordingObserver {
+	obs := observability.NewRecordingObserver()
+	ffm.o11y = obs
+
+	return obs
 }
 
 func TestNewFeatureFlagManager(T *testing.T) {
@@ -259,10 +268,16 @@ func TestFeatureFlagManager_CanUseFeature(T *testing.T) {
 
 		ctx := t.Context()
 		ffm := buildTestManagerWithFlags(t, testFlagItems())
+		obs := withRecordingObserver(ffm)
 
 		result, err := ffm.CanUseFeature(ctx, "bool-flag", evalCtx("user123"))
 		test.NoError(t, err)
 		test.True(t, result)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.UserIDKey: "user123",
+			"feature":      "bool-flag",
+		})
 	})
 
 	T.Run("with flag not found", func(t *testing.T) {
@@ -276,6 +291,7 @@ func TestFeatureFlagManager_CanUseFeature(T *testing.T) {
 		}
 
 		ffm := buildTestManager(t, cb)
+		obs := withRecordingObserver(ffm)
 
 		result, err := ffm.CanUseFeature(ctx, "nonexistent-flag", evalCtx("user123"))
 		test.Error(t, err)
@@ -283,6 +299,14 @@ func TestFeatureFlagManager_CanUseFeature(T *testing.T) {
 		test.SliceLen(t, 1, cb.CanProceedCalls())
 		test.SliceLen(t, 1, cb.FailedCalls())
 		test.SliceLen(t, 0, cb.SucceededCalls())
+
+		// Even though evaluation failed, the values must still have been observed,
+		// and the failure itself recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.UserIDKey: "user123",
+			"feature":      "nonexistent-flag",
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with broken circuit", func(t *testing.T) {
@@ -310,10 +334,16 @@ func TestFeatureFlagManager_GetStringValue(T *testing.T) {
 
 		ctx := t.Context()
 		ffm := buildTestManagerWithFlags(t, testFlagItems())
+		obs := withRecordingObserver(ffm)
 
 		result, err := ffm.GetStringValue(ctx, "string-flag", "fallback", evalCtx("user123"))
 		test.NoError(t, err)
 		test.EqOp(t, "hello-world", result)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.UserIDKey: "user123",
+			"feature":      "string-flag",
+		})
 	})
 
 	T.Run("with flag not found", func(t *testing.T) {
@@ -361,10 +391,16 @@ func TestFeatureFlagManager_GetInt64Value(T *testing.T) {
 
 		ctx := t.Context()
 		ffm := buildTestManagerWithFlags(t, testFlagItems())
+		obs := withRecordingObserver(ffm)
 
 		result, err := ffm.GetInt64Value(ctx, "int-flag", int64(0), evalCtx("user123"))
 		test.NoError(t, err)
 		test.EqOp(t, int64(42), result)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.UserIDKey: "user123",
+			"feature":      "int-flag",
+		})
 	})
 
 	T.Run("with flag not found", func(t *testing.T) {
@@ -412,10 +448,16 @@ func TestFeatureFlagManager_GetFloat64Value(T *testing.T) {
 
 		ctx := t.Context()
 		ffm := buildTestManagerWithFlags(t, testFlagItems())
+		obs := withRecordingObserver(ffm)
 
 		result, err := ffm.GetFloat64Value(ctx, "float-flag", 0.0, evalCtx("user123"))
 		test.NoError(t, err)
 		test.InDelta(t, 3.14, result, 1e-9)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.UserIDKey: "user123",
+			"feature":      "float-flag",
+		})
 	})
 
 	T.Run("with flag not found", func(t *testing.T) {
@@ -463,11 +505,17 @@ func TestFeatureFlagManager_GetObjectValue(T *testing.T) {
 
 		ctx := t.Context()
 		ffm := buildTestManagerWithFlags(t, testFlagItems())
+		obs := withRecordingObserver(ffm)
 
 		def := map[string]any{"default": true}
 		result, err := ffm.GetObjectValue(ctx, "object-flag", def, evalCtx("user123"))
 		test.NoError(t, err)
 		test.Eq[any](t, map[string]any{"key": "value"}, result)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.UserIDKey: "user123",
+			"feature":      "object-flag",
+		})
 	})
 
 	T.Run("with flag not found", func(t *testing.T) {

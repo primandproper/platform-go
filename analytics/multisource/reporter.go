@@ -7,6 +7,7 @@ import (
 
 	"github.com/primandproper/platform-go/analytics"
 	"github.com/primandproper/platform-go/analytics/noop"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 )
@@ -20,8 +21,7 @@ const (
 
 // MultiSourceEventReporter delegates events to per-source EventReporters.
 type MultiSourceEventReporter struct {
-	tracer    tracing.Tracer
-	logger    logging.Logger
+	o11y      observability.Observer
 	reporters map[string]analytics.EventReporter
 	mu        sync.RWMutex
 }
@@ -37,8 +37,7 @@ func NewMultiSourceEventReporter(
 	}
 	return &MultiSourceEventReporter{
 		reporters: reporters,
-		logger:    logging.NewNamedLogger(logger, name),
-		tracer:    tracing.NewNamedTracer(tracerProvider, name),
+		o11y:      observability.NewObserver(name, logger, tracerProvider),
 	}
 }
 
@@ -49,7 +48,7 @@ func (m *MultiSourceEventReporter) getReporter(source string) analytics.EventRep
 	if r, ok := m.reporters[source]; ok && r != nil {
 		return r
 	}
-	m.logger.WithValue("source", source).WithValue("known_sources", m.knownSources()).Info("no analytics reporter configured for source, using noop")
+	m.o11y.Logger().WithValue("source", source).WithValue("known_sources", m.knownSources()).Info("no analytics reporter configured for source, using noop")
 	return noop.NewEventReporter()
 }
 
@@ -72,16 +71,20 @@ func withSourceProperty(source string, properties map[string]any) map[string]any
 
 // TrackEvent records an event for an identified user.
 func (m *MultiSourceEventReporter) TrackEvent(ctx context.Context, source, event, userID string, properties map[string]any) error {
-	ctx, span := m.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := m.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set("source", source).Set("event", event).Set("user_id", userID)
 
 	return m.getReporter(source).EventOccurred(ctx, event, userID, withSourceProperty(source, properties))
 }
 
 // TrackAnonymousEvent records an event for an anonymous user.
 func (m *MultiSourceEventReporter) TrackAnonymousEvent(ctx context.Context, source, event, anonymousID string, properties map[string]any) error {
-	ctx, span := m.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := m.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set("source", source).Set("event", event).Set("anonymous_id", anonymousID)
 
 	return m.getReporter(source).EventOccurredAnonymous(ctx, event, anonymousID, withSourceProperty(source, properties))
 }

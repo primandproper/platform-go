@@ -7,6 +7,7 @@ import (
 	"context"
 
 	platformerrors "github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/pquerna/otp/totp"
@@ -29,20 +30,20 @@ type Verifier interface {
 }
 
 type verifier struct {
-	tracer tracing.Tracer
+	o11y observability.Observer
 }
 
 // NewVerifier returns a Verifier backed by github.com/pquerna/otp.
 func NewVerifier(tracerProvider tracing.TracerProvider) Verifier {
 	return &verifier{
-		tracer: tracing.NewNamedTracer(tracerProvider, serviceName),
+		o11y: observability.NewObserver(serviceName, nil, tracerProvider),
 	}
 }
 
 // Verify implements Verifier.
 func (v *verifier) Verify(ctx context.Context, secret, code string) error {
-	_, span := v.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := v.o11y.Begin(ctx)
+	defer op.End()
 
 	if code == "" {
 		return ErrCodeRequired

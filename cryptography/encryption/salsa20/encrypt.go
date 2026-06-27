@@ -8,8 +8,8 @@ import (
 )
 
 func (e *salsa20Impl) Encrypt(ctx context.Context, content string) (string, error) {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := e.o11y.Begin(ctx)
+	defer op.End()
 
 	out := make([]byte, len([]byte(content)))
 	salsa20.XORKeyStream(out, []byte(content), []byte{0, 0, 0, 0, 0, 0, 0, 0}, &e.key)

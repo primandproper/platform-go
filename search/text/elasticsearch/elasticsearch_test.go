@@ -391,7 +391,7 @@ func TestIndexManager_ensureIndices_CircuitBroken(T *testing.T) {
 			CannotProceedFunc: func() bool { return true },
 		}
 
-		im := buildTestIndexManagerForUnit(t, cb)
+		im, _ := buildTestIndexManagerForUnit(t, cb)
 
 		err := im.ensureIndices(context.Background())
 		test.Error(t, err)
@@ -407,7 +407,7 @@ func TestIndexManager_ensureIndices_CircuitBroken(T *testing.T) {
 			FailedFunc:        func() {},
 		}
 
-		im := buildTestIndexManagerForUnit(t, cb)
+		im, _ := buildTestIndexManagerForUnit(t, cb)
 
 		err := im.ensureIndices(context.Background())
 		test.Error(t, err)
@@ -437,7 +437,7 @@ func TestIndexManager_ensureIndices_Unit(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		im := buildTestIndexManagerWithServer(t, server, cb)
+		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
 		err := im.ensureIndices(context.Background())
 		test.NoError(t, err)
@@ -468,7 +468,7 @@ func TestIndexManager_ensureIndices_Unit(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		im := buildTestIndexManagerWithServer(t, server, cb)
+		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
 		err := im.ensureIndices(context.Background())
 		test.NoError(t, err)
@@ -503,7 +503,7 @@ func TestIndexManager_ensureIndices_Unit(T *testing.T) {
 			FailedFunc:        func() {},
 		}
 
-		im := buildTestIndexManagerWithServer(t, server, cb)
+		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
 		err := im.ensureIndices(context.Background())
 		test.Error(t, err)

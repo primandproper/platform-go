@@ -7,6 +7,8 @@ import (
 	"github.com/primandproper/platform-go/analytics"
 	"github.com/primandproper/platform-go/circuitbreaking"
 	platformerrors "github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -26,8 +28,7 @@ var (
 type (
 	// EventReporter is a Segment-backed EventReporter.
 	EventReporter struct {
-		tracer         tracing.Tracer
-		logger         logging.Logger
+		o11y           observability.Observer
 		client         segment.Client
 		eventCounter   metrics.Int64Counter
 		errorCounter   metrics.Int64Counter
@@ -54,8 +55,7 @@ func NewSegmentEventReporter(logger logging.Logger, tracerProvider tracing.Trace
 	}
 
 	c := &EventReporter{
-		tracer:         tracing.NewNamedTracer(tracerProvider, name),
-		logger:         logging.NewNamedLogger(logger, name),
+		o11y:           observability.NewObserver(name, logger, tracerProvider),
 		client:         segment.New(apiKey),
 		eventCounter:   eventCounter,
 		errorCounter:   errorCounter,
@@ -68,14 +68,16 @@ func NewSegmentEventReporter(logger logging.Logger, tracerProvider tracing.Trace
 // Close wraps the internal client's Close method.
 func (c *EventReporter) Close() {
 	if err := c.client.Close(); err != nil {
-		c.logger.Error("closing connection", err)
+		c.o11y.Logger().Error("closing connection", err)
 	}
 }
 
 // AddUser upsert's a user's identity.
 func (c *EventReporter) AddUser(ctx context.Context, userID string, properties map[string]any) error {
-	_, span := c.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := c.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.UserIDKey, userID)
 
 	if c.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -96,7 +98,7 @@ func (c *EventReporter) AddUser(ctx context.Context, userID string, properties m
 	if err != nil {
 		c.errorCounter.Add(ctx, 1)
 		c.circuitBreaker.Failed()
-		return err
+		return op.Error(err, "enqueueing identify event")
 	}
 
 	c.eventCounter.Add(ctx, 1)
@@ -115,8 +117,10 @@ func (c *EventReporter) EventOccurredAnonymous(ctx context.Context, event, anony
 }
 
 func (c *EventReporter) eventOccurred(ctx context.Context, event, userID string, anonymous bool, properties map[string]any) error {
-	_, span := c.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := c.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set("event", event).Set(keys.UserIDKey, userID)
 
 	if c.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -142,7 +146,7 @@ func (c *EventReporter) eventOccurred(ctx context.Context, event, userID string,
 	if err := c.client.Enqueue(track); err != nil {
 		c.errorCounter.Add(ctx, 1)
 		c.circuitBreaker.Failed()
-		return err
+		return op.Error(err, "enqueueing track event")
 	}
 
 	c.eventCounter.Add(ctx, 1)

@@ -28,8 +28,7 @@ type PusherClient interface {
 
 // Notifier is a Pusher-backed AsyncNotifier.
 type Notifier struct {
-	logger       logging.Logger
-	tracer       tracing.Tracer
+	o11y         observability.Observer
 	client       PusherClient
 	sendCounter  metrics.Int64Counter
 	errorCounter metrics.Int64Counter
@@ -62,8 +61,7 @@ func NewNotifier(cfg *Config, logger logging.Logger, tracerProvider tracing.Trac
 	}
 
 	return &Notifier{
-		logger:       logging.NewNamedLogger(logger, o11yName),
-		tracer:       tracing.NewNamedTracer(tracerProvider, o11yName),
+		o11y:         observability.NewObserver(o11yName, logger, tracerProvider),
 		client:       client,
 		sendCounter:  sendCounter,
 		errorCounter: errorCounter,
@@ -72,12 +70,14 @@ func NewNotifier(cfg *Config, logger logging.Logger, tracerProvider tracing.Trac
 
 // Publish sends an event to the given Pusher channel.
 func (n *Notifier) Publish(ctx context.Context, channel string, event *async.Event) error {
-	_, span := n.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := n.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set("pusher.channel", channel).Set("pusher.event_type", event.Type)
 
 	if err := n.client.Trigger(channel, event.Type, event.Data); err != nil {
 		n.errorCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(err, n.logger, span, "publishing to pusher channel")
+		return op.Error(err, "publishing to pusher channel")
 	}
 
 	n.sendCounter.Add(ctx, 1)

@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/platform-go/database"
 	"github.com/primandproper/platform-go/distributedlock"
 	"github.com/primandproper/platform-go/identifiers"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/metrics"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
 	"github.com/primandproper/platform-go/testutils/containers"
@@ -135,6 +136,23 @@ func newTestLockerWithCB(t *testing.T, client database.Client, cb circuitbreakin
 	must.NoError(t, err)
 	must.NotNil(t, l)
 	return l
+}
+
+// newRecordingLocker builds a locker with a RecordingObserver swapped in, so a
+// test can both drive it and assert which operations it observed.
+func newRecordingLocker(t *testing.T, client database.Client) (*locker, *observability.RecordingObserver) {
+	t.Helper()
+	l, err := NewPostgresLocker(&Config{}, client, nil, nil, nil, cbnoop.NewCircuitBreaker())
+	must.NoError(t, err)
+	must.NotNil(t, l)
+
+	concrete, ok := l.(*locker)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	concrete.o11y = obs
+
+	return concrete, obs
 }
 
 func TestNewPostgresLocker(T *testing.T) {
@@ -285,6 +303,41 @@ func TestLocker_Acquire_Unit(T *testing.T) {
 		_, err := l.Acquire(t.Context(), "k", time.Minute)
 		must.ErrorIs(t, err, distributedlock.ErrLockNotAcquired)
 		must.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	T.Run("observes the operation on the happy path", func(t *testing.T) {
+		t.Parallel()
+		client, mock := buildSqlmockClient(t)
+		t.Cleanup(func() { _ = client.Close() })
+		l, obs := newRecordingLocker(t, client)
+
+		mock.ExpectQuery(`SELECT pg_try_advisory_lock`).
+			WithArgs(hashLockID(0, "k")).
+			WillReturnRows(sqlmock.NewRows([]string{"v"}).AddRow(true))
+
+		got, err := l.Acquire(t.Context(), "k", time.Minute)
+		must.NoError(t, err)
+		must.NotNil(t, got)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceEmpty(t, op.Errors)
+	})
+
+	T.Run("records the error when conn reservation fails", func(t *testing.T) {
+		t.Parallel()
+		client, mock := buildSqlmockClient(t)
+		mock.ExpectClose()
+		l, obs := newRecordingLocker(t, client)
+		// Close the underlying DB so Conn() returns an error.
+		must.NoError(t, client.Close())
+
+		_, err := l.Acquire(t.Context(), "k", time.Minute)
+		must.Error(t, err)
+
+		// Even though the acquire failed, the operation must have been observed,
+		// and the failure itself recorded on it.
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 

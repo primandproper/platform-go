@@ -9,8 +9,8 @@ import (
 
 	"github.com/primandproper/platform-go/circuitbreaking"
 	mockcircuitbreaking "github.com/primandproper/platform-go/circuitbreaking/mock"
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/shoenig/test"
@@ -26,7 +26,7 @@ type invalidJSON struct {
 	Channel chan int `json:"channel"`
 }
 
-func buildTestIndexManagerForUnit(t *testing.T, cb circuitbreaking.CircuitBreaker) *indexManager[example] {
+func buildTestIndexManagerForUnit(t *testing.T, cb circuitbreaking.CircuitBreaker) (*indexManager[example], *observability.RecordingObserver) {
 	t.Helper()
 
 	client, err := elasticsearch.NewClient(elasticsearch.Config{
@@ -36,16 +36,17 @@ func buildTestIndexManagerForUnit(t *testing.T, cb circuitbreaking.CircuitBreake
 		t.Fatal(err)
 	}
 
+	obs := observability.NewRecordingObserver()
+
 	return &indexManager[example]{
-		logger:         loggingnoop.NewLogger(),
-		tracer:         tracing.NewTracerForTest("test"),
+		o11y:           obs,
 		circuitBreaker: cb,
 		esClient:       client,
 		indexName:      "test",
-	}
+	}, obs
 }
 
-func buildTestIndexManagerWithServer(t *testing.T, server *httptest.Server, cb circuitbreaking.CircuitBreaker) *indexManager[example] {
+func buildTestIndexManagerWithServer(t *testing.T, server *httptest.Server, cb circuitbreaking.CircuitBreaker) (*indexManager[example], *observability.RecordingObserver) {
 	t.Helper()
 
 	client, err := elasticsearch.NewClient(elasticsearch.Config{
@@ -55,13 +56,14 @@ func buildTestIndexManagerWithServer(t *testing.T, server *httptest.Server, cb c
 		t.Fatal(err)
 	}
 
+	obs := observability.NewRecordingObserver()
+
 	return &indexManager[example]{
-		logger:         loggingnoop.NewLogger(),
-		tracer:         tracing.NewTracerForTest("test"),
+		o11y:           obs,
 		circuitBreaker: cb,
 		esClient:       client,
 		indexName:      "test",
-	}
+	}, obs
 }
 
 func TestIndexManager_Index_CircuitBroken(T *testing.T) {
@@ -74,7 +76,7 @@ func TestIndexManager_Index_CircuitBroken(T *testing.T) {
 			CannotProceedFunc: func() bool { return true },
 		}
 
-		im := buildTestIndexManagerForUnit(t, cb)
+		im, _ := buildTestIndexManagerForUnit(t, cb)
 
 		err := im.Index(context.Background(), "id", map[string]string{"id": "test"})
 		test.Error(t, err)
@@ -89,7 +91,7 @@ func TestIndexManager_Index_CircuitBroken(T *testing.T) {
 			CannotProceedFunc: func() bool { return false },
 		}
 
-		im := buildTestIndexManagerForUnit(t, cb)
+		im, _ := buildTestIndexManagerForUnit(t, cb)
 
 		err := im.Index(context.Background(), "id", make(chan int))
 		test.Error(t, err)
@@ -104,7 +106,7 @@ func TestIndexManager_Index_CircuitBroken(T *testing.T) {
 			FailedFunc:        func() {},
 		}
 
-		im := buildTestIndexManagerForUnit(t, cb)
+		im, _ := buildTestIndexManagerForUnit(t, cb)
 
 		err := im.Index(context.Background(), "id", map[string]string{"id": "test"})
 		test.Error(t, err)
@@ -132,12 +134,18 @@ func TestIndexManager_Index_Unit(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		im := buildTestIndexManagerWithServer(t, server, cb)
+		im, obs := buildTestIndexManagerWithServer(t, server, cb)
 
-		err := im.Index(context.Background(), "123", &example{ID: "123", Name: "test"})
+		value := &example{ID: "123", Name: "test"}
+		err := im.Index(context.Background(), "123", value)
 		test.NoError(t, err)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.SucceededCalls())
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"id":    "123",
+			"value": value,
+		})
 	})
 
 	T.Run("with non-success status code", func(t *testing.T) {
@@ -156,12 +164,19 @@ func TestIndexManager_Index_Unit(T *testing.T) {
 			FailedFunc:        func() {},
 		}
 
-		im := buildTestIndexManagerWithServer(t, server, cb)
+		im, obs := buildTestIndexManagerWithServer(t, server, cb)
 
-		err := im.Index(context.Background(), "123", &example{ID: "123", Name: "test"})
+		value := &example{ID: "123", Name: "test"}
+		err := im.Index(context.Background(), "123", value)
 		test.Error(t, err)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.FailedCalls())
+
+		// Even though the index failed, the values must still have been observed.
+		obs.ObservedOperationWithData(t, map[string]any{
+			"id":    "123",
+			"value": value,
+		})
 	})
 }
 
@@ -175,7 +190,7 @@ func TestIndexManager_Search_CircuitBroken(T *testing.T) {
 			CannotProceedFunc: func() bool { return true },
 		}
 
-		im := buildTestIndexManagerForUnit(t, cb)
+		im, _ := buildTestIndexManagerForUnit(t, cb)
 
 		results, err := im.Search(context.Background(), "query")
 		test.Error(t, err)
@@ -191,7 +206,7 @@ func TestIndexManager_Search_CircuitBroken(T *testing.T) {
 			CannotProceedFunc: func() bool { return false },
 		}
 
-		im := buildTestIndexManagerForUnit(t, cb)
+		im, _ := buildTestIndexManagerForUnit(t, cb)
 
 		results, err := im.Search(context.Background(), "")
 		test.Error(t, err)
@@ -208,7 +223,7 @@ func TestIndexManager_Search_CircuitBroken(T *testing.T) {
 			FailedFunc:        func() {},
 		}
 
-		im := buildTestIndexManagerForUnit(t, cb)
+		im, _ := buildTestIndexManagerForUnit(t, cb)
 
 		results, err := im.Search(context.Background(), "test query")
 		test.Error(t, err)
@@ -237,7 +252,7 @@ func TestIndexManager_Search_Unit(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		im := buildTestIndexManagerWithServer(t, server, cb)
+		im, obs := buildTestIndexManagerWithServer(t, server, cb)
 
 		results, err := im.Search(context.Background(), "test")
 		test.NoError(t, err)
@@ -246,6 +261,10 @@ func TestIndexManager_Search_Unit(T *testing.T) {
 		test.EqOp(t, "test", results[0].Name)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.SucceededCalls())
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.SearchQueryKey: "test",
+		})
 	})
 
 	T.Run("with error response", func(t *testing.T) {
@@ -264,7 +283,7 @@ func TestIndexManager_Search_Unit(T *testing.T) {
 			FailedFunc:        func() {},
 		}
 
-		im := buildTestIndexManagerWithServer(t, server, cb)
+		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
 		// NOTE: the search function has a named return 'err' that is overwritten
 		// by the deferred res.Body.Close() call, so the error is lost. The code
@@ -293,7 +312,7 @@ func TestIndexManager_Search_Unit(T *testing.T) {
 			FailedFunc:        func() {},
 		}
 
-		im := buildTestIndexManagerWithServer(t, server, cb)
+		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
 		// NOTE: same issue as error response test - the deferred res.Body.Close()
 		// overwrites the named return 'err' with nil.
@@ -324,7 +343,7 @@ func TestIndexManager_Search_ErrorResponseDecodeFailure_Unit(T *testing.T) {
 			FailedFunc:        func() {},
 		}
 
-		im := buildTestIndexManagerWithServer(t, server, cb)
+		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
 		// NOTE: the named return 'err' from the deferred res.Body.Close() clobbers
 		// the error, so this returns nil error despite the decode failure.
@@ -355,7 +374,7 @@ func TestIndexManager_Search_SourceUnmarshalError_Unit(T *testing.T) {
 			FailedFunc:        func() {},
 		}
 
-		im := buildTestIndexManagerWithServer(t, server, cb)
+		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
 		// NOTE: the named return 'err' from the deferred res.Body.Close() clobbers
 		// the error, so this returns nil error despite the unmarshal failure.
@@ -377,7 +396,7 @@ func TestIndexManager_Delete_CircuitBroken(T *testing.T) {
 			CannotProceedFunc: func() bool { return true },
 		}
 
-		im := buildTestIndexManagerForUnit(t, cb)
+		im, _ := buildTestIndexManagerForUnit(t, cb)
 
 		err := im.Delete(context.Background(), "id")
 		test.Error(t, err)
@@ -393,7 +412,7 @@ func TestIndexManager_Delete_CircuitBroken(T *testing.T) {
 			FailedFunc:        func() {},
 		}
 
-		im := buildTestIndexManagerForUnit(t, cb)
+		im, _ := buildTestIndexManagerForUnit(t, cb)
 
 		err := im.Delete(context.Background(), "some-id")
 		test.Error(t, err)
@@ -421,12 +440,16 @@ func TestIndexManager_Delete_Unit(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		im := buildTestIndexManagerWithServer(t, server, cb)
+		im, obs := buildTestIndexManagerWithServer(t, server, cb)
 
 		err := im.Delete(context.Background(), "123")
 		test.NoError(t, err)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.SucceededCalls())
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"id": "123",
+		})
 	})
 }
 

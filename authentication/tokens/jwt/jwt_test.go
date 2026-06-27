@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/authentication/tokens"
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
@@ -13,6 +14,22 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// newRecordingSigner builds a signer with a RecordingObserver swapped in, so a
+// test can both drive the signer and assert what it observed.
+func newRecordingSigner(t *testing.T) (*signer, *observability.RecordingObserver) {
+	t.Helper()
+
+	issuer, err := NewJWTSigner(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), "platform-test", t.Name(), []byte(exampleSigningKey))
+	must.NoError(t, err)
+
+	s := issuer.(*signer)
+
+	obs := observability.NewRecordingObserver()
+	s.o11y = obs
+
+	return s, obs
+}
 
 const (
 	exampleSigningKey = "HEREISA32CHARSECRETWHICHISMADEUP"
@@ -123,27 +140,31 @@ func Test_signer_ParseToken(T *testing.T) {
 
 		ctx := t.Context()
 
-		s, err := NewJWTSigner(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), "platform-test", t.Name(), []byte(exampleSigningKey))
-		must.NoError(t, err)
+		s, obs := newRecordingSigner(t)
 
 		claims, err := s.ParseToken(ctx, tokenString)
 		test.Error(t, err)
 		test.Nil(t, claims)
+
+		op := obs.ObservedOperationWithKeys(t)
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with invalid key", func(t *testing.T) {
 		t.Parallel()
 
-		s, err := NewJWTSigner(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), "platform-test", t.Name(), []byte(exampleSigningKey))
-		must.NoError(t, err)
+		s, obs := newRecordingSigner(t)
 
-		s.(*signer).signingKey = nil
+		s.signingKey = nil
 
 		ctx := t.Context()
 
 		claims, err := s.ParseToken(ctx, exampleToken)
 		test.Error(t, err)
 		test.Nil(t, claims)
+
+		op := obs.ObservedOperationWithKeys(t)
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("missing optional claim returns empty string", func(t *testing.T) {

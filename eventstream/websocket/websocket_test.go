@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/eventstream"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/tracing"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	gorillawebsocket "github.com/gorilla/websocket"
@@ -167,9 +167,9 @@ func TestWSStream_heartbeatLoop_writeError(T *testing.T) {
 
 		spy := newSpyLogger()
 		conn := rawServerConn(t)
-		tracer := tracing.NewNamedTracer(tracingnoop.NewTracerProvider(), "websocket_stream")
+		o11y := observability.NewObserver(name, spy, tracingnoop.NewTracerProvider())
 
-		stream := newWSStream(conn, time.Millisecond, spy, tracer)
+		stream := newWSStream(conn, time.Millisecond, o11y)
 		t.Cleanup(func() { _ = stream.Close() })
 
 		// Break the underlying connection so the next heartbeat ping write fails.
@@ -347,6 +347,25 @@ func TestWSStream_Send(T *testing.T) {
 		sendErr := stream.Send(t.Context(), &eventstream.Event{Type: "x"})
 		test.Error(t, sendErr)
 		test.StrContains(t, sendErr.Error(), "stream closed")
+	})
+
+	T.Run("observes the send operation", func(t *testing.T) {
+		t.Parallel()
+
+		obs := observability.NewRecordingObserver()
+		conn := rawServerConn(t)
+		stream := newWSStream(conn, 0, obs)
+		t.Cleanup(func() { _ = stream.Close() })
+
+		must.NoError(t, stream.Send(t.Context(), &eventstream.Event{
+			Type:    "test",
+			Payload: json.RawMessage(`{"msg":"hello"}`),
+		}))
+
+		// Send opens (and ends) a span without attaching values, so assert the
+		// operation ran and completed.
+		must.SliceLen(t, 1, obs.Operations)
+		test.True(t, obs.Operations[0].Ended)
 	})
 }
 

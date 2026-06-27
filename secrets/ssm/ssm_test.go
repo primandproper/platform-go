@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
@@ -16,6 +18,24 @@ import (
 	"github.com/shoenig/test/must"
 	"go.opentelemetry.io/otel/metric"
 )
+
+// newRecordingSource builds an ssmSecretSource with a RecordingObserver swapped
+// in, so a test can both drive GetSecret and assert which fields it observed.
+func newRecordingSource(t *testing.T, cfg *Config, client GetParameterAPI) (*ssmSecretSource, *observability.RecordingObserver) {
+	t.Helper()
+
+	source, err := NewSSMSecretSource(context.Background(), cfg, client, nil, nil, nil)
+	must.NoError(t, err)
+	must.NotNil(t, source)
+
+	s, ok := source.(*ssmSecretSource)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	s.o11y = obs
+
+	return s, obs
+}
 
 func TestNewSSMSecretSource(T *testing.T) {
 	T.Parallel()
@@ -121,24 +141,33 @@ func TestSSMSecretSource_GetSecret(T *testing.T) {
 		t.Parallel()
 		cfg := &Config{Region: "us-east-1"}
 		mc := &mockSSMClient{value: "my-param-value"}
-		source, err := NewSSMSecretSource(context.Background(), cfg, mc, nil, nil, nil)
-		must.NoError(t, err)
+		source, obs := newRecordingSource(t, cfg, mc)
 
-		got, err := source.GetSecret(context.Background(), "MY_PARAM")
+		got, err := source.GetSecret(t.Context(), "MY_PARAM")
 		must.NoError(t, err)
 		test.EqOp(t, "my-param-value", got)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.NameKey: "MY_PARAM",
+		})
 	})
 
 	T.Run("error from client", func(t *testing.T) {
 		t.Parallel()
 		cfg := &Config{Region: "us-east-1"}
 		mc := &mockSSMClient{err: errors.New("ssm error")}
-		source, err := NewSSMSecretSource(context.Background(), cfg, mc, nil, nil, nil)
-		must.NoError(t, err)
+		source, obs := newRecordingSource(t, cfg, mc)
 
-		_, err = source.GetSecret(context.Background(), "MY_PARAM")
+		_, err := source.GetSecret(t.Context(), "MY_PARAM")
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "ssm error")
+
+		// Even though the lookup failed, the parameter name must still have been
+		// observed, and the failure itself recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.NameKey: "MY_PARAM",
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("name with prefix", func(t *testing.T) {

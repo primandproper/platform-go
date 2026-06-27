@@ -13,6 +13,7 @@ import (
 	platformerrors "github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/messagequeue"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -39,9 +40,8 @@ type (
 	}
 
 	redisPublisher struct {
-		tracer            tracing.Tracer
+		o11y              observability.Observer
 		encoder           encoding.ClientEncoder
-		logger            logging.Logger
 		publisher         messagePublisher
 		publishedCounter  metrics.Int64Counter
 		publishErrCounter metrics.Int64Counter
@@ -53,21 +53,21 @@ type (
 // Stop implements the Publisher interface.
 func (p *redisPublisher) Stop() {
 	if err := p.publisher.Close(); err != nil && !errors.Is(err, redis.ErrClosed) {
-		p.logger.Error("closing redis publisher", err)
+		p.o11y.Logger().Error("closing redis publisher", err)
 	}
 }
 
 // Publish implements the Publisher interface.
 func (p *redisPublisher) Publish(ctx context.Context, data any) error {
-	_, span := p.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := p.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
 
 	var b bytes.Buffer
 	if err := p.encoder.Encode(ctx, &b, data); err != nil {
 		p.publishErrCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(err, p.logger, span, "encoding topic message")
+		return op.Error(err, "encoding topic message")
 	}
 
 	if err := p.publisher.Publish(ctx, p.topic, b.Bytes()).Err(); err != nil {
@@ -84,7 +84,7 @@ func (p *redisPublisher) Publish(ctx context.Context, data any) error {
 // PublishAsync implements the Publisher interface.
 func (p *redisPublisher) PublishAsync(ctx context.Context, data any) {
 	if err := p.Publish(ctx, data); err != nil {
-		p.logger.Error("publishing message", err)
+		p.o11y.Logger().Error("publishing message", err)
 	}
 }
 
@@ -111,8 +111,7 @@ func provideRedisPublisher(logger logging.Logger, tracerProvider tracing.TracerP
 		publisher:         redisClient,
 		topic:             topic,
 		encoder:           encoding.ProvideClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
-		logger:            logging.EnsureLogger(logger),
-		tracer:            tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("%s_publisher", topic)),
+		o11y:              observability.NewObserver(fmt.Sprintf("%s_publisher", topic), logger, tracerProvider),
 		publishedCounter:  publishedCounter,
 		publishErrCounter: publishErrCounter,
 		latencyHist:       latencyHist,
@@ -120,7 +119,7 @@ func provideRedisPublisher(logger logging.Logger, tracerProvider tracing.TracerP
 }
 
 type publisherProvider struct {
-	logger            logging.Logger
+	o11y              observability.Observer
 	publisherCache    map[string]messagequeue.Publisher
 	redisClient       messagePublisher
 	tracerProvider    tracing.TracerProvider
@@ -130,8 +129,9 @@ type publisherProvider struct {
 
 // ProvideRedisPublisherProvider returns a PublisherProvider for a given address.
 func ProvideRedisPublisherProvider(l logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cfg Config) messagequeue.PublisherProvider {
-	logger := l.WithValue("queue_addresses", cfg.QueueAddresses).
-		WithValue("username", cfg.Username).
+	o11y := observability.NewObserver("redis_publisher_provider", l, tracerProvider)
+	logger := o11y.Logger().WithValue("queue_addresses", cfg.QueueAddresses).
+		WithValue(keys.UsernameKey, cfg.Username).
 		WithValue("password", cfg.Password)
 	logger.Info("setting up redis publisher")
 
@@ -157,7 +157,7 @@ func ProvideRedisPublisherProvider(l logging.Logger, tracerProvider tracing.Trac
 	logger.Info("redis publisher setup complete")
 
 	return &publisherProvider{
-		logger:          logging.EnsureLogger(l),
+		o11y:            o11y,
 		redisClient:     redisClient,
 		publisherCache:  map[string]messagequeue.Publisher{},
 		tracerProvider:  tracerProvider,
@@ -171,7 +171,7 @@ func (p *publisherProvider) ProvidePublisher(ctx context.Context, topic string) 
 		return nil, messagequeue.ErrEmptyTopicName
 	}
 
-	logger := logging.EnsureLogger(p.logger).WithValue("topic", topic)
+	logger := p.o11y.Logger().WithValue(keys.TopicKey, topic)
 
 	p.publisherCacheHat.Lock()
 	defer p.publisherCacheHat.Unlock()
@@ -193,6 +193,6 @@ func (p *publisherProvider) Ping(ctx context.Context) error {
 // Close closes the publisher.
 func (p *publisherProvider) Close() {
 	if err := p.redisClient.Close(); err != nil {
-		p.logger.Error("closing redis publisher", err)
+		p.o11y.Logger().Error("closing redis publisher", err)
 	}
 }

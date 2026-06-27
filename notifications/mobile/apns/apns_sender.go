@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -33,8 +34,7 @@ type Config struct {
 
 // Sender sends push notifications to iOS devices via APNs.
 type Sender struct {
-	tracer       tracing.Tracer
-	logger       logging.Logger
+	o11y         observability.Observer
 	client       *apns2.Client
 	sendCounter  metrics.Int64Counter
 	errorCounter metrics.Int64Counter
@@ -83,8 +83,7 @@ func NewSender(cfg *Config, tracerProvider tracing.TracerProvider, logger loggin
 	return &Sender{
 		client:       client,
 		topic:        cfg.BundleID,
-		tracer:       tracing.NewNamedTracer(tracerProvider, o11yName),
-		logger:       logging.NewNamedLogger(logger, o11yName),
+		o11y:         observability.NewObserver(o11yName, logger, tracerProvider),
 		sendCounter:  sendCounter,
 		errorCounter: errorCounter,
 	}, nil
@@ -94,14 +93,14 @@ func NewSender(cfg *Config, tracerProvider tracing.TracerProvider, logger loggin
 // The device token must be a 64-character hex string (APNs format).
 // badgeCount is optional; when non-nil, sets aps.badge on the app icon.
 func (s *Sender) Send(ctx context.Context, deviceToken, title, body string, badgeCount *int) error {
-	ctx, span := s.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
 
 	if !apnsDeviceTokenHexPattern.MatchString(deviceToken) {
 		return errors.Newf("apns: invalid device token format (expected 64 hex chars, got len %d)", len(deviceToken))
 	}
 
-	logger := s.logger.WithValue("title", title)
+	op.Set("title", title)
 
 	p := payload.NewPayload().
 		AlertTitle(title).
@@ -126,10 +125,10 @@ func (s *Sender) Send(ctx context.Context, deviceToken, title, body string, badg
 	if !res.Sent() {
 		s.errorCounter.Add(ctx, 1)
 		err = errors.Newf("apns: %s (status %d)", res.Reason, res.StatusCode)
-		logger = logger.WithValue("statusCode", res.StatusCode).
-			WithValue("reason", res.Reason).
-			WithValue("apnsID", res.ApnsID)
-		return observability.PrepareAndLogError(err, logger, span, "sending apns notification")
+		op.Set("statusCode", res.StatusCode).
+			Set(keys.ReasonKey, res.Reason).
+			Set("apnsID", res.ApnsID)
+		return op.Error(err, "sending apns notification")
 	}
 
 	s.sendCounter.Add(ctx, 1)

@@ -48,8 +48,7 @@ type (
 
 	// serverEncoderDecoder is our concrete implementation of EncoderDecoder.
 	serverEncoderDecoder struct {
-		logger      logging.Logger
-		tracer      tracing.Tracer
+		o11y        observability.Observer
 		panicker    panicking.Panicker
 		contentType ContentType
 	}
@@ -82,8 +81,8 @@ func (t *tomlDecoder) Decode(v any) error {
 
 // DecodeBytes decodes bytes into values.
 func (e *serverEncoderDecoder) DecodeBytes(ctx context.Context, data []byte, dest any) error {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := e.o11y.Begin(ctx)
+	defer op.End()
 
 	var d decoder
 	switch e.contentType {
@@ -145,10 +144,10 @@ func (e *emojiDecoder) Decode(v any) error {
 
 // encodeResponse encodes responses.
 func (e *serverEncoderDecoder) encodeResponse(ctx context.Context, res http.ResponseWriter, v any, statusCode int) {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := e.o11y.Begin(ctx)
+	defer op.End()
 
-	logger := e.logger.WithValue(keys.ResponseStatusKey, statusCode)
+	op.Set(keys.ResponseStatusKey, statusCode)
 
 	var enc encoder
 	switch contentTypeFromString(res.Header().Get(ContentTypeHeaderKey)) {
@@ -173,13 +172,13 @@ func (e *serverEncoderDecoder) encodeResponse(ctx context.Context, res http.Resp
 
 	res.WriteHeader(statusCode)
 	if err := enc.Encode(v); err != nil {
-		observability.AcknowledgeError(err, logger, span, "encoding response")
+		op.Acknowledge(err, "encoding response")
 	}
 }
 
 func (e *serverEncoderDecoder) MustEncodeJSON(ctx context.Context, v any) []byte {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := e.o11y.Begin(ctx)
+	defer op.End()
 
 	var b bytes.Buffer
 	if err := json.NewEncoder(&b).Encode(v); err != nil {
@@ -191,8 +190,8 @@ func (e *serverEncoderDecoder) MustEncodeJSON(ctx context.Context, v any) []byte
 
 // MustEncode encodes data or else.
 func (e *serverEncoderDecoder) MustEncode(ctx context.Context, v any) []byte {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := e.o11y.Begin(ctx)
+	defer op.End()
 
 	var (
 		enc encoder
@@ -221,24 +220,24 @@ func (e *serverEncoderDecoder) MustEncode(ctx context.Context, v any) []byte {
 
 // RespondWithData encodes successful responses with data.
 func (e *serverEncoderDecoder) RespondWithData(ctx context.Context, res http.ResponseWriter, v any) {
-	ctx, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := e.o11y.Begin(ctx)
+	defer op.End()
 
 	e.encodeResponse(ctx, res, v, http.StatusOK)
 }
 
 // EncodeResponseWithStatus encodes responses and writes the provided status to the response.
 func (e *serverEncoderDecoder) EncodeResponseWithStatus(ctx context.Context, res http.ResponseWriter, v any, statusCode int) {
-	ctx, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := e.o11y.Begin(ctx)
+	defer op.End()
 
 	e.encodeResponse(ctx, res, v, statusCode)
 }
 
 // DecodeRequest decodes request bodies into values.
 func (e *serverEncoderDecoder) DecodeRequest(ctx context.Context, req *http.Request, v any) error {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := e.o11y.Begin(ctx)
+	defer op.End()
 
 	var d decoder
 	switch contentTypeFromString(req.Header.Get(ContentTypeHeaderKey)) {
@@ -261,7 +260,7 @@ func (e *serverEncoderDecoder) DecodeRequest(ctx context.Context, req *http.Requ
 
 	defer func() {
 		if err := req.Body.Close(); err != nil {
-			e.logger.Error("closing request body", err)
+			op.Logger().Error("closing request body", err)
 		}
 	}()
 
@@ -271,8 +270,7 @@ func (e *serverEncoderDecoder) DecodeRequest(ctx context.Context, req *http.Requ
 // ProvideServerEncoderDecoder provides a ServerEncoderDecoder.
 func ProvideServerEncoderDecoder(logger logging.Logger, tracerProvider tracing.TracerProvider, contentType ContentType) ServerEncoderDecoder {
 	return &serverEncoderDecoder{
-		logger:      logging.NewNamedLogger(logger, o11yName),
-		tracer:      tracing.NewNamedTracer(tracerProvider, o11yName),
+		o11y:        observability.NewObserver(o11yName, logger, tracerProvider),
 		panicker:    panicking.NewProductionPanicker(),
 		contentType: contentType,
 	}

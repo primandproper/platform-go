@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/circuitbreaking"
 	circuitbreakingcfg "github.com/primandproper/platform-go/circuitbreaking/config"
 	platformerrors "github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -38,8 +39,7 @@ type (
 	// Uploader implements our UploadManager struct.
 	Uploader struct {
 		bucket         *blob.Bucket
-		logger         logging.Logger
-		tracer         tracing.Tracer
+		o11y           observability.Observer
 		circuitBreaker circuitbreaking.CircuitBreaker
 		saveCounter    metrics.Int64Counter
 		readCounter    metrics.Int64Counter
@@ -120,8 +120,7 @@ func NewUploadManager(ctx context.Context, logger logging.Logger, tracerProvider
 	}
 
 	u := &Uploader{
-		logger:         logging.NewNamedLogger(logger, serviceName),
-		tracer:         tracing.NewNamedTracer(tracerProvider, serviceName),
+		o11y:           observability.NewObserver(serviceName, logger, tracerProvider),
 		circuitBreaker: circuitbreakingcfg.EnsureCircuitBreaker(cb),
 		saveCounter:    saveCounter,
 		readCounter:    readCounter,

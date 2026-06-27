@@ -15,6 +15,7 @@ import (
 	circuitbreakingcfg "github.com/primandproper/platform-go/circuitbreaking/config"
 	platformerrors "github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -27,8 +28,7 @@ const serviceName = "qdrant_index"
 var ErrUnexpectedStatus = platformerrors.New("qdrant returned an unexpected status code")
 
 type indexManager[T any] struct {
-	logger         logging.Logger
-	tracer         tracing.Tracer
+	o11y           observability.Observer
 	httpClient     *http.Client
 	circuitBreaker circuitbreaking.CircuitBreaker
 	upsertCounter  metrics.Int64Counter
@@ -104,8 +104,7 @@ func ProvideIndex[T any](
 	}
 
 	im := &indexManager[T]{
-		logger:         logging.NewNamedLogger(logging.EnsureLogger(logger), fmt.Sprintf("%s_%s", serviceName, collection)),
-		tracer:         tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("%s_%s", serviceName, collection)),
+		o11y:           observability.NewObserver(fmt.Sprintf("%s_%s", serviceName, collection), logger, tracerProvider),
 		httpClient:     &http.Client{Timeout: timeout},
 		circuitBreaker: circuitbreakingcfg.EnsureCircuitBreaker(cb),
 		upsertCounter:  upsertCounter,
@@ -144,13 +143,15 @@ func metricToDistance(m vectorsearch.DistanceMetric) (string, error) {
 // ensureCollection creates the collection if it does not exist. PUT /collections/{name}
 // is idempotent in qdrant when the body matches the existing collection.
 func (i *indexManager[T]) ensureCollection(ctx context.Context) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.IndexNameKey, i.collection)
 
 	exists, err := i.collectionExists(ctx)
 	if err != nil {
 		i.errCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(err, i.logger, span, "checking qdrant collection")
+		return op.Error(err, "checking qdrant collection")
 	}
 	if exists {
 		return nil
@@ -165,11 +166,11 @@ func (i *indexManager[T]) ensureCollection(ctx context.Context) error {
 	status, respBody, err := i.jsonReq(ctx, http.MethodPut, i.collectionPath(""), body)
 	if err != nil {
 		i.errCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(err, i.logger, span, "creating qdrant collection")
+		return op.Error(err, "creating qdrant collection")
 	}
 	if status/100 != 2 {
 		i.errCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(wrapStatusError(status, respBody), i.logger, span, "creating qdrant collection")
+		return op.Error(wrapStatusError(status, respBody), "creating qdrant collection")
 	}
 	return nil
 }
@@ -191,8 +192,10 @@ func (i *indexManager[T]) collectionExists(ctx context.Context) (bool, error) {
 
 // Upsert implements vectorsearch.Index.
 func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Vector[T]) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.IndexNameKey, i.collection)
 
 	if len(vectors) == 0 {
 		return nil
@@ -239,12 +242,12 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 	if err != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return observability.PrepareAndLogError(err, i.logger, span, "upserting qdrant points")
+		return op.Error(err, "upserting qdrant points")
 	}
 	if status/100 != 2 {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return observability.PrepareAndLogError(wrapStatusError(status, respBody), i.logger, span, "upserting qdrant points")
+		return op.Error(wrapStatusError(status, respBody), "upserting qdrant points")
 	}
 
 	i.upsertCounter.Add(ctx, int64(len(points)))
@@ -254,8 +257,10 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 
 // Delete implements vectorsearch.Index.
 func (i *indexManager[T]) Delete(ctx context.Context, ids ...string) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.IndexNameKey, i.collection)
 
 	if len(ids) == 0 {
 		return nil
@@ -274,12 +279,12 @@ func (i *indexManager[T]) Delete(ctx context.Context, ids ...string) error {
 	if err != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return observability.PrepareAndLogError(err, i.logger, span, "deleting qdrant points")
+		return op.Error(err, "deleting qdrant points")
 	}
 	if status/100 != 2 {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return observability.PrepareAndLogError(wrapStatusError(status, respBody), i.logger, span, "deleting qdrant points")
+		return op.Error(wrapStatusError(status, respBody), "deleting qdrant points")
 	}
 
 	i.deleteCounter.Add(ctx, int64(len(ids)))
@@ -293,8 +298,10 @@ func (i *indexManager[T]) Delete(ctx context.Context, ids ...string) error {
 // atomic from the caller's perspective since they hold the only handle to the
 // collection name.
 func (i *indexManager[T]) Wipe(ctx context.Context) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.IndexNameKey, i.collection)
 
 	if i.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -309,12 +316,12 @@ func (i *indexManager[T]) Wipe(ctx context.Context) error {
 	if err != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return observability.PrepareAndLogError(err, i.logger, span, "dropping qdrant collection")
+		return op.Error(err, "dropping qdrant collection")
 	}
 	if status/100 != 2 && status != http.StatusNotFound {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return observability.PrepareAndLogError(wrapStatusError(status, respBody), i.logger, span, "dropping qdrant collection")
+		return op.Error(wrapStatusError(status, respBody), "dropping qdrant collection")
 	}
 
 	if recreateErr := i.ensureCollection(ctx); recreateErr != nil {
@@ -329,8 +336,10 @@ func (i *indexManager[T]) Wipe(ctx context.Context) error {
 
 // Query implements vectorsearch.Index.
 func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryRequest) ([]vectorsearch.QueryResult[T], error) {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.IndexNameKey, i.collection)
 
 	if len(req.Embedding) == 0 {
 		return nil, vectorsearch.ErrEmptyEmbedding
@@ -358,18 +367,19 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 	}
 	if req.Filter != nil {
 		body["filter"] = req.Filter
+		op.Set(keys.SearchQueryKey, req.Filter)
 	}
 
 	status, respBody, err := i.jsonReq(ctx, http.MethodPost, i.collectionPath("/points/search"), body)
 	if err != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return nil, observability.PrepareAndLogError(err, i.logger, span, "qdrant search request")
+		return nil, op.Error(err, "qdrant search request")
 	}
 	if status/100 != 2 {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return nil, observability.PrepareAndLogError(wrapStatusError(status, respBody), i.logger, span, "qdrant search request")
+		return nil, op.Error(wrapStatusError(status, respBody), "qdrant search request")
 	}
 
 	var decoded struct {
@@ -382,7 +392,7 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 	if decodeErr := json.Unmarshal(respBody, &decoded); decodeErr != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return nil, observability.PrepareAndLogError(decodeErr, i.logger, span, "decoding qdrant response")
+		return nil, op.Error(decodeErr, "decoding qdrant response")
 	}
 
 	results := make([]vectorsearch.QueryResult[T], 0, len(decoded.Result))
@@ -392,13 +402,13 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 		if idErr != nil {
 			i.errCounter.Add(ctx, 1)
 			i.circuitBreaker.Failed()
-			return nil, observability.PrepareAndLogError(idErr, i.logger, span, "decoding qdrant point id")
+			return nil, op.Error(idErr, "decoding qdrant point id")
 		}
 		meta, unmarshalErr := unmarshalPayload[T](r.Payload)
 		if unmarshalErr != nil {
 			i.errCounter.Add(ctx, 1)
 			i.circuitBreaker.Failed()
-			return nil, observability.PrepareAndLogError(unmarshalErr, i.logger, span, "decoding qdrant payload")
+			return nil, op.Error(unmarshalErr, "decoding qdrant payload")
 		}
 		results = append(results, vectorsearch.QueryResult[T]{
 			ID:       idStr,
@@ -448,7 +458,7 @@ func (i *indexManager[T]) jsonReq(ctx context.Context, method, fullURL string, i
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			i.logger.Error("closing qdrant response body", closeErr)
+			i.o11y.Logger().Error("closing qdrant response body", closeErr)
 		}
 	}()
 

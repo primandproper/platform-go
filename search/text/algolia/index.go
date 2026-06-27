@@ -7,7 +7,6 @@ import (
 	"github.com/primandproper/platform-go/circuitbreaking"
 	platformerrors "github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/observability/keys"
-	"github.com/primandproper/platform-go/observability/tracing"
 )
 
 const (
@@ -22,15 +21,15 @@ var (
 
 // Index implements our indexManager interface.
 func (m *indexManager[T]) Index(ctx context.Context, id string, value any) error {
-	_, span := m.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := m.o11y.Begin(ctx)
+	defer op.End()
 
 	if m.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
 	}
 
-	logger := m.logger.WithValue(idKey, id).WithValue("value", value)
-	logger.Debug("adding to index")
+	op.Set(idKey, id).Set("value", value)
+	op.Logger().Debug("adding to index")
 
 	jsonEncoded, err := json.Marshal(value)
 	if err != nil {
@@ -55,15 +54,14 @@ func (m *indexManager[T]) Index(ctx context.Context, id string, value any) error
 
 // Search implements our indexManager interface.
 func (m *indexManager[T]) Search(ctx context.Context, query string) ([]*T, error) {
-	_, span := m.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := m.o11y.Begin(ctx)
+	defer op.End()
 
 	if m.circuitBreaker.CannotProceed() {
 		return nil, circuitbreaking.ErrCircuitBroken
 	}
 
-	tracing.AttachToSpan(span, keys.SearchQueryKey, query)
-	logger := m.logger.WithValue(keys.SearchQueryKey, query)
+	op.Set(keys.SearchQueryKey, query)
 
 	if query == "" {
 		return nil, ErrEmptyQueryProvided
@@ -98,7 +96,7 @@ func (m *indexManager[T]) Search(ctx context.Context, query string) ([]*T, error
 		results = append(results, x)
 	}
 
-	logger.Debug("search performed")
+	op.Logger().Debug("search performed")
 
 	m.circuitBreaker.Succeeded()
 	return results, nil
@@ -106,21 +104,21 @@ func (m *indexManager[T]) Search(ctx context.Context, query string) ([]*T, error
 
 // Delete implements our indexManager interface.
 func (m *indexManager[T]) Delete(ctx context.Context, id string) error {
-	_, span := m.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := m.o11y.Begin(ctx)
+	defer op.End()
 
 	if m.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
 	}
 
-	logger := m.logger.WithValue(idKey, id)
+	op.Set(idKey, id)
 
 	if _, err := m.client.DeleteObject(id); err != nil {
 		m.circuitBreaker.Failed()
 		return err
 	}
 
-	logger.Debug("removed from index")
+	op.Logger().Debug("removed from index")
 
 	m.circuitBreaker.Succeeded()
 	return nil
@@ -128,8 +126,8 @@ func (m *indexManager[T]) Delete(ctx context.Context, id string) error {
 
 // Wipe implements our indexManager interface.
 func (m *indexManager[T]) Wipe(ctx context.Context) error {
-	_, span := m.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := m.o11y.Begin(ctx)
+	defer op.End()
 
 	if m.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken

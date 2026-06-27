@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -27,8 +28,7 @@ type SecretGetter interface {
 }
 
 type kubectlSecretSource struct {
-	logger        logging.Logger
-	tracer        tracing.Tracer
+	o11y          observability.Observer
 	lookupCounter metrics.Int64Counter
 	errorCounter  metrics.Int64Counter
 	latencyHist   metrics.Float64Histogram
@@ -45,8 +45,6 @@ func NewKubectlSecretSource(ctx context.Context, cfg *Config, client SecretGette
 		return nil, errors.Wrap(err, "kubectl secret source")
 	}
 
-	l := logging.NewNamedLogger(logger, name)
-	t := tracing.NewNamedTracer(tracerProvider, name)
 	mp := metrics.EnsureMetricsProvider(metricsProvider)
 
 	lookupCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_lookups", name))
@@ -66,8 +64,7 @@ func NewKubectlSecretSource(ctx context.Context, cfg *Config, client SecretGette
 
 	if client != nil {
 		return &kubectlSecretSource{
-			logger:        l,
-			tracer:        t,
+			o11y:          observability.NewObserver(name, logger, tracerProvider),
 			lookupCounter: lookupCounter,
 			errorCounter:  errorCounter,
 			latencyHist:   latencyHist,
@@ -91,8 +88,7 @@ func NewKubectlSecretSource(ctx context.Context, cfg *Config, client SecretGette
 	}
 
 	return &kubectlSecretSource{
-		logger:        l,
-		tracer:        t,
+		o11y:          observability.NewObserver(name, logger, tracerProvider),
 		lookupCounter: lookupCounter,
 		errorCounter:  errorCounter,
 		latencyHist:   latencyHist,
@@ -101,8 +97,8 @@ func NewKubectlSecretSource(ctx context.Context, cfg *Config, client SecretGette
 }
 
 func (k *kubectlSecretSource) GetSecret(ctx context.Context, name string) (string, error) {
-	_, span := k.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := k.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
 	defer func() {
@@ -115,11 +111,13 @@ func (k *kubectlSecretSource) GetSecret(ctx context.Context, name string) (strin
 		return "", err
 	}
 
+	// Only the identifiers are observed here; secret values are never attached.
+	op.Set("secret.name", secretName).Set("secret.key", key)
+
 	secret, err := k.client.Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
-		k.logger.Error("getting kubernetes secret", err)
 		k.errorCounter.Add(ctx, 1)
-		return "", errors.Wrapf(err, "getting kubernetes secret %q", secretName)
+		return "", op.Error(err, "getting kubernetes secret %q", secretName)
 	}
 
 	data, ok := secret.Data[key]

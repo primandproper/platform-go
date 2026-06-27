@@ -24,10 +24,9 @@ const (
 
 // MultiPlatformPushSender routes push notifications to APNs (iOS) or FCM (Android).
 type MultiPlatformPushSender struct {
-	tracer     tracing.Tracer
+	o11y       observability.Observer
 	apnsSender *apns.Sender
 	fcmSender  *fcm.Sender
-	logger     logging.Logger
 }
 
 // NewMultiPlatformPushSender creates a sender that routes by platform.
@@ -40,31 +39,30 @@ func NewMultiPlatformPushSender(
 	return &MultiPlatformPushSender{
 		apnsSender: apnsSender,
 		fcmSender:  fcmSender,
-		tracer:     tracing.NewNamedTracer(tracerProvider, o11yName),
-		logger:     logging.NewNamedLogger(logger, o11yName),
+		o11y:       observability.NewObserver(o11yName, logger, tracerProvider),
 	}
 }
 
 // SendPush sends a push notification to a single device token, routing by platform.
 func (s *MultiPlatformPushSender) SendPush(ctx context.Context, platform, token string, msg PushMessage) error {
-	ctx, span := s.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
 
 	platform = strings.ToLower(strings.TrimSpace(platform))
-	logger := s.logger.WithValue("platform", platform)
+	op.Set("platform", platform)
 
 	switch platform {
 	case platformIOS:
 		if s.apnsSender == nil {
-			return observability.PrepareAndLogError(ErrPlatformNotSupported, logger, span, "sending apns notification")
+			return op.Error(ErrPlatformNotSupported, "sending apns notification")
 		}
 		return s.apnsSender.Send(ctx, token, msg.Title, msg.Body, msg.BadgeCount)
 	case platformAndroid:
 		if s.fcmSender == nil {
-			return observability.PrepareAndLogError(ErrPlatformNotSupported, logger, span, "sending apns notification")
+			return op.Error(ErrPlatformNotSupported, "sending apns notification")
 		}
 		return s.fcmSender.Send(ctx, token, msg.Title, msg.Body)
 	default:
-		return observability.PrepareAndLogError(errors.Newf("unknown platform %q", platform), logger, span, "sending apns notification")
+		return op.Error(errors.Newf("unknown platform %q", platform), "sending apns notification")
 	}
 }

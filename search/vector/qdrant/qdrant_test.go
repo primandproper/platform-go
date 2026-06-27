@@ -16,6 +16,8 @@ import (
 	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
 	platformerrors "github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/identifiers"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	vectorsearch "github.com/primandproper/platform-go/search/vector"
 	"github.com/primandproper/platform-go/testutils/containers"
 
@@ -137,6 +139,21 @@ func buildStubIndex(t *testing.T, stub *qdrantStub, cb circuitbreaking.CircuitBr
 	must.NoError(t, err)
 
 	return idx.(*indexManager[doc])
+}
+
+// buildRecordingIndex builds a stub-backed indexManager with a RecordingObserver
+// swapped in, so a test can assert which fields an operation observed. The
+// returned observer captures the LAST operation Begun, so drive a single method
+// per recording index.
+func buildRecordingIndex(t *testing.T, stub *qdrantStub, cb circuitbreaking.CircuitBreaker) (*indexManager[doc], *observability.RecordingObserver) {
+	t.Helper()
+
+	idx := buildStubIndex(t, stub, cb)
+
+	obs := observability.NewRecordingObserver()
+	idx.o11y = obs
+
+	return idx, obs
 }
 
 // --------- unit tests (no container required) ---------
@@ -520,20 +537,31 @@ func TestUpsert(T *testing.T) {
 
 	T.Run("successful upsert", func(t *testing.T) {
 		t.Parallel()
-		idx := buildStubIndex(t, &qdrantStub{}, nil)
+		idx, obs := buildRecordingIndex(t, &qdrantStub{}, nil)
 		err := idx.Upsert(t.Context(),
 			vectorsearch.Vector[doc]{ID: "a", Embedding: []float32{1, 0, 0}, Metadata: &doc{Kind: "doc", Title: "alpha"}},
 			vectorsearch.Vector[doc]{ID: "b", Embedding: []float32{0, 1, 0}},
 		)
 		must.NoError(t, err)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.IndexNameKey: idx.collection,
+		})
 	})
 
 	T.Run("server returns error status", func(t *testing.T) {
 		t.Parallel()
-		idx := buildStubIndex(t, &qdrantStub{pointsPutStatus: http.StatusInternalServerError}, nil)
+		idx, obs := buildRecordingIndex(t, &qdrantStub{pointsPutStatus: http.StatusInternalServerError}, nil)
 		err := idx.Upsert(t.Context(), vectorsearch.Vector[doc]{ID: "a", Embedding: []float32{1, 0, 0}})
 		must.Error(t, err)
 		must.ErrorIs(t, err, ErrUnexpectedStatus)
+
+		// Even on failure the index name must still have been observed, and the
+		// failure recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.IndexNameKey: idx.collection,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("unreachable server", func(t *testing.T) {
@@ -770,11 +798,15 @@ func TestQuery(T *testing.T) {
 	T.Run("successful query returns results", func(t *testing.T) {
 		t.Parallel()
 		searchResp := `{"result":[{"id":"abc","score":0.95,"payload":{"kind":"doc","title":"hello"}},{"id":"def","score":0.8,"payload":null}]}`
-		idx := buildStubIndex(t, &qdrantStub{pointsSearchBody: searchResp}, nil)
+		idx, obs := buildRecordingIndex(t, &qdrantStub{pointsSearchBody: searchResp}, nil)
 
 		results, err := idx.Query(t.Context(), vectorsearch.QueryRequest{Embedding: []float32{1, 0, 0}, TopK: 5})
 		must.NoError(t, err)
 		must.SliceLen(t, 2, results)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.IndexNameKey: idx.collection,
+		})
 
 		test.EqOp(t, "abc", results[0].ID)
 		test.InDelta(t, 0.95, float64(results[0].Distance), 0.001)
@@ -820,19 +852,33 @@ func TestQuery(T *testing.T) {
 		)
 		must.NoError(t, err)
 
+		im := idx.(*indexManager[doc])
+		obs := observability.NewRecordingObserver()
+		im.o11y = obs
+
 		filter := map[string]any{"must": []any{map[string]any{"key": "kind", "match": map[string]any{"value": "doc"}}}}
-		_, err = idx.Query(t.Context(), vectorsearch.QueryRequest{Embedding: []float32{1, 0, 0}, TopK: 5, Filter: filter})
+		_, err = im.Query(t.Context(), vectorsearch.QueryRequest{Embedding: []float32{1, 0, 0}, TopK: 5, Filter: filter})
 		must.NoError(t, err)
 		must.NotNil(t, gotBody)
 		test.NotNil(t, gotBody["filter"])
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.IndexNameKey:   im.collection,
+			keys.SearchQueryKey: filter,
+		})
 	})
 
 	T.Run("server returns error status", func(t *testing.T) {
 		t.Parallel()
-		idx := buildStubIndex(t, &qdrantStub{pointsSearchStatus: http.StatusInternalServerError}, nil)
+		idx, obs := buildRecordingIndex(t, &qdrantStub{pointsSearchStatus: http.StatusInternalServerError}, nil)
 		_, err := idx.Query(t.Context(), vectorsearch.QueryRequest{Embedding: []float32{1, 0, 0}, TopK: 5})
 		must.Error(t, err)
 		must.ErrorIs(t, err, ErrUnexpectedStatus)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.IndexNameKey: idx.collection,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("invalid JSON response", func(t *testing.T) {

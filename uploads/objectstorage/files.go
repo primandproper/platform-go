@@ -6,13 +6,15 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/circuitbreaking"
-	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability/keys"
 )
 
 // SaveFile saves a file to the blob.
 func (u *Uploader) SaveFile(ctx context.Context, path string, content []byte) error {
-	ctx, span := u.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := u.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.FilenameKey, path)
 
 	if u.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -23,7 +25,7 @@ func (u *Uploader) SaveFile(ctx context.Context, path string, content []byte) er
 		u.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 		u.saveErrCounter.Add(ctx, 1)
 		u.circuitBreaker.Failed()
-		return errors.Wrap(err, "writing file content")
+		return op.Error(err, "writing file content")
 	}
 
 	u.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
@@ -34,8 +36,10 @@ func (u *Uploader) SaveFile(ctx context.Context, path string, content []byte) er
 
 // ReadFile reads a file from the blob.
 func (u *Uploader) ReadFile(ctx context.Context, path string) ([]byte, error) {
-	ctx, span := u.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := u.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.FilenameKey, path)
 
 	if u.circuitBreaker.CannotProceed() {
 		return nil, circuitbreaking.ErrCircuitBroken
@@ -48,12 +52,12 @@ func (u *Uploader) ReadFile(ctx context.Context, path string) ([]byte, error) {
 		u.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 		u.readErrCounter.Add(ctx, 1)
 		u.circuitBreaker.Failed()
-		return nil, errors.Wrap(err, "fetching file")
+		return nil, op.Error(err, "fetching file")
 	}
 
 	defer func() {
 		if closeErr := r.Close(); closeErr != nil {
-			u.logger.Error("error closing file reader", closeErr)
+			op.Acknowledge(closeErr, "error closing file reader")
 		}
 	}()
 
@@ -62,7 +66,7 @@ func (u *Uploader) ReadFile(ctx context.Context, path string) ([]byte, error) {
 		u.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 		u.readErrCounter.Add(ctx, 1)
 		u.circuitBreaker.Failed()
-		return nil, errors.Wrap(err, "reading file")
+		return nil, op.Error(err, "reading file")
 	}
 
 	u.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))

@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/observability"
+
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
@@ -379,6 +381,26 @@ func TestStreamManager_BroadcastToGroup_with_failing_stream(T *testing.T) {
 		// at least the non-failing stream received it)
 		time.Sleep(10 * time.Millisecond)
 		test.SliceLen(t, 1, s2.sentEvents())
+	})
+
+	T.Run("records the send error on the operation", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		m := NewStreamManager[EventStream](nil, nil)
+		obs := observability.NewRecordingObserver()
+		m.o11y = obs
+
+		m.Add(ctx, "g1", "m1", &failingStream{})
+
+		m.BroadcastToGroup(ctx, "g1", &Event{Type: "test"})
+
+		var observedErrors int
+		for _, op := range obs.Operations {
+			observedErrors += len(op.Errors)
+		}
+		must.EqOp(t, 1, observedErrors)
 	})
 }
 

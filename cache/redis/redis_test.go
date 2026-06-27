@@ -10,11 +10,10 @@ import (
 
 	"github.com/primandproper/platform-go/cache"
 	mockcircuitbreaking "github.com/primandproper/platform-go/circuitbreaking/mock"
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
-	"github.com/primandproper/platform-go/observability/tracing"
 	"github.com/primandproper/platform-go/testutils/containers/redistest"
 
 	"github.com/redis/go-redis/v9"
@@ -38,7 +37,7 @@ func gobEncodeExample(t *testing.T, e *example) string {
 	return buf.String()
 }
 
-func buildTestImpl(t *testing.T) (*redisCacheImpl[example], *redisClientMock, *mockcircuitbreaking.CircuitBreakerMock) {
+func buildTestImpl(t *testing.T) (*redisCacheImpl[example], *redisClientMock, *mockcircuitbreaking.CircuitBreakerMock, *observability.RecordingObserver) {
 	t.Helper()
 
 	mp := metricsnoop.NewMetricsProvider()
@@ -63,10 +62,10 @@ func buildTestImpl(t *testing.T) (*redisCacheImpl[example], *redisClientMock, *m
 
 	client := &redisClientMock{}
 	cb := &mockcircuitbreaking.CircuitBreakerMock{}
+	obs := observability.NewRecordingObserver()
 
 	return &redisCacheImpl[example]{
-		logger:           loggingnoop.NewLogger(),
-		tracer:           tracing.NewNamedTracer(nil, "test"),
+		o11y:             obs,
 		cacheHitCounter:  hitCounter,
 		cacheMissCounter: missCounter,
 		cacheSetCounter:  setCounter,
@@ -76,7 +75,7 @@ func buildTestImpl(t *testing.T) (*redisCacheImpl[example], *redisClientMock, *m
 		client:           client,
 		circuitBreaker:   cb,
 		expiration:       time.Minute,
-	}, client, cb
+	}, client, cb, obs
 }
 
 // counterResult bundles the values a mocked NewInt64Counter call returns.
@@ -275,7 +274,7 @@ func Test_redisCacheImpl_Get_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, obs := buildTestImpl(t)
 
 		expected := &example{Name: t.Name()}
 		encoded := gobEncodeExample(t, expected)
@@ -297,13 +296,15 @@ func Test_redisCacheImpl_Get_Unit(T *testing.T) {
 		test.SliceLen(t, 1, client.GetCalls())
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.SucceededCalls())
+
+		obs.ObservedOperationWithData(t, map[string]any{})
 	})
 
 	T.Run("when circuit breaker cannot proceed", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, _, cb := buildTestImpl(t)
+		impl, _, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return true }
 
@@ -318,7 +319,7 @@ func Test_redisCacheImpl_Get_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, obs := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return false }
 		cb.FailedFunc = func() {}
@@ -336,13 +337,17 @@ func Test_redisCacheImpl_Get_Unit(T *testing.T) {
 
 		test.SliceLen(t, 1, client.GetCalls())
 		test.SliceLen(t, 1, cb.FailedCalls())
+
+		// The failure must be recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with decode error", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return false }
 
@@ -385,7 +390,7 @@ func Test_redisCacheImpl_Set_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return false }
 		cb.SucceededFunc = func() {}
@@ -411,7 +416,7 @@ func Test_redisCacheImpl_Set_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, _, cb := buildTestImpl(t)
+		impl, _, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return true }
 
@@ -425,7 +430,7 @@ func Test_redisCacheImpl_Set_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return false }
 		cb.FailedFunc = func() {}
@@ -471,7 +476,7 @@ func Test_redisCacheImpl_Delete_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return false }
 		cb.SucceededFunc = func() {}
@@ -494,7 +499,7 @@ func Test_redisCacheImpl_Delete_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, _, cb := buildTestImpl(t)
+		impl, _, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return true }
 
@@ -508,7 +513,7 @@ func Test_redisCacheImpl_Delete_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return false }
 		cb.FailedFunc = func() {}
@@ -534,7 +539,7 @@ func Test_redisCacheImpl_Ping_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, _ := buildTestImpl(t)
+		impl, client, _, _ := buildTestImpl(t)
 
 		client.PingFunc = func(_ context.Context) *redis.StatusCmd {
 			cmd := redis.NewStatusCmd(ctx)
@@ -550,7 +555,7 @@ func Test_redisCacheImpl_Ping_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, _ := buildTestImpl(t)
+		impl, client, _, _ := buildTestImpl(t)
 
 		client.PingFunc = func(_ context.Context) *redis.StatusCmd {
 			cmd := redis.NewStatusCmd(ctx)
@@ -570,7 +575,7 @@ func Test_redisCacheImpl_GetMany_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, obs := buildTestImpl(t)
 
 		found := &example{Name: "found"}
 		encoded := gobEncodeExample(t, found)
@@ -592,13 +597,15 @@ func Test_redisCacheImpl_GetMany_Unit(T *testing.T) {
 
 		test.SliceLen(t, 1, client.MGetCalls())
 		test.SliceLen(t, 1, cb.SucceededCalls())
+
+		obs.ObservedOperationWithData(t, map[string]any{})
 	})
 
 	T.Run("empty keys short-circuits", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, _ := buildTestImpl(t)
+		impl, client, _, _ := buildTestImpl(t)
 
 		out, err := impl.GetMany(ctx, nil)
 		test.NoError(t, err)
@@ -610,7 +617,7 @@ func Test_redisCacheImpl_GetMany_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return true }
 
@@ -625,7 +632,7 @@ func Test_redisCacheImpl_GetMany_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, obs := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return false }
 		cb.FailedFunc = func() {}
@@ -640,13 +647,16 @@ func Test_redisCacheImpl_GetMany_Unit(T *testing.T) {
 		test.Error(t, err)
 		test.Nil(t, out)
 		test.SliceLen(t, 1, cb.FailedCalls())
+
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with decode error", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return false }
 
@@ -665,7 +675,7 @@ func Test_redisCacheImpl_GetMany_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 		impl.isCluster = true
 
 		cb.CannotProceedFunc = func() bool { return false }
@@ -696,7 +706,7 @@ func Test_redisCacheImpl_SetMany_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return false }
 		cb.SucceededFunc = func() {}
@@ -727,7 +737,7 @@ func Test_redisCacheImpl_SetMany_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, _ := buildTestImpl(t)
+		impl, client, _, _ := buildTestImpl(t)
 
 		test.NoError(t, impl.SetMany(ctx, nil))
 		test.SliceLen(t, 0, client.EvalCalls())
@@ -737,7 +747,7 @@ func Test_redisCacheImpl_SetMany_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return true }
 
@@ -750,7 +760,7 @@ func Test_redisCacheImpl_SetMany_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 
 		cb.CannotProceedFunc = func() bool { return false }
 		cb.FailedFunc = func() {}
@@ -770,7 +780,7 @@ func Test_redisCacheImpl_SetMany_Unit(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		impl, client, cb := buildTestImpl(t)
+		impl, client, cb, _ := buildTestImpl(t)
 		impl.isCluster = true
 
 		cb.CannotProceedFunc = func() bool { return false }

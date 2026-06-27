@@ -7,6 +7,7 @@ import (
 
 	"github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/llm"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -57,8 +58,7 @@ func NewProvider(cfg *Config, logger logging.Logger, tracerProvider tracing.Trac
 	}
 
 	return &openaiProvider{
-		logger:         logging.NewNamedLogger(logger, name),
-		tracer:         tracing.NewNamedTracer(tracerProvider, name),
+		o11y:           observability.NewObserver(name, logger, tracerProvider),
 		requestCounter: requestCounter,
 		errorCounter:   errorCounter,
 		latencyHist:    latencyHist,
@@ -68,8 +68,7 @@ func NewProvider(cfg *Config, logger logging.Logger, tracerProvider tracing.Trac
 }
 
 type openaiProvider struct {
-	logger         logging.Logger
-	tracer         tracing.Tracer
+	o11y           observability.Observer
 	requestCounter metrics.Int64Counter
 	errorCounter   metrics.Int64Counter
 	latencyHist    metrics.Float64Histogram
@@ -79,8 +78,8 @@ type openaiProvider struct {
 
 // Completion implements llm.Provider.
 func (p *openaiProvider) Completion(ctx context.Context, params llm.CompletionParams) (*llm.CompletionResult, error) {
-	_, span := p.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := p.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
 	defer func() {
@@ -95,6 +94,8 @@ func (p *openaiProvider) Completion(ctx context.Context, params llm.CompletionPa
 		model = "gpt-4o-mini"
 	}
 
+	op.Set("llm.model", model)
+
 	anyllmParams := anyllm.CompletionParams{
 		Model:    model,
 		Messages: toAnyLLMMessages(pointer.ToSlice(params.Messages)),
@@ -103,8 +104,7 @@ func (p *openaiProvider) Completion(ctx context.Context, params llm.CompletionPa
 	resp, err := p.provider.Completion(ctx, anyllmParams)
 	if err != nil {
 		p.errorCounter.Add(ctx, 1)
-		p.logger.Error("completing request", err)
-		return nil, err
+		return nil, op.Error(err, "completing request")
 	}
 
 	p.requestCounter.Add(ctx, 1)

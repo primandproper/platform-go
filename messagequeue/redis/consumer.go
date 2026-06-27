@@ -25,8 +25,7 @@ type (
 	}
 
 	redisConsumer struct {
-		tracer          tracing.Tracer
-		logger          logging.Logger
+		o11y            observability.Observer
 		consumedCounter metrics.Int64Counter
 		handlerFunc     func(context.Context, []byte) error
 		subscription    channelProvider
@@ -56,8 +55,7 @@ func provideRedisConsumer(ctx context.Context, logger logging.Logger, tracerProv
 	return &redisConsumer{
 		handlerFunc:     handlerFunc,
 		subscription:    subscription,
-		logger:          logging.EnsureLogger(logger),
-		tracer:          tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("%s_consumer", topic)),
+		o11y:            observability.NewObserver(fmt.Sprintf("%s_consumer", topic), logger, tracerProvider),
 		consumedCounter: consumedCounter,
 	}, nil
 }
@@ -75,15 +73,15 @@ func (r *redisConsumer) Consume(ctx context.Context, stopChan chan bool, errs ch
 		case <-ctx.Done():
 			return
 		case msg := <-subChan:
-			msgCtx, span := r.tracer.StartCustomSpan(ctx, "consume_message")
+			msgCtx, op := r.o11y.BeginCustom(ctx, "consume_message")
 			r.consumedCounter.Add(msgCtx, 1)
 			if err := r.handlerFunc(msgCtx, []byte(msg.Payload)); err != nil {
-				observability.AcknowledgeError(err, r.logger, span, "handling message")
+				op.Acknowledge(err, "handling message")
 				if errs != nil {
 					errs <- err
 				}
 			}
-			span.End()
+			op.End()
 		case <-stopChan:
 			return
 		}
@@ -91,7 +89,7 @@ func (r *redisConsumer) Consume(ctx context.Context, stopChan chan bool, errs ch
 }
 
 type consumerProvider struct {
-	logger          logging.Logger
+	o11y            observability.Observer
 	tracerProvider  tracing.TracerProvider
 	metricsProvider metrics.Provider
 	consumerCache   map[string]messagequeue.Consumer
@@ -101,7 +99,8 @@ type consumerProvider struct {
 
 // ProvideRedisConsumerProvider returns a ConsumerProvider for a given address.
 func ProvideRedisConsumerProvider(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cfg Config) messagequeue.ConsumerProvider {
-	logger.WithValue("queue_addresses", cfg.QueueAddresses).
+	o11y := observability.NewObserver("redis_consumer_provider", logger, tracerProvider)
+	o11y.Logger().WithValue("queue_addresses", cfg.QueueAddresses).
 		WithValue(keys.UsernameKey, cfg.Username).
 		WithValue("password", cfg.Password).Info("setting up redis consumer")
 
@@ -121,7 +120,7 @@ func ProvideRedisConsumerProvider(logger logging.Logger, tracerProvider tracing.
 	}
 
 	return &consumerProvider{
-		logger:          logging.EnsureLogger(logger),
+		o11y:            o11y,
 		tracerProvider:  tracerProvider,
 		metricsProvider: metricsProvider,
 		redisClient:     redisClient,
@@ -131,7 +130,7 @@ func ProvideRedisConsumerProvider(logger logging.Logger, tracerProvider tracing.
 
 // ProvideConsumer returns a Consumer for a given topic.
 func (p *consumerProvider) ProvideConsumer(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
-	logger := logging.EnsureLogger(p.logger).WithValue("topic", topic)
+	logger := p.o11y.Logger().WithValue(keys.TopicKey, topic)
 
 	if topic == "" {
 		return nil, ErrEmptyInputProvided

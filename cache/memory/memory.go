@@ -8,6 +8,7 @@ import (
 
 	"github.com/primandproper/platform-go/cache"
 	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -18,8 +19,7 @@ const name = "in_memory_cache"
 var _ cache.BatchCache[struct{}] = (*inMemoryCacheImpl[struct{}])(nil)
 
 type inMemoryCacheImpl[T any] struct {
-	logger           logging.Logger
-	tracer           tracing.Tracer
+	o11y             observability.Observer
 	cacheHitCounter  metrics.Int64Counter
 	cacheMissCounter metrics.Int64Counter
 	cacheSetCounter  metrics.Int64Counter
@@ -59,8 +59,7 @@ func NewInMemoryCache[T any](logger logging.Logger, tracerProvider tracing.Trace
 	}
 
 	return &inMemoryCacheImpl[T]{
-		logger:           logging.NewNamedLogger(logger, name),
-		tracer:           tracing.NewNamedTracer(tracerProvider, name),
+		o11y:             observability.NewObserver(name, logger, tracerProvider),
 		cacheHitCounter:  cacheHitCounter,
 		cacheMissCounter: cacheMissCounter,
 		cacheSetCounter:  cacheSetCounter,
@@ -71,8 +70,8 @@ func NewInMemoryCache[T any](logger logging.Logger, tracerProvider tracing.Trace
 }
 
 func (i *inMemoryCacheImpl[T]) Get(ctx context.Context, key string) (*T, error) {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
 	defer func() {
@@ -93,8 +92,8 @@ func (i *inMemoryCacheImpl[T]) Get(ctx context.Context, key string) (*T, error) 
 }
 
 func (i *inMemoryCacheImpl[T]) Set(ctx context.Context, key string, value *T) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
 	defer func() {
@@ -111,8 +110,8 @@ func (i *inMemoryCacheImpl[T]) Set(ctx context.Context, key string, value *T) er
 }
 
 func (i *inMemoryCacheImpl[T]) Delete(ctx context.Context, key string) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
 	defer func() {
@@ -129,8 +128,8 @@ func (i *inMemoryCacheImpl[T]) Delete(ctx context.Context, key string) error {
 }
 
 func (i *inMemoryCacheImpl[T]) GetMany(ctx context.Context, keys []string) (map[string]*T, error) {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
 	defer func() {
@@ -155,8 +154,8 @@ func (i *inMemoryCacheImpl[T]) GetMany(ctx context.Context, keys []string) (map[
 }
 
 func (i *inMemoryCacheImpl[T]) SetMany(ctx context.Context, items map[string]*T) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
 	defer func() {
@@ -175,10 +174,10 @@ func (i *inMemoryCacheImpl[T]) SetMany(ctx context.Context, items map[string]*T)
 }
 
 func (i *inMemoryCacheImpl[T]) Ping(ctx context.Context) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := i.o11y.Begin(ctx)
+	defer op.End()
 
-	i.logger.Debug("ping")
+	op.Logger().Debug("ping")
 
 	return nil
 }

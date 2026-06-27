@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
-	"github.com/primandproper/platform-go/observability/tracing"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/segmentio/kafka-go"
@@ -58,8 +58,7 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 
 		c := &kafkaConsumer{
 			reader:          reader,
-			logger:          loggingnoop.NewLogger(),
-			tracer:          tracing.NewTracerForTest(t.Name()),
+			o11y:            observability.NewObserverForTest(t.Name()),
 			consumedCounter: nil,
 			handlerFunc: func(context.Context, []byte) error {
 				return nil
@@ -86,8 +85,7 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 
 		c := &kafkaConsumer{
 			reader:          reader,
-			logger:          loggingnoop.NewLogger(),
-			tracer:          tracing.NewTracerForTest(t.Name()),
+			o11y:            observability.NewObserverForTest(t.Name()),
 			consumedCounter: nil,
 			handlerFunc: func(context.Context, []byte) error {
 				return nil
@@ -114,8 +112,7 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 
 		c := &kafkaConsumer{
 			reader:          reader,
-			logger:          loggingnoop.NewLogger(),
-			tracer:          tracing.NewTracerForTest(t.Name()),
+			o11y:            observability.NewObserverForTest(t.Name()),
 			consumedCounter: nil,
 			handlerFunc: func(context.Context, []byte) error {
 				return nil
@@ -148,8 +145,7 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 
 		c := &kafkaConsumer{
 			reader:          reader,
-			logger:          loggingnoop.NewLogger(),
-			tracer:          tracing.NewTracerForTest(t.Name()),
+			o11y:            observability.NewObserverForTest(t.Name()),
 			consumedCounter: nil,
 			handlerFunc: func(context.Context, []byte) error {
 				return nil
@@ -185,8 +181,7 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 
 		c := &kafkaConsumer{
 			reader:          reader,
-			logger:          loggingnoop.NewLogger(),
-			tracer:          tracing.NewTracerForTest(t.Name()),
+			o11y:            observability.NewObserverForTest(t.Name()),
 			consumedCounter: nil,
 			handlerFunc: func(context.Context, []byte) error {
 				return nil
@@ -221,11 +216,12 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 			},
 		}
 
+		obs := observability.NewRecordingObserver()
+
 		handlerCalled := false
 		c := &kafkaConsumer{
 			reader:          reader,
-			logger:          loggingnoop.NewLogger(),
-			tracer:          tracing.NewTracerForTest(t.Name()),
+			o11y:            obs,
 			consumedCounter: metrics.Int64CounterForTest(t, t.Name()),
 			handlerFunc: func(_ context.Context, data []byte) error {
 				handlerCalled = true
@@ -241,6 +237,11 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 		c.Consume(ctx, stopChan, errs)
 		test.True(t, handlerCalled)
 		test.EqOp(t, 1, reader.commitCalls)
+
+		// The message was handled and committed, so the operation should have ended cleanly.
+		op := obs.Operations[0]
+		test.True(t, op.Ended)
+		test.SliceEmpty(t, op.Errors)
 	})
 
 	T.Run("with handler error", func(t *testing.T) {
@@ -262,10 +263,11 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 			},
 		}
 
+		obs := observability.NewRecordingObserver()
+
 		c := &kafkaConsumer{
 			reader:          reader,
-			logger:          loggingnoop.NewLogger(),
-			tracer:          tracing.NewTracerForTest(t.Name()),
+			o11y:            obs,
 			consumedCounter: metrics.Int64CounterForTest(t, t.Name()),
 			handlerFunc: func(context.Context, []byte) error {
 				cancel()
@@ -281,6 +283,11 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 		receivedErr := <-errs
 		test.Error(t, receivedErr)
 		test.ErrorIs(t, receivedErr, handlerErr)
+
+		// The handler failure must have been acknowledged on the operation.
+		op := obs.Operations[0]
+		test.True(t, op.Ended)
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with handler error and nil errors channel", func(t *testing.T) {
@@ -303,8 +310,7 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 
 		c := &kafkaConsumer{
 			reader:          reader,
-			logger:          loggingnoop.NewLogger(),
-			tracer:          tracing.NewTracerForTest(t.Name()),
+			o11y:            observability.NewObserverForTest(t.Name()),
 			consumedCounter: metrics.Int64CounterForTest(t, t.Name()),
 			handlerFunc: func(context.Context, []byte) error {
 				cancel()
@@ -338,10 +344,11 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 			},
 		}
 
+		obs := observability.NewRecordingObserver()
+
 		c := &kafkaConsumer{
 			reader:          reader,
-			logger:          loggingnoop.NewLogger(),
-			tracer:          tracing.NewTracerForTest(t.Name()),
+			o11y:            obs,
 			consumedCounter: metrics.Int64CounterForTest(t, t.Name()),
 			handlerFunc: func(context.Context, []byte) error {
 				cancel()
@@ -354,6 +361,11 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 
 		c.Consume(ctx, stopChan, errs)
 		test.EqOp(t, 1, reader.commitCalls)
+
+		// The commit failure must have been acknowledged on the operation.
+		op := obs.Operations[0]
+		test.True(t, op.Ended)
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 

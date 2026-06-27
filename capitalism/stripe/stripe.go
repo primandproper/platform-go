@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/capitalism"
 	"github.com/primandproper/platform-go/capitalism/noop"
 	"github.com/primandproper/platform-go/encoding"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 
@@ -28,8 +29,7 @@ type (
 	APIKey string
 
 	stripePaymentManager struct {
-		logger         logging.Logger
-		tracer         tracing.Tracer
+		o11y           observability.Observer
 		encoderDecoder encoding.ServerEncoderDecoder
 		webhookSecret  string
 	}
@@ -44,16 +44,13 @@ func ProvideStripePaymentManager(logger logging.Logger, tracerProvider tracing.T
 	return &stripePaymentManager{
 		webhookSecret:  cfg.WebhookSecret,
 		encoderDecoder: encoding.ProvideServerEncoderDecoder(logger, tracerProvider, encoding.ContentTypeJSON),
-		logger:         logging.EnsureLogger(logger),
-		tracer:         tracing.NewNamedTracer(tracerProvider, implementationName),
+		o11y:           observability.NewObserver(implementationName, logger, tracerProvider),
 	}
 }
 
 func (s *stripePaymentManager) HandleEventWebhook(req *http.Request) error {
-	_, span := s.tracer.StartSpan(req.Context())
-	defer span.End()
-
-	logger := s.logger.WithRequest(req).WithSpan(span)
+	ctx, op := s.o11y.Begin(req.Context())
+	defer op.End()
 
 	payload, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -69,11 +66,12 @@ func (s *stripePaymentManager) HandleEventWebhook(req *http.Request) error {
 	switch event.Type {
 	case stripe.EventTypePaymentIntentSucceeded:
 		var paymentIntent stripe.PaymentIntent
-		if decodeErr := s.encoderDecoder.DecodeBytes(req.Context(), event.Data.Raw, &paymentIntent); decodeErr != nil {
+		if decodeErr := s.encoderDecoder.DecodeBytes(ctx, event.Data.Raw, &paymentIntent); decodeErr != nil {
 			return decodeErr
 		}
 	default:
-		logger.WithValue("event_type", event.Type).Info("Unhandled event type")
+		op.Set("event_type", event.Type)
+		op.Logger().WithRequest(req).Info("Unhandled event type")
 	}
 
 	return nil

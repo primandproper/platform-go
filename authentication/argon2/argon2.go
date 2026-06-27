@@ -41,23 +41,21 @@ var (
 type (
 	// Argon2Authenticator is our argon2-based authenticator.
 	Argon2Authenticator struct {
-		tracer tracing.Tracer
+		o11y observability.Observer
 	}
 )
 
 // ProvideArgon2Authenticator returns an argon2 powered Argon2Authenticator.
-// The logger argument is currently unused; it is retained for API stability
-// and so a future logging-capable branch can be added without a signature change.
-func ProvideArgon2Authenticator(_ logging.Logger, tracerProvider tracing.TracerProvider) authentication.Authenticator {
+func ProvideArgon2Authenticator(logger logging.Logger, tracerProvider tracing.TracerProvider) authentication.Authenticator {
 	return &Argon2Authenticator{
-		tracer: tracing.NewNamedTracer(tracerProvider, serviceName),
+		o11y: observability.NewObserver(serviceName, logger, tracerProvider),
 	}
 }
 
 // HashPassword takes a password and hashes it using argon2.
 func (a *Argon2Authenticator) HashPassword(ctx context.Context, password string) (string, error) {
-	_, span := a.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := a.o11y.Begin(ctx)
+	defer op.End()
 
 	return argon2id.CreateHash(password, argonParams)
 }
@@ -66,12 +64,12 @@ func (a *Argon2Authenticator) HashPassword(ctx context.Context, password string)
 // A non-match returns (false, nil); only genuine errors (malformed hash,
 // runtime failure) populate err.
 func (a *Argon2Authenticator) PasswordMatches(ctx context.Context, hash, password string) (bool, error) {
-	_, span := a.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := a.o11y.Begin(ctx)
+	defer op.End()
 
 	matches, err := argon2id.ComparePasswordAndHash(password, hash)
 	if err != nil {
-		return false, observability.PrepareError(err, span, "comparing argon2 hashed password")
+		return false, observability.PrepareError(err, op.Span(), "comparing argon2 hashed password")
 	}
 
 	return matches, nil

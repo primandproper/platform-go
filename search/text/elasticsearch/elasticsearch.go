@@ -24,8 +24,7 @@ var (
 
 type (
 	indexManager[T any] struct {
-		logger                logging.Logger
-		tracer                tracing.Tracer
+		o11y                  observability.Observer
 		circuitBreaker        circuitbreaking.CircuitBreaker
 		esClient              *elasticsearch.Client
 		indexName             string
@@ -66,8 +65,7 @@ func ProvideIndexManager[T any](ctx context.Context, logger logging.Logger, trac
 	}
 
 	im := &indexManager[T]{
-		tracer:                tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("search_%s", indexName)),
-		logger:                logging.NewNamedLogger(logger, indexName),
+		o11y:                  observability.NewObserver(fmt.Sprintf("search_%s", indexName), logger, tracerProvider),
 		esClient:              c,
 		indexOperationTimeout: cfg.IndexOperationTimeout,
 		indexName:             indexName,
@@ -121,8 +119,8 @@ func elasticsearchIsReadyToInit(
 }
 
 func (sm *indexManager[T]) ensureIndices(ctx context.Context) error {
-	_, span := sm.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := sm.o11y.Begin(ctx)
+	defer op.End()
 
 	if sm.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -136,13 +134,13 @@ func (sm *indexManager[T]) ensureIndices(ctx context.Context) error {
 	}.Do(ctx, sm.esClient)
 	if err != nil {
 		sm.circuitBreaker.Failed()
-		return observability.PrepareError(err, span, "checking index existence successfully")
+		return observability.PrepareError(err, op.Span(), "checking index existence successfully")
 	}
 
 	if res.StatusCode == http.StatusNotFound {
 		if _, err = (esapi.IndicesCreateRequest{Index: strings.ToLower(sm.indexName)}).Do(ctx, sm.esClient); err != nil {
 			sm.circuitBreaker.Failed()
-			return observability.PrepareError(err, span, "checking index existence")
+			return observability.PrepareError(err, op.Span(), "checking index existence")
 		}
 	}
 

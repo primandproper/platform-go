@@ -9,11 +9,10 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
-	"github.com/primandproper/platform-go/observability/tracing"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	firebase "firebase.google.com/go/v4"
@@ -32,7 +31,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-func createTestFCMSenderWithTransport(t *testing.T, fn roundTripFunc) *Sender {
+func createTestFCMSenderWithTransport(t *testing.T, fn roundTripFunc) (*Sender, *observability.RecordingObserver) {
 	t.Helper()
 
 	ctx := t.Context()
@@ -50,13 +49,14 @@ func createTestFCMSenderWithTransport(t *testing.T, fn roundTripFunc) *Sender {
 	errorCounter, err := mp.NewInt64Counter(o11yName + "_errors")
 	must.NoError(t, err)
 
+	obs := observability.NewRecordingObserver()
+
 	return &Sender{
 		client:       client,
-		tracer:       tracing.NewNamedTracer(tracingnoop.NewTracerProvider(), o11yName),
-		logger:       logging.NewNamedLogger(loggingnoop.NewLogger(), o11yName),
+		o11y:         obs,
 		sendCounter:  sendCounter,
 		errorCounter: errorCounter,
-	}
+	}, obs
 }
 
 func TestNewSender(T *testing.T) {
@@ -190,7 +190,7 @@ func TestSender_Send(T *testing.T) {
 	T.Run("successful send", func(t *testing.T) {
 		t.Parallel()
 
-		sender := createTestFCMSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
+		sender, obs := createTestFCMSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Content-Type": {"application/json"}},
@@ -200,12 +200,16 @@ func TestSender_Send(T *testing.T) {
 
 		err := sender.Send(ctx, "device-token-abc", "Test Title", "Test Body")
 		test.NoError(t, err)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"title": "Test Title",
+		})
 	})
 
 	T.Run("send returns error", func(t *testing.T) {
 		t.Parallel()
 
-		sender := createTestFCMSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
+		sender, obs := createTestFCMSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusUnauthorized,
 				Header:     http.Header{"Content-Type": {"application/json"}},
@@ -215,5 +219,12 @@ func TestSender_Send(T *testing.T) {
 
 		err := sender.Send(ctx, "device-token-abc", "Test Title", "Test Body")
 		must.Error(t, err)
+
+		// Even though the send failed, the values must still have been observed,
+		// and the failure itself recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			"title": "Test Title",
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }

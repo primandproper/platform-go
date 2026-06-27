@@ -10,6 +10,7 @@ import (
 	"log"
 
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -42,8 +43,7 @@ type (
 	}
 
 	standardGenerator struct {
-		logger     logging.Logger
-		tracer     tracing.Tracer
+		o11y       observability.Observer
 		randReader io.Reader
 	}
 )
@@ -51,8 +51,7 @@ type (
 // NewGenerator builds a new Generator.
 func NewGenerator(logger logging.Logger, tracerProvider tracing.TracerProvider) Generator {
 	return &standardGenerator{
-		logger:     logging.NewNamedLogger(logger, "random_generator"),
-		tracer:     tracing.NewNamedTracer(tracerProvider, "secret_generator"),
+		o11y:       observability.NewObserver("random_generator", logger, tracerProvider),
 		randReader: rand.Reader,
 	}
 }
@@ -111,25 +110,24 @@ func (g *standardGenerator) generateSecret(span tracing.Span, length int) ([]byt
 
 // GenerateRawBytes generates a securely random byte array.
 func (g *standardGenerator) GenerateRawBytes(ctx context.Context, length int) ([]byte, error) {
-	_, span := g.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := g.o11y.Begin(ctx)
+	defer op.End()
 
-	tracing.AttachToSpan(span, "rand_gen.requested_length", length)
+	op.Set(keys.LengthKey, length)
 
-	return g.generateSecret(span, length)
+	return g.generateSecret(op.Span(), length)
 }
 
 // GenerateHexEncodedString generates a base64-encoded string of a securely random byte array of a given length.
 func (g *standardGenerator) GenerateHexEncodedString(ctx context.Context, length int) (string, error) {
-	_, span := g.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := g.o11y.Begin(ctx)
+	defer op.End()
 
-	logger := g.logger.WithValue("length", length)
-	tracing.AttachToSpan(span, "rand_gen.requested_length", length)
+	op.Set(keys.LengthKey, length)
 
-	b, err := g.generateSecret(span, length)
+	b, err := g.generateSecret(op.Span(), length)
 	if err != nil {
-		return "", observability.PrepareAndLogError(err, logger, span, "reading from secure random source")
+		return "", op.Error(err, "reading from secure random source")
 	}
 
 	return hex.EncodeToString(b), nil
@@ -137,15 +135,14 @@ func (g *standardGenerator) GenerateHexEncodedString(ctx context.Context, length
 
 // GenerateBase32EncodedString generates a base64-encoded string of a securely random byte array of a given length.
 func (g *standardGenerator) GenerateBase32EncodedString(ctx context.Context, length int) (string, error) {
-	_, span := g.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := g.o11y.Begin(ctx)
+	defer op.End()
 
-	logger := g.logger.WithValue("length", length)
-	tracing.AttachToSpan(span, "rand_gen.requested_length", length)
+	op.Set(keys.LengthKey, length)
 
-	b, err := g.generateSecret(span, length)
+	b, err := g.generateSecret(op.Span(), length)
 	if err != nil {
-		return "", observability.PrepareAndLogError(err, logger, span, "reading from secure random source")
+		return "", op.Error(err, "reading from secure random source")
 	}
 
 	return base32.StdEncoding.EncodeToString(b), nil
@@ -153,15 +150,14 @@ func (g *standardGenerator) GenerateBase32EncodedString(ctx context.Context, len
 
 // GenerateBase64EncodedString generates a base64-encoded string of a securely random byte array of a given length.
 func (g *standardGenerator) GenerateBase64EncodedString(ctx context.Context, length int) (string, error) {
-	_, span := g.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := g.o11y.Begin(ctx)
+	defer op.End()
 
-	logger := g.logger.WithValue("length", length)
-	tracing.AttachToSpan(span, "rand_gen.requested_length", length)
+	op.Set(keys.LengthKey, length)
 
-	b, err := g.generateSecret(span, length)
+	b, err := g.generateSecret(op.Span(), length)
 	if err != nil {
-		return "", observability.PrepareAndLogError(err, logger, span, "reading from secure random source")
+		return "", op.Error(err, "reading from secure random source")
 	}
 
 	return base64.RawURLEncoding.EncodeToString(b), nil

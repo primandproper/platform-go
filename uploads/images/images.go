@@ -16,6 +16,7 @@ import (
 
 	"github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 
@@ -51,8 +52,7 @@ type (
 	}
 
 	uploadProcessor struct {
-		tracer tracing.Tracer
-		logger logging.Logger
+		o11y observability.Observer
 	}
 )
 
@@ -86,8 +86,7 @@ func (i *Upload) Thumbnail(width, height uint, filename string) (*Upload, error)
 // NewMediaUploadProcessor provides a new MediaUploadProcessor.
 func NewMediaUploadProcessor(logger logging.Logger, tracerProvider tracing.TracerProvider) MediaUploadProcessor {
 	return &uploadProcessor{
-		logger: logging.NewNamedLogger(logger, "media_upload_processor"),
-		tracer: tracing.NewNamedTracer(tracerProvider, "media_upload_processor"),
+		o11y: observability.NewObserver("media_upload_processor", logger, tracerProvider),
 	}
 }
 
@@ -128,14 +127,14 @@ func isImage(filename string) bool {
 
 // ProcessFile extracts an image from an *http.Request.
 func (p *uploadProcessor) ProcessFile(ctx context.Context, req *http.Request, filename string) (*Upload, error) {
-	_, span := p.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := p.o11y.Begin(ctx)
+	defer op.End()
 
-	logger := p.logger.WithRequest(req).WithValue("filename", filename)
+	op.Set(keys.FilenameKey, filename)
 
 	file, info, err := req.FormFile(filename)
 	if err != nil {
-		return nil, observability.PrepareAndLogError(err, logger, span, "parsing filename %q from request", filename)
+		return nil, observability.PrepareAndLogError(err, op.Logger().WithRequest(req), op.Span(), "parsing filename %q from request", filename)
 	}
 
 	return p.processFile(ctx, file, info, filename)
@@ -143,20 +142,19 @@ func (p *uploadProcessor) ProcessFile(ctx context.Context, req *http.Request, fi
 
 // processFile extracts a single file by name from an *http.Request.
 func (p *uploadProcessor) processFile(ctx context.Context, file multipart.File, info *multipart.FileHeader, filename string) (*Upload, error) {
-	_, span := p.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := p.o11y.Begin(ctx)
+	defer op.End()
 
-	logger := p.logger.WithValue("filename", filename)
-	tracing.AttachToSpan(span, "filename", filename)
+	op.Set(keys.FilenameKey, filename)
 
 	bs, err := io.ReadAll(file)
 	if err != nil {
-		return nil, observability.PrepareAndLogError(err, logger, span, "reading filename %q from request", filename)
+		return nil, op.Error(err, "reading filename %q from request", filename)
 	}
 
 	if isImage(info.Filename) {
 		if _, _, err = image.Decode(bytes.NewReader(bs)); err != nil {
-			return nil, observability.PrepareAndLogError(err, logger, span, "decoding the image data")
+			return nil, op.Error(err, "decoding the image data")
 		}
 	}
 
@@ -176,10 +174,10 @@ const (
 
 // ProcessFiles extracts all the files from an *http.Request.
 func (p *uploadProcessor) ProcessFiles(ctx context.Context, req *http.Request, filenamePrefix string) ([]*Upload, error) {
-	_, span := p.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := p.o11y.Begin(ctx)
+	defer op.End()
 
-	logger := p.logger.WithRequest(req).WithValue("filename_prefix", filenamePrefix)
+	op.Set("filename_prefix", filenamePrefix)
 
 	if req.MultipartForm == nil {
 		if err := req.ParseMultipartForm(defaultMaxMemory); err != nil {
@@ -210,7 +208,7 @@ func (p *uploadProcessor) ProcessFiles(ctx context.Context, req *http.Request, f
 	}
 
 	if errs != nil {
-		logger.Error("processing image uploads", errs)
+		op.Logger().WithRequest(req).Error("processing image uploads", errs)
 		return nil, errs
 	}
 

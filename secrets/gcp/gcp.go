@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -30,8 +32,7 @@ type SecretVersionAccessor interface {
 }
 
 type gcpSecretSource struct {
-	logger        logging.Logger
-	tracer        tracing.Tracer
+	o11y          observability.Observer
 	lookupCounter metrics.Int64Counter
 	errorCounter  metrics.Int64Counter
 	latencyHist   metrics.Float64Histogram
@@ -49,8 +50,7 @@ func NewGCPSecretSource(ctx context.Context, cfg *Config, client SecretVersionAc
 		return nil, errors.Wrap(err, "gcp secret source")
 	}
 
-	l := logging.NewNamedLogger(logger, name)
-	t := tracing.NewNamedTracer(tracerProvider, name)
+	o11y := observability.NewObserver(name, logger, tracerProvider)
 	mp := metrics.EnsureMetricsProvider(metricsProvider)
 
 	lookupCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_lookups", name))
@@ -70,8 +70,7 @@ func NewGCPSecretSource(ctx context.Context, cfg *Config, client SecretVersionAc
 
 	if client != nil {
 		return &gcpSecretSource{
-			logger:        l,
-			tracer:        t,
+			o11y:          o11y,
 			lookupCounter: lookupCounter,
 			errorCounter:  errorCounter,
 			latencyHist:   latencyHist,
@@ -86,8 +85,7 @@ func NewGCPSecretSource(ctx context.Context, cfg *Config, client SecretVersionAc
 	}
 
 	return &gcpSecretSource{
-		logger:        l,
-		tracer:        t,
+		o11y:          o11y,
 		lookupCounter: lookupCounter,
 		errorCounter:  errorCounter,
 		latencyHist:   latencyHist,
@@ -106,13 +104,15 @@ func (a *secretManagerClientAdapter) AccessSecretVersion(ctx context.Context, re
 }
 
 func (g *gcpSecretSource) GetSecret(ctx context.Context, name string) (string, error) {
-	_, span := g.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := g.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
 	defer func() {
 		g.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 	}()
+
+	op.Set(keys.NameKey, name)
 
 	resourceName := g.resolveName(name)
 	req := &secretmanagerpb.AccessSecretVersionRequest{
@@ -121,9 +121,8 @@ func (g *gcpSecretSource) GetSecret(ctx context.Context, name string) (string, e
 
 	resp, err := g.client.AccessSecretVersion(ctx, req)
 	if err != nil {
-		g.logger.Error("accessing secret", err)
 		g.errorCounter.Add(ctx, 1)
-		return "", errors.Wrapf(err, "accessing secret %q", name)
+		return "", op.Error(err, "accessing secret %q", name)
 	}
 	if resp.Payload == nil || resp.Payload.Data == nil {
 		return "", nil

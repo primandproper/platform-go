@@ -29,8 +29,7 @@ type Config struct {
 // Sender sends push notifications to Android devices via FCM.
 type Sender struct {
 	client       *messaging.Client
-	tracer       tracing.Tracer
-	logger       logging.Logger
+	o11y         observability.Observer
 	sendCounter  metrics.Int64Counter
 	errorCounter metrics.Int64Counter
 }
@@ -75,8 +74,7 @@ func NewSender(ctx context.Context, cfg *Config, tracerProvider tracing.TracerPr
 
 	return &Sender{
 		client:       client,
-		logger:       logging.NewNamedLogger(logger, o11yName),
-		tracer:       tracing.NewNamedTracer(tracerProvider, o11yName),
+		o11y:         observability.NewObserver(o11yName, logger, tracerProvider),
 		sendCounter:  sendCounter,
 		errorCounter: errorCounter,
 	}, nil
@@ -84,10 +82,10 @@ func NewSender(ctx context.Context, cfg *Config, tracerProvider tracing.TracerPr
 
 // Send sends a push notification to a single device token.
 func (s *Sender) Send(ctx context.Context, deviceToken, title, body string) error {
-	ctx, span := s.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
 
-	logger := s.logger.WithValue("title", title)
+	op.Set("title", title)
 
 	msg := &messaging.Message{
 		Token: deviceToken,
@@ -99,7 +97,7 @@ func (s *Sender) Send(ctx context.Context, deviceToken, title, body string) erro
 
 	if _, err := s.client.Send(ctx, msg); err != nil {
 		s.errorCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(err, logger, span, "sending fcm message")
+		return op.Error(err, "sending fcm message")
 	}
 
 	s.sendCounter.Add(ctx, 1)

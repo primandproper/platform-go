@@ -11,6 +11,7 @@ import (
 	platformerrors "github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/messagequeue"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -30,13 +31,13 @@ type (
 	}
 
 	kafkaPublisher struct {
-		tracer            tracing.Tracer
+		o11y              observability.Observer
 		encoder           encoding.ClientEncoder
-		logger            logging.Logger
 		writer            kafkaWriter
 		publishedCounter  metrics.Int64Counter
 		publishErrCounter metrics.Int64Counter
 		latencyHist       metrics.Float64Histogram
+		topic             string
 	}
 )
 
@@ -45,26 +46,28 @@ var _ messagequeue.Publisher = (*kafkaPublisher)(nil)
 // Stop closes the underlying Kafka writer.
 func (p *kafkaPublisher) Stop() {
 	if err := p.writer.Close(); err != nil {
-		p.logger.Error("closing kafka writer", err)
+		p.o11y.Logger().Error("closing kafka writer", err)
 	}
 }
 
 // Publish publishes a message to a Kafka topic.
 func (p *kafkaPublisher) Publish(ctx context.Context, data any) error {
-	_, span := p.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := p.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.TopicKey, p.topic)
 
 	startTime := time.Now()
 
 	var b bytes.Buffer
 	if err := p.encoder.Encode(ctx, &b, data); err != nil {
 		p.publishErrCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(err, p.logger, span, "encoding topic message")
+		return op.Error(err, "encoding topic message")
 	}
 
 	if err := p.writer.WriteMessages(ctx, kafka.Message{Value: b.Bytes()}); err != nil {
 		p.publishErrCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(err, p.logger, span, "publishing message")
+		return op.Error(err, "publishing message")
 	}
 
 	p.publishedCounter.Add(ctx, 1)
@@ -76,7 +79,7 @@ func (p *kafkaPublisher) Publish(ctx context.Context, data any) error {
 // PublishAsync publishes a message to a Kafka topic without waiting for acknowledgement.
 func (p *kafkaPublisher) PublishAsync(ctx context.Context, data any) {
 	if err := p.Publish(ctx, data); err != nil {
-		p.logger.Error("publishing message", err)
+		p.o11y.Logger().Error("publishing message", err)
 	}
 }
 
@@ -107,8 +110,8 @@ func provideKafkaPublisher(logger logging.Logger, tracerProvider tracing.TracerP
 	return &kafkaPublisher{
 		writer:            writer,
 		encoder:           encoding.ProvideClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
-		logger:            logging.EnsureLogger(logger.WithValue("topic", topic)),
-		tracer:            tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("%s_publisher", topic)),
+		o11y:              observability.NewObserver(fmt.Sprintf("%s_publisher", topic), logger, tracerProvider),
+		topic:             topic,
 		publishedCounter:  publishedCounter,
 		publishErrCounter: publishErrCounter,
 		latencyHist:       latencyHist,

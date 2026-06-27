@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
@@ -14,6 +16,24 @@ import (
 	"github.com/shoenig/test/must"
 	"go.opentelemetry.io/otel/metric"
 )
+
+// newRecordingSource builds a gcpSecretSource with a RecordingObserver swapped in, so a
+// test can both drive GetSecret and assert which fields it observed.
+func newRecordingSource(t *testing.T, cfg *Config, mc *mockGCPClient) (*gcpSecretSource, *observability.RecordingObserver) {
+	t.Helper()
+
+	source, err := NewGCPSecretSource(context.Background(), cfg, mc, nil, nil, nil)
+	must.NoError(t, err)
+	must.NotNil(t, source)
+
+	g, ok := source.(*gcpSecretSource)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	g.o11y = obs
+
+	return g, obs
+}
 
 func TestNewGCPSecretSource(T *testing.T) {
 	T.Parallel()
@@ -120,26 +140,35 @@ func TestGCPSecretSource_GetSecret(T *testing.T) {
 		t.Parallel()
 		cfg := &Config{ProjectID: "test-project"}
 		mc := &mockGCPClient{value: "my-secret-value"}
-		source, err := NewGCPSecretSource(context.Background(), cfg, mc, nil, nil, nil)
-		must.NoError(t, err)
+		source, obs := newRecordingSource(t, cfg, mc)
 		defer source.Close()
 
-		got, err := source.GetSecret(context.Background(), "MY_SECRET")
+		got, err := source.GetSecret(t.Context(), "MY_SECRET")
 		must.NoError(t, err)
 		test.EqOp(t, "my-secret-value", got)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.NameKey: "MY_SECRET",
+		})
 	})
 
 	T.Run("error from client", func(t *testing.T) {
 		t.Parallel()
 		cfg := &Config{ProjectID: "test-project"}
 		mc := &mockGCPClient{err: errors.New("gcp error")}
-		source, err := NewGCPSecretSource(context.Background(), cfg, mc, nil, nil, nil)
-		must.NoError(t, err)
+		source, obs := newRecordingSource(t, cfg, mc)
 		defer source.Close()
 
-		_, err = source.GetSecret(context.Background(), "MY_SECRET")
+		_, err := source.GetSecret(t.Context(), "MY_SECRET")
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "gcp error")
+
+		// Even though the lookup failed, the secret key must still have been
+		// observed, and the failure itself recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.NameKey: "MY_SECRET",
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("full resource name passed through", func(t *testing.T) {

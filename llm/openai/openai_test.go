@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/llm"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
@@ -17,6 +18,24 @@ import (
 	"github.com/shoenig/test/must"
 	"go.opentelemetry.io/otel/metric"
 )
+
+// newRecordingProvider builds a provider with a RecordingObserver swapped in, so a
+// test can both drive Completion and assert which fields it observed.
+func newRecordingProvider(t *testing.T, cfg *Config) (*openaiProvider, *observability.RecordingObserver) {
+	t.Helper()
+
+	p, err := NewProvider(cfg, nil, nil, nil)
+	must.NoError(t, err)
+	must.NotNil(t, p)
+
+	prov, ok := p.(*openaiProvider)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	prov.o11y = obs
+
+	return prov, obs
+}
 
 func TestNewProvider(T *testing.T) {
 	T.Parallel()
@@ -162,12 +181,10 @@ func TestOpenAIProvider_Completion(T *testing.T) {
 		}))
 		t.Cleanup(ts.Close)
 
-		provider, err := NewProvider(&Config{
+		provider, obs := newRecordingProvider(t, &Config{
 			APIKey:  "test-key",
 			BaseURL: ts.URL + "/v1",
-		}, nil, nil, nil)
-		must.NoError(t, err)
-		must.NotNil(t, provider)
+		})
 
 		ctx := t.Context()
 		result, err := provider.Completion(ctx, llm.CompletionParams{
@@ -179,6 +196,10 @@ func TestOpenAIProvider_Completion(T *testing.T) {
 		must.NoError(t, err)
 		must.NotNil(t, result)
 		must.EqOp(t, "Hello from mock!", result.Content)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"llm.model": "gpt-4o-mini",
+		})
 	})
 
 	T.Run("uses default model when not specified", func(t *testing.T) {
@@ -214,11 +235,10 @@ func TestOpenAIProvider_Completion(T *testing.T) {
 		}))
 		t.Cleanup(ts.Close)
 
-		provider, err := NewProvider(&Config{
+		provider, obs := newRecordingProvider(t, &Config{
 			APIKey:  "test-key",
 			BaseURL: ts.URL + "/v1",
-		}, nil, nil, nil)
-		must.NoError(t, err)
+		})
 
 		ctx := t.Context()
 		result, err := provider.Completion(ctx, llm.CompletionParams{
@@ -227,5 +247,12 @@ func TestOpenAIProvider_Completion(T *testing.T) {
 		})
 		must.Error(t, err)
 		must.Nil(t, result)
+
+		// Even though the request failed, the values must still have been observed,
+		// and the failure itself recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			"llm.model": "gpt-4o-mini",
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }

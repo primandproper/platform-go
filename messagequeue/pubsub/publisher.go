@@ -25,9 +25,8 @@ type (
 	}
 
 	pubSubPublisher struct {
-		tracer            tracing.Tracer
+		o11y              observability.Observer
 		encoder           encoding.ClientEncoder
-		logger            logging.Logger
 		publisher         messagePublisher
 		publishedCounter  metrics.Int64Counter
 		publishErrCounter metrics.Int64Counter
@@ -56,9 +55,8 @@ func buildPubSubPublisher(logger logging.Logger, pubsubClient *pubsub.Publisher,
 
 	return &pubSubPublisher{
 		encoder:           encoding.ProvideClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
-		logger:            logging.EnsureLogger(logger),
+		o11y:              observability.NewObserver(fmt.Sprintf("%s_publisher", topic), logger, tracerProvider),
 		publisher:         pubsubClient,
-		tracer:            tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("%s_publisher", topic)),
 		publishedCounter:  publishedCounter,
 		publishErrCounter: publishErrCounter,
 		latencyHist:       latencyHist,
@@ -137,16 +135,15 @@ func (p *publisherProvider) ProvidePublisher(ctx context.Context, topicName stri
 }
 
 func (p *pubSubPublisher) Publish(ctx context.Context, data any) error {
-	_, span := p.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := p.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
-	logger := p.logger.Clone()
 
 	var b bytes.Buffer
 	if err := p.encoder.Encode(ctx, &b, data); err != nil {
 		p.publishErrCounter.Add(ctx, 1)
-		return observability.PrepareError(err, span, "encoding topic message")
+		return observability.PrepareError(err, op.Span(), "encoding topic message")
 	}
 
 	msg := &pubsub.Message{Data: b.Bytes()}
@@ -157,19 +154,19 @@ func (p *pubSubPublisher) Publish(ctx context.Context, data any) error {
 	// The Get method blocks until a server-generated ID or an error is returned for the published message.
 	if _, err := result.Get(ctx); err != nil {
 		p.publishErrCounter.Add(ctx, 1)
-		observability.AcknowledgeError(err, logger, span, "publishing pubsub message")
+		op.Acknowledge(err, "publishing pubsub message")
 	}
 
 	p.publishedCounter.Add(ctx, 1)
 	p.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 
-	logger.Debug("published message")
+	op.Logger().Debug("published message")
 
 	return nil
 }
 
 func (p *pubSubPublisher) PublishAsync(ctx context.Context, data any) {
 	if err := p.Publish(ctx, data); err != nil {
-		p.logger.Error("publishing message", err)
+		p.o11y.Logger().Error("publishing message", err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
@@ -15,6 +16,21 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// newRecordingClientEncoder builds a clientEncoder with a RecordingObserver
+// swapped in, so a test can both drive the encoder and assert which fields it
+// observed.
+func newRecordingClientEncoder(t *testing.T, ct ContentType) (*clientEncoder, *observability.RecordingObserver) {
+	t.Helper()
+
+	e, ok := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct).(*clientEncoder)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	e.o11y = obs
+
+	return e, obs
+}
 
 func TestProvideClientEncoder(T *testing.T) {
 	T.Parallel()
@@ -70,6 +86,22 @@ func Test_clientEncoder_Unmarshal(T *testing.T) {
 		})
 	}
 
+	T.Run("observes data length", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		e, obs := newRecordingClientEncoder(t, ContentTypeJSON)
+
+		data := []byte(`{"name": "name"}`)
+		actual := &example{}
+
+		test.NoError(t, e.Unmarshal(ctx, data, &actual))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"data_length": len(data),
+		})
+	})
+
 	T.Run("with invalid data", func(t *testing.T) {
 		t.Parallel()
 
@@ -80,6 +112,22 @@ func Test_clientEncoder_Unmarshal(T *testing.T) {
 
 		test.Error(t, e.Unmarshal(ctx, []byte(`{"name"   `), &actual))
 		test.EqOp(t, "", actual.Name)
+	})
+
+	T.Run("observes data length even on failure", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		e, obs := newRecordingClientEncoder(t, ContentTypeJSON)
+
+		data := []byte(`{"name"   `)
+		actual := &example{}
+
+		test.Error(t, e.Unmarshal(ctx, data, &actual))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"data_length": len(data),
+		})
 	})
 }
 

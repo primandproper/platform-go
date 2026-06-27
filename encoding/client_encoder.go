@@ -29,17 +29,16 @@ type (
 
 	// clientEncoder is our concrete implementation of ClientEncoder.
 	clientEncoder struct {
-		logger      logging.Logger
-		tracer      tracing.Tracer
+		o11y        observability.Observer
 		contentType *contentType
 	}
 )
 
 func (e *clientEncoder) Unmarshal(ctx context.Context, data []byte, v any) error {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := e.o11y.Begin(ctx)
+	defer op.End()
 
-	logger := e.logger.WithValue("data_length", len(data))
+	op.Set("data_length", len(data))
 	var unmarshalFunc func(data []byte, v any) error
 
 	switch e.contentType {
@@ -56,17 +55,17 @@ func (e *clientEncoder) Unmarshal(ctx context.Context, data []byte, v any) error
 	}
 
 	if err := unmarshalFunc(data, v); err != nil {
-		return observability.PrepareError(err, span, "unmarshaling JSON content")
+		return observability.PrepareError(err, op.Span(), "unmarshaling JSON content")
 	}
 
-	logger.Debug("unmarshalled")
+	op.Logger().Debug("unmarshalled")
 
 	return nil
 }
 
 func (e *clientEncoder) Encode(ctx context.Context, dest io.Writer, data any) error {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := e.o11y.Begin(ctx)
+	defer op.End()
 
 	var err error
 
@@ -89,7 +88,7 @@ func (e *clientEncoder) Encode(ctx context.Context, dest io.Writer, data any) er
 	}
 
 	if err != nil {
-		return observability.PrepareError(err, span, "encoding content")
+		return observability.PrepareError(err, op.Span(), "encoding content")
 	}
 
 	return nil
@@ -132,8 +131,8 @@ func tomlMarshalFunc(v any) ([]byte, error) {
 }
 
 func (e *clientEncoder) EncodeReader(ctx context.Context, data any) (io.Reader, error) {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := e.o11y.Begin(ctx)
+	defer op.End()
 
 	var marshalFunc func(v any) ([]byte, error)
 
@@ -152,7 +151,7 @@ func (e *clientEncoder) EncodeReader(ctx context.Context, data any) (io.Reader, 
 
 	out, err := marshalFunc(data)
 	if err != nil {
-		return nil, observability.PrepareError(err, span, "marshaling to XML")
+		return nil, observability.PrepareError(err, op.Span(), "marshaling to XML")
 	}
 
 	return bytes.NewReader(out), nil
@@ -161,8 +160,7 @@ func (e *clientEncoder) EncodeReader(ctx context.Context, data any) (io.Reader, 
 // ProvideClientEncoder provides a ClientEncoder.
 func ProvideClientEncoder(logger logging.Logger, tracerProvider tracing.TracerProvider, encoding *contentType) ClientEncoder {
 	return &clientEncoder{
-		logger:      logging.NewNamedLogger(logger, "client_encoder"),
-		tracer:      tracing.NewNamedTracer(tracerProvider, "client_encoder"),
+		o11y:        observability.NewObserver("client_encoder", logger, tracerProvider),
 		contentType: encoding,
 	}
 }

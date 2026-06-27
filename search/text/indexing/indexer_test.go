@@ -9,6 +9,8 @@ import (
 	"github.com/primandproper/platform-go/messagequeue"
 	msgconfig "github.com/primandproper/platform-go/messagequeue/config"
 	mockpublishers "github.com/primandproper/platform-go/messagequeue/mock"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
@@ -211,6 +213,9 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 		scheduler, err := NewIndexScheduler(ctx, logger, tracerProvider, metricsProvider, messageQueueProvider, testQueuesConfig, indexFunctions)
 		must.NoError(t, err)
 
+		obs := observability.NewRecordingObserver()
+		scheduler.o11y = obs
+
 		// Since we only have one index type, it will always be chosen
 		err = scheduler.IndexTypes(ctx)
 		test.NoError(t, err)
@@ -221,6 +226,10 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 		addCalls := int64Counter.AddCalls()
 		test.SliceLen(t, 1, addCalls)
 		test.EqOp(t, int64(3), addCalls[0].Incr)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.IndexNameKey: "test_type",
+		})
 	})
 
 	T.Run("successful execution with empty results", func(t *testing.T) {
@@ -350,11 +359,20 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 		scheduler, err := NewIndexScheduler(ctx, logger, tracerProvider, metricsProvider, messageQueueProvider, testQueuesConfig, indexFunctions)
 		must.NoError(t, err)
 
+		obs := observability.NewRecordingObserver()
+		scheduler.o11y = obs
+
 		err = scheduler.IndexTypes(ctx)
 		test.Error(t, err)
 		test.StrContains(t, err.Error(), "database connection failed")
 
 		test.SliceLen(t, 0, publisher.PublishCalls())
+
+		// The chosen index must still have been observed, and the failure recorded.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.IndexNameKey: "test_type",
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("unknown index type", func(t *testing.T) {
