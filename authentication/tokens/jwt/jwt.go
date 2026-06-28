@@ -7,16 +7,21 @@ import (
 
 	"github.com/primandproper/platform-go/authentication/tokens"
 	"github.com/primandproper/platform-go/identifiers"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const (
+	name = "jwt_signer"
+)
+
 type (
 	signer struct {
-		tracer     tracing.Tracer
-		logger     logging.Logger
+		o11y       observability.Observer
 		issuer     string
 		audience   string
 		signingKey []byte
@@ -28,8 +33,7 @@ func NewJWTSigner(logger logging.Logger, tracerProvider tracing.TracerProvider, 
 		issuer:     issuer,
 		audience:   audience,
 		signingKey: signingKey,
-		logger:     logging.EnsureLogger(logger),
-		tracer:     tracing.NewNamedTracer(tracerProvider, "jwt_signer"),
+		o11y:       observability.NewObserver(name, logger, tracerProvider),
 	}
 
 	return s, nil
@@ -40,14 +44,20 @@ func NewJWTSigner(logger logging.Logger, tracerProvider tracing.TracerProvider, 
 // claims via extraClaims. Passing a reserved-claim key in extraClaims returns
 // ErrReservedClaim.
 func (s *signer) IssueToken(ctx context.Context, subject string, expiry time.Duration, extraClaims map[string]any) (tokenStr, jti string, err error) {
-	_, span := s.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := s.o11y.Begin(ctx)
+	defer op.End()
 
 	if expiry <= 0 {
 		expiry = time.Minute * 10
 	}
 
 	jti = identifiers.New()
+
+	op.Set(keys.UserIDKey, subject).
+		Set("token.issuer", s.issuer).
+		Set("token.audience", s.audience).
+		Set("token.jti", jti).
+		Set("token.ttl", expiry.String())
 
 	claims := jwt.MapClaims{
 		"exp": jwt.NewNumericDate(time.Now().Add(expiry).UTC()),           /* expiration time */
@@ -77,17 +87,17 @@ func (s *signer) IssueToken(ctx context.Context, subject string, expiry time.Dur
 
 // ParseToken parses and verifies a JWT and returns its claims.
 func (s *signer) ParseToken(ctx context.Context, tokenString string) (tokens.Claims, error) {
-	_, span := s.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := s.o11y.Begin(ctx)
+	defer op.End()
 
 	parsedToken, err := s.parseToken(tokenString)
 	if err != nil {
-		return nil, err
+		return nil, op.Error(err, "parsing JWT")
 	}
 
 	mapClaims, ok := parsedToken.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, fmt.Errorf("unexpected JWT claims type %T", parsedToken.Claims)
+		return nil, op.Error(fmt.Errorf("unexpected JWT claims type %T", parsedToken.Claims), "asserting JWT claims type")
 	}
 
 	return jwtClaims{inner: mapClaims}, nil
@@ -101,7 +111,6 @@ func (s *signer) parseToken(tokenString string) (*jwt.Token, error) {
 		return s.signingKey, nil
 	})
 	if err != nil {
-		s.logger.Error("parsing JWT", err)
 		return nil, err
 	}
 

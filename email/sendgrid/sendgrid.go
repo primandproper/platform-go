@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/platform-go/email"
 	platformerrors "github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -36,8 +37,7 @@ var (
 type (
 	// Emailer uses SendGrid to send email.
 	Emailer struct {
-		logger         logging.Logger
-		tracer         tracing.Tracer
+		o11y           observability.Observer
 		sendCounter    metrics.Int64Counter
 		errorCounter   metrics.Int64Counter
 		latencyHist    metrics.Float64Histogram
@@ -80,8 +80,7 @@ func NewSendGridEmailer(cfg *Config, logger logging.Logger, tracerProvider traci
 	}
 
 	e := &Emailer{
-		logger:         logging.NewNamedLogger(logger, name),
-		tracer:         tracing.NewNamedTracer(tracerProvider, name),
+		o11y:           observability.NewObserver(name, logger, tracerProvider),
 		sendCounter:    sendCounter,
 		errorCounter:   errorCounter,
 		latencyHist:    latencyHist,
@@ -99,15 +98,15 @@ var ErrSendgridAPIResponse = platformerrors.New("sendgrid request error")
 
 // SendEmail sends an email.
 func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMessage) error {
-	ctx, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := e.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
 	defer func() {
 		e.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 	}()
 
-	tracing.AttachToSpan(span, "to_email", details.ToAddress)
+	op.Set(keys.EmailToAddressKey, details.ToAddress).Set(keys.EmailFromAddressKey, details.FromAddress).Set(keys.EmailSubjectKey, details.Subject)
 
 	if e.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -122,17 +121,16 @@ func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMes
 	res, err := e.restClient.SendWithContext(ctx, req)
 	if err != nil {
 		e.errorCounter.Add(ctx, 1)
-		return observability.PrepareError(err, span, "sending email")
+		return observability.PrepareError(err, op.Span(), "sending email")
 	}
 
 	// Fun fact: if your account is limited and not able to send an email, there is
 	// no distinguishing feature of the response to let you know. Thanks, SendGrid!
 	if res.StatusCode != http.StatusAccepted {
-		e.logger.Info("sending email yielded an invalid response")
-		tracing.AttachToSpan(span, e.config.APIToken, "sendgrid_api_token")
+		op.Logger().Info("sending email yielded an invalid response")
 		e.circuitBreaker.Failed()
 		e.errorCounter.Add(ctx, 1)
-		return observability.PrepareError(ErrSendgridAPIResponse, span, "sending email yielded a %d response", res.StatusCode)
+		return observability.PrepareError(ErrSendgridAPIResponse, op.Span(), "sending email yielded a %d response", res.StatusCode)
 	}
 
 	e.circuitBreaker.Succeeded()
@@ -153,10 +151,10 @@ func (e *Emailer) preparePersonalization(to *mail.Email, data map[string]any) *m
 
 // sendDynamicTemplateEmail sends an email.
 func (e *Emailer) sendDynamicTemplateEmail(ctx context.Context, to, from *mail.Email, templateID string, data map[string]any, request rest.Request) error {
-	ctx, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := e.o11y.Begin(ctx)
+	defer op.End()
 
-	tracing.AttachToSpan(span, "to_email", to.Address)
+	op.Set(keys.EmailToAddressKey, to.Address).Set("email.template_id", templateID).Set(keys.EmailFromAddressKey, from.Address)
 
 	m := mail.NewV3Mail()
 	m.SetFrom(from).SetTemplateID(templateID).AddPersonalizations(e.preparePersonalization(to, data))
@@ -165,11 +163,11 @@ func (e *Emailer) sendDynamicTemplateEmail(ctx context.Context, to, from *mail.E
 
 	res, err := e.restClient.SendWithContext(ctx, request)
 	if err != nil {
-		return observability.PrepareError(err, span, "sending dynamic email")
+		return observability.PrepareError(err, op.Span(), "sending dynamic email")
 	}
 
 	if res.StatusCode != http.StatusAccepted {
-		return observability.PrepareError(ErrSendgridAPIResponse, span, "sending dynamic email yielded a %d response", res.StatusCode)
+		return observability.PrepareError(ErrSendgridAPIResponse, op.Span(), "sending dynamic email yielded a %d response", res.StatusCode)
 	}
 
 	return nil

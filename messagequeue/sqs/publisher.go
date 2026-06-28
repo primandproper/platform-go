@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/platform-go/encoding"
 	"github.com/primandproper/platform-go/messagequeue"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -25,9 +26,8 @@ type (
 	}
 
 	sqsPublisher struct {
-		tracer            tracing.Tracer
+		o11y              observability.Observer
 		encoder           encoding.ClientEncoder
-		logger            logging.Logger
 		publisher         messagePublisher
 		publishedCounter  metrics.Int64Counter
 		publishErrCounter metrics.Int64Counter
@@ -41,19 +41,21 @@ func (p *sqsPublisher) Stop() {}
 
 // Publish publishes a message onto an SQS event queue.
 func (p *sqsPublisher) Publish(ctx context.Context, data any) error {
-	_, span := p.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := p.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
-	logger := p.logger
 
-	logger.Debug("publishing message")
+	op.Set(keys.TopicKey, p.topic)
+	op.Logger().Debug("publishing message")
 
 	var b bytes.Buffer
 	if err := p.encoder.Encode(ctx, &b, data); err != nil {
 		p.publishErrCounter.Add(ctx, 1)
-		return observability.PrepareError(err, span, "encoding topic message")
+		return observability.PrepareError(err, op.Span(), "encoding topic message")
 	}
+
+	op.Set(keys.LengthKey, b.Len())
 
 	input := &sqs.SendMessageInput{
 		MessageBody: aws.String(b.String()),
@@ -62,7 +64,7 @@ func (p *sqsPublisher) Publish(ctx context.Context, data any) error {
 
 	if _, err := p.publisher.SendMessage(ctx, input); err != nil {
 		p.publishErrCounter.Add(ctx, 1)
-		return observability.PrepareError(err, span, "publishing message")
+		return observability.PrepareError(err, op.Span(), "publishing message")
 	}
 
 	p.publishedCounter.Add(ctx, 1)
@@ -74,7 +76,7 @@ func (p *sqsPublisher) Publish(ctx context.Context, data any) error {
 // PublishAsync publishes a message onto an SQS event queue.
 func (p *sqsPublisher) PublishAsync(ctx context.Context, data any) {
 	if err := p.Publish(ctx, data); err != nil {
-		p.logger.Error("publishing message", err)
+		p.o11y.Logger().Error("publishing message", err)
 	}
 }
 
@@ -101,8 +103,7 @@ func provideSQSPublisher(logger logging.Logger, sqsClient messagePublisher, trac
 		publisher:         sqsClient,
 		topic:             topic,
 		encoder:           encoding.ProvideClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
-		logger:            logging.EnsureLogger(logger),
-		tracer:            tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("%s_publisher", topic)),
+		o11y:              observability.NewObserver(fmt.Sprintf("%s_publisher", topic), logger, tracerProvider),
 		publishedCounter:  publishedCounter,
 		publishErrCounter: publishErrCounter,
 		latencyHist:       latencyHist,
@@ -110,7 +111,7 @@ func provideSQSPublisher(logger logging.Logger, sqsClient messagePublisher, trac
 }
 
 type publisherProvider struct {
-	logger            logging.Logger
+	o11y              observability.Observer
 	publisherCache    map[string]messagequeue.Publisher
 	sqsClient         messagePublisher
 	tracerProvider    tracing.TracerProvider
@@ -127,7 +128,7 @@ func ProvideSQSPublisherProvider(ctx context.Context, logger logging.Logger, tra
 	svc := sqs.NewFromConfig(cfg)
 
 	return &publisherProvider{
-		logger:          logging.EnsureLogger(logger),
+		o11y:            observability.NewObserver("sqs_publisher_provider", logger, tracerProvider),
 		sqsClient:       svc,
 		publisherCache:  map[string]messagequeue.Publisher{},
 		tracerProvider:  tracerProvider,
@@ -140,7 +141,7 @@ func (p *publisherProvider) ProvidePublisher(ctx context.Context, topic string) 
 	if topic == "" {
 		return nil, messagequeue.ErrEmptyTopicName
 	}
-	logger := logging.EnsureLogger(p.logger).WithValue("topic", topic)
+	logger := p.o11y.Logger().WithValue(keys.TopicKey, topic)
 
 	p.publisherCacheHat.Lock()
 	defer p.publisherCacheHat.Unlock()

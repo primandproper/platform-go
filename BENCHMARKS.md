@@ -1,6 +1,6 @@
 # Benchmarks
 
-_Generated 2026-06-24 by `make bench`. Do not edit by hand — re-run to refresh._
+_Generated 2026-06-28 by `make bench`. Do not edit by hand — re-run to refresh._
 
 **Environment:** goos `darwin` · goarch `arm64` · cpu `Apple M4 Max`
 
@@ -10,133 +10,114 @@ Times are nanoseconds per operation; lower is better. Run with `make bench` (set
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Argon2Authenticator/HashPassword | 283 | 4195597 | 67064226 | 124 |
-| Argon2Authenticator/PasswordMatches | 301 | 4084529 | 67062481 | 122 |
+| Argon2Authenticator/HashPassword | 242 | 4851059 | 67064814 | 128 |
+| Argon2Authenticator/PasswordMatches | 243 | 4958525 | 67062881 | 126 |
 
 ## authentication/tokens/jwt
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| JWTSigner/IssueToken | 485,875 | 2506 | 3934 | 60 |
-| JWTSigner/ParseToken | 429,610 | 2867 | 3272 | 72 |
+| JWTSigner/IssueToken | 344,238 | 3479 | 4048 | 67 |
+| JWTSigner/ParseToken | 323,467 | 3769 | 3304 | 73 |
 
 ## authentication/totp
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Verifier_Verify | 1,699,759 | 681.3 | 672 | 13 |
+| Verifier_Verify | 1,373,744 | 888.1 | 704 | 14 |
 
 ## bitmask
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Bitmask/Count | 761,794,927 | 1.631 | 0 | 0 |
-| Bitmask/Has | 651,748,713 | 1.705 | 0 | 0 |
-| Bitmask/Set | 747,416,936 | 1.646 | 0 | 0 |
+| Bitmask/Count | 567,274,076 | 2.101 | 0 | 0 |
+| Bitmask/Has | 589,726,712 | 2.059 | 0 | 0 |
+| Bitmask/Set | 567,450,112 | 2.098 | 0 | 0 |
 
 ## cache/memory
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| InMemoryCache/Get | 5,187,090 | 234.3 | 128 | 2 |
-| InMemoryCache/Set | 5,647,922 | 216.4 | 128 | 2 |
-
-## cache/redis
-
-> 🐳 Requires testcontainers — run with `RUN_CONTAINER_TESTS=true` (and a running Docker daemon).
-
-| Benchmark | Runs | ns/op | B/op | allocs/op |
-| --- | ---: | ---: | ---: | ---: |
-| RedisCache/Get | 4,306 | 278206 | 7178 | 162 |
-| RedisCache/GetMany | 4,856 | 278516 | 21305 | 478 |
-| RedisCache/Set | 4,548 | 252446 | 1642 | 28 |
-| RedisCache/SetMany | 5,280 | 261557 | 4424 | 71 |
+| InMemoryCache/Get | 4,611,820 | 273.0 | 96 | 3 |
+| InMemoryCache/Set | 4,395,763 | 270.9 | 96 | 3 |
 
 ## cache/redis/slots
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| SlotForKey/hashtag | 140,796,492 | 8.587 | 0 | 0 |
-| SlotForKey/plain | 198,220,761 | 6.087 | 0 | 0 |
+| SlotForKey/hashtag | 100,000,000 | 11.11 | 0 | 0 |
+| SlotForKey/plain | 169,080,574 | 7.072 | 0 | 0 |
 
 ## circuitbreaking/partitioned
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| KeyedCircuitBreaker/For_dedicated | 182,820,427 | 6.629 | 0 | 0 |
-| KeyedCircuitBreaker/For_global | 146,930,881 | 8.138 | 0 | 0 |
+| KeyedCircuitBreaker/For_dedicated | 155,655,675 | 7.716 | 0 | 0 |
+| KeyedCircuitBreaker/For_global | 122,563,647 | 9.768 | 0 | 0 |
 
 ## compression
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Compressor/s2/Compress | 46,682 | 21637 | 2108606 | 15 |
-| Compressor/s2/Decompress | 19,496 | 61912 | 1100641 | 11 |
-| Compressor/zstd/Compress | 8,085 | 145739 | 2346784 | 49 |
-| Compressor/zstd/Decompress | 73,459 | 17762 | 48341 | 39 |
+| Compressor/s2/Compress | 44,646 | 22416 | 2108605 | 15 |
+| Compressor/s2/Decompress | 16,344 | 74915 | 1100641 | 11 |
+| Compressor/zstd/Compress | 6,680 | 180441 | 2346788 | 49 |
+| Compressor/zstd/Decompress | 53,977 | 21356 | 48376 | 39 |
 
 ## cryptography/encryption/aes
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| EncryptorDecryptor/Decrypt | 1,800,714 | 654.9 | 2144 | 7 |
-| EncryptorDecryptor/Encrypt | 1,280,425 | 925.4 | 2672 | 9 |
+| EncryptorDecryptor/Decrypt | 1,440,294 | 837.4 | 2168 | 8 |
+| EncryptorDecryptor/Encrypt | 910,680 | 1184 | 2696 | 10 |
 
 ## cryptography/hashing/sha256
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| SHA256Hasher_Hash/16B | 11,567,640 | 88.72 | 256 | 3 |
-| SHA256Hasher_Hash/256B | 3,805,171 | 327.1 | 1920 | 4 |
-| SHA256Hasher_Hash/4096B | 338,434 | 3615 | 28416 | 4 |
+| SHA256Hasher_Hash/16B | 13,022,637 | 92.58 | 256 | 3 |
+| SHA256Hasher_Hash/256B | 3,566,943 | 341.0 | 1920 | 4 |
+| SHA256Hasher_Hash/4096B | 326,730 | 3707 | 28416 | 4 |
 
 ## database/sqlite
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| SQLiteClient/Exec | 347,875 | 3197 | 1657 | 24 |
-| SQLiteClient/QueryRow | 218,570 | 4942 | 3434 | 49 |
+| SQLiteClient/Exec | 348,549 | 3171 | 1656 | 24 |
+| SQLiteClient/QueryRow | 218,502 | 4899 | 3433 | 49 |
 
 ## distributedlock/memory
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Locker_AcquireRelease | 1,313,124 | 916.2 | 168 | 4 |
-
-## distributedlock/redis
-
-> 🐳 Requires testcontainers — run with `RUN_CONTAINER_TESTS=true` (and a running Docker daemon).
-
-| Benchmark | Runs | ns/op | B/op | allocs/op |
-| --- | ---: | ---: | ---: | ---: |
-| RedisLocker_AcquireRelease | 2,182 | 541700 | 845 | 24 |
+| Locker_AcquireRelease | 1,278,488 | 936.6 | 224 | 7 |
 
 ## encoding
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| ServerEncoderDecoder/DecodeBytes | 1,956,217 | 593.7 | 1048 | 10 |
-| ServerEncoderDecoder/EncodeJSON | 4,868,413 | 242.0 | 160 | 3 |
+| ServerEncoderDecoder/DecodeBytes | 1,911,326 | 637.4 | 1096 | 12 |
+| ServerEncoderDecoder/EncodeJSON | 4,651,404 | 252.0 | 192 | 4 |
 
 ## identifiers
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| New | 21,813,091 | 46.13 | 24 | 1 |
-| Validate | 106,428,992 | 11.39 | 0 | 0 |
+| New | 22,254,848 | 48.16 | 24 | 1 |
+| Validate | 100,000,000 | 11.50 | 0 | 0 |
 
 ## numbers
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Numbers/RoundToDecimalPlaces | 628,059,612 | 1.768 | 0 | 0 |
-| Numbers/Scale | 696,706,490 | 1.790 | 0 | 0 |
-| Numbers/ScaleToYield | 674,010,572 | 1.836 | 0 | 0 |
+| Numbers/RoundToDecimalPlaces | 617,397,622 | 1.858 | 0 | 0 |
+| Numbers/Scale | 669,443,151 | 1.844 | 0 | 0 |
+| Numbers/ScaleToYield | 669,867,924 | 1.869 | 0 | 0 |
 
 ## random
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Generator/HexEncodedString16 | 3,104,707 | 384.7 | 160 | 4 |
-| Generator/RawBytes32 | 3,172,747 | 364.2 | 144 | 3 |
+| Generator/HexEncodedString16 | 3,084,594 | 384.1 | 128 | 4 |
+| Generator/RawBytes32 | 3,301,735 | 359.8 | 112 | 3 |
 

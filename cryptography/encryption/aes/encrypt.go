@@ -8,28 +8,28 @@ import (
 	"encoding/base64"
 	"io"
 
-	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 )
 
 func (e *aesImpl) Encrypt(ctx context.Context, content string) (string, error) {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := e.o11y.Begin(ctx)
+	defer op.End()
 
-	logger := e.logger.WithValue("content", content)
+	op.Set(keys.LengthKey, len(content))
 
 	aesBlock, err := aes.NewCipher(e.key[:])
 	if err != nil {
-		return "", observability.PrepareAndLogError(err, logger, span, "creating aes cipher")
+		return "", op.Error(err, "creating aes cipher")
 	}
 
 	gcmInstance, err := cipher.NewGCM(aesBlock)
 	if err != nil {
-		return "", observability.PrepareAndLogError(err, logger, span, "creating gcm instance")
+		return "", op.Error(err, "creating gcm instance")
 	}
 
 	nonce := make([]byte, gcmInstance.NonceSize())
 	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", observability.PrepareAndLogError(err, logger, span, "generating nonce")
+		return "", op.Error(err, "generating nonce")
 	}
 
 	cipheredText := gcmInstance.Seal(nonce, nonce, []byte(content), nil)

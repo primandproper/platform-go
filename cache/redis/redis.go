@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/platform-go/circuitbreaking"
 	circuitbreakingcfg "github.com/primandproper/platform-go/circuitbreaking/config"
 	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -51,8 +52,7 @@ type redisClient interface {
 }
 
 type redisCacheImpl[T any] struct {
-	logger           logging.Logger
-	tracer           tracing.Tracer
+	o11y             observability.Observer
 	cacheHitCounter  metrics.Int64Counter
 	cacheMissCounter metrics.Int64Counter
 	cacheSetCounter  metrics.Int64Counter
@@ -100,8 +100,7 @@ func NewRedisCache[T any](cfg *Config, expiration time.Duration, logger logging.
 	}
 
 	return &redisCacheImpl[T]{
-		logger:           logging.NewNamedLogger(logger, name),
-		tracer:           tracing.NewNamedTracer(tracerProvider, name),
+		o11y:             observability.NewObserver(name, logger, tracerProvider),
 		cacheHitCounter:  cacheHitCounter,
 		cacheMissCounter: cacheMissCounter,
 		cacheSetCounter:  cacheSetCounter,
@@ -116,8 +115,9 @@ func NewRedisCache[T any](cfg *Config, expiration time.Duration, logger logging.
 }
 
 func (i *redisCacheImpl[T]) Get(ctx context.Context, key string) (*T, error) {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+	op.Set("name", key)
 
 	if i.circuitBreaker.CannotProceed() {
 		i.cacheMissCounter.Add(ctx, 1)
@@ -131,10 +131,9 @@ func (i *redisCacheImpl[T]) Get(ctx context.Context, key string) (*T, error) {
 
 	res, err := i.client.Get(ctx, key).Result()
 	if err != nil {
-		i.logger.Error("getting from cache", err)
 		i.cacheErrCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return nil, err
+		return nil, op.Error(err, "getting from cache")
 	}
 
 	x, err := i.decode(res)
@@ -155,8 +154,9 @@ func (i *redisCacheImpl[T]) Get(ctx context.Context, key string) (*T, error) {
 }
 
 func (i *redisCacheImpl[T]) Set(ctx context.Context, key string, value *T) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+	op.Set("name", key)
 
 	if i.circuitBreaker.CannotProceed() {
 		return nil
@@ -186,8 +186,9 @@ func (i *redisCacheImpl[T]) Set(ctx context.Context, key string, value *T) error
 }
 
 func (i *redisCacheImpl[T]) Delete(ctx context.Context, key string) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+	op.Set("name", key)
 
 	if i.circuitBreaker.CannotProceed() {
 		return nil
@@ -219,8 +220,9 @@ func (i *redisCacheImpl[T]) Ping(ctx context.Context) error {
 // bucketed by slot and fetched one MGET per slot; a single-node client fetches
 // them all in one MGET.
 func (i *redisCacheImpl[T]) GetMany(ctx context.Context, keys []string) (map[string]*T, error) {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+	op.Set("length", len(keys))
 
 	out := make(map[string]*T, len(keys))
 	if len(keys) == 0 {
@@ -240,10 +242,9 @@ func (i *redisCacheImpl[T]) GetMany(ctx context.Context, keys []string) (map[str
 	for _, group := range i.slotGroups(keys) {
 		values, err := i.client.MGet(ctx, group...).Result()
 		if err != nil {
-			i.logger.Error("getting many from cache", err)
 			i.cacheErrCounter.Add(ctx, 1)
 			i.circuitBreaker.Failed()
-			return nil, err
+			return nil, op.Error(err, "getting many from cache")
 		}
 
 		for idx, v := range values {
@@ -281,8 +282,9 @@ func (i *redisCacheImpl[T]) GetMany(ctx context.Context, keys []string) (map[str
 // mode EVAL requires every key to share a hash slot, so the batch is split per
 // slot.
 func (i *redisCacheImpl[T]) SetMany(ctx context.Context, items map[string]*T) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+	op.Set("length", len(items))
 
 	if len(items) == 0 {
 		return nil

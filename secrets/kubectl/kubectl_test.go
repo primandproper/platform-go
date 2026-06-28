@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
@@ -113,6 +114,23 @@ func TestNewKubectlSecretSource(T *testing.T) {
 	})
 }
 
+// newRecordingSource builds a kubectlSecretSource with a RecordingObserver swapped in, so a
+// test can both drive GetSecret and assert which identifiers it observed.
+func newRecordingSource(t *testing.T, cfg *Config, client SecretGetter) (*kubectlSecretSource, *observability.RecordingObserver) {
+	t.Helper()
+
+	source, err := NewKubectlSecretSource(context.Background(), cfg, client, nil, nil, nil)
+	must.NoError(t, err)
+
+	k, ok := source.(*kubectlSecretSource)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	k.o11y = obs
+
+	return k, obs
+}
+
 func TestKubectlSecretSource_GetSecret(T *testing.T) {
 	T.Parallel()
 
@@ -126,13 +144,17 @@ func TestKubectlSecretSource_GetSecret(T *testing.T) {
 				},
 			},
 		}
-		source, err := NewKubectlSecretSource(context.Background(), cfg, mc, nil, nil, nil)
-		must.NoError(t, err)
+		source, obs := newRecordingSource(t, cfg, mc)
 
-		got, err := source.GetSecret(context.Background(), "db-creds/password")
+		got, err := source.GetSecret(t.Context(), "db-creds/password")
 		must.NoError(t, err)
 		test.EqOp(t, "s3cret", got)
 		test.EqOp(t, "db-creds", mc.lastName)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"secret.name": "db-creds",
+			"secret.key":  "password",
+		})
 	})
 
 	T.Run("missing slash in name", func(t *testing.T) {
@@ -157,24 +179,36 @@ func TestKubectlSecretSource_GetSecret(T *testing.T) {
 				},
 			},
 		}
-		source, err := NewKubectlSecretSource(context.Background(), cfg, mc, nil, nil, nil)
-		must.NoError(t, err)
+		source, obs := newRecordingSource(t, cfg, mc)
 
-		_, err = source.GetSecret(context.Background(), "db-creds/password")
+		_, err := source.GetSecret(t.Context(), "db-creds/password")
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "key \"password\" not found")
+
+		// The identifiers must still have been observed even though the lookup failed.
+		obs.ObservedOperationWithData(t, map[string]any{
+			"secret.name": "db-creds",
+			"secret.key":  "password",
+		})
 	})
 
 	T.Run("client error", func(t *testing.T) {
 		t.Parallel()
 		cfg := &Config{Namespace: "default"}
 		mc := &mockSecretGetter{err: errors.New("k8s api error")}
-		source, err := NewKubectlSecretSource(context.Background(), cfg, mc, nil, nil, nil)
-		must.NoError(t, err)
+		source, obs := newRecordingSource(t, cfg, mc)
 
-		_, err = source.GetSecret(context.Background(), "db-creds/password")
+		_, err := source.GetSecret(t.Context(), "db-creds/password")
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "k8s api error")
+
+		// Even though the send failed, the identifiers must still have been observed,
+		// and the failure itself recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			"secret.name": "db-creds",
+			"secret.key":  "password",
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 

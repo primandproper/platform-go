@@ -6,10 +6,24 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
+
 	"github.com/boombuler/barcode"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// newRecordingBuilder builds a *builder with a RecordingObserver swapped in, so a
+// test can both drive BuildQRCode and assert that it observed an operation.
+func newRecordingBuilder(t *testing.T) (*builder, *observability.RecordingObserver) {
+	t.Helper()
+
+	b := NewBuilder("test-issuer", nil, nil).(*builder)
+	obs := observability.NewRecordingObserver()
+	b.o11y = obs
+
+	return b, obs
+}
 
 func TestNewBuilder(T *testing.T) {
 	T.Parallel()
@@ -29,11 +43,14 @@ func Test_builder_BuildQRCode(T *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 
-		b := NewBuilder("test-issuer", nil, nil)
+		b, obs := newRecordingBuilder(t)
 
 		actual, err := b.BuildQRCode(ctx, "username", "two-factor-secret")
 		must.NoError(t, err)
 		test.NotEq(t, "", actual)
+
+		// BuildQRCode attaches no values, but it must still open and end an operation.
+		obs.ObservedOperationWithData(t, map[string]any{})
 	})
 
 	T.Run("with content exceeding QR capacity", func(t *testing.T) {

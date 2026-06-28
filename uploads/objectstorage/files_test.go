@@ -6,10 +6,10 @@ import (
 	"github.com/primandproper/platform-go/circuitbreaking"
 	cbmock "github.com/primandproper/platform-go/circuitbreaking/mock"
 	"github.com/primandproper/platform-go/circuitbreaking/noop"
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/metrics"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
-	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -51,11 +51,11 @@ func TestUploader_ReadFile(T *testing.T) {
 		b := memblob.OpenBucket(&memblob.Options{})
 		must.NoError(t, b.WriteAll(ctx, exampleFilename, expectedContent, nil))
 
+		obs := observability.NewRecordingObserver()
 		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
 		u := &Uploader{
 			bucket:         b,
-			logger:         loggingnoop.NewLogger(),
-			tracer:         tracing.NewTracerForTest(t.Name()),
+			o11y:           obs,
 			circuitBreaker: noop.NewCircuitBreaker(),
 			saveCounter:    saveCounter,
 			readCounter:    readCounter,
@@ -67,6 +67,10 @@ func TestUploader_ReadFile(T *testing.T) {
 		x, err := u.ReadFile(ctx, exampleFilename)
 		test.NoError(t, err)
 		test.Eq(t, expectedContent, x)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.FilenameKey: exampleFilename,
+		})
 	})
 
 	T.Run("with invalid file", func(t *testing.T) {
@@ -75,11 +79,11 @@ func TestUploader_ReadFile(T *testing.T) {
 		ctx := t.Context()
 		exampleFilename := "hello_world.txt"
 
+		obs := observability.NewRecordingObserver()
 		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
 		u := &Uploader{
 			bucket:         memblob.OpenBucket(&memblob.Options{}),
-			logger:         loggingnoop.NewLogger(),
-			tracer:         tracing.NewTracerForTest(t.Name()),
+			o11y:           obs,
 			circuitBreaker: noop.NewCircuitBreaker(),
 			saveCounter:    saveCounter,
 			readCounter:    readCounter,
@@ -91,6 +95,11 @@ func TestUploader_ReadFile(T *testing.T) {
 		x, err := u.ReadFile(ctx, exampleFilename)
 		test.Error(t, err)
 		test.Nil(t, x)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.FilenameKey: exampleFilename,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with broken circuit breaker", func(t *testing.T) {
@@ -105,8 +114,7 @@ func TestUploader_ReadFile(T *testing.T) {
 		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
 		u := &Uploader{
 			bucket:         memblob.OpenBucket(&memblob.Options{}),
-			logger:         loggingnoop.NewLogger(),
-			tracer:         tracing.NewTracerForTest(t.Name()),
+			o11y:           observability.NewObserverForTest(t.Name()),
 			circuitBreaker: cb,
 			saveCounter:    saveCounter,
 			readCounter:    readCounter,
@@ -139,8 +147,7 @@ func TestUploader_ReadFile(T *testing.T) {
 		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
 		u := &Uploader{
 			bucket:         b,
-			logger:         loggingnoop.NewLogger(),
-			tracer:         tracing.NewTracerForTest(t.Name()),
+			o11y:           observability.NewObserverForTest(t.Name()),
 			circuitBreaker: cb,
 			saveCounter:    saveCounter,
 			readCounter:    readCounter,
@@ -164,11 +171,11 @@ func TestUploader_SaveFile(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
+		obs := observability.NewRecordingObserver()
 		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
 		u := &Uploader{
 			bucket:         memblob.OpenBucket(&memblob.Options{}),
-			logger:         loggingnoop.NewLogger(),
-			tracer:         tracing.NewTracerForTest(t.Name()),
+			o11y:           obs,
 			circuitBreaker: noop.NewCircuitBreaker(),
 			saveCounter:    saveCounter,
 			readCounter:    readCounter,
@@ -178,6 +185,10 @@ func TestUploader_SaveFile(T *testing.T) {
 		}
 
 		test.NoError(t, u.SaveFile(ctx, "test_file.txt", []byte(t.Name())))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.FilenameKey: "test_file.txt",
+		})
 	})
 
 	T.Run("with broken circuit breaker", func(t *testing.T) {
@@ -192,8 +203,7 @@ func TestUploader_SaveFile(T *testing.T) {
 		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
 		u := &Uploader{
 			bucket:         memblob.OpenBucket(&memblob.Options{}),
-			logger:         loggingnoop.NewLogger(),
-			tracer:         tracing.NewTracerForTest(t.Name()),
+			o11y:           observability.NewObserverForTest(t.Name()),
 			circuitBreaker: cb,
 			saveCounter:    saveCounter,
 			readCounter:    readCounter,
@@ -219,11 +229,11 @@ func TestUploader_SaveFile(T *testing.T) {
 		b := memblob.OpenBucket(&memblob.Options{})
 		must.NoError(t, b.Close())
 
+		obs := observability.NewRecordingObserver()
 		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
 		u := &Uploader{
 			bucket:         b,
-			logger:         loggingnoop.NewLogger(),
-			tracer:         tracing.NewTracerForTest(t.Name()),
+			o11y:           obs,
 			circuitBreaker: cb,
 			saveCounter:    saveCounter,
 			readCounter:    readCounter,
@@ -235,6 +245,11 @@ func TestUploader_SaveFile(T *testing.T) {
 		test.Error(t, u.SaveFile(ctx, "test_file.txt", []byte(t.Name())))
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.FailedCalls())
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.FilenameKey: "test_file.txt",
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("can be read back after save", func(t *testing.T) {
@@ -246,8 +261,7 @@ func TestUploader_SaveFile(T *testing.T) {
 		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
 		u := &Uploader{
 			bucket:         memblob.OpenBucket(&memblob.Options{}),
-			logger:         loggingnoop.NewLogger(),
-			tracer:         tracing.NewTracerForTest(t.Name()),
+			o11y:           observability.NewObserverForTest(t.Name()),
 			circuitBreaker: noop.NewCircuitBreaker(),
 			saveCounter:    saveCounter,
 			readCounter:    readCounter,

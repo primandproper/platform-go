@@ -58,7 +58,10 @@ func keyValueForValue(k string, x any) attribute.KeyValue {
 }
 
 func AttachToSpan[T any](span trace.Span, attachmentKey string, x T) {
-	if span != nil {
+	// IsRecording gates the SetAttributes call: a non-recording span (noop or
+	// sampled-out) drops attributes anyway, and skipping the call avoids
+	// allocating the variadic KeyValue slice on that path.
+	if span != nil && span.IsRecording() {
 		span.SetAttributes(keyValueForValue(attachmentKey, x))
 	}
 }

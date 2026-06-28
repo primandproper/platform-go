@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/notifications/async"
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
@@ -17,6 +18,21 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// newRecordingNotifier builds a Notifier with a RecordingObserver swapped in, so a
+// test can both drive the notifier and assert which operations it observed.
+func newRecordingNotifier(t *testing.T) (*Notifier, *observability.RecordingObserver) {
+	t.Helper()
+
+	n, err := NewNotifier(&Config{}, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+	must.NoError(t, err)
+	must.NotNil(t, n)
+
+	obs := observability.NewRecordingObserver()
+	n.o11y = obs
+
+	return n, obs
+}
 
 func TestNewNotifier(T *testing.T) {
 	T.Parallel()
@@ -44,14 +60,15 @@ func TestNotifier_Publish(T *testing.T) {
 	T.Run("no connected clients", func(t *testing.T) {
 		t.Parallel()
 
-		n, err := NewNotifier(&Config{}, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
-		must.NoError(t, err)
+		n, obs := newRecordingNotifier(t)
 
-		err = n.Publish(context.Background(), "test-channel", &async.Event{
+		err := n.Publish(context.Background(), "test-channel", &async.Event{
 			Type: "test",
 			Data: json.RawMessage(`{"key":"value"}`),
 		})
 		test.NoError(t, err)
+
+		obs.ObservedOperationWithData(t, map[string]any{})
 	})
 
 	T.Run("with connected client", func(t *testing.T) {
@@ -109,6 +126,23 @@ func TestNotifier_AcceptConnection(T *testing.T) {
 		conn, _, err := gorillawebsocket.DefaultDialer.Dial(wsURL, nil)
 		must.NoError(t, err)
 		defer conn.Close()
+	})
+
+	T.Run("with upgrade failure", func(t *testing.T) {
+		t.Parallel()
+
+		n, obs := newRecordingNotifier(t)
+
+		// A plain (non-websocket) request cannot be upgraded, so AcceptConnection
+		// returns an error and records it on the operation.
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+
+		err := n.AcceptConnection(rec, req, "channel", "member")
+		test.Error(t, err)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/shoenig/test"
@@ -14,6 +16,20 @@ type erroneousReader struct{}
 
 func (r *erroneousReader) Read(p []byte) (n int, err error) {
 	return -1, errors.New("blah")
+}
+
+// newRecordingGenerator builds a standardGenerator with a RecordingObserver swapped
+// in, so a test can both drive the generator and assert which fields it observed.
+func newRecordingGenerator(t *testing.T) (*standardGenerator, *observability.RecordingObserver) {
+	t.Helper()
+
+	s, ok := NewGenerator(nil, tracingnoop.NewTracerProvider()).(*standardGenerator)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	s.o11y = obs
+
+	return s, obs
 }
 
 func TestGenerateBase32EncodedString(T *testing.T) {
@@ -67,12 +83,16 @@ func TestStandardSecretGenerator_GenerateBase32EncodedString(T *testing.T) {
 		ctx := t.Context()
 		exampleLength := 123
 
-		s := NewGenerator(nil, tracingnoop.NewTracerProvider())
+		s, obs := newRecordingGenerator(t)
 		value, err := s.GenerateBase32EncodedString(ctx, exampleLength)
 
 		test.NotEq(t, "", value)
 		test.Greater(t, exampleLength, len(value))
 		test.NoError(t, err)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.LengthKey: exampleLength,
+		})
 	})
 
 	T.Run("with error reading from secure PRNG", func(t *testing.T) {
@@ -81,13 +101,17 @@ func TestStandardSecretGenerator_GenerateBase32EncodedString(T *testing.T) {
 		ctx := t.Context()
 		exampleLength := 123
 
-		s, ok := NewGenerator(nil, tracingnoop.NewTracerProvider()).(*standardGenerator)
-		must.True(t, ok)
+		s, obs := newRecordingGenerator(t)
 		s.randReader = &erroneousReader{}
 		value, err := s.GenerateBase32EncodedString(ctx, exampleLength)
 
 		test.EqOp(t, "", value)
 		test.Error(t, err)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.LengthKey: exampleLength,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 
@@ -100,12 +124,16 @@ func TestStandardSecretGenerator_GenerateBase64EncodedString(T *testing.T) {
 		ctx := t.Context()
 		exampleLength := 123
 
-		s := NewGenerator(nil, tracingnoop.NewTracerProvider())
+		s, obs := newRecordingGenerator(t)
 		value, err := s.GenerateBase64EncodedString(ctx, exampleLength)
 
 		test.NotEq(t, "", value)
 		test.Greater(t, exampleLength, len(value))
 		test.NoError(t, err)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.LengthKey: exampleLength,
+		})
 	})
 
 	T.Run("with error reading from secure PRNG", func(t *testing.T) {
@@ -114,13 +142,17 @@ func TestStandardSecretGenerator_GenerateBase64EncodedString(T *testing.T) {
 		ctx := t.Context()
 		exampleLength := 123
 
-		s, ok := NewGenerator(nil, tracingnoop.NewTracerProvider()).(*standardGenerator)
-		must.True(t, ok)
+		s, obs := newRecordingGenerator(t)
 		s.randReader = &erroneousReader{}
 		value, err := s.GenerateBase64EncodedString(ctx, exampleLength)
 
 		test.EqOp(t, "", value)
 		test.Error(t, err)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.LengthKey: exampleLength,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 
@@ -133,12 +165,16 @@ func TestStandardSecretGenerator_GenerateRawBytes(T *testing.T) {
 		ctx := t.Context()
 		exampleLength := 123
 
-		s := NewGenerator(nil, tracingnoop.NewTracerProvider())
+		s, obs := newRecordingGenerator(t)
 		value, err := s.GenerateRawBytes(ctx, exampleLength)
 
 		test.SliceNotEmpty(t, value)
 		test.EqOp(t, exampleLength, len(value))
 		test.NoError(t, err)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.LengthKey: exampleLength,
+		})
 	})
 
 	T.Run("with error reading from secure PRNG", func(t *testing.T) {
@@ -147,13 +183,19 @@ func TestStandardSecretGenerator_GenerateRawBytes(T *testing.T) {
 		ctx := t.Context()
 		exampleLength := 123
 
-		s, ok := NewGenerator(nil, tracingnoop.NewTracerProvider()).(*standardGenerator)
-		must.True(t, ok)
+		s, obs := newRecordingGenerator(t)
 		s.randReader = &erroneousReader{}
 		value, err := s.GenerateRawBytes(ctx, exampleLength)
 
 		test.SliceEmpty(t, value)
 		test.Error(t, err)
+
+		// GenerateRawBytes attaches the length to the span via PrepareError rather
+		// than routing through op.Error, so the value is still observed even on the
+		// failure path.
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.LengthKey: exampleLength,
+		})
 	})
 }
 

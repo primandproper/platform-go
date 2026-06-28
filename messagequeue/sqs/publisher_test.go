@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/messagequeue"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
@@ -62,9 +64,16 @@ func Test_sqsPublisher_Publish(T *testing.T) {
 
 		actual.publisher = mmp
 
+		obs := observability.NewRecordingObserver()
+		actual.o11y = obs
+
 		err = actual.Publish(ctx, inputData)
 		test.NoError(t, err)
 		test.EqOp(t, 1, mmp.sendMessageCalls)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey: actual.topic,
+		})
 	})
 
 	T.Run("with error encoding value", func(t *testing.T) {
@@ -83,6 +92,9 @@ func Test_sqsPublisher_Publish(T *testing.T) {
 		actual, ok := a.(*sqsPublisher)
 		must.True(t, ok)
 
+		obs := observability.NewRecordingObserver()
+		actual.o11y = obs
+
 		inputData := &struct {
 			Name json.Number `json:"name"`
 		}{
@@ -91,6 +103,11 @@ func Test_sqsPublisher_Publish(T *testing.T) {
 
 		err = actual.Publish(ctx, inputData)
 		test.Error(t, err)
+
+		// Even though publishing failed, the topic must still have been observed.
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey: actual.topic,
+		})
 	})
 }
 

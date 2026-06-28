@@ -10,6 +10,8 @@ import (
 	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
 	"github.com/primandproper/platform-go/database"
 	"github.com/primandproper/platform-go/identifiers"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
 	vectorsearch "github.com/primandproper/platform-go/search/vector"
@@ -111,6 +113,82 @@ func provideTestIndex(t *testing.T, client database.Client, indexName string, di
 	must.NoError(t, err)
 	must.NotNil(t, im)
 	return im
+}
+
+// newRecordingIndex builds an indexManager with a RecordingObserver swapped in, so
+// a test can drive an operation and assert which fields it observed. It bypasses
+// ProvideIndex (and therefore the container-backed schema migration) by building
+// the struct directly, which the in-package test can do.
+func newRecordingIndex(t *testing.T) (*indexManager[doc], *observability.RecordingObserver) {
+	t.Helper()
+
+	obs := observability.NewRecordingObserver()
+	im := &indexManager[doc]{
+		o11y:           obs,
+		circuitBreaker: cbnoop.NewCircuitBreaker(),
+		upsertCounter:  metricnoop.Int64Counter{},
+		deleteCounter:  metricnoop.Int64Counter{},
+		wipeCounter:    metricnoop.Int64Counter{},
+		queryCounter:   metricnoop.Int64Counter{},
+		errCounter:     metricnoop.Int64Counter{},
+		latencyHist:    metricnoop.Float64Histogram{},
+		indexName:      t.Name(),
+		dimension:      3,
+	}
+
+	return im, obs
+}
+
+func TestIndexManager_ObservesIndexName(T *testing.T) {
+	T.Parallel()
+
+	T.Run("Upsert observes the index name", func(t *testing.T) {
+		t.Parallel()
+
+		im, obs := newRecordingIndex(t)
+
+		// An empty Upsert short-circuits before touching the database, so the
+		// only side effect is the observed index name on a completed operation.
+		must.NoError(t, im.Upsert(t.Context()))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.IndexNameKey: im.indexName,
+		})
+	})
+
+	T.Run("Delete observes the index name", func(t *testing.T) {
+		t.Parallel()
+
+		im, obs := newRecordingIndex(t)
+
+		must.NoError(t, im.Delete(t.Context()))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.IndexNameKey: im.indexName,
+		})
+	})
+
+	T.Run("Query records the failure while still observing the index name", func(t *testing.T) {
+		t.Parallel()
+
+		im, obs := newRecordingIndex(t)
+
+		// A DB pointed at an unreachable address connects lazily, so QueryContext
+		// fails cleanly and we exercise the error path: the index name must still
+		// be observed and the failure recorded on the operation.
+		db, err := sql.Open("pgx", "postgres://user:pass@127.0.0.1:1/db?sslmode=disable&connect_timeout=1")
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+		im.db = &testDBClient{db: db}
+
+		_, err = im.Query(t.Context(), vectorsearch.QueryRequest{Embedding: []float32{1, 0, 0}, TopK: 1})
+		must.Error(t, err)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.IndexNameKey: im.indexName,
+		})
+		must.SliceLen(t, 1, op.Errors)
+	})
 }
 
 func TestProvideIndex(T *testing.T) {

@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
@@ -19,6 +21,21 @@ import (
 	"github.com/shoenig/test/must"
 	"gopkg.in/yaml.v3"
 )
+
+// newRecordingServerEncoderDecoder builds a serverEncoderDecoder with a
+// RecordingObserver swapped in, so a test can both drive the encoder and assert
+// which fields it observed.
+func newRecordingServerEncoderDecoder(t *testing.T, ct ContentType) (*serverEncoderDecoder, *observability.RecordingObserver) {
+	t.Helper()
+
+	ed, ok := ProvideServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct).(*serverEncoderDecoder)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	ed.o11y = obs
+
+	return ed, obs
+}
 
 type example struct {
 	Name string `json:"name" xml:"name"`
@@ -126,18 +143,40 @@ func TestServerEncoderDecoder_encodeResponse(T *testing.T) {
 		test.EqOp(t, fmt.Sprintf("{%q:%q}\n", "name", ex.Name), res.Body.String())
 	})
 
+	T.Run("observes response status", func(t *testing.T) {
+		t.Parallel()
+
+		ex := &example{Name: "name"}
+		encoderDecoder, obs := newRecordingServerEncoderDecoder(t, ContentTypeJSON)
+
+		ctx := t.Context()
+		res := httptest.NewRecorder()
+
+		encoderDecoder.encodeResponse(ctx, res, ex, http.StatusOK)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.ResponseStatusKey: http.StatusOK,
+		})
+	})
+
 	T.Run("with broken structure", func(t *testing.T) {
 		t.Parallel()
 		expectation := "name"
 		ex := &broken{Name: json.Number(expectation)}
-		encoderDecoder, ok := ProvideServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON).(*serverEncoderDecoder)
-		must.True(t, ok)
+		encoderDecoder, obs := newRecordingServerEncoderDecoder(t, ContentTypeJSON)
 
 		ctx := t.Context()
 		res := httptest.NewRecorder()
 
 		encoderDecoder.encodeResponse(ctx, res, ex, http.StatusOK)
 		test.EqOp(t, "", res.Body.String())
+
+		// Even though encoding failed, the status must still have been observed,
+		// and the failure itself acknowledged on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.ResponseStatusKey: http.StatusOK,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 

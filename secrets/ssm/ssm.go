@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -25,8 +27,7 @@ type GetParameterAPI interface {
 }
 
 type ssmSecretSource struct {
-	logger        logging.Logger
-	tracer        tracing.Tracer
+	o11y          observability.Observer
 	lookupCounter metrics.Int64Counter
 	errorCounter  metrics.Int64Counter
 	latencyHist   metrics.Float64Histogram
@@ -44,8 +45,6 @@ func NewSSMSecretSource(ctx context.Context, cfg *Config, client GetParameterAPI
 		return nil, errors.Wrap(err, "ssm secret source")
 	}
 
-	l := logging.NewNamedLogger(logger, name)
-	t := tracing.NewNamedTracer(tracerProvider, name)
 	mp := metrics.EnsureMetricsProvider(metricsProvider)
 
 	lookupCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_lookups", name))
@@ -65,8 +64,7 @@ func NewSSMSecretSource(ctx context.Context, cfg *Config, client GetParameterAPI
 
 	if client != nil {
 		return &ssmSecretSource{
-			logger:        l,
-			tracer:        t,
+			o11y:          observability.NewObserver(name, logger, tracerProvider),
 			lookupCounter: lookupCounter,
 			errorCounter:  errorCounter,
 			latencyHist:   latencyHist,
@@ -81,8 +79,7 @@ func NewSSMSecretSource(ctx context.Context, cfg *Config, client GetParameterAPI
 	}
 
 	return &ssmSecretSource{
-		logger:        l,
-		tracer:        t,
+		o11y:          observability.NewObserver(name, logger, tracerProvider),
 		lookupCounter: lookupCounter,
 		errorCounter:  errorCounter,
 		latencyHist:   latencyHist,
@@ -92,8 +89,8 @@ func NewSSMSecretSource(ctx context.Context, cfg *Config, client GetParameterAPI
 }
 
 func (s *ssmSecretSource) GetSecret(ctx context.Context, name string) (string, error) {
-	_, span := s.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
 
 	startTime := time.Now()
 	defer func() {
@@ -101,6 +98,8 @@ func (s *ssmSecretSource) GetSecret(ctx context.Context, name string) (string, e
 	}()
 
 	paramName := s.resolveName(name)
+	op.Set(keys.NameKey, paramName)
+
 	input := &ssm.GetParameterInput{
 		Name:           aws.String(paramName),
 		WithDecryption: aws.Bool(true),
@@ -108,9 +107,8 @@ func (s *ssmSecretSource) GetSecret(ctx context.Context, name string) (string, e
 
 	output, err := s.client.GetParameter(ctx, input)
 	if err != nil {
-		s.logger.Error("getting parameter", err)
 		s.errorCounter.Add(ctx, 1)
-		return "", errors.Wrapf(err, "getting parameter %q", name)
+		return "", op.Error(err, "getting parameter %q", name)
 	}
 	if output.Parameter == nil {
 		return "", nil

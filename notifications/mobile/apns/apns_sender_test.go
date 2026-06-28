@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
@@ -32,7 +34,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-func createTestSenderWithTransport(t *testing.T, fn roundTripFunc) *Sender {
+func createTestSenderWithTransport(t *testing.T, fn roundTripFunc) (*Sender, *observability.RecordingObserver) {
 	t.Helper()
 
 	p8Path := createTestP8File(t)
@@ -48,7 +50,10 @@ func createTestSenderWithTransport(t *testing.T, fn roundTripFunc) *Sender {
 	sender.client.HTTPClient = &http.Client{Transport: fn}
 	sender.client.Host = "https://test.example.com"
 
-	return sender
+	obs := observability.NewRecordingObserver()
+	sender.o11y = obs
+
+	return sender, obs
 }
 
 func createTestP8File(t *testing.T) string {
@@ -264,7 +269,7 @@ func TestSender_Send(T *testing.T) {
 	T.Run("successful push", func(t *testing.T) {
 		t.Parallel()
 
-		sender := createTestSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
+		sender, obs := createTestSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Apns-Id": {"test-apns-id"}},
@@ -274,12 +279,16 @@ func TestSender_Send(T *testing.T) {
 
 		err := sender.Send(ctx, validDeviceToken, "title", "body", nil)
 		test.NoError(t, err)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"title": "title",
+		})
 	})
 
 	T.Run("successful push with badge count", func(t *testing.T) {
 		t.Parallel()
 
-		sender := createTestSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
+		sender, _ := createTestSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Header:     http.Header{"Apns-Id": {"test-apns-id"}},
@@ -295,7 +304,7 @@ func TestSender_Send(T *testing.T) {
 	T.Run("push returns transport error", func(t *testing.T) {
 		t.Parallel()
 
-		sender := createTestSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
+		sender, _ := createTestSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
 			return nil, errors.New("transport error")
 		})
 
@@ -307,7 +316,7 @@ func TestSender_Send(T *testing.T) {
 	T.Run("push returns non-sent response", func(t *testing.T) {
 		t.Parallel()
 
-		sender := createTestSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
+		sender, obs := createTestSenderWithTransport(t, func(_ *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusBadRequest,
 				Header:     http.Header{"Apns-Id": {"test-apns-id"}},
@@ -318,6 +327,15 @@ func TestSender_Send(T *testing.T) {
 		err := sender.Send(ctx, validDeviceToken, "title", "body", nil)
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "BadDeviceToken")
+
+		// Even though the push failed, the values must still have been observed,
+		// and the failure itself recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			"title":        "title",
+			keys.ReasonKey: "BadDeviceToken",
+			"statusCode":   http.StatusBadRequest,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 

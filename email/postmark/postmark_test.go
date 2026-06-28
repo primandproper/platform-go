@@ -9,6 +9,8 @@ import (
 
 	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
 	"github.com/primandproper/platform-go/email"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
@@ -21,6 +23,34 @@ type emailResponse struct {
 	SubmittedAt string `json:"SubmittedAt"`
 	To          string `json:"To"`
 	ErrorCode   int64  `json:"ErrorCode"`
+}
+
+// newRecordingEmailer builds an Emailer with a RecordingObserver swapped in, so a
+// test can both drive SendEmail and assert which fields it observed.
+func newRecordingEmailer(t *testing.T, cfg *Config, client *http.Client) (*Emailer, *observability.RecordingObserver) {
+	t.Helper()
+
+	c, err := NewPostmarkEmailer(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), client, cbnoop.NewCircuitBreaker(), nil)
+	must.NotNil(t, c)
+	must.NoError(t, err)
+
+	obs := observability.NewRecordingObserver()
+	c.o11y = obs
+
+	return c, obs
+}
+
+func testEmailMessage(t *testing.T) *email.OutboundEmailMessage {
+	t.Helper()
+
+	return &email.OutboundEmailMessage{
+		ToAddress:   t.Name(),
+		ToName:      t.Name(),
+		FromAddress: t.Name(),
+		FromName:    t.Name(),
+		Subject:     t.Name(),
+		HTMLContent: t.Name(),
+	}
 }
 
 func TestNewPostmarkEmailer(T *testing.T) {
@@ -79,41 +109,41 @@ func TestPostmarkEmailer_SendEmail(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		logger := loggingnoop.NewLogger()
-
 		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
-			json.NewEncoder(res).Encode(emailResponse{
+			must.NoError(t, json.NewEncoder(res).Encode(&emailResponse{
 				ErrorCode:   0,
 				Message:     "OK",
 				MessageID:   t.Name(),
 				SubmittedAt: "2010-11-26T12:01:05-05:00",
 				To:          t.Name(),
-			})
+			}))
 		}))
 
-		cfg := &Config{ServerToken: t.Name(), BaseURL: ts.URL}
+		c, obs := newRecordingEmailer(t, &Config{ServerToken: t.Name(), BaseURL: ts.URL}, ts.Client())
 
-		c, err := NewPostmarkEmailer(cfg, logger, tracingnoop.NewTracerProvider(), ts.Client(), cbnoop.NewCircuitBreaker(), nil)
-		must.NotNil(t, c)
-		must.NoError(t, err)
+		details := testEmailMessage(t)
+		must.NoError(t, c.SendEmail(t.Context(), details))
 
-		ctx := t.Context()
-		details := &email.OutboundEmailMessage{
-			ToAddress:   t.Name(),
-			ToName:      t.Name(),
-			FromAddress: t.Name(),
-			FromName:    t.Name(),
-			Subject:     t.Name(),
-			HTMLContent: t.Name(),
-		}
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.EmailSubjectKey:   details.Subject,
+			keys.EmailToAddressKey: details.ToAddress,
+		})
+	})
 
-		must.NoError(t, c.SendEmail(ctx, details))
+	T.Run("with nil message", func(t *testing.T) {
+		t.Parallel()
+
+		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+			res.WriteHeader(http.StatusInternalServerError)
+		}))
+
+		c, _ := newRecordingEmailer(t, &Config{ServerToken: t.Name(), BaseURL: ts.URL}, ts.Client())
+
+		must.Error(t, c.SendEmail(t.Context(), nil))
 	})
 
 	T.Run("with error executing request", func(t *testing.T) {
 		t.Parallel()
-
-		logger := loggingnoop.NewLogger()
 
 		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 			time.Sleep(time.Hour)
@@ -122,52 +152,36 @@ func TestPostmarkEmailer_SendEmail(T *testing.T) {
 		client := ts.Client()
 		client.Timeout = time.Millisecond
 
-		cfg := &Config{ServerToken: t.Name(), BaseURL: ts.URL}
+		c, obs := newRecordingEmailer(t, &Config{ServerToken: t.Name(), BaseURL: ts.URL}, client)
 
-		c, err := NewPostmarkEmailer(cfg, logger, tracingnoop.NewTracerProvider(), client, cbnoop.NewCircuitBreaker(), nil)
-		must.NotNil(t, c)
-		must.NoError(t, err)
+		details := testEmailMessage(t)
+		must.Error(t, c.SendEmail(t.Context(), details))
 
-		ctx := t.Context()
-		details := &email.OutboundEmailMessage{
-			ToAddress:   t.Name(),
-			ToName:      t.Name(),
-			FromAddress: t.Name(),
-			FromName:    t.Name(),
-			Subject:     t.Name(),
-			HTMLContent: t.Name(),
-		}
-
-		err = c.SendEmail(ctx, details)
-		must.Error(t, err)
+		// Even though the send failed, the values must still have been observed,
+		// and the failure itself recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.EmailSubjectKey:   details.Subject,
+			keys.EmailToAddressKey: details.ToAddress,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with invalid response code", func(t *testing.T) {
 		t.Parallel()
 
-		logger := loggingnoop.NewLogger()
-
 		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 			res.WriteHeader(http.StatusInternalServerError)
 		}))
 
-		cfg := &Config{ServerToken: t.Name(), BaseURL: ts.URL}
+		c, obs := newRecordingEmailer(t, &Config{ServerToken: t.Name(), BaseURL: ts.URL}, ts.Client())
 
-		c, err := NewPostmarkEmailer(cfg, logger, tracingnoop.NewTracerProvider(), ts.Client(), cbnoop.NewCircuitBreaker(), nil)
-		must.NotNil(t, c)
-		must.NoError(t, err)
+		details := testEmailMessage(t)
+		must.Error(t, c.SendEmail(t.Context(), details))
 
-		ctx := t.Context()
-		details := &email.OutboundEmailMessage{
-			ToAddress:   t.Name(),
-			ToName:      t.Name(),
-			FromAddress: t.Name(),
-			FromName:    t.Name(),
-			Subject:     t.Name(),
-			HTMLContent: t.Name(),
-		}
-
-		err = c.SendEmail(ctx, details)
-		must.Error(t, err)
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.EmailSubjectKey:   details.Subject,
+			keys.EmailToAddressKey: details.ToAddress,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 }

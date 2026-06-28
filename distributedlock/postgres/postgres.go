@@ -16,6 +16,7 @@ import (
 	platformerrors "github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/identifiers"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -29,8 +30,7 @@ var (
 )
 
 type locker struct {
-	logger         logging.Logger
-	tracer         tracing.Tracer
+	o11y           observability.Observer
 	db             database.Client
 	circuitBreaker circuitbreaking.CircuitBreaker
 	acquireCounter metrics.Int64Counter
@@ -88,8 +88,7 @@ func NewPostgresLocker(
 	}
 
 	return &locker{
-		logger:         logging.NewNamedLogger(logging.EnsureLogger(logger), serviceName),
-		tracer:         tracing.NewNamedTracer(tracerProvider, serviceName),
+		o11y:           observability.NewObserver(serviceName, logger, tracerProvider),
 		db:             db,
 		circuitBreaker: circuitbreakingcfg.EnsureCircuitBreaker(cb),
 		acquireCounter: acquireCounter,
@@ -105,8 +104,9 @@ func NewPostgresLocker(
 
 // Acquire implements distributedlock.Locker.
 func (l *locker) Acquire(ctx context.Context, key string, ttl time.Duration) (distributedlock.Lock, error) {
-	_, span := l.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := l.o11y.Begin(ctx)
+	defer op.End()
+	op.Set(keys.NameKey, key).Set("lock.ttl", ttl)
 
 	if key == "" {
 		return nil, distributedlock.ErrEmptyKey
@@ -127,24 +127,25 @@ func (l *locker) Acquire(ctx context.Context, key string, ttl time.Duration) (di
 	if err != nil {
 		l.errCounter.Add(ctx, 1)
 		l.circuitBreaker.Failed()
-		return nil, observability.PrepareAndLogError(err, l.logger, span, "reserving postgres conn")
+		return nil, op.Error(err, "reserving postgres conn")
 	}
 
 	lockID := hashLockID(l.namespace, key)
+	op.Set("lock.id", lockID)
 	var ok bool
 	if scanErr := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1)`, lockID).Scan(&ok); scanErr != nil {
 		// Best-effort return the conn to the pool.
 		if closeErr := conn.Close(); closeErr != nil {
-			observability.AcknowledgeError(closeErr, l.logger, span, "returning postgres conn to pool after failed advisory lock")
+			op.Acknowledge(closeErr, "returning postgres conn to pool after failed advisory lock")
 		}
 		l.errCounter.Add(ctx, 1)
 		l.circuitBreaker.Failed()
-		return nil, observability.PrepareAndLogError(scanErr, l.logger, span, "calling pg_try_advisory_lock")
+		return nil, op.Error(scanErr, "calling pg_try_advisory_lock")
 	}
 
 	if !ok {
 		if closeErr := conn.Close(); closeErr != nil {
-			observability.AcknowledgeError(closeErr, l.logger, span, "returning postgres conn to pool after contention")
+			op.Acknowledge(closeErr, "returning postgres conn to pool after contention")
 		}
 		l.contendCounter.Add(ctx, 1)
 		l.circuitBreaker.Succeeded()
@@ -195,8 +196,9 @@ func (l *locker) Close() error {
 // release runs the unlock SQL on the dedicated conn and returns it to the pool.
 // It removes the handle from the locker's outstanding map.
 func (l *locker) release(ctx context.Context, h *lock) error {
-	_, span := l.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := l.o11y.Begin(ctx)
+	defer op.End()
+	op.Set(keys.NameKey, h.key).Set("lock.id", h.lockID)
 
 	if l.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -218,7 +220,7 @@ func (l *locker) release(ctx context.Context, h *lock) error {
 	if err := h.releaseLocked(ctx); err != nil {
 		l.errCounter.Add(ctx, 1)
 		l.circuitBreaker.Failed()
-		return observability.PrepareAndLogError(err, l.logger, span, "releasing postgres advisory lock")
+		return op.Error(err, "releasing postgres advisory lock")
 	}
 
 	l.releaseCounter.Add(ctx, 1)
@@ -230,8 +232,9 @@ func (l *locker) release(ctx context.Context, h *lock) error {
 // locks have no native TTL; refreshing is purely a liveness check that lets the
 // caller bump their local TTL bookkeeping.
 func (l *locker) refresh(ctx context.Context, h *lock, ttl time.Duration) error {
-	_, span := l.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := l.o11y.Begin(ctx)
+	defer op.End()
+	op.Set(keys.NameKey, h.key).Set("lock.id", h.lockID).Set("lock.ttl", ttl)
 
 	if ttl <= 0 {
 		return distributedlock.ErrInvalidTTL
@@ -301,7 +304,7 @@ func (l *lock) Refresh(ctx context.Context, ttl time.Duration) error {
 func (l *lock) releaseLocked(ctx context.Context) error {
 	defer func() {
 		if err := l.conn.Close(); err != nil {
-			observability.AcknowledgeError(err, l.locker.logger, nil, "returning postgres conn to pool")
+			observability.AcknowledgeError(err, l.locker.o11y.Logger(), nil, "returning postgres conn to pool")
 		}
 	}()
 	var unlocked bool

@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/shoenig/test"
@@ -19,6 +21,24 @@ func buildConfigForTest() *Config {
 		Base64EncodedHashKey:  base64.StdEncoding.EncodeToString([]byte(testKey)),
 		Base64EncodedBlockKey: base64.StdEncoding.EncodeToString([]byte(testKey)),
 	}
+}
+
+// newRecordingManager builds a manager with a RecordingObserver swapped in, so a
+// test can both drive a method and assert the operation it observed.
+func newRecordingManager(t *testing.T) (*manager, *observability.RecordingObserver) {
+	t.Helper()
+
+	m, err := NewCookieManager(buildConfigForTest(), tracingnoop.NewTracerProvider())
+	must.NoError(t, err)
+	must.NotNil(t, m)
+
+	impl, ok := m.(*manager)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	impl.o11y = obs
+
+	return impl, obs
 }
 
 func TestNewCookieManager(T *testing.T) {
@@ -75,13 +95,19 @@ func Test_manager_Encode(T *testing.T) {
 
 		ctx := t.Context()
 
-		m, err := NewCookieManager(buildConfigForTest(), tracingnoop.NewTracerProvider())
-		must.NoError(t, err)
-		must.NotNil(t, m)
+		m, obs := newRecordingManager(t)
 
 		actual, err := m.Encode(ctx, "test", &example{Name: t.Name()})
 		must.NoError(t, err)
 		test.NotEq(t, "", actual)
+
+		// Encode opens (and ends) exactly one observed operation.
+		must.SliceLen(t, 1, obs.Operations)
+		test.True(t, obs.Operations[0].Ended)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.NameKey: "test",
+		})
 	})
 
 	T.Run("with unencodable value", func(t *testing.T) {
@@ -108,9 +134,7 @@ func Test_manager_Decode(T *testing.T) {
 
 		ctx := t.Context()
 
-		m, err := NewCookieManager(buildConfigForTest(), tracingnoop.NewTracerProvider())
-		must.NoError(t, err)
-		must.NotNil(t, m)
+		m, obs := newRecordingManager(t)
 
 		encoded, err := m.Encode(ctx, "test", &example{Name: t.Name()})
 		must.NoError(t, err)
@@ -119,6 +143,14 @@ func Test_manager_Decode(T *testing.T) {
 		var actual example
 		must.NoError(t, m.Decode(ctx, "test", encoded, &actual))
 		test.EqOp(t, actual.Name, t.Name())
+
+		// Both Encode and Decode opened (and ended) an observed operation, each
+		// attaching the cookie name.
+		must.SliceLen(t, 2, obs.Operations)
+		test.True(t, obs.Operations[0].Ended)
+		test.True(t, obs.Operations[1].Ended)
+		obs.Operations[0].Observed(t, observability.ObservedKeyValue(keys.NameKey, "test"))
+		obs.Operations[1].Observed(t, observability.ObservedKeyValue(keys.NameKey, "test"))
 	})
 
 	T.Run("with invalid encoded value", func(t *testing.T) {

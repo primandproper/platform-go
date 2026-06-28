@@ -16,6 +16,7 @@ import (
 	"github.com/primandproper/platform-go/database"
 	platformerrors "github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -34,8 +35,7 @@ var ErrInvalidIdentifier = platformerrors.New("identifier must match [A-Za-z_][A
 var safeIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type indexManager[T any] struct {
-	logger            logging.Logger
-	tracer            tracing.Tracer
+	o11y              observability.Observer
 	db                database.Client
 	circuitBreaker    circuitbreaking.CircuitBreaker
 	upsertCounter     metrics.Int64Counter
@@ -120,8 +120,7 @@ func ProvideIndex[T any](
 	}
 
 	im := &indexManager[T]{
-		logger:            logging.NewNamedLogger(logging.EnsureLogger(logger), fmt.Sprintf("%s_%s", serviceName, indexName)),
-		tracer:            tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("%s_%s", serviceName, indexName)),
+		o11y:              observability.NewObserver(fmt.Sprintf("%s_%s", serviceName, indexName), logger, tracerProvider),
 		db:                db,
 		circuitBreaker:    circuitbreakingcfg.EnsureCircuitBreaker(cb),
 		upsertCounter:     upsertCounter,
@@ -172,24 +171,26 @@ const ensureSchemaLockKey int64 = 0x7067766563746f72 // "pgvector" as ASCII
 // and concurrently — concurrent callers serialize via a transaction-scoped advisory
 // lock so they observe each other's CREATE EXTENSION as already-done.
 func (i *indexManager[T]) ensureTable(ctx context.Context) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.IndexNameKey, i.indexName)
 
 	tx, err := i.db.WriteDB().BeginTx(ctx, nil)
 	if err != nil {
 		i.errCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(err, i.logger, span, "starting ensureTable transaction")
+		return op.Error(err, "starting ensureTable transaction")
 	}
 	// Rollback is a no-op after a successful Commit per the database/sql contract.
 	defer func() {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			observability.AcknowledgeError(rollbackErr, i.logger, span, "rolling back ensureTable transaction")
+			op.Acknowledge(rollbackErr, "rolling back ensureTable transaction")
 		}
 	}()
 
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, ensureSchemaLockKey); err != nil {
 		i.errCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(err, i.logger, span, "acquiring pgvector schema advisory lock")
+		return op.Error(err, "acquiring pgvector schema advisory lock")
 	}
 
 	stmts := []string{
@@ -211,21 +212,24 @@ func (i *indexManager[T]) ensureTable(ctx context.Context) error {
 	for _, stmt := range stmts {
 		if _, err = tx.ExecContext(ctx, stmt); err != nil {
 			i.errCounter.Add(ctx, 1)
-			return observability.PrepareAndLogError(err, i.logger, span, "ensuring pgvector schema (%s)", firstWords(stmt))
+			return op.Error(err, "ensuring pgvector schema (%s)", firstWords(stmt))
 		}
 	}
 
 	if commitErr := tx.Commit(); commitErr != nil {
 		i.errCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(commitErr, i.logger, span, "committing pgvector schema migration")
+		return op.Error(commitErr, "committing pgvector schema migration")
 	}
 	return nil
 }
 
 // Upsert implements vectorsearch.Index.
 func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Vector[T]) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.IndexNameKey, i.indexName)
+	op.Set(keys.LengthKey, len(vectors))
 
 	if len(vectors) == 0 {
 		return nil
@@ -264,7 +268,7 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 		payload, err := marshalMetadata(v.Metadata)
 		if err != nil {
 			i.errCounter.Add(ctx, 1)
-			return observability.PrepareAndLogError(err, i.logger, span, "marshaling metadata for id %q", v.ID)
+			return op.Error(err, "marshaling metadata for id %q", v.ID)
 		}
 		rows = append(rows, row{
 			id:        v.ID,
@@ -284,7 +288,7 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 		if _, err := i.db.WriteDB().ExecContext(ctx, stmt, r.id, r.embedding, r.payload); err != nil {
 			i.errCounter.Add(ctx, 1)
 			i.circuitBreaker.Failed()
-			return observability.PrepareAndLogError(err, i.logger, span, "upserting vector %q", r.id)
+			return op.Error(err, "upserting vector %q", r.id)
 		}
 	}
 
@@ -295,8 +299,11 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 
 // Delete implements vectorsearch.Index.
 func (i *indexManager[T]) Delete(ctx context.Context, ids ...string) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.IndexNameKey, i.indexName)
+	op.Set(keys.LengthKey, len(ids))
 
 	if len(ids) == 0 {
 		return nil
@@ -314,7 +321,7 @@ func (i *indexManager[T]) Delete(ctx context.Context, ids ...string) error {
 	if _, err := i.db.WriteDB().ExecContext(ctx, stmt, pgTextArray(ids)); err != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return observability.PrepareAndLogError(err, i.logger, span, "deleting vectors")
+		return op.Error(err, "deleting vectors")
 	}
 
 	i.deleteCounter.Add(ctx, int64(len(ids)))
@@ -324,8 +331,10 @@ func (i *indexManager[T]) Delete(ctx context.Context, ids ...string) error {
 
 // Wipe implements vectorsearch.Index.
 func (i *indexManager[T]) Wipe(ctx context.Context) error {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.IndexNameKey, i.indexName)
 
 	if i.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -340,7 +349,7 @@ func (i *indexManager[T]) Wipe(ctx context.Context) error {
 	if _, err := i.db.WriteDB().ExecContext(ctx, stmt); err != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return observability.PrepareAndLogError(err, i.logger, span, "wiping pgvector index")
+		return op.Error(err, "wiping pgvector index")
 	}
 
 	i.wipeCounter.Add(ctx, 1)
@@ -350,8 +359,10 @@ func (i *indexManager[T]) Wipe(ctx context.Context) error {
 
 // Query implements vectorsearch.Index.
 func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryRequest) ([]vectorsearch.QueryResult[T], error) {
-	_, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set(keys.IndexNameKey, i.indexName)
 
 	if len(req.Embedding) == 0 {
 		return nil, vectorsearch.ErrEmptyEmbedding
@@ -362,6 +373,7 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 	if req.TopK <= 0 {
 		req.TopK = 10
 	}
+	op.Set(keys.FilterLimitKey, req.TopK)
 	if i.circuitBreaker.CannotProceed() {
 		return nil, circuitbreaking.ErrCircuitBroken
 	}
@@ -387,11 +399,11 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 	if err != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return nil, observability.PrepareAndLogError(err, i.logger, span, "querying pgvector")
+		return nil, op.Error(err, "querying pgvector")
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			observability.AcknowledgeError(closeErr, i.logger, span, "closing pgvector query rows")
+			op.Acknowledge(closeErr, "closing pgvector query rows")
 		}
 	}()
 
@@ -405,14 +417,14 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 		if scanErr := rows.Scan(&id, &rawMeta, &dist); scanErr != nil {
 			i.errCounter.Add(ctx, 1)
 			i.circuitBreaker.Failed()
-			return nil, observability.PrepareAndLogError(scanErr, i.logger, span, "scanning pgvector row")
+			return nil, op.Error(scanErr, "scanning pgvector row")
 		}
 
 		meta, unmarshalErr := unmarshalMetadata[T](rawMeta)
 		if unmarshalErr != nil {
 			i.errCounter.Add(ctx, 1)
 			i.circuitBreaker.Failed()
-			return nil, observability.PrepareAndLogError(unmarshalErr, i.logger, span, "decoding pgvector metadata")
+			return nil, op.Error(unmarshalErr, "decoding pgvector metadata")
 		}
 
 		results = append(results, vectorsearch.QueryResult[T]{
@@ -424,8 +436,10 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 	if rowsErr := rows.Err(); rowsErr != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return nil, observability.PrepareAndLogError(rowsErr, i.logger, span, "iterating pgvector rows")
+		return nil, op.Error(rowsErr, "iterating pgvector rows")
 	}
+
+	op.Set(keys.LengthKey, len(results))
 
 	i.queryCounter.Add(ctx, 1)
 	i.circuitBreaker.Succeeded()

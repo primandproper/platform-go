@@ -8,6 +8,7 @@ import (
 	"image/png"
 
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 
@@ -30,7 +31,7 @@ type (
 	Issuer string
 
 	builder struct {
-		tracer     tracing.Tracer
+		o11y       observability.Observer
 		qrEncode   func(content string, level qr.ErrorCorrectionLevel, mode qr.Encoding) (barcode.Barcode, error)
 		scale      func(bc barcode.Barcode, width, height int) (barcode.Barcode, error)
 		pngEncode  func(b *bytes.Buffer, img barcode.Barcode) error
@@ -39,9 +40,9 @@ type (
 )
 
 // NewBuilder returns a new QR code Builder.
-func NewBuilder(issuer Issuer, tracerProvider tracing.TracerProvider, _ logging.Logger) Builder {
+func NewBuilder(issuer Issuer, tracerProvider tracing.TracerProvider, logger logging.Logger) Builder {
 	return &builder{
-		tracer:     tracing.NewNamedTracer(tracerProvider, o11yName),
+		o11y:       observability.NewObserver(o11yName, logger, tracerProvider),
 		totpIssuer: issuer,
 		qrEncode:   qr.Encode,
 		scale:      barcode.Scale,
@@ -53,8 +54,8 @@ func NewBuilder(issuer Issuer, tracerProvider tracing.TracerProvider, _ logging.
 
 // BuildQRCode builds a QR code for a given username and secret.
 func (s *builder) BuildQRCode(ctx context.Context, username, twoFactorSecret string) (string, error) {
-	_, span := s.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := s.o11y.Begin(ctx)
+	defer op.End()
 
 	// "otpauth://totp/{{ .Issuer }}:{{ .EnsureUsername }}?secret={{ .Secret }}&issuer={{ .Issuer }}",
 	otpString := fmt.Sprintf(
@@ -65,22 +66,24 @@ func (s *builder) BuildQRCode(ctx context.Context, username, twoFactorSecret str
 		s.totpIssuer,
 	)
 
+	op.Set(keys.UsernameKey, username).Set(keys.LengthKey, len(otpString))
+
 	// encode two factor secret as authenticator-friendly QR code
 	qrCode, err := s.qrEncode(otpString, qr.L, qr.Auto)
 	if err != nil {
-		return "", observability.PrepareError(err, span, "encoding OTP string")
+		return "", observability.PrepareError(err, op.Span(), "encoding OTP string")
 	}
 
 	// scale the QR code so that it's not a PNG for ants.
 	qrCode, err = s.scale(qrCode, 256, 256)
 	if err != nil {
-		return "", observability.PrepareError(err, span, "scaling QR code")
+		return "", observability.PrepareError(err, op.Span(), "scaling QR code")
 	}
 
 	// encode the QR code to PNG.
 	var b bytes.Buffer
 	if err = s.pngEncode(&b, qrCode); err != nil {
-		return "", observability.PrepareError(err, span, "encoding QR code to PNG")
+		return "", observability.PrepareError(err, op.Span(), "encoding QR code to PNG")
 	}
 
 	// base64 encode the image for easy HTML use.

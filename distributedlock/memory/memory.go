@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/platform-go/distributedlock"
 	"github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/identifiers"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -31,12 +32,8 @@ type held struct {
 // in-memory map and lazy expiration on each Acquire — there is no background
 // goroutine. It is intended for tests, single-replica deployments, and as a clear
 // reference implementation of the lock semantics.
-//
-// The constructor accepts a logger for signature consistency with the other
-// providers, but the memory provider's only error paths are sentinel validation
-// failures that callers handle directly — so the logger is not stored.
 type locker struct {
-	tracer         tracing.Tracer
+	o11y           observability.Observer
 	held           map[string]*held
 	acquireCounter metrics.Int64Counter
 	releaseCounter metrics.Int64Counter
@@ -46,11 +43,9 @@ type locker struct {
 	mu             sync.Mutex
 }
 
-// NewLocker constructs a new in-memory Locker. The logger argument is accepted for
-// signature consistency with the other providers but is not retained — see the
-// type doc for the rationale.
+// NewLocker constructs a new in-memory Locker.
 func NewLocker(
-	_ logging.Logger,
+	logger logging.Logger,
 	tracerProvider tracing.TracerProvider,
 	metricsProvider metrics.Provider,
 ) (distributedlock.Locker, error) {
@@ -78,7 +73,7 @@ func NewLocker(
 	}
 
 	return &locker{
-		tracer:         tracing.NewNamedTracer(tracerProvider, serviceName),
+		o11y:           observability.NewObserver(serviceName, logger, tracerProvider),
 		held:           make(map[string]*held),
 		acquireCounter: acquireCounter,
 		releaseCounter: releaseCounter,
@@ -90,8 +85,10 @@ func NewLocker(
 
 // Acquire implements distributedlock.Locker.
 func (l *locker) Acquire(ctx context.Context, key string, ttl time.Duration) (distributedlock.Lock, error) {
-	_, span := l.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := l.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set("lock.key", key).Set("lock.ttl", ttl)
 
 	if key == "" {
 		return nil, distributedlock.ErrEmptyKey

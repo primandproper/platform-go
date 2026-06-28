@@ -10,8 +10,9 @@ import (
 	"github.com/primandproper/platform-go/circuitbreaking"
 	mockcircuitbreaking "github.com/primandproper/platform-go/circuitbreaking/mock"
 	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	"github.com/primandproper/platform-go/observability/tracing"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	algoliasearch "github.com/algolia/algoliasearch-client-go/v3/algolia/search"
@@ -58,7 +59,7 @@ func (r *responseRecorder) WriteHeader(statusCode int) {
 	r.code = statusCode
 }
 
-func buildTestIndexManagerWithMockServer(t *testing.T, handler http.Handler, cb circuitbreaking.CircuitBreaker) *indexManager[example] {
+func buildTestIndexManagerWithMockServer(t *testing.T, handler http.Handler, cb circuitbreaking.CircuitBreaker) (*indexManager[example], *observability.RecordingObserver) {
 	t.Helper()
 
 	client := algoliasearch.NewClientWithConfig(algoliasearch.Configuration{
@@ -68,12 +69,13 @@ func buildTestIndexManagerWithMockServer(t *testing.T, handler http.Handler, cb 
 		Requester: &testRequester{handler: handler},
 	})
 
+	obs := observability.NewRecordingObserver()
+
 	return &indexManager[example]{
-		logger:         loggingnoop.NewLogger(),
-		tracer:         tracing.NewTracerForTest("test"),
+		o11y:           obs,
 		circuitBreaker: cb,
 		client:         client.InitIndex("test"),
-	}
+	}, obs
 }
 
 func buildTestIndexManager(t *testing.T) *indexManager[example] {
@@ -167,11 +169,16 @@ func TestIndexManager_Index(T *testing.T) {
 			CannotProceedFunc: func() bool { return false },
 		}
 
-		im := buildTestIndexManagerWithMockServer(t, handler, cb)
+		im, obs := buildTestIndexManagerWithMockServer(t, handler, cb)
 
-		err := im.Index(context.Background(), "123", map[string]string{"id": "123", "name": "example"})
+		value := map[string]string{"id": "123", "name": "example"}
+		err := im.Index(context.Background(), "123", value)
 		test.NoError(t, err)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			idKey: "123",
+		})
 	})
 }
 
@@ -240,7 +247,7 @@ func TestIndexManager_Search(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		im := buildTestIndexManagerWithMockServer(t, handler, cb)
+		im, obs := buildTestIndexManagerWithMockServer(t, handler, cb)
 
 		results, err := im.Search(context.Background(), "test query")
 		test.NoError(t, err)
@@ -248,6 +255,10 @@ func TestIndexManager_Search(T *testing.T) {
 		test.SliceLen(t, 1, results)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.SucceededCalls())
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.SearchQueryKey: "test query",
+		})
 	})
 
 	T.Run("with empty search results", func(t *testing.T) {
@@ -263,7 +274,7 @@ func TestIndexManager_Search(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		im := buildTestIndexManagerWithMockServer(t, handler, cb)
+		im, _ := buildTestIndexManagerWithMockServer(t, handler, cb)
 
 		results, err := im.Search(context.Background(), "test query")
 		test.NoError(t, err)
@@ -286,7 +297,7 @@ func TestIndexManager_Search(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		im := buildTestIndexManagerWithMockServer(t, handler, cb)
+		im, _ := buildTestIndexManagerWithMockServer(t, handler, cb)
 
 		results, err := im.Search(context.Background(), "test query")
 		test.NoError(t, err)
@@ -313,12 +324,17 @@ func TestIndexManager_Search(T *testing.T) {
 			CannotProceedFunc: func() bool { return false },
 		}
 
-		im := buildTestIndexManagerWithMockServer(t, handler, cb)
+		im, obs := buildTestIndexManagerWithMockServer(t, handler, cb)
 
 		results, err := im.Search(context.Background(), "test query")
 		test.Error(t, err)
 		test.Nil(t, results)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
+
+		// Even though the search failed, the query must still have been observed.
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.SearchQueryKey: "test query",
+		})
 	})
 
 	T.Run("with successful search results without objectID", func(t *testing.T) {
@@ -334,7 +350,7 @@ func TestIndexManager_Search(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		im := buildTestIndexManagerWithMockServer(t, handler, cb)
+		im, _ := buildTestIndexManagerWithMockServer(t, handler, cb)
 
 		results, err := im.Search(context.Background(), "test query")
 		test.NoError(t, err)
@@ -392,7 +408,7 @@ func TestIndexManager_Delete(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		im := buildTestIndexManagerWithMockServer(t, handler, cb)
+		im, _ := buildTestIndexManagerWithMockServer(t, handler, cb)
 
 		err := im.Delete(context.Background(), "some-id")
 		test.NoError(t, err)
@@ -448,7 +464,7 @@ func TestIndexManager_Wipe(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		im := buildTestIndexManagerWithMockServer(t, handler, cb)
+		im, _ := buildTestIndexManagerWithMockServer(t, handler, cb)
 
 		err := im.Wipe(context.Background())
 		test.NoError(t, err)

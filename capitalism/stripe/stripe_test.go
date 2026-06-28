@@ -10,6 +10,7 @@ import (
 	"time"
 
 	mockencoding "github.com/primandproper/platform-go/encoding/mock"
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 	"github.com/primandproper/platform-go/random"
@@ -218,6 +219,9 @@ func Test_stripePaymentManager_HandleSubscriptionEventWebhook(T *testing.T) {
 		ctx := t.Context()
 		pm := ProvideStripePaymentManager(nil, nil, &Config{}).(*stripePaymentManager)
 
+		obs := observability.NewRecordingObserver()
+		pm.o11y = obs
+
 		exampleInput := &stripe.Event{
 			APIVersion: "2023-08-16",
 			Data: &stripe.EventData{
@@ -249,5 +253,9 @@ func Test_stripePaymentManager_HandleSubscriptionEventWebhook(T *testing.T) {
 
 		err = pm.HandleEventWebhook(req)
 		test.NoError(t, err)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"event_type": stripe.EventTypeAccountUpdated,
+		})
 	})
 }

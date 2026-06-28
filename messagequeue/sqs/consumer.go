@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/messagequeue"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -29,8 +30,7 @@ type (
 	}
 
 	sqsConsumer struct {
-		tracer          tracing.Tracer
-		logger          logging.Logger
+		o11y            observability.Observer
 		consumedCounter metrics.Int64Counter
 		receiver        messageReceiver
 		handlerFunc     func(context.Context, []byte) error
@@ -54,11 +54,10 @@ func provideSQSConsumer(
 	}
 
 	return &sqsConsumer{
-		logger:          logging.EnsureLogger(logger),
+		o11y:            observability.NewObserver(fmt.Sprintf("%s_consumer", queueURL), logger, tracerProvider),
 		receiver:        receiver,
 		queueURL:        queueURL,
 		handlerFunc:     handlerFunc,
-		tracer:          tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("%s_consumer", queueURL)),
 		consumedCounter: consumedCounter,
 	}
 }
@@ -89,7 +88,7 @@ func (c *sqsConsumer) Consume(ctx context.Context, stopChan chan bool, errs chan
 			if ctx.Err() != nil {
 				return
 			}
-			c.logger.Error("receiving SQS messages", err)
+			c.o11y.Logger().Error("receiving SQS messages", err)
 			if errs != nil {
 				errs <- err
 			}
@@ -103,14 +102,16 @@ func (c *sqsConsumer) Consume(ctx context.Context, stopChan chan bool, errs chan
 			}
 			body := []byte(aws.ToString(msg.Body))
 
-			msgCtx, span := c.tracer.StartCustomSpan(ctx, "consume_message")
+			msgCtx, op := c.o11y.BeginCustom(ctx, "consume_message")
+			op.Set(keys.TopicKey, c.queueURL).Set(keys.LengthKey, len(body))
+			op.SpanOnly("message_id", aws.ToString(msg.MessageId))
 			c.consumedCounter.Add(msgCtx, 1)
 			if err = c.handlerFunc(msgCtx, body); err != nil {
-				observability.AcknowledgeError(err, c.logger, span, "handling SQS message")
+				op.Acknowledge(err, "handling SQS message")
 				if errs != nil {
 					errs <- err
 				}
-				span.End()
+				op.End()
 				continue
 			}
 
@@ -118,19 +119,18 @@ func (c *sqsConsumer) Consume(ctx context.Context, stopChan chan bool, errs chan
 				QueueUrl:      aws.String(c.queueURL),
 				ReceiptHandle: msg.ReceiptHandle,
 			}); err != nil {
-				observability.AcknowledgeError(err, c.logger, span, "deleting SQS message")
+				op.Acknowledge(err, "deleting SQS message")
 				if errs != nil {
 					errs <- err
 				}
 			}
-			span.End()
+			op.End()
 		}
 	}
 }
 
 type consumerProvider struct {
-	logger          logging.Logger
-	tracer          tracing.Tracer
+	o11y            observability.Observer
 	tracerProvider  tracing.TracerProvider
 	metricsProvider metrics.Provider
 	consumerCache   map[string]messagequeue.Consumer
@@ -147,8 +147,7 @@ func ProvideSQSConsumerProvider(ctx context.Context, logger logging.Logger, trac
 	svc := sqs.NewFromConfig(cfg)
 
 	return &consumerProvider{
-		logger:          logging.EnsureLogger(logger),
-		tracer:          tracing.NewNamedTracer(tracerProvider, "sqs_consumer_provider"),
+		o11y:            observability.NewObserver("sqs_consumer_provider", logger, tracerProvider),
 		tracerProvider:  tracerProvider,
 		metricsProvider: metricsProvider,
 		sqsClient:       svc,
@@ -158,12 +157,14 @@ func ProvideSQSConsumerProvider(ctx context.Context, logger logging.Logger, trac
 
 // ProvideConsumer returns a Consumer for the given topic (queue URL).
 func (p *consumerProvider) ProvideConsumer(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
-	_, span := p.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := p.o11y.Begin(ctx)
+	defer op.End()
 
 	if topic == "" {
-		return nil, observability.PrepareAndLogError(messagequeue.ErrEmptyTopicName, p.logger, span, "providing consumer")
+		return nil, op.Error(messagequeue.ErrEmptyTopicName, "providing consumer")
 	}
+
+	op.Set(keys.TopicKey, topic)
 
 	p.consumerCacheMu.Lock()
 	defer p.consumerCacheMu.Unlock()
@@ -171,7 +172,7 @@ func (p *consumerProvider) ProvideConsumer(ctx context.Context, topic string, ha
 		return cached, nil
 	}
 
-	c := provideSQSConsumer(p.logger.WithValue("queue_url", topic), p.tracerProvider, p.metricsProvider, p.sqsClient, topic, handlerFunc)
+	c := provideSQSConsumer(op.Logger(), p.tracerProvider, p.metricsProvider, p.sqsClient, topic, handlerFunc)
 	p.consumerCache[topic] = c
 
 	return c, nil

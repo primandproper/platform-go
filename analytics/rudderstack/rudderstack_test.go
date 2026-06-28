@@ -6,6 +6,8 @@ import (
 
 	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
 	"github.com/primandproper/platform-go/identifiers"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
@@ -15,6 +17,25 @@ import (
 	"github.com/shoenig/test/must"
 	"go.opentelemetry.io/otel/metric"
 )
+
+// newRecordingEventReporter builds an EventReporter with a RecordingObserver
+// swapped in, so a test can both drive its methods and assert which fields it
+// observed.
+func newRecordingEventReporter(t *testing.T, cfg *Config) (*EventReporter, *observability.RecordingObserver) {
+	t.Helper()
+
+	reporter, err := NewRudderstackEventReporter(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, cfg, cbnoop.NewCircuitBreaker())
+	must.NoError(t, err)
+	must.NotNil(t, reporter)
+
+	c, ok := reporter.(*EventReporter)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	c.o11y = obs
+
+	return c, obs
+}
 
 func TestNewRudderstackEventReporter(T *testing.T) {
 	T.Parallel()
@@ -149,7 +170,6 @@ func TestRudderstackEventReporter_AddUser(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		logger := loggingnoop.NewLogger()
 		exampleUserID := identifiers.New()
 		properties := map[string]any{
 			"test.name": t.Name(),
@@ -160,11 +180,13 @@ func TestRudderstackEventReporter_AddUser(T *testing.T) {
 			DataPlaneURL: t.Name(),
 		}
 
-		collector, err := NewRudderstackEventReporter(logger, tracingnoop.NewTracerProvider(), nil, cfg, cbnoop.NewCircuitBreaker())
-		must.NoError(t, err)
-		must.NotNil(t, collector)
+		collector, obs := newRecordingEventReporter(t, cfg)
 
 		must.NoError(t, collector.AddUser(ctx, exampleUserID, properties))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.UserIDKey: exampleUserID,
+		})
 	})
 }
 
@@ -175,8 +197,8 @@ func TestRudderstackEventReporter_EventOccurred(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		logger := loggingnoop.NewLogger()
 		exampleUserID := identifiers.New()
+		exampleEvent := t.Name()
 		properties := map[string]any{
 			"test.name": t.Name(),
 		}
@@ -186,11 +208,14 @@ func TestRudderstackEventReporter_EventOccurred(T *testing.T) {
 			DataPlaneURL: t.Name(),
 		}
 
-		collector, err := NewRudderstackEventReporter(logger, tracingnoop.NewTracerProvider(), nil, cfg, cbnoop.NewCircuitBreaker())
-		must.NoError(t, err)
-		must.NotNil(t, collector)
+		collector, obs := newRecordingEventReporter(t, cfg)
 
-		must.NoError(t, collector.EventOccurred(ctx, t.Name(), exampleUserID, properties))
+		must.NoError(t, collector.EventOccurred(ctx, exampleEvent, exampleUserID, properties))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"event":        exampleEvent,
+			keys.UserIDKey: exampleUserID,
+		})
 	})
 }
 
@@ -201,8 +226,8 @@ func TestRudderstackEventReporter_EventOccurredAnonymous(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		logger := loggingnoop.NewLogger()
 		exampleAnonymousID := identifiers.New()
+		exampleEvent := t.Name()
 		properties := map[string]any{
 			"test.name": t.Name(),
 		}
@@ -212,10 +237,13 @@ func TestRudderstackEventReporter_EventOccurredAnonymous(T *testing.T) {
 			DataPlaneURL: t.Name(),
 		}
 
-		collector, err := NewRudderstackEventReporter(logger, tracingnoop.NewTracerProvider(), nil, cfg, cbnoop.NewCircuitBreaker())
-		must.NoError(t, err)
-		must.NotNil(t, collector)
+		collector, obs := newRecordingEventReporter(t, cfg)
 
-		must.NoError(t, collector.EventOccurredAnonymous(ctx, t.Name(), exampleAnonymousID, properties))
+		must.NoError(t, collector.EventOccurredAnonymous(ctx, exampleEvent, exampleAnonymousID, properties))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"event":        exampleEvent,
+			keys.UserIDKey: exampleAnonymousID,
+		})
 	})
 }

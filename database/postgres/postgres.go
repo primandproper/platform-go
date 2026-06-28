@@ -24,8 +24,7 @@ const (
 
 // Client is the primary database querying client.
 type Client struct {
-	tracer   tracing.Tracer
-	logger   logging.Logger
+	o11y     observability.Observer
 	timeFunc func() time.Time
 	config   database.ClientConfig
 	readDB   *sql.DB
@@ -36,10 +35,10 @@ type Client struct {
 // If metricsProvider is non-nil, the DB driver will use it so SQL latency and other
 // db.sql.* metrics are emitted (e.g. db_sql_latency_milliseconds_bucket in Prometheus).
 func ProvideDatabaseClient(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, cfg database.ClientConfig, metricsProvider metrics.Provider) (database.Client, error) {
-	tracer := tracing.NewNamedTracer(tracerProvider, tracingName)
+	o11y := observability.NewObserver(tracingName, logger, tracerProvider)
 
-	_, span := tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := o11y.Begin(ctx)
+	defer op.End()
 
 	opts := []otelsql.Option{
 		otelsql.WithAttributes(
@@ -56,14 +55,21 @@ func ProvideDatabaseClient(ctx context.Context, logger logging.Logger, tracerPro
 	var readDB, writeDB *sql.DB
 	var err error
 
-	if readConnStr := cfg.GetReadConnectionString(); readConnStr != "" {
+	readConnStr := cfg.GetReadConnectionString()
+	writeConnStr := cfg.GetWriteConnectionString()
+
+	op.Set("db.system", "postgresql").
+		Set("db.read_configured", readConnStr != "").
+		Set("db.write_configured", writeConnStr != "")
+
+	if readConnStr != "" {
 		readDB, err = connect(readConnStr, cfg, opts)
 		if err != nil {
 			return nil, errors.Wrap(err, "connecting to read postgres database")
 		}
 	}
 
-	if writeConnStr := cfg.GetWriteConnectionString(); writeConnStr != "" {
+	if writeConnStr != "" {
 		writeDB, err = connect(writeConnStr, cfg, opts)
 		if err != nil {
 			return nil, errors.Wrap(err, "connecting to write postgres database")
@@ -97,9 +103,8 @@ func ProvideDatabaseClient(ctx context.Context, logger logging.Logger, tracerPro
 		readDB:   readDB,
 		writeDB:  writeDB,
 		config:   cfg,
-		tracer:   tracer,
+		o11y:     o11y,
 		timeFunc: defaultTimeFunc,
-		logger:   logging.NewNamedLogger(logger, "querier"),
 	}
 
 	return c, nil
@@ -131,13 +136,13 @@ func (q *Client) WriteDB() *sql.DB {
 // Close closes the database connection.
 func (q *Client) Close() error {
 	if err := q.readDB.Close(); err != nil {
-		q.logger.Error("closing read database connection", err)
+		q.o11y.Logger().Error("closing read database connection", err)
 		return err
 	}
 
 	if q.writeDB != q.readDB {
 		if err := q.writeDB.Close(); err != nil {
-			q.logger.Error("closing write database connection", err)
+			q.o11y.Logger().Error("closing write database connection", err)
 			return err
 		}
 	}
@@ -147,26 +152,28 @@ func (q *Client) Close() error {
 
 // IsReady returns whether the database is ready for the querier.
 func (q *Client) IsReady(ctx context.Context) bool {
-	ctx, span := q.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := q.o11y.Begin(ctx)
+	defer op.End()
 
 	maxAttempts := int(q.config.GetMaxPingAttempts())
 	waitPeriod := q.config.GetPingWaitPeriod()
 
-	readReady := q.waitForPing(ctx, q.readDB, q.config.GetReadConnectionString(), maxAttempts, waitPeriod)
+	op.Set("db.ping.max_attempts", maxAttempts).Set("db.ping.wait_period", waitPeriod)
+
+	readReady := q.waitForPing(ctx, op, q.readDB, "read", maxAttempts, waitPeriod)
 	if !readReady {
 		return false
 	}
 
 	if q.writeDB != q.readDB {
-		return q.waitForPing(ctx, q.writeDB, q.config.GetWriteConnectionString(), maxAttempts, waitPeriod)
+		return q.waitForPing(ctx, op, q.writeDB, "write", maxAttempts, waitPeriod)
 	}
 
 	return true
 }
 
-func (q *Client) waitForPing(ctx context.Context, db *sql.DB, connectionURL string, maxAttempts int, waitPeriod time.Duration) bool {
-	logger := q.logger.WithValue("connection_url", connectionURL)
+func (q *Client) waitForPing(ctx context.Context, op observability.Operation, db *sql.DB, connectionName string, maxAttempts int, waitPeriod time.Duration) bool {
+	logger := op.Logger().WithValue("connection", connectionName)
 
 	attemptCount := 0
 	for {
@@ -197,14 +204,14 @@ func (q *Client) CurrentTime() time.Time {
 }
 
 func (q *Client) RollbackTransaction(ctx context.Context, tx database.SQLQueryExecutorAndTransactionManager) {
-	_, span := q.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := q.o11y.Begin(ctx)
+	defer op.End()
 
-	q.logger.Debug("rolling back transaction")
+	op.Logger().Debug("rolling back transaction")
 
 	if err := tx.Rollback(); err != nil {
-		observability.AcknowledgeError(err, q.logger, span, "rolling back transaction")
+		op.Acknowledge(err, "rolling back transaction")
 	}
 
-	q.logger.Debug("transaction rolled back")
+	op.Logger().Debug("transaction rolled back")
 }

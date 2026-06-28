@@ -4,8 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/observability"
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
@@ -21,14 +20,14 @@ func isHealthCheck(path string) bool {
 }
 
 // buildLoggingMiddleware builds a logging middleware.
-func buildLoggingMiddleware(logger logging.Logger, tracer tracing.Tracer, silenceRouteLogging bool) func(next http.Handler) http.Handler {
+func buildLoggingMiddleware(o11y observability.Observer, silenceRouteLogging bool) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 			ctx := req.Context()
-			var span tracing.Span
+			var op observability.Operation
 			if !isHealthCheck(req.URL.Path) {
-				ctx, span = tracer.StartSpan(ctx)
-				defer span.End()
+				ctx, op = o11y.Begin(ctx)
+				defer op.End()
 			}
 
 			ww := chimiddleware.NewWrapResponseWriter(res, req.ProtoMajor)
@@ -37,7 +36,7 @@ func buildLoggingMiddleware(logger logging.Logger, tracer tracing.Tracer, silenc
 			next.ServeHTTP(ww, req.WithContext(ctx))
 
 			if !silenceRouteLogging && !isHealthCheck(req.URL.Path) {
-				logger.WithRequest(req).WithSpan(span).WithValues(map[string]any{
+				op.Logger().WithRequest(req).WithValues(map[string]any{
 					"status":  ww.Status(),
 					"elapsed": time.Since(start).Milliseconds(),
 					"written": ww.BytesWritten(),

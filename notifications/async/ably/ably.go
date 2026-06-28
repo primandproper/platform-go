@@ -37,8 +37,7 @@ func (a *ablyChannelPublisher) Publish(ctx context.Context, channel, name string
 
 // Notifier is an Ably-backed AsyncNotifier.
 type Notifier struct {
-	logger       logging.Logger
-	tracer       tracing.Tracer
+	o11y         observability.Observer
 	publisher    ChannelPublisher
 	sendCounter  metrics.Int64Counter
 	errorCounter metrics.Int64Counter
@@ -68,8 +67,7 @@ func NewNotifier(cfg *Config, logger logging.Logger, tracerProvider tracing.Trac
 	}
 
 	return &Notifier{
-		logger:       logging.NewNamedLogger(logger, o11yName),
-		tracer:       tracing.NewNamedTracer(tracerProvider, o11yName),
+		o11y:         observability.NewObserver(o11yName, logger, tracerProvider),
 		publisher:    &ablyChannelPublisher{client: client},
 		sendCounter:  sendCounter,
 		errorCounter: errorCounter,
@@ -78,12 +76,14 @@ func NewNotifier(cfg *Config, logger logging.Logger, tracerProvider tracing.Trac
 
 // Publish sends an event to the given Ably channel.
 func (n *Notifier) Publish(ctx context.Context, channel string, event *async.Event) error {
-	_, span := n.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := n.o11y.Begin(ctx)
+	defer op.End()
+
+	op.Set("channel", channel).Set("event.type", event.Type)
 
 	if err := n.publisher.Publish(ctx, channel, event.Type, event.Data); err != nil {
 		n.errorCounter.Add(ctx, 1)
-		return observability.PrepareAndLogError(err, n.logger, span, "publishing to ably channel")
+		return op.Error(err, "publishing to ably channel")
 	}
 
 	n.sendCounter.Add(ctx, 1)

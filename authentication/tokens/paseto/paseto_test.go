@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/authentication/tokens"
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
@@ -21,6 +22,23 @@ const (
 	exampleExpiry     = time.Minute * 10
 	exampleSubject    = "user_id"
 )
+
+// newRecordingSigner builds a signer with a RecordingObserver swapped in, so a
+// test can drive its methods and assert what it observed.
+func newRecordingSigner(t *testing.T, signingKey []byte) (*signer, *observability.RecordingObserver) {
+	t.Helper()
+
+	issuer, err := NewPASETOSigner(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), "platform-test", t.Name(), signingKey)
+	must.NoError(t, err)
+
+	s, ok := issuer.(*signer)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	s.o11y = obs
+
+	return s, obs
+}
 
 func Test_signer_IssueToken(T *testing.T) {
 	T.Parallel()
@@ -123,27 +141,30 @@ func Test_signer_ParseToken(T *testing.T) {
 
 		ctx := t.Context()
 
-		s, err := NewPASETOSigner(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), "platform-test", t.Name(), []byte(exampleSigningKey))
-		must.NoError(t, err)
+		s, obs := newRecordingSigner(t, []byte(exampleSigningKey))
 
 		claims, err := s.ParseToken(ctx, tokenString)
 		test.Error(t, err)
 		test.Nil(t, claims)
+
+		// The decryption failure must have been recorded on the operation.
+		op := obs.ObservedOperationWithKeys(t)
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with invalid key", func(t *testing.T) {
 		t.Parallel()
 
-		s, err := NewPASETOSigner(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), "platform-test", t.Name(), []byte(exampleSigningKey))
-		must.NoError(t, err)
-
-		s.(*signer).signingKey = nil
+		s, obs := newRecordingSigner(t, nil)
 
 		ctx := t.Context()
 
 		claims, err := s.ParseToken(ctx, exampleToken)
 		test.Error(t, err)
 		test.Nil(t, claims)
+
+		op := obs.ObservedOperationWithKeys(t)
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("missing optional claim returns empty string", func(t *testing.T) {

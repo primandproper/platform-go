@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -38,14 +39,13 @@ type router struct {
 	router chi.Router
 	// we hold onto this to create subrouters with
 	cfg            *Config
-	logger         logging.Logger
+	o11y           observability.Observer
 	tracerProvider tracing.TracerProvider
 	metricProvider metrics.Provider
 }
 
 func buildChiMux(
-	logger logging.Logger,
-	tracer tracing.Tracer,
+	o11y observability.Observer,
 	metricProvider metrics.Provider,
 	cfg *Config,
 ) chi.Router {
@@ -57,7 +57,7 @@ func buildChiMux(
 			}
 
 			result := slices.Contains(cfg.ValidDomains, u.Hostname()) || cfg.EnableCORSForLocalhost && u.Hostname() == "localhost"
-			logger.WithValue("result", result).Info("CORS Middleware")
+			o11y.Logger().WithValue("result", result).Info("CORS Middleware")
 
 			return result
 		},
@@ -97,7 +97,7 @@ func buildChiMux(
 				return !isHealthCheck(r.URL.Path)
 			}),
 		),
-		buildLoggingMiddleware(logging.NewNamedLogger(logger, "router"), tracer, cfg.SilenceRouteLogging),
+		buildLoggingMiddleware(o11y, cfg.SilenceRouteLogging),
 		chimiddleware.RequestID,
 		chimiddleware.RealIP,
 		chimiddleware.CleanPath,
@@ -114,17 +114,16 @@ func buildChiMux(
 }
 
 func buildRouter(mux chi.Router, l logging.Logger, tracerProvider tracing.TracerProvider, metricProvider metrics.Provider, cfg *Config) *router {
-	logger := logging.EnsureLogger(l)
-	tracer := tracing.NewNamedTracer(tracerProvider, "router")
+	o11y := observability.NewObserver("router", logging.EnsureLogger(l), tracerProvider)
 
 	if mux == nil {
-		logger.Debug("starting with a new mux")
-		mux = buildChiMux(logger, tracer, metricProvider, cfg)
+		o11y.Logger().Debug("starting with a new mux")
+		mux = buildChiMux(o11y, metricProvider, cfg)
 	}
 
 	r := &router{
 		router:         mux,
-		logger:         logging.EnsureLogger(logger),
+		o11y:           o11y,
 		tracerProvider: tracerProvider,
 		metricProvider: metricProvider,
 		cfg:            cfg,
@@ -153,7 +152,7 @@ func NewRouter(logger logging.Logger, tracerProvider tracing.TracerProvider, met
 func (r *router) clone() *router {
 	return buildRouter(
 		r.router,
-		r.logger,
+		r.o11y.Logger(),
 		tracing.EnsureTracerProvider(r.tracerProvider),
 		metrics.EnsureMetricsProvider(r.metricProvider),
 		r.cfg,
@@ -183,7 +182,7 @@ func (r *router) Routes() []*routing.Route {
 	}
 
 	if err := chi.Walk(r.router, routerWalkFunc); err != nil {
-		r.logger.Error("logging routes", err)
+		r.o11y.Logger().Error("logging routes", err)
 	}
 
 	return output
@@ -194,7 +193,7 @@ func (r *router) Route(pattern string, routeFunction func(r routing.Router)) rou
 	r.router.Route(pattern, func(subrouter chi.Router) {
 		routeFunction(buildRouter(
 			subrouter,
-			r.logger,
+			r.o11y.Logger(),
 			tracing.EnsureTracerProvider(r.tracerProvider),
 			metrics.EnsureMetricsProvider(r.metricProvider),
 			r.cfg,

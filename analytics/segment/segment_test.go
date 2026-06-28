@@ -6,6 +6,8 @@ import (
 
 	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
 	"github.com/primandproper/platform-go/identifiers"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
@@ -15,6 +17,24 @@ import (
 	"github.com/shoenig/test/must"
 	"go.opentelemetry.io/otel/metric"
 )
+
+// newRecordingEventReporter builds an EventReporter with a RecordingObserver
+// swapped in, so a test can both drive a method and assert which fields it observed.
+func newRecordingEventReporter(t *testing.T) (*EventReporter, *observability.RecordingObserver) {
+	t.Helper()
+
+	reporter, err := NewSegmentEventReporter(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, t.Name(), cbnoop.NewCircuitBreaker())
+	must.NoError(t, err)
+	must.NotNil(t, reporter)
+
+	c, ok := reporter.(*EventReporter)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	c.o11y = obs
+
+	return c, obs
+}
 
 func TestNewSegmentEventReporter(T *testing.T) {
 	T.Parallel()
@@ -103,17 +123,18 @@ func TestSegmentEventReporter_AddUser(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		logger := loggingnoop.NewLogger()
 		exampleUserID := identifiers.New()
 		properties := map[string]any{
 			"test.name": t.Name(),
 		}
 
-		collector, err := NewSegmentEventReporter(logger, tracingnoop.NewTracerProvider(), nil, t.Name(), cbnoop.NewCircuitBreaker())
-		must.NoError(t, err)
-		must.NotNil(t, collector)
+		collector, obs := newRecordingEventReporter(t)
 
 		must.NoError(t, collector.AddUser(ctx, exampleUserID, properties))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.UserIDKey: exampleUserID,
+		})
 	})
 }
 
@@ -124,17 +145,19 @@ func TestSegmentEventReporter_EventOccurred(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		logger := loggingnoop.NewLogger()
 		exampleUserID := identifiers.New()
 		properties := map[string]any{
 			"test.name": t.Name(),
 		}
 
-		collector, err := NewSegmentEventReporter(logger, tracingnoop.NewTracerProvider(), nil, t.Name(), cbnoop.NewCircuitBreaker())
-		must.NoError(t, err)
-		must.NotNil(t, collector)
+		collector, obs := newRecordingEventReporter(t)
 
 		must.NoError(t, collector.EventOccurred(ctx, t.Name(), exampleUserID, properties))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"event":        t.Name(),
+			keys.UserIDKey: exampleUserID,
+		})
 	})
 }
 
@@ -145,16 +168,18 @@ func TestSegmentEventReporter_EventOccurredAnonymous(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		logger := loggingnoop.NewLogger()
 		exampleAnonymousID := identifiers.New()
 		properties := map[string]any{
 			"test.name": t.Name(),
 		}
 
-		collector, err := NewSegmentEventReporter(logger, tracingnoop.NewTracerProvider(), nil, t.Name(), cbnoop.NewCircuitBreaker())
-		must.NoError(t, err)
-		must.NotNil(t, collector)
+		collector, obs := newRecordingEventReporter(t)
 
 		must.NoError(t, collector.EventOccurredAnonymous(ctx, t.Name(), exampleAnonymousID, properties))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"event":        t.Name(),
+			keys.UserIDKey: exampleAnonymousID,
+		})
 	})
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/primandproper/platform-go/messagequeue"
 	msgconfig "github.com/primandproper/platform-go/messagequeue/config"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -33,8 +34,7 @@ type Config struct {
 type Function func(context.Context) ([]string, error)
 
 type IndexScheduler struct {
-	logger                   logging.Logger
-	tracer                   tracing.Tracer
+	o11y                     observability.Observer
 	handledRecordsCounter    metrics.Int64Counter
 	searchDataIndexPublisher messagequeue.Publisher
 	indexFunctions           map[string]Function
@@ -74,8 +74,7 @@ func NewIndexScheduler(
 	return &IndexScheduler{
 		handledRecordsCounter:    handledRecordsCounter,
 		searchDataIndexPublisher: searchDataIndexPublisher,
-		logger:                   logging.NewNamedLogger(logger, serviceName),
-		tracer:                   tracing.NewNamedTracer(tracerProvider, serviceName),
+		o11y:                     observability.NewObserver(serviceName, logger, tracerProvider),
 
 		allIndexTypes:  allIndexTypes,
 		indexFunctions: indexFunctionsMap,
@@ -83,14 +82,14 @@ func NewIndexScheduler(
 }
 
 func (i *IndexScheduler) IndexTypes(ctx context.Context) error {
-	ctx, span := i.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := i.o11y.Begin(ctx)
+	defer op.End()
 
 	// figure out what records to join
 	chosenIndex := random.Element(i.allIndexTypes)
 
-	logger := i.logger.WithValue("chosen_index_type", chosenIndex)
-	logger.Info("index type chosen")
+	op.Set(keys.IndexNameKey, chosenIndex)
+	op.Logger().Info("index type chosen")
 
 	i.indexManagementHat.RLock()
 	actionFunc, ok := i.indexFunctions[chosenIndex]
@@ -102,14 +101,15 @@ func (i *IndexScheduler) IndexTypes(ctx context.Context) error {
 	ids, err := actionFunc(ctx)
 	if err != nil {
 		if !stderrors.Is(err, sql.ErrNoRows) {
-			observability.AcknowledgeError(err, logger, span, "getting %s IDs that need search indexing", chosenIndex)
+			op.Acknowledge(err, "getting %s IDs that need search indexing", chosenIndex)
 			return err
 		}
 		return nil
 	}
 
 	if len(ids) > 0 {
-		logger.WithValue("count", len(ids)).Info("publishing search index requests")
+		op.Set("count", len(ids))
+		op.Logger().Info("publishing search index requests")
 	}
 
 	publishedIDCount := int64(0)
@@ -133,5 +133,7 @@ func (i *IndexScheduler) IndexTypes(ctx context.Context) error {
 		},
 	))
 
-	return nil
+	op.Set("published.count", publishedIDCount)
+
+	return errs.ErrorOrNil()
 }

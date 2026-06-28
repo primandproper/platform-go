@@ -10,6 +10,8 @@ import (
 
 	"github.com/primandproper/platform-go/identifiers"
 	"github.com/primandproper/platform-go/messagequeue"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
@@ -246,13 +248,22 @@ func TestPubSub_Container(T *testing.T) {
 		consumer, err := provider.ProvideConsumer(ctx, topicName, handler)
 		must.NoError(t, err)
 
+		obs := observability.NewRecordingObserver()
+		consumer.(*pubSubConsumer).o11y = obs
+
+		messageData := []byte(`{"name":"test"}`)
+
 		stopChan := make(chan bool, 1)
 		errChan := make(chan error, 1)
-		go consumer.Consume(ctx, stopChan, errChan)
+		done := make(chan struct{})
+		go func() {
+			consumer.Consume(ctx, stopChan, errChan)
+			close(done)
+		}()
 
 		// Publish a message.
 		publisher := infra.client.Publisher(topicName)
-		result := publisher.Publish(ctx, &pubsub.Message{Data: []byte(`{"name":"test"}`)})
+		result := publisher.Publish(ctx, &pubsub.Message{Data: messageData})
 		<-result.Ready()
 		_, err = result.Get(ctx)
 		must.NoError(t, err)
@@ -265,12 +276,25 @@ func TestPubSub_Container(T *testing.T) {
 		test.True(t, called.Load())
 
 		stopChan <- true
+		// Wait for Consume to return so the background message callback (and its
+		// deferred op.End) has completed before reading the recorded observations.
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out waiting for Consume to return after stop signal")
+		}
 
 		select {
 		case err = <-errChan:
 			t.Fatalf("unexpected error: %v", err)
 		default:
 		}
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey:  topicName,
+			keys.LengthKey: len(messageData),
+		})
+		test.SliceEmpty(t, op.Errors)
 	})
 
 	T.Run("consumer handler error is sent to error channel", func(t *testing.T) {
@@ -289,13 +313,22 @@ func TestPubSub_Container(T *testing.T) {
 		consumer, err := provider.ProvideConsumer(ctx, topicName, handler)
 		must.NoError(t, err)
 
+		obs := observability.NewRecordingObserver()
+		consumer.(*pubSubConsumer).o11y = obs
+
+		messageData := []byte(`{"name":"test"}`)
+
 		stopChan := make(chan bool, 1)
 		errChan := make(chan error, 1)
-		go consumer.Consume(ctx, stopChan, errChan)
+		done := make(chan struct{})
+		go func() {
+			consumer.Consume(ctx, stopChan, errChan)
+			close(done)
+		}()
 
 		// Publish a message.
 		publisher := infra.client.Publisher(topicName)
-		result := publisher.Publish(ctx, &pubsub.Message{Data: []byte(`{"name":"test"}`)})
+		result := publisher.Publish(ctx, &pubsub.Message{Data: messageData})
 		<-result.Ready()
 		_, err = result.Get(ctx)
 		must.NoError(t, err)
@@ -309,6 +342,20 @@ func TestPubSub_Container(T *testing.T) {
 		}
 
 		stopChan <- true
+		// Wait for Consume to return so the background message callback (and its
+		// deferred op.End) has completed before reading the recorded observations.
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out waiting for Consume to return after stop signal")
+		}
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey:  topicName,
+			keys.LengthKey: len(messageData),
+		})
+		must.SliceLen(t, 1, op.Errors)
+		test.ErrorIs(t, op.Errors[0], expectedErr)
 	})
 
 	T.Run("consumer stops when stop channel is signaled", func(t *testing.T) {

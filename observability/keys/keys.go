@@ -68,4 +68,19 @@ const (
 	UserIDKey = "user" + idSuffix
 	// UsernameKey is the standard key for referring to a username (request context).
 	UsernameKey = "user.username"
+
+	// EmailSubjectKey is the standard key for referring to an outbound email's subject.
+	EmailSubjectKey = "email.subject"
+	// EmailToAddressKey is the standard key for referring to an outbound email's recipient address.
+	EmailToAddressKey = "email.to_address"
+	// EmailFromAddressKey is the standard key for referring to an outbound email's sender address.
+	EmailFromAddressKey = "email.from_address"
+	// FilenameKey is the standard key for referring to a filename.
+	FilenameKey = "filename"
+	// LengthKey is the standard key for referring to a requested or measured length.
+	LengthKey = "length"
+	// ConnectionURLKey is the standard key for referring to a datastore connection URL.
+	ConnectionURLKey = "connection_url"
+	// TopicKey is the standard key for referring to a message queue topic.
+	TopicKey = "topic"
 )

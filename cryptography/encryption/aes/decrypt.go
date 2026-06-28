@@ -6,28 +6,28 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 
-	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 )
 
 func (e *aesImpl) Decrypt(ctx context.Context, content string) (string, error) {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	_, op := e.o11y.Begin(ctx)
+	defer op.End()
 
-	logger := e.logger.WithValue("content", content)
+	op.Set(keys.LengthKey, len(content))
 
 	ciphered, err := base64.URLEncoding.DecodeString(content)
 	if err != nil {
-		return "", observability.PrepareAndLogError(err, logger, span, "decoding ciphered text")
+		return "", op.Error(err, "decoding ciphered text")
 	}
 
 	aesBlock, err := aes.NewCipher(e.key[:])
 	if err != nil {
-		return "", observability.PrepareAndLogError(err, logger, span, "creating aes cipher")
+		return "", op.Error(err, "creating aes cipher")
 	}
 
 	gcmInstance, err := cipher.NewGCM(aesBlock)
 	if err != nil {
-		return "", observability.PrepareAndLogError(err, logger, span, "creating gcm instance")
+		return "", op.Error(err, "creating gcm instance")
 	}
 
 	nonceSize := gcmInstance.NonceSize()
@@ -35,7 +35,7 @@ func (e *aesImpl) Decrypt(ctx context.Context, content string) (string, error) {
 
 	originalText, err := gcmInstance.Open(nil, nonce, cipheredText, nil)
 	if err != nil {
-		return "", observability.PrepareAndLogError(err, logger, span, "decrypting ciphered text")
+		return "", op.Error(err, "decrypting ciphered text")
 	}
 
 	return string(originalText), nil

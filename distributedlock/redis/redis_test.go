@@ -11,10 +11,10 @@ import (
 	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
 	"github.com/primandproper/platform-go/distributedlock"
 	"github.com/primandproper/platform-go/identifiers"
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
-	"github.com/primandproper/platform-go/observability/tracing"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 	"github.com/primandproper/platform-go/testutils/containers"
 	"github.com/primandproper/platform-go/testutils/containers/redistest"
@@ -173,8 +173,7 @@ func newUnitLocker(t *testing.T, client redisClient, cb circuitbreaking.CircuitB
 		cb = cbnoop.NewCircuitBreaker()
 	}
 	return &locker{
-		logger:         loggingnoop.NewLogger(),
-		tracer:         tracing.NewNamedTracer(tracingnoop.NewTracerProvider(), "test"),
+		o11y:           observability.NewObserver("test", loggingnoop.NewLogger(), tracingnoop.NewTracerProvider()),
 		client:         client,
 		circuitBreaker: cb,
 		acquireCounter: acquireCounter,
@@ -185,6 +184,17 @@ func newUnitLocker(t *testing.T, client redisClient, cb circuitbreaking.CircuitB
 		latencyHist:    latencyHist,
 		keyPrefix:      "lock:",
 	}
+}
+
+// newRecordingLocker builds a *locker with a RecordingObserver swapped in, so a
+// test can drive a method and assert that its operation ran (and recorded errors
+// on failure paths).
+func newRecordingLocker(t *testing.T, client redisClient, cb circuitbreaking.CircuitBreaker) (*locker, *observability.RecordingObserver) {
+	t.Helper()
+	l := newUnitLocker(t, client, cb)
+	obs := observability.NewRecordingObserver()
+	l.o11y = obs
+	return l, obs
 }
 
 func TestNewRedisLocker(T *testing.T) {
@@ -241,7 +251,7 @@ func TestLocker_Acquire(T *testing.T) {
 	T.Run("happy path", func(t *testing.T) {
 		t.Parallel()
 		fc := &fakeRedisClient{setNXResult: true}
-		l := newUnitLocker(t, fc, nil)
+		l, obs := newRecordingLocker(t, fc, nil)
 
 		got, err := l.Acquire(t.Context(), "k", time.Minute)
 		must.NoError(t, err)
@@ -250,6 +260,9 @@ func TestLocker_Acquire(T *testing.T) {
 		test.EqOp(t, time.Minute, got.TTL())
 		test.EqOp(t, "lock:k", fc.lastSetKey)
 		test.EqOp(t, time.Minute, fc.lastSetTTL)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceEmpty(t, op.Errors)
 	})
 
 	T.Run("rejects empty key", func(t *testing.T) {
@@ -292,12 +305,16 @@ func TestLocker_Acquire(T *testing.T) {
 			CannotProceedFunc: func() bool { return false },
 			FailedFunc:        func() {},
 		}
-		l := newUnitLocker(t, fc, cb)
+		l, obs := newRecordingLocker(t, fc, cb)
 
 		_, err := l.Acquire(t.Context(), "k", time.Minute)
 		must.Error(t, err)
 		must.SliceNotEmpty(t, cb.CannotProceedCalls())
 		must.SliceNotEmpty(t, cb.FailedCalls())
+
+		// The backend failure must be recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("contention does not fail breaker", func(t *testing.T) {

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/messagequeue"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
@@ -166,9 +168,20 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 		must.NoError(t, err)
 		must.NotNil(t, provider)
 
-		actual, err := provider.ProvideConsumer(ctx, "https://sqs.us-east-1.amazonaws.com/123/test", nil)
+		cp, ok := provider.(*consumerProvider)
+		must.True(t, ok)
+
+		obs := observability.NewRecordingObserver()
+		cp.o11y = obs
+
+		topic := "https://sqs.us-east-1.amazonaws.com/123/test"
+		actual, err := provider.ProvideConsumer(ctx, topic, nil)
 		test.NoError(t, err)
 		test.NotNil(t, actual)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey: topic,
+		})
 	})
 
 	T.Run("with cache hit", func(t *testing.T) {
@@ -204,10 +217,20 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 		must.NoError(t, err)
 		must.NotNil(t, provider)
 
+		cp, ok := provider.(*consumerProvider)
+		must.True(t, ok)
+
+		obs := observability.NewRecordingObserver()
+		cp.o11y = obs
+
 		actual, err := provider.ProvideConsumer(ctx, "", nil)
 		test.Error(t, err)
 		test.Nil(t, actual)
 		test.ErrorIs(t, err, messagequeue.ErrEmptyTopicName)
+
+		// The failure itself must have been recorded on the operation.
+		op := obs.ObservedOperationWithKeys(t)
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 

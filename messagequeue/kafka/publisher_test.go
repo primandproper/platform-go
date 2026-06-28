@@ -10,11 +10,12 @@ import (
 	"github.com/primandproper/platform-go/encoding"
 	mockencoding "github.com/primandproper/platform-go/encoding/mock"
 	"github.com/primandproper/platform-go/messagequeue"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
-	"github.com/primandproper/platform-go/observability/tracing"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/segmentio/kafka-go"
@@ -46,7 +47,7 @@ func (m *mockKafkaWriter) Close() error {
 	return m.closeFunc()
 }
 
-func buildTestPublisher(t *testing.T) (*kafkaPublisher, *mockKafkaWriter) {
+func buildTestPublisher(t *testing.T) (*kafkaPublisher, *mockKafkaWriter, *observability.RecordingObserver) {
 	t.Helper()
 
 	writer := &mockKafkaWriter{}
@@ -62,17 +63,19 @@ func buildTestPublisher(t *testing.T) (*kafkaPublisher, *mockKafkaWriter) {
 	latencyHist, err := mp.NewFloat64Histogram("test_publish_latency_ms")
 	must.NoError(t, err)
 
+	obs := observability.NewRecordingObserver()
+
 	pub := &kafkaPublisher{
 		writer:            writer,
 		encoder:           encoding.ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON),
-		logger:            loggingnoop.NewLogger(),
-		tracer:            tracing.NewTracerForTest(t.Name()),
+		o11y:              obs,
+		topic:             t.Name(),
 		publishedCounter:  publishedCounter,
 		publishErrCounter: publishErrCounter,
 		latencyHist:       latencyHist,
 	}
 
-	return pub, writer
+	return pub, writer, obs
 }
 
 func Test_kafkaPublisher_Stop(T *testing.T) {
@@ -81,7 +84,7 @@ func Test_kafkaPublisher_Stop(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		pub, writer := buildTestPublisher(t)
+		pub, writer, _ := buildTestPublisher(t)
 		writer.closeFunc = func() error { return nil }
 
 		pub.Stop()
@@ -92,7 +95,7 @@ func Test_kafkaPublisher_Stop(T *testing.T) {
 	T.Run("with close error", func(t *testing.T) {
 		t.Parallel()
 
-		pub, writer := buildTestPublisher(t)
+		pub, writer, _ := buildTestPublisher(t)
 		writer.closeFunc = func() error { return errors.New("close failed") }
 
 		pub.Stop()
@@ -108,7 +111,7 @@ func Test_kafkaPublisher_Publish(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pub, writer := buildTestPublisher(t)
+		pub, writer, obs := buildTestPublisher(t)
 
 		inputData := &struct {
 			Name string `json:"name"`
@@ -122,13 +125,17 @@ func Test_kafkaPublisher_Publish(T *testing.T) {
 		test.NoError(t, err)
 
 		test.EqOp(t, 1, writer.writeCalls)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey: pub.topic,
+		})
 	})
 
 	T.Run("with encoding error", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pub, _ := buildTestPublisher(t)
+		pub, _, _ := buildTestPublisher(t)
 
 		inputData := &struct {
 			Name json.Number `json:"name"`
@@ -144,7 +151,7 @@ func Test_kafkaPublisher_Publish(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pub, writer := buildTestPublisher(t)
+		pub, writer, obs := buildTestPublisher(t)
 
 		inputData := &struct {
 			Name string `json:"name"`
@@ -158,13 +165,19 @@ func Test_kafkaPublisher_Publish(T *testing.T) {
 		test.Error(t, err)
 
 		test.EqOp(t, 1, writer.writeCalls)
+
+		// The topic must still have been observed, and the failure recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey: pub.topic,
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with mock encoder error", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pub, _ := buildTestPublisher(t)
+		pub, _, _ := buildTestPublisher(t)
 
 		enc := &mockencoding.ClientEncoderMock{
 			EncodeFunc: func(_ context.Context, _ io.Writer, _ any) error {
@@ -187,7 +200,7 @@ func Test_kafkaPublisher_PublishAsync(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pub, writer := buildTestPublisher(t)
+		pub, writer, _ := buildTestPublisher(t)
 
 		inputData := &struct {
 			Name string `json:"name"`
@@ -206,7 +219,7 @@ func Test_kafkaPublisher_PublishAsync(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pub, _ := buildTestPublisher(t)
+		pub, _, _ := buildTestPublisher(t)
 
 		inputData := &struct {
 			Name json.Number `json:"name"`
@@ -221,7 +234,7 @@ func Test_kafkaPublisher_PublishAsync(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pub, writer := buildTestPublisher(t)
+		pub, writer, _ := buildTestPublisher(t)
 
 		inputData := &struct {
 			Name string `json:"name"`
@@ -501,8 +514,7 @@ func Test_publisherProvider_Close(T *testing.T) {
 
 		pp.publisherCache[t.Name()] = &kafkaPublisher{
 			writer:            mw,
-			logger:            loggingnoop.NewLogger(),
-			tracer:            tracing.NewTracerForTest(t.Name()),
+			o11y:              observability.NewObserverForTest(t.Name()),
 			publishedCounter:  publishedCounter,
 			publishErrCounter: publishErrCounter,
 			latencyHist:       latencyHist,

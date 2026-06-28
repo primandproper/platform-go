@@ -8,6 +8,7 @@ import (
 
 	"github.com/primandproper/platform-go/messagequeue"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -18,8 +19,7 @@ import (
 
 type (
 	pubSubConsumer struct {
-		tracer          tracing.Tracer
-		logger          logging.Logger
+		o11y            observability.Observer
 		consumedCounter metrics.Int64Counter
 		consumer        *pubsub.Client
 		handlerFunc     func(context.Context, []byte) error
@@ -45,10 +45,9 @@ func buildPubSubConsumer(
 
 	return &pubSubConsumer{
 		topic:           topic,
-		logger:          logging.EnsureLogger(logger),
+		o11y:            observability.NewObserver(fmt.Sprintf("%s_consumer", topic), logger, tracerProvider),
 		consumer:        pubsubClient,
 		handlerFunc:     handlerFunc,
-		tracer:          tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("%s_consumer", topic)),
 		consumedCounter: consumedCounter,
 	}
 }
@@ -71,7 +70,7 @@ func (c *pubSubConsumer) Consume(ctx context.Context, stopChan chan bool, errors
 		Subscription: subscriptionName,
 	})
 	if err != nil {
-		c.logger.Error(fmt.Sprintf("getting %s subscription", subscriptionName), err)
+		c.o11y.Logger().Error(fmt.Sprintf("getting %s subscription", subscriptionName), err)
 		errors <- err
 		return
 	}
@@ -84,17 +83,28 @@ func (c *pubSubConsumer) Consume(ctx context.Context, stopChan chan bool, errors
 	}()
 
 	if err = subscriber.Receive(ctx, func(receivedContext context.Context, m *pubsub.Message) {
-		msgCtx, span := c.tracer.StartCustomSpan(receivedContext, "consume_message")
+		msgCtx, op := c.o11y.BeginCustom(receivedContext, "consume_message")
+		defer op.End()
+
+		op.Set(keys.TopicKey, c.topic).Set(keys.LengthKey, len(m.Data))
+		op.SpanOnly("message_id", m.ID)
+		if m.DeliveryAttempt != nil {
+			op.SpanOnly("delivery_attempt", *m.DeliveryAttempt)
+		}
+
 		c.consumedCounter.Add(msgCtx, 1)
 		if handleErr := c.handlerFunc(msgCtx, m.Data); handleErr != nil {
-			observability.AcknowledgeError(handleErr, c.logger, span, "handling pubsub message")
-			errors <- handleErr
+			op.Acknowledge(handleErr, "handling pubsub message")
+			m.Nack()
+			select {
+			case errors <- handleErr:
+			case <-msgCtx.Done():
+			}
 		} else {
 			m.Ack()
 		}
-		span.End()
 	}); err != nil && ctx.Err() == nil {
-		c.logger.Error(fmt.Sprintf("receiving %s pub/sub data", c.topic), err)
+		c.o11y.Logger().Error(fmt.Sprintf("receiving %s pub/sub data", c.topic), err)
 	}
 }
 

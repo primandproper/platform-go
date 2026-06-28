@@ -3,6 +3,8 @@ package memory
 import (
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
+
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
@@ -13,6 +15,22 @@ const (
 
 type example struct {
 	Name string `json:"name"`
+}
+
+// newRecordingCache builds an in-memory cache with a RecordingObserver swapped
+// in, so a test can drive a method and assert that it opened and ended an
+// operation.
+func newRecordingCache(t *testing.T) (*inMemoryCacheImpl[example], *observability.RecordingObserver) {
+	t.Helper()
+
+	c, err := NewInMemoryCache[example](nil, nil, nil)
+	must.NoError(t, err)
+
+	obs := observability.NewRecordingObserver()
+	impl := c.(*inMemoryCacheImpl[example])
+	impl.o11y = obs
+
+	return impl, obs
 }
 
 func Test_newInMemoryCache(T *testing.T) {
@@ -43,6 +61,25 @@ func Test_inMemoryCacheImpl_Get(T *testing.T) {
 		actual, err := c.Get(ctx, exampleKey)
 		test.Eq(t, expected, actual)
 		test.NoError(t, err)
+	})
+
+	T.Run("observes operation", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		c, obs := newRecordingCache(t)
+
+		expected := &example{Name: t.Name()}
+		test.NoError(t, c.Set(ctx, exampleKey, expected))
+
+		actual, err := c.Get(ctx, exampleKey)
+		test.Eq(t, expected, actual)
+		test.NoError(t, err)
+
+		// The cache methods attach no values, so assert the operation
+		// lifecycle: Get opened and ended an operation with no errors.
+		op := obs.ObservedOperationWithKeys(t)
+		must.SliceEmpty(t, op.Errors)
 	})
 }
 

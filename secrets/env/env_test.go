@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
@@ -17,6 +18,23 @@ import (
 )
 
 var _ secrets.SecretSource = (*envSecretSource)(nil)
+
+// newRecordingSource builds an envSecretSource with a RecordingObserver swapped in, so a
+// test can both drive GetSecret and assert which fields it observed.
+func newRecordingSource(t *testing.T) (*envSecretSource, *observability.RecordingObserver) {
+	t.Helper()
+
+	source, err := NewEnvSecretSource(nil, nil, nil)
+	must.NoError(t, err)
+
+	src, ok := source.(*envSecretSource)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	src.o11y = obs
+
+	return src, obs
+}
 
 func TestNewEnvSecretSource(T *testing.T) {
 	T.Parallel()
@@ -75,13 +93,17 @@ func TestEnvSecretSource_GetSecret(T *testing.T) {
 		must.NoError(t, os.Setenv(key, value))
 		t.Cleanup(func() { _ = os.Unsetenv(key) })
 
-		source, err := NewEnvSecretSource(nil, nil, nil)
-		must.NoError(t, err)
+		source, obs := newRecordingSource(t)
 		ctx := context.Background()
 
 		got, err := source.GetSecret(ctx, key)
 		must.NoError(t, err)
 		test.EqOp(t, value, got)
+
+		// The lookup key is observed; the secret value must never be.
+		obs.ObservedOperationWithData(t, map[string]any{
+			"secret_key": key,
+		})
 	})
 
 	T.Run("returns empty for unset env var", func(t *testing.T) {

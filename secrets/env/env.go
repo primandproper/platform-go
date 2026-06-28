@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -16,8 +17,7 @@ import (
 const name = "env_secret_source"
 
 type envSecretSource struct {
-	logger        logging.Logger
-	tracer        tracing.Tracer
+	o11y          observability.Observer
 	lookupCounter metrics.Int64Counter
 	latencyHist   metrics.Float64Histogram
 }
@@ -37,16 +37,18 @@ func NewEnvSecretSource(logger logging.Logger, tracerProvider tracing.TracerProv
 	}
 
 	return &envSecretSource{
-		logger:        logging.NewNamedLogger(logger, name),
-		tracer:        tracing.NewNamedTracer(tracerProvider, name),
+		o11y:          observability.NewObserver(name, logger, tracerProvider),
 		lookupCounter: lookupCounter,
 		latencyHist:   latencyHist,
 	}, nil
 }
 
 func (e *envSecretSource) GetSecret(ctx context.Context, name string) (string, error) {
-	_, span := e.tracer.StartSpan(ctx)
-	defer span.End()
+	ctx, op := e.o11y.Begin(ctx)
+	defer op.End()
+
+	// NOTE: only the secret's lookup key is observed, never its value.
+	op.Set("secret_key", name)
 
 	startTime := time.Now()
 	defer func() {
@@ -59,6 +61,6 @@ func (e *envSecretSource) GetSecret(ctx context.Context, name string) (string, e
 }
 
 func (e *envSecretSource) Close() error {
-	e.logger.Debug("closing env secret source")
+	e.o11y.Logger().Debug("closing env secret source")
 	return nil
 }

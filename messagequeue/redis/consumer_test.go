@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/messagequeue"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
@@ -60,15 +62,40 @@ func Test_redisConsumer_Consume(T *testing.T) {
 		consumer := buildRedisBackedConsumer(t, cfg, t.Name(), hf)
 		must.NotNil(t, consumer)
 
+		actual, isConsumer := consumer.(*redisConsumer)
+		must.True(t, isConsumer)
+
+		obs := observability.NewRecordingObserver()
+		actual.o11y = obs
+
 		stopChan := make(chan bool, 1)
 		errorsChan := make(chan error, 1)
-		go consumer.Consume(ctx, stopChan, errorsChan)
+		done := make(chan struct{})
+		go func() {
+			consumer.Consume(ctx, stopChan, errorsChan)
+			close(done)
+		}()
 
 		publisher := buildRedisBackedPublisher(t, cfg, t.Name())
 		must.NoError(t, publisher.Publish(ctx, []byte("blah")))
 
 		<-time.After(time.Second)
 		stopChan <- true
+		// Wait for Consume to return so its observations are visible here without
+		// racing the consume goroutine.
+		<-done
+
+		// The consume opened and ended an observed operation carrying the topic
+		// and the (encoded) payload length, with no recorded error on the happy
+		// path. The length reflects the on-the-wire payload, not the raw input.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey: t.Name(),
+		})
+		op.Observed(t, observability.ObservedKeyFunc(keys.LengthKey, func(v any) bool {
+			n, ok := v.(int)
+			return ok && n > 0
+		}))
+		test.SliceEmpty(t, op.Errors)
 	})
 
 	T.Run("with error handling message", func(t *testing.T) {
@@ -94,9 +121,19 @@ func Test_redisConsumer_Consume(T *testing.T) {
 		consumer := buildRedisBackedConsumer(t, cfg, t.Name(), hf)
 		must.NotNil(t, consumer)
 
+		actual, isConsumer := consumer.(*redisConsumer)
+		must.True(t, isConsumer)
+
+		obs := observability.NewRecordingObserver()
+		actual.o11y = obs
+
 		stopChan := make(chan bool, 1)
 		errorsChan := make(chan error, 1)
-		go consumer.Consume(ctx, stopChan, errorsChan)
+		done := make(chan struct{})
+		go func() {
+			consumer.Consume(ctx, stopChan, errorsChan)
+			close(done)
+		}()
 
 		publisher := buildRedisBackedPublisher(t, cfg, t.Name())
 		must.NoError(t, publisher.Publish(ctx, []byte("blah")))
@@ -109,10 +146,26 @@ func Test_redisConsumer_Consume(T *testing.T) {
 			t.Fatal("timed out waiting for handler error on errorsChan")
 		}
 
+		// Stop the consumer and wait for Consume to return — the error is sent on
+		// errorsChan before op.End(), so we must let the goroutine finish before
+		// asserting, both for End and to avoid racing its observations.
 		select {
 		case stopChan <- true:
 		case <-time.After(time.Second):
 		}
+		<-done
+
+		// The consume opened and ended an observed operation carrying the topic
+		// and the (encoded) payload length, and recorded the handler failure on it.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey: t.Name(),
+		})
+		op.Observed(t, observability.ObservedKeyFunc(keys.LengthKey, func(v any) bool {
+			n, ok := v.(int)
+			return ok && n > 0
+		}))
+		must.SliceLen(t, 1, op.Errors)
+		test.ErrorIs(t, op.Errors[0], anticipatedError)
 	})
 }
 

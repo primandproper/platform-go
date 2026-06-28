@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/circuitbreaking"
 	platformerrors "github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 	textsearch "github.com/primandproper/platform-go/search/text"
@@ -20,8 +21,7 @@ var (
 
 type (
 	indexManager[T any] struct {
-		logger         logging.Logger
-		tracer         tracing.Tracer
+		o11y           observability.Observer
 		circuitBreaker circuitbreaking.CircuitBreaker
 		client         *algolia.Index
 		DataType       *T
@@ -40,8 +40,7 @@ func ProvideIndexManager[T any](
 	}
 
 	im := &indexManager[T]{
-		tracer:         tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("search_%s", indexName)),
-		logger:         logging.NewNamedLogger(logger, indexName),
+		o11y:           observability.NewObserver(fmt.Sprintf("search_%s", indexName), logger, tracerProvider),
 		client:         algolia.NewClient(cfg.AppID, cfg.APIKey).InitIndex(indexName),
 		circuitBreaker: circuitBreaker,
 	}

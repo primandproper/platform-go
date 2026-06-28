@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/embeddings"
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/tracing"
 
@@ -22,6 +23,24 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+// newRecordingEmbedder builds an embedder with a RecordingObserver swapped in, so
+// a test can both drive GenerateEmbedding and assert which fields it observed.
+func newRecordingEmbedder(t *testing.T, cfg *Config) (*embedder, *observability.RecordingObserver) {
+	t.Helper()
+
+	emb, err := NewEmbedder(t.Context(), cfg, loggingnoop.NewLogger(), tracing.NewTracerForTest("test"))
+	must.NoError(t, err)
+	must.NotNil(t, emb)
+
+	e, ok := emb.(*embedder)
+	must.True(t, ok)
+
+	obs := observability.NewRecordingObserver()
+	e.o11y = obs
+
+	return e, obs
 }
 
 type errReader struct{}
@@ -93,10 +112,7 @@ func TestEmbedder_GenerateEmbedding(T *testing.T) {
 		}))
 		t.Cleanup(ts.Close)
 
-		emb, err := NewEmbedder(t.Context(), &Config{
-			BaseURL: ts.URL,
-		}, loggingnoop.NewLogger(), tracing.NewTracerForTest("test"))
-		must.NoError(t, err)
+		emb, obs := newRecordingEmbedder(t, &Config{BaseURL: ts.URL})
 
 		ctx := t.Context()
 		result, err := emb.GenerateEmbedding(ctx, &embeddings.Input{
@@ -111,6 +127,10 @@ func TestEmbedder_GenerateEmbedding(T *testing.T) {
 		test.EqOp(t, 4, result.Dimensions)
 		test.SliceLen(t, 4, result.Vector)
 		test.False(t, result.GeneratedAt.IsZero())
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"embedding.model": "nomic-embed-text",
+		})
 	})
 
 	T.Run("uses input model override", func(t *testing.T) {
@@ -150,10 +170,7 @@ func TestEmbedder_GenerateEmbedding(T *testing.T) {
 		}))
 		t.Cleanup(ts.Close)
 
-		emb, err := NewEmbedder(t.Context(), &Config{
-			BaseURL: ts.URL,
-		}, loggingnoop.NewLogger(), tracing.NewTracerForTest("test"))
-		must.NoError(t, err)
+		emb, obs := newRecordingEmbedder(t, &Config{BaseURL: ts.URL})
 
 		ctx := t.Context()
 		result, err := emb.GenerateEmbedding(ctx, &embeddings.Input{
@@ -162,6 +179,13 @@ func TestEmbedder_GenerateEmbedding(T *testing.T) {
 
 		must.Error(t, err)
 		must.Nil(t, result)
+
+		// Even though the call failed, the model must still have been observed,
+		// and the failure itself recorded on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			"embedding.model": "nomic-embed-text",
+		})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with malformed JSON response", func(t *testing.T) {
@@ -265,8 +289,7 @@ func TestEmbedder_GenerateEmbedding(T *testing.T) {
 
 		e := &embedder{
 			cfg:    &Config{BaseURL: string([]byte{0x7f})},
-			logger: loggingnoop.NewLogger(),
-			tracer: tracing.NewTracerForTest("test"),
+			o11y:   observability.NewObserverForTest("test"),
 			client: &http.Client{},
 		}
 
@@ -281,9 +304,8 @@ func TestEmbedder_GenerateEmbedding(T *testing.T) {
 
 		body := `{"embeddings":[[0.1,0.2]]}`
 		e := &embedder{
-			cfg:    &Config{BaseURL: "http://localhost"},
-			logger: loggingnoop.NewLogger(),
-			tracer: tracing.NewTracerForTest("test"),
+			cfg:  &Config{BaseURL: "http://localhost"},
+			o11y: observability.NewObserverForTest("test"),
 			client: &http.Client{
 				Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 					return &http.Response{
@@ -304,9 +326,8 @@ func TestEmbedder_GenerateEmbedding(T *testing.T) {
 		t.Parallel()
 
 		e := &embedder{
-			cfg:    &Config{BaseURL: "http://localhost"},
-			logger: loggingnoop.NewLogger(),
-			tracer: tracing.NewTracerForTest("test"),
+			cfg:  &Config{BaseURL: "http://localhost"},
+			o11y: observability.NewObserverForTest("test"),
 			client: &http.Client{
 				Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 					return &http.Response{

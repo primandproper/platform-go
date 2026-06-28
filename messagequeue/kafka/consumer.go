@@ -7,6 +7,7 @@ import (
 
 	"github.com/primandproper/platform-go/messagequeue"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -22,8 +23,7 @@ type (
 	}
 
 	kafkaConsumer struct {
-		tracer          tracing.Tracer
-		logger          logging.Logger
+		o11y            observability.Observer
 		consumedCounter metrics.Int64Counter
 		handlerFunc     func(context.Context, []byte) error
 		reader          kafkaReader
@@ -49,8 +49,7 @@ func provideKafkaConsumer(logger logging.Logger, tracerProvider tracing.TracerPr
 	return &kafkaConsumer{
 		handlerFunc:     handlerFunc,
 		reader:          reader,
-		logger:          logging.EnsureLogger(logger),
-		tracer:          tracing.NewNamedTracer(tracerProvider, fmt.Sprintf("%s_consumer", topic)),
+		o11y:            observability.NewObserver(fmt.Sprintf("%s_consumer", topic), logger, tracerProvider),
 		consumedCounter: consumedCounter,
 	}, nil
 }
@@ -81,19 +80,24 @@ func (c *kafkaConsumer) Consume(ctx context.Context, stopChan chan bool, errs ch
 			continue
 		}
 
-		msgCtx, span := c.tracer.StartCustomSpan(ctx, "consume_message")
+		msgCtx, op := c.o11y.BeginCustom(ctx, "consume_message")
+		op.Set(keys.TopicKey, msg.Topic).Set(keys.LengthKey, len(msg.Value))
+		op.SpanOnly("partition", msg.Partition).SpanOnly("offset", msg.Offset)
 		c.consumedCounter.Add(msgCtx, 1)
 
 		if err = c.handlerFunc(msgCtx, msg.Value); err != nil {
-			observability.AcknowledgeError(err, c.logger, span, "handling message")
+			op.Acknowledge(err, "handling message")
 			if errs != nil {
 				errs <- err
 			}
 		} else if err = c.reader.CommitMessages(msgCtx, msg); err != nil {
-			observability.AcknowledgeError(err, c.logger, span, "committing message")
+			op.Acknowledge(err, "committing message")
+			if errs != nil {
+				errs <- err
+			}
 		}
 
-		span.End()
+		op.End()
 	}
 }
 

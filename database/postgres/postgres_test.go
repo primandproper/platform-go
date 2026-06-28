@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/database"
+	"github.com/primandproper/platform-go/observability"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
-	"github.com/primandproper/platform-go/observability/tracing"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -75,9 +75,8 @@ func buildTestClient(t *testing.T) (*Client, sqlmock.Sqlmock) {
 			maxPingAttempts: 1,
 			pingWaitPeriod:  time.Second,
 		},
-		logger:   loggingnoop.NewLogger(),
+		o11y:     observability.NewObserverForTest("test"),
 		timeFunc: defaultTimeFunc,
-		tracer:   tracing.NewTracerForTest("test"),
 	}
 
 	return c, sqlMock
@@ -128,8 +127,7 @@ func TestQuerier_IsReady(T *testing.T) {
 			readDB:  readDB,
 			writeDB: writeDB,
 			config:  &testClientConfig{pingWaitPeriod: time.Millisecond, maxPingAttempts: 1},
-			logger:  loggingnoop.NewLogger(),
-			tracer:  tracing.NewTracerForTest("test"),
+			o11y:    observability.NewObserverForTest("test"),
 		}
 
 		readMock.ExpectPing().WillDelayFor(0)
@@ -283,6 +281,9 @@ func TestQuerier_rollbackTransaction(T *testing.T) {
 		ctx := t.Context()
 		c, db := buildTestClient(t)
 
+		obs := observability.NewRecordingObserver()
+		c.o11y = obs
+
 		db.ExpectBegin()
 		db.ExpectRollback().WillReturnError(errors.New("blah"))
 
@@ -290,6 +291,10 @@ func TestQuerier_rollbackTransaction(T *testing.T) {
 		must.NoError(t, err)
 
 		c.RollbackTransaction(ctx, tx)
+
+		// The rollback failed, so the operation must have recorded the error.
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceLen(t, 1, op.Errors)
 	})
 
 	T.Run("with successful rollback", func(t *testing.T) {
@@ -298,6 +303,9 @@ func TestQuerier_rollbackTransaction(T *testing.T) {
 		ctx := t.Context()
 		c, db := buildTestClient(t)
 
+		obs := observability.NewRecordingObserver()
+		c.o11y = obs
+
 		db.ExpectBegin()
 		db.ExpectRollback()
 
@@ -305,6 +313,9 @@ func TestQuerier_rollbackTransaction(T *testing.T) {
 		must.NoError(t, err)
 
 		c.RollbackTransaction(ctx, tx)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceLen(t, 0, op.Errors)
 	})
 }
 
@@ -357,8 +368,7 @@ func TestClient_Close(T *testing.T) {
 		c := &Client{
 			readDB:  readDB,
 			writeDB: writeDB,
-			logger:  loggingnoop.NewLogger(),
-			tracer:  tracing.NewTracerForTest("test"),
+			o11y:    observability.NewObserverForTest("test"),
 		}
 
 		readMock.ExpectClose()
@@ -389,8 +399,7 @@ func TestClient_Close(T *testing.T) {
 		c := &Client{
 			readDB:  readDB,
 			writeDB: writeDB,
-			logger:  loggingnoop.NewLogger(),
-			tracer:  tracing.NewTracerForTest("test"),
+			o11y:    observability.NewObserverForTest("test"),
 		}
 
 		readMock.ExpectClose()

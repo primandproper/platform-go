@@ -8,7 +8,13 @@ import (
 
 	"github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/eventstream"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/tracing"
+)
+
+const (
+	name = "sse_stream"
 )
 
 var (
@@ -18,13 +24,13 @@ var (
 
 // Upgrader upgrades HTTP connections to SSE event streams.
 type Upgrader struct {
-	tracer tracing.Tracer
+	o11y observability.Observer
 }
 
 // NewUpgrader creates a new SSE Upgrader.
 func NewUpgrader(tracerProvider tracing.TracerProvider) *Upgrader {
 	return &Upgrader{
-		tracer: tracing.NewNamedTracer(tracerProvider, "sse_stream"),
+		o11y: observability.NewObserver(name, nil, tracerProvider),
 	}
 }
 
@@ -47,12 +53,12 @@ func (u *Upgrader) UpgradeToEventStream(w http.ResponseWriter, r *http.Request) 
 		flusher: flusher,
 		cancel:  cancel,
 		done:    ctx.Done(),
-		tracer:  u.tracer,
+		o11y:    u.o11y,
 	}, nil
 }
 
 type sseStream struct {
-	tracer  tracing.Tracer
+	o11y    observability.Observer
 	w       http.ResponseWriter
 	flusher http.Flusher
 	cancel  context.CancelFunc
@@ -62,8 +68,10 @@ type sseStream struct {
 
 // Send writes an event to the SSE stream in standard SSE format.
 func (s *sseStream) Send(ctx context.Context, event *eventstream.Event) error {
-	_, span := s.tracer.StartCustomSpan(ctx, "sse_send")
-	defer span.End()
+	_, op := s.o11y.BeginCustom(ctx, "sse_send")
+	defer op.End()
+
+	op.Set("event.type", event.Type).Set(keys.LengthKey, len(event.Payload))
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -76,12 +84,12 @@ func (s *sseStream) Send(ctx context.Context, event *eventstream.Event) error {
 
 	if event.Type != "" {
 		if _, err := fmt.Fprintf(s.w, "event: %s\n", event.Type); err != nil {
-			return errors.Wrap(err, "writing event type")
+			return op.Error(err, "writing event type")
 		}
 	}
 
 	if _, err := fmt.Fprintf(s.w, "data: %s\n\n", event.Payload); err != nil {
-		return errors.Wrap(err, "writing event data")
+		return op.Error(err, "writing event data")
 	}
 
 	s.flusher.Flush()

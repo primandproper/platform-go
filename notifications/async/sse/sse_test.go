@@ -11,12 +11,46 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/notifications/async"
+	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// newRecordingNotifier builds a Notifier with a RecordingObserver swapped in, so a
+// test can both drive a method and assert which operations it observed.
+func newRecordingNotifier(t *testing.T) (*Notifier, *observability.RecordingObserver) {
+	t.Helper()
+
+	n, err := NewNotifier(&Config{}, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+	must.NoError(t, err)
+	must.NotNil(t, n)
+
+	obs := observability.NewRecordingObserver()
+	n.o11y = obs
+
+	return n, obs
+}
+
+// nonFlushingResponseWriter is an http.ResponseWriter that deliberately does not
+// implement http.Flusher, so the SSE upgrade fails.
+type nonFlushingResponseWriter struct {
+	header http.Header
+}
+
+func (w *nonFlushingResponseWriter) Header() http.Header {
+	if w.header == nil {
+		w.header = http.Header{}
+	}
+	return w.header
+}
+
+func (w *nonFlushingResponseWriter) Write(b []byte) (int, error) { return len(b), nil }
+
+func (w *nonFlushingResponseWriter) WriteHeader(int) {}
 
 func TestNewNotifier(T *testing.T) {
 	T.Parallel()
@@ -44,14 +78,24 @@ func TestNotifier_Publish(T *testing.T) {
 	T.Run("no connected clients", func(t *testing.T) {
 		t.Parallel()
 
-		n, err := NewNotifier(&Config{}, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
-		must.NoError(t, err)
+		n, obs := newRecordingNotifier(t)
 
-		err = n.Publish(context.Background(), "test-channel", &async.Event{
+		event := &async.Event{
 			Type: "test",
 			Data: json.RawMessage(`{"key":"value"}`),
-		})
+		}
+
+		err := n.Publish(context.Background(), "test-channel", event)
 		test.NoError(t, err)
+
+		// Publish observes the channel, event type, and payload length.
+		must.SliceLen(t, 1, obs.Operations)
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey:  "test-channel",
+			"event.type":   event.Type,
+			keys.LengthKey: len(event.Data),
+		})
+		test.True(t, op.Ended)
 	})
 
 	T.Run("with connected client", func(t *testing.T) {
@@ -100,6 +144,33 @@ func TestNotifier_Publish(T *testing.T) {
 
 		test.StrContains(t, eventLine, "greeting")
 		test.StrContains(t, dataLine, `{"hello":"world"}`)
+	})
+}
+
+func TestNotifier_AcceptConnection(T *testing.T) {
+	T.Parallel()
+
+	T.Run("with failing upgrade", func(t *testing.T) {
+		t.Parallel()
+
+		n, obs := newRecordingNotifier(t)
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://example.com", http.NoBody)
+		must.NoError(t, err)
+
+		// A ResponseWriter that does not implement http.Flusher fails the upgrade.
+		err = n.AcceptConnection(&nonFlushingResponseWriter{}, req, "test-channel", "member-1")
+		must.Error(t, err)
+
+		// The channel and member are observed before the upgrade is attempted,
+		// and the failure must still be recorded on an ended operation.
+		must.SliceLen(t, 1, obs.Operations)
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey: "test-channel",
+			"member_id":   "member-1",
+		})
+		test.True(t, op.Ended)
+		must.SliceLen(t, 1, op.Errors)
 	})
 }
 
