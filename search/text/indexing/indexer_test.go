@@ -464,7 +464,7 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 		must.NoError(t, err)
 
 		err = scheduler.IndexTypes(ctx)
-		test.NoError(t, err) // Partial failures don't cause the method to return an error
+		test.ErrorContains(t, err, "publish failed") // failed publishes are aggregated and returned
 
 		publishedIDs := collectPublishedRowIDs(t, publisher.PublishCalls())
 		test.SliceContainsAll(t, publishedIDs, []string{"id1", "id2", "id3"})
@@ -516,7 +516,7 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 		must.NoError(t, err)
 
 		err = scheduler.IndexTypes(ctx)
-		test.NoError(t, err) // Even all failures don't cause the method to return an error
+		test.ErrorContains(t, err, "publish failed") // failed publishes are aggregated and returned
 
 		test.SliceLen(t, 2, publisher.PublishCalls())
 

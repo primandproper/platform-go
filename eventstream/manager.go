@@ -95,6 +95,10 @@ func (m *StreamManager[S]) GetGroupStreams(ctx context.Context, groupID string) 
 }
 
 // BroadcastToGroup sends an event to all streams in a group.
+//
+// TODO: this is intentionally fire-and-forget; a single stream's Send failure
+// shouldn't halt the broadcast. Revisit whether per-stream failures should be
+// aggregated and returned (as SendToMember returns its error).
 func (m *StreamManager[S]) BroadcastToGroup(ctx context.Context, groupID string, event *Event) {
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()
@@ -112,6 +116,10 @@ func (m *StreamManager[S]) BroadcastToGroup(ctx context.Context, groupID string,
 }
 
 // BroadcastToGroupFiltered sends an event to streams in a group for which includeFunc returns true.
+//
+// TODO: this is intentionally fire-and-forget; a single stream's Send failure
+// shouldn't halt the broadcast. Revisit whether per-stream failures should be
+// aggregated and returned (as SendToMember returns its error).
 func (m *StreamManager[S]) BroadcastToGroupFiltered(ctx context.Context, groupID string, event *Event, includeFunc func(memberID string) bool) {
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()

@@ -154,7 +154,7 @@ func (p *pubSubPublisher) Publish(ctx context.Context, data any) error {
 	// The Get method blocks until a server-generated ID or an error is returned for the published message.
 	if _, err := result.Get(ctx); err != nil {
 		p.publishErrCounter.Add(ctx, 1)
-		op.Acknowledge(err, "publishing pubsub message")
+		return op.Error(err, "publishing pubsub message")
 	}
 
 	p.publishedCounter.Add(ctx, 1)

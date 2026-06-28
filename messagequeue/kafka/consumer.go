@@ -89,6 +89,9 @@ func (c *kafkaConsumer) Consume(ctx context.Context, stopChan chan bool, errs ch
 			}
 		} else if err = c.reader.CommitMessages(msgCtx, msg); err != nil {
 			op.Acknowledge(err, "committing message")
+			if errs != nil {
+				errs <- err
+			}
 		}
 
 		op.End()

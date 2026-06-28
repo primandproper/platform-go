@@ -133,5 +133,5 @@ func (i *IndexScheduler) IndexTypes(ctx context.Context) error {
 		},
 	))
 
-	return nil
+	return errs.ErrorOrNil()
 }
