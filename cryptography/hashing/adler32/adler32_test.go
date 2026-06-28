@@ -16,6 +16,6 @@ func Test_adler32Hasher_Hash(T *testing.T) {
 
 		result, err := hasher.Hash(t.Name())
 		test.NoError(t, err)
-		test.EqOp(t, "546573745f61646c657233324861736865725f486173682f7374616e6461726400000001", result)
+		test.EqOp(t, "c7060c2b", result)
 	})
 }

@@ -18,5 +18,10 @@ func NewCRC64Hasher() hashing.Hasher {
 }
 
 func (s *crc64Hasher) Hash(content string) (string, error) {
-	return hex.EncodeToString(crc64.New(crc64.MakeTable(crc64.ISO)).Sum([]byte(content))), nil
+	h := crc64.New(crc64.MakeTable(crc64.ISO))
+	if _, err := h.Write([]byte(content)); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

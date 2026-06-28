@@ -16,6 +16,6 @@ func Test_crc64Hasher_Hash(T *testing.T) {
 
 		result, err := hasher.Hash(t.Name())
 		test.NoError(t, err)
-		test.EqOp(t, "546573745f63726336344861736865725f486173682f7374616e646172640000000000000000", result)
+		test.EqOp(t, "cee81309a5f73f5c", result)
 	})
 }
