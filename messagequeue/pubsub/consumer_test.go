@@ -278,7 +278,11 @@ func TestPubSub_Container(T *testing.T) {
 		stopChan <- true
 		// Wait for Consume to return so the background message callback (and its
 		// deferred op.End) has completed before reading the recorded observations.
-		<-done
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out waiting for Consume to return after stop signal")
+		}
 
 		select {
 		case err = <-errChan:
@@ -340,7 +344,11 @@ func TestPubSub_Container(T *testing.T) {
 		stopChan <- true
 		// Wait for Consume to return so the background message callback (and its
 		// deferred op.End) has completed before reading the recorded observations.
-		<-done
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out waiting for Consume to return after stop signal")
+		}
 
 		op := obs.ObservedOperationWithData(t, map[string]any{
 			keys.TopicKey:  topicName,

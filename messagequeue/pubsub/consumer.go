@@ -95,7 +95,11 @@ func (c *pubSubConsumer) Consume(ctx context.Context, stopChan chan bool, errors
 		c.consumedCounter.Add(msgCtx, 1)
 		if handleErr := c.handlerFunc(msgCtx, m.Data); handleErr != nil {
 			op.Acknowledge(handleErr, "handling pubsub message")
-			errors <- handleErr
+			m.Nack()
+			select {
+			case errors <- handleErr:
+			case <-msgCtx.Done():
+			}
 		} else {
 			m.Ack()
 		}

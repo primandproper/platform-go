@@ -62,8 +62,8 @@ func Test_redisConsumer_Consume(T *testing.T) {
 		consumer := buildRedisBackedConsumer(t, cfg, t.Name(), hf)
 		must.NotNil(t, consumer)
 
-		actual, ok := consumer.(*redisConsumer)
-		must.True(t, ok)
+		actual, isConsumer := consumer.(*redisConsumer)
+		must.True(t, isConsumer)
 
 		obs := observability.NewRecordingObserver()
 		actual.o11y = obs
@@ -121,8 +121,8 @@ func Test_redisConsumer_Consume(T *testing.T) {
 		consumer := buildRedisBackedConsumer(t, cfg, t.Name(), hf)
 		must.NotNil(t, consumer)
 
-		actual, ok := consumer.(*redisConsumer)
-		must.True(t, ok)
+		actual, isConsumer := consumer.(*redisConsumer)
+		must.True(t, isConsumer)
 
 		obs := observability.NewRecordingObserver()
 		actual.o11y = obs
