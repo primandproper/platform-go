@@ -362,10 +362,11 @@ func TestWSStream_Send(T *testing.T) {
 			Payload: json.RawMessage(`{"msg":"hello"}`),
 		}))
 
-		// Send opens (and ends) a span without attaching values, so assert the
-		// operation ran and completed.
-		must.SliceLen(t, 1, obs.Operations)
-		test.True(t, obs.Operations[0].Ended)
+		// Send attaches the event type to its operation before writing.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			"event.type": "test",
+		})
+		test.True(t, op.Ended)
 	})
 }
 

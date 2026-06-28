@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	"github.com/primandproper/platform-go/observability/metrics"
 	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
@@ -238,8 +239,12 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 		test.True(t, handlerCalled)
 		test.EqOp(t, 1, reader.commitCalls)
 
-		// The message was handled and committed, so the operation should have ended cleanly.
-		op := obs.Operations[0]
+		// The message's topic and payload length must have been observed, and the
+		// operation should have ended cleanly.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey:  msg.Topic,
+			keys.LengthKey: len(msg.Value),
+		})
 		test.True(t, op.Ended)
 		test.SliceEmpty(t, op.Errors)
 	})
@@ -284,8 +289,12 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 		test.Error(t, receivedErr)
 		test.ErrorIs(t, receivedErr, handlerErr)
 
-		// The handler failure must have been acknowledged on the operation.
-		op := obs.Operations[0]
+		// The topic and payload length must still have been observed, and the
+		// handler failure acknowledged on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey:  msg.Topic,
+			keys.LengthKey: len(msg.Value),
+		})
 		test.True(t, op.Ended)
 		must.SliceLen(t, 1, op.Errors)
 	})
@@ -362,8 +371,12 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 		c.Consume(ctx, stopChan, errs)
 		test.EqOp(t, 1, reader.commitCalls)
 
-		// The commit failure must have been acknowledged on the operation.
-		op := obs.Operations[0]
+		// The topic and payload length must still have been observed, and the
+		// commit failure acknowledged on the operation.
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey:  msg.Topic,
+			keys.LengthKey: len(msg.Value),
+		})
 		test.True(t, op.Ended)
 		must.SliceLen(t, 1, op.Errors)
 	})

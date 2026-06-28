@@ -12,6 +12,7 @@ import (
 
 	"github.com/primandproper/platform-go/notifications/async"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
@@ -79,15 +80,22 @@ func TestNotifier_Publish(T *testing.T) {
 
 		n, obs := newRecordingNotifier(t)
 
-		err := n.Publish(context.Background(), "test-channel", &async.Event{
+		event := &async.Event{
 			Type: "test",
 			Data: json.RawMessage(`{"key":"value"}`),
-		})
+		}
+
+		err := n.Publish(context.Background(), "test-channel", event)
 		test.NoError(t, err)
 
-		// Publish opens (and ends) an operation even with no values attached.
+		// Publish observes the channel, event type, and payload length.
 		must.SliceLen(t, 1, obs.Operations)
-		test.True(t, obs.Operations[0].Ended)
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey:  "test-channel",
+			"event.type":   event.Type,
+			keys.LengthKey: len(event.Data),
+		})
+		test.True(t, op.Ended)
 	})
 
 	T.Run("with connected client", func(t *testing.T) {
@@ -154,9 +162,13 @@ func TestNotifier_AcceptConnection(T *testing.T) {
 		err = n.AcceptConnection(&nonFlushingResponseWriter{}, req, "test-channel", "member-1")
 		must.Error(t, err)
 
-		// The failure must still be observed on an ended operation.
+		// The channel and member are observed before the upgrade is attempted,
+		// and the failure must still be recorded on an ended operation.
 		must.SliceLen(t, 1, obs.Operations)
-		op := obs.Operations[0]
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.TopicKey: "test-channel",
+			"member_id":   "member-1",
+		})
 		test.True(t, op.Ended)
 		must.SliceLen(t, 1, op.Errors)
 	})

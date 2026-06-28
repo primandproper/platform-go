@@ -44,8 +44,15 @@ func TestArgon2Authenticator_HashPassword_observed(T *testing.T) {
 		must.NoError(t, err)
 		must.NotEq(t, "", actual)
 
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			"argon2.memory":      argonParams.Memory,
+			"argon2.iterations":  argonParams.Iterations,
+			"argon2.parallelism": argonParams.Parallelism,
+			"argon2.key_length":  argonParams.KeyLength,
+		})
+
 		must.SliceLen(t, 1, obs.Operations)
-		must.True(t, obs.Operations[0].Ended)
+		must.True(t, op.Ended)
 	})
 }
 
@@ -61,8 +68,15 @@ func TestArgon2Authenticator_PasswordMatches_observed(T *testing.T) {
 		must.NoError(t, err)
 		must.True(t, matches)
 
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			"argon2.memory":      argonParams.Memory,
+			"argon2.iterations":  argonParams.Iterations,
+			"argon2.parallelism": argonParams.Parallelism,
+			"argon2.key_length":  argonParams.KeyLength,
+		})
+
 		must.SliceLen(t, 1, obs.Operations)
-		must.True(t, obs.Operations[0].Ended)
+		must.True(t, op.Ended)
 	})
 
 	T.Run("malformed hash returns error and ends operation", func(t *testing.T) {
@@ -74,7 +88,14 @@ func TestArgon2Authenticator_PasswordMatches_observed(T *testing.T) {
 		must.Error(t, err)
 		must.False(t, matches)
 
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			"argon2.memory":      argonParams.Memory,
+			"argon2.iterations":  argonParams.Iterations,
+			"argon2.parallelism": argonParams.Parallelism,
+			"argon2.key_length":  argonParams.KeyLength,
+		})
+
 		must.SliceLen(t, 1, obs.Operations)
-		must.True(t, obs.Operations[0].Ended)
+		must.True(t, op.Ended)
 	})
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/shoenig/test"
@@ -103,6 +104,10 @@ func Test_manager_Encode(T *testing.T) {
 		// Encode opens (and ends) exactly one observed operation.
 		must.SliceLen(t, 1, obs.Operations)
 		test.True(t, obs.Operations[0].Ended)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			keys.NameKey: "test",
+		})
 	})
 
 	T.Run("with unencodable value", func(t *testing.T) {
@@ -139,10 +144,13 @@ func Test_manager_Decode(T *testing.T) {
 		must.NoError(t, m.Decode(ctx, "test", encoded, &actual))
 		test.EqOp(t, actual.Name, t.Name())
 
-		// Both Encode and Decode opened (and ended) an observed operation.
+		// Both Encode and Decode opened (and ended) an observed operation, each
+		// attaching the cookie name.
 		must.SliceLen(t, 2, obs.Operations)
 		test.True(t, obs.Operations[0].Ended)
 		test.True(t, obs.Operations[1].Ended)
+		obs.Operations[0].Observed(t, observability.ObservedKeyValue(keys.NameKey, "test"))
+		obs.Operations[1].Observed(t, observability.ObservedKeyValue(keys.NameKey, "test"))
 	})
 
 	T.Run("with invalid encoded value", func(t *testing.T) {

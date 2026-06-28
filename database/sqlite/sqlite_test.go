@@ -94,10 +94,18 @@ func TestQuerier_IsReady(T *testing.T) {
 		c, db := buildTestClient(t)
 		c.config = &testClientConfig{pingWaitPeriod: time.Second, maxPingAttempts: 1}
 
+		obs := observability.NewRecordingObserver()
+		c.o11y = obs
+
 		// same DB for read/write, so only one ping
 		db.ExpectPing().WillDelayFor(0)
 
 		test.True(t, c.IsReady(ctx))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"db.ping.max_attempts": 1,
+			"db.ping.wait_period":  time.Second,
+		})
 	})
 
 	T.Run("with read DB ping error", func(t *testing.T) {
@@ -107,9 +115,17 @@ func TestQuerier_IsReady(T *testing.T) {
 		c, db := buildTestClient(t)
 		c.config = &testClientConfig{pingWaitPeriod: time.Millisecond, maxPingAttempts: 1}
 
+		obs := observability.NewRecordingObserver()
+		c.o11y = obs
+
 		db.ExpectPing().WillReturnError(errors.New("blah"))
 
 		test.False(t, c.IsReady(ctx))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"db.ping.max_attempts": 1,
+			"db.ping.wait_period":  time.Millisecond,
+		})
 	})
 
 	T.Run("with write DB ping error", func(t *testing.T) {
@@ -123,17 +139,24 @@ func TestQuerier_IsReady(T *testing.T) {
 		writeDB, writeMock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
 		must.NoError(t, err)
 
+		obs := observability.NewRecordingObserver()
+
 		c := &Client{
 			readDB:  readDB,
 			writeDB: writeDB,
 			config:  &testClientConfig{pingWaitPeriod: time.Millisecond, maxPingAttempts: 1},
-			o11y:    observability.NewObserverForTest("test"),
+			o11y:    obs,
 		}
 
 		readMock.ExpectPing().WillDelayFor(0)
 		writeMock.ExpectPing().WillReturnError(errors.New("blah"))
 
 		test.False(t, c.IsReady(ctx))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"db.ping.max_attempts": 1,
+			"db.ping.wait_period":  time.Millisecond,
+		})
 	})
 
 	T.Run("exhausting all available queries", func(t *testing.T) {
@@ -145,9 +168,17 @@ func TestQuerier_IsReady(T *testing.T) {
 		c, db := buildTestClient(t)
 		c.config = &testClientConfig{pingWaitPeriod: time.Millisecond, maxPingAttempts: 1}
 
+		obs := observability.NewRecordingObserver()
+		c.o11y = obs
+
 		db.ExpectPing().WillReturnError(errors.New("blah"))
 
 		test.False(t, c.IsReady(ctx))
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"db.ping.max_attempts": 1,
+			"db.ping.wait_period":  time.Millisecond,
+		})
 	})
 }
 
@@ -303,6 +334,9 @@ func TestQuerier_rollbackTransaction(T *testing.T) {
 		ctx := t.Context()
 		c, db := buildTestClient(t)
 
+		obs := observability.NewRecordingObserver()
+		c.o11y = obs
+
 		db.ExpectBegin()
 		db.ExpectRollback()
 
@@ -310,6 +344,9 @@ func TestQuerier_rollbackTransaction(T *testing.T) {
 		must.NoError(t, err)
 
 		c.RollbackTransaction(ctx, tx)
+
+		must.SliceLen(t, 1, obs.Operations)
+		test.SliceEmpty(t, obs.Operations[0].Errors)
 	})
 }
 
