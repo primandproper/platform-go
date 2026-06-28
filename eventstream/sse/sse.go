@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/eventstream"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/tracing"
 )
 
@@ -69,6 +70,8 @@ type sseStream struct {
 func (s *sseStream) Send(ctx context.Context, event *eventstream.Event) error {
 	_, op := s.o11y.BeginCustom(ctx, "sse_send")
 	defer op.End()
+
+	op.Set("event.type", event.Type).Set(keys.LengthKey, len(event.Payload))
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

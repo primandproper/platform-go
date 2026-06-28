@@ -87,7 +87,7 @@ func (c *EventReporter) AddUser(ctx context.Context, userID string, properties m
 	ctx, op := c.o11y.Begin(ctx)
 	defer op.End()
 
-	op.Set(keys.UserIDKey, userID)
+	op.Set(keys.UserIDKey, userID).Set(keys.LengthKey, len(properties))
 
 	if c.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -118,7 +118,7 @@ func (c *EventReporter) EventOccurred(ctx context.Context, event, userID string,
 	ctx, op := c.o11y.Begin(ctx)
 	defer op.End()
 
-	op.Set(keys.UserIDKey, userID).Set("event", event)
+	op.Set(keys.UserIDKey, userID).Set("event", event).Set(keys.LengthKey, len(properties))
 
 	if c.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -150,7 +150,7 @@ func (c *EventReporter) EventOccurredAnonymous(ctx context.Context, event, anony
 	ctx, op := c.o11y.Begin(ctx)
 	defer op.End()
 
-	op.Set("anonymous_id", anonymousID).Set("event", event)
+	op.Set("anonymous_id", anonymousID).Set("event", event).Set(keys.LengthKey, len(properties))
 
 	if c.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken

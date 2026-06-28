@@ -229,6 +229,7 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 	defer op.End()
 
 	op.Set(keys.IndexNameKey, i.indexName)
+	op.Set(keys.LengthKey, len(vectors))
 
 	if len(vectors) == 0 {
 		return nil
@@ -302,6 +303,7 @@ func (i *indexManager[T]) Delete(ctx context.Context, ids ...string) error {
 	defer op.End()
 
 	op.Set(keys.IndexNameKey, i.indexName)
+	op.Set(keys.LengthKey, len(ids))
 
 	if len(ids) == 0 {
 		return nil
@@ -371,6 +373,7 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 	if req.TopK <= 0 {
 		req.TopK = 10
 	}
+	op.Set(keys.FilterLimitKey, req.TopK)
 	if i.circuitBreaker.CannotProceed() {
 		return nil, circuitbreaking.ErrCircuitBroken
 	}
@@ -435,6 +438,8 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 		i.circuitBreaker.Failed()
 		return nil, op.Error(rowsErr, "iterating pgvector rows")
 	}
+
+	op.Set(keys.LengthKey, len(results))
 
 	i.queryCounter.Add(ctx, 1)
 	i.circuitBreaker.Succeeded()

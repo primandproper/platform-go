@@ -72,6 +72,7 @@ func NewInMemoryCache[T any](logger logging.Logger, tracerProvider tracing.Trace
 func (i *inMemoryCacheImpl[T]) Get(ctx context.Context, key string) (*T, error) {
 	ctx, op := i.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("name", key)
 
 	startTime := time.Now()
 	defer func() {
@@ -94,6 +95,7 @@ func (i *inMemoryCacheImpl[T]) Get(ctx context.Context, key string) (*T, error) 
 func (i *inMemoryCacheImpl[T]) Set(ctx context.Context, key string, value *T) error {
 	ctx, op := i.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("name", key)
 
 	startTime := time.Now()
 	defer func() {
@@ -112,6 +114,7 @@ func (i *inMemoryCacheImpl[T]) Set(ctx context.Context, key string, value *T) er
 func (i *inMemoryCacheImpl[T]) Delete(ctx context.Context, key string) error {
 	ctx, op := i.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("name", key)
 
 	startTime := time.Now()
 	defer func() {
@@ -130,6 +133,7 @@ func (i *inMemoryCacheImpl[T]) Delete(ctx context.Context, key string) error {
 func (i *inMemoryCacheImpl[T]) GetMany(ctx context.Context, keys []string) (map[string]*T, error) {
 	ctx, op := i.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("length", len(keys))
 
 	startTime := time.Now()
 	defer func() {
@@ -156,6 +160,7 @@ func (i *inMemoryCacheImpl[T]) GetMany(ctx context.Context, keys []string) (map[
 func (i *inMemoryCacheImpl[T]) SetMany(ctx context.Context, items map[string]*T) error {
 	ctx, op := i.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("length", len(items))
 
 	startTime := time.Now()
 	defer func() {

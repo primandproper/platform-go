@@ -8,6 +8,7 @@ import (
 	"image/png"
 
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 
@@ -64,6 +65,8 @@ func (s *builder) BuildQRCode(ctx context.Context, username, twoFactorSecret str
 		twoFactorSecret,
 		s.totpIssuer,
 	)
+
+	op.Set(keys.UsernameKey, username).Set(keys.LengthKey, len(otpString))
 
 	// encode two factor secret as authenticator-friendly QR code
 	qrCode, err := s.qrEncode(otpString, qr.L, qr.Auto)

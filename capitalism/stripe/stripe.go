@@ -63,12 +63,18 @@ func (s *stripePaymentManager) HandleEventWebhook(req *http.Request) error {
 		return err
 	}
 
+	op.Set("stripe.event_id", event.ID).Set("stripe.event_type", event.Type)
+
 	switch event.Type {
 	case stripe.EventTypePaymentIntentSucceeded:
 		var paymentIntent stripe.PaymentIntent
 		if decodeErr := s.encoderDecoder.DecodeBytes(ctx, event.Data.Raw, &paymentIntent); decodeErr != nil {
 			return decodeErr
 		}
+
+		op.Set("stripe.payment_intent_id", paymentIntent.ID).
+			Set("stripe.amount", paymentIntent.Amount).
+			Set("stripe.currency", paymentIntent.Currency)
 	default:
 		op.Set("event_type", event.Type)
 		op.Logger().WithRequest(req).Info("Unhandled event type")

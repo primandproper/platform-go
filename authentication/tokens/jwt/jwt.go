@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/authentication/tokens"
 	"github.com/primandproper/platform-go/identifiers"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 
@@ -51,6 +52,12 @@ func (s *signer) IssueToken(ctx context.Context, subject string, expiry time.Dur
 	}
 
 	jti = identifiers.New()
+
+	op.Set(keys.UserIDKey, subject).
+		Set("token.issuer", s.issuer).
+		Set("token.audience", s.audience).
+		Set("token.jti", jti).
+		Set("token.ttl", expiry.String())
 
 	claims := jwt.MapClaims{
 		"exp": jwt.NewNumericDate(time.Now().Add(expiry).UTC()),           /* expiration time */

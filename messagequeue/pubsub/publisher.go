@@ -11,6 +11,7 @@ import (
 	"github.com/primandproper/platform-go/encoding"
 	"github.com/primandproper/platform-go/messagequeue"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -31,6 +32,7 @@ type (
 		publishedCounter  metrics.Int64Counter
 		publishErrCounter metrics.Int64Counter
 		latencyHist       metrics.Float64Histogram
+		topic             string
 	}
 )
 
@@ -57,6 +59,7 @@ func buildPubSubPublisher(logger logging.Logger, pubsubClient *pubsub.Publisher,
 		encoder:           encoding.ProvideClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
 		o11y:              observability.NewObserver(fmt.Sprintf("%s_publisher", topic), logger, tracerProvider),
 		publisher:         pubsubClient,
+		topic:             topic,
 		publishedCounter:  publishedCounter,
 		publishErrCounter: publishErrCounter,
 		latencyHist:       latencyHist,
@@ -146,16 +149,21 @@ func (p *pubSubPublisher) Publish(ctx context.Context, data any) error {
 		return observability.PrepareError(err, op.Span(), "encoding topic message")
 	}
 
+	op.Set(keys.TopicKey, p.topic).Set(keys.LengthKey, b.Len())
+
 	msg := &pubsub.Message{Data: b.Bytes()}
 	result := p.publisher.Publish(ctx, msg)
 
 	<-result.Ready()
 
 	// The Get method blocks until a server-generated ID or an error is returned for the published message.
-	if _, err := result.Get(ctx); err != nil {
+	serverID, err := result.Get(ctx)
+	if err != nil {
 		p.publishErrCounter.Add(ctx, 1)
 		return op.Error(err, "publishing pubsub message")
 	}
+
+	op.SpanOnly("message_id", serverID)
 
 	p.publishedCounter.Add(ctx, 1)
 	p.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))

@@ -133,5 +133,7 @@ func (i *IndexScheduler) IndexTypes(ctx context.Context) error {
 		},
 	))
 
+	op.Set("published.count", publishedIDCount)
+
 	return errs.ErrorOrNil()
 }

@@ -7,13 +7,15 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"io"
+
+	"github.com/primandproper/platform-go/observability/keys"
 )
 
 func (e *aesImpl) Encrypt(ctx context.Context, content string) (string, error) {
 	_, op := e.o11y.Begin(ctx)
 	defer op.End()
 
-	op.LogOnly("content", content)
+	op.Set(keys.LengthKey, len(content))
 
 	aesBlock, err := aes.NewCipher(e.key[:])
 	if err != nil {

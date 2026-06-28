@@ -97,7 +97,7 @@ func (s *Sender) Send(ctx context.Context, deviceToken, title, body string, badg
 	defer op.End()
 
 	if !apnsDeviceTokenHexPattern.MatchString(deviceToken) {
-		return errors.Newf("apns: invalid device token format (expected 64 hex chars, got len %d)", len(deviceToken))
+		return op.Error(errors.Newf("apns: invalid device token format (expected 64 hex chars, got len %d)", len(deviceToken)), "validating device token")
 	}
 
 	op.Set("title", title)
@@ -130,6 +130,8 @@ func (s *Sender) Send(ctx context.Context, deviceToken, title, body string, badg
 			Set("apnsID", res.ApnsID)
 		return op.Error(err, "sending apns notification")
 	}
+
+	op.Set("apnsID", res.ApnsID)
 
 	s.sendCounter.Add(ctx, 1)
 	return nil

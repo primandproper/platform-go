@@ -103,6 +103,8 @@ func (c *sqsConsumer) Consume(ctx context.Context, stopChan chan bool, errs chan
 			body := []byte(aws.ToString(msg.Body))
 
 			msgCtx, op := c.o11y.BeginCustom(ctx, "consume_message")
+			op.Set(keys.TopicKey, c.queueURL).Set(keys.LengthKey, len(body))
+			op.SpanOnly("message_id", aws.ToString(msg.MessageId))
 			c.consumedCounter.Add(msgCtx, 1)
 			if err = c.handlerFunc(msgCtx, body); err != nil {
 				op.Acknowledge(err, "handling SQS message")

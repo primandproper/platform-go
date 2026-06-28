@@ -10,6 +10,7 @@ import (
 
 	"github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 
@@ -153,6 +154,8 @@ func (e *clientEncoder) EncodeReader(ctx context.Context, data any) (io.Reader, 
 	if err != nil {
 		return nil, observability.PrepareError(err, op.Span(), "marshaling to XML")
 	}
+
+	op.Set(keys.LengthKey, len(out))
 
 	return bytes.NewReader(out), nil
 }

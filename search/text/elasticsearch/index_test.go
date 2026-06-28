@@ -143,8 +143,7 @@ func TestIndexManager_Index_Unit(T *testing.T) {
 		test.SliceLen(t, 1, cb.SucceededCalls())
 
 		obs.ObservedOperationWithData(t, map[string]any{
-			"id":    "123",
-			"value": value,
+			"id": "123",
 		})
 	})
 
@@ -174,8 +173,7 @@ func TestIndexManager_Index_Unit(T *testing.T) {
 
 		// Even though the index failed, the values must still have been observed.
 		obs.ObservedOperationWithData(t, map[string]any{
-			"id":    "123",
-			"value": value,
+			"id": "123",
 		})
 	})
 }

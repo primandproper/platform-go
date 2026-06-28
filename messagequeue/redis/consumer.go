@@ -74,6 +74,7 @@ func (r *redisConsumer) Consume(ctx context.Context, stopChan chan bool, errs ch
 			return
 		case msg := <-subChan:
 			msgCtx, op := r.o11y.BeginCustom(ctx, "consume_message")
+			op.Set(keys.TopicKey, msg.Channel).Set(keys.LengthKey, len(msg.Payload))
 			r.consumedCounter.Add(msgCtx, 1)
 			if err := r.handlerFunc(msgCtx, []byte(msg.Payload)); err != nil {
 				op.Acknowledge(err, "handling message")
@@ -102,7 +103,7 @@ func ProvideRedisConsumerProvider(logger logging.Logger, tracerProvider tracing.
 	o11y := observability.NewObserver("redis_consumer_provider", logger, tracerProvider)
 	o11y.Logger().WithValue("queue_addresses", cfg.QueueAddresses).
 		WithValue(keys.UsernameKey, cfg.Username).
-		WithValue("password", cfg.Password).Info("setting up redis consumer")
+		WithValue("password_empty", cfg.Password == "").Info("setting up redis consumer")
 
 	var redisClient subscriptionProvider
 	if len(cfg.QueueAddresses) > 1 {

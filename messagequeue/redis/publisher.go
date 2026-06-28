@@ -70,6 +70,8 @@ func (p *redisPublisher) Publish(ctx context.Context, data any) error {
 		return op.Error(err, "encoding topic message")
 	}
 
+	op.Set(keys.TopicKey, p.topic).Set(keys.LengthKey, b.Len())
+
 	if err := p.publisher.Publish(ctx, p.topic, b.Bytes()).Err(); err != nil {
 		p.publishErrCounter.Add(ctx, 1)
 		return err
@@ -132,7 +134,7 @@ func ProvideRedisPublisherProvider(l logging.Logger, tracerProvider tracing.Trac
 	o11y := observability.NewObserver("redis_publisher_provider", l, tracerProvider)
 	logger := o11y.Logger().WithValue("queue_addresses", cfg.QueueAddresses).
 		WithValue(keys.UsernameKey, cfg.Username).
-		WithValue("password", cfg.Password)
+		WithValue("password_empty", cfg.Password == "")
 	logger.Info("setting up redis publisher")
 
 	var redisClient messagePublisher

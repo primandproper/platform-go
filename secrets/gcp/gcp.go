@@ -112,7 +112,7 @@ func (g *gcpSecretSource) GetSecret(ctx context.Context, name string) (string, e
 		g.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 	}()
 
-	op.Set(keys.NameKey, name)
+	op.Set(keys.NameKey, name).Set("project.id", g.projectID)
 
 	resourceName := g.resolveName(name)
 	req := &secretmanagerpb.AccessSecretVersionRequest{

@@ -7,6 +7,7 @@ import (
 
 	perrors "github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/tracing"
 
 	"github.com/gorilla/securecookie"
@@ -49,6 +50,8 @@ func (m *manager) Encode(ctx context.Context, name string, value any) (string, e
 	_, op := m.o11y.Begin(ctx)
 	defer op.End()
 
+	op.Set(keys.NameKey, name)
+
 	encoded, err := m.secureCookie.Encode(name, value)
 	if err != nil {
 		return "", observability.PrepareError(err, op.Span(), "encoding cookie")
@@ -61,6 +64,8 @@ func (m *manager) Encode(ctx context.Context, name string, value any) (string, e
 func (m *manager) Decode(ctx context.Context, name, value string, dst any) error {
 	_, op := m.o11y.Begin(ctx)
 	defer op.End()
+
+	op.Set(keys.NameKey, name)
 
 	if err := m.secureCookie.Decode(name, value, dst); err != nil {
 		return observability.PrepareError(err, op.Span(), "decoding cookie")

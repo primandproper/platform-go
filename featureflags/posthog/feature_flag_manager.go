@@ -140,6 +140,8 @@ func (f *featureFlagManager) CanUseFeature(ctx context.Context, feature string, 
 		return false, op.Error(err, "checking feature flag eligibility")
 	}
 
+	op.Set("flag.value", flagEnabled)
+
 	f.evalCounter.Add(ctx, 1)
 	f.circuitBreaker.Succeeded()
 	return flagEnabled, nil
@@ -165,6 +167,8 @@ func (f *featureFlagManager) GetStringValue(ctx context.Context, feature, defaul
 		f.circuitBreaker.Failed()
 		return defaultValue, op.Error(err, "checking feature flag string variation")
 	}
+
+	op.Set("flag.default", defaultValue).Set("flag.value", result)
 
 	f.evalCounter.Add(ctx, 1)
 	f.circuitBreaker.Succeeded()
@@ -192,6 +196,8 @@ func (f *featureFlagManager) GetInt64Value(ctx context.Context, feature string, 
 		return defaultValue, op.Error(err, "checking feature flag int variation")
 	}
 
+	op.Set("flag.default", defaultValue).Set("flag.value", result)
+
 	f.evalCounter.Add(ctx, 1)
 	f.circuitBreaker.Succeeded()
 	return result, nil
@@ -217,6 +223,8 @@ func (f *featureFlagManager) GetFloat64Value(ctx context.Context, feature string
 		f.circuitBreaker.Failed()
 		return defaultValue, op.Error(err, "checking feature flag float variation")
 	}
+
+	op.Set("flag.default", defaultValue).Set("flag.value", result)
 
 	f.evalCounter.Add(ctx, 1)
 	f.circuitBreaker.Succeeded()

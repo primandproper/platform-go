@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 	"github.com/primandproper/platform-go/random"
@@ -60,7 +61,7 @@ func TestStandardEncryptor(T *testing.T) {
 		test.EqOp(t, expected, actual)
 	})
 
-	T.Run("decrypt observes content", func(t *testing.T) {
+	T.Run("decrypt observes content length", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
@@ -78,11 +79,11 @@ func TestStandardEncryptor(T *testing.T) {
 		test.EqOp(t, expected, actual)
 
 		obs.ObservedOperationWithData(t, map[string]any{
-			"content": encrypted,
+			keys.LengthKey: len(encrypted),
 		})
 	})
 
-	T.Run("decrypt with invalid base64 observes content and records error", func(t *testing.T) {
+	T.Run("decrypt with invalid base64 observes content length and records error", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
@@ -96,7 +97,7 @@ func TestStandardEncryptor(T *testing.T) {
 		must.Error(t, err)
 
 		op := obs.ObservedOperationWithData(t, map[string]any{
-			"content": invalid,
+			keys.LengthKey: len(invalid),
 		})
 		must.SliceLen(t, 1, op.Errors)
 	})

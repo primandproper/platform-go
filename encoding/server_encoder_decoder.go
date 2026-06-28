@@ -84,6 +84,8 @@ func (e *serverEncoderDecoder) DecodeBytes(ctx context.Context, data []byte, des
 	_, op := e.o11y.Begin(ctx)
 	defer op.End()
 
+	op.Set(keys.LengthKey, len(data)).Set("content_type", ContentTypeToString(e.contentType))
+
 	var d decoder
 	switch e.contentType {
 	case ContentTypeXML:

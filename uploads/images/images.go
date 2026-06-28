@@ -152,6 +152,8 @@ func (p *uploadProcessor) processFile(ctx context.Context, file multipart.File, 
 		return nil, op.Error(err, "reading filename %q from request", filename)
 	}
 
+	op.Set(keys.LengthKey, len(bs)).Set("content_type", contentTypeFromFilename(filename))
+
 	if isImage(info.Filename) {
 		if _, _, err = image.Decode(bytes.NewReader(bs)); err != nil {
 			return nil, op.Error(err, "decoding the image data")
@@ -211,6 +213,8 @@ func (p *uploadProcessor) ProcessFiles(ctx context.Context, req *http.Request, f
 		op.Logger().WithRequest(req).Error("processing image uploads", errs)
 		return nil, errs
 	}
+
+	op.Set("upload.count", len(uploads))
 
 	return uploads, nil
 }

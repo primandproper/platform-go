@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/analytics"
 	"github.com/primandproper/platform-go/analytics/noop"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 )
@@ -74,7 +75,7 @@ func (m *MultiSourceEventReporter) TrackEvent(ctx context.Context, source, event
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()
 
-	op.Set("source", source).Set("event", event).Set("user_id", userID)
+	op.Set("source", source).Set("event", event).Set("user_id", userID).Set(keys.LengthKey, len(properties))
 
 	return m.getReporter(source).EventOccurred(ctx, event, userID, withSourceProperty(source, properties))
 }
@@ -84,7 +85,7 @@ func (m *MultiSourceEventReporter) TrackAnonymousEvent(ctx context.Context, sour
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()
 
-	op.Set("source", source).Set("event", event).Set("anonymous_id", anonymousID)
+	op.Set("source", source).Set("event", event).Set("anonymous_id", anonymousID).Set(keys.LengthKey, len(properties))
 
 	return m.getReporter(source).EventOccurredAnonymous(ctx, event, anonymousID, withSourceProperty(source, properties))
 }

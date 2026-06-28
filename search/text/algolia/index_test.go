@@ -177,8 +177,7 @@ func TestIndexManager_Index(T *testing.T) {
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 
 		obs.ObservedOperationWithData(t, map[string]any{
-			idKey:   "123",
-			"value": value,
+			idKey: "123",
 		})
 	})
 }

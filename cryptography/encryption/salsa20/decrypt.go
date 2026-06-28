@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 
+	"github.com/primandproper/platform-go/observability/keys"
+
 	"golang.org/x/crypto/salsa20"
 )
 
@@ -11,7 +13,7 @@ func (e *salsa20Impl) Decrypt(ctx context.Context, content string) (string, erro
 	_, op := e.o11y.Begin(ctx)
 	defer op.End()
 
-	op.Set("content", content)
+	op.Set(keys.LengthKey, len(content))
 
 	ciphered, err := base64.URLEncoding.DecodeString(content)
 	if err != nil {

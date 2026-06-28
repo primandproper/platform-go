@@ -11,6 +11,7 @@ import (
 	platformerrors "github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/identifiers"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -126,6 +127,7 @@ func NewRedisLocker(
 func (l *locker) Acquire(ctx context.Context, key string, ttl time.Duration) (distributedlock.Lock, error) {
 	ctx, op := l.o11y.Begin(ctx)
 	defer op.End()
+	op.Set(keys.NameKey, key).Set("lock.ttl", ttl)
 
 	if key == "" {
 		return nil, distributedlock.ErrEmptyKey
@@ -183,6 +185,7 @@ func (l *locker) Close() error {
 func (l *locker) release(ctx context.Context, fullKey, token string) error {
 	ctx, op := l.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("lock.full_key", fullKey)
 
 	if l.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -212,6 +215,7 @@ func (l *locker) release(ctx context.Context, fullKey, token string) error {
 func (l *locker) refresh(ctx context.Context, fullKey, token string, ttl time.Duration) error {
 	ctx, op := l.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("lock.full_key", fullKey).Set("lock.ttl", ttl)
 
 	if ttl <= 0 {
 		return distributedlock.ErrInvalidTTL

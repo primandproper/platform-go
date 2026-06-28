@@ -16,6 +16,7 @@ import (
 	platformerrors "github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/identifiers"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -105,6 +106,7 @@ func NewPostgresLocker(
 func (l *locker) Acquire(ctx context.Context, key string, ttl time.Duration) (distributedlock.Lock, error) {
 	ctx, op := l.o11y.Begin(ctx)
 	defer op.End()
+	op.Set(keys.NameKey, key).Set("lock.ttl", ttl)
 
 	if key == "" {
 		return nil, distributedlock.ErrEmptyKey
@@ -129,6 +131,7 @@ func (l *locker) Acquire(ctx context.Context, key string, ttl time.Duration) (di
 	}
 
 	lockID := hashLockID(l.namespace, key)
+	op.Set("lock.id", lockID)
 	var ok bool
 	if scanErr := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1)`, lockID).Scan(&ok); scanErr != nil {
 		// Best-effort return the conn to the pool.
@@ -195,6 +198,7 @@ func (l *locker) Close() error {
 func (l *locker) release(ctx context.Context, h *lock) error {
 	ctx, op := l.o11y.Begin(ctx)
 	defer op.End()
+	op.Set(keys.NameKey, h.key).Set("lock.id", h.lockID)
 
 	if l.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -230,6 +234,7 @@ func (l *locker) release(ctx context.Context, h *lock) error {
 func (l *locker) refresh(ctx context.Context, h *lock, ttl time.Duration) error {
 	ctx, op := l.o11y.Begin(ctx)
 	defer op.End()
+	op.Set(keys.NameKey, h.key).Set("lock.id", h.lockID).Set("lock.ttl", ttl)
 
 	if ttl <= 0 {
 		return distributedlock.ErrInvalidTTL

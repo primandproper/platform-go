@@ -55,14 +55,21 @@ func ProvideDatabaseClient(ctx context.Context, logger logging.Logger, tracerPro
 	var readDB, writeDB *sql.DB
 	var err error
 
-	if readConnStr := cfg.GetReadConnectionString(); readConnStr != "" {
+	readConnStr := cfg.GetReadConnectionString()
+	writeConnStr := cfg.GetWriteConnectionString()
+
+	op.Set("db.system", "mysql").
+		Set("db.read_configured", readConnStr != "").
+		Set("db.write_configured", writeConnStr != "")
+
+	if readConnStr != "" {
 		readDB, err = connect(readConnStr, cfg, opts)
 		if err != nil {
 			return nil, errors.Wrap(err, "connecting to read mysql database")
 		}
 	}
 
-	if writeConnStr := cfg.GetWriteConnectionString(); writeConnStr != "" {
+	if writeConnStr != "" {
 		writeDB, err = connect(writeConnStr, cfg, opts)
 		if err != nil {
 			return nil, errors.Wrap(err, "connecting to write mysql database")
@@ -153,20 +160,22 @@ func (q *Client) IsReady(ctx context.Context) bool {
 	maxAttempts := int(q.config.GetMaxPingAttempts())
 	waitPeriod := q.config.GetPingWaitPeriod()
 
-	readReady := q.waitForPing(ctx, op, q.readDB, q.config.GetReadConnectionString(), maxAttempts, waitPeriod)
+	op.Set("db.ping.max_attempts", maxAttempts).Set("db.ping.wait_period", waitPeriod)
+
+	readReady := q.waitForPing(ctx, op, q.readDB, "read", maxAttempts, waitPeriod)
 	if !readReady {
 		return false
 	}
 
 	if q.writeDB != q.readDB {
-		return q.waitForPing(ctx, op, q.writeDB, q.config.GetWriteConnectionString(), maxAttempts, waitPeriod)
+		return q.waitForPing(ctx, op, q.writeDB, "write", maxAttempts, waitPeriod)
 	}
 
 	return true
 }
 
-func (q *Client) waitForPing(ctx context.Context, op observability.Operation, db *sql.DB, connectionURL string, maxAttempts int, waitPeriod time.Duration) bool {
-	logger := op.Logger().WithValue("connection_url", connectionURL)
+func (q *Client) waitForPing(ctx context.Context, op observability.Operation, db *sql.DB, connectionName string, maxAttempts int, waitPeriod time.Duration) bool {
+	logger := op.Logger().WithValue("connection", connectionName)
 
 	attemptCount := 0
 	for {

@@ -28,7 +28,7 @@ func (m *indexManager[T]) Index(ctx context.Context, id string, value any) error
 		return circuitbreaking.ErrCircuitBroken
 	}
 
-	op.Set(idKey, id).Set("value", value)
+	op.Set(idKey, id)
 	op.Logger().Debug("adding to index")
 
 	jsonEncoded, err := json.Marshal(value)
@@ -96,6 +96,7 @@ func (m *indexManager[T]) Search(ctx context.Context, query string) ([]*T, error
 		results = append(results, x)
 	}
 
+	op.Set(keys.LengthKey, len(results))
 	op.Logger().Debug("search performed")
 
 	m.circuitBreaker.Succeeded()

@@ -95,10 +95,13 @@ func (s *Sender) Send(ctx context.Context, deviceToken, title, body string) erro
 		},
 	}
 
-	if _, err := s.client.Send(ctx, msg); err != nil {
+	messageID, err := s.client.Send(ctx, msg)
+	if err != nil {
 		s.errorCounter.Add(ctx, 1)
 		return op.Error(err, "sending fcm message")
 	}
+
+	op.Set("fcm.message_id", messageID)
 
 	s.sendCounter.Add(ctx, 1)
 	return nil

@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/platform-go/circuitbreaking"
 	"github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 	textsearch "github.com/primandproper/platform-go/search/text"
@@ -121,6 +122,8 @@ func elasticsearchIsReadyToInit(
 func (sm *indexManager[T]) ensureIndices(ctx context.Context) error {
 	ctx, op := sm.o11y.Begin(ctx)
 	defer op.End()
+
+	op.Set(keys.IndexNameKey, sm.indexName)
 
 	if sm.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken

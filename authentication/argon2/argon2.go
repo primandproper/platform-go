@@ -57,6 +57,13 @@ func (a *Argon2Authenticator) HashPassword(ctx context.Context, password string)
 	_, op := a.o11y.Begin(ctx)
 	defer op.End()
 
+	op.SetValues(map[string]any{
+		"argon2.memory":      argonParams.Memory,
+		"argon2.iterations":  argonParams.Iterations,
+		"argon2.parallelism": argonParams.Parallelism,
+		"argon2.key_length":  argonParams.KeyLength,
+	})
+
 	return argon2id.CreateHash(password, argonParams)
 }
 
@@ -66,6 +73,13 @@ func (a *Argon2Authenticator) HashPassword(ctx context.Context, password string)
 func (a *Argon2Authenticator) PasswordMatches(ctx context.Context, hash, password string) (bool, error) {
 	_, op := a.o11y.Begin(ctx)
 	defer op.End()
+
+	op.SetValues(map[string]any{
+		"argon2.memory":      argonParams.Memory,
+		"argon2.iterations":  argonParams.Iterations,
+		"argon2.parallelism": argonParams.Parallelism,
+		"argon2.key_length":  argonParams.KeyLength,
+	})
 
 	matches, err := argon2id.ComparePasswordAndHash(password, hash)
 	if err != nil {

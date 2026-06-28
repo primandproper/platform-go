@@ -9,6 +9,7 @@ import (
 	eswebsocket "github.com/primandproper/platform-go/eventstream/websocket"
 	"github.com/primandproper/platform-go/notifications/async"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 )
@@ -53,6 +54,8 @@ func (n *Notifier) Publish(ctx context.Context, channel string, event *async.Eve
 	ctx, op := n.o11y.Begin(ctx)
 	defer op.End()
 
+	op.Set(keys.TopicKey, channel).Set("event.type", event.Type).Set(keys.LengthKey, len(event.Data))
+
 	esEvent := &eventstream.Event{
 		Type:    event.Type,
 		Payload: event.Data,
@@ -68,6 +71,8 @@ func (n *Notifier) Publish(ctx context.Context, channel string, event *async.Eve
 func (n *Notifier) AcceptConnection(w http.ResponseWriter, r *http.Request, channel, memberID string) error {
 	ctx, op := n.o11y.Begin(r.Context())
 	defer op.End()
+
+	op.Set(keys.TopicKey, channel).Set("member_id", memberID)
 
 	stream, err := n.upgrader.UpgradeToEventStream(w, r)
 	if err != nil {

@@ -106,7 +106,7 @@ func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMes
 		e.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 	}()
 
-	op.Set(keys.EmailToAddressKey, details.ToAddress)
+	op.Set(keys.EmailToAddressKey, details.ToAddress).Set(keys.EmailFromAddressKey, details.FromAddress).Set(keys.EmailSubjectKey, details.Subject)
 
 	if e.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -154,7 +154,7 @@ func (e *Emailer) sendDynamicTemplateEmail(ctx context.Context, to, from *mail.E
 	ctx, op := e.o11y.Begin(ctx)
 	defer op.End()
 
-	op.Set(keys.EmailToAddressKey, to.Address)
+	op.Set(keys.EmailToAddressKey, to.Address).Set("email.template_id", templateID).Set(keys.EmailFromAddressKey, from.Address)
 
 	m := mail.NewV3Mail()
 	m.SetFrom(from).SetTemplateID(templateID).AddPersonalizations(e.preparePersonalization(to, data))

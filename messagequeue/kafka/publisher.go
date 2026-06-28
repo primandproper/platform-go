@@ -65,6 +65,8 @@ func (p *kafkaPublisher) Publish(ctx context.Context, data any) error {
 		return op.Error(err, "encoding topic message")
 	}
 
+	op.Set(keys.LengthKey, b.Len())
+
 	if err := p.writer.WriteMessages(ctx, kafka.Message{Value: b.Bytes()}); err != nil {
 		p.publishErrCounter.Add(ctx, 1)
 		return op.Error(err, "publishing message")

@@ -7,6 +7,7 @@ import (
 
 	"github.com/primandproper/platform-go/messagequeue"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/observability/tracing"
@@ -80,6 +81,8 @@ func (c *kafkaConsumer) Consume(ctx context.Context, stopChan chan bool, errs ch
 		}
 
 		msgCtx, op := c.o11y.BeginCustom(ctx, "consume_message")
+		op.Set(keys.TopicKey, msg.Topic).Set(keys.LengthKey, len(msg.Value))
+		op.SpanOnly("partition", msg.Partition).SpanOnly("offset", msg.Offset)
 		c.consumedCounter.Add(msgCtx, 1)
 
 		if err = c.handlerFunc(msgCtx, msg.Value); err != nil {

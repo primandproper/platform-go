@@ -86,7 +86,11 @@ func (c *pubSubConsumer) Consume(ctx context.Context, stopChan chan bool, errors
 		msgCtx, op := c.o11y.BeginCustom(receivedContext, "consume_message")
 		defer op.End()
 
-		op.Set(keys.TopicKey, c.topic)
+		op.Set(keys.TopicKey, c.topic).Set(keys.LengthKey, len(m.Data))
+		op.SpanOnly("message_id", m.ID)
+		if m.DeliveryAttempt != nil {
+			op.SpanOnly("delivery_attempt", *m.DeliveryAttempt)
+		}
 
 		c.consumedCounter.Add(msgCtx, 1)
 		if handleErr := c.handlerFunc(msgCtx, m.Data); handleErr != nil {

@@ -115,7 +115,7 @@ func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMes
 		return circuitbreaking.ErrCircuitBroken
 	}
 
-	op.Set(keys.EmailSubjectKey, details.Subject).Set(keys.EmailToAddressKey, details.ToAddress)
+	op.Set(keys.EmailSubjectKey, details.Subject).Set(keys.EmailToAddressKey, details.ToAddress).Set(keys.EmailFromAddressKey, details.FromAddress)
 
 	messagesInfo := []mailjet.InfoMessagesV31{
 		{

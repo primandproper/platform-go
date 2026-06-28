@@ -116,7 +116,7 @@ func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMes
 		e.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 	}()
 
-	op.Set(keys.EmailSubjectKey, details.Subject).Set(keys.EmailToAddressKey, details.ToAddress)
+	op.Set(keys.EmailSubjectKey, details.Subject).Set(keys.EmailToAddressKey, details.ToAddress).Set(keys.EmailFromAddressKey, details.FromAddress)
 
 	if e.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -129,11 +129,14 @@ func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMes
 		HtmlBody: details.HTMLContent,
 	}
 
-	if _, err := e.client.SendEmail(pmEmail); err != nil {
+	resp, err := e.client.SendEmail(pmEmail)
+	if err != nil {
 		e.circuitBreaker.Failed()
 		e.errorCounter.Add(ctx, 1)
 		return op.Error(err, "sending email")
 	}
+
+	op.Set("email.message_id", resp.MessageID)
 
 	e.circuitBreaker.Succeeded()
 	e.sendCounter.Add(ctx, 1)

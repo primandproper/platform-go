@@ -117,6 +117,7 @@ func NewRedisCache[T any](cfg *Config, expiration time.Duration, logger logging.
 func (i *redisCacheImpl[T]) Get(ctx context.Context, key string) (*T, error) {
 	ctx, op := i.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("name", key)
 
 	if i.circuitBreaker.CannotProceed() {
 		i.cacheMissCounter.Add(ctx, 1)
@@ -155,6 +156,7 @@ func (i *redisCacheImpl[T]) Get(ctx context.Context, key string) (*T, error) {
 func (i *redisCacheImpl[T]) Set(ctx context.Context, key string, value *T) error {
 	ctx, op := i.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("name", key)
 
 	if i.circuitBreaker.CannotProceed() {
 		return nil
@@ -186,6 +188,7 @@ func (i *redisCacheImpl[T]) Set(ctx context.Context, key string, value *T) error
 func (i *redisCacheImpl[T]) Delete(ctx context.Context, key string) error {
 	ctx, op := i.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("name", key)
 
 	if i.circuitBreaker.CannotProceed() {
 		return nil
@@ -219,6 +222,7 @@ func (i *redisCacheImpl[T]) Ping(ctx context.Context) error {
 func (i *redisCacheImpl[T]) GetMany(ctx context.Context, keys []string) (map[string]*T, error) {
 	ctx, op := i.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("length", len(keys))
 
 	out := make(map[string]*T, len(keys))
 	if len(keys) == 0 {
@@ -280,6 +284,7 @@ func (i *redisCacheImpl[T]) GetMany(ctx context.Context, keys []string) (map[str
 func (i *redisCacheImpl[T]) SetMany(ctx context.Context, items map[string]*T) error {
 	ctx, op := i.o11y.Begin(ctx)
 	defer op.End()
+	op.Set("length", len(items))
 
 	if len(items) == 0 {
 		return nil

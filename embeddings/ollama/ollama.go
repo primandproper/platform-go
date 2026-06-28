@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/platform-go/embeddings"
 	"github.com/primandproper/platform-go/errors"
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 )
@@ -78,7 +79,7 @@ func (e *embedder) GenerateEmbedding(ctx context.Context, input *embeddings.Inpu
 		model = defaultModel
 	}
 
-	op.Set("embedding.model", model)
+	op.Set("embedding.model", model).Set(keys.LengthKey, len(input.Content))
 
 	reqBody := embeddingRequest{
 		Model: model,
@@ -127,6 +128,8 @@ func (e *embedder) GenerateEmbedding(ctx context.Context, input *embeddings.Inpu
 	}
 
 	vector := toFloat32(embResp.Embeddings[0])
+
+	op.Set("embedding.dimensions", len(vector))
 
 	return &embeddings.Embedding{
 		Vector:      vector,

@@ -14,7 +14,7 @@ func (u *Uploader) SaveFile(ctx context.Context, path string, content []byte) er
 	ctx, op := u.o11y.Begin(ctx)
 	defer op.End()
 
-	op.Set(keys.FilenameKey, path)
+	op.Set(keys.FilenameKey, path).Set(keys.LengthKey, len(content))
 
 	if u.circuitBreaker.CannotProceed() {
 		return circuitbreaking.ErrCircuitBroken
@@ -68,6 +68,8 @@ func (u *Uploader) ReadFile(ctx context.Context, path string) ([]byte, error) {
 		u.circuitBreaker.Failed()
 		return nil, op.Error(err, "reading file")
 	}
+
+	op.Set(keys.LengthKey, len(fileBytes))
 
 	u.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 	u.readCounter.Add(ctx, 1)

@@ -136,6 +136,8 @@ func (s *wsStream) Send(ctx context.Context, event *eventstream.Event) error {
 	_, op := s.o11y.BeginCustom(ctx, "ws_send")
 	defer op.End()
 
+	op.Set("event.type", event.Type)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

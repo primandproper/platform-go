@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/observability/keys"
 	"github.com/primandproper/platform-go/observability/logging"
 	"github.com/primandproper/platform-go/observability/tracing"
 )
@@ -36,6 +37,8 @@ func (m *StreamManager[S]) Add(ctx context.Context, groupID, memberID string, st
 	_, op := m.o11y.Begin(ctx)
 	defer op.End()
 
+	op.Set("group_id", groupID).Set("member_id", memberID)
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -49,6 +52,8 @@ func (m *StreamManager[S]) Add(ctx context.Context, groupID, memberID string, st
 func (m *StreamManager[S]) Remove(ctx context.Context, groupID, memberID string) {
 	_, op := m.o11y.Begin(ctx)
 	defer op.End()
+
+	op.Set("group_id", groupID).Set("member_id", memberID)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -65,6 +70,8 @@ func (m *StreamManager[S]) Remove(ctx context.Context, groupID, memberID string)
 func (m *StreamManager[S]) Get(ctx context.Context, groupID, memberID string) S {
 	_, op := m.o11y.Begin(ctx)
 	defer op.End()
+
+	op.Set("group_id", groupID).Set("member_id", memberID)
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -91,6 +98,9 @@ func (m *StreamManager[S]) GetGroupStreams(ctx context.Context, groupID string) 
 			streams = append(streams, s)
 		}
 	}
+
+	op.Set("group_id", groupID).Set(keys.LengthKey, len(streams))
+
 	return streams
 }
 
@@ -103,10 +113,13 @@ func (m *StreamManager[S]) BroadcastToGroup(ctx context.Context, groupID string,
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()
 
+	op.Set("group_id", groupID).Set("event.type", event.Type)
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	if groupStreams, ok := m.streams[groupID]; ok {
+		op.Set(keys.LengthKey, len(groupStreams))
 		for _, s := range groupStreams {
 			if err := s.Send(ctx, event); err != nil {
 				op.Acknowledge(err, "sending event to stream")
@@ -123,6 +136,8 @@ func (m *StreamManager[S]) BroadcastToGroup(ctx context.Context, groupID string,
 func (m *StreamManager[S]) BroadcastToGroupFiltered(ctx context.Context, groupID string, event *Event, includeFunc func(memberID string) bool) {
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()
+
+	op.Set("group_id", groupID).Set("event.type", event.Type)
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -143,6 +158,8 @@ func (m *StreamManager[S]) SendToMember(ctx context.Context, groupID, memberID s
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()
 
+	op.Set("group_id", groupID).Set("member_id", memberID).Set("event.type", event.Type)
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -158,6 +175,8 @@ func (m *StreamManager[S]) SendToMember(ctx context.Context, groupID, memberID s
 func (m *StreamManager[S]) GroupHasStreams(ctx context.Context, groupID string) bool {
 	_, op := m.o11y.Begin(ctx)
 	defer op.End()
+
+	op.Set("group_id", groupID)
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -176,8 +195,12 @@ func (m *StreamManager[S]) GetStreamCount(ctx context.Context, groupID string) i
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	var count int
 	if groupStreams, ok := m.streams[groupID]; ok {
-		return len(groupStreams)
+		count = len(groupStreams)
 	}
-	return 0
+
+	op.Set("group_id", groupID).Set(keys.LengthKey, count)
+
+	return count
 }

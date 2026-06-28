@@ -94,7 +94,7 @@ func (p *anthropicProvider) Completion(ctx context.Context, params llm.Completio
 		model = "claude-sonnet-4-20250514"
 	}
 
-	op.Set("llm.model", model)
+	op.Set("llm.model", model).Set("llm.message_count", len(params.Messages))
 
 	anyllmParams := anyllm.CompletionParams{
 		Model:    model,
@@ -108,6 +108,13 @@ func (p *anthropicProvider) Completion(ctx context.Context, params llm.Completio
 	}
 
 	p.requestCounter.Add(ctx, 1)
+
+	if resp.Usage != nil {
+		op.Set("llm.tokens.total", resp.Usage.TotalTokens)
+	}
+	if len(resp.Choices) > 0 {
+		op.Set("llm.finish_reason", resp.Choices[0].FinishReason)
+	}
 
 	return toCompletionResult(resp), nil
 }

@@ -55,6 +55,8 @@ func (p *sqsPublisher) Publish(ctx context.Context, data any) error {
 		return observability.PrepareError(err, op.Span(), "encoding topic message")
 	}
 
+	op.Set(keys.LengthKey, b.Len())
+
 	input := &sqs.SendMessageInput{
 		MessageBody: aws.String(b.String()),
 		QueueUrl:    aws.String(p.topic),
