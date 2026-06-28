@@ -2,7 +2,9 @@ package salsa20
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
+	"io"
 
 	"github.com/primandproper/platform-go/observability/keys"
 
@@ -15,8 +17,13 @@ func (e *salsa20Impl) Encrypt(ctx context.Context, content string) (string, erro
 
 	op.Set(keys.LengthKey, len(content))
 
-	out := make([]byte, len([]byte(content)))
-	salsa20.XORKeyStream(out, []byte(content), []byte{0, 0, 0, 0, 0, 0, 0, 0}, &e.key)
+	out := make([]byte, nonceSize+len(content))
+	nonce := out[:nonceSize]
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", op.Error(err, "generating nonce")
+	}
+
+	salsa20.XORKeyStream(out[nonceSize:], []byte(content), nonce, &e.key)
 
 	return base64.URLEncoding.EncodeToString(out), nil
 }
