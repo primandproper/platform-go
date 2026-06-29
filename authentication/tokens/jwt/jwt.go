@@ -109,7 +109,10 @@ func (s *signer) parseToken(tokenString string) (*jwt.Token, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return s.signingKey, nil
-	})
+	},
+		jwt.WithAudience(s.audience),
+		jwt.WithIssuer(s.issuer),
+	)
 	if err != nil {
 		return nil, err
 	}

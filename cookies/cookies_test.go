@@ -2,7 +2,9 @@ package cookies
 
 import (
 	"encoding/base64"
+	"net/http"
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/observability"
 	"github.com/primandproper/platform-go/observability/keys"
@@ -164,5 +166,92 @@ func Test_manager_Decode(T *testing.T) {
 
 		var actual example
 		test.Error(t, m.Decode(ctx, "test", "this-is-not-a-valid-cookie", &actual))
+	})
+}
+
+func Test_manager_BuildCookie(T *testing.T) {
+	T.Parallel()
+
+	T.Run("applies configured security attributes", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		cfg := buildConfigForTest()
+		cfg.Domain = "example.com"
+		cfg.Lifetime = time.Hour
+		cfg.SecureOnly = true
+
+		m, err := NewCookieManager(cfg, tracingnoop.NewTracerProvider())
+		must.NoError(t, err)
+
+		cookie, err := m.BuildCookie(ctx, "session", &example{Name: t.Name()})
+		must.NoError(t, err)
+		must.NotNil(t, cookie)
+
+		test.EqOp(t, "session", cookie.Name)
+		test.NotEq(t, "", cookie.Value)
+		test.EqOp(t, "/", cookie.Path)
+		test.EqOp(t, "example.com", cookie.Domain)
+		test.True(t, cookie.HttpOnly)
+		test.True(t, cookie.Secure)
+		test.EqOp(t, http.SameSiteLaxMode, cookie.SameSite)
+		test.EqOp(t, int(time.Hour.Seconds()), cookie.MaxAge)
+
+		// The embedded value must still round-trip back through Decode.
+		var got example
+		must.NoError(t, m.Decode(ctx, "session", cookie.Value, &got))
+		test.EqOp(t, t.Name(), got.Name)
+	})
+
+	T.Run("honors a configured SameSite policy", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		cfg := buildConfigForTest()
+		cfg.SameSite = SameSiteStrict
+
+		m, err := NewCookieManager(cfg, tracingnoop.NewTracerProvider())
+		must.NoError(t, err)
+
+		cookie, err := m.BuildCookie(ctx, "session", &example{Name: t.Name()})
+		must.NoError(t, err)
+		must.NotNil(t, cookie)
+
+		test.EqOp(t, http.SameSiteStrictMode, cookie.SameSite)
+	})
+
+	T.Run("without lifetime omits max age and stays non-secure by default", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		m, err := NewCookieManager(buildConfigForTest(), tracingnoop.NewTracerProvider())
+		must.NoError(t, err)
+
+		cookie, err := m.BuildCookie(ctx, "session", &example{Name: t.Name()})
+		must.NoError(t, err)
+		must.NotNil(t, cookie)
+
+		test.EqOp(t, 0, cookie.MaxAge)
+		test.True(t, cookie.Expires.IsZero())
+		test.False(t, cookie.Secure)
+		// HttpOnly and SameSite are non-negotiable defaults regardless of config.
+		test.True(t, cookie.HttpOnly)
+		test.EqOp(t, http.SameSiteLaxMode, cookie.SameSite)
+	})
+
+	T.Run("with unencodable value", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		m, err := NewCookieManager(buildConfigForTest(), tracingnoop.NewTracerProvider())
+		must.NoError(t, err)
+
+		cookie, err := m.BuildCookie(ctx, "session", func() {})
+		test.Error(t, err)
+		test.Nil(t, cookie)
 	})
 }

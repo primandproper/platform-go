@@ -2,7 +2,6 @@ package argon2
 
 import (
 	"context"
-	"crypto/rand"
 	"math"
 	"runtime"
 
@@ -15,13 +14,6 @@ import (
 )
 
 var _ authentication.Authenticator = (*Argon2Authenticator)(nil)
-
-func init() {
-	b := make([]byte, 64)
-	if _, err := rand.Read(b); err != nil {
-		panic(err)
-	}
-}
 
 const (
 	serviceName        = "argon2"

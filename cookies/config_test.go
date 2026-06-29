@@ -66,4 +66,61 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 
 		test.Error(t, cfg.ValidateWithContext(t.Context()))
 	})
+
+	T.Run("with explicit SameSite policy", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			CookieName:            t.Name(),
+			Base64EncodedHashKey:  t.Name(),
+			Base64EncodedBlockKey: t.Name(),
+			Lifetime:              24 * time.Hour,
+			SameSite:              SameSiteStrict,
+		}
+
+		test.NoError(t, cfg.ValidateWithContext(t.Context()))
+	})
+
+	T.Run("with unsupported SameSite value", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			CookieName:            t.Name(),
+			Base64EncodedHashKey:  t.Name(),
+			Base64EncodedBlockKey: t.Name(),
+			Lifetime:              24 * time.Hour,
+			SameSite:              "sideways",
+		}
+
+		test.Error(t, cfg.ValidateWithContext(t.Context()))
+	})
+
+	T.Run("with SameSite=None but not SecureOnly", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			CookieName:            t.Name(),
+			Base64EncodedHashKey:  t.Name(),
+			Base64EncodedBlockKey: t.Name(),
+			Lifetime:              24 * time.Hour,
+			SameSite:              SameSiteNone,
+		}
+
+		test.Error(t, cfg.ValidateWithContext(t.Context()))
+	})
+
+	T.Run("with SameSite=None and SecureOnly", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			CookieName:            t.Name(),
+			Base64EncodedHashKey:  t.Name(),
+			Base64EncodedBlockKey: t.Name(),
+			Lifetime:              24 * time.Hour,
+			SameSite:              SameSiteNone,
+			SecureOnly:            true,
+		}
+
+		test.NoError(t, cfg.ValidateWithContext(t.Context()))
+	})
 }
