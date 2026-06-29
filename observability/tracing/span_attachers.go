@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/database/filtering"
-	"github.com/primandproper/platform-go/observability/keys"
+	"github.com/primandproper/platform-go/v2/database/filtering"
+	"github.com/primandproper/platform-go/v2/observability/keys"
 
 	"github.com/mssola/useragent"
 	"go.opentelemetry.io/otel/attribute"

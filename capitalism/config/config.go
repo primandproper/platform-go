@@ -4,11 +4,11 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/capitalism"
-	"github.com/primandproper/platform-go/capitalism/stripe"
-	"github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/v2/capitalism"
+	"github.com/primandproper/platform-go/v2/capitalism/stripe"
+	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/retry"
+	"github.com/primandproper/platform-go/v2/retry"
 )
 
 var _ retry.Policy = (*policy)(nil)

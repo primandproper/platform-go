@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/notifications/mobile/apns"
-	"github.com/primandproper/platform-go/notifications/mobile/fcm"
-	"github.com/primandproper/platform-go/observability"
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v2/notifications/mobile/apns"
+	"github.com/primandproper/platform-go/v2/notifications/mobile/fcm"
+	"github.com/primandproper/platform-go/v2/observability"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

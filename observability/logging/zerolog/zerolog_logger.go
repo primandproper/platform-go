@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/observability/keys"
-	"github.com/primandproper/platform-go/observability/logging"
+	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v2/observability/logging"
 
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/trace"
 )
 
-const here = "github.com/primandproper/platform-go/"
+const here = "github.com/primandproper/platform-go/v2/"
 
 func init() {
 	location, err := time.LoadLocation("America/Chicago")

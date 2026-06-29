@@ -3,7 +3,7 @@ package config
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/uploads/objectstorage"
+	"github.com/primandproper/platform-go/v2/uploads/objectstorage"
 
 	"github.com/shoenig/test"
 )

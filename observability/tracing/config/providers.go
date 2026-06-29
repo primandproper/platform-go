@@ -3,8 +3,8 @@ package tracingcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
 )
 
 // ProvideTracerProvider provides a TracerProvider from config.

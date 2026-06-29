@@ -5,12 +5,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/observability"
-	"github.com/primandproper/platform-go/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	"github.com/primandproper/platform-go/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v2/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
 
 	"github.com/segmentio/kafka-go"
 	"github.com/shoenig/test"

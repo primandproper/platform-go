@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/observability/metrics/otelgrpc"
+	"github.com/primandproper/platform-go/v2/observability/metrics/otelgrpc"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

@@ -3,15 +3,15 @@ package observability
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/observability/logging"
-	loggingcfg "github.com/primandproper/platform-go/observability/logging/config"
-	"github.com/primandproper/platform-go/observability/metrics"
-	metricscfg "github.com/primandproper/platform-go/observability/metrics/config"
-	"github.com/primandproper/platform-go/observability/profiling"
-	profilingcfg "github.com/primandproper/platform-go/observability/profiling/config"
-	"github.com/primandproper/platform-go/observability/tracing"
-	tracingcfg "github.com/primandproper/platform-go/observability/tracing/config"
+	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/observability/logging"
+	loggingcfg "github.com/primandproper/platform-go/v2/observability/logging/config"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	metricscfg "github.com/primandproper/platform-go/v2/observability/metrics/config"
+	"github.com/primandproper/platform-go/v2/observability/profiling"
+	profilingcfg "github.com/primandproper/platform-go/v2/observability/profiling/config"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
+	tracingcfg "github.com/primandproper/platform-go/v2/observability/tracing/config"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

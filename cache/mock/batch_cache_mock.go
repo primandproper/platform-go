@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform-go/cache"
+	"github.com/primandproper/platform-go/v2/cache"
 )
 
 // Ensure, that BatchCacheMock does implement cache.BatchCache.

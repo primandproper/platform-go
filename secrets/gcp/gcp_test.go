@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/observability"
-	"github.com/primandproper/platform-go/observability/keys"
-	"github.com/primandproper/platform-go/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
 
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	"github.com/shoenig/test"

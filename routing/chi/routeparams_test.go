@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	"github.com/primandproper/platform-go/testutils"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	"github.com/primandproper/platform-go/v2/testutils"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/shoenig/test"

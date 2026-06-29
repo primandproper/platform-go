@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/v2/observability"
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )

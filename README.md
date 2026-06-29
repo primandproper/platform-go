@@ -1,10 +1,10 @@
 # platform-go
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/primandproper/platform-go.svg)](https://pkg.go.dev/github.com/primandproper/platform-go) [![codecov](https://codecov.io/github/primandproper/platform-go/graph/badge.svg?token=69RLLWLJ39)](https://codecov.io/github/primandproper/platform-go)
+[![Go Reference](https://pkg.go.dev/badge/github.com/primandproper/platform-go/v2.svg)](https://pkg.go.dev/github.com/primandproper/platform-go/v2) [![codecov](https://codecov.io/github/primandproper/platform-go/graph/badge.svg?token=69RLLWLJ39)](https://codecov.io/github/primandproper/platform-go)
 
 A Go library providing infrastructure abstractions for cloud-native services. Each package defines a stable interface with multiple provider implementations, selected at runtime via config. All packages instrument with OpenTelemetry where applicable.
 
-**Module:** `github.com/primandproper/platform-go`
+**Module:** `github.com/primandproper/platform-go/v2`
 **Go:** 1.26
 
 ## Design Patterns

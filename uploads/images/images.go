@@ -14,11 +14,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/observability"
-	"github.com/primandproper/platform-go/observability/keys"
-	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
 
 	"github.com/hashicorp/go-multierror"
 )

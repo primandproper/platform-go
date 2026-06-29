@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/primandproper/platform-go/encoding"
-	"github.com/primandproper/platform-go/files"
+	"github.com/primandproper/platform-go/v2/encoding"
+	"github.com/primandproper/platform-go/v2/files"
 )
 
 func ExampleLines() {

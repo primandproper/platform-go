@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/metrics"
-	o11yutils "github.com/primandproper/platform-go/observability/utils"
+	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	o11yutils "github.com/primandproper/platform-go/v2/observability/utils"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/hashicorp/go-multierror"

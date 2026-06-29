@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
-	"github.com/primandproper/platform-go/routing"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v2/routing"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

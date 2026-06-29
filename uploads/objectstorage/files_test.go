@@ -3,13 +3,13 @@ package objectstorage
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/circuitbreaking"
-	cbmock "github.com/primandproper/platform-go/circuitbreaking/mock"
-	"github.com/primandproper/platform-go/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/observability"
-	"github.com/primandproper/platform-go/observability/keys"
-	"github.com/primandproper/platform-go/observability/metrics"
-	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v2/circuitbreaking"
+	cbmock "github.com/primandproper/platform-go/v2/circuitbreaking/mock"
+	"github.com/primandproper/platform-go/v2/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

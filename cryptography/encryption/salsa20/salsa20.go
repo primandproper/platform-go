@@ -1,10 +1,10 @@
 package salsa20
 
 import (
-	"github.com/primandproper/platform-go/cryptography/encryption"
-	"github.com/primandproper/platform-go/observability"
-	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/v2/cryptography/encryption"
+	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
 )
 
 const name = "salsa20_encryptor"

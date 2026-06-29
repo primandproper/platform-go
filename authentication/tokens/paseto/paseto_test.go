@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/authentication/tokens"
-	"github.com/primandproper/platform-go/observability"
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v2/authentication/tokens"
+	"github.com/primandproper/platform-go/v2/observability"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/o1egl/paseto/v2"

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/primandproper/platform-go/cache"
-	"github.com/primandproper/platform-go/cache/memory"
+	"github.com/primandproper/platform-go/v2/cache"
+	"github.com/primandproper/platform-go/v2/cache/memory"
 )
 
 func ExampleCache_setAndGet() {

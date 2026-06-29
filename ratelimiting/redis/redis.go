@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/identifiers"
-	"github.com/primandproper/platform-go/observability/metrics"
-	"github.com/primandproper/platform-go/ratelimiting"
+	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/identifiers"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	"github.com/primandproper/platform-go/v2/ratelimiting"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/redis/go-redis/v9"

@@ -3,7 +3,7 @@ package config
 import (
 	"testing"
 
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

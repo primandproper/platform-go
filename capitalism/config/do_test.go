@@ -3,10 +3,10 @@ package config
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/capitalism"
-	"github.com/primandproper/platform-go/capitalism/stripe"
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v2/capitalism"
+	"github.com/primandproper/platform-go/v2/capitalism/stripe"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
