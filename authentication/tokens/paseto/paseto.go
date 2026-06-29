@@ -105,7 +105,45 @@ func (s *signer) decryptToken(op observability.Operation, providedToken string) 
 		return nil, op.Error(err, "parsing PASETO token")
 	}
 
+	// Decrypting into a map performs authenticated decryption only — it does
+	// NOT validate registered claims. Validate them explicitly so an expired,
+	// not-yet-valid, or wrong-audience token is rejected, matching the JWT
+	// backend's behavior.
+	now := time.Now().UTC()
+
+	if exp, ok := claimTime(parsedToken, "exp"); ok && now.After(exp) {
+		return nil, op.Error(tokens.ErrTokenExpired, "validating PASETO token")
+	}
+
+	if nbf, ok := claimTime(parsedToken, "nbf"); ok && now.Before(nbf) {
+		return nil, op.Error(tokens.ErrTokenNotYetValid, "validating PASETO token")
+	}
+
+	if aud, ok := parsedToken["aud"].(string); !ok || aud != s.audience {
+		return nil, op.Error(tokens.ErrInvalidAudience, "validating PASETO token")
+	}
+
+	if iss, ok := parsedToken["iss"].(string); !ok || iss != s.issuer {
+		return nil, op.Error(tokens.ErrInvalidIssuer, "validating PASETO token")
+	}
+
 	return parsedToken, nil
+}
+
+// claimTime extracts a time-valued claim, accepting both a native time.Time
+// (set at mint time) and the RFC3339 string it round-trips to through the
+// PASETO payload's JSON encoding.
+func claimTime(claims map[string]any, key string) (time.Time, bool) {
+	switch v := claims[key].(type) {
+	case time.Time:
+		return v.UTC(), true
+	case string:
+		if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
+			return t.UTC(), true
+		}
+	}
+
+	return time.Time{}, false
 }
 
 // pasetoClaims adapts a PASETO payload map to tokens.Claims.
@@ -126,13 +164,8 @@ func (c pasetoClaims) JTI() string {
 }
 
 func (c pasetoClaims) ExpiresAt() time.Time {
-	switch v := c["exp"].(type) {
-	case time.Time:
-		return v.UTC()
-	case string:
-		if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
-			return t.UTC()
-		}
+	if exp, ok := claimTime(c, "exp"); ok {
+		return exp
 	}
 	return time.Time{}
 }

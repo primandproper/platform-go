@@ -262,6 +262,43 @@ func Test_rateLimiter_Allow(T *testing.T) {
 
 		must.SliceLen(t, 1, client.evalCalls)
 	})
+
+	// Regression: the ZADD member must be unique per request. Keying solely on
+	// the millisecond timestamp collapses every request within the same
+	// millisecond into one ZSET entry (ZADD only updates the score of an
+	// existing member), which silently bypasses the limit under load. A tight
+	// loop spans far fewer distinct milliseconds than iterations, so the buggy
+	// version produces duplicate members here and this test fails.
+	T.Run("emits a unique ZADD member per request", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		rl, client := buildTestRateLimiter(t)
+
+		cmd := redis.NewCmd(ctx)
+		cmd.SetVal(int64(1))
+		client.evalFunc = func(_ context.Context, _ string, _ []string, _ ...any) *redis.Cmd { return cmd }
+
+		const calls = 1000
+		for range calls {
+			allowed, err := rl.Allow(ctx, "test-key")
+			test.NoError(t, err)
+			test.True(t, allowed)
+		}
+
+		must.SliceLen(t, calls, client.evalCalls)
+
+		members := make(map[string]struct{}, calls)
+		for _, c := range client.evalCalls {
+			// args are: now, windowMS, limit, member
+			must.SliceLen(t, 4, c.args)
+			member, ok := c.args[3].(string)
+			must.True(t, ok)
+			members[member] = struct{}{}
+		}
+
+		test.MapLen(t, calls, members)
+	})
 }
 
 func Test_rateLimiter_Close(T *testing.T) {

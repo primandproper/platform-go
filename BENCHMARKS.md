@@ -1,6 +1,6 @@
 # Benchmarks
 
-_Generated 2026-06-28 by `make bench`. Do not edit by hand — re-run to refresh._
+_Generated 2026-06-29 by `make bench`. Do not edit by hand — re-run to refresh._
 
 **Environment:** goos `darwin` · goarch `arm64` · cpu `Apple M4 Max`
 
@@ -10,114 +10,153 @@ Times are nanoseconds per operation; lower is better. Run with `make bench` (set
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Argon2Authenticator/HashPassword | 242 | 4851059 | 67064814 | 128 |
-| Argon2Authenticator/PasswordMatches | 243 | 4958525 | 67062881 | 126 |
+| Argon2Authenticator/HashPassword | 242 | 4847122 | 67064854 | 128 |
+| Argon2Authenticator/PasswordMatches | 252 | 4991893 | 67062934 | 126 |
 
 ## authentication/tokens/jwt
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| JWTSigner/IssueToken | 344,238 | 3479 | 4048 | 67 |
-| JWTSigner/ParseToken | 323,467 | 3769 | 3304 | 73 |
+| JWTSigner/IssueToken | 355,456 | 3526 | 4049 | 67 |
+| JWTSigner/ParseToken | 315,601 | 3787 | 3336 | 75 |
 
 ## authentication/totp
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Verifier_Verify | 1,373,744 | 888.1 | 704 | 14 |
+| Verifier_Verify | 1,392,454 | 864.9 | 704 | 14 |
 
 ## bitmask
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Bitmask/Count | 567,274,076 | 2.101 | 0 | 0 |
-| Bitmask/Has | 589,726,712 | 2.059 | 0 | 0 |
-| Bitmask/Set | 567,450,112 | 2.098 | 0 | 0 |
+| Bitmask/Count | 557,532,516 | 2.091 | 0 | 0 |
+| Bitmask/Has | 580,127,724 | 2.053 | 0 | 0 |
+| Bitmask/Set | 557,556,801 | 2.097 | 0 | 0 |
 
 ## cache/memory
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| InMemoryCache/Get | 4,611,820 | 273.0 | 96 | 3 |
-| InMemoryCache/Set | 4,395,763 | 270.9 | 96 | 3 |
+| InMemoryCache/Get | 4,462,856 | 270.4 | 96 | 3 |
+| InMemoryCache/Set | 4,375,972 | 267.4 | 96 | 3 |
 
 ## cache/redis/slots
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| SlotForKey/hashtag | 100,000,000 | 11.11 | 0 | 0 |
-| SlotForKey/plain | 169,080,574 | 7.072 | 0 | 0 |
+| SlotForKey/hashtag | 100,000,000 | 10.93 | 0 | 0 |
+| SlotForKey/plain | 170,703,993 | 7.002 | 0 | 0 |
 
 ## circuitbreaking/partitioned
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| KeyedCircuitBreaker/For_dedicated | 155,655,675 | 7.716 | 0 | 0 |
-| KeyedCircuitBreaker/For_global | 122,563,647 | 9.768 | 0 | 0 |
+| KeyedCircuitBreaker/For_dedicated | 162,626,563 | 7.429 | 0 | 0 |
+| KeyedCircuitBreaker/For_global | 126,143,834 | 9.396 | 0 | 0 |
 
 ## compression
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Compressor/s2/Compress | 44,646 | 22416 | 2108605 | 15 |
-| Compressor/s2/Decompress | 16,344 | 74915 | 1100641 | 11 |
-| Compressor/zstd/Compress | 6,680 | 180441 | 2346788 | 49 |
-| Compressor/zstd/Decompress | 53,977 | 21356 | 48376 | 39 |
+| Compressor/s2/Compress | 45,321 | 22229 | 2108606 | 15 |
+| Compressor/s2/Decompress | 12,458 | 96870 | 1100641 | 11 |
+| Compressor/zstd/Compress | 6,867 | 173400 | 2346785 | 49 |
+| Compressor/zstd/Decompress | 58,258 | 21455 | 48373 | 39 |
 
 ## cryptography/encryption/aes
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| EncryptorDecryptor/Decrypt | 1,440,294 | 837.4 | 2168 | 8 |
-| EncryptorDecryptor/Encrypt | 910,680 | 1184 | 2696 | 10 |
+| EncryptorDecryptor/Decrypt | 1,568,707 | 741.3 | 2168 | 8 |
+| EncryptorDecryptor/Encrypt | 1,000,000 | 1014 | 2696 | 10 |
+
+## cryptography/encryption/salsa20
+
+| Benchmark | Runs | ns/op | B/op | allocs/op |
+| --- | ---: | ---: | ---: | ---: |
+| EncryptorDecryptor/Decrypt | 1,669,351 | 712.8 | 888 | 6 |
+| EncryptorDecryptor/Encrypt | 1,432,822 | 823.3 | 1080 | 6 |
+
+## cryptography/hashing/adler32
+
+| Benchmark | Runs | ns/op | B/op | allocs/op |
+| --- | ---: | ---: | ---: | ---: |
+| Adler32Hasher_Hash/16B | 81,264,820 | 14.39 | 8 | 1 |
+| Adler32Hasher_Hash/256B | 17,700,289 | 69.05 | 8 | 1 |
+| Adler32Hasher_Hash/4096B | 1,000,000 | 1142 | 8 | 1 |
+
+## cryptography/hashing/crc64
+
+| Benchmark | Runs | ns/op | B/op | allocs/op |
+| --- | ---: | ---: | ---: | ---: |
+| CRC64Hasher_Hash/16B | 32,592,576 | 36.44 | 16 | 1 |
+| CRC64Hasher_Hash/256B | 7,201,148 | 154.9 | 16 | 1 |
+| CRC64Hasher_Hash/4096B | 547,027 | 1955 | 16 | 1 |
+
+## cryptography/hashing/fnv
+
+| Benchmark | Runs | ns/op | B/op | allocs/op |
+| --- | ---: | ---: | ---: | ---: |
+| FNVHasher_Hash/16B | 18,532,090 | 64.05 | 32 | 1 |
+| FNVHasher_Hash/256B | 1,608,552 | 748.6 | 32 | 1 |
+| FNVHasher_Hash/4096B | 102,333 | 11691 | 32 | 1 |
 
 ## cryptography/hashing/sha256
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| SHA256Hasher_Hash/16B | 13,022,637 | 92.58 | 256 | 3 |
-| SHA256Hasher_Hash/256B | 3,566,943 | 341.0 | 1920 | 4 |
-| SHA256Hasher_Hash/4096B | 326,730 | 3707 | 28416 | 4 |
+| SHA256Hasher_Hash/16B | 11,945,904 | 97.52 | 160 | 3 |
+| SHA256Hasher_Hash/256B | 5,409,159 | 197.1 | 416 | 4 |
+| SHA256Hasher_Hash/4096B | 737,660 | 1640 | 4256 | 4 |
+
+## cryptography/hashing/sha512
+
+| Benchmark | Runs | ns/op | B/op | allocs/op |
+| --- | ---: | ---: | ---: | ---: |
+| SHA512Hasher_Hash/16B | 6,476,818 | 173.5 | 320 | 3 |
+| SHA512Hasher_Hash/256B | 3,790,699 | 335.3 | 576 | 4 |
+| SHA512Hasher_Hash/4096B | 398,383 | 2733 | 4416 | 4 |
 
 ## database/sqlite
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| SQLiteClient/Exec | 348,549 | 3171 | 1656 | 24 |
-| SQLiteClient/QueryRow | 218,502 | 4899 | 3433 | 49 |
+| SQLiteClient/Exec | 377,516 | 3216 | 1656 | 24 |
+| SQLiteClient/QueryRow | 221,470 | 4705 | 3433 | 49 |
 
 ## distributedlock/memory
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Locker_AcquireRelease | 1,278,488 | 936.6 | 224 | 7 |
+| Locker_AcquireRelease | 1,226,217 | 962.3 | 224 | 7 |
 
 ## encoding
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| ServerEncoderDecoder/DecodeBytes | 1,911,326 | 637.4 | 1096 | 12 |
-| ServerEncoderDecoder/EncodeJSON | 4,651,404 | 252.0 | 192 | 4 |
+| ServerEncoderDecoder/DecodeBytes | 1,882,772 | 631.7 | 1096 | 12 |
+| ServerEncoderDecoder/EncodeJSON | 4,452,454 | 255.5 | 192 | 4 |
 
 ## identifiers
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| New | 22,254,848 | 48.16 | 24 | 1 |
-| Validate | 100,000,000 | 11.50 | 0 | 0 |
+| New | 22,256,190 | 46.72 | 24 | 1 |
+| Validate | 100,000,000 | 11.55 | 0 | 0 |
 
 ## numbers
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Numbers/RoundToDecimalPlaces | 617,397,622 | 1.858 | 0 | 0 |
-| Numbers/Scale | 669,443,151 | 1.844 | 0 | 0 |
-| Numbers/ScaleToYield | 669,867,924 | 1.869 | 0 | 0 |
+| Numbers/RoundToDecimalPlaces | 625,645,470 | 1.850 | 0 | 0 |
+| Numbers/Scale | 674,432,948 | 1.816 | 0 | 0 |
+| Numbers/ScaleToYield | 671,762,104 | 1.827 | 0 | 0 |
 
 ## random
 
 | Benchmark | Runs | ns/op | B/op | allocs/op |
 | --- | ---: | ---: | ---: | ---: |
-| Generator/HexEncodedString16 | 3,084,594 | 384.1 | 128 | 4 |
-| Generator/RawBytes32 | 3,301,735 | 359.8 | 112 | 3 |
+| Generator/HexEncodedString16 | 2,969,534 | 389.9 | 128 | 4 |
+| Generator/RawBytes32 | 3,382,892 | 357.3 | 112 | 3 |
 

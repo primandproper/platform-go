@@ -18,5 +18,10 @@ func NewAdler32Hasher() hashing.Hasher {
 }
 
 func (s *adler32Hasher) Hash(content string) (string, error) {
-	return hex.EncodeToString(adler32.New().Sum([]byte(content))), nil
+	h := adler32.New()
+	if _, err := h.Write([]byte(content)); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

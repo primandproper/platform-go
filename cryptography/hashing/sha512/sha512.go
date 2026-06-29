@@ -18,5 +18,10 @@ func NewSHA512Hasher() hashing.Hasher {
 }
 
 func (s *sha512Hasher) Hash(content string) (string, error) {
-	return hex.EncodeToString(sha512.New().Sum([]byte(content))), nil
+	h := sha512.New()
+	if _, err := h.Write([]byte(content)); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

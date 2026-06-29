@@ -47,12 +47,12 @@ func (e *exponentialBackoff) Execute(ctx context.Context, operation func(ctx con
 		}
 
 		sleepDuration := delay
-		if e.config.UseJitter {
-			jitter := time.Duration(rand.Int64N(int64(delay) / 2)) //nolint:gosec // G404: jitter does not require cryptographic randomness
-			sleepDuration = delay + jitter - (delay / 2)
-			if sleepDuration < 0 {
-				sleepDuration = delay
-			}
+		// half > 0 guards rand.Int64N, which panics on a non-positive argument
+		// (e.g. a sub-2ns delay where int64(delay)/2 truncates to 0). When the
+		// delay is too small to halve, jitter is simply skipped.
+		if half := delay / 2; e.config.UseJitter && half > 0 {
+			jitter := time.Duration(rand.Int64N(int64(half))) //nolint:gosec // G404: jitter does not require cryptographic randomness
+			sleepDuration = delay - half + jitter
 		}
 
 		select {

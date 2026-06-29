@@ -16,3 +16,14 @@ func TestErrIncorrectKeyLength(T *testing.T) {
 		test.EqError(t, ErrIncorrectKeyLength, "secret is not the right length")
 	})
 }
+
+func TestErrMalformedCiphertext(T *testing.T) {
+	T.Parallel()
+
+	T.Run("is not nil", func(t *testing.T) {
+		t.Parallel()
+
+		test.NotNil(t, ErrMalformedCiphertext)
+		test.EqError(t, ErrMalformedCiphertext, "malformed ciphertext")
+	})
+}

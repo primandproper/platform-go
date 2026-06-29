@@ -1,6 +1,7 @@
 package salsa20
 
 import (
+	"encoding/base64"
 	"testing"
 
 	"github.com/primandproper/platform-go/observability"
@@ -54,11 +55,17 @@ func TestStandardEncryptor(T *testing.T) {
 		test.NoError(t, err)
 		test.NotEq(t, "", encrypted2)
 
-		test.EqOp(t, encrypted, encrypted2)
+		// Salsa20 uses a fresh random nonce per call, so encrypting the same
+		// plaintext twice must produce different ciphertexts.
+		test.NotEqOp(t, encrypted, encrypted2)
 
 		actual, err := encryptor.Decrypt(ctx, encrypted)
 		test.NoError(t, err)
 		test.EqOp(t, expected, actual)
+
+		actual2, err := encryptor.Decrypt(ctx, encrypted2)
+		test.NoError(t, err)
+		test.EqOp(t, expected, actual2)
 	})
 
 	T.Run("decrypt observes content length", func(t *testing.T) {
@@ -98,6 +105,26 @@ func TestStandardEncryptor(T *testing.T) {
 
 		op := obs.ObservedOperationWithData(t, map[string]any{
 			keys.LengthKey: len(invalid),
+		})
+		must.SliceLen(t, 1, op.Errors)
+	})
+
+	T.Run("decrypt with ciphertext too short for nonce records error", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		secret, err := random.GenerateHexEncodedString(ctx, 16)
+		must.NoError(t, err)
+
+		encryptor, obs := newRecordingEncryptor(t, secret)
+
+		// valid base64 that decodes to fewer than nonceSize bytes.
+		tooShort := base64.URLEncoding.EncodeToString([]byte{0, 1, 2})
+		_, err = encryptor.Decrypt(ctx, tooShort)
+		must.Error(t, err)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.LengthKey: len(tooShort),
 		})
 		must.SliceLen(t, 1, op.Errors)
 	})

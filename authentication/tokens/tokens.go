@@ -12,6 +12,21 @@ import (
 // be overridden by callers.
 var ErrReservedClaim = platformerrors.New("reserved claim key in extraClaims")
 
+// Sentinel errors returned by ParseToken implementations when a token decodes
+// and authenticates but fails claim validation. Backends should return these
+// (or library equivalents that wrap the same conditions) so callers can branch
+// on the reason consistently regardless of which Issuer is configured.
+var (
+	// ErrTokenExpired indicates the token's "exp" claim is in the past.
+	ErrTokenExpired = platformerrors.New("token is expired")
+	// ErrTokenNotYetValid indicates the token's "nbf" claim is in the future.
+	ErrTokenNotYetValid = platformerrors.New("token is not yet valid")
+	// ErrInvalidAudience indicates the token's "aud" claim does not match the issuer's audience.
+	ErrInvalidAudience = platformerrors.New("token audience is not valid")
+	// ErrInvalidIssuer indicates the token's "iss" claim does not match the issuer.
+	ErrInvalidIssuer = platformerrors.New("token issuer is not valid")
+)
+
 // ReservedClaimKeys is the set of JWT registered claim names (RFC 7519) the issuer owns.
 // Callers MUST NOT include these in extraClaims passed to IssueToken.
 var ReservedClaimKeys = map[string]struct{}{

@@ -7,7 +7,7 @@ import (
 	"github.com/primandproper/platform-go/observability/tracing"
 )
 
-const name = "encryptor"
+const name = "aes_encryptor"
 
 // aesImpl is the standard EncryptorDecryptor implementation.
 type aesImpl struct {

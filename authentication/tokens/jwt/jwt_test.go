@@ -39,6 +39,33 @@ const (
 	exampleSubject    = "user_id"
 )
 
+// craftJWT signs a JWT with the example key, bypassing IssueToken's claim
+// ownership so a test can forge expired / wrong-audience tokens that still
+// carry a valid signature.
+func craftJWT(t *testing.T, claims jwt.MapClaims) string {
+	t.Helper()
+
+	tokenString, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(exampleSigningKey))
+	must.NoError(t, err)
+
+	return tokenString
+}
+
+// validJWTClaims returns a fully-valid claim set for s that individual tests
+// mutate one field at a time to isolate each validation rule.
+func validJWTClaims(s *signer) jwt.MapClaims {
+	now := time.Now().UTC()
+	return jwt.MapClaims{
+		"aud": s.audience,
+		"iss": s.issuer,
+		"sub": exampleSubject,
+		"jti": "jti_123",
+		"iat": jwt.NewNumericDate(now),
+		"nbf": jwt.NewNumericDate(now.Add(-time.Minute)),
+		"exp": jwt.NewNumericDate(now.Add(exampleExpiry)),
+	}
+}
+
 func Test_signer_IssueJWT(T *testing.T) {
 	T.Parallel()
 
@@ -188,5 +215,44 @@ func Test_signer_ParseToken(T *testing.T) {
 		raw, ok := claims.Get("sid")
 		test.False(t, ok)
 		test.Nil(t, raw)
+	})
+
+	T.Run("rejects expired token", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newRecordingSigner(t)
+
+		claims := validJWTClaims(s)
+		claims["exp"] = jwt.NewNumericDate(time.Now().Add(-time.Hour))
+
+		parsed, err := s.ParseToken(t.Context(), craftJWT(t, claims))
+		test.ErrorIs(t, err, jwt.ErrTokenExpired)
+		test.Nil(t, parsed)
+	})
+
+	T.Run("rejects mismatched audience", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newRecordingSigner(t)
+
+		claims := validJWTClaims(s)
+		claims["aud"] = "some-other-service"
+
+		parsed, err := s.ParseToken(t.Context(), craftJWT(t, claims))
+		test.ErrorIs(t, err, jwt.ErrTokenInvalidAudience)
+		test.Nil(t, parsed)
+	})
+
+	T.Run("rejects mismatched issuer", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newRecordingSigner(t)
+
+		claims := validJWTClaims(s)
+		claims["iss"] = "some-other-issuer"
+
+		parsed, err := s.ParseToken(t.Context(), craftJWT(t, claims))
+		test.ErrorIs(t, err, jwt.ErrTokenInvalidIssuer)
+		test.Nil(t, parsed)
 	})
 }

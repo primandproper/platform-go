@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 
+	"github.com/primandproper/platform-go/cryptography/encryption"
 	"github.com/primandproper/platform-go/observability/keys"
 )
 
@@ -31,6 +32,10 @@ func (e *aesImpl) Decrypt(ctx context.Context, content string) (string, error) {
 	}
 
 	nonceSize := gcmInstance.NonceSize()
+	if len(ciphered) < nonceSize {
+		return "", op.Error(encryption.ErrMalformedCiphertext, "ciphertext too short for nonce")
+	}
+
 	nonce, cipheredText := ciphered[:nonceSize], ciphered[nonceSize:]
 
 	originalText, err := gcmInstance.Open(nil, nonce, cipheredText, nil)

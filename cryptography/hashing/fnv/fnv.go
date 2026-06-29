@@ -18,5 +18,10 @@ func NewFNVHasher() hashing.Hasher {
 }
 
 func (s *fnvHasher) Hash(content string) (string, error) {
-	return hex.EncodeToString(fnv.New128a().Sum([]byte(content))), nil
+	h := fnv.New128a()
+	if _, err := h.Write([]byte(content)); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

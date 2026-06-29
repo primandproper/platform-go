@@ -79,6 +79,30 @@ func TestExponentialBackoffPolicy_Execute(T *testing.T) {
 		test.EqOp(t, 3, attempts)
 	})
 
+	// Regression: a sub-2ns InitialDelay makes int64(delay)/2 truncate to 0, and
+	// rand.Int64N(0) panics. With jitter enabled this would crash on the first
+	// backoff instead of retrying.
+	T.Run("does not panic when jitter delay is too small to halve", func(t *testing.T) {
+		t.Parallel()
+
+		policy := NewExponentialBackoffPolicy(Config{
+			MaxAttempts:  3,
+			InitialDelay: 1,
+			MaxDelay:     10,
+			UseJitter:    true,
+		})
+		ctx := context.Background()
+		attempts := 0
+
+		err := policy.Execute(ctx, func(ctx context.Context) error {
+			attempts++
+			return errors.New("transient")
+		})
+
+		must.Error(t, err)
+		test.EqOp(t, 3, attempts)
+	})
+
 	T.Run("respects context cancellation", func(t *testing.T) {
 		t.Parallel()
 

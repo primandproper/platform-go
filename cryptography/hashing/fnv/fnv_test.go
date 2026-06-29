@@ -16,6 +16,6 @@ func Test_fnvHasher_Hash(T *testing.T) {
 
 		result, err := hasher.Hash(t.Name())
 		test.NoError(t, err)
-		test.EqOp(t, "546573745f666e764861736865725f486173682f7374616e646172646c62272e07bb014262b821756295c58d", result)
+		test.EqOp(t, "780242af2cb9fb3c85ad54840e9411ec", result)
 	})
 }

@@ -1,6 +1,7 @@
 package aes
 
 import (
+	"encoding/base64"
 	"testing"
 
 	"github.com/primandproper/platform-go/observability"
@@ -90,6 +91,26 @@ func TestStandardEncryptor(T *testing.T) {
 
 		op := obs.ObservedOperationWithData(t, map[string]any{
 			keys.LengthKey: len(badContent),
+		})
+		must.SliceLen(t, 1, op.Errors)
+	})
+
+	T.Run("decrypt with ciphertext too short for nonce records error", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		secret, err := random.GenerateHexEncodedString(ctx, 16)
+		must.NoError(t, err)
+
+		encryptor, obs := newRecordingEncryptor(t, []byte(secret))
+
+		// valid base64 that decodes to fewer than the GCM nonce size.
+		tooShort := base64.URLEncoding.EncodeToString([]byte{0, 1, 2})
+		_, err = encryptor.Decrypt(ctx, tooShort)
+		must.Error(t, err)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.LengthKey: len(tooShort),
 		})
 		must.SliceLen(t, 1, op.Errors)
 	})

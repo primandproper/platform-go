@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/identifiers"
 	"github.com/primandproper/platform-go/observability/metrics"
 	"github.com/primandproper/platform-go/ratelimiting"
 
@@ -111,7 +112,12 @@ func NewRedisRateLimiter(cfg Config, metricsProvider metrics.Provider, requestsP
 func (r *rateLimiter) Allow(ctx context.Context, key string) (bool, error) {
 	now := time.Now().UnixMilli()
 	windowMS := int64(1000)
-	member := fmt.Sprintf("%d", now)
+	// The member must be unique per request: ZADD on a duplicate member only
+	// updates its score, so keying solely on the millisecond timestamp would
+	// collapse every request within the same millisecond into a single ZSET
+	// entry and let the limit be bypassed under load. The score stays `now` so
+	// ZREMRANGEBYSCORE still evicts by window.
+	member := fmt.Sprintf("%d-%s", now, identifiers.New())
 
 	result, err := r.client.Eval(ctx, slidingWindowScript,
 		[]string{fmt.Sprintf("ratelimit:%s", key)},

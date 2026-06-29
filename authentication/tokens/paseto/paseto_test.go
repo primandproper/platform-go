@@ -11,9 +11,37 @@ import (
 	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/o1egl/paseto/v2"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// craftToken encrypts an arbitrary claim set with the signer's key, bypassing
+// IssueToken's claim ownership so a test can forge expired / wrong-audience
+// tokens that still authenticate.
+func craftToken(t *testing.T, s *signer, claims map[string]any) string {
+	t.Helper()
+
+	tokenStr, err := paseto.NewV2().Encrypt(s.signingKey, claims, "footer")
+	must.NoError(t, err)
+
+	return tokenStr
+}
+
+// validClaims returns a fully-valid claim set for s that individual tests
+// mutate one field at a time to isolate each validation rule.
+func validClaims(s *signer) map[string]any {
+	now := time.Now().UTC()
+	return map[string]any{
+		"aud": s.audience,
+		"iss": s.issuer,
+		"sub": exampleSubject,
+		"jti": "jti_123",
+		"iat": now,
+		"nbf": now.Add(-time.Minute),
+		"exp": now.Add(exampleExpiry),
+	}
+}
 
 const (
 	exampleSigningKey = "HEREISA32CHARSECRETWHICHISMADEUP"
@@ -188,5 +216,72 @@ func Test_signer_ParseToken(T *testing.T) {
 		raw, ok := claims.Get("sid")
 		test.False(t, ok)
 		test.Nil(t, raw)
+	})
+
+	// Regression: decrypting into a map performs authenticated decryption only,
+	// so an expired token would otherwise parse cleanly with no error.
+	T.Run("rejects expired token", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newRecordingSigner(t, []byte(exampleSigningKey))
+
+		claims := validClaims(s)
+		claims["exp"] = time.Now().Add(-time.Hour).UTC()
+
+		parsed, err := s.ParseToken(t.Context(), craftToken(t, s, claims))
+		test.ErrorIs(t, err, tokens.ErrTokenExpired)
+		test.Nil(t, parsed)
+	})
+
+	T.Run("rejects not-yet-valid token", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newRecordingSigner(t, []byte(exampleSigningKey))
+
+		claims := validClaims(s)
+		claims["nbf"] = time.Now().Add(time.Hour).UTC()
+
+		parsed, err := s.ParseToken(t.Context(), craftToken(t, s, claims))
+		test.ErrorIs(t, err, tokens.ErrTokenNotYetValid)
+		test.Nil(t, parsed)
+	})
+
+	T.Run("rejects mismatched audience", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newRecordingSigner(t, []byte(exampleSigningKey))
+
+		claims := validClaims(s)
+		claims["aud"] = "some-other-service"
+
+		parsed, err := s.ParseToken(t.Context(), craftToken(t, s, claims))
+		test.ErrorIs(t, err, tokens.ErrInvalidAudience)
+		test.Nil(t, parsed)
+	})
+
+	T.Run("rejects mismatched issuer", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newRecordingSigner(t, []byte(exampleSigningKey))
+
+		claims := validClaims(s)
+		claims["iss"] = "some-other-issuer"
+
+		parsed, err := s.ParseToken(t.Context(), craftToken(t, s, claims))
+		test.ErrorIs(t, err, tokens.ErrInvalidIssuer)
+		test.Nil(t, parsed)
+	})
+
+	// A freshly crafted, fully-valid token must still pass, proving the
+	// validation above does not reject legitimate tokens.
+	T.Run("accepts a valid crafted token", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newRecordingSigner(t, []byte(exampleSigningKey))
+
+		parsed, err := s.ParseToken(t.Context(), craftToken(t, s, validClaims(s)))
+		test.NoError(t, err)
+		must.NotNil(t, parsed)
+		test.EqOp(t, exampleSubject, parsed.Subject())
 	})
 }
