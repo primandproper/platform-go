@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/observability"
+	"github.com/primandproper/platform-go/v2/observability"
 
 	"github.com/boombuler/barcode"
 	"github.com/shoenig/test"

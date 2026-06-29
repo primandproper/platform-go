@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 
-	"github.com/primandproper/platform-go/cryptography/encryption"
-	"github.com/primandproper/platform-go/observability/keys"
+	"github.com/primandproper/platform-go/v2/cryptography/encryption"
+	"github.com/primandproper/platform-go/v2/observability/keys"
 
 	"golang.org/x/crypto/salsa20"
 )

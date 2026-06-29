@@ -5,8 +5,8 @@ import (
 	"context"
 	"io"
 
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
 )
 
 func Decode(data []byte, ct *contentType, dest any) error {

@@ -101,20 +101,18 @@ linters:
               desc: >-
                 Use matryer/moq for mocks. See any existing <pkg>/mock/doc.go
                 for the go:generate pattern (e.g. authentication/tokens/mock).
-                testify/mock is being migrated out via the /convert-mocks
-                skill; do not reintroduce it.
+                testify/mock is banned; do not reintroduce it.
             - pkg: github.com/stretchr/testify/assert
               desc: >-
                 Use github.com/shoenig/test (package name `test`) for
                 non-fatal assertions. See existing tests (e.g.
                 database/errors_test.go) for examples. testify/assert is
-                being migrated out via the /convert-assertions skill; do
-                not reintroduce it.
+                banned; do not reintroduce it.
             - pkg: github.com/stretchr/testify/require
               desc: >-
                 Use github.com/shoenig/test/must (package name `must`) for
-                fatal assertions. testify/require is being migrated out via
-                the /convert-assertions skill; do not reintroduce it.
+                fatal assertions. testify/require is banned; do not
+                reintroduce it.
             - pkg: github.com/pkg/errors
               desc: >-
                 Use github.com/cockroachdb/errors for rich error context.
@@ -244,7 +242,7 @@ formatters:
     gci:
       sections:
         - standard
-        - prefix(github.com/primandproper/platform-go)
+        - prefix(github.com/primandproper/platform-go/v2)
         - prefix(github.com/primandproper)
         - default
       custom-order: true

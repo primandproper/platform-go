@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/tracing"
-	"github.com/primandproper/platform-go/panicking"
-	"github.com/primandproper/platform-go/routing"
+	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v2/panicking"
+	"github.com/primandproper/platform-go/v2/routing"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/net/http2"

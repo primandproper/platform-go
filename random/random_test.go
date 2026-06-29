@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/observability"
-	"github.com/primandproper/platform-go/observability/keys"
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v2/observability/keys"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

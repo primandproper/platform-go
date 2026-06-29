@@ -3,11 +3,11 @@ package objectstorage
 import (
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	"github.com/primandproper/platform-go/observability/metrics"
-	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
-	"github.com/primandproper/platform-go/uploads"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v2/uploads"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

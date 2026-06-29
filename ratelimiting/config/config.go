@@ -4,11 +4,11 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/observability/metrics"
-	"github.com/primandproper/platform-go/ratelimiting"
-	"github.com/primandproper/platform-go/ratelimiting/noop"
-	redisrl "github.com/primandproper/platform-go/ratelimiting/redis"
+	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	"github.com/primandproper/platform-go/v2/ratelimiting"
+	"github.com/primandproper/platform-go/v2/ratelimiting/noop"
+	redisrl "github.com/primandproper/platform-go/v2/ratelimiting/redis"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

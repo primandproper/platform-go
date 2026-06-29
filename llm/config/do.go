@@ -1,10 +1,10 @@
 package llmcfg
 
 import (
-	"github.com/primandproper/platform-go/llm"
-	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/metrics"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/v2/llm"
+	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
 
 	"github.com/samber/do/v2"
 )

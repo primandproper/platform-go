@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/errors"
+	platformerrors "github.com/primandproper/platform-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

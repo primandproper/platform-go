@@ -3,9 +3,9 @@ package algolia
 import (
 	"testing"
 
-	cbnoop "github.com/primandproper/platform-go/circuitbreaking/noop"
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 )

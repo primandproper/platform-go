@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/primandproper/platform-go/featureflags"
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform-go/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v2/featureflags"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

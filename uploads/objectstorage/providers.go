@@ -1,7 +1,7 @@
 package objectstorage
 
 import (
-	"github.com/primandproper/platform-go/uploads"
+	"github.com/primandproper/platform-go/v2/uploads"
 )
 
 // ProvideUploadManager transforms an *objectstorage.Uploader into an UploadManager.

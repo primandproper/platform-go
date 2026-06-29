@@ -3,7 +3,7 @@ package launchdarkly
 import (
 	"time"
 
-	circuitbreakingcfg "github.com/primandproper/platform-go/circuitbreaking/config"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
 )
 
 type (

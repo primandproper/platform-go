@@ -3,7 +3,7 @@ package vectorsearch
 import (
 	"context"
 
-	platformerrors "github.com/primandproper/platform-go/errors"
+	platformerrors "github.com/primandproper/platform-go/v2/errors"
 )
 
 // DistanceMetric selects the nearest-neighbor scoring function used by an index.

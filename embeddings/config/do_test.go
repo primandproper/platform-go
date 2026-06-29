@@ -3,9 +3,9 @@ package embeddingscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/embeddings"
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/v2/embeddings"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

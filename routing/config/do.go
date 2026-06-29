@@ -1,7 +1,7 @@
 package routingcfg
 
 import (
-	"github.com/primandproper/platform-go/routing"
+	"github.com/primandproper/platform-go/v2/routing"
 
 	"github.com/samber/do/v2"
 )

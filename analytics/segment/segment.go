@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/primandproper/platform-go/analytics"
-	"github.com/primandproper/platform-go/circuitbreaking"
-	platformerrors "github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/observability"
-	"github.com/primandproper/platform-go/observability/keys"
-	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/metrics"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/v2/analytics"
+	"github.com/primandproper/platform-go/v2/circuitbreaking"
+	platformerrors "github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
 
 	segment "github.com/segmentio/analytics-go/v3"
 )

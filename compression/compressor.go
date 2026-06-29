@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"io"
 
-	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/v2/errors"
 
 	"github.com/klauspost/compress/s2"
 	"github.com/klauspost/compress/zstd"

@@ -4,12 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/llm/anthropic"
-	"github.com/primandproper/platform-go/llm/openai"
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	"github.com/primandproper/platform-go/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v2/llm/anthropic"
+	"github.com/primandproper/platform-go/v2/llm/openai"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

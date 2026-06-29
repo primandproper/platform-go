@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	loggingnoop "github.com/primandproper/platform-go/observability/logging/noop"
-	textsearch "github.com/primandproper/platform-go/search/text"
+	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
+	textsearch "github.com/primandproper/platform-go/v2/search/text"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

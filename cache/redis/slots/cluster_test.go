@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/v2/errors"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shoenig/test/must"

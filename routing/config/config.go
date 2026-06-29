@@ -3,12 +3,12 @@ package routingcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/metrics"
-	"github.com/primandproper/platform-go/observability/tracing"
-	"github.com/primandproper/platform-go/routing"
-	"github.com/primandproper/platform-go/routing/chi"
+	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v2/routing"
+	"github.com/primandproper/platform-go/v2/routing/chi"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

@@ -5,8 +5,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/observability/keys"
+	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/observability/keys"
 )
 
 // ChunkResult is one item streamed by StreamChunks: either a chunk of up to n lines, or a terminal

@@ -3,12 +3,12 @@ package pusher
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/notifications/async"
-	"github.com/primandproper/platform-go/observability"
-	"github.com/primandproper/platform-go/observability/logging"
-	"github.com/primandproper/platform-go/observability/metrics"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/notifications/async"
+	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v2/observability/metrics"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
 
 	pushersdk "github.com/pusher/pusher-http-go/v5"
 )

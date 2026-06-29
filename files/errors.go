@@ -1,7 +1,7 @@
 package files
 
 import (
-	"github.com/primandproper/platform-go/errors"
+	"github.com/primandproper/platform-go/v2/errors"
 )
 
 var (

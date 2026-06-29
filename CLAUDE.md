@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Go library/framework (`github.com/primandproper/platform-go`) providing infrastructure abstractions for cloud-native services: database, caching, messaging, observability, secrets, uploads, email, payments, and more. Single module, ~40 packages, Go 1.26.
+Go library/framework (`github.com/primandproper/platform-go/v2`) providing infrastructure abstractions for cloud-native services: database, caching, messaging, observability, secrets, uploads, email, payments, and more. Single module, ~40 packages, Go 1.26.
 
 ## Common Commands
 
@@ -36,11 +36,11 @@ Linting runs in Docker (`golangci/golangci-lint` image). Formatting runs locally
 Import ordering uses `gci` with four sections, separated by blank lines:
 
 1. Standard library
-2. `github.com/primandproper/platform-go` (this module)
+2. `github.com/primandproper/platform-go/v2` (this module)
 2. `github.com/primandproper` (org-level packages)
 4. Everything else (third-party)
 
-The Makefile `THIS` variable must be the full module path (`github.com/primandproper/platform-go`) because `format_imports.sh` uses `dirname` to derive the org prefix. If `THIS` is too short, `dirname` produces `github.com` which creates a spurious `prefix(github.com)` gci section.
+The Makefile `THIS` variable must be the full module path (`github.com/primandproper/platform-go/v2`). `format_imports.sh` derives the org prefix from it by stripping any trailing major-version suffix (e.g. `/v2`) and then taking `dirname`, yielding `github.com/primandproper`. If `THIS` is too short, the org prefix collapses toward `github.com`, creating a spurious `prefix(github.com)` gci section.
 
 ## Architecture Patterns
 
@@ -64,8 +64,6 @@ The Makefile `THIS` variable must be the full module path (`github.com/primandpr
     Same function names as `test`.
   - Mocks: `matryer/moq`, generated from interfaces. See any `<pkg>/mock/doc.go`
     for the `//go:generate` directive pattern (e.g. `authentication/tokens/mock/doc.go`).
-  - The `/convert-assertions` and `/convert-mocks` skills document the migration
-    rules in detail.
 - Tests call `t.Parallel()` by default
 - Integration tests use `testcontainers-go` and live in separate directories excluded from `make test`
 - `make test` excludes: cmd, integration, mock, fakes, converters, utils, generated packages

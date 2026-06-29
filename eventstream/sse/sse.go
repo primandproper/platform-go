@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/eventstream"
-	"github.com/primandproper/platform-go/observability"
-	"github.com/primandproper/platform-go/observability/keys"
-	"github.com/primandproper/platform-go/observability/tracing"
+	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/eventstream"
+	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v2/observability/tracing"
 )
 
 const (

@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/primandproper/platform-go/circuitbreaking"
-	platformerrors "github.com/primandproper/platform-go/errors"
-	"github.com/primandproper/platform-go/observability"
-	"github.com/primandproper/platform-go/observability/keys"
+	"github.com/primandproper/platform-go/v2/circuitbreaking"
+	platformerrors "github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v2/observability/keys"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 )
