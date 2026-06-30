@@ -52,8 +52,8 @@ type (
 	Config struct {
 		_ struct{} `json:"-"`
 
-		Consumer  MessageQueueConfig `envPrefix:"CONSUMER_"  json:"consumers"`
-		Publisher MessageQueueConfig `envPrefix:"PUBLISHER_" json:"publishers"`
+		Consumer  MessageQueueConfig `envPrefix:"CONSUMER_"  json:"consumer"`
+		Publisher MessageQueueConfig `envPrefix:"PUBLISHER_" json:"publisher"`
 	}
 
 	// QueuesConfig contains the various queue names.
