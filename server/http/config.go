@@ -12,8 +12,8 @@ type (
 	Config struct {
 		_ struct{} `json:"-"`
 
-		SSLCertificateFile    string        `env:"SSL_CERTIFICATE_FILEPATH"     json:"sslsCertificate,omitempty"`
-		SSLCertificateKeyFile string        `env:"SSL_CERTIFICATE_KEY_FILEPATH" json:"sslsCertificateKey,omitempty"`
+		SSLCertificateFile    string        `env:"SSL_CERTIFICATE_FILEPATH"     json:"sslCertificate,omitempty"`
+		SSLCertificateKeyFile string        `env:"SSL_CERTIFICATE_KEY_FILEPATH" json:"sslCertificateKey,omitempty"`
 		StartupDeadline       time.Duration `env:"STARTUP_DEADLINE"             json:"startupDeadline,omitempty"`
 		Port                  uint16        `env:"PORT"                         json:"port"`
 		Debug                 bool          `env:"DEBUG"                        json:"debug"`

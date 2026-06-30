@@ -70,10 +70,10 @@ type (
 		_ struct{} `json:"-"`
 
 		SortBy          *string    `json:"sortBy,omitempty"`
-		CreatedAfter    *time.Time `json:"createdBefore,omitempty"`
-		CreatedBefore   *time.Time `json:"createdAfter,omitempty"`
-		UpdatedAfter    *time.Time `json:"updatedBefore,omitempty"`
-		UpdatedBefore   *time.Time `json:"updatedAfter,omitempty"`
+		CreatedAfter    *time.Time `json:"createdAfter,omitempty"`
+		CreatedBefore   *time.Time `json:"createdBefore,omitempty"`
+		UpdatedAfter    *time.Time `json:"updatedAfter,omitempty"`
+		UpdatedBefore   *time.Time `json:"updatedBefore,omitempty"`
 		MaxResponseSize *uint8     `json:"maxResponseSize,omitempty"`
 		IncludeArchived *bool      `json:"includeArchived,omitempty"`
 		Cursor          *string    `json:"cursor,omitempty"`
