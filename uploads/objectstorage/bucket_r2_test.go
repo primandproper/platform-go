@@ -15,7 +15,6 @@ func TestR2Config_ValidateWithContext(T *testing.T) {
 		ctx := t.Context()
 		cfg := &R2Config{
 			AccountID:       t.Name(),
-			BucketName:      t.Name(),
 			AccessKeyID:     t.Name(),
 			SecretAccessKey: t.Name(),
 		}
@@ -28,20 +27,6 @@ func TestR2Config_ValidateWithContext(T *testing.T) {
 
 		ctx := t.Context()
 		cfg := &R2Config{
-			BucketName:      t.Name(),
-			AccessKeyID:     t.Name(),
-			SecretAccessKey: t.Name(),
-		}
-
-		test.Error(t, cfg.ValidateWithContext(ctx))
-	})
-
-	T.Run("with missing bucket name", func(t *testing.T) {
-		t.Parallel()
-
-		ctx := t.Context()
-		cfg := &R2Config{
-			AccountID:       t.Name(),
 			AccessKeyID:     t.Name(),
 			SecretAccessKey: t.Name(),
 		}
@@ -55,7 +40,6 @@ func TestR2Config_ValidateWithContext(T *testing.T) {
 		ctx := t.Context()
 		cfg := &R2Config{
 			AccountID:       t.Name(),
-			BucketName:      t.Name(),
 			SecretAccessKey: t.Name(),
 		}
 
@@ -68,7 +52,6 @@ func TestR2Config_ValidateWithContext(T *testing.T) {
 		ctx := t.Context()
 		cfg := &R2Config{
 			AccountID:   t.Name(),
-			BucketName:  t.Name(),
 			AccessKeyID: t.Name(),
 		}
 

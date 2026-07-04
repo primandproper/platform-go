@@ -6,11 +6,6 @@ import (
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
 
-const (
-	// BackblazeB2Provider indicates we'd like to use the Backblaze B2 adapter for blob.
-	BackblazeB2Provider = "backblaze_b2"
-)
-
 type (
 	// BackblazeB2Config configures a Backblaze B2-based objectstorage provider.
 	BackblazeB2Config struct {
@@ -18,7 +13,6 @@ type (
 
 		ApplicationKeyID string `env:"APPLICATION_KEY_ID" json:"applicationKeyID"`
 		ApplicationKey   string `env:"APPLICATION_KEY"    json:"applicationKey"`
-		BucketName       string `env:"BUCKET_NAME"        json:"bucketName"`
 		Region           string `env:"REGION"             json:"region"`
 	}
 )
@@ -30,7 +24,6 @@ func (c *BackblazeB2Config) ValidateWithContext(ctx context.Context) error {
 	return validation.ValidateStructWithContext(ctx, c,
 		validation.Field(&c.ApplicationKeyID, validation.Required),
 		validation.Field(&c.ApplicationKey, validation.Required),
-		validation.Field(&c.BucketName, validation.Required),
 		validation.Field(&c.Region, validation.Required),
 	)
 }

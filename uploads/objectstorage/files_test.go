@@ -1,6 +1,8 @@
 package objectstorage
 
 import (
+	"bytes"
+	"io"
 	"testing"
 
 	"github.com/primandproper/platform-go/v2/circuitbreaking"
@@ -10,9 +12,11 @@ import (
 	"github.com/primandproper/platform-go/v2/observability/keys"
 	"github.com/primandproper/platform-go/v2/observability/metrics"
 	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v2/uploads"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"gocloud.dev/blob"
 	"gocloud.dev/blob/memblob"
 )
 
@@ -38,7 +42,35 @@ func noopUploaderMetrics(t *testing.T) (saveCounter, readCounter, saveErrCounter
 	return saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist
 }
 
-func TestUploader_ReadFile(T *testing.T) {
+// newTestUploader builds an Uploader over the given bucket and observer with no-op metrics.
+func newTestUploader(t *testing.T, b *blob.Bucket, obs observability.Observer, cb circuitbreaking.CircuitBreaker) *Uploader {
+	t.Helper()
+
+	saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
+
+	return &Uploader{
+		bucket:         b,
+		o11y:           obs,
+		circuitBreaker: cb,
+		saveCounter:    saveCounter,
+		readCounter:    readCounter,
+		saveErrCounter: saveErrCounter,
+		readErrCounter: readErrCounter,
+		latencyHist:    latencyHist,
+	}
+}
+
+func readAll(t *testing.T, r io.ReadCloser) []byte {
+	t.Helper()
+
+	b, err := io.ReadAll(r)
+	must.NoError(t, err)
+	must.NoError(t, r.Close())
+
+	return b
+}
+
+func TestUploader_Open(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -52,21 +84,12 @@ func TestUploader_ReadFile(T *testing.T) {
 		must.NoError(t, b.WriteAll(ctx, exampleFilename, expectedContent, nil))
 
 		obs := observability.NewRecordingObserver()
-		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
-		u := &Uploader{
-			bucket:         b,
-			o11y:           obs,
-			circuitBreaker: noop.NewCircuitBreaker(),
-			saveCounter:    saveCounter,
-			readCounter:    readCounter,
-			saveErrCounter: saveErrCounter,
-			readErrCounter: readErrCounter,
-			latencyHist:    latencyHist,
-		}
+		u := newTestUploader(t, b, obs, noop.NewCircuitBreaker())
 
-		x, err := u.ReadFile(ctx, exampleFilename)
+		r, err := u.Open(ctx, exampleFilename)
 		test.NoError(t, err)
-		test.Eq(t, expectedContent, x)
+		must.NotNil(t, r)
+		test.Eq(t, expectedContent, readAll(t, r))
 
 		obs.ObservedOperationWithData(t, map[string]any{
 			keys.FilenameKey: exampleFilename,
@@ -80,21 +103,11 @@ func TestUploader_ReadFile(T *testing.T) {
 		exampleFilename := "hello_world.txt"
 
 		obs := observability.NewRecordingObserver()
-		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
-		u := &Uploader{
-			bucket:         memblob.OpenBucket(&memblob.Options{}),
-			o11y:           obs,
-			circuitBreaker: noop.NewCircuitBreaker(),
-			saveCounter:    saveCounter,
-			readCounter:    readCounter,
-			saveErrCounter: saveErrCounter,
-			readErrCounter: readErrCounter,
-			latencyHist:    latencyHist,
-		}
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), obs, noop.NewCircuitBreaker())
 
-		x, err := u.ReadFile(ctx, exampleFilename)
+		r, err := u.Open(ctx, exampleFilename)
 		test.Error(t, err)
-		test.Nil(t, x)
+		test.Nil(t, r)
 
 		op := obs.ObservedOperationWithData(t, map[string]any{
 			keys.FilenameKey: exampleFilename,
@@ -111,21 +124,11 @@ func TestUploader_ReadFile(T *testing.T) {
 			CannotProceedFunc: func() bool { return true },
 		}
 
-		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
-		u := &Uploader{
-			bucket:         memblob.OpenBucket(&memblob.Options{}),
-			o11y:           observability.NewObserverForTest(t.Name()),
-			circuitBreaker: cb,
-			saveCounter:    saveCounter,
-			readCounter:    readCounter,
-			saveErrCounter: saveErrCounter,
-			readErrCounter: readErrCounter,
-			latencyHist:    latencyHist,
-		}
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), cb)
 
-		x, err := u.ReadFile(ctx, "anything.txt")
+		r, err := u.Open(ctx, "anything.txt")
 		test.ErrorIs(t, err, circuitbreaking.ErrCircuitBroken)
-		test.Nil(t, x)
+		test.Nil(t, r)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 	})
 
@@ -144,27 +147,17 @@ func TestUploader_ReadFile(T *testing.T) {
 			SucceededFunc:     func() {},
 		}
 
-		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
-		u := &Uploader{
-			bucket:         b,
-			o11y:           observability.NewObserverForTest(t.Name()),
-			circuitBreaker: cb,
-			saveCounter:    saveCounter,
-			readCounter:    readCounter,
-			saveErrCounter: saveErrCounter,
-			readErrCounter: readErrCounter,
-			latencyHist:    latencyHist,
-		}
+		u := newTestUploader(t, b, observability.NewObserverForTest(t.Name()), cb)
 
-		x, err := u.ReadFile(ctx, exampleFilename)
+		r, err := u.Open(ctx, exampleFilename)
 		test.NoError(t, err)
-		test.Eq(t, expectedContent, x)
+		test.Eq(t, expectedContent, readAll(t, r))
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.SucceededCalls())
 	})
 }
 
-func TestUploader_SaveFile(T *testing.T) {
+func TestUploader_Save(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -172,19 +165,9 @@ func TestUploader_SaveFile(T *testing.T) {
 
 		ctx := t.Context()
 		obs := observability.NewRecordingObserver()
-		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
-		u := &Uploader{
-			bucket:         memblob.OpenBucket(&memblob.Options{}),
-			o11y:           obs,
-			circuitBreaker: noop.NewCircuitBreaker(),
-			saveCounter:    saveCounter,
-			readCounter:    readCounter,
-			saveErrCounter: saveErrCounter,
-			readErrCounter: readErrCounter,
-			latencyHist:    latencyHist,
-		}
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), obs, noop.NewCircuitBreaker())
 
-		test.NoError(t, u.SaveFile(ctx, "test_file.txt", []byte(t.Name())))
+		test.NoError(t, u.Save(ctx, "test_file.txt", bytes.NewReader([]byte(t.Name()))))
 
 		obs.ObservedOperationWithData(t, map[string]any{
 			keys.FilenameKey: "test_file.txt",
@@ -200,19 +183,9 @@ func TestUploader_SaveFile(T *testing.T) {
 			CannotProceedFunc: func() bool { return true },
 		}
 
-		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
-		u := &Uploader{
-			bucket:         memblob.OpenBucket(&memblob.Options{}),
-			o11y:           observability.NewObserverForTest(t.Name()),
-			circuitBreaker: cb,
-			saveCounter:    saveCounter,
-			readCounter:    readCounter,
-			saveErrCounter: saveErrCounter,
-			readErrCounter: readErrCounter,
-			latencyHist:    latencyHist,
-		}
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), cb)
 
-		test.ErrorIs(t, u.SaveFile(ctx, "test_file.txt", []byte(t.Name())), circuitbreaking.ErrCircuitBroken)
+		test.ErrorIs(t, u.Save(ctx, "test_file.txt", bytes.NewReader([]byte(t.Name()))), circuitbreaking.ErrCircuitBroken)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 	})
 
@@ -230,19 +203,9 @@ func TestUploader_SaveFile(T *testing.T) {
 		must.NoError(t, b.Close())
 
 		obs := observability.NewRecordingObserver()
-		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
-		u := &Uploader{
-			bucket:         b,
-			o11y:           obs,
-			circuitBreaker: cb,
-			saveCounter:    saveCounter,
-			readCounter:    readCounter,
-			saveErrCounter: saveErrCounter,
-			readErrCounter: readErrCounter,
-			latencyHist:    latencyHist,
-		}
+		u := newTestUploader(t, b, obs, cb)
 
-		test.Error(t, u.SaveFile(ctx, "test_file.txt", []byte(t.Name())))
+		test.Error(t, u.Save(ctx, "test_file.txt", bytes.NewReader([]byte(t.Name()))))
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.FailedCalls())
 
@@ -258,22 +221,386 @@ func TestUploader_SaveFile(T *testing.T) {
 		ctx := t.Context()
 		content := []byte("hello world")
 
-		saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
-		u := &Uploader{
-			bucket:         memblob.OpenBucket(&memblob.Options{}),
-			o11y:           observability.NewObserverForTest(t.Name()),
-			circuitBreaker: noop.NewCircuitBreaker(),
-			saveCounter:    saveCounter,
-			readCounter:    readCounter,
-			saveErrCounter: saveErrCounter,
-			readErrCounter: readErrCounter,
-			latencyHist:    latencyHist,
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		must.NoError(t, u.Save(ctx, "roundtrip.txt", bytes.NewReader(content)))
+
+		r, err := u.Open(ctx, "roundtrip.txt")
+		test.NoError(t, err)
+		test.Eq(t, content, readAll(t, r))
+	})
+}
+
+func TestUploader_Delete(T *testing.T) {
+	T.Parallel()
+
+	T.Run("standard", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		obs := observability.NewRecordingObserver()
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), obs, noop.NewCircuitBreaker())
+
+		must.NoError(t, u.Save(ctx, "doomed.txt", bytes.NewReader([]byte(t.Name()))))
+		test.NoError(t, u.Delete(ctx, "doomed.txt"))
+
+		exists, err := u.Exists(ctx, "doomed.txt")
+		test.NoError(t, err)
+		test.False(t, exists)
+	})
+
+	T.Run("with missing file", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		obs := observability.NewRecordingObserver()
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), obs, noop.NewCircuitBreaker())
+
+		test.Error(t, u.Delete(ctx, "never_existed.txt"))
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.FilenameKey: "never_existed.txt",
+		})
+		must.SliceLen(t, 1, op.Errors)
+	})
+
+	T.Run("with broken circuit breaker", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		cb := &cbmock.CircuitBreakerMock{
+			CannotProceedFunc: func() bool { return true },
 		}
 
-		must.NoError(t, u.SaveFile(ctx, "roundtrip.txt", content))
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), cb)
 
-		actual, err := u.ReadFile(ctx, "roundtrip.txt")
+		test.ErrorIs(t, u.Delete(ctx, "anything.txt"), circuitbreaking.ErrCircuitBroken)
+		test.SliceLen(t, 1, cb.CannotProceedCalls())
+	})
+}
+
+func TestUploader_Exists(T *testing.T) {
+	T.Parallel()
+
+	T.Run("present", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		must.NoError(t, u.Save(ctx, "here.txt", bytes.NewReader([]byte(t.Name()))))
+
+		exists, err := u.Exists(ctx, "here.txt")
 		test.NoError(t, err)
-		test.Eq(t, content, actual)
+		test.True(t, exists)
+	})
+
+	T.Run("absent", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		exists, err := u.Exists(ctx, "nope.txt")
+		test.NoError(t, err)
+		test.False(t, exists)
+	})
+
+	T.Run("with broken circuit breaker", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		cb := &cbmock.CircuitBreakerMock{
+			CannotProceedFunc: func() bool { return true },
+		}
+
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), cb)
+
+		exists, err := u.Exists(ctx, "anything.txt")
+		test.ErrorIs(t, err, circuitbreaking.ErrCircuitBroken)
+		test.False(t, exists)
+		test.SliceLen(t, 1, cb.CannotProceedCalls())
+	})
+}
+
+func TestUploader_Save_withContentType(T *testing.T) {
+	T.Parallel()
+
+	T.Run("stores an explicit content type", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		must.NoError(t, u.Save(ctx, "note.txt", bytes.NewReader([]byte("hello")), uploads.WithContentType("text/plain")))
+
+		attrs, err := u.Attributes(ctx, "note.txt")
+		test.NoError(t, err)
+		must.NotNil(t, attrs)
+		test.StrContains(t, attrs.ContentType, "text/plain")
+	})
+
+	T.Run("sniffs the content type when unset", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		must.NoError(t, u.Save(ctx, "note.txt", bytes.NewReader([]byte("hello world"))))
+
+		attrs, err := u.Attributes(ctx, "note.txt")
+		test.NoError(t, err)
+		must.NotNil(t, attrs)
+		test.StrContains(t, attrs.ContentType, "text/plain")
+	})
+}
+
+func TestUploader_OpenRange(T *testing.T) {
+	T.Parallel()
+
+	T.Run("reads a suffix range", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		b := memblob.OpenBucket(&memblob.Options{})
+		must.NoError(t, b.WriteAll(ctx, "greeting.txt", []byte("hello world"), nil))
+
+		u := newTestUploader(t, b, observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		r, err := u.OpenRange(ctx, "greeting.txt", 6, -1)
+		test.NoError(t, err)
+		test.EqOp(t, "world", string(readAll(t, r)))
+	})
+
+	T.Run("reads a bounded range", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		b := memblob.OpenBucket(&memblob.Options{})
+		must.NoError(t, b.WriteAll(ctx, "greeting.txt", []byte("hello world"), nil))
+
+		u := newTestUploader(t, b, observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		r, err := u.OpenRange(ctx, "greeting.txt", 0, 5)
+		test.NoError(t, err)
+		test.EqOp(t, "hello", string(readAll(t, r)))
+	})
+
+	T.Run("with broken circuit breaker", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cb := &cbmock.CircuitBreakerMock{CannotProceedFunc: func() bool { return true }}
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), cb)
+
+		r, err := u.OpenRange(ctx, "anything.txt", 0, -1)
+		test.ErrorIs(t, err, circuitbreaking.ErrCircuitBroken)
+		test.Nil(t, r)
+	})
+}
+
+func TestUploader_Attributes(T *testing.T) {
+	T.Parallel()
+
+	T.Run("reports size", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		content := []byte("hello world")
+		b := memblob.OpenBucket(&memblob.Options{})
+		must.NoError(t, b.WriteAll(ctx, "greeting.txt", content, nil))
+
+		u := newTestUploader(t, b, observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		attrs, err := u.Attributes(ctx, "greeting.txt")
+		test.NoError(t, err)
+		must.NotNil(t, attrs)
+		test.EqOp(t, int64(len(content)), attrs.Size)
+	})
+
+	T.Run("with missing file", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		obs := observability.NewRecordingObserver()
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), obs, noop.NewCircuitBreaker())
+
+		attrs, err := u.Attributes(ctx, "nope.txt")
+		test.Error(t, err)
+		test.Nil(t, attrs)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{keys.FilenameKey: "nope.txt"})
+		must.SliceLen(t, 1, op.Errors)
+	})
+
+	T.Run("with broken circuit breaker", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cb := &cbmock.CircuitBreakerMock{CannotProceedFunc: func() bool { return true }}
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), cb)
+
+		attrs, err := u.Attributes(ctx, "anything.txt")
+		test.ErrorIs(t, err, circuitbreaking.ErrCircuitBroken)
+		test.Nil(t, attrs)
+	})
+}
+
+func TestUploader_List(T *testing.T) {
+	T.Parallel()
+
+	T.Run("streams objects under a prefix", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		b := memblob.OpenBucket(&memblob.Options{})
+		must.NoError(t, b.WriteAll(ctx, "data/a.txt", []byte("a"), nil))
+		must.NoError(t, b.WriteAll(ctx, "data/b.txt", []byte("b"), nil))
+		must.NoError(t, b.WriteAll(ctx, "other/c.txt", []byte("c"), nil))
+
+		u := newTestUploader(t, b, observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		seen := map[string]bool{}
+		for obj, err := range u.List(ctx, "data/") {
+			must.NoError(t, err)
+			seen[obj.Path] = true
+		}
+
+		test.EqOp(t, 2, len(seen))
+		test.True(t, seen["data/a.txt"])
+		test.True(t, seen["data/b.txt"])
+	})
+
+	T.Run("ListAll drains into a slice", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		b := memblob.OpenBucket(&memblob.Options{})
+		must.NoError(t, b.WriteAll(ctx, "a.txt", []byte("a"), nil))
+		must.NoError(t, b.WriteAll(ctx, "b.txt", []byte("b"), nil))
+
+		u := newTestUploader(t, b, observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		objs, err := uploads.ListAll(ctx, u, "")
+		test.NoError(t, err)
+		test.SliceLen(t, 2, objs)
+	})
+
+	T.Run("stops early when the caller breaks", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		b := memblob.OpenBucket(&memblob.Options{})
+		must.NoError(t, b.WriteAll(ctx, "a.txt", []byte("a"), nil))
+		must.NoError(t, b.WriteAll(ctx, "b.txt", []byte("b"), nil))
+		must.NoError(t, b.WriteAll(ctx, "c.txt", []byte("c"), nil))
+
+		u := newTestUploader(t, b, observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		seen := 0
+		for _, err := range u.List(ctx, "") {
+			must.NoError(t, err)
+			seen++
+			break
+		}
+
+		test.EqOp(t, 1, seen)
+	})
+
+	T.Run("with broken circuit breaker", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cb := &cbmock.CircuitBreakerMock{CannotProceedFunc: func() bool { return true }}
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), cb)
+
+		var gotErr error
+		for _, err := range u.List(ctx, "") {
+			gotErr = err
+			break
+		}
+
+		test.ErrorIs(t, gotErr, circuitbreaking.ErrCircuitBroken)
+	})
+}
+
+func TestUploader_SignedURL(T *testing.T) {
+	T.Parallel()
+
+	T.Run("memory provider does not support signing", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), noop.NewCircuitBreaker())
+
+		signedURL, err := u.SignedURL(ctx, "greeting.txt", nil)
+		test.Error(t, err)
+		test.EqOp(t, "", signedURL)
+	})
+
+	T.Run("with broken circuit breaker", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cb := &cbmock.CircuitBreakerMock{CannotProceedFunc: func() bool { return true }}
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), observability.NewObserverForTest(t.Name()), cb)
+
+		signedURL, err := u.SignedURL(ctx, "greeting.txt", &uploads.SignedURLOptions{Expiry: 0})
+		test.ErrorIs(t, err, circuitbreaking.ErrCircuitBroken)
+		test.EqOp(t, "", signedURL)
+	})
+}
+
+// failingReader always errors, to exercise write-failure paths.
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+
+func TestUploader_Save_copyError(T *testing.T) {
+	T.Parallel()
+
+	T.Run("reports a failure when the source read fails", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cb := &cbmock.CircuitBreakerMock{
+			CannotProceedFunc: func() bool { return false },
+			FailedFunc:        func() {},
+		}
+
+		obs := observability.NewRecordingObserver()
+		u := newTestUploader(t, memblob.OpenBucket(&memblob.Options{}), obs, cb)
+
+		test.Error(t, u.Save(ctx, "broken.txt", failingReader{}))
+		test.SliceLen(t, 1, cb.FailedCalls())
+
+		op := obs.ObservedOperationWithData(t, map[string]any{keys.FilenameKey: "broken.txt"})
+		must.SliceLen(t, 1, op.Errors)
+	})
+}
+
+func TestUploader_Exists_error(T *testing.T) {
+	T.Parallel()
+
+	T.Run("reports errors from the bucket", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		b := memblob.OpenBucket(&memblob.Options{})
+		must.NoError(t, b.Close())
+
+		cb := &cbmock.CircuitBreakerMock{
+			CannotProceedFunc: func() bool { return false },
+			FailedFunc:        func() {},
+		}
+
+		u := newTestUploader(t, b, observability.NewObserverForTest(t.Name()), cb)
+
+		exists, err := u.Exists(ctx, "whatever.txt")
+		test.Error(t, err)
+		test.False(t, exists)
+		test.SliceLen(t, 1, cb.FailedCalls())
 	})
 }

@@ -8,7 +8,7 @@ import (
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
 
-// Config contains settings regarding search indices.
+// Config contains settings for the uploads object storage.
 type Config struct {
 	_ struct{} `json:"-"`
 

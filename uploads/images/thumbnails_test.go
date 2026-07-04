@@ -1,7 +1,7 @@
 package images
 
 import (
-	"os"
+	"bytes"
 	"testing"
 
 	"github.com/shoenig/test"
@@ -36,13 +36,7 @@ func Test_preprocess(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		imgBytes := buildPNGBytes(t).Bytes()
-		i := &Upload{
-			Filename:    "whatever.png",
-			ContentType: imagePNG,
-			Data:        imgBytes,
-			Size:        len(imgBytes),
-		}
+		i := &Image{ContentType: imagePNG, Data: buildPNGBytes(t)}
 
 		img, err := preprocess(i, 128, 128)
 		test.NoError(t, err)
@@ -52,12 +46,7 @@ func Test_preprocess(T *testing.T) {
 	T.Run("with invalid content", func(t *testing.T) {
 		t.Parallel()
 
-		i := &Upload{
-			Filename:    "whatever.png",
-			ContentType: imagePNG,
-			Data:        []byte(t.Name()),
-			Size:        1024,
-		}
+		i := &Image{ContentType: imagePNG, Data: []byte(t.Name())}
 
 		img, err := preprocess(i, 128, 128)
 		test.Error(t, err)
@@ -71,42 +60,27 @@ func Test_jpegThumbnailer_Thumbnail(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		imgBytes := buildJPEGBytes(t).Bytes()
-		i := &Upload{
-			Filename:    "whatever.png",
-			ContentType: imagePNG,
-			Data:        imgBytes,
-			Size:        len(imgBytes),
-		}
+		i := &Image{ContentType: imageJPEG, Data: buildJPEGBytes(t)}
 
-		tempFile, err := os.CreateTemp("", "")
-		must.NoError(t, err)
-
-		actual, err := (&jpegThumbnailer{}).Thumbnail(i, 128, 128, tempFile.Name())
+		actual, err := (&jpegThumbnailer{}).Thumbnail(i, 128, 128)
 		test.NoError(t, err)
-		test.NotNil(t, actual)
+		must.NotNil(t, actual)
+		test.EqOp(t, imageJPEG, actual.ContentType)
 
-		must.NoError(t, os.Remove(tempFile.Name()))
+		roundTrip, err := Decode(bytes.NewReader(actual.Data))
+		test.NoError(t, err)
+		must.NotNil(t, roundTrip)
+		test.EqOp(t, imageJPEG, roundTrip.ContentType)
 	})
 
 	T.Run("with invalid content", func(t *testing.T) {
 		t.Parallel()
 
-		i := &Upload{
-			Filename:    "whatever.png",
-			ContentType: imagePNG,
-			Data:        []byte(t.Name()),
-			Size:        1024,
-		}
+		i := &Image{ContentType: imageJPEG, Data: []byte(t.Name())}
 
-		tempFile, err := os.CreateTemp("", "")
-		must.NoError(t, err)
-
-		actual, err := (&jpegThumbnailer{}).Thumbnail(i, 128, 128, tempFile.Name())
+		actual, err := (&jpegThumbnailer{}).Thumbnail(i, 128, 128)
 		test.Error(t, err)
 		test.Nil(t, actual)
-
-		must.NoError(t, os.Remove(tempFile.Name()))
 	})
 }
 
@@ -116,42 +90,27 @@ func Test_pngThumbnailer_Thumbnail(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		imgBytes := buildPNGBytes(t).Bytes()
-		i := &Upload{
-			Filename:    "whatever.png",
-			ContentType: imagePNG,
-			Data:        imgBytes,
-			Size:        len(imgBytes),
-		}
+		i := &Image{ContentType: imagePNG, Data: buildPNGBytes(t)}
 
-		tempFile, err := os.CreateTemp("", "")
-		must.NoError(t, err)
-
-		actual, err := (&pngThumbnailer{}).Thumbnail(i, 128, 128, tempFile.Name())
+		actual, err := (&pngThumbnailer{}).Thumbnail(i, 128, 128)
 		test.NoError(t, err)
-		test.NotNil(t, actual)
+		must.NotNil(t, actual)
+		test.EqOp(t, imagePNG, actual.ContentType)
 
-		must.NoError(t, os.Remove(tempFile.Name()))
+		roundTrip, err := Decode(bytes.NewReader(actual.Data))
+		test.NoError(t, err)
+		must.NotNil(t, roundTrip)
+		test.EqOp(t, imagePNG, roundTrip.ContentType)
 	})
 
 	T.Run("with invalid content", func(t *testing.T) {
 		t.Parallel()
 
-		i := &Upload{
-			Filename:    "whatever.png",
-			ContentType: imagePNG,
-			Data:        []byte(t.Name()),
-			Size:        1024,
-		}
+		i := &Image{ContentType: imagePNG, Data: []byte(t.Name())}
 
-		tempFile, err := os.CreateTemp("", "")
-		must.NoError(t, err)
-
-		actual, err := (&pngThumbnailer{}).Thumbnail(i, 128, 128, tempFile.Name())
+		actual, err := (&pngThumbnailer{}).Thumbnail(i, 128, 128)
 		test.Error(t, err)
 		test.Nil(t, actual)
-
-		must.NoError(t, os.Remove(tempFile.Name()))
 	})
 }
 
@@ -161,41 +120,26 @@ func Test_gifThumbnailer_Thumbnail(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		imgBytes := buildGIFBytes(t).Bytes()
-		i := &Upload{
-			Filename:    "whatever.png",
-			ContentType: imagePNG,
-			Data:        imgBytes,
-			Size:        len(imgBytes),
-		}
+		i := &Image{ContentType: imageGIF, Data: buildGIFBytes(t)}
 
-		tempFile, err := os.CreateTemp("", "")
-		must.NoError(t, err)
-
-		actual, err := (&gifThumbnailer{}).Thumbnail(i, 128, 128, tempFile.Name())
+		actual, err := (&gifThumbnailer{}).Thumbnail(i, 128, 128)
 		test.NoError(t, err)
-		test.NotNil(t, actual)
+		must.NotNil(t, actual)
+		test.EqOp(t, imageGIF, actual.ContentType)
 
-		must.NoError(t, os.Remove(tempFile.Name()))
+		roundTrip, err := Decode(bytes.NewReader(actual.Data))
+		test.NoError(t, err)
+		must.NotNil(t, roundTrip)
+		test.EqOp(t, imageGIF, roundTrip.ContentType)
 	})
 
 	T.Run("with invalid content", func(t *testing.T) {
 		t.Parallel()
 
-		i := &Upload{
-			Filename:    "whatever.png",
-			ContentType: imagePNG,
-			Data:        []byte(t.Name()),
-			Size:        1024,
-		}
+		i := &Image{ContentType: imageGIF, Data: []byte(t.Name())}
 
-		tempFile, err := os.CreateTemp("", "")
-		must.NoError(t, err)
-
-		actual, err := (&gifThumbnailer{}).Thumbnail(i, 128, 128, tempFile.Name())
+		actual, err := (&gifThumbnailer{}).Thumbnail(i, 128, 128)
 		test.Error(t, err)
 		test.Nil(t, actual)
-
-		must.NoError(t, os.Remove(tempFile.Name()))
 	})
 }
