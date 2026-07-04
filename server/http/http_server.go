@@ -5,14 +5,15 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	"github.com/primandproper/platform-go/v2/panicking"
-	"github.com/primandproper/platform-go/v2/routing"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v3/panicking"
+	"github.com/primandproper/platform-go/v3/routing"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/net/http2"
@@ -74,7 +75,7 @@ func ProvideHTTPServer(
 		router:         router,
 		logger:         logging.NewNamedLogger(logger, loggerName),
 		panicker:       panicking.NewProductionPanicker(),
-		httpServer:     provideStdLibHTTPServer(serverSettings.Port),
+		httpServer:     provideStdLibHTTPServer(serverSettings),
 		tracerProvider: tracing.EnsureTracerProvider(tracerProvider),
 	}
 
@@ -88,11 +89,15 @@ func (s *server) Router() routing.Router {
 
 // Shutdown shuts down the server.
 func (s *server) Shutdown(ctx context.Context) error {
-	if err := s.tracerProvider.ForceFlush(ctx); err != nil {
-		s.logger.Error("flushing traces", err)
+	// Drain in-flight requests first, then flush — otherwise spans from requests
+	// that complete during draining are lost because the flush already ran.
+	err := s.httpServer.Shutdown(ctx)
+
+	if flushErr := s.tracerProvider.ForceFlush(ctx); flushErr != nil {
+		s.logger.Error("flushing traces", flushErr)
 	}
 
-	return s.httpServer.Shutdown(ctx)
+	return err
 }
 
 // Serve serves HTTP traffic.
@@ -112,44 +117,82 @@ func (s *server) Serve() {
 		s.panicker.Panic(err)
 	}
 
+	// Bind the listener up front, bounded by StartupDeadline, so a slow or wedged
+	// bind fails fast rather than hanging indefinitely.
+	listener, err := s.listen()
+	if err != nil {
+		s.logger.Error("binding listener", err)
+		s.panicker.Panic(err)
+		return
+	}
+
 	if s.config.SSLCertificateFile != "" && s.config.SSLCertificateKeyFile != "" {
 		s.logger.WithValue("port", s.httpServer.Addr).Info("Listening for HTTPS requests")
 		// returns ErrServerClosed on graceful close.
-		if err := s.httpServer.ListenAndServeTLS(s.config.SSLCertificateFile, s.config.SSLCertificateKeyFile); err != nil {
-			if errors.Is(err, http.ErrServerClosed) {
-				return
-			}
-
-			s.logger.Error("shutting server down", err)
+		if err = s.httpServer.ServeTLS(listener, s.config.SSLCertificateFile, s.config.SSLCertificateKeyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Error("serving HTTPS traffic", err)
+			s.panicker.Panic(err)
 		}
 	} else {
 		s.logger.WithValue("port", s.httpServer.Addr).Info("Listening for HTTP requests")
 		// returns ErrServerClosed on graceful close.
-		if err := s.httpServer.ListenAndServe(); err != nil {
-			if errors.Is(err, http.ErrServerClosed) {
-				return
-			}
-
-			s.logger.Error("shutting server down", err)
+		if err = s.httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Error("serving HTTP traffic", err)
+			s.panicker.Panic(err)
 		}
 	}
 }
 
+// listen binds the TCP listener the server serves on. When StartupDeadline is
+// configured it bounds the bind with that deadline, so binding cannot hang
+// indefinitely during startup.
+func (s *server) listen() (net.Listener, error) {
+	ctx := context.Background()
+	if s.config.StartupDeadline > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.config.StartupDeadline)
+		defer cancel()
+	}
+
+	var lc net.ListenConfig
+	return lc.Listen(ctx, "tcp", s.httpServer.Addr)
+}
+
 const (
-	maxTimeout   = 120 * time.Second
-	readTimeout  = 5 * time.Second
-	writeTimeout = 2 * readTimeout
+	// maxTimeout mirrors the router's request timeout (routing/chi maxTimeout). The server's
+	// write timeout must exceed it, or a slow handler is killed mid-write before the router's
+	// own timeout can ever fire.
+	maxTimeout  = 120 * time.Second
+	readTimeout = 5 * time.Second
+	// writeTimeout must be larger than maxTimeout so the router's 120s request timeout is
+	// actually reachable and slow responses are not severed mid-write.
+	writeTimeout = maxTimeout + 30*time.Second
 	idleTimeout  = maxTimeout
 )
 
 // provideStdLibHTTPServer provides an HTTP httpServer.
-func provideStdLibHTTPServer(port uint16) *http.Server {
+func provideStdLibHTTPServer(cfg Config) *http.Server {
+	readTO := cfg.ReadTimeout
+	if readTO <= 0 {
+		readTO = readTimeout
+	}
+
+	writeTO := cfg.WriteTimeout
+	if writeTO <= 0 {
+		writeTO = writeTimeout
+	}
+
+	idleTO := cfg.IdleTimeout
+	if idleTO <= 0 {
+		idleTO = idleTimeout
+	}
+
 	// heavily inspired by https://blog.cloudflare.com/exposing-go-on-the-internet/
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", port),
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
-		IdleTimeout:  idleTimeout,
+		Addr:         fmt.Sprintf(":%d", cfg.Port),
+		ReadTimeout:  readTO,
+		WriteTimeout: writeTO,
+		IdleTimeout:  idleTO,
 		TLSConfig: &tls.Config{
 			// "Only use curves which have assembly implementations"
 			CurvePreferences: []tls.CurveID{

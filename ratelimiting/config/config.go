@@ -4,11 +4,11 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/ratelimiting"
-	"github.com/primandproper/platform-go/v2/ratelimiting/noop"
-	redisrl "github.com/primandproper/platform-go/v2/ratelimiting/redis"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/ratelimiting"
+	"github.com/primandproper/platform-go/v3/ratelimiting/noop"
+	redisrl "github.com/primandproper/platform-go/v3/ratelimiting/redis"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -63,7 +63,7 @@ func (cfg *Config) ProvideRateLimiter(metricsProvider metrics.Provider) (ratelim
 	case ProviderMemory:
 		return ratelimiting.NewInMemoryRateLimiter(metricsProvider, cfg.RequestsPerSec, cfg.BurstSize)
 	case ProviderRedis:
-		return redisrl.NewRedisRateLimiter(cfg.Redis, metricsProvider, cfg.RequestsPerSec)
+		return redisrl.NewRedisRateLimiter(cfg.Redis, metricsProvider, cfg.RequestsPerSec, cfg.BurstSize)
 	default:
 		return nil, errors.Newf("unknown rate limiter provider: %q", cfg.Provider)
 	}

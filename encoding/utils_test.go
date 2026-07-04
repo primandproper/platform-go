@@ -17,6 +17,7 @@ func TestDecode(T *testing.T) {
 
 		var dest example
 		test.NoError(t, Decode([]byte(`{"name":"test"}`), nil, &dest))
+		test.EqOp(t, "test", dest.Name)
 	})
 
 	T.Run("with explicit content type", func(t *testing.T) {
@@ -24,6 +25,23 @@ func TestDecode(T *testing.T) {
 
 		var dest example
 		test.NoError(t, Decode([]byte(`<example><name>test</name></example>`), ContentTypeXML, &dest))
+		test.EqOp(t, "test", dest.Name)
+	})
+
+	T.Run("with TOML content type", func(t *testing.T) {
+		t.Parallel()
+
+		var dest example
+		test.NoError(t, Decode([]byte(`name = "test"`+"\n"), ContentTypeTOML, &dest))
+		test.EqOp(t, "test", dest.Name)
+	})
+
+	T.Run("with YAML content type", func(t *testing.T) {
+		t.Parallel()
+
+		var dest example
+		test.NoError(t, Decode([]byte("name: test\n"), ContentTypeYAML, &dest))
+		test.EqOp(t, "test", dest.Name)
 	})
 
 	T.Run("with invalid data", func(t *testing.T) {
@@ -70,6 +88,7 @@ func TestMustDecode(T *testing.T) {
 
 		var dest example
 		MustDecode([]byte(`{"name":"test"}`), nil, &dest)
+		test.EqOp(t, "test", dest.Name)
 	})
 
 	T.Run("with explicit content type", func(t *testing.T) {
@@ -77,6 +96,15 @@ func TestMustDecode(T *testing.T) {
 
 		var dest example
 		MustDecode([]byte(`<example><name>test</name></example>`), ContentTypeXML, &dest)
+		test.EqOp(t, "test", dest.Name)
+	})
+
+	T.Run("with YAML content type", func(t *testing.T) {
+		t.Parallel()
+
+		var dest example
+		MustDecode([]byte("name: test\n"), ContentTypeYAML, &dest)
+		test.EqOp(t, "test", dest.Name)
 	})
 
 	T.Run("panics with invalid data", func(t *testing.T) {
@@ -110,6 +138,7 @@ func TestDecodeJSON(T *testing.T) {
 
 		var dest example
 		test.NoError(t, DecodeJSON([]byte(`{"name":"test"}`), &dest))
+		test.EqOp(t, "test", dest.Name)
 	})
 
 	T.Run("with invalid data", func(t *testing.T) {
@@ -128,6 +157,7 @@ func TestMustDecodeJSON(T *testing.T) {
 
 		var dest example
 		MustDecodeJSON([]byte(`{"name":"test"}`), &dest)
+		test.EqOp(t, "test", dest.Name)
 	})
 }
 

@@ -8,16 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/identifiers"
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v2/random"
-	"github.com/primandproper/platform-go/v2/testutils/containers"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/random"
+	"github.com/primandproper/platform-go/v3/testutils/containers"
 
 	"cloud.google.com/go/pubsub/v2"
 	"cloud.google.com/go/pubsub/v2/apiv1/pubsubpb"
@@ -93,7 +93,7 @@ func (i *pubsubTestInfra) newTopic(t *testing.T) string {
 	must.NotNil(t, pubSubTopic)
 
 	subscription, err := i.client.SubscriptionAdminClient.CreateSubscription(ctx, &pubsubpb.Subscription{
-		Name:  subscriptionNameForTopic(pubSubTopic.GetName()),
+		Name:  subscriptionNameForTopic(i.projectID, pubSubTopic.GetName()),
 		Topic: pubSubTopic.GetName(),
 	})
 	must.NoError(t, err)
@@ -105,18 +105,63 @@ func (i *pubsubTestInfra) newTopic(t *testing.T) string {
 func TestSubscriptionNameForTopic(T *testing.T) {
 	T.Parallel()
 
-	T.Run("standard", func(t *testing.T) {
+	T.Run("fully qualified topic", func(t *testing.T) {
 		t.Parallel()
 
-		result := subscriptionNameForTopic("projects/my-project/topics/my-topic")
+		result := subscriptionNameForTopic("my-project", "projects/my-project/topics/my-topic")
 		test.EqOp(t, "projects/my-project/subscriptions/my-topic", result)
 	})
 
-	T.Run("no match", func(t *testing.T) {
+	T.Run("short topic name is qualified with the project", func(t *testing.T) {
 		t.Parallel()
 
-		result := subscriptionNameForTopic("some-other-string")
-		test.EqOp(t, "some-other-string", result)
+		result := subscriptionNameForTopic("my-project", "my-topic")
+		test.EqOp(t, "projects/my-project/subscriptions/my-topic", result)
+	})
+}
+
+func TestPubSubConsumer_Consume_nilErrorChannel(T *testing.T) {
+	T.Parallel()
+
+	T.Run("subscription lookup failure with nil errs channel does not hang", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		// A lazy client pointed at an unroutable address; the cancelled context
+		// below makes GetSubscription fail before any dial occurs.
+		conn, err := grpc.NewClient("localhost:0", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = conn.Close() })
+
+		client, err := pubsub.NewClient(ctx, "test-project", option.WithGRPCConn(conn))
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = client.Close() })
+
+		consumer, err := buildPubSubConsumer(
+			loggingnoop.NewLogger(),
+			tracingnoop.NewTracerProvider(),
+			nil,
+			client,
+			"some-topic",
+			func(context.Context, []byte) error { return nil },
+		)
+		must.NoError(t, err)
+
+		cancelledCtx, cancel := context.WithCancel(ctx)
+		cancel()
+
+		done := make(chan struct{})
+		go func() {
+			consumer.Consume(cancelledCtx, make(chan bool, 1), nil)
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Consume hung on subscription failure with a nil errs channel")
+		}
 	})
 }
 
@@ -129,11 +174,12 @@ func TestBuildPubSubConsumer(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		handler := func(_ context.Context, _ []byte) error { return nil }
 
-		consumer := buildPubSubConsumer(logger, tracingnoop.NewTracerProvider(), nil, nil, "test-topic", handler)
+		consumer, err := buildPubSubConsumer(logger, tracingnoop.NewTracerProvider(), nil, nil, "test-topic", handler)
+		must.NoError(t, err)
 		must.NotNil(t, consumer)
 	})
 
-	T.Run("panics when NewInt64Counter fails", func(t *testing.T) {
+	T.Run("returns error when NewInt64Counter fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -142,9 +188,9 @@ func TestBuildPubSubConsumer(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			buildPubSubConsumer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t", nil)
-		})
+		actual, err := buildPubSubConsumer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t", nil)
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 1, mp.NewInt64CounterCalls())
 	})
 }

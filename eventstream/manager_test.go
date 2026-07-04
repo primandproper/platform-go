@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -545,6 +545,75 @@ func TestStreamManager_BroadcastToGroup_with_failing_stream(T *testing.T) {
 		must.SliceLen(t, 1, op.Errors)
 	})
 }
+
+func TestStreamManager_BroadcastToGroup_doesNotWedgeOnSlowClient(T *testing.T) {
+	T.Parallel()
+
+	T.Run("Add and Remove proceed while a slow client blocks in Send", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		m, _ := newRecordingManager(t)
+		slow := newBlockingStream()
+		m.Add(ctx, "g1", "m1", slow)
+
+		broadcastDone := make(chan struct{})
+		go func() {
+			m.BroadcastToGroup(ctx, "g1", &Event{Type: "x"})
+			close(broadcastDone)
+		}()
+
+		// Wait until the broadcast is parked inside the slow client's Send.
+		select {
+		case <-slow.started:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("broadcast never reached the slow client's Send")
+		}
+
+		// The manager lock must already be released, so a concurrent Add/Remove must
+		// not block on the in-flight (stalled) Send.
+		addRemoveDone := make(chan struct{})
+		go func() {
+			m.Add(ctx, "g1", "m2", newMockStream())
+			m.Remove(ctx, "g1", "m2")
+			close(addRemoveDone)
+		}()
+
+		select {
+		case <-addRemoveDone:
+			// expected: the manager did not wedge.
+		case <-time.After(2 * time.Second):
+			t.Fatalf("Add/Remove wedged while a slow client was being sent to")
+		}
+
+		close(slow.release)
+		<-broadcastDone
+	})
+}
+
+// blockingStream parks in Send until released, modeling a stalled client.
+type blockingStream struct {
+	started chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newBlockingStream() *blockingStream {
+	return &blockingStream{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (b *blockingStream) Send(context.Context, *Event) error {
+	b.once.Do(func() { close(b.started) })
+	<-b.release
+	return nil
+}
+
+func (b *blockingStream) Done() <-chan struct{} { return make(chan struct{}) }
+func (b *blockingStream) Close() error          { return nil }
 
 // failingStream is a stream that always returns an error on Send.
 type failingStream struct{}

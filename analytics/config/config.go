@@ -4,25 +4,23 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/analytics"
-	"github.com/primandproper/platform-go/v2/analytics/noop"
-	"github.com/primandproper/platform-go/v2/analytics/posthog"
-	"github.com/primandproper/platform-go/v2/analytics/rudderstack"
-	"github.com/primandproper/platform-go/v2/analytics/segment"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/analytics"
+	"github.com/primandproper/platform-go/v3/analytics/noop"
+	"github.com/primandproper/platform-go/v3/analytics/posthog"
+	"github.com/primandproper/platform-go/v3/analytics/segment"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
+	posthogsdk "github.com/posthog/posthog-go"
 )
 
 const (
 	// ProviderSegment represents Segment.
 	ProviderSegment = "segment"
-	// ProviderRudderstack represents Rudderstack.
-	ProviderRudderstack = "rudderstack"
 	// ProviderPostHog represents PostHog.
 	ProviderPostHog = "posthog"
 )
@@ -30,9 +28,8 @@ const (
 type (
 	// SourceConfig is the per-source analytics config (provider + credentials). Used for proxy sources; no ProxySources to avoid recursion.
 	SourceConfig struct {
-		Segment        *segment.Config           `env:",init"                  envPrefix:"SEGMENT_"     json:"segment"`
-		Posthog        *posthog.Config           `env:",init"                  envPrefix:"POSTHOG_"     json:"posthog"`
-		Rudderstack    *rudderstack.Config       `env:",init"                  envPrefix:"RUDDERSTACK_" json:"rudderstack"`
+		Segment        *segment.Config           `env:",init"                  envPrefix:"SEGMENT_"  json:"segment"`
+		Posthog        *posthog.Config           `env:",init"                  envPrefix:"POSTHOG_"  json:"posthog"`
 		Provider       string                    `env:"PROVIDER"               json:"provider"`
 		CircuitBreaker circuitbreakingcfg.Config `envPrefix:"CIRCUIT_BREAKER_" json:"circuitBreaker"`
 	}
@@ -80,14 +77,35 @@ func (p ProxySourcesConfig) ToMap() map[string]*SourceConfig {
 	return m
 }
 
-// ValidateWithContext validates a Config struct.
-func (cfg *Config) ValidateWithContext(ctx context.Context) error {
+// ValidateWithContext validates a SourceConfig: the provider must be known and the
+// matching credentials block present, so a proxy source with no provider/key can't
+// pass validation and silently degrade to a noop at runtime.
+func (cfg *SourceConfig) ValidateWithContext(ctx context.Context) error {
 	return validation.ValidateStructWithContext(ctx, cfg,
-		validation.Field(&cfg.Provider, validation.In(ProviderSegment, ProviderRudderstack, ProviderPostHog)),
+		validation.Field(&cfg.Provider, validation.Required, validation.In(ProviderSegment, ProviderPostHog)),
 		validation.Field(&cfg.Segment, validation.When(cfg.Provider == ProviderSegment, validation.Required)),
 		validation.Field(&cfg.Posthog, validation.When(cfg.Provider == ProviderPostHog, validation.Required)),
-		validation.Field(&cfg.Rudderstack, validation.When(cfg.Provider == ProviderRudderstack, validation.Required)),
 	)
+}
+
+// ValidateWithContext validates a Config struct.
+func (cfg *Config) ValidateWithContext(ctx context.Context) error {
+	if err := validation.ValidateStructWithContext(ctx, cfg,
+		validation.Field(&cfg.Provider, validation.In(ProviderSegment, ProviderPostHog)),
+		validation.Field(&cfg.Segment, validation.When(cfg.Provider == ProviderSegment, validation.Required)),
+		validation.Field(&cfg.Posthog, validation.When(cfg.Provider == ProviderPostHog, validation.Required)),
+	); err != nil {
+		return err
+	}
+
+	// Each configured proxy source must itself be valid.
+	for name, src := range cfg.ProxySources.ToMap() {
+		if err := src.ValidateWithContext(ctx); err != nil {
+			return errors.Wrapf(err, "validating %q proxy source", name)
+		}
+	}
+
+	return nil
 }
 
 // ProvideCollector provides a collector.
@@ -108,16 +126,16 @@ func (cfg *SourceConfig) ProvideCollector(
 			return nil, errors.New("segment provider configured but segment config is nil")
 		}
 		return segment.NewSegmentEventReporter(logger, tracerProvider, metricsProvider, cfg.Segment.APIToken, cb)
-	case ProviderRudderstack:
-		if cfg.Rudderstack == nil {
-			return nil, errors.New("rudderstack provider configured but rudderstack config is nil")
-		}
-		return rudderstack.NewRudderstackEventReporter(logger, tracerProvider, metricsProvider, cfg.Rudderstack, cb)
 	case ProviderPostHog:
 		if cfg.Posthog == nil {
 			return nil, errors.New("posthog provider configured but posthog config is nil")
 		}
-		return posthog.NewPostHogEventReporter(logger, tracerProvider, metricsProvider, cfg.Posthog.APIKey, cb)
+		var modifiers []func(*posthogsdk.Config)
+		if cfg.Posthog.Endpoint != "" {
+			endpoint := cfg.Posthog.Endpoint
+			modifiers = append(modifiers, func(c *posthogsdk.Config) { c.Endpoint = endpoint })
+		}
+		return posthog.NewPostHogEventReporter(logger, tracerProvider, metricsProvider, cfg.Posthog.APIKey, cb, modifiers...)
 	default:
 		logging.EnsureLogger(logger).WithValue("provider", cfg.Provider).Info("no analytics provider configured or unrecognized provider, using noop")
 		return noop.NewEventReporter(), nil

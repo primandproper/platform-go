@@ -9,12 +9,12 @@ import (
 	"io"
 	"log"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 )
 
 const (
@@ -101,7 +101,7 @@ func MustGenerateRawBytes(ctx context.Context, length int) []byte {
 // method produces a single span rather than nesting one per internal hop.
 func (g *standardGenerator) generateSecret(span tracing.Span, length int) ([]byte, error) {
 	b := make([]byte, length)
-	if _, err := g.randReader.Read(b); err != nil {
+	if _, err := io.ReadFull(g.randReader, b); err != nil {
 		return nil, observability.PrepareError(err, span, "reading from secure random source")
 	}
 

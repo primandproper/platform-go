@@ -5,7 +5,7 @@ import (
 	"math/bits"
 	"strconv"
 
-	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v3/errors"
 )
 
 // Unsigned is a constraint for fixed-width unsigned integer types that can be used as bitmask values.
@@ -120,20 +120,21 @@ func (b *Bitmask[T]) Difference(other Bitmask[T]) Bitmask[T] {
 }
 
 // String returns a zero-padded binary string representation of the bitmask.
-func (b *Bitmask[T]) String() string {
+func (b Bitmask[T]) String() string {
 	width := bits.OnesCount64(uint64(^T(0)))
 
 	return fmt.Sprintf("%0*b", width, uint64(b.value))
 }
 
 // MarshalJSON implements json.Marshaler by encoding the bitmask as a bare number.
-func (b *Bitmask[T]) MarshalJSON() ([]byte, error) {
+func (b Bitmask[T]) MarshalJSON() ([]byte, error) {
 	return []byte(strconv.FormatUint(uint64(b.value), 10)), nil
 }
 
 // UnmarshalJSON implements json.Unmarshaler by decoding a bare number into the bitmask.
 func (b *Bitmask[T]) UnmarshalJSON(data []byte) error {
-	v, err := strconv.ParseUint(string(data), 10, 64)
+	bitSize := bits.OnesCount64(uint64(^T(0)))
+	v, err := strconv.ParseUint(string(data), 10, bitSize)
 	if err != nil {
 		return errors.Wrap(err, "bitmask: invalid JSON value")
 	}

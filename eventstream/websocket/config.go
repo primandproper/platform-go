@@ -9,6 +9,9 @@ import (
 
 // Config holds WebSocket-specific configuration.
 type Config struct {
+	// AllowedOrigins is the set of exact Origin header values permitted to upgrade.
+	// When empty, upgrades are restricted to same-origin requests.
+	AllowedOrigins    []string      `env:"ALLOWED_ORIGINS"    json:"allowedOrigins"`
 	HeartbeatInterval time.Duration `env:"HEARTBEAT_INTERVAL" json:"heartbeatInterval"`
 	ReadBufferSize    int           `env:"READ_BUFFER_SIZE"   json:"readBufferSize"`
 	WriteBufferSize   int           `env:"WRITE_BUFFER_SIZE"  json:"writeBufferSize"`

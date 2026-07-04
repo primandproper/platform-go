@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	"github.com/primandproper/platform-go/v2/distributedlock"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/identifiers"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	"github.com/primandproper/platform-go/v3/distributedlock"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -80,6 +80,10 @@ func NewRedisLocker(
 ) (distributedlock.Locker, error) {
 	if cfg == nil {
 		return nil, distributedlock.ErrNilConfig
+	}
+
+	if len(cfg.Addresses) == 0 {
+		return nil, fmt.Errorf("%w: at least one redis address is required", distributedlock.ErrNilConfig)
 	}
 
 	mp := metrics.EnsureMetricsProvider(metricsProvider)

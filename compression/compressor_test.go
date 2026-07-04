@@ -4,9 +4,9 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/encoding"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/encoding"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -22,7 +22,7 @@ func TestNewCompressor(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		comp, err := NewCompressor(algoZstd)
+		comp, err := NewCompressor(AlgorithmZstd)
 		must.NoError(t, err)
 		must.NotNil(t, comp)
 	})
@@ -30,7 +30,17 @@ func TestNewCompressor(T *testing.T) {
 	T.Run("s2", func(t *testing.T) {
 		t.Parallel()
 
-		comp, err := NewCompressor(algoS2)
+		comp, err := NewCompressor(AlgorithmS2)
+		must.NoError(t, err)
+		must.NotNil(t, comp)
+	})
+
+	T.Run("from config string", func(t *testing.T) {
+		t.Parallel()
+
+		const configValue = "zstd"
+
+		comp, err := NewCompressor(Algorithm(configValue))
 		must.NoError(t, err)
 		must.NotNil(t, comp)
 	})
@@ -38,7 +48,7 @@ func TestNewCompressor(T *testing.T) {
 	T.Run("invalid algo", func(t *testing.T) {
 		t.Parallel()
 
-		comp, err := NewCompressor(algo(t.Name()))
+		comp, err := NewCompressor(Algorithm(t.Name()))
 		must.Error(t, err)
 		must.Nil(t, comp)
 	})
@@ -51,7 +61,7 @@ func Test_compressor_CompressBytes(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		comp, err := NewCompressor(algoZstd)
+		comp, err := NewCompressor(AlgorithmZstd)
 		must.NoError(t, err)
 
 		x := &whatever{
@@ -72,7 +82,7 @@ func Test_compressor_CompressBytes(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		comp, err := NewCompressor(algoS2)
+		comp, err := NewCompressor(AlgorithmS2)
 		must.NoError(t, err)
 
 		x := &whatever{
@@ -93,7 +103,7 @@ func Test_compressor_CompressBytes(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		comp, err := NewCompressor(algoS2)
+		comp, err := NewCompressor(AlgorithmS2)
 		must.NoError(t, err)
 
 		comp.(*compressor).algo = "invalid"
@@ -113,9 +123,9 @@ func Test_compressor_CompressBytes(T *testing.T) {
 func Test_compressor_DecompressBytes(T *testing.T) {
 	T.Parallel()
 
-	algorithms := []algo{
-		algoZstd,
-		algoS2,
+	algorithms := []Algorithm{
+		AlgorithmZstd,
+		AlgorithmS2,
 	}
 
 	for _, a := range algorithms {
@@ -149,7 +159,7 @@ func Test_compressor_DecompressBytes(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		comp, err := NewCompressor(algoZstd)
+		comp, err := NewCompressor(AlgorithmZstd)
 		must.NoError(t, err)
 
 		x := &whatever{
@@ -171,7 +181,7 @@ func Test_compressor_DecompressBytes(T *testing.T) {
 	T.Run("with invalid zstd data", func(t *testing.T) {
 		t.Parallel()
 
-		comp, err := NewCompressor(algoZstd)
+		comp, err := NewCompressor(AlgorithmZstd)
 		must.NoError(t, err)
 
 		decompressed, err := comp.DecompressBytes([]byte("not valid zstd data"))
@@ -182,11 +192,54 @@ func Test_compressor_DecompressBytes(T *testing.T) {
 	T.Run("with invalid s2 data", func(t *testing.T) {
 		t.Parallel()
 
-		comp, err := NewCompressor(algoS2)
+		comp, err := NewCompressor(AlgorithmS2)
 		must.NoError(t, err)
 
 		decompressed, err := comp.DecompressBytes([]byte("not valid s2 data"))
 		test.Error(t, err)
 		test.Nil(t, decompressed)
 	})
+
+	// A small, highly-compressible payload that expands well past a tiny cap must be
+	// rejected rather than allocating the full decompressed size (decompression bomb guard).
+	for _, a := range algorithms {
+		T.Run(string(a)+" rejects output larger than the cap", func(t *testing.T) {
+			t.Parallel()
+
+			const maxOut = 4 << 10 // 4 KiB
+			// 1 MiB of zeros compresses to a tiny payload but expands past the cap.
+			bomb := make([]byte, 1<<20)
+
+			packer, err := NewCompressor(a)
+			must.NoError(t, err)
+			compressed, err := packer.CompressBytes(bomb)
+			must.NoError(t, err)
+			must.True(t, len(compressed) < maxOut)
+
+			capped, err := NewCompressor(a, WithMaxDecompressedBytes(maxOut))
+			must.NoError(t, err)
+
+			decompressed, err := capped.DecompressBytes(compressed)
+			test.Error(t, err)
+			test.Nil(t, decompressed)
+		})
+
+		T.Run(string(a)+" allows output within the cap", func(t *testing.T) {
+			t.Parallel()
+
+			payload := []byte("a modest payload well under the configured cap")
+
+			packer, err := NewCompressor(a)
+			must.NoError(t, err)
+			compressed, err := packer.CompressBytes(payload)
+			must.NoError(t, err)
+
+			capped, err := NewCompressor(a, WithMaxDecompressedBytes(1<<20))
+			must.NoError(t, err)
+
+			decompressed, err := capped.DecompressBytes(compressed)
+			test.NoError(t, err)
+			test.Eq(t, payload, decompressed)
+		})
+	}
 }

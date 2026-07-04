@@ -17,13 +17,13 @@ type instrumentedSQLTracerWrapper struct {
 	tracer Tracer
 }
 
-// GetSpan wraps tracer.GetSpan.
+// GetSpan wraps tracer.GetSpan. It does not start a span itself: instrumentedsql
+// always follows GetSpan with NewChild, which starts the actual SQL span parented
+// to whatever span already lives in ctx. Starting one here would leak an unfinished
+// phantom parent and orphan the trace tree.
 func (t *instrumentedSQLTracerWrapper) GetSpan(ctx context.Context) instrumentedsql.Span {
-	ctx, span := t.tracer.StartSpan(ctx)
-
 	return &instrumentedSQLSpanWrapper{
 		ctx:    ctx,
 		tracer: t.tracer,
-		span:   span,
 	}
 }

@@ -2,6 +2,7 @@ package bitmask
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/shoenig/test"
@@ -524,7 +525,9 @@ func TestBitmask_MarshalJSON(T *testing.T) {
 		t.Parallel()
 
 		mask := New(permRead, permWrite)
-		data, err := json.Marshal(&mask)
+		// Marshal the value, not &mask: the API hands back values, so this is the path
+		// callers actually hit. C-09 (pointer-receiver MarshalJSON) emitted "{}" here.
+		data, err := json.Marshal(mask)
 
 		must.NoError(t, err)
 		test.EqOp(t, "3", string(data))
@@ -534,7 +537,7 @@ func TestBitmask_MarshalJSON(T *testing.T) {
 		t.Parallel()
 
 		mask := New[testPerm]()
-		data, err := json.Marshal(&mask)
+		data, err := json.Marshal(mask)
 
 		must.NoError(t, err)
 		test.EqOp(t, "0", string(data))
@@ -547,11 +550,21 @@ func TestBitmask_MarshalJSON(T *testing.T) {
 			Perms Bitmask[testPerm] `json:"perms"`
 		}
 
+		// Marshal the struct by value — an unaddressable field is exactly where a
+		// pointer-receiver MarshalJSON would silently emit "{}".
 		w := wrapper{Perms: New(permRead, permDelete)}
-		data, err := json.Marshal(&w)
+		data, err := json.Marshal(w)
 
 		must.NoError(t, err)
 		test.EqOp(t, `{"perms":5}`, string(data))
+	})
+
+	T.Run("stringer works on a value", func(t *testing.T) {
+		t.Parallel()
+
+		mask := New(permRead, permWrite)
+		//nolint:gocritic // intentionally exercising fmt's %v to prove the value-receiver Stringer fires
+		test.EqOp(t, "00000011", fmt.Sprintf("%v", mask))
 	})
 }
 
@@ -597,6 +610,26 @@ func TestBitmask_UnmarshalJSON(T *testing.T) {
 		test.Error(t, err)
 	})
 
+	T.Run("returns error for value exceeding the type width", func(t *testing.T) {
+		t.Parallel()
+
+		// testPerm is uint8; 511 does not fit and must error rather than truncating to 255.
+		var mask Bitmask[testPerm]
+		err := json.Unmarshal([]byte("511"), &mask)
+
+		test.Error(t, err)
+	})
+
+	T.Run("unmarshals the maximum value for the type width", func(t *testing.T) {
+		t.Parallel()
+
+		var mask Bitmask[testPerm]
+		err := json.Unmarshal([]byte("255"), &mask)
+
+		must.NoError(t, err)
+		test.EqOp(t, testPerm(255), mask.Value())
+	})
+
 	T.Run("unmarshals in struct", func(t *testing.T) {
 		t.Parallel()
 
@@ -616,7 +649,7 @@ func TestBitmask_UnmarshalJSON(T *testing.T) {
 		t.Parallel()
 
 		original := New(permRead, permWrite, permAdmin)
-		data, err := json.Marshal(&original)
+		data, err := json.Marshal(original)
 		must.NoError(t, err)
 
 		var restored Bitmask[testPerm]

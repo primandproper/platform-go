@@ -1,20 +1,18 @@
 package slog
 
 import (
-	"fmt"
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
+	"runtime"
+	"time"
 
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
 
 	"go.opentelemetry.io/otel/trace"
 )
-
-func init() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-}
 
 // logger is our log wrapper.
 type slogLogger struct {
@@ -25,19 +23,19 @@ type slogLogger struct {
 // NewSlogLogger builds a new slogLogger.
 func NewSlogLogger(lvl logging.Level) logging.Logger {
 	var level slog.Leveler
-	switch lvl {
-	case logging.DebugLevel:
+	switch {
+	case logging.LevelsEqual(lvl, logging.DebugLevel):
 		level = slog.LevelDebug
-	case logging.InfoLevel:
+	case logging.LevelsEqual(lvl, logging.InfoLevel):
 		level = slog.LevelInfo
-	case logging.WarnLevel:
+	case logging.LevelsEqual(lvl, logging.WarnLevel):
 		level = slog.LevelWarn
-	case logging.ErrorLevel:
+	case logging.LevelsEqual(lvl, logging.ErrorLevel):
 		level = slog.LevelError
 	}
 
 	handlerOptions := &slog.HandlerOptions{
-		AddSource: lvl == logging.DebugLevel,
+		AddSource: logging.LevelsEqual(lvl, logging.DebugLevel),
 		Level:     level,
 	}
 
@@ -50,7 +48,7 @@ func NewSlogLogger(lvl logging.Level) logging.Logger {
 // Slog doesn't support named loggers :( so we have this workaround.
 func (l *slogLogger) WithName(name string) logging.Logger {
 	l2 := l.logger.With(slog.String(logging.LoggerNameKey, name))
-	return &slogLogger{logger: l2}
+	return &slogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 // SetRequestIDFunc sets the request ID retrieval function.
@@ -60,33 +58,53 @@ func (l *slogLogger) SetRequestIDFunc(f logging.RequestIDFunc) {
 	}
 }
 
+// logAt emits a record whose source PC points at the caller of the exported
+// logging method rather than at this wrapper. Calling l.logger.Info/Debug/Error
+// directly makes slog's AddSource attribute every line to this file.
+func (l *slogLogger) logAt(level slog.Level, msg string, attrs ...slog.Attr) {
+	ctx := context.Background()
+	if !l.logger.Enabled(ctx, level) {
+		return
+	}
+
+	var pcs [1]uintptr
+	// Skip [runtime.Callers, logAt, the exported Info/Debug/Error method] so the
+	// captured PC is the caller of that exported method.
+	runtime.Callers(3, pcs[:])
+	r := slog.NewRecord(time.Now(), level, msg, pcs[0])
+	r.AddAttrs(attrs...)
+	_ = l.logger.Handler().Handle(ctx, r) //nolint:errcheck // logging is best-effort
+}
+
 // Info satisfies our contract for the logging.Logger Info method.
 func (l *slogLogger) Info(input string) {
-	l.logger.Info(input)
+	l.logAt(slog.LevelInfo, input)
 }
 
 // Debug satisfies our contract for the logging.Logger Debug method.
 func (l *slogLogger) Debug(input string) {
-	l.logger.Debug(input)
+	l.logAt(slog.LevelDebug, input)
 }
 
 // Error satisfies our contract for the logging.Logger Error method.
 func (l *slogLogger) Error(whatWasHappeningWhenErrorOccurred string, err error) {
 	if err != nil {
-		l.logger.Error(fmt.Sprintf("error %s: %s", whatWasHappeningWhenErrorOccurred, err.Error()))
+		l.logAt(slog.LevelError, whatWasHappeningWhenErrorOccurred, slog.Any("error", err))
+		return
 	}
+	l.logAt(slog.LevelError, whatWasHappeningWhenErrorOccurred)
 }
 
 // Clone satisfies our contract for the logging.Logger WithValue method.
 func (l *slogLogger) Clone() logging.Logger {
 	l2 := l.logger.With()
-	return &slogLogger{logger: l2}
+	return &slogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 // WithValue satisfies our contract for the logging.Logger WithValue method.
 func (l *slogLogger) WithValue(key string, value any) logging.Logger {
 	l2 := l.logger.With(slog.Any(key, value))
-	return &slogLogger{logger: l2}
+	return &slogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 // WithValues satisfies our contract for the logging.Logger WithValues method.
@@ -97,13 +115,13 @@ func (l *slogLogger) WithValues(values map[string]any) logging.Logger {
 		l2 = l2.With(slog.Any(key, val))
 	}
 
-	return &slogLogger{logger: l2}
+	return &slogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 // WithError satisfies our contract for the logging.Logger WithError method.
 func (l *slogLogger) WithError(err error) logging.Logger {
 	l2 := l.logger.With(slog.Any("error", err))
-	return &slogLogger{logger: l2}
+	return &slogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 // WithSpan satisfies our contract for the logging.Logger WithSpan method.
@@ -112,7 +130,7 @@ func (l *slogLogger) WithSpan(span trace.Span) logging.Logger {
 
 	l2 := l.logger.With(slog.String(keys.SpanIDKey, si.SpanID), slog.String(keys.TraceIDKey, si.TraceID))
 
-	return &slogLogger{logger: l2}
+	return &slogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 func (l *slogLogger) attachRequestToLog(req *http.Request) *slog.Logger {
@@ -138,7 +156,7 @@ func (l *slogLogger) attachRequestToLog(req *http.Request) *slog.Logger {
 
 // WithRequest satisfies our contract for the logging.Logger WithRequest method.
 func (l *slogLogger) WithRequest(req *http.Request) logging.Logger {
-	return &slogLogger{logger: l.attachRequestToLog(req)}
+	return &slogLogger{requestIDFunc: l.requestIDFunc, logger: l.attachRequestToLog(req)}
 }
 
 // WithResponse satisfies our contract for the logging.Logger WithResponse method.
@@ -148,5 +166,5 @@ func (l *slogLogger) WithResponse(res *http.Response) logging.Logger {
 		l2 = l.attachRequestToLog(res.Request).With(slog.Int(keys.ResponseStatusKey, res.StatusCode))
 	}
 
-	return &slogLogger{logger: l2}
+	return &slogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }

@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/authentication/tokens"
-	"github.com/primandproper/platform-go/v2/observability"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/authentication/tokens"
+	"github.com/primandproper/platform-go/v3/observability"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/o1egl/paseto/v2"
@@ -227,6 +227,19 @@ func Test_signer_ParseToken(T *testing.T) {
 
 		claims := validClaims(s)
 		claims["exp"] = time.Now().Add(-time.Hour).UTC()
+
+		parsed, err := s.ParseToken(t.Context(), craftToken(t, s, claims))
+		test.ErrorIs(t, err, tokens.ErrTokenExpired)
+		test.Nil(t, parsed)
+	})
+
+	T.Run("rejects token missing exp claim", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newRecordingSigner(t, []byte(exampleSigningKey))
+
+		claims := validClaims(s)
+		delete(claims, "exp")
 
 		parsed, err := s.ParseToken(t.Context(), craftToken(t, s, claims))
 		test.ErrorIs(t, err, tokens.ErrTokenExpired)

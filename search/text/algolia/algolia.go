@@ -3,12 +3,12 @@ package algolia
 import (
 	"fmt"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	textsearch "github.com/primandproper/platform-go/v2/search/text"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	textsearch "github.com/primandproper/platform-go/v3/search/text"
 
 	algolia "github.com/algolia/algoliasearch-client-go/v3/algolia/search"
 )
@@ -24,7 +24,6 @@ type (
 		o11y           observability.Observer
 		circuitBreaker circuitbreaking.CircuitBreaker
 		client         *algolia.Index
-		DataType       *T
 	}
 )
 
@@ -39,9 +38,20 @@ func ProvideIndexManager[T any](
 		return nil, ErrNilConfig
 	}
 
+	clientConfig := algolia.Configuration{
+		AppID:  cfg.AppID,
+		APIKey: cfg.APIKey,
+	}
+	// Honor a configured timeout for both read and write operations; leave the
+	// SDK's own defaults in place when unset.
+	if cfg.Timeout > 0 {
+		clientConfig.ReadTimeout = cfg.Timeout
+		clientConfig.WriteTimeout = cfg.Timeout
+	}
+
 	im := &indexManager[T]{
 		o11y:           observability.NewObserver(fmt.Sprintf("search_%s", indexName), logger, tracerProvider),
-		client:         algolia.NewClient(cfg.AppID, cfg.APIKey).InitIndex(indexName),
+		client:         algolia.NewClientWithConfig(clientConfig).InitIndex(indexName),
 		circuitBreaker: circuitBreaker,
 	}
 

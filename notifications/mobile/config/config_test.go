@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/notifications/mobile"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/notifications/mobile"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -145,19 +145,22 @@ func TestConfig_ProvidePushSender(T *testing.T) {
 		test.NoError(t, sender.SendPush(ctx, "android", "token", mobile.PushMessage{Title: "title", Body: "body"}))
 	})
 
-	T.Run("with apns_fcm provider and nil APNs returns noop or FCM-only sender", func(t *testing.T) {
+	T.Run("with apns_fcm provider and nil APNs returns FCM-only sender", func(t *testing.T) {
 		t.Parallel()
 
+		credsPath := createTestFCMCredsFile(t)
 		cfg := Config{
 			Provider: ProviderAPNsFCM,
 			APNs:     nil,
-			FCM:      &FCMConfig{},
+			FCM:      &FCMConfig{CredentialsPath: credsPath},
 		}
 		sender, err := cfg.ProvidePushSender(ctx, logger, tracer, nil)
 		must.NoError(t, err)
 		must.NotNil(t, sender)
-		// FCM init typically fails in unit tests (no ADC), so we get noop; if it succeeds, iOS would error
-		_ = sender.SendPush(ctx, "ios", "token", mobile.PushMessage{Title: "title", Body: "body"})
+		// iOS is not configured, so it should report as unsupported.
+		err = sender.SendPush(ctx, "ios", "token", mobile.PushMessage{Title: "title", Body: "body"})
+		test.Error(t, err)
+		test.ErrorIs(t, err, mobile.ErrPlatformNotSupported)
 	})
 
 	T.Run("with apns_fcm provider and nil FCM returns iOS-only sender", func(t *testing.T) {
@@ -178,7 +181,7 @@ func TestConfig_ProvidePushSender(T *testing.T) {
 		test.ErrorIs(t, err, mobile.ErrPlatformNotSupported)
 	})
 
-	T.Run("with apns_fcm provider and invalid APNs path returns noop or FCM-only sender", func(t *testing.T) {
+	T.Run("with apns_fcm provider and invalid APNs path fails loudly", func(t *testing.T) {
 		t.Parallel()
 
 		cfg := Config{
@@ -187,13 +190,11 @@ func TestConfig_ProvidePushSender(T *testing.T) {
 			FCM:      &FCMConfig{},
 		}
 		sender, err := cfg.ProvidePushSender(ctx, logger, tracer, nil)
-		must.NoError(t, err)
-		must.NotNil(t, sender)
-		// APNs init fails; FCM init typically fails in unit tests, so we get noop
-		_ = sender.SendPush(ctx, "ios", "token", mobile.PushMessage{Title: "title", Body: "body"})
+		test.Error(t, err)
+		test.Nil(t, sender)
 	})
 
-	T.Run("with apns_fcm provider and invalid FCM path returns iOS-only sender", func(t *testing.T) {
+	T.Run("with apns_fcm provider and invalid FCM path fails loudly", func(t *testing.T) {
 		t.Parallel()
 
 		p8Path := createTestP8File(t)
@@ -203,12 +204,21 @@ func TestConfig_ProvidePushSender(T *testing.T) {
 			FCM:      &FCMConfig{CredentialsPath: filepath.Join(t.TempDir(), "nonexistent.json")},
 		}
 		sender, err := cfg.ProvidePushSender(ctx, logger, tracer, nil)
-		must.NoError(t, err)
-		must.NotNil(t, sender)
-		// FCM init fails, so Android not configured; should return ErrPlatformNotSupported
-		err = sender.SendPush(ctx, "android", "token", mobile.PushMessage{Title: "title", Body: "body"})
 		test.Error(t, err)
-		test.ErrorIs(t, err, mobile.ErrPlatformNotSupported)
+		test.Nil(t, sender)
+	})
+
+	T.Run("with apns_fcm provider and neither platform configured fails loudly", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := Config{
+			Provider: ProviderAPNsFCM,
+			APNs:     nil,
+			FCM:      nil,
+		}
+		sender, err := cfg.ProvidePushSender(ctx, logger, tracer, nil)
+		test.Error(t, err)
+		test.Nil(t, sender)
 	})
 
 	T.Run("with unknown provider returns noop", func(t *testing.T) {

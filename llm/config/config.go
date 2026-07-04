@@ -4,13 +4,13 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/llm"
-	"github.com/primandproper/platform-go/v2/llm/anthropic"
-	llmnoop "github.com/primandproper/platform-go/v2/llm/noop"
-	"github.com/primandproper/platform-go/v2/llm/openai"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/llm"
+	"github.com/primandproper/platform-go/v3/llm/anthropic"
+	llmnoop "github.com/primandproper/platform-go/v3/llm/noop"
+	"github.com/primandproper/platform-go/v3/llm/openai"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -24,8 +24,8 @@ const (
 
 // Config is the configuration for the LLM provider.
 type Config struct {
-	OpenAI    *openai.Config    `env:"init"     envPrefix:"OPENAI_"    json:"openai"`
-	Anthropic *anthropic.Config `env:"init"     envPrefix:"ANTHROPIC_" json:"anthropic"`
+	OpenAI    *openai.Config    `env:",init"    envPrefix:"OPENAI_"    json:"openai"`
+	Anthropic *anthropic.Config `env:",init"    envPrefix:"ANTHROPIC_" json:"anthropic"`
 	Provider  string            `env:"PROVIDER" json:"provider"`
 }
 

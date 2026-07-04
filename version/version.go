@@ -2,6 +2,7 @@ package version
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 )
 
@@ -55,9 +56,14 @@ func Get() Info {
 	}
 }
 
-// WriteJSON marshals the version info as indented JSON to os.Stdout.
-func WriteJSON() error {
-	enc := json.NewEncoder(os.Stdout)
+// WriteJSON marshals the version info as indented JSON to w.
+func WriteJSON(w io.Writer) error {
+	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(Get())
+}
+
+// WriteJSONToStdout marshals the version info as indented JSON to os.Stdout, for CLI use.
+func WriteJSONToStdout() error {
+	return WriteJSON(os.Stdout)
 }

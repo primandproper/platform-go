@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	mockcircuitbreaking "github.com/primandproper/platform-go/v2/circuitbreaking/mock"
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/identifiers"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v2/testutils/containers"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	mockcircuitbreaking "github.com/primandproper/platform-go/v3/circuitbreaking/mock"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/testutils/containers"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -238,9 +238,9 @@ func TestElasticsearch_Container(T *testing.T) {
 
 		time.Sleep(5 * time.Second)
 
-		results, err := im.Search(ctx, searchable.Name[0:2])
+		results, err := im.Search(ctx, searchable.Name)
 		test.NoError(t, err)
-		test.SliceLen(t, 1, results)
+		must.SliceLen(t, 1, results)
 		test.Eq(t, searchable, results[0])
 
 		test.NoError(t, im.Delete(ctx, searchable.ID))
@@ -371,13 +371,32 @@ func TestElasticsearch_Container(T *testing.T) {
 
 	// --- Wipe ---
 
-	T.Run("Wipe returns unimplemented error", func(t *testing.T) {
+	T.Run("Wipe removes all documents", func(t *testing.T) {
 		t.Parallel()
 
-		im := &indexManager[example]{}
+		ctx := t.Context()
+		im, err := ProvideIndexManager[example](ctx, nil, nil, infra.cfg, "wipe_"+identifiers.New(), cbnoop.NewCircuitBreaker())
+		must.NoError(t, err)
 
-		test.Error(t, im.Wipe(t.Context()))
-		test.EqOp(t, "unimplemented", im.Wipe(t.Context()).Error())
+		searchable := &example{
+			ID:   identifiers.New(),
+			Name: "test wipe document",
+		}
+		must.NoError(t, im.Index(ctx, searchable.ID, searchable))
+
+		time.Sleep(2 * time.Second)
+
+		results, err := im.Search(ctx, "wipe")
+		must.NoError(t, err)
+		must.SliceLen(t, 1, results)
+
+		test.NoError(t, im.Wipe(ctx))
+
+		time.Sleep(2 * time.Second)
+
+		results, err = im.Search(ctx, "wipe")
+		test.NoError(t, err)
+		test.SliceLen(t, 0, results)
 	})
 }
 
@@ -510,6 +529,33 @@ func TestIndexManager_ensureIndices_Unit(T *testing.T) {
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.FailedCalls())
 	})
+
+	T.Run("existence check server error is not treated as index-exists", func(t *testing.T) {
+		t.Parallel()
+
+		// IndicesExists returns 200 (exists) or 404 (missing). A 500 (or 401) must be
+		// surfaced as an error rather than silently taken to mean the index exists.
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Elastic-Product", "Elasticsearch")
+			if r.Method == http.MethodHead && r.URL.Path == "/test" {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		t.Cleanup(server.Close)
+
+		cb := &mockcircuitbreaking.CircuitBreakerMock{
+			CannotProceedFunc: func() bool { return false },
+			FailedFunc:        func() {},
+		}
+
+		im, _ := buildTestIndexManagerWithServer(t, server, cb)
+
+		err := im.ensureIndices(context.Background())
+		test.Error(t, err)
+		test.SliceLen(t, 1, cb.FailedCalls())
+	})
 }
 
 func Test_provideElasticsearchClient_Unit(T *testing.T) {
@@ -554,12 +600,7 @@ func Test_elasticsearchIsReadyToInit_Unit(T *testing.T) {
 
 		logger := loggingnoop.NewLogger()
 		ready := elasticsearchIsReadyToInit(context.Background(), cfg, logger, 1)
-		// This will either return true (if the info request returns non-error) or false
-		// With unreachable server, the error path is taken but the condition is
-		// err != nil && res != nil && !res.IsError() which won't match when res is nil,
-		// so it falls through to the else branch and returns true.
-		// This is actually a bug in the code but we test the actual behavior.
-		test.True(t, ready)
+		test.False(t, ready)
 	})
 
 	T.Run("returns true with reachable server", func(t *testing.T) {

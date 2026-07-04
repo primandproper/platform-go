@@ -5,9 +5,6 @@ import (
 )
 
 type (
-	// APIToken is used to authenticate an email service.
-	APIToken string
-
 	// EmailBranding holds app-specific branding used when building Hermes email templates.
 	EmailBranding struct {
 		CompanyName string

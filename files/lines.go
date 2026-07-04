@@ -7,7 +7,7 @@ import (
 	"iter"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v3/errors"
 )
 
 // Lines yields each line of r without its trailing newline (handling both \n and \r\n). An
@@ -20,17 +20,24 @@ func Lines(r io.Reader) iter.Seq2[string, error] {
 		br := bufio.NewReader(r)
 		for {
 			line, err := br.ReadString('\n')
-			if line != "" {
-				if !yield(trimLineEnding(line), nil) {
+			if err != nil {
+				if stderrors.Is(err, io.EOF) {
+					// A final unterminated line is legitimate; yield it before completing.
+					if line != "" {
+						yield(trimLineEnding(line), nil)
+					}
 					return
 				}
+
+				// A real read failure: the partial data ReadString returned is a
+				// truncated read, not a complete line, so surface the error rather than
+				// yielding the fragment as a good line.
+				yield("", errors.Wrap(err, "reading line"))
+
+				return
 			}
 
-			if err != nil {
-				if !stderrors.Is(err, io.EOF) {
-					yield("", errors.Wrap(err, "reading line"))
-				}
-
+			if !yield(trimLineEnding(line), nil) {
 				return
 			}
 		}

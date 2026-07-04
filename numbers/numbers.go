@@ -1,17 +1,13 @@
 package numbers
 
+import "math"
+
 // RoundToDecimalPlaces rounds a float32 value to the specified number of decimal places.
 func RoundToDecimalPlaces(value float32, precision uint8) float32 {
-	multiplier := float32(1)
-	for range precision {
-		multiplier *= 10
-	}
-
-	// Add 0.5 for rounding and truncate
-	if value >= 0 {
-		return float32(int32(value*multiplier+0.5)) / multiplier
-	}
-	return float32(int32(value*multiplier-0.5)) / multiplier
+	// Round in float64 so large values don't saturate int32 and high precision doesn't overflow
+	// the multiplier to +Inf. math.Round rounds half away from zero, matching the prior behavior.
+	multiplier := math.Pow(10, float64(precision))
+	return float32(math.Round(float64(value)*multiplier) / multiplier)
 }
 
 // Scale multiplies a value by a scaling factor and rounds to the specified precision (default: 2).

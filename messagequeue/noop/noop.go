@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v2/messagequeue"
+	"github.com/primandproper/platform-go/v3/messagequeue"
 )
 
 var (
@@ -52,6 +52,8 @@ type consumerProvider struct{}
 func NewConsumerProvider() messagequeue.ConsumerProvider {
 	return &consumerProvider{}
 }
+
+func (n *consumerProvider) Close() {}
 
 func (n *consumerProvider) ProvideConsumer(context.Context, string, messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
 	return NewConsumer(), nil

@@ -4,13 +4,15 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/segmentio/kafka-go"
 	"github.com/shoenig/test"
@@ -24,6 +26,7 @@ type mockKafkaReader struct {
 	closeFunc          func() error
 	fetchCalls         int
 	commitCalls        int
+	closeCalls         int
 }
 
 func (m *mockKafkaReader) FetchMessage(ctx context.Context) (kafka.Message, error) {
@@ -37,6 +40,7 @@ func (m *mockKafkaReader) CommitMessages(ctx context.Context, msgs ...kafka.Mess
 }
 
 func (m *mockKafkaReader) Close() error {
+	m.closeCalls++
 	if m.closeFunc == nil {
 		return nil
 	}
@@ -71,6 +75,45 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 
 		cancel()
 		c.Consume(ctx, stopChan, errs)
+
+		// The reader (group membership + connections) must be closed on exit.
+		test.EqOp(t, 1, reader.closeCalls)
+	})
+
+	T.Run("interrupts a blocked fetch on stop and closes the reader", func(t *testing.T) {
+		t.Parallel()
+
+		// FetchMessage blocks until its context is canceled, mimicking a reader waiting
+		// for the next message. Signaling stop must unblock it (via ctx cancellation).
+		reader := &mockKafkaReader{
+			fetchMessageFunc: func(ctx context.Context) (kafka.Message, error) {
+				<-ctx.Done()
+				return kafka.Message{}, ctx.Err()
+			},
+		}
+
+		c := &kafkaConsumer{
+			reader:          reader,
+			o11y:            observability.NewObserverForTest(t.Name()),
+			consumedCounter: nil,
+			handlerFunc:     func(context.Context, []byte) error { return nil },
+		}
+
+		stopChan := make(chan bool, 1)
+		done := make(chan struct{})
+		go func() {
+			c.Consume(t.Context(), stopChan, nil)
+			close(done)
+		}()
+
+		stopChan <- true
+
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("Consume did not return after stop signal interrupted the blocked fetch")
+		}
+		test.EqOp(t, 1, reader.closeCalls)
 	})
 
 	T.Run("stops on stop channel signal", func(t *testing.T) {
@@ -332,6 +375,59 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 		c.Consume(ctx, stopChan, nil)
 	})
 
+	T.Run("does not commit past a failed message", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		msg1 := kafka.Message{Value: []byte("fails"), Offset: 0}
+		msg2 := kafka.Message{Value: []byte("succeeds"), Offset: 1}
+		handlerErr := errors.New("handler failed")
+
+		var fetchCount int
+		reader := &mockKafkaReader{
+			fetchMessageFunc: func(_ context.Context) (kafka.Message, error) {
+				fetchCount++
+				switch fetchCount {
+				case 1:
+					return msg1, nil
+				case 2:
+					return msg2, nil
+				default:
+					return kafka.Message{}, context.Canceled
+				}
+			},
+			commitMessagesFunc: func(_ context.Context, _ ...kafka.Message) error {
+				t.Error("CommitMessages must not be called after a handler failure")
+				return nil
+			},
+		}
+
+		var handlerCalls int
+		c := &kafkaConsumer{
+			reader:          reader,
+			o11y:            observability.NewObserverForTest(t.Name()),
+			consumedCounter: metrics.Int64CounterForTest(t, t.Name()),
+			handlerFunc: func(context.Context, []byte) error {
+				handlerCalls++
+				return handlerErr
+			},
+		}
+
+		errs := make(chan error, 1)
+
+		c.Consume(ctx, make(chan bool, 1), errs)
+
+		// The failed message must not have been committed, and the consumer must not
+		// have advanced to (and committed) the following message.
+		test.EqOp(t, 0, reader.commitCalls)
+		test.EqOp(t, 1, reader.fetchCalls)
+		test.EqOp(t, 1, handlerCalls)
+
+		receivedErr := <-errs
+		test.ErrorIs(t, receivedErr, handlerErr)
+	})
+
 	T.Run("with commit error", func(t *testing.T) {
 		t.Parallel()
 
@@ -451,7 +547,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 
 		actual, err := provider.ProvideConsumer(ctx, "", nil)
 		test.Error(t, err)
-		test.ErrorIs(t, err, ErrEmptyInputProvided)
+		test.ErrorIs(t, err, messagequeue.ErrEmptyTopicName)
 		test.Nil(t, actual)
 	})
 

@@ -11,16 +11,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	"github.com/primandproper/platform-go/v2/database"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	vectorsearch "github.com/primandproper/platform-go/v2/search/vector"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	"github.com/primandproper/platform-go/v3/database"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	vectorsearch "github.com/primandproper/platform-go/v3/search/vector"
 )
 
 const serviceName = "pgvector_index"
@@ -28,6 +28,13 @@ const serviceName = "pgvector_index"
 // ErrInvalidIdentifier indicates an index or column name does not meet the bare-identifier
 // constraint required by this provider.
 var ErrInvalidIdentifier = platformerrors.New("identifier must match [A-Za-z_][A-Za-z0-9_]*")
+
+// ErrInvalidFilter indicates QueryRequest.Filter was a non-nil value of a type this
+// provider cannot interpret. The pgvector provider only accepts a string SQL fragment;
+// any other type is rejected rather than silently ignored, so a caller that mistakenly
+// passes (for example) a structured filter meant for another provider gets a loud error
+// instead of an unfiltered query that could leak rows across a tenant boundary.
+var ErrInvalidFilter = platformerrors.New("pgvector filter must be a string SQL fragment")
 
 // safeIdentifier matches a Postgres identifier safe to use after quoting; we still
 // quoteIdent everywhere we interpolate, but we also reject obvious garbage early so
@@ -277,19 +284,38 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 		})
 	}
 
+	//nolint:gosec // G201: the only interpolated values are internally-quoted identifiers (quotedIndex/quotedMetadataCol), not user input; row values are bound as parameters.
 	stmt := fmt.Sprintf(
 		`INSERT INTO %s (id, embedding, %s) VALUES ($1, $2::vector, $3::jsonb)
 		 ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding, %s = EXCLUDED.%s`,
 		i.quotedIndex, i.quotedMetadataCol, i.quotedMetadataCol, i.quotedMetadataCol,
 	)
 
+	// Run the whole batch in one transaction so a mid-batch failure rolls back the
+	// rows already written rather than leaving a partial batch committed.
+	tx, err := i.db.WriteDB().BeginTx(ctx, nil)
+	if err != nil {
+		i.errCounter.Add(ctx, 1)
+		i.circuitBreaker.Failed()
+		return op.Error(err, "beginning upsert transaction")
+	}
+
 	for n := range rows {
 		r := &rows[n]
-		if _, err := i.db.WriteDB().ExecContext(ctx, stmt, r.id, r.embedding, r.payload); err != nil {
+		if _, err = tx.ExecContext(ctx, stmt, r.id, r.embedding, r.payload); err != nil {
+			if rbErr := tx.Rollback(); rbErr != nil {
+				op.Acknowledge(rbErr, "rolling back upsert transaction")
+			}
 			i.errCounter.Add(ctx, 1)
 			i.circuitBreaker.Failed()
 			return op.Error(err, "upserting vector %q", r.id)
 		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		i.errCounter.Add(ctx, 1)
+		i.circuitBreaker.Failed()
+		return op.Error(err, "committing upsert transaction")
 	}
 
 	i.upsertCounter.Add(ctx, int64(len(rows)))
@@ -384,8 +410,20 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 	}()
 
 	where := ""
-	if filterFragment, ok := req.Filter.(string); ok {
+	if req.Filter != nil {
+		filterFragment, ok := req.Filter.(string)
+		if !ok {
+			return nil, platformerrors.Wrapf(ErrInvalidFilter, "got %T", req.Filter)
+		}
 		if trimmed := strings.TrimSpace(filterFragment); trimmed != "" {
+			// SECURITY: the filter is concatenated verbatim into the WHERE clause — it is
+			// raw, unparameterized SQL executed against the write-capable read connection.
+			// It is a trusted, caller-supplied SQL fragment, NEVER end-user input. Callers
+			// MUST sanitize/whitelist anything they interpolate (including tenant scoping)
+			// before passing it here. See the package doc for the filter contract. A
+			// parameterized builder is intentionally not used because the shared
+			// vectorsearch.QueryRequest carries no args slice; adding one would change the
+			// cross-provider interface, which this fix deliberately avoids.
 			where = " WHERE " + trimmed
 		}
 	}

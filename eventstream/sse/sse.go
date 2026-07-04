@@ -1,16 +1,18 @@
 package sse
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/eventstream"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/eventstream"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 )
 
 const (
@@ -83,13 +85,26 @@ func (s *sseStream) Send(ctx context.Context, event *eventstream.Event) error {
 	}
 
 	if event.Type != "" {
-		if _, err := fmt.Fprintf(s.w, "event: %s\n", event.Type); err != nil {
+		// Event types are single-line tokens; strip CR/LF so a newline-bearing type
+		// can't inject additional SSE fields.
+		eventType := strings.NewReplacer("\r", "", "\n", "").Replace(event.Type)
+		if _, err := fmt.Fprintf(s.w, "event: %s\n", eventType); err != nil {
 			return op.Error(err, "writing event type")
 		}
 	}
 
-	if _, err := fmt.Fprintf(s.w, "data: %s\n\n", event.Payload); err != nil {
-		return op.Error(err, "writing event data")
+	// Emit the payload as one `data:` line per source line. Splitting on newlines
+	// keeps a payload that contains "\n" (or an embedded "event:"/"data:" line) from
+	// breaking the SSE framing or injecting control fields. CR and CRLF are
+	// normalized to LF first so a lone "\r" can't split a line either.
+	normalized := bytes.ReplaceAll(bytes.ReplaceAll(event.Payload, []byte("\r\n"), []byte("\n")), []byte("\r"), []byte("\n"))
+	for line := range bytes.SplitSeq(normalized, []byte("\n")) {
+		if _, err := fmt.Fprintf(s.w, "data: %s\n", line); err != nil {
+			return op.Error(err, "writing event data")
+		}
+	}
+	if _, err := fmt.Fprint(s.w, "\n"); err != nil {
+		return op.Error(err, "writing event terminator")
 	}
 
 	s.flusher.Flush()

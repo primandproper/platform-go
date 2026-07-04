@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/encoding"
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/encoding"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"cloud.google.com/go/pubsub/v2"
 )
@@ -37,22 +37,22 @@ type (
 )
 
 // buildPubSubPublisher provides a Pub/Sub-backed pubSubPublisher.
-func buildPubSubPublisher(logger logging.Logger, pubsubClient *pubsub.Publisher, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, topic string) *pubSubPublisher {
+func buildPubSubPublisher(logger logging.Logger, pubsubClient *pubsub.Publisher, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, topic string) (*pubSubPublisher, error) {
 	mp := metrics.EnsureMetricsProvider(metricsProvider)
 
 	publishedCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_published", topic))
 	if err != nil {
-		panic(fmt.Sprintf("creating published counter: %v", err))
+		return nil, fmt.Errorf("creating published counter: %w", err)
 	}
 
 	publishErrCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_publish_errors", topic))
 	if err != nil {
-		panic(fmt.Sprintf("creating publish error counter: %v", err))
+		return nil, fmt.Errorf("creating publish error counter: %w", err)
 	}
 
 	latencyHist, err := mp.NewFloat64Histogram(fmt.Sprintf("%s_publish_latency_ms", topic))
 	if err != nil {
-		panic(fmt.Sprintf("creating publish latency histogram: %v", err))
+		return nil, fmt.Errorf("creating publish latency histogram: %w", err)
 	}
 
 	return &pubSubPublisher{
@@ -63,7 +63,7 @@ func buildPubSubPublisher(logger logging.Logger, pubsubClient *pubsub.Publisher,
 		publishedCounter:  publishedCounter,
 		publishErrCounter: publishErrCounter,
 		latencyHist:       latencyHist,
-	}
+	}, nil
 }
 
 // Stop calls Stop on the topic.
@@ -131,7 +131,10 @@ func (p *publisherProvider) ProvidePublisher(ctx context.Context, topicName stri
 	// pubsub.topics.get (TopicAdminClient.GetTopic); pubsub.topics.publish is sufficient.
 	publisher := p.pubsubClient.Publisher(qualifiedName)
 
-	pub := buildPubSubPublisher(logger, publisher, p.tracerProvider, p.metricsProvider, qualifiedName)
+	pub, err := buildPubSubPublisher(logger, publisher, p.tracerProvider, p.metricsProvider, qualifiedName)
+	if err != nil {
+		return nil, err
+	}
 	p.publisherCache[qualifiedName] = pub
 
 	return pub, nil

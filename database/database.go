@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
 )
 
 var (

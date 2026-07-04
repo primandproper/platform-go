@@ -27,3 +27,14 @@ func TestErrMalformedCiphertext(T *testing.T) {
 		test.EqError(t, ErrMalformedCiphertext, "malformed ciphertext")
 	})
 }
+
+func TestErrAuthenticationFailed(T *testing.T) {
+	T.Parallel()
+
+	T.Run("is not nil", func(t *testing.T) {
+		t.Parallel()
+
+		test.NotNil(t, ErrAuthenticationFailed)
+		test.EqError(t, ErrAuthenticationFailed, "ciphertext authentication failed")
+	})
+}

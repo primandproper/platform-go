@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/testutils"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/testutils"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/shoenig/test"
@@ -51,8 +51,9 @@ func Test_BuildRouteParamIDFetcher(T *testing.T) {
 		test.EqOp(t, expected, actual)
 	})
 
-	T.Run("with invalid value somehow", func(t *testing.T) {
-		// NOTE: This will probably never happen in dev or production
+	T.Run("with invalid value returns 0", func(t *testing.T) {
+		// A non-numeric param genuinely happens (bad client input); it returns 0 and
+		// the fetcher logs the parse failure rather than swallowing it.
 		t.Parallel()
 
 		r := &chiRouteParamManager{}

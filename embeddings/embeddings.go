@@ -3,7 +3,16 @@ package embeddings
 import (
 	"context"
 	"time"
+
+	"github.com/primandproper/platform-go/v3/errors"
 )
+
+// ErrNilInput indicates a nil *Input was passed to GenerateEmbedding.
+var ErrNilInput = errors.New("nil embedding input provided")
+
+// DefaultRequestTimeout bounds a single embedding HTTP request when a provider's
+// Config leaves Timeout unset, so a hung provider can't block a caller forever.
+const DefaultRequestTimeout = 2 * time.Minute
 
 // Input is the content to be embedded.
 type Input struct {

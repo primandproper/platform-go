@@ -4,16 +4,16 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/messagequeue/kafka"
-	"github.com/primandproper/platform-go/v2/messagequeue/noop"
-	"github.com/primandproper/platform-go/v2/messagequeue/pubsub"
-	"github.com/primandproper/platform-go/v2/messagequeue/redis"
-	"github.com/primandproper/platform-go/v2/messagequeue/sqs"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/messagequeue/kafka"
+	"github.com/primandproper/platform-go/v3/messagequeue/noop"
+	"github.com/primandproper/platform-go/v3/messagequeue/pubsub"
+	"github.com/primandproper/platform-go/v3/messagequeue/redis"
+	"github.com/primandproper/platform-go/v3/messagequeue/sqs"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	ps "cloud.google.com/go/pubsub/v2"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -125,7 +125,7 @@ func ProvidePublisherProvider(ctx context.Context, logger logging.Logger, tracer
 	case string(ProviderRedis):
 		return redis.ProvideRedisPublisherProvider(logger, tracerProvider, metricsProvider, c.Publisher.Redis), nil
 	case string(ProviderSQS):
-		return sqs.ProvideSQSPublisherProvider(ctx, logger, tracerProvider, metricsProvider), nil
+		return sqs.ProvideSQSPublisherProvider(ctx, logger, tracerProvider, metricsProvider, c.Publisher.SQS)
 	case string(ProviderKafka):
 		return kafka.ProvideKafkaPublisherProvider(logger, tracerProvider, metricsProvider, c.Publisher.Kafka), nil
 	case string(ProviderPubSub):

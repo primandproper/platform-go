@@ -4,19 +4,52 @@ import (
 	"errors"
 	"testing"
 
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/identifiers"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	mockcircuitbreaking "github.com/primandproper/platform-go/v3/circuitbreaking/mock"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"go.opentelemetry.io/otel/metric"
 )
+
+func TestBreakerCallback(T *testing.T) {
+	T.Parallel()
+
+	T.Run("delivery success records breaker success", func(t *testing.T) {
+		t.Parallel()
+
+		cb := &mockcircuitbreaking.CircuitBreakerMock{SucceededFunc: func() {}}
+		callback := &breakerCallback{
+			circuitBreaker: cb,
+			errorCounter:   metrics.Int64CounterForTest(t, "x"),
+			logger:         loggingnoop.NewLogger(),
+		}
+
+		callback.Success(nil)
+		test.SliceLen(t, 1, cb.SucceededCalls())
+	})
+
+	T.Run("delivery failure trips the breaker", func(t *testing.T) {
+		t.Parallel()
+
+		cb := &mockcircuitbreaking.CircuitBreakerMock{FailedFunc: func() {}}
+		callback := &breakerCallback{
+			circuitBreaker: cb,
+			errorCounter:   metrics.Int64CounterForTest(t, "x"),
+			logger:         loggingnoop.NewLogger(),
+		}
+
+		callback.Failure(nil, errors.New("delivery boom"))
+		test.SliceLen(t, 1, cb.FailedCalls())
+	})
+}
 
 // newRecordingEventReporter builds an EventReporter with a RecordingObserver
 // swapped in, so a test can both drive a method and assert which fields it observed.

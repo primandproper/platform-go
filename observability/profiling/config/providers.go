@@ -3,8 +3,8 @@ package profilingcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/profiling"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/profiling"
 )
 
 // ProvideProfilingProviderWire provides a profiling provider from config.

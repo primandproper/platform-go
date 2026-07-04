@@ -8,11 +8,11 @@ import (
 	"encoding/xml"
 	"io"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/BurntSushi/toml"
 	"github.com/keith-turner/ecoji/v2"
@@ -56,7 +56,7 @@ func (e *clientEncoder) Unmarshal(ctx context.Context, data []byte, v any) error
 	}
 
 	if err := unmarshalFunc(data, v); err != nil {
-		return observability.PrepareError(err, op.Span(), "unmarshaling JSON content")
+		return observability.PrepareError(err, op.Span(), "unmarshaling content")
 	}
 
 	op.Logger().Debug("unmarshalled")
@@ -152,7 +152,7 @@ func (e *clientEncoder) EncodeReader(ctx context.Context, data any) (io.Reader, 
 
 	out, err := marshalFunc(data)
 	if err != nil {
-		return nil, observability.PrepareError(err, op.Span(), "marshaling to XML")
+		return nil, observability.PrepareError(err, op.Span(), "marshaling content")
 	}
 
 	op.Set(keys.LengthKey, len(out))

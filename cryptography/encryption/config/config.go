@@ -4,11 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/cryptography/encryption"
-	"github.com/primandproper/platform-go/v2/cryptography/encryption/aes"
-	"github.com/primandproper/platform-go/v2/cryptography/encryption/salsa20"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/cryptography/encryption"
+	"github.com/primandproper/platform-go/v3/cryptography/encryption/aes"
+	"github.com/primandproper/platform-go/v3/cryptography/encryption/salsa20"
+	perrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -32,7 +33,7 @@ var _ validation.ValidatableWithContext = (*Config)(nil)
 // ValidateWithContext validates a Config struct.
 func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	return validation.ValidateStructWithContext(ctx, cfg,
-		validation.Field(&cfg.Provider, validation.When(cfg.Provider != "", validation.In(ProviderAES, ProviderSalsa20))),
+		validation.Field(&cfg.Provider, validation.Required, validation.In(ProviderAES, ProviderSalsa20)),
 	)
 }
 
@@ -43,10 +44,16 @@ func ProvideEncryptorDecryptor(
 	logger logging.Logger,
 	key []byte,
 ) (encryption.EncryptorDecryptor, error) {
+	if cfg == nil {
+		return nil, perrors.ErrNilInputProvided
+	}
+
 	switch strings.TrimSpace(strings.ToLower(cfg.Provider)) {
 	case ProviderAES:
 		return aes.NewEncryptorDecryptor(tracerProvider, logger, key)
-	default:
+	case ProviderSalsa20:
 		return salsa20.NewEncryptorDecryptor(tracerProvider, logger, key)
+	default:
+		return nil, perrors.Newf("unknown encryption provider: %q", cfg.Provider)
 	}
 }

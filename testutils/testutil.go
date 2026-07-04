@@ -34,7 +34,7 @@ func BuildArbitraryImage(widthAndHeight int) image.Image {
 	// Set color for each pixel.
 	for x := range widthAndHeight {
 		for y := range widthAndHeight {
-			img.Set(x, y, color.RGBA{R: uint8(x % math.MaxUint8), G: uint8(y % math.MaxUint8), B: uint8(x + y%math.MaxUint8), A: math.MaxUint8})
+			img.Set(x, y, color.RGBA{R: uint8(x), G: uint8(y), B: uint8(x + y), A: math.MaxUint8})
 		}
 	}
 

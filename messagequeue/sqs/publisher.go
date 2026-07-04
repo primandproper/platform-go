@@ -7,13 +7,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/encoding"
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/encoding"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -81,22 +82,22 @@ func (p *sqsPublisher) PublishAsync(ctx context.Context, data any) {
 }
 
 // provideSQSPublisher provides a sqs-backed Publisher.
-func provideSQSPublisher(logger logging.Logger, sqsClient messagePublisher, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, topic string) *sqsPublisher {
+func provideSQSPublisher(logger logging.Logger, sqsClient messagePublisher, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, topic string) (*sqsPublisher, error) {
 	mp := metrics.EnsureMetricsProvider(metricsProvider)
 
 	publishedCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_published", topic))
 	if err != nil {
-		panic(fmt.Sprintf("creating published counter: %v", err))
+		return nil, fmt.Errorf("creating published counter: %w", err)
 	}
 
 	publishErrCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_publish_errors", topic))
 	if err != nil {
-		panic(fmt.Sprintf("creating publish error counter: %v", err))
+		return nil, fmt.Errorf("creating publish error counter: %w", err)
 	}
 
 	latencyHist, err := mp.NewFloat64Histogram(fmt.Sprintf("%s_publish_latency_ms", topic))
 	if err != nil {
-		panic(fmt.Sprintf("creating publish latency histogram: %v", err))
+		return nil, fmt.Errorf("creating publish latency histogram: %w", err)
 	}
 
 	return &sqsPublisher{
@@ -107,7 +108,7 @@ func provideSQSPublisher(logger logging.Logger, sqsClient messagePublisher, trac
 		publishedCounter:  publishedCounter,
 		publishErrCounter: publishErrCounter,
 		latencyHist:       latencyHist,
-	}
+	}, nil
 }
 
 type publisherProvider struct {
@@ -120,10 +121,20 @@ type publisherProvider struct {
 }
 
 // ProvideSQSPublisherProvider returns a PublisherProvider for a given address.
-func ProvideSQSPublisherProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) messagequeue.PublisherProvider {
-	cfg, err := config.LoadDefaultConfig(ctx)
+func ProvideSQSPublisherProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, queueCfg Config) (messagequeue.PublisherProvider, error) {
+	var loadOpts []func(*config.LoadOptions) error
+	if queueCfg.QueueAddress != "" {
+		// Override the AWS endpoint (e.g. to point at localstack) when configured,
+		// mirroring the consumer provider.
+		loadOpts = append(loadOpts, config.WithBaseEndpoint(queueCfg.QueueAddress))
+	}
+
+	cfg, err := config.LoadDefaultConfig(ctx, loadOpts...)
 	if err != nil {
-		panic("sqs publisher provider: load default config: " + err.Error())
+		// Return the error instead of panicking, matching the consumer twin
+		// (ProvideSQSConsumerProvider) so a config-load failure is a handleable error
+		// rather than a crash.
+		return nil, errors.Wrap(err, "loading default AWS config")
 	}
 	svc := sqs.NewFromConfig(cfg)
 
@@ -133,7 +144,7 @@ func ProvideSQSPublisherProvider(ctx context.Context, logger logging.Logger, tra
 		publisherCache:  map[string]messagequeue.Publisher{},
 		tracerProvider:  tracerProvider,
 		metricsProvider: metricsProvider,
-	}
+	}, nil
 }
 
 // ProvidePublisher returns a Publisher for a given topic.
@@ -149,7 +160,10 @@ func (p *publisherProvider) ProvidePublisher(ctx context.Context, topic string) 
 		return cachedPub, nil
 	}
 
-	pub := provideSQSPublisher(logger, p.sqsClient, p.tracerProvider, p.metricsProvider, topic)
+	pub, err := provideSQSPublisher(logger, p.sqsClient, p.tracerProvider, p.metricsProvider, topic)
+	if err != nil {
+		return nil, err
+	}
 	p.publisherCache[topic] = pub
 
 	return pub, nil

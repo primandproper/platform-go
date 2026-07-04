@@ -2,12 +2,13 @@ package databasecfg
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/database"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/database"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -51,10 +52,10 @@ func TestRegisterDatabase(T *testing.T) {
 		do.ProvideValue(i, &Config{
 			Provider: ProviderSQLite,
 			ReadConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 			WriteConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 		})
 
@@ -67,6 +68,60 @@ func TestRegisterDatabase(T *testing.T) {
 		cc, err := do.Invoke[database.ClientConfig](i)
 		must.NoError(t, err)
 		test.NotNil(t, cc)
+	})
+
+	T.Run("errors when RunMigrations is true but no Migrator is registered", func(t *testing.T) {
+		t.Parallel()
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue(i, loggingnoop.NewLogger())
+		do.ProvideValue(i, tracingnoop.NewTracerProvider())
+		do.ProvideValue[metrics.Provider](i, nil)
+		// Deliberately do NOT register a database.Migrator, even though migrations are enabled.
+		do.ProvideValue(i, &Config{
+			Provider:      ProviderSQLite,
+			RunMigrations: true,
+			ReadConnection: ConnectionDetails{
+				Database: filepath.Join(t.TempDir(), "test.db"),
+			},
+			WriteConnection: ConnectionDetails{
+				Database: filepath.Join(t.TempDir(), "test.db"),
+			},
+		})
+
+		RegisterDatabase(i)
+
+		client, err := do.Invoke[database.Client](i)
+		must.Error(t, err)
+		test.Nil(t, client)
+	})
+
+	T.Run("builds without a registered Migrator when RunMigrations is false", func(t *testing.T) {
+		t.Parallel()
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue(i, loggingnoop.NewLogger())
+		do.ProvideValue(i, tracingnoop.NewTracerProvider())
+		do.ProvideValue[metrics.Provider](i, nil)
+		// Deliberately do NOT register a database.Migrator.
+		do.ProvideValue(i, &Config{
+			Provider:      ProviderSQLite,
+			RunMigrations: false,
+			ReadConnection: ConnectionDetails{
+				Database: filepath.Join(t.TempDir(), "test.db"),
+			},
+			WriteConnection: ConnectionDetails{
+				Database: filepath.Join(t.TempDir(), "test.db"),
+			},
+		})
+
+		RegisterDatabase(i)
+
+		client, err := do.Invoke[database.Client](i)
+		must.NoError(t, err)
+		test.NotNil(t, client)
 	})
 }
 

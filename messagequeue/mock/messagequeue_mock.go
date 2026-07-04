@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform-go/v2/messagequeue"
+	"github.com/primandproper/platform-go/v3/messagequeue"
 )
 
 // Ensure, that PublisherMock does implement messagequeue.Publisher.
@@ -410,6 +410,9 @@ var _ messagequeue.ConsumerProvider = &ConsumerProviderMock{}
 //
 //		// make and configure a mocked messagequeue.ConsumerProvider
 //		mockedConsumerProvider := &ConsumerProviderMock{
+//			CloseFunc: func()  {
+//				panic("mock out the Close method")
+//			},
 //			ProvideConsumerFunc: func(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
 //				panic("mock out the ProvideConsumer method")
 //			},
@@ -420,11 +423,17 @@ var _ messagequeue.ConsumerProvider = &ConsumerProviderMock{}
 //
 //	}
 type ConsumerProviderMock struct {
+	// CloseFunc mocks the Close method.
+	CloseFunc func()
+
 	// ProvideConsumerFunc mocks the ProvideConsumer method.
 	ProvideConsumerFunc func(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// Close holds details about calls to the Close method.
+		Close []struct {
+		}
 		// ProvideConsumer holds details about calls to the ProvideConsumer method.
 		ProvideConsumer []struct {
 			// Ctx is the ctx argument value.
@@ -435,7 +444,35 @@ type ConsumerProviderMock struct {
 			HandlerFunc messagequeue.ConsumerFunc
 		}
 	}
+	lockClose           sync.RWMutex
 	lockProvideConsumer sync.RWMutex
+}
+
+// Close calls CloseFunc.
+func (mock *ConsumerProviderMock) Close() {
+	if mock.CloseFunc == nil {
+		panic("ConsumerProviderMock.CloseFunc: method is nil but ConsumerProvider.Close was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockClose.Lock()
+	mock.calls.Close = append(mock.calls.Close, callInfo)
+	mock.lockClose.Unlock()
+	mock.CloseFunc()
+}
+
+// CloseCalls gets all the calls that were made to Close.
+// Check the length with:
+//
+//	len(mockedConsumerProvider.CloseCalls())
+func (mock *ConsumerProviderMock) CloseCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockClose.RLock()
+	calls = mock.calls.Close
+	mock.lockClose.RUnlock()
+	return calls
 }
 
 // ProvideConsumer calls ProvideConsumerFunc.

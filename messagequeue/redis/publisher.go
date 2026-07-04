@@ -3,27 +3,20 @@ package redis
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/encoding"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/encoding"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/redis/go-redis/v9"
-)
-
-var (
-	// ErrEmptyInputProvided indicates empty input was provided in an unacceptable context.
-	ErrEmptyInputProvided = platformerrors.New("empty input provided")
 )
 
 var _ messagePublisher = (*redis.ClusterClient)(nil)
@@ -50,12 +43,10 @@ type (
 	}
 )
 
-// Stop implements the Publisher interface.
-func (p *redisPublisher) Stop() {
-	if err := p.publisher.Close(); err != nil && !errors.Is(err, redis.ErrClosed) {
-		p.o11y.Logger().Error("closing redis publisher", err)
-	}
-}
+// Stop implements the Publisher interface. The underlying Redis client is shared
+// across every topic publisher, so stopping one topic must not close it; the
+// client is closed once by the provider's Close method.
+func (p *redisPublisher) Stop() {}
 
 // Publish implements the Publisher interface.
 func (p *redisPublisher) Publish(ctx context.Context, data any) error {
@@ -91,22 +82,22 @@ func (p *redisPublisher) PublishAsync(ctx context.Context, data any) {
 }
 
 // provideRedisPublisher provides a redis-backed Publisher.
-func provideRedisPublisher(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, redisClient messagePublisher, topic string) *redisPublisher {
+func provideRedisPublisher(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, redisClient messagePublisher, topic string) (*redisPublisher, error) {
 	mp := metrics.EnsureMetricsProvider(metricsProvider)
 
 	publishedCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_published", topic))
 	if err != nil {
-		panic(fmt.Sprintf("creating published counter: %v", err))
+		return nil, fmt.Errorf("creating published counter: %w", err)
 	}
 
 	publishErrCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_publish_errors", topic))
 	if err != nil {
-		panic(fmt.Sprintf("creating publish error counter: %v", err))
+		return nil, fmt.Errorf("creating publish error counter: %w", err)
 	}
 
 	latencyHist, err := mp.NewFloat64Histogram(fmt.Sprintf("%s_publish_latency_ms", topic))
 	if err != nil {
-		panic(fmt.Sprintf("creating publish latency histogram: %v", err))
+		return nil, fmt.Errorf("creating publish latency histogram: %w", err)
 	}
 
 	return &redisPublisher{
@@ -117,7 +108,7 @@ func provideRedisPublisher(logger logging.Logger, tracerProvider tracing.TracerP
 		publishedCounter:  publishedCounter,
 		publishErrCounter: publishErrCounter,
 		latencyHist:       latencyHist,
-	}
+	}, nil
 }
 
 type publisherProvider struct {
@@ -181,7 +172,10 @@ func (p *publisherProvider) ProvidePublisher(ctx context.Context, topic string) 
 		return cachedPub, nil
 	}
 
-	pub := provideRedisPublisher(logger, p.tracerProvider, p.metricsProvider, p.redisClient, topic)
+	pub, err := provideRedisPublisher(logger, p.tracerProvider, p.metricsProvider, p.redisClient, topic)
+	if err != nil {
+		return nil, err
+	}
 	p.publisherCache[topic] = pub
 
 	return pub, nil

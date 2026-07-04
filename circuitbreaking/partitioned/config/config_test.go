@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
 
 	"github.com/shoenig/test"
 	"go.opentelemetry.io/otel/metric"
@@ -78,7 +78,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 
 		test.EqOp(t, "UNKNOWN", cfg.Base.Name)
 		test.EqOp(t, float64(100), cfg.Base.ErrorRate)
-		test.EqOp(t, uint64(1_000_000), cfg.Base.MinimumSampleThreshold)
+		test.EqOp(t, uint64(20), cfg.Base.MinimumSampleThreshold)
 	})
 }
 

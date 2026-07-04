@@ -3,19 +3,15 @@ package images
 import (
 	"bytes"
 	"image"
-	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"math"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v3/errors"
 
+	"github.com/disintegration/imaging"
 	"golang.org/x/image/draw"
-)
-
-const (
-	allSupportedColors = 2 << 7 // 256
 )
 
 type thumbnailer interface {
@@ -37,7 +33,14 @@ func newThumbnailer(contentType string) (thumbnailer, error) {
 }
 
 func preprocess(i *Image, width, height uint) (image.Image, error) {
-	img, _, err := image.Decode(bytes.NewReader(i.Data))
+	if width == 0 || height == 0 {
+		return nil, ErrInvalidThumbnailDimensions
+	}
+
+	// imaging.AutoOrientation honors the EXIF Orientation tag (stdlib image/jpeg ignores it), so a
+	// photo shot in portrait on a phone decodes upright instead of sideways. Applying it before
+	// scaling means transposing orientations swap width/height, which the aspect math then respects.
+	img, err := imaging.Decode(bytes.NewReader(i.Data), imaging.AutoOrientation(true))
 	if err != nil {
 		return nil, errors.Wrap(err, "decoding image")
 	}
@@ -87,19 +90,19 @@ func (t *jpegThumbnailer) Thumbnail(img *Image, width, height uint) (*Image, err
 
 type gifThumbnailer struct{}
 
-// Thumbnail creates a GIF thumbnail.
+// Thumbnail creates a GIF thumbnail. Animated GIFs keep their animation (every frame is resized);
+// single-frame GIFs stay single-frame.
 func (t *gifThumbnailer) Thumbnail(img *Image, width, height uint) (*Image, error) {
-	thumbnail, err := preprocess(img, width, height)
+	if width == 0 || height == 0 {
+		return nil, ErrInvalidThumbnailDimensions
+	}
+
+	data, err := resizeGIF(img.Data, width, height)
 	if err != nil {
 		return nil, err
 	}
 
-	var b bytes.Buffer
-	if err = gif.Encode(&b, thumbnail, &gif.Options{NumColors: allSupportedColors}); err != nil {
-		return nil, errors.Wrap(err, "encoding GIF")
-	}
-
-	return &Image{ContentType: imageGIF, Data: b.Bytes()}, nil
+	return &Image{ContentType: imageGIF, Data: data}, nil
 }
 
 type pngThumbnailer struct{}

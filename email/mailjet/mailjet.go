@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	"github.com/primandproper/platform-go/v2/email"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	"github.com/primandproper/platform-go/v3/email"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/mailjet/mailjet-apiv3-go/v4"
 )
@@ -27,8 +27,8 @@ var (
 
 	// ErrNilConfig indicates a nil config was provided.
 	ErrNilConfig = platformerrors.New("mailjet config is nil")
-	// ErrEmptySecretKey indicates an empty domain was provided.
-	ErrEmptySecretKey = platformerrors.New("empty domain")
+	// ErrEmptySecretKey indicates an empty secret key was provided.
+	ErrEmptySecretKey = platformerrors.New("empty Mailjet secret key")
 	// ErrEmptyPrivateAPIKey indicates an empty API token was provided.
 	ErrEmptyPrivateAPIKey = platformerrors.New("empty Mailjet API token")
 	// ErrNilHTTPClient indicates a nil HTTP client was provided.
@@ -134,7 +134,7 @@ func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMes
 		},
 	}
 
-	if _, err := e.client.SendMailV31(&mailjet.MessagesV31{Info: messagesInfo}); err != nil {
+	if _, err := e.client.SendMailV31(&mailjet.MessagesV31{Info: messagesInfo}, mailjet.WithContext(ctx)); err != nil {
 		e.circuitBreaker.Failed()
 		e.errorCounter.Add(ctx, 1)
 		return op.Error(err, "sending email")

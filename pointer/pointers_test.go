@@ -171,6 +171,19 @@ func TestDereferenceSlice(T *testing.T) {
 		test.EqOp(t, 2, actual[1])
 	})
 
+	T.Run("with a nil element zero-fills instead of panicking", func(t *testing.T) {
+		t.Parallel()
+
+		a, c := "a", "c"
+		input := []*string{&a, nil, &c}
+		actual := DereferenceSlice(input)
+
+		must.SliceLen(t, 3, actual)
+		test.EqOp(t, "a", actual[0])
+		test.EqOp(t, "", actual[1])
+		test.EqOp(t, "c", actual[2])
+	})
+
 	T.Run("with nil slice", func(t *testing.T) {
 		t.Parallel()
 

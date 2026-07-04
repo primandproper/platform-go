@@ -5,14 +5,14 @@ import (
 	"errors"
 	"testing"
 
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v2/search/text/algolia"
-	"github.com/primandproper/platform-go/v2/search/text/elasticsearch"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/search/text/algolia"
+	"github.com/primandproper/platform-go/v3/search/text/elasticsearch"
 
 	"github.com/shoenig/test"
 	"go.opentelemetry.io/otel/metric"
@@ -106,8 +106,9 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 			},
 		}
 
-		// Provider with whitespace should be invalid (validation is strict)
-		test.Error(t, cfg.ValidateWithContext(ctx))
+		// Provider is canonicalized (trimmed) before validation, matching dispatch.
+		test.NoError(t, cfg.ValidateWithContext(ctx))
+		test.EqOp(t, ElasticsearchProvider, cfg.Provider)
 	})
 
 	T.Run("provider case insensitive", func(t *testing.T) {
@@ -121,8 +122,9 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 			},
 		}
 
-		// Provider should be case sensitive (validation is strict)
-		test.Error(t, cfg.ValidateWithContext(ctx))
+		// Provider is canonicalized (lowercased) before validation, matching dispatch.
+		test.NoError(t, cfg.ValidateWithContext(ctx))
+		test.EqOp(t, ElasticsearchProvider, cfg.Provider)
 	})
 
 	T.Run("nil context", func(t *testing.T) {

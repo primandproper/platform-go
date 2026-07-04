@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	perrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	perrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/gorilla/securecookie"
 )
@@ -51,14 +51,18 @@ func NewCookieManager(cfg *Config, tracerProvider tracing.TracerProvider) (Manag
 		return nil, perrors.ErrNilInputProvided
 	}
 
+	if err := cfg.ValidateWithContext(context.Background()); err != nil {
+		return nil, fmt.Errorf("validating cookie config: %w", err)
+	}
+
 	decodedHashkey, err := base64.StdEncoding.DecodeString(cfg.Base64EncodedHashKey)
 	if err != nil {
-		return nil, fmt.Errorf("decoding HashKey %q: %w", cfg.Base64EncodedHashKey, err)
+		return nil, fmt.Errorf("decoding HashKey: %w", err)
 	}
 
 	decodedBlockKey, err := base64.StdEncoding.DecodeString(cfg.Base64EncodedBlockKey)
 	if err != nil {
-		return nil, fmt.Errorf("decoding BlockKey %q: %w", cfg.Base64EncodedBlockKey, err)
+		return nil, fmt.Errorf("decoding BlockKey: %w", err)
 	}
 
 	sc := securecookie.New(decodedHashkey, decodedBlockKey)

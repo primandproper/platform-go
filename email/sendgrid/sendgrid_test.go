@@ -1,21 +1,44 @@
 package sendgrid
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/email"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/email"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
-	"github.com/sendgrid/sendgrid-go"
-	"github.com/sendgrid/sendgrid-go/helpers/mail"
+	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+)
+
+// Minimal mirror of the SendGrid v3 mail-send payload, enough to assert the
+// outbound request carried the fields SendEmail was told to send.
+type (
+	sgAddress struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+	sgPersonalization struct {
+		Subject string      `json:"subject"`
+		To      []sgAddress `json:"to"`
+	}
+	sgContent struct {
+		Type  string `json:"type"`
+		Value string `json:"value"`
+	}
+	sgPayload struct {
+		From             sgAddress           `json:"from"`
+		Subject          string              `json:"subject"`
+		Personalizations []sgPersonalization `json:"personalizations"`
+		Content          []sgContent         `json:"content"`
+	}
 )
 
 // newRecordingEmailer builds an Emailer with a RecordingObserver swapped in, so a
@@ -81,6 +104,48 @@ func TestSendGridEmailer_SendEmail(T *testing.T) {
 		})
 	})
 
+	T.Run("sends the correct request shape", func(t *testing.T) {
+		t.Parallel()
+
+		// Distinct values per field so a from/to or subject/body swap (the shape
+		// of the C-08 bug) fails this test rather than sliding through.
+		var gotBody sgPayload
+		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+			must.NoError(t, json.NewDecoder(req.Body).Decode(&gotBody))
+			res.WriteHeader(http.StatusAccepted)
+		}))
+
+		c, _ := newRecordingEmailer(t, &Config{APIToken: t.Name()}, ts.Client())
+		c.client.BaseURL = ts.URL
+
+		details := &email.OutboundEmailMessage{
+			ToAddress:   "recipient@example.com",
+			ToName:      "Recipient Name",
+			FromAddress: "sender@example.com",
+			FromName:    "Sender Name",
+			Subject:     "the subject line",
+			HTMLContent: "<p>the html body</p>",
+		}
+		must.NoError(t, c.SendEmail(t.Context(), details))
+
+		test.EqOp(t, details.FromName, gotBody.From.Name)
+		test.EqOp(t, details.FromAddress, gotBody.From.Email)
+		test.EqOp(t, details.Subject, gotBody.Subject)
+
+		must.SliceLen(t, 1, gotBody.Personalizations)
+		must.SliceLen(t, 1, gotBody.Personalizations[0].To)
+		test.EqOp(t, details.ToName, gotBody.Personalizations[0].To[0].Name)
+		test.EqOp(t, details.ToAddress, gotBody.Personalizations[0].To[0].Email)
+
+		var html string
+		for _, ct := range gotBody.Content {
+			if ct.Type == "text/html" {
+				html = ct.Value
+			}
+		}
+		test.EqOp(t, details.HTMLContent, html)
+	})
+
 	T.Run("with error executing request", func(t *testing.T) {
 		t.Parallel()
 
@@ -119,33 +184,6 @@ func TestSendGridEmailer_SendEmail(T *testing.T) {
 
 		obs.ObservedOperationWithData(t, map[string]any{
 			keys.EmailToAddressKey: details.ToAddress,
-		})
-	})
-}
-
-func TestSendGridEmailer_sendDynamicTemplateEmail(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
-			res.WriteHeader(http.StatusAccepted)
-		}))
-
-		c, obs := newRecordingEmailer(t, &Config{APIToken: t.Name()}, ts.Client())
-		c.client.BaseURL = ts.URL
-
-		ctx := t.Context()
-		to := mail.NewEmail("sender", "sender@fake.com")
-		from := mail.NewEmail("sender", "sender@fake.com")
-
-		request := sendgrid.GetRequest(c.config.APIToken, "/v3/mail/send", ts.URL)
-
-		must.NoError(t, c.sendDynamicTemplateEmail(ctx, to, from, t.Name(), map[string]any{"things": "stuff"}, request))
-
-		obs.ObservedOperationWithData(t, map[string]any{
-			keys.EmailToAddressKey: to.Address,
 		})
 	})
 }

@@ -34,6 +34,21 @@ type unexportedFieldStruct struct {
 	Exported   string `json:"exported"`
 }
 
+type selfReferentialNode struct {
+	Next *selfReferentialNode `json:"next"`
+	Name string               `json:"name"`
+}
+
+type mutuallyRecursiveA struct {
+	B    *mutuallyRecursiveB `json:"b"`
+	Name string              `json:"name"`
+}
+
+type mutuallyRecursiveB struct {
+	A    *mutuallyRecursiveA `json:"a"`
+	Name string              `json:"name"`
+}
+
 func TestGetTagNameByValue(T *testing.T) {
 	T.Parallel()
 
@@ -329,5 +344,30 @@ func TestGetFieldTypes(T *testing.T) {
 		must.NoError(t, err)
 
 		test.Eq(t, "string", result["Field1"])
+	})
+
+	T.Run("with self-referential struct", func(t *testing.T) {
+		t.Parallel()
+
+		result, err := GetFieldTypes(selfReferentialNode{})
+		must.NoError(t, err)
+
+		test.Eq(t, "string", result["Name"])
+		// The recursive field is recorded as its type name rather than recursing forever.
+		test.Eq(t, "reflection.selfReferentialNode", result["Next"])
+	})
+
+	T.Run("with mutually recursive structs", func(t *testing.T) {
+		t.Parallel()
+
+		result, err := GetFieldTypes(mutuallyRecursiveA{})
+		must.NoError(t, err)
+
+		test.Eq(t, "string", result["Name"])
+
+		bMap, ok := result["B"].(map[string]any)
+		must.True(t, ok)
+		test.Eq(t, "string", bMap["Name"])
+		test.Eq(t, "reflection.mutuallyRecursiveA", bMap["A"])
 	})
 }

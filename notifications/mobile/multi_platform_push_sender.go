@@ -4,12 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/notifications/mobile/apns"
-	"github.com/primandproper/platform-go/v2/notifications/mobile/fcm"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/notifications/mobile/apns"
+	"github.com/primandproper/platform-go/v3/notifications/mobile/fcm"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 )
 
 // ErrPlatformNotSupported is returned when attempting to send to a platform
@@ -59,7 +59,13 @@ func (s *MultiPlatformPushSender) SendPush(ctx context.Context, platform, token 
 		return s.apnsSender.Send(ctx, token, msg.Title, msg.Body, msg.BadgeCount)
 	case platformAndroid:
 		if s.fcmSender == nil {
-			return op.Error(ErrPlatformNotSupported, "sending apns notification")
+			return op.Error(ErrPlatformNotSupported, "sending fcm notification")
+		}
+		if msg.BadgeCount != nil {
+			// The FCM sender has no badge parameter (Android has no standard OS-level
+			// badge in an FCM notification), so BadgeCount is dropped on this path. Log
+			// it rather than silently discarding.
+			op.Logger().WithValue("badge_count", *msg.BadgeCount).Info("dropping BadgeCount: unsupported on the FCM/Android path")
 		}
 		return s.fcmSender.Send(ctx, token, msg.Title, msg.Body)
 	default:

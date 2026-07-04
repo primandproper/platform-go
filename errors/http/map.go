@@ -24,7 +24,8 @@ func RegisterHTTPErrorMapper(m HTTPErrorMapper) {
 
 // ToAPIError maps known sentinel errors to ErrorCode and a safe user-facing message.
 // It tries PlatformMapper first, then each registered domain mapper.
-// Returns (code, message). Use ErrTalkingToDatabase and "an error occurred" as fallback for unknown errors.
+// Returns (code, message). Unknown errors fall back to the neutral ErrNothingSpecific and
+// "an error occurred" — never a domain-specific code (e.g. a payment panic must not report "database").
 func ToAPIError(err error) (code ErrorCode, msg string) {
 	if err == nil {
 		return ErrNothingSpecific, ""
@@ -40,5 +41,5 @@ func ToAPIError(err error) (code ErrorCode, msg string) {
 			return c, m
 		}
 	}
-	return ErrTalkingToDatabase, "an error occurred"
+	return ErrNothingSpecific, "an error occurred"
 }

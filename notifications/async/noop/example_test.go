@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v2/notifications/async"
-	"github.com/primandproper/platform-go/v2/notifications/async/noop"
+	"github.com/primandproper/platform-go/v3/notifications/async"
+	"github.com/primandproper/platform-go/v3/notifications/async/noop"
 )
 
 func ExampleNewAsyncNotifier() {

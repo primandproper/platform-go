@@ -52,6 +52,18 @@ func Test_preprocess(T *testing.T) {
 		test.Error(t, err)
 		test.Nil(t, img)
 	})
+
+	T.Run("rejects zero dimensions instead of producing a 1x1 image", func(t *testing.T) {
+		t.Parallel()
+
+		i := &Image{ContentType: imagePNG, Data: buildPNGBytes(t)}
+
+		_, err := preprocess(i, 0, 0)
+		test.ErrorIs(t, err, ErrInvalidThumbnailDimensions)
+
+		_, err = preprocess(i, 128, 0)
+		test.ErrorIs(t, err, ErrInvalidThumbnailDimensions)
+	})
 }
 
 func Test_jpegThumbnailer_Thumbnail(T *testing.T) {

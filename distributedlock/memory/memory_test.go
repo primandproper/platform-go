@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/distributedlock"
-	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v3/distributedlock"
+	"github.com/primandproper/platform-go/v3/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -116,6 +116,29 @@ func TestLocker_Acquire(T *testing.T) {
 		l := newTestLocker(t)
 		_, err := l.Acquire(t.Context(), "k", -time.Second)
 		must.ErrorIs(t, err, distributedlock.ErrInvalidTTL)
+	})
+
+	T.Run("sweeps expired entries for other keys", func(t *testing.T) {
+		t.Parallel()
+		l, _ := newRecordingLocker(t)
+
+		// Acquire a short-lived lock on keyA and let its TTL elapse.
+		_, err := l.Acquire(t.Context(), "keyA", time.Millisecond)
+		must.NoError(t, err)
+		time.Sleep(10 * time.Millisecond)
+
+		// Acquiring an unrelated key must sweep keyA's now-expired entry rather than
+		// leaving it to accumulate for the life of the process.
+		_, err = l.Acquire(t.Context(), "keyB", time.Minute)
+		must.NoError(t, err)
+
+		l.mu.Lock()
+		_, stillPresent := l.held["keyA"]
+		mapLen := len(l.held)
+		l.mu.Unlock()
+
+		test.False(t, stillPresent)
+		test.EqOp(t, 1, mapLen)
 	})
 }
 

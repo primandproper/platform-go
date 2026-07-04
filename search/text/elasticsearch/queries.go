@@ -2,29 +2,14 @@ package elasticsearch
 
 import "encoding/json"
 
-type matchCondition struct {
-	Query string `json:"query"`
-}
-
-type matchQuery map[string]matchCondition
-
-type wildcardCondition struct {
-	Value string `json:"value"`
-}
-
-type wildcardQuery map[string]wildcardCondition
-
-type condition struct {
-	Match    matchQuery     `json:"match,omitempty"`
-	Wildcard *wildcardQuery `json:"wildcard,omitempty"`
-}
-
-type should struct {
-	Should []condition `json:"should"`
+type multiMatchQuery struct {
+	Query  string   `json:"query"`
+	Type   string   `json:"type"`
+	Fields []string `json:"fields"`
 }
 
 type queryContainer struct {
-	Bool should `json:"bool"`
+	MultiMatch multiMatchQuery `json:"multi_match"`
 }
 
 type searchQuery struct {

@@ -4,26 +4,54 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/mail"
 	"testing"
 
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/email"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/email"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
 
+func TestFormatAddress(T *testing.T) {
+	T.Parallel()
+
+	T.Run("bare address when name is empty", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, "real@example.com", formatAddress("", "real@example.com"))
+	})
+
+	T.Run("quotes hostile name to prevent recipient injection", func(t *testing.T) {
+		t.Parallel()
+
+		got := formatAddress(`x <a@attacker.com>,`, "real@example.com")
+
+		parsed, err := mail.ParseAddress(got)
+		must.NoError(t, err)
+		test.EqOp(t, "real@example.com", parsed.Address)
+
+		list, err := mail.ParseAddressList(got)
+		must.NoError(t, err)
+		test.SliceLen(t, 1, list)
+	})
+}
+
 type mockSESClient struct {
 	output *sesv2.SendEmailOutput
 	err    error
+	input  *sesv2.SendEmailInput
 }
 
-func (m *mockSESClient) SendEmail(_ context.Context, _ *sesv2.SendEmailInput, _ ...func(*sesv2.Options)) (*sesv2.SendEmailOutput, error) {
+func (m *mockSESClient) SendEmail(_ context.Context, input *sesv2.SendEmailInput, _ ...func(*sesv2.Options)) (*sesv2.SendEmailOutput, error) {
+	m.input = input
 	return m.output, m.err
 }
 
@@ -124,6 +152,42 @@ func TestEmailer_SendEmail(T *testing.T) {
 			keys.EmailSubjectKey:   details.Subject,
 			keys.EmailToAddressKey: details.ToAddress,
 		})
+	})
+
+	T.Run("sends the correct request shape", func(t *testing.T) {
+		t.Parallel()
+
+		mock := &mockSESClient{output: &sesv2.SendEmailOutput{}}
+		cfg := &Config{Region: "us-east-1"}
+
+		e, _ := newRecordingEmailer(t, cfg, mock)
+
+		// Distinct values per field so a from/to or subject/body swap (the shape
+		// of the C-08 bug) fails this test rather than sliding through.
+		details := &email.OutboundEmailMessage{
+			ToAddress:   "recipient@example.com",
+			ToName:      "Recipient Name",
+			FromAddress: "sender@example.com",
+			FromName:    "Sender Name",
+			Subject:     "the subject line",
+			HTMLContent: "<p>the html body</p>",
+		}
+		must.NoError(t, e.SendEmail(t.Context(), details))
+
+		must.NotNil(t, mock.input)
+		test.EqOp(t, formatAddress(details.FromName, details.FromAddress), aws.ToString(mock.input.FromEmailAddress))
+
+		must.NotNil(t, mock.input.Destination)
+		must.SliceLen(t, 1, mock.input.Destination.ToAddresses)
+		test.EqOp(t, formatAddress(details.ToName, details.ToAddress), mock.input.Destination.ToAddresses[0])
+
+		must.NotNil(t, mock.input.Content)
+		must.NotNil(t, mock.input.Content.Simple)
+		must.NotNil(t, mock.input.Content.Simple.Subject)
+		test.EqOp(t, details.Subject, aws.ToString(mock.input.Content.Simple.Subject.Data))
+		must.NotNil(t, mock.input.Content.Simple.Body)
+		must.NotNil(t, mock.input.Content.Simple.Body.Html)
+		test.EqOp(t, details.HTMLContent, aws.ToString(mock.input.Content.Simple.Body.Html.Data))
 	})
 
 	T.Run("without names", func(t *testing.T) {

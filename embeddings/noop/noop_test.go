@@ -3,7 +3,7 @@ package noop
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/embeddings"
+	"github.com/primandproper/platform-go/v3/embeddings"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -38,5 +38,15 @@ func TestEmbedder_GenerateEmbedding(T *testing.T) {
 		test.EqOp(t, "noop", result.Model)
 		test.EqOp(t, "noop", result.Provider)
 		test.EqOp(t, 0, result.Dimensions)
+	})
+
+	T.Run("returns an error on nil input instead of panicking", func(t *testing.T) {
+		t.Parallel()
+
+		e := NewEmbedder()
+		result, err := e.GenerateEmbedding(t.Context(), nil)
+
+		test.ErrorIs(t, err, embeddings.ErrNilInput)
+		test.Nil(t, result)
 	})
 }

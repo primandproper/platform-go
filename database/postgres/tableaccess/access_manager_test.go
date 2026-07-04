@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/pointer"
-	"github.com/primandproper/platform-go/v2/testutils/containers"
+	"github.com/primandproper/platform-go/v3/pointer"
+	"github.com/primandproper/platform-go/v3/testutils/containers"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/shoenig/test"

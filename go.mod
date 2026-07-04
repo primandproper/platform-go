@@ -1,4 +1,4 @@
-module github.com/primandproper/platform-go/v2
+module github.com/primandproper/platform-go/v3
 
 go 1.26
 
@@ -23,6 +23,7 @@ require (
 	github.com/brianvoe/gofakeit/v7 v7.14.1
 	github.com/cockroachdb/errors v1.12.0
 	github.com/dhaus67/openfeature-posthog-go v0.1.2
+	github.com/disintegration/imaging v1.6.2
 	github.com/elastic/go-elasticsearch/v8 v8.19.3
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
@@ -59,7 +60,6 @@ require (
 	github.com/rs/xid v1.6.0
 	github.com/rs/zerolog v1.34.0
 	github.com/rubyist/circuitbreaker v2.2.1+incompatible
-	github.com/rudderlabs/analytics-go/v4 v4.2.3
 	github.com/samber/do/v2 v2.0.0
 	github.com/samber/slog-multi v1.7.1
 	github.com/segmentio/analytics-go/v3 v3.3.0
@@ -230,7 +230,6 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.14 // indirect
 	github.com/googleapis/gax-go/v2 v2.19.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
-	github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.9 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect

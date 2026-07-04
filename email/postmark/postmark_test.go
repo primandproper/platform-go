@@ -4,16 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/mail"
 	"testing"
 	"time"
 
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/email"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/email"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
+	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
 
@@ -23,6 +25,16 @@ type emailResponse struct {
 	SubmittedAt string `json:"SubmittedAt"`
 	To          string `json:"To"`
 	ErrorCode   int64  `json:"ErrorCode"`
+}
+
+// postmarkPayload mirrors the JSON body the Postmark client posts to /email,
+// enough to assert the outbound request carried the fields SendEmail was told
+// to send.
+type postmarkPayload struct {
+	From     string `json:"From"`
+	To       string `json:"To"`
+	Subject  string `json:"Subject"`
+	HtmlBody string `json:"HtmlBody"`
 }
 
 // newRecordingEmailer builds an Emailer with a RecordingObserver swapped in, so a
@@ -51,6 +63,32 @@ func testEmailMessage(t *testing.T) *email.OutboundEmailMessage {
 		Subject:     t.Name(),
 		HTMLContent: t.Name(),
 	}
+}
+
+func TestFormatAddress(T *testing.T) {
+	T.Parallel()
+
+	T.Run("bare address when name is empty", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, "real@example.com", formatAddress("", "real@example.com"))
+	})
+
+	T.Run("quotes hostile name to prevent recipient injection", func(t *testing.T) {
+		t.Parallel()
+
+		// A name crafted to smuggle in a second recipient must be quoted so that
+		// parsing the result yields exactly one address: the intended one.
+		got := formatAddress(`x <a@attacker.com>,`, "real@example.com")
+
+		parsed, err := mail.ParseAddress(got)
+		must.NoError(t, err)
+		test.EqOp(t, "real@example.com", parsed.Address)
+
+		list, err := mail.ParseAddressList(got)
+		must.NoError(t, err)
+		test.SliceLen(t, 1, list)
+	})
 }
 
 func TestNewPostmarkEmailer(T *testing.T) {
@@ -128,6 +166,35 @@ func TestPostmarkEmailer_SendEmail(T *testing.T) {
 			keys.EmailSubjectKey:   details.Subject,
 			keys.EmailToAddressKey: details.ToAddress,
 		})
+	})
+
+	T.Run("sends the correct request shape", func(t *testing.T) {
+		t.Parallel()
+
+		// Distinct values per field so a from/to or subject/body swap (the shape
+		// of the C-08 bug) fails this test rather than sliding through.
+		var gotBody postmarkPayload
+		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+			must.NoError(t, json.NewDecoder(req.Body).Decode(&gotBody))
+			must.NoError(t, json.NewEncoder(res).Encode(&emailResponse{Message: "OK", MessageID: t.Name(), SubmittedAt: "2010-11-26T12:01:05-05:00"}))
+		}))
+
+		c, _ := newRecordingEmailer(t, &Config{ServerToken: t.Name(), BaseURL: ts.URL}, ts.Client())
+
+		details := &email.OutboundEmailMessage{
+			ToAddress:   "recipient@example.com",
+			ToName:      "Recipient Name",
+			FromAddress: "sender@example.com",
+			FromName:    "Sender Name",
+			Subject:     "the subject line",
+			HTMLContent: "<p>the html body</p>",
+		}
+		must.NoError(t, c.SendEmail(t.Context(), details))
+
+		test.EqOp(t, formatAddress(details.FromName, details.FromAddress), gotBody.From)
+		test.EqOp(t, formatAddress(details.ToName, details.ToAddress), gotBody.To)
+		test.EqOp(t, details.Subject, gotBody.Subject)
+		test.EqOp(t, details.HTMLContent, gotBody.HtmlBody)
 	})
 
 	T.Run("with nil message", func(t *testing.T) {

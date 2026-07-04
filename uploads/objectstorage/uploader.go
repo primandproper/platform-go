@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	s3v2 "github.com/aws/aws-sdk-go-v2/service/s3"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -33,16 +34,18 @@ var (
 )
 
 type (
-	// Uploader implements our UploadManager struct.
+	// Uploader implements the uploads.UploadManager interface.
 	Uploader struct {
-		bucket         *blob.Bucket
-		o11y           observability.Observer
-		circuitBreaker circuitbreaking.CircuitBreaker
-		saveCounter    metrics.Int64Counter
-		readCounter    metrics.Int64Counter
-		saveErrCounter metrics.Int64Counter
-		readErrCounter metrics.Int64Counter
-		latencyHist    metrics.Float64Histogram
+		bucket           *blob.Bucket
+		o11y             observability.Observer
+		circuitBreaker   circuitbreaking.CircuitBreaker
+		saveCounter      metrics.Int64Counter
+		readCounter      metrics.Int64Counter
+		deleteCounter    metrics.Int64Counter
+		saveErrCounter   metrics.Int64Counter
+		readErrCounter   metrics.Int64Counter
+		deleteErrCounter metrics.Int64Counter
+		latencyHist      metrics.Float64Histogram
 	}
 
 	// Config configures our UploadManager.
@@ -60,8 +63,12 @@ type (
 
 var _ validation.ValidatableWithContext = (*Config)(nil)
 
-// ValidateWithContext validates the Config.
+// ValidateWithContext validates the Config. It first canonicalizes Provider (trim + lowercase) so
+// validation, the conditional sub-config rules, and dispatch in selectBucket all agree — otherwise
+// a value like "S3" or " s3 " would fail validation yet dispatch cleanly.
 func (c *Config) ValidateWithContext(ctx context.Context) error {
+	c.Provider = strings.TrimSpace(strings.ToLower(c.Provider))
+
 	return validation.ValidateStructWithContext(ctx, c,
 		validation.Field(&c.BucketName, validation.Required),
 		validation.Field(&c.Provider, validation.In(S3Provider, FilesystemProvider, MemoryProvider, GCPCloudStorageProvider, R2Provider, BackblazeB2Provider)),
@@ -100,6 +107,11 @@ func NewUploadManager(ctx context.Context, logger logging.Logger, tracerProvider
 		return nil, platformerrors.Wrap(err, "creating read counter")
 	}
 
+	deleteCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_deletes", serviceName))
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "creating delete counter")
+	}
+
 	saveErrCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_save_errors", serviceName))
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "creating save error counter")
@@ -110,19 +122,26 @@ func NewUploadManager(ctx context.Context, logger logging.Logger, tracerProvider
 		return nil, platformerrors.Wrap(err, "creating read error counter")
 	}
 
+	deleteErrCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_delete_errors", serviceName))
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "creating delete error counter")
+	}
+
 	latencyHist, err := mp.NewFloat64Histogram(fmt.Sprintf("%s_latency_ms", serviceName))
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "creating latency histogram")
 	}
 
 	u := &Uploader{
-		o11y:           observability.NewObserver(serviceName, logger, tracerProvider),
-		circuitBreaker: circuitbreakingcfg.EnsureCircuitBreaker(cb),
-		saveCounter:    saveCounter,
-		readCounter:    readCounter,
-		saveErrCounter: saveErrCounter,
-		readErrCounter: readErrCounter,
-		latencyHist:    latencyHist,
+		o11y:             observability.NewObserver(serviceName, logger, tracerProvider),
+		circuitBreaker:   circuitbreakingcfg.EnsureCircuitBreaker(cb),
+		saveCounter:      saveCounter,
+		readCounter:      readCounter,
+		deleteCounter:    deleteCounter,
+		saveErrCounter:   saveErrCounter,
+		readErrCounter:   readErrCounter,
+		deleteErrCounter: deleteErrCounter,
+		latencyHist:      latencyHist,
 	}
 
 	if err = u.selectBucket(ctx, cfg); err != nil {
@@ -135,7 +154,12 @@ func NewUploadManager(ctx context.Context, logger logging.Logger, tracerProvider
 func (u *Uploader) selectBucket(ctx context.Context, cfg *Config) (err error) {
 	switch strings.TrimSpace(strings.ToLower(cfg.Provider)) {
 	case S3Provider:
-		if u.bucket, err = s3blob.OpenBucketV2(ctx, s3v2.New(s3v2.Options{}), cfg.BucketName, &s3blob.Options{
+		awsCfg, awsCfgErr := awsconfig.LoadDefaultConfig(ctx)
+		if awsCfgErr != nil {
+			return platformerrors.Wrap(awsCfgErr, "loading aws config for s3 bucket")
+		}
+
+		if u.bucket, err = s3blob.OpenBucketV2(ctx, s3v2.NewFromConfig(awsCfg), cfg.BucketName, &s3blob.Options{
 			UseLegacyList: false,
 		}); err != nil {
 			return platformerrors.Wrap(err, "initializing s3 bucket")
@@ -206,6 +230,9 @@ func (u *Uploader) selectBucket(ctx context.Context, cfg *Config) (err error) {
 		if u.bucket, err = fileblob.OpenBucket(cfg.FilesystemConfig.RootDirectory, &fileblob.Options{
 			URLSigner: nil,
 			CreateDir: true,
+			// Restrict created directories to owner-only so other users on the host
+			// can't traverse in and read stored objects (gocloud defaults to 0777).
+			DirFileMode: cfg.FilesystemConfig.directoryMode(),
 		}); err != nil {
 			return platformerrors.Wrap(err, "initializing filesystem bucket")
 		}

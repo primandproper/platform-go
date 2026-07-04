@@ -5,14 +5,14 @@ import (
 	"io"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	cbmock "github.com/primandproper/platform-go/v2/circuitbreaking/mock"
-	"github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	"github.com/primandproper/platform-go/v2/uploads"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	cbmock "github.com/primandproper/platform-go/v3/circuitbreaking/mock"
+	"github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v3/uploads"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -20,43 +20,69 @@ import (
 	"gocloud.dev/blob/memblob"
 )
 
-func noopUploaderMetrics(t *testing.T) (saveCounter, readCounter, saveErrCounter, readErrCounter metrics.Int64Counter, latencyHist metrics.Float64Histogram) {
+type testUploaderMetrics struct {
+	saveCounter      metrics.Int64Counter
+	readCounter      metrics.Int64Counter
+	deleteCounter    metrics.Int64Counter
+	saveErrCounter   metrics.Int64Counter
+	readErrCounter   metrics.Int64Counter
+	deleteErrCounter metrics.Int64Counter
+	latencyHist      metrics.Float64Histogram
+}
+
+func noopUploaderMetrics(t *testing.T) testUploaderMetrics {
 	t.Helper()
 	mp := metricsnoop.NewMetricsProvider()
 
 	saveCounter, err := mp.NewInt64Counter("test_saves")
 	must.NoError(t, err)
 
-	readCounter, err = mp.NewInt64Counter("test_reads")
+	readCounter, err := mp.NewInt64Counter("test_reads")
 	must.NoError(t, err)
 
-	saveErrCounter, err = mp.NewInt64Counter("test_save_errors")
+	deleteCounter, err := mp.NewInt64Counter("test_deletes")
 	must.NoError(t, err)
 
-	readErrCounter, err = mp.NewInt64Counter("test_read_errors")
+	saveErrCounter, err := mp.NewInt64Counter("test_save_errors")
 	must.NoError(t, err)
 
-	latencyHist, err = mp.NewFloat64Histogram("test_latency")
+	readErrCounter, err := mp.NewInt64Counter("test_read_errors")
 	must.NoError(t, err)
 
-	return saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist
+	deleteErrCounter, err := mp.NewInt64Counter("test_delete_errors")
+	must.NoError(t, err)
+
+	latencyHist, err := mp.NewFloat64Histogram("test_latency")
+	must.NoError(t, err)
+
+	return testUploaderMetrics{
+		saveCounter:      saveCounter,
+		readCounter:      readCounter,
+		deleteCounter:    deleteCounter,
+		saveErrCounter:   saveErrCounter,
+		readErrCounter:   readErrCounter,
+		deleteErrCounter: deleteErrCounter,
+		latencyHist:      latencyHist,
+	}
 }
 
 // newTestUploader builds an Uploader over the given bucket and observer with no-op metrics.
 func newTestUploader(t *testing.T, b *blob.Bucket, obs observability.Observer, cb circuitbreaking.CircuitBreaker) *Uploader {
 	t.Helper()
 
-	saveCounter, readCounter, saveErrCounter, readErrCounter, latencyHist := noopUploaderMetrics(t)
+	m := noopUploaderMetrics(t)
 
 	return &Uploader{
-		bucket:         b,
-		o11y:           obs,
-		circuitBreaker: cb,
-		saveCounter:    saveCounter,
-		readCounter:    readCounter,
-		saveErrCounter: saveErrCounter,
-		readErrCounter: readErrCounter,
-		latencyHist:    latencyHist,
+		bucket:           b,
+		o11y:             obs,
+		circuitBreaker:   cb,
+		saveCounter:      m.saveCounter,
+		readCounter:      m.readCounter,
+		deleteCounter:    m.deleteCounter,
+		saveErrCounter:   m.saveErrCounter,
+		readErrCounter:   m.readErrCounter,
+		deleteErrCounter: m.deleteErrCounter,
+		latencyHist:      m.latencyHist,
 	}
 }
 
@@ -558,6 +584,19 @@ type failingReader struct{}
 
 func (failingReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
 
+// partialReader yields some bytes on its first read and then errors, simulating a body that
+// fails part-way through a copy.
+type partialReader struct{ done bool }
+
+func (p *partialReader) Read(b []byte) (int, error) {
+	if p.done {
+		return 0, io.ErrUnexpectedEOF
+	}
+	p.done = true
+
+	return copy(b, "partial content"), io.ErrUnexpectedEOF
+}
+
 func TestUploader_Save_copyError(T *testing.T) {
 	T.Parallel()
 
@@ -578,6 +617,26 @@ func TestUploader_Save_copyError(T *testing.T) {
 
 		op := obs.ObservedOperationWithData(t, map[string]any{keys.FilenameKey: "broken.txt"})
 		must.SliceLen(t, 1, op.Errors)
+	})
+
+	T.Run("leaves no committed object when the copy fails mid-stream", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cb := &cbmock.CircuitBreakerMock{
+			CannotProceedFunc: func() bool { return false },
+			FailedFunc:        func() {},
+		}
+
+		b := memblob.OpenBucket(&memblob.Options{})
+		u := newTestUploader(t, b, observability.NewObserverForTest(t.Name()), cb)
+
+		test.Error(t, u.Save(ctx, "truncated.txt", &partialReader{}))
+
+		// The aborted write must not commit a truncated object at the key.
+		exists, err := b.Exists(ctx, "truncated.txt")
+		test.NoError(t, err)
+		test.False(t, exists)
 	})
 }
 

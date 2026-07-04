@@ -7,16 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	cbmock "github.com/primandproper/platform-go/v2/circuitbreaking/mock"
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/database"
-	"github.com/primandproper/platform-go/v2/distributedlock"
-	"github.com/primandproper/platform-go/v2/identifiers"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	"github.com/primandproper/platform-go/v2/testutils/containers"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	cbmock "github.com/primandproper/platform-go/v3/circuitbreaking/mock"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/database"
+	"github.com/primandproper/platform-go/v3/distributedlock"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v3/testutils/containers"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -363,6 +363,26 @@ func TestLocker_Release_Unit(T *testing.T) {
 		must.NoError(t, mock.ExpectationsWereMet())
 	})
 
+	T.Run("unlock reporting false surfaces an error", func(t *testing.T) {
+		t.Parallel()
+		client, mock := buildSqlmockClient(t)
+		t.Cleanup(func() { _ = client.Close() })
+		l := newTestLocker(t, client)
+
+		mock.ExpectQuery(`SELECT pg_try_advisory_lock`).
+			WithArgs(hashLockID(0, "k")).
+			WillReturnRows(sqlmock.NewRows([]string{"v"}).AddRow(true))
+		// pg_advisory_unlock returns false: the session did not hold the lock, which
+		// must not be reported as a clean release.
+		mock.ExpectQuery(`SELECT pg_advisory_unlock`).
+			WithArgs(hashLockID(0, "k")).
+			WillReturnRows(sqlmock.NewRows([]string{"v"}).AddRow(false))
+
+		h, err := l.Acquire(t.Context(), "k", time.Minute)
+		must.NoError(t, err)
+		test.Error(t, h.Release(t.Context()))
+	})
+
 	T.Run("blocked by circuit breaker", func(t *testing.T) {
 		t.Parallel()
 		client, mock := buildSqlmockClient(t)
@@ -453,6 +473,29 @@ func TestLocker_Release_Unit(T *testing.T) {
 		must.Error(t, h.Release(t.Context()))
 		must.SliceLen(t, 1, cb.SucceededCalls())
 		must.SliceLen(t, 1, cb.FailedCalls())
+	})
+
+	T.Run("release with canceled ctx fails and discards the conn", func(t *testing.T) {
+		t.Parallel()
+		client, mock := buildSqlmockClient(t)
+		t.Cleanup(func() { _ = client.Close() })
+		l := newTestLocker(t, client)
+
+		mock.ExpectQuery(`SELECT pg_try_advisory_lock`).
+			WithArgs(hashLockID(0, "k")).
+			WillReturnRows(sqlmock.NewRows([]string{"v"}).AddRow(true))
+
+		h, err := l.Acquire(t.Context(), "k", time.Minute)
+		must.NoError(t, err)
+
+		// An already-canceled ctx makes database/sql return before the unlock touches the
+		// wire — the exact case (C-14) where the session could keep holding the advisory
+		// lock. Release must surface the error; the conn is force-discarded so the lock
+		// isn't leaked back into the pool.
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		must.Error(t, h.Release(ctx))
 	})
 }
 
@@ -643,6 +686,95 @@ func TestHashLockID(T *testing.T) {
 	T.Run("different keys produce different ids", func(t *testing.T) {
 		t.Parallel()
 		test.NotEq(t, hashLockID(0, "a"), hashLockID(0, "b"))
+	})
+}
+
+func TestLocker_TTLExpiry_Unit(T *testing.T) {
+	T.Parallel()
+
+	T.Run("refresh after TTL expiry returns ErrLockNotHeld and frees the lock", func(t *testing.T) {
+		t.Parallel()
+		client, mock := buildSqlmockClient(t)
+		t.Cleanup(func() { _ = client.Close() })
+		l := newTestLocker(t, client)
+
+		mock.ExpectQuery(`SELECT pg_try_advisory_lock`).
+			WithArgs(hashLockID(0, "k")).
+			WillReturnRows(sqlmock.NewRows([]string{"v"}).AddRow(true))
+		// Expiry is detected before the SELECT 1 liveness probe, so the handle frees
+		// the advisory lock instead of pinging.
+		mock.ExpectQuery(`SELECT pg_advisory_unlock`).
+			WithArgs(hashLockID(0, "k")).
+			WillReturnRows(sqlmock.NewRows([]string{"v"}).AddRow(true))
+
+		h, err := l.Acquire(t.Context(), "k", time.Minute)
+		must.NoError(t, err)
+
+		// Force the TTL to have elapsed.
+		h.(*lock).expiresAt = time.Now().Add(-time.Second)
+
+		must.ErrorIs(t, h.Refresh(t.Context(), 5*time.Minute), distributedlock.ErrLockNotHeld)
+		must.NoError(t, mock.ExpectationsWereMet())
+		// TTL bookkeeping is untouched on a failed refresh.
+		test.EqOp(t, time.Minute, h.TTL())
+
+		// The lock was dropped, so a later release just sees it gone.
+		must.ErrorIs(t, h.Release(t.Context()), distributedlock.ErrLockNotHeld)
+	})
+
+	T.Run("release after TTL expiry returns ErrLockNotHeld but frees the conn", func(t *testing.T) {
+		t.Parallel()
+		client, mock := buildSqlmockClient(t)
+		t.Cleanup(func() { _ = client.Close() })
+		l := newTestLocker(t, client)
+
+		mock.ExpectQuery(`SELECT pg_try_advisory_lock`).
+			WithArgs(hashLockID(0, "k")).
+			WillReturnRows(sqlmock.NewRows([]string{"v"}).AddRow(true))
+		mock.ExpectQuery(`SELECT pg_advisory_unlock`).
+			WithArgs(hashLockID(0, "k")).
+			WillReturnRows(sqlmock.NewRows([]string{"v"}).AddRow(true))
+
+		h, err := l.Acquire(t.Context(), "k", time.Minute)
+		must.NoError(t, err)
+
+		h.(*lock).expiresAt = time.Now().Add(-time.Second)
+
+		must.ErrorIs(t, h.Release(t.Context()), distributedlock.ErrLockNotHeld)
+		must.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestLocker_Acquire_PoolSaturation_Unit(T *testing.T) {
+	T.Parallel()
+
+	T.Run("returns ErrLockNotAcquired when the write pool is saturated", func(t *testing.T) {
+		t.Parallel()
+		client, mock := buildSqlmockClient(t)
+		t.Cleanup(func() { _ = client.Close() })
+		// Only one write connection exists; the first held lock pins it for its
+		// whole lifetime, leaving none for the second Acquire.
+		client.WriteDB().SetMaxOpenConns(1)
+
+		l, err := NewPostgresLocker(&Config{ConnWaitTimeout: 50 * time.Millisecond}, client, nil, nil, nil, cbnoop.NewCircuitBreaker())
+		must.NoError(t, err)
+
+		mock.ExpectQuery(`SELECT pg_try_advisory_lock`).
+			WithArgs(hashLockID(0, "a")).
+			WillReturnRows(sqlmock.NewRows([]string{"v"}).AddRow(true))
+
+		first, err := l.Acquire(t.Context(), "a", time.Minute)
+		must.NoError(t, err)
+		// first pins the pool's single conn; leave it held for the duration.
+		t.Cleanup(func() { _ = first.Release(context.Background()) })
+
+		// The second acquire cannot reserve a conn. It must fail fast with
+		// ErrLockNotAcquired rather than block indefinitely in Conn().
+		start := time.Now()
+		_, err = l.Acquire(t.Context(), "b", time.Minute)
+		must.ErrorIs(t, err, distributedlock.ErrLockNotAcquired)
+		elapsed := time.Since(start)
+		test.True(t, elapsed < 2*time.Second, test.Sprintf("expected fast failure, took %s", elapsed))
 	})
 }
 

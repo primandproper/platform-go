@@ -3,14 +3,18 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v2/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 )
 
 var _ metrics.Provider = (*MetricsProvider)(nil)
+
+// noopMeter is a genuinely no-op meter. Using otel.Meter (the process-global
+// provider) here would make these "noop" instruments record and export real
+// metrics once something installs a real global provider — the opposite of noop.
+var noopMeter = metricnoop.NewMeterProvider().Meter("noop")
 
 // MetricsProvider is a no-op MetricsProvider.
 type MetricsProvider struct{}
@@ -22,7 +26,7 @@ func NewMetricsProvider() metrics.Provider {
 
 // NewFloat64Counter is a no-op.
 func (*MetricsProvider) NewFloat64Counter(name string, options ...metric.Float64CounterOption) (metrics.Float64Counter, error) {
-	y, err := otel.Meter("noop").Float64Counter(name, options...)
+	y, err := noopMeter.Float64Counter(name, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +36,7 @@ func (*MetricsProvider) NewFloat64Counter(name string, options ...metric.Float64
 
 // NewFloat64Gauge is a no-op.
 func (*MetricsProvider) NewFloat64Gauge(name string, options ...metric.Float64GaugeOption) (metrics.Float64Gauge, error) {
-	y, err := otel.Meter("noop").Float64Gauge(name, options...)
+	y, err := noopMeter.Float64Gauge(name, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +46,7 @@ func (*MetricsProvider) NewFloat64Gauge(name string, options ...metric.Float64Ga
 
 // NewFloat64UpDownCounter is a no-op.
 func (*MetricsProvider) NewFloat64UpDownCounter(name string, options ...metric.Float64UpDownCounterOption) (metrics.Float64UpDownCounter, error) {
-	y, err := otel.Meter("noop").Float64UpDownCounter(name, options...)
+	y, err := noopMeter.Float64UpDownCounter(name, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +56,7 @@ func (*MetricsProvider) NewFloat64UpDownCounter(name string, options ...metric.F
 
 // NewFloat64Histogram is a no-op.
 func (*MetricsProvider) NewFloat64Histogram(name string, options ...metric.Float64HistogramOption) (metrics.Float64Histogram, error) {
-	y, err := otel.Meter("noop").Float64Histogram(name, options...)
+	y, err := noopMeter.Float64Histogram(name, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +66,7 @@ func (*MetricsProvider) NewFloat64Histogram(name string, options ...metric.Float
 
 // NewInt64Counter is a no-op.
 func (*MetricsProvider) NewInt64Counter(name string, options ...metric.Int64CounterOption) (metrics.Int64Counter, error) {
-	y, err := otel.Meter("noop").Int64Counter(name, options...)
+	y, err := noopMeter.Int64Counter(name, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +76,7 @@ func (*MetricsProvider) NewInt64Counter(name string, options ...metric.Int64Coun
 
 // NewInt64Gauge is a no-op.
 func (*MetricsProvider) NewInt64Gauge(name string, options ...metric.Int64GaugeOption) (metrics.Int64Gauge, error) {
-	y, err := otel.Meter("noop").Int64Gauge(name, options...)
+	y, err := noopMeter.Int64Gauge(name, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +86,7 @@ func (*MetricsProvider) NewInt64Gauge(name string, options ...metric.Int64GaugeO
 
 // NewInt64UpDownCounter is a no-op.
 func (*MetricsProvider) NewInt64UpDownCounter(name string, options ...metric.Int64UpDownCounterOption) (metrics.Int64UpDownCounter, error) {
-	y, err := otel.Meter("noop").Int64UpDownCounter(name, options...)
+	y, err := noopMeter.Int64UpDownCounter(name, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +96,7 @@ func (*MetricsProvider) NewInt64UpDownCounter(name string, options ...metric.Int
 
 // NewInt64Histogram is a no-op.
 func (*MetricsProvider) NewInt64Histogram(name string, options ...metric.Int64HistogramOption) (metrics.Int64Histogram, error) {
-	y, err := otel.Meter("noop").Int64Histogram(name, options...)
+	y, err := noopMeter.Int64Histogram(name, options...)
 	if err != nil {
 		return nil, err
 	}

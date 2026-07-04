@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shoenig/test"
@@ -57,6 +57,7 @@ func buildTestRateLimiter(t *testing.T) (*rateLimiter, *mockRedisClient) {
 	return &rateLimiter{
 		client:          client,
 		requestsPerSec:  10,
+		burstSize:       20,
 		allowedCounter:  allowedCounter,
 		rejectedCounter: rejectedCounter,
 		errorCounter:    errorCounter,
@@ -104,6 +105,14 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 func TestNewRedisRateLimiter(T *testing.T) {
 	T.Parallel()
 
+	T.Run("with no addresses", func(t *testing.T) {
+		t.Parallel()
+
+		rl, err := NewRedisRateLimiter(Config{}, nil, 10, 20)
+		test.Error(t, err)
+		test.Nil(t, rl)
+	})
+
 	T.Run("with single address", func(t *testing.T) {
 		t.Parallel()
 
@@ -113,7 +122,7 @@ func TestNewRedisRateLimiter(T *testing.T) {
 			Password:  "pass",
 		}
 
-		rl, err := NewRedisRateLimiter(cfg, nil, 10)
+		rl, err := NewRedisRateLimiter(cfg, nil, 10, 20)
 		test.NoError(t, err)
 		test.NotNil(t, rl)
 	})
@@ -127,7 +136,7 @@ func TestNewRedisRateLimiter(T *testing.T) {
 			Password:  "pass",
 		}
 
-		rl, err := NewRedisRateLimiter(cfg, nil, 10)
+		rl, err := NewRedisRateLimiter(cfg, nil, 10, 20)
 		test.NoError(t, err)
 		test.NotNil(t, rl)
 	})
@@ -146,7 +155,7 @@ func TestNewRedisRateLimiter(T *testing.T) {
 			},
 		}
 
-		rl, err := NewRedisRateLimiter(cfg, mp, 10)
+		rl, err := NewRedisRateLimiter(cfg, mp, 10, 20)
 		test.Error(t, err)
 		test.Nil(t, rl)
 
@@ -173,7 +182,7 @@ func TestNewRedisRateLimiter(T *testing.T) {
 			},
 		}
 
-		rl, err := NewRedisRateLimiter(cfg, mp, 10)
+		rl, err := NewRedisRateLimiter(cfg, mp, 10, 20)
 		test.Error(t, err)
 		test.Nil(t, rl)
 
@@ -200,7 +209,7 @@ func TestNewRedisRateLimiter(T *testing.T) {
 			},
 		}
 
-		rl, err := NewRedisRateLimiter(cfg, mp, 10)
+		rl, err := NewRedisRateLimiter(cfg, mp, 10, 20)
 		test.Error(t, err)
 		test.Nil(t, rl)
 
@@ -244,6 +253,38 @@ func Test_rateLimiter_Allow(T *testing.T) {
 		test.False(t, allowed)
 
 		must.SliceLen(t, 1, client.evalCalls)
+	})
+
+	T.Run("passes burst as the window limit and does not truncate a fractional rate to zero", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		client := &mockRedisClient{}
+		mp := metricsnoop.NewMetricsProvider()
+		allowed, err := mp.NewInt64Counter(redisName + "_a")
+		must.NoError(t, err)
+		rejected, err := mp.NewInt64Counter(redisName + "_r")
+		must.NoError(t, err)
+		errc, err := mp.NewInt64Counter(redisName + "_e")
+		must.NoError(t, err)
+
+		// 0.5 rps with a burst of 3: the old int64(0.5)=0 limit rejected everything.
+		rl := &rateLimiter{client: client, requestsPerSec: 0.5, burstSize: 3, allowedCounter: allowed, rejectedCounter: rejected, errorCounter: errc}
+
+		cmd := redis.NewCmd(ctx)
+		cmd.SetVal(int64(1))
+		client.evalFunc = func(_ context.Context, _ string, _ []string, _ ...any) *redis.Cmd { return cmd }
+
+		ok, err := rl.Allow(ctx, "k")
+		test.NoError(t, err)
+		test.True(t, ok)
+
+		must.SliceLen(t, 1, client.evalCalls)
+		args := client.evalCalls[0].args
+		// args: now, windowMS, limit, member
+		must.SliceLen(t, 4, args)
+		test.EqOp(t, int64(3), args[2].(int64))    // limit == burstSize, not floored to 0
+		test.EqOp(t, int64(6000), args[1].(int64)) // window == burst/rate = 3/0.5 = 6s
 	})
 
 	T.Run("with eval error", func(t *testing.T) {

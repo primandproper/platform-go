@@ -1,7 +1,7 @@
 package circuitbreaking
 
 import (
-	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v3/errors"
 )
 
 // ErrCircuitBroken is returned when a circuit breaker has tripped.

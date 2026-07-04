@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v2/analytics"
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/analytics"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/posthog/posthog-go"
 )
@@ -42,16 +42,6 @@ func NewPostHogEventReporter(logger logging.Logger, tracerProvider tracing.Trace
 		return nil, ErrEmptyAPIToken
 	}
 
-	phc := posthog.Config{Endpoint: "https://app.posthog.com"}
-	for _, f := range configModifiers {
-		f(&phc)
-	}
-
-	client, err := posthog.NewWithConfig(apiKey, phc)
-	if err != nil {
-		return nil, err
-	}
-
 	mp := metrics.EnsureMetricsProvider(metricsProvider)
 
 	eventCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_events", name))
@@ -64,6 +54,27 @@ func NewPostHogEventReporter(logger logging.Logger, tracerProvider tracing.Trace
 		return nil, platformerrors.Wrap(err, "creating error counter")
 	}
 
+	logger = logging.EnsureLogger(logger)
+
+	phc := posthog.Config{Endpoint: "https://app.posthog.com"}
+	for _, f := range configModifiers {
+		f(&phc)
+	}
+	// Drive the breaker from delivery outcomes (Enqueue only buffers), unless a
+	// config modifier already installed its own callback.
+	if phc.Callback == nil {
+		phc.Callback = &breakerCallback{
+			circuitBreaker: circuitBreaker,
+			errorCounter:   errorCounter,
+			logger:         logger,
+		}
+	}
+
+	client, err := posthog.NewWithConfig(apiKey, phc)
+	if err != nil {
+		return nil, err
+	}
+
 	c := &EventReporter{
 		o11y:           observability.NewObserver(name, logger, tracerProvider),
 		client:         client,
@@ -73,6 +84,30 @@ func NewPostHogEventReporter(logger logging.Logger, tracerProvider tracing.Trace
 	}
 
 	return c, nil
+}
+
+// breakerCallback bridges the PostHog client's asynchronous delivery outcomes to
+// the circuit breaker. Enqueue only buffers the event, so the breaker must be
+// driven from the background flush's Success/Failure callbacks to reflect real
+// delivery health.
+type breakerCallback struct {
+	circuitBreaker circuitbreaking.CircuitBreaker
+	errorCounter   metrics.Int64Counter
+	logger         logging.Logger
+}
+
+func (cb *breakerCallback) Success(posthog.APIMessage) {
+	if cb.circuitBreaker != nil {
+		cb.circuitBreaker.Succeeded()
+	}
+}
+
+func (cb *breakerCallback) Failure(_ posthog.APIMessage, err error) {
+	cb.errorCounter.Add(context.Background(), 1)
+	if cb.circuitBreaker != nil {
+		cb.circuitBreaker.Failed()
+	}
+	cb.logger.Error("posthog event delivery failed", err)
 }
 
 // Close wraps the internal client's Close method.
@@ -109,7 +144,8 @@ func (c *EventReporter) AddUser(ctx context.Context, userID string, properties m
 	}
 
 	c.eventCounter.Add(ctx, 1)
-	c.circuitBreaker.Succeeded()
+	// Delivery success is signaled asynchronously via the client callback, not by a
+	// successful enqueue (which only buffers the event).
 	return nil
 }
 
@@ -141,7 +177,8 @@ func (c *EventReporter) EventOccurred(ctx context.Context, event, userID string,
 	}
 
 	c.eventCounter.Add(ctx, 1)
-	c.circuitBreaker.Succeeded()
+	// Delivery success is signaled asynchronously via the client callback, not by a
+	// successful enqueue (which only buffers the event).
 	return nil
 }
 
@@ -173,6 +210,7 @@ func (c *EventReporter) EventOccurredAnonymous(ctx context.Context, event, anony
 	}
 
 	c.eventCounter.Add(ctx, 1)
-	c.circuitBreaker.Succeeded()
+	// Delivery success is signaled asynchronously via the client callback, not by a
+	// successful enqueue (which only buffers the event).
 	return nil
 }

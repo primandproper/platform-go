@@ -7,9 +7,9 @@ import (
 	"iter"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/uploads"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/uploads"
 
 	"gocloud.dev/blob"
 )
@@ -37,7 +37,13 @@ func (u *Uploader) Save(ctx context.Context, path string, r io.Reader, opts ...u
 
 	startTime := time.Now()
 
-	writer, err := u.bucket.NewWriter(ctx, path, &blob.WriterOptions{
+	// gocloud commits the write when Close returns without error, so a mid-copy failure must
+	// abort the write by cancelling its context before Close; otherwise a truncated object is
+	// committed at path even though Save reports an error.
+	writeCtx, cancelWrite := context.WithCancel(ctx)
+	defer cancelWrite()
+
+	writer, err := u.bucket.NewWriter(writeCtx, path, &blob.WriterOptions{
 		ContentType:  so.ContentType,
 		CacheControl: so.CacheControl,
 	})
@@ -49,6 +55,9 @@ func (u *Uploader) Save(ctx context.Context, path string, r io.Reader, opts ...u
 	}
 
 	written, copyErr := io.Copy(writer, r)
+	if copyErr != nil {
+		cancelWrite()
+	}
 	if err = errors.Join(copyErr, writer.Close()); err != nil {
 		u.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 		u.saveErrCounter.Add(ctx, 1)
@@ -118,12 +127,12 @@ func (u *Uploader) Delete(ctx context.Context, path string) error {
 	err := u.bucket.Delete(ctx, path)
 	u.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 	if err != nil {
-		u.saveErrCounter.Add(ctx, 1)
+		u.deleteErrCounter.Add(ctx, 1)
 		u.circuitBreaker.Failed()
 		return op.Error(err, "deleting object")
 	}
 
-	u.saveCounter.Add(ctx, 1)
+	u.deleteCounter.Add(ctx, 1)
 	u.circuitBreaker.Succeeded()
 	return nil
 }

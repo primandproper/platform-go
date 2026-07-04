@@ -2,13 +2,12 @@ package argon2
 
 import (
 	"context"
-	"math"
 	"runtime"
 
-	"github.com/primandproper/platform-go/v2/authentication"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/authentication"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/alexedwards/argon2id"
 )
@@ -16,15 +15,23 @@ import (
 var _ authentication.Authenticator = (*Argon2Authenticator)(nil)
 
 const (
-	serviceName        = "argon2"
-	sixtyFourMegabytes = 2<<15 - 1
+	serviceName = "argon2"
+	// sixtyFourMegabytes is argon2's memory cost, expressed in KiB.
+	sixtyFourMegabytes = 64 * 1024
+
+	// minParallelism and maxParallelism bound the argon2 parallelism degree.
+	// The lower bound keeps a floor of concurrency; the upper bound prevents an
+	// overflow to 0 when uint8-narrowing runtime.NumCPU() on hosts with >255
+	// CPUs, which would panic x/crypto argon2 (parallelism degree too low).
+	minParallelism = 2
+	maxParallelism = 255
 )
 
 var (
 	argonParams = &argon2id.Params{
 		Memory:      sixtyFourMegabytes,
 		Iterations:  1,
-		Parallelism: uint8(math.Max(2, float64(runtime.NumCPU()))),
+		Parallelism: uint8(min(maxParallelism, max(minParallelism, runtime.NumCPU()))),
 		SaltLength:  16,
 		KeyLength:   32,
 	}

@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	textsearch "github.com/primandproper/platform-go/v2/search/text"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	textsearch "github.com/primandproper/platform-go/v3/search/text"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
@@ -62,15 +62,18 @@ func ProvideIndexManager[T any](ctx context.Context, logger logging.Logger, trac
 	logger = logging.EnsureLogger(logger)
 
 	if ready := elasticsearchIsReadyToInit(ctx, cfg, logger, 10); !ready {
-		return nil, errors.Wrap(err, "initializing search client")
+		return nil, errors.New("elasticsearch not ready")
 	}
 
 	im := &indexManager[T]{
 		o11y:                  observability.NewObserver(fmt.Sprintf("search_%s", indexName), logger, tracerProvider),
 		esClient:              c,
 		indexOperationTimeout: cfg.IndexOperationTimeout,
-		indexName:             indexName,
-		circuitBreaker:        circuitBreaker,
+		// Elasticsearch index names must be lowercase. Normalize once so create,
+		// existence-check, index, delete, and search all target the same name — the
+		// previous code created a lowercased index but read/wrote the original case.
+		indexName:      strings.ToLower(indexName),
+		circuitBreaker: circuitBreaker,
 	}
 
 	if indexErr := im.ensureIndices(ctx); indexErr != nil {
@@ -101,22 +104,25 @@ func elasticsearchIsReadyToInit(
 	}
 
 	for {
-		var res *esapi.Response
-		res, err = (esapi.InfoRequest{}).Do(ctx, c)
-		if err != nil && res != nil && !res.IsError() {
-			logger.WithValue("attempt_count", attemptCount).Debug("ping failed, waiting for elasticsearch")
-			time.Sleep(time.Second)
+		res, pingErr := (esapi.InfoRequest{}).Do(ctx, c)
+		ready := pingErr == nil && res != nil && !res.IsError()
+		if res != nil {
+			_ = res.Body.Close() //nolint:errcheck // best-effort close of the readiness-probe response body
+		}
 
-			attemptCount++
-			if attemptCount >= int(maxAttempts) {
-				break
-			}
-		} else {
+		if ready {
 			return true
 		}
-	}
 
-	return false
+		logger.WithValue("attempt_count", attemptCount).Debug("ping failed, waiting for elasticsearch")
+
+		attemptCount++
+		if attemptCount >= int(maxAttempts) {
+			return false
+		}
+
+		time.Sleep(time.Second)
+	}
 }
 
 func (sm *indexManager[T]) ensureIndices(ctx context.Context) error {
@@ -139,12 +145,33 @@ func (sm *indexManager[T]) ensureIndices(ctx context.Context) error {
 		sm.circuitBreaker.Failed()
 		return observability.PrepareError(err, op.Span(), "checking index existence successfully")
 	}
-
-	if res.StatusCode == http.StatusNotFound {
-		if _, err = (esapi.IndicesCreateRequest{Index: strings.ToLower(sm.indexName)}).Do(ctx, sm.esClient); err != nil {
-			sm.circuitBreaker.Failed()
-			return observability.PrepareError(err, op.Span(), "checking index existence")
+	defer func() {
+		if closeErr := res.Body.Close(); closeErr != nil {
+			op.Acknowledge(closeErr, "closing response body")
 		}
+	}()
+
+	switch {
+	case res.StatusCode == http.StatusNotFound:
+		createRes, createErr := esapi.IndicesCreateRequest{Index: sm.indexName}.Do(ctx, sm.esClient)
+		if createErr != nil {
+			sm.circuitBreaker.Failed()
+			return observability.PrepareError(createErr, op.Span(), "creating index")
+		}
+		defer func() {
+			if closeErr := createRes.Body.Close(); closeErr != nil {
+				op.Acknowledge(closeErr, "closing create-index response body")
+			}
+		}()
+		if createRes.IsError() {
+			sm.circuitBreaker.Failed()
+			return observability.PrepareError(errors.New(createRes.String()), op.Span(), "creating index")
+		}
+	case res.IsError():
+		// IndicesExists returns 200 (exists) or 404 (missing); anything else (401,
+		// 500, ...) is a real error that must not be mistaken for "index exists".
+		sm.circuitBreaker.Failed()
+		return observability.PrepareError(errors.New(res.String()), op.Span(), "checking index existence")
 	}
 
 	sm.circuitBreaker.Succeeded()

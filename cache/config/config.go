@@ -5,14 +5,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/cache"
-	"github.com/primandproper/platform-go/v2/cache/memory"
-	"github.com/primandproper/platform-go/v2/cache/redis"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/cache"
+	"github.com/primandproper/platform-go/v3/cache/memory"
+	"github.com/primandproper/platform-go/v3/cache/redis"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -54,7 +54,11 @@ func ProvideCache[T any](ctx context.Context, cfg *Config, logger logging.Logger
 		if err != nil {
 			return nil, errors.Wrap(err, "initializing cache circuit breaker")
 		}
-		return redis.NewRedisCache[T](cfg.Redis, time.Hour, logger, tracerProvider, metricsProvider, cb)
+		expiry := cfg.Expiry
+		if expiry <= 0 {
+			expiry = time.Hour
+		}
+		return redis.NewRedisCache[T](cfg.Redis, expiry, logger, tracerProvider, metricsProvider, cb)
 	default:
 		return nil, errors.Newf("invalid cache provider: %q", cfg.Provider)
 	}

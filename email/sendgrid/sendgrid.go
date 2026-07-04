@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	"github.com/primandproper/platform-go/v2/email"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	"github.com/primandproper/platform-go/v3/email"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/sendgrid/rest"
 	"github.com/sendgrid/sendgrid-go"
@@ -44,7 +44,6 @@ type (
 		circuitBreaker circuitbreaking.CircuitBreaker
 		client         *sendgrid.Client
 		restClient     *rest.Client
-		config         Config
 	}
 )
 
@@ -86,7 +85,6 @@ func NewSendGridEmailer(cfg *Config, logger logging.Logger, tracerProvider traci
 		latencyHist:    latencyHist,
 		client:         sendgrid.NewSendClient(cfg.APIToken),
 		restClient:     &rest.Client{HTTPClient: client},
-		config:         *cfg,
 		circuitBreaker: circuitBreaker,
 	}
 
@@ -121,6 +119,7 @@ func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMes
 	res, err := e.restClient.SendWithContext(ctx, req)
 	if err != nil {
 		e.errorCounter.Add(ctx, 1)
+		e.circuitBreaker.Failed()
 		return observability.PrepareError(err, op.Span(), "sending email")
 	}
 
@@ -135,40 +134,5 @@ func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMes
 
 	e.circuitBreaker.Succeeded()
 	e.sendCounter.Add(ctx, 1)
-	return nil
-}
-
-func (e *Emailer) preparePersonalization(to *mail.Email, data map[string]any) *mail.Personalization {
-	p := mail.NewPersonalization()
-	p.AddTos(to)
-
-	for k, v := range data {
-		p.SetDynamicTemplateData(k, v)
-	}
-
-	return p
-}
-
-// sendDynamicTemplateEmail sends an email.
-func (e *Emailer) sendDynamicTemplateEmail(ctx context.Context, to, from *mail.Email, templateID string, data map[string]any, request rest.Request) error {
-	ctx, op := e.o11y.Begin(ctx)
-	defer op.End()
-
-	op.Set(keys.EmailToAddressKey, to.Address).Set("email.template_id", templateID).Set(keys.EmailFromAddressKey, from.Address)
-
-	m := mail.NewV3Mail()
-	m.SetFrom(from).SetTemplateID(templateID).AddPersonalizations(e.preparePersonalization(to, data))
-
-	request.Body = mail.GetRequestBody(m)
-
-	res, err := e.restClient.SendWithContext(ctx, request)
-	if err != nil {
-		return observability.PrepareError(err, op.Span(), "sending dynamic email")
-	}
-
-	if res.StatusCode != http.StatusAccepted {
-		return observability.PrepareError(ErrSendgridAPIResponse, op.Span(), "sending dynamic email yielded a %d response", res.StatusCode)
-	}
-
 	return nil
 }

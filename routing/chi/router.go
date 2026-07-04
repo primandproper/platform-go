@@ -1,20 +1,18 @@
 package chi
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	"github.com/primandproper/platform-go/v2/routing"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v3/routing"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
@@ -56,8 +54,17 @@ func buildChiMux(
 				return false
 			}
 
-			result := slices.Contains(cfg.ValidDomains, u.Hostname()) || cfg.EnableCORSForLocalhost && u.Hostname() == "localhost"
-			o11y.Logger().WithValue("result", result).Info("CORS Middleware")
+			host := u.Hostname()
+			isLocalhost := host == "localhost" || host == "127.0.0.1"
+			allowedHost := slices.Contains(cfg.ValidDomains, host) || (cfg.EnableCORSForLocalhost && isLocalhost)
+
+			// Since credentials are allowed, require https for non-localhost origins so
+			// credentialed requests aren't accepted from a plaintext origin on the same
+			// hostname (the previous check compared Hostname() only, ignoring scheme/port).
+			secureScheme := u.Scheme == "https" || (isLocalhost && u.Scheme == "http")
+
+			result := allowedHost && secureScheme
+			o11y.Logger().WithValue("origin", origin).WithValue("result", result).Debug("CORS origin check")
 
 			return result
 		},
@@ -69,8 +76,9 @@ func buildChiMux(
 			http.MethodDelete,
 			http.MethodOptions,
 		},
-		AllowedHeaders:   []string{"*"},
-		ExposedHeaders:   []string{""},
+		AllowedHeaders: []string{"*"},
+		// nil, not []string{""}, which emitted an empty Access-Control-Expose-Headers.
+		ExposedHeaders:   nil,
 		AllowCredentials: true,
 		MaxAge:           maxCORSAge,
 	})
@@ -82,6 +90,11 @@ func buildChiMux(
 
 	mux := chi.NewRouter()
 	mux.Use(
+		// RequestID and RealIP must run before the observability middleware so that
+		// logs and spans see the request ID and the real client IP, not the proxy's.
+		chimiddleware.RequestID,
+		chimiddleware.RealIP,
+		buildRecoveryMiddleware(o11y),
 		otelchimetric.NewRequestDurationMillis(baseCfg),
 		otelchimetric.NewRequestInFlight(baseCfg),
 		otelchimetric.NewResponseSizeBytes(baseCfg),
@@ -98,8 +111,6 @@ func buildChiMux(
 			}),
 		),
 		buildLoggingMiddleware(o11y, cfg.SilenceRouteLogging),
-		chimiddleware.RequestID,
-		chimiddleware.RealIP,
 		chimiddleware.CleanPath,
 		chimiddleware.Timeout(maxTimeout),
 		corsHandler.Handler,
@@ -293,17 +304,7 @@ func (r *router) Trace(pattern string, handler http.HandlerFunc) {
 
 // BuildRouteParamIDFetcher builds a function that fetches a given key from a path with variables added by a router.
 func (r *router) BuildRouteParamIDFetcher(logger logging.Logger, key, logDescription string) func(req *http.Request) uint64 {
-	return func(req *http.Request) uint64 {
-		v := chi.URLParam(req, key)
-
-		u, err := strconv.ParseUint(v, 10, 64)
-		if err != nil && logDescription != "" {
-			// this should never happen
-			logger.Error(fmt.Sprintf("fetching %s ID from request", logDescription), err)
-		}
-
-		return u
-	}
+	return buildRouteParamIDFetcher(logger, key, logDescription)
 }
 
 // BuildRouteParamStringIDFetcher builds a function that fetches a given key from a path with variables added by a router.

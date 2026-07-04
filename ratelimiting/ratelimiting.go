@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
 
 	"golang.org/x/time/rate"
 )
@@ -77,5 +77,7 @@ func (r *inMemoryRateLimiter) getOrCreateLimiter(_ context.Context, key string) 
 }
 
 func (r *inMemoryRateLimiter) Close() error {
+	// Drop every per-key limiter so the map doesn't retain memory past shutdown.
+	r.limiters.Clear()
 	return nil
 }

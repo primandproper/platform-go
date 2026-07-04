@@ -1,12 +1,16 @@
 package otelgrpc
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
-	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/logging"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -311,8 +315,75 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 			CollectorEndpoint: "localhost:4317",
 		}
 
-		// NOTE: ValidateWithContext uses &c (double pointer) which causes
-		// ozzo-validation to reject it. This exercises the code path regardless.
+		test.NoError(t, cfg.ValidateWithContext(ctx))
+	})
+
+	T.Run("rejects a missing collector endpoint", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cfg := &Config{}
+
 		test.Error(t, cfg.ValidateWithContext(ctx))
+	})
+}
+
+func Test_otelSlogLogger_requestIDFuncSurvivesDerivation(T *testing.T) {
+	T.Parallel()
+
+	T.Run("WithName-derived logger still emits the request ID", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		root := &otelSlogLogger{logger: slog.New(slog.NewJSONHandler(&buf, nil))}
+		root.SetRequestIDFunc(func(*http.Request) string { return "req-123" })
+
+		u, err := url.ParseRequestURI("https://example.com/path?things=stuff")
+		must.NoError(t, err)
+
+		root.WithName(t.Name()).
+			WithRequest(&http.Request{Method: http.MethodGet, URL: u}).
+			Info("hello")
+
+		test.StrContains(t, buf.String(), "req-123")
+	})
+}
+
+func Test_otelSlogLogger_Shutdown(T *testing.T) {
+	T.Parallel()
+
+	T.Run("no-op without a collector endpoint", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		logger, err := NewOtelSlogLogger(ctx, logging.DebugLevel, t.Name(), &Config{})
+		must.NoError(t, err)
+
+		l, ok := logger.(*otelSlogLogger)
+		must.True(t, ok)
+		test.Nil(t, l.loggerProvider)
+		test.NoError(t, l.Shutdown(ctx))
+	})
+
+	T.Run("collector path wires a shutdownable provider", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cfg := &Config{
+			CollectorEndpoint: "localhost:4317",
+			Insecure:          true,
+		}
+
+		logger, err := NewOtelSlogLogger(ctx, logging.DebugLevel, t.Name(), cfg)
+		must.NoError(t, err)
+
+		l, ok := logger.(*otelSlogLogger)
+		must.True(t, ok)
+		must.NotNil(t, l.loggerProvider)
+
+		shutdownCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
+		test.NoError(t, l.Shutdown(shutdownCtx))
 	})
 }

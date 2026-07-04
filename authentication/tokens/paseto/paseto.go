@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/authentication/tokens"
-	"github.com/primandproper/platform-go/v2/identifiers"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/authentication/tokens"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/o1egl/paseto/v2"
 )
@@ -111,7 +111,11 @@ func (s *signer) decryptToken(op observability.Operation, providedToken string) 
 	// backend's behavior.
 	now := time.Now().UTC()
 
-	if exp, ok := claimTime(parsedToken, "exp"); ok && now.After(exp) {
+	exp, hasExp := claimTime(parsedToken, "exp")
+	if !hasExp {
+		return nil, op.Error(tokens.ErrTokenExpired, "validating PASETO token: missing exp claim")
+	}
+	if now.After(exp) {
 		return nil, op.Error(tokens.ErrTokenExpired, "validating PASETO token")
 	}
 

@@ -4,17 +4,18 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/mail"
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	"github.com/primandproper/platform-go/v2/email"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	"github.com/primandproper/platform-go/v3/email"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/keighl/postmark"
 )
@@ -99,7 +100,7 @@ func formatAddress(name, address string) string {
 	if strings.TrimSpace(name) == "" {
 		return address
 	}
-	return fmt.Sprintf("%s <%s>", name, address)
+	return (&mail.Address{Name: name, Address: address}).String()
 }
 
 // SendEmail sends an email.

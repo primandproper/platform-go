@@ -66,4 +66,11 @@ func TestElement(T *testing.T) {
 
 		test.True(t, slices.Contains(exampleArray, Element(exampleArray)))
 	})
+
+	T.Run("returns zero value for an empty slice instead of panicking", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, "", Element([]string{}))
+		test.EqOp(t, 0, Element([]int(nil)))
+	})
 }

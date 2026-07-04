@@ -23,13 +23,19 @@ func (w *instrumentedSQLSpanWrapper) NewChild(s string) instrumentedsql.Span {
 }
 
 func (w *instrumentedSQLSpanWrapper) SetLabel(k, v string) {
-	w.span.SetAttributes(attribute.String(k, v))
+	if w.span != nil {
+		w.span.SetAttributes(attribute.String(k, v))
+	}
 }
 
 func (w *instrumentedSQLSpanWrapper) SetError(err error) {
-	w.span.RecordError(err)
+	if w.span != nil {
+		w.span.RecordError(err)
+	}
 }
 
 func (w *instrumentedSQLSpanWrapper) Finish() {
-	w.span.End()
+	if w.span != nil {
+		w.span.End()
+	}
 }

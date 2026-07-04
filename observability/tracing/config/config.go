@@ -4,12 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	"github.com/primandproper/platform-go/v2/observability/tracing/cloudtrace"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v2/observability/tracing/oteltrace"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v3/observability/tracing/cloudtrace"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/observability/tracing/oteltrace"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -26,11 +26,11 @@ type (
 	Config struct {
 		_ struct{} `json:"-"`
 
-		CloudTrace                *cloudtrace.Config `env:"init"                                envPrefix:"CLOUDTRACE_"                    json:"cloudTrace,omitempty"`
-		Otel                      *oteltrace.Config  `env:"init"                                envPrefix:"OTELGRPC_"                      json:"otelgrpc,omitempty"`
-		ServiceName               string             `env:"TRACING_SERVICE_NAME"                json:"service_name,omitempty"`
-		Provider                  string             `env:"TRACING_PROVIDER"                    json:"provider,omitempty"`
-		SpanCollectionProbability float64            `env:"TRACING_SPAN_COLLECTION_PROBABILITY" json:"spanCollectionProbability,omitempty"`
+		CloudTrace                *cloudtrace.Config `env:"init"                        envPrefix:"CLOUDTRACE_"                    json:"cloudTrace,omitempty"`
+		Otel                      *oteltrace.Config  `env:"init"                        envPrefix:"OTELGRPC_"                      json:"otelgrpc,omitempty"`
+		ServiceName               string             `env:"SERVICE_NAME"                json:"service_name,omitempty"`
+		Provider                  string             `env:"PROVIDER"                    json:"provider,omitempty"`
+		SpanCollectionProbability float64            `env:"SPAN_COLLECTION_PROBABILITY" json:"spanCollectionProbability,omitempty"`
 	}
 )
 
@@ -81,7 +81,11 @@ func (c *Config) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&c.Provider, validation.In("", ProviderOtel, ProviderCloudTrace)),
 		validation.Field(&c.Otel, validation.When(c.Provider == ProviderOtel, validation.Required).Else(validation.Nil)),
 		validation.Field(&c.CloudTrace, validation.When(c.Provider == ProviderCloudTrace, validation.Required).Else(validation.Nil)),
-		validation.Field(&c.ServiceName, validation.Required),
-		validation.Field(&c.SpanCollectionProbability, validation.Required),
+		// ServiceName is only meaningful when a real provider is configured; requiring
+		// it (and the probability) on the noop/default path is wrong. SpanCollectionProbability
+		// is a 0–1 fraction, so a 0.0 ("sample nothing") is valid and must not be rejected
+		// by Required.
+		validation.Field(&c.ServiceName, validation.When(c.Provider != "", validation.Required)),
+		validation.Field(&c.SpanCollectionProbability, validation.Min(0.0), validation.Max(1.0)),
 	)
 }

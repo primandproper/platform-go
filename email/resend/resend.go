@@ -4,16 +4,18 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/mail"
+	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	"github.com/primandproper/platform-go/v2/email"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	"github.com/primandproper/platform-go/v3/email"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/resend/resend-go/v3"
 )
@@ -88,6 +90,13 @@ func NewResendEmailer(cfg *Config, logger logging.Logger, tracerProvider tracing
 	return e, nil
 }
 
+func formatAddress(name, address string) string {
+	if strings.TrimSpace(name) == "" {
+		return address
+	}
+	return (&mail.Address{Name: name, Address: address}).String()
+}
+
 // SendEmail sends an email.
 func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMessage) error {
 	ctx, op := e.o11y.Begin(ctx)
@@ -104,15 +113,8 @@ func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMes
 		return circuitbreaking.ErrCircuitBroken
 	}
 
-	from := details.FromAddress
-	if details.FromName != "" {
-		from = fmt.Sprintf("%s <%s>", details.FromName, details.FromAddress)
-	}
-
-	to := details.ToAddress
-	if details.ToName != "" {
-		to = fmt.Sprintf("%s <%s>", details.ToName, details.ToAddress)
-	}
+	from := formatAddress(details.FromName, details.FromAddress)
+	to := formatAddress(details.ToName, details.ToAddress)
 
 	params := &resend.SendEmailRequest{
 		From:    from,

@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
 
 	circuit "github.com/rubyist/circuitbreaker"
 	"github.com/shoenig/test"
@@ -74,7 +74,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 
 		test.EqOp(t, "UNKNOWN", cfg.Name)
 		test.EqOp(t, float64(100), cfg.ErrorRate)
-		test.EqOp(t, uint64(1_000_000), cfg.MinimumSampleThreshold)
+		test.EqOp(t, uint64(20), cfg.MinimumSampleThreshold)
 	})
 
 	T.Run("does not override set values", func(t *testing.T) {
@@ -229,6 +229,30 @@ func TestConfig_ProvideCircuitBreaker(T *testing.T) {
 		test.NotNil(t, cb)
 		test.NoError(t, err)
 	})
+
+	T.Run("with only an unset name still provides a real breaker", func(t *testing.T) {
+		ctx := t.Context()
+
+		// EnsureDefaults now runs before validation, so an unset NAME defaults to
+		// "UNKNOWN" and passes the Required check instead of degrading to a noop.
+		cfg := &Config{Name: ""}
+
+		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		test.NoError(t, err)
+		_, isReal := cb.(*baseImplementation)
+		test.True(t, isReal)
+	})
+
+	T.Run("with nil metrics provider does not panic", func(t *testing.T) {
+		ctx := t.Context()
+
+		cfg := &Config{Name: "cb"}
+
+		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), nil)
+		test.NoError(t, err)
+		_, isReal := cb.(*baseImplementation)
+		test.True(t, isReal)
+	})
 }
 
 //nolint:paralleltest // race condition in the core circuit breaker library, I think?
@@ -337,10 +361,56 @@ func TestHandleCircuitBreakerEvents(T *testing.T) {
 		test.SliceLen(t, 3, mp.NewInt64CounterCalls())
 		test.SliceLen(t, 3, i64Counter.AddCalls())
 	})
+
+	T.Run("exits when the context is canceled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+
+		counter := &mockmetrics.Int64CounterMock{AddFunc: func(_ context.Context, _ int64, _ ...metric.AddOption) {}}
+
+		// An open, never-closed channel: without the ctx check the goroutine would
+		// block on the range forever. Cancel, then join to prove it returns.
+		events := make(chan circuit.BreakerEvent)
+
+		done := make(chan struct{})
+		go func() {
+			handleCircuitBreakerEvents(ctx, loggingnoop.NewLogger(), events, counter, counter, counter)
+			close(done)
+		}()
+
+		cancel()
+
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("handleCircuitBreakerEvents did not exit after context cancellation")
+		}
+	})
 }
 
 //nolint:paralleltest // race condition in the core circuit breaker library, I think?
 func TestCircuitBreaker_Integration(T *testing.T) {
+	T.Run("trips when the percentage error rate is exceeded", func(t *testing.T) {
+		ctx := t.Context()
+
+		// ErrorRate is a percentage: 50 means trip at a 50% error rate. Under the old
+		// fraction-vs-percent bug this was compared against ErrorRate() (a 0–1 fraction)
+		// and could never be satisfied, so the breaker never tripped.
+		cfg := &Config{
+			Name:                   t.Name(),
+			ErrorRate:              50,
+			MinimumSampleThreshold: 2,
+		}
+
+		cb, err := ProvideCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		test.NoError(t, err)
+		test.NotNil(t, cb)
+
+		test.True(t, cb.CanProceed())
+		cb.Failed()
+		cb.Failed()
+		test.True(t, cb.CannotProceed())
+	})
+
 	T.Run("standard", func(t *testing.T) {
 		t.SkipNow() // cannot run this with the race detector on
 

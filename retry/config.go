@@ -25,21 +25,24 @@ type Config struct {
 
 var _ validation.ValidatableWithContext = (*Config)(nil)
 
-// EnsureDefaults sets default values for zero fields.
+// EnsureDefaults sets default values for zero (and invalid) fields. It clamps
+// rather than merely zero-checking so a nonsensical config — a negative delay or
+// a Multiplier below 1 that would shrink the backoff — can't produce a
+// pathological policy, since the constructor returns no error to reject it.
 func (cfg *Config) EnsureDefaults() {
 	if cfg.MaxAttempts == 0 {
 		cfg.MaxAttempts = defaultMaxAttempts
 	}
 
-	if cfg.InitialDelay == 0 {
+	if cfg.InitialDelay <= 0 {
 		cfg.InitialDelay = defaultInitialDelay
 	}
 
-	if cfg.MaxDelay == 0 {
+	if cfg.MaxDelay <= 0 {
 		cfg.MaxDelay = defaultMaxDelay
 	}
 
-	if cfg.Multiplier == 0 {
+	if cfg.Multiplier < 1 {
 		cfg.Multiplier = defaultMultiplier
 	}
 }

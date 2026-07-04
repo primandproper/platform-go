@@ -1,11 +1,12 @@
 package embeddingscfg
 
 import (
+	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/embeddings"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/embeddings"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -19,6 +20,7 @@ func TestRegisterEmbedder(T *testing.T) {
 		t.Parallel()
 
 		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue(i, loggingnoop.NewLogger())
 		do.ProvideValue(i, tracing.NewTracerForTest("test"))
 		do.ProvideValue(i, &Config{})

@@ -101,3 +101,14 @@ func TestConsumer_Consume(T *testing.T) {
 		c.Consume(context.Background(), make(chan bool), make(chan error))
 	})
 }
+
+func TestConsumerProvider_Close(T *testing.T) {
+	T.Parallel()
+
+	T.Run("standard", func(t *testing.T) {
+		t.Parallel()
+
+		p := NewConsumerProvider()
+		p.Close()
+	})
+}

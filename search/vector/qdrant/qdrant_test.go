@@ -11,15 +11,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	cbmock "github.com/primandproper/platform-go/v2/circuitbreaking/mock"
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/identifiers"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	vectorsearch "github.com/primandproper/platform-go/v2/search/vector"
-	"github.com/primandproper/platform-go/v2/testutils/containers"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	cbmock "github.com/primandproper/platform-go/v3/circuitbreaking/mock"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	vectorsearch "github.com/primandproper/platform-go/v3/search/vector"
+	"github.com/primandproper/platform-go/v3/testutils/containers"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -202,6 +202,14 @@ func TestStringifyID(T *testing.T) {
 		test.EqOp(t, "42", s)
 	})
 
+	T.Run("large float does not use scientific notation", func(t *testing.T) {
+		t.Parallel()
+		// JSON numbers decode into float64; 10000000 must not become "1e+07".
+		s, err := stringifyID(float64(10000000))
+		must.NoError(t, err)
+		test.EqOp(t, "10000000", s)
+	})
+
 	T.Run("number", func(t *testing.T) {
 		t.Parallel()
 		s, err := stringifyID(json.Number("17"))
@@ -213,6 +221,67 @@ func TestStringifyID(T *testing.T) {
 		t.Parallel()
 		_, err := stringifyID(true)
 		must.Error(t, err)
+	})
+}
+
+func TestPointID(T *testing.T) {
+	T.Parallel()
+
+	T.Run("unsigned integer becomes a uint64", func(t *testing.T) {
+		t.Parallel()
+		got, err := pointID("10000000")
+		must.NoError(t, err)
+		test.EqOp(t, uint64(10000000), got.(uint64))
+	})
+
+	T.Run("uuid is passed through as a string", func(t *testing.T) {
+		t.Parallel()
+		got, err := pointID("11111111-1111-1111-1111-111111111111")
+		must.NoError(t, err)
+		test.EqOp(t, "11111111-1111-1111-1111-111111111111", got.(string))
+	})
+
+	T.Run("empty id is rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := pointID("")
+		must.ErrorIs(t, err, platformerrors.ErrInvalidIDProvided)
+	})
+
+	T.Run("xid identifier is rejected up front", func(t *testing.T) {
+		t.Parallel()
+		// identifiers.New() returns a 20-char xid, which qdrant cannot accept.
+		_, err := pointID(identifiers.New())
+		must.ErrorIs(t, err, ErrUnsupportedID)
+	})
+
+	T.Run("arbitrary string is rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := pointID("not-a-valid-id")
+		must.ErrorIs(t, err, ErrUnsupportedID)
+	})
+}
+
+func TestScoreToDistance(T *testing.T) {
+	T.Parallel()
+
+	T.Run("cosine similarity inverts to a [0,2] distance", func(t *testing.T) {
+		t.Parallel()
+		// A closer match (higher score) must yield a lower distance.
+		test.InDelta(t, 0.05, float64(scoreToDistance("Cosine", 0.95)), 0.0001)
+		test.InDelta(t, 0.2, float64(scoreToDistance("Cosine", 0.8)), 0.0001)
+		test.True(t, scoreToDistance("Cosine", 0.95) < scoreToDistance("Cosine", 0.8))
+	})
+
+	T.Run("dot product negates so higher similarity is lower distance", func(t *testing.T) {
+		t.Parallel()
+		test.InDelta(t, -0.9, float64(scoreToDistance("Dot", 0.9)), 0.0001)
+		test.True(t, scoreToDistance("Dot", 0.9) < scoreToDistance("Dot", 0.1))
+	})
+
+	T.Run("euclid is already a distance and is left unchanged", func(t *testing.T) {
+		t.Parallel()
+		test.InDelta(t, 1.5, float64(scoreToDistance("Euclid", 1.5)), 0.0001)
+		test.True(t, scoreToDistance("Euclid", 0.2) < scoreToDistance("Euclid", 1.5))
 	})
 }
 
@@ -524,23 +593,32 @@ func TestUpsert(T *testing.T) {
 	T.Run("rejects empty embedding", func(t *testing.T) {
 		t.Parallel()
 		idx := buildStubIndex(t, &qdrantStub{}, nil)
-		err := idx.Upsert(t.Context(), vectorsearch.Vector[doc]{ID: "a", Embedding: nil})
+		err := idx.Upsert(t.Context(), vectorsearch.Vector[doc]{ID: "1", Embedding: nil})
 		must.ErrorIs(t, err, vectorsearch.ErrEmptyEmbedding)
 	})
 
 	T.Run("rejects wrong dimension", func(t *testing.T) {
 		t.Parallel()
 		idx := buildStubIndex(t, &qdrantStub{}, nil)
-		err := idx.Upsert(t.Context(), vectorsearch.Vector[doc]{ID: "a", Embedding: []float32{1, 0}})
+		err := idx.Upsert(t.Context(), vectorsearch.Vector[doc]{ID: "1", Embedding: []float32{1, 0}})
 		must.ErrorIs(t, err, vectorsearch.ErrDimensionMismatch)
+	})
+
+	T.Run("rejects unsupported ID format", func(t *testing.T) {
+		t.Parallel()
+		idx := buildStubIndex(t, &qdrantStub{}, nil)
+		// An xid — what identifiers.New() produces — is neither a uint nor a UUID, so
+		// qdrant would reject it. We must fail up front rather than on a late 4xx.
+		err := idx.Upsert(t.Context(), vectorsearch.Vector[doc]{ID: identifiers.New(), Embedding: []float32{1, 0, 0}})
+		must.ErrorIs(t, err, ErrUnsupportedID)
 	})
 
 	T.Run("successful upsert", func(t *testing.T) {
 		t.Parallel()
 		idx, obs := buildRecordingIndex(t, &qdrantStub{}, nil)
 		err := idx.Upsert(t.Context(),
-			vectorsearch.Vector[doc]{ID: "a", Embedding: []float32{1, 0, 0}, Metadata: &doc{Kind: "doc", Title: "alpha"}},
-			vectorsearch.Vector[doc]{ID: "b", Embedding: []float32{0, 1, 0}},
+			vectorsearch.Vector[doc]{ID: "1", Embedding: []float32{1, 0, 0}, Metadata: &doc{Kind: "doc", Title: "alpha"}},
+			vectorsearch.Vector[doc]{ID: "11111111-1111-1111-1111-111111111111", Embedding: []float32{0, 1, 0}},
 		)
 		must.NoError(t, err)
 
@@ -552,7 +630,7 @@ func TestUpsert(T *testing.T) {
 	T.Run("server returns error status", func(t *testing.T) {
 		t.Parallel()
 		idx, obs := buildRecordingIndex(t, &qdrantStub{pointsPutStatus: http.StatusInternalServerError}, nil)
-		err := idx.Upsert(t.Context(), vectorsearch.Vector[doc]{ID: "a", Embedding: []float32{1, 0, 0}})
+		err := idx.Upsert(t.Context(), vectorsearch.Vector[doc]{ID: "1", Embedding: []float32{1, 0, 0}})
 		must.Error(t, err)
 		must.ErrorIs(t, err, ErrUnexpectedStatus)
 
@@ -578,7 +656,7 @@ func TestUpsert(T *testing.T) {
 		// Close the server to simulate unreachable
 		srv.Close()
 
-		err = idx.Upsert(t.Context(), vectorsearch.Vector[doc]{ID: "a", Embedding: []float32{1, 0, 0}})
+		err = idx.Upsert(t.Context(), vectorsearch.Vector[doc]{ID: "1", Embedding: []float32{1, 0, 0}})
 		must.Error(t, err)
 	})
 }
@@ -609,13 +687,20 @@ func TestDelete(T *testing.T) {
 	T.Run("successful delete", func(t *testing.T) {
 		t.Parallel()
 		idx := buildStubIndex(t, &qdrantStub{}, nil)
-		must.NoError(t, idx.Delete(t.Context(), "id1", "id2"))
+		must.NoError(t, idx.Delete(t.Context(), "1", "11111111-1111-1111-1111-111111111111"))
+	})
+
+	T.Run("rejects unsupported ID format", func(t *testing.T) {
+		t.Parallel()
+		idx := buildStubIndex(t, &qdrantStub{}, nil)
+		err := idx.Delete(t.Context(), identifiers.New())
+		must.ErrorIs(t, err, ErrUnsupportedID)
 	})
 
 	T.Run("server returns error status", func(t *testing.T) {
 		t.Parallel()
 		idx := buildStubIndex(t, &qdrantStub{pointsDeleteStatus: http.StatusInternalServerError}, nil)
-		err := idx.Delete(t.Context(), "id1")
+		err := idx.Delete(t.Context(), "1")
 		must.Error(t, err)
 		must.ErrorIs(t, err, ErrUnexpectedStatus)
 	})
@@ -633,7 +718,7 @@ func TestDelete(T *testing.T) {
 		must.NoError(t, err)
 		srv.Close()
 
-		err = idx.Delete(t.Context(), "id1")
+		err = idx.Delete(t.Context(), "1")
 		must.Error(t, err)
 	})
 }
@@ -809,7 +894,9 @@ func TestQuery(T *testing.T) {
 		})
 
 		test.EqOp(t, "abc", results[0].ID)
-		test.InDelta(t, 0.95, float64(results[0].Distance), 0.001)
+		// Cosine similarity 0.95 is converted to a distance (1 - 0.95) so that lower
+		// means closer, matching the pgvector provider and the interface contract.
+		test.InDelta(t, 0.05, float64(results[0].Distance), 0.001)
 		must.NotNil(t, results[0].Metadata)
 		test.EqOp(t, "doc", results[0].Metadata.Kind)
 		test.EqOp(t, "hello", results[0].Metadata.Title)
@@ -1063,6 +1150,27 @@ func TestQdrantIndex_Container(T *testing.T) {
 		test.EqOp(t, "11111111-1111-1111-1111-111111111111", results[0].ID)
 		must.NotNil(t, results[0].Metadata)
 		test.EqOp(t, "alpha", results[0].Metadata.Title)
+	})
+
+	T.Run("numeric IDs round-trip without scientific notation", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+		idx := provide(t, "num_"+identifiers.New())
+
+		must.NoError(t, idx.Upsert(ctx,
+			vectorsearch.Vector[doc]{ID: "10000000", Embedding: []float32{1, 0, 0}, Metadata: &doc{Kind: "doc", Title: "big"}},
+		))
+
+		results, err := idx.Query(ctx, vectorsearch.QueryRequest{Embedding: []float32{1, 0, 0}, TopK: 1})
+		must.NoError(t, err)
+		must.SliceLen(t, 1, results)
+		test.EqOp(t, "10000000", results[0].ID)
+
+		// The same ID string must still target that point on delete.
+		must.NoError(t, idx.Delete(ctx, "10000000"))
+		after, err := idx.Query(ctx, vectorsearch.QueryRequest{Embedding: []float32{1, 0, 0}, TopK: 1})
+		must.NoError(t, err)
+		test.SliceEmpty(t, after)
 	})
 
 	T.Run("TopK is respected", func(t *testing.T) {

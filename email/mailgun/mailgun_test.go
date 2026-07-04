@@ -4,16 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/email"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/email"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
+	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
 
@@ -45,12 +47,12 @@ func testEmailMessage(t *testing.T) *email.OutboundEmailMessage {
 	t.Helper()
 
 	return &email.OutboundEmailMessage{
-		ToAddress:   t.Name(),
-		ToName:      t.Name(),
-		FromAddress: t.Name(),
-		FromName:    t.Name(),
-		Subject:     t.Name(),
-		HTMLContent: t.Name(),
+		ToAddress:   "recipient@example.com",
+		ToName:      "Recipient Name",
+		FromAddress: "sender@example.com",
+		FromName:    "Sender Name",
+		Subject:     "the subject line",
+		HTMLContent: "<p>the html body</p>",
 	}
 }
 
@@ -122,7 +124,10 @@ func TestMailgunEmailer_SendEmail(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
+		var gotForm url.Values
 		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+			must.NoError(t, req.ParseMultipartForm(1<<20))
+			gotForm = req.Form
 			must.NoError(t, json.NewEncoder(res).Encode(sendMessageResponse{
 				Message: "Queued. Thank you.",
 				Id:      t.Name(),
@@ -137,6 +142,15 @@ func TestMailgunEmailer_SendEmail(T *testing.T) {
 
 		details := testEmailMessage(t)
 		must.NoError(t, c.SendEmail(t.Context(), details))
+
+		// Assert the outbound request carried the right fields — not just that no error
+		// came back. This is the effect C-08 corrupted: sender/recipient swapped and HTML
+		// smuggled into the plain-text body.
+		test.EqOp(t, "Sender Name <sender@example.com>", gotForm.Get("from"))
+		test.EqOp(t, "Recipient Name <recipient@example.com>", gotForm.Get("to"))
+		test.EqOp(t, details.Subject, gotForm.Get("subject"))
+		test.EqOp(t, details.HTMLContent, gotForm.Get("html"))
+		test.EqOp(t, "", gotForm.Get("text"))
 
 		obs.ObservedOperationWithData(t, map[string]any{
 			keys.EmailSubjectKey:   details.Subject,

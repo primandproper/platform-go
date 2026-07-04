@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	"github.com/primandproper/platform-go/v2/secrets"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v3/secrets"
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
@@ -125,7 +125,8 @@ func (g *gcpSecretSource) GetSecret(ctx context.Context, name string) (string, e
 		return "", op.Error(err, "accessing secret %q", name)
 	}
 	if resp.Payload == nil || resp.Payload.Data == nil {
-		return "", nil
+		g.errorCounter.Add(ctx, 1)
+		return "", op.Error(secrets.ErrSecretNotFound, "secret %q has no payload", name)
 	}
 
 	g.lookupCounter.Add(ctx, 1)

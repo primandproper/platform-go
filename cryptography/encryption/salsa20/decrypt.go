@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 
-	"github.com/primandproper/platform-go/v2/cryptography/encryption"
-	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v3/cryptography/encryption"
+	"github.com/primandproper/platform-go/v3/observability/keys"
 
-	"golang.org/x/crypto/salsa20"
+	"golang.org/x/crypto/nacl/secretbox"
 )
 
 func (e *salsa20Impl) Decrypt(ctx context.Context, content string) (string, error) {
@@ -25,10 +25,13 @@ func (e *salsa20Impl) Decrypt(ctx context.Context, content string) (string, erro
 		return "", op.Error(encryption.ErrMalformedCiphertext, "ciphertext too short for nonce")
 	}
 
-	nonce, ciphered := raw[:nonceSize], raw[nonceSize:]
+	var nonce [nonceSize]byte
+	copy(nonce[:], raw[:nonceSize])
 
-	out := make([]byte, len(ciphered))
-	salsa20.XORKeyStream(out, ciphered, nonce, &e.key)
+	out, ok := secretbox.Open(nil, raw[nonceSize:], &nonce, &e.key)
+	if !ok {
+		return "", op.Error(encryption.ErrAuthenticationFailed, "decrypting ciphered content")
+	}
 
 	return string(out), nil
 }

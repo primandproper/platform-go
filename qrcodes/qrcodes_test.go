@@ -3,12 +3,14 @@ package qrcodes
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v3/observability"
 
 	"github.com/boombuler/barcode"
+	"github.com/boombuler/barcode/qr"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
@@ -48,6 +50,8 @@ func Test_builder_BuildQRCode(T *testing.T) {
 		actual, err := b.BuildQRCode(ctx, "username", "two-factor-secret")
 		must.NoError(t, err)
 		test.NotEq(t, "", actual)
+		// The image is PNG-encoded, so the data URI must advertise image/png.
+		test.StrHasPrefix(t, "data:image/png;base64,", actual)
 
 		// BuildQRCode attaches no values, but it must still open and end an operation.
 		obs.ObservedOperationWithData(t, map[string]any{})
@@ -91,5 +95,30 @@ func Test_builder_BuildQRCode(T *testing.T) {
 		actual, err := b.BuildQRCode(ctx, "username", "two-factor-secret")
 		test.EqOp(t, "", actual)
 		test.Error(t, err)
+	})
+
+	T.Run("escapes issuer, username, and secret containing reserved characters", func(t *testing.T) {
+		t.Parallel()
+		ctx := t.Context()
+
+		b := NewBuilder("My & App", nil, nil).(*builder)
+
+		var captured string
+		b.qrEncode = func(content string, _ qr.ErrorCorrectionLevel, _ qr.Encoding) (barcode.Barcode, error) {
+			captured = content
+			return nil, fmt.Errorf("stop after capturing the otpauth URI")
+		}
+
+		_, err := b.BuildQRCode(ctx, "user name", "SECRET&123")
+		test.Error(t, err)
+
+		parsed, err := url.Parse(captured)
+		must.NoError(t, err)
+		test.EqOp(t, "otpauth", parsed.Scheme)
+		test.EqOp(t, "totp", parsed.Host)
+		test.EqOp(t, "My & App", parsed.Query().Get("issuer"))
+		test.EqOp(t, "SECRET&123", parsed.Query().Get("secret"))
+		// The label decodes back to the literal "issuer:username".
+		test.StrContains(t, parsed.Path, "My & App:user name")
 	})
 }

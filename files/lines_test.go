@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/files"
+	"github.com/primandproper/platform-go/v3/files"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -62,6 +62,34 @@ func TestLines(T *testing.T) {
 		}
 
 		test.ErrorIs(t, got, sentinel)
+	})
+
+	T.Run("does not yield a truncated fragment as a good line on a read error", func(t *testing.T) {
+		t.Parallel()
+
+		sentinel := io.ErrUnexpectedEOF
+		var lines []string
+		var got error
+		for line, err := range files.Lines(&partialErrReader{data: []byte("partial-no-newline"), err: sentinel}) {
+			if err != nil {
+				got = err
+				continue
+			}
+			lines = append(lines, line)
+		}
+
+		// The partial, newline-less fragment preceding a non-EOF error must not be
+		// surfaced as a complete line; only the error is.
+		test.SliceEmpty(t, lines)
+		test.ErrorIs(t, got, sentinel)
+	})
+
+	T.Run("still yields an unterminated final line on clean EOF", func(t *testing.T) {
+		t.Parallel()
+
+		// io.EOF with trailing data IS a legitimate final line.
+		lines := collectLines(t, strings.NewReader("a\nb-no-newline"))
+		test.Eq(t, []string{"a", "b-no-newline"}, lines)
 	})
 }
 
@@ -215,4 +243,21 @@ type errReader struct {
 
 func (e *errReader) Read([]byte) (int, error) {
 	return 0, e.err
+}
+
+// partialErrReader returns some bytes (no newline) and then a non-EOF error on the
+// same Read, mimicking a truncated read mid-line.
+type partialErrReader struct {
+	err  error
+	data []byte
+	done bool
+}
+
+func (p *partialErrReader) Read(b []byte) (int, error) {
+	if p.done {
+		return 0, p.err
+	}
+	p.done = true
+	n := copy(b, p.data)
+	return n, p.err
 }

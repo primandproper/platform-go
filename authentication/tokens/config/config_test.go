@@ -4,9 +4,9 @@ import (
 	"encoding/base64"
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v2/random"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/random"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -46,6 +46,20 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		ctx := t.Context()
 		cfg := &Config{
 			Provider:                "not-a-real-provider",
+			Issuer:                  t.Name(),
+			Audience:                t.Name(),
+			Base64EncodedSigningKey: base64.URLEncoding.EncodeToString(random.MustGenerateRawBytes(ctx, 32)),
+		}
+
+		must.Error(t, cfg.ValidateWithContext(ctx))
+	})
+
+	T.Run("with empty provider", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cfg := &Config{
+			Provider:                "",
 			Issuer:                  t.Name(),
 			Audience:                t.Name(),
 			Base64EncodedSigningKey: base64.URLEncoding.EncodeToString(random.MustGenerateRawBytes(ctx, 32)),
@@ -104,7 +118,7 @@ func TestConfig_ProvideTokenIssuer(T *testing.T) {
 		test.NotNil(t, actual)
 	})
 
-	T.Run("with unknown provider falls back to noop", func(t *testing.T) {
+	T.Run("with unknown provider returns an error", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
@@ -116,8 +130,24 @@ func TestConfig_ProvideTokenIssuer(T *testing.T) {
 		}
 
 		actual, err := cfg.ProvideTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
-		must.NoError(t, err)
-		test.NotNil(t, actual)
+		test.Error(t, err)
+		test.Nil(t, actual)
+	})
+
+	T.Run("with empty provider returns an error", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cfg := &Config{
+			Provider:                "",
+			Issuer:                  t.Name(),
+			Audience:                t.Name(),
+			Base64EncodedSigningKey: base64.URLEncoding.EncodeToString(random.MustGenerateRawBytes(ctx, 32)),
+		}
+
+		actual, err := cfg.ProvideTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+		test.Error(t, err)
+		test.Nil(t, actual)
 	})
 
 	T.Run("with invalid base64 signing key", func(t *testing.T) {

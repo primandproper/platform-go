@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/eventstream"
-	"github.com/primandproper/platform-go/v2/observability"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/eventstream"
+	"github.com/primandproper/platform-go/v3/observability"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -123,6 +123,51 @@ func TestSSEStream_Send(T *testing.T) {
 		test.EqOp(t, `data: {"msg":"hello"}`, scanner.Text())
 
 		// Read empty line (event separator)
+		must.True(t, scanner.Scan())
+		test.EqOp(t, "", scanner.Text())
+	})
+
+	T.Run("neutralizes newlines in the payload to prevent SSE injection", func(t *testing.T) {
+		t.Parallel()
+
+		streamReady := make(chan eventstream.EventStream, 1)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u := NewUpgrader(tracingnoop.NewTracerProvider())
+			stream, err := u.UpgradeToEventStream(w, r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			streamReady <- stream
+			<-stream.Done()
+		}))
+		defer server.Close()
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, http.NoBody)
+		must.NoError(t, err)
+		resp, err := http.DefaultClient.Do(req)
+		must.NoError(t, err)
+		defer resp.Body.Close()
+
+		stream := <-streamReady
+		must.NotNil(t, stream)
+		defer stream.Close()
+
+		// A payload embedding a newline followed by a would-be control field must be
+		// emitted as multiple "data:" lines, not injected as a separate "event:" field.
+		sendErr := stream.Send(t.Context(), &eventstream.Event{
+			Payload: json.RawMessage("line1\nevent: injected"),
+		})
+		must.NoError(t, sendErr)
+
+		scanner := bufio.NewScanner(resp.Body)
+
+		must.True(t, scanner.Scan())
+		test.EqOp(t, "data: line1", scanner.Text())
+
+		must.True(t, scanner.Scan())
+		test.EqOp(t, "data: event: injected", scanner.Text())
+
 		must.True(t, scanner.Scan())
 		test.EqOp(t, "", scanner.Text())
 	})

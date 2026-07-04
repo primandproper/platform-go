@@ -18,7 +18,7 @@ type (
 )
 
 func (c *Config) ValidateWithContext(ctx context.Context) error {
-	return validation.ValidateStructWithContext(ctx, &c,
+	return validation.ValidateStructWithContext(ctx, c,
 		validation.Field(&c.CollectorEndpoint, validation.Required),
 	)
 }

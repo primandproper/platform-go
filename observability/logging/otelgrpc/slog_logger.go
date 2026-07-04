@@ -2,16 +2,15 @@ package otelgrpc
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	o11yutils "github.com/primandproper/platform-go/v2/observability/utils"
-	"github.com/primandproper/platform-go/v2/version"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	o11yutils "github.com/primandproper/platform-go/v3/observability/utils"
+	"github.com/primandproper/platform-go/v3/version"
 
 	slogmulti "github.com/samber/slog-multi"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
@@ -21,14 +20,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func init() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
-}
-
 // logger is our log wrapper.
 type otelSlogLogger struct {
-	requestIDFunc logging.RequestIDFunc
-	logger        *slog.Logger
+	requestIDFunc  logging.RequestIDFunc
+	logger         *slog.Logger
+	loggerProvider *log.LoggerProvider
 }
 
 // NewOtelSlogLogger builds a new otelSlogLogger.
@@ -38,30 +34,37 @@ func NewOtelSlogLogger(ctx context.Context, lvl logging.Level, serviceName strin
 	}
 
 	var level slog.Leveler
-	switch lvl {
-	case logging.DebugLevel:
+	switch {
+	case logging.LevelsEqual(lvl, logging.DebugLevel):
 		level = slog.LevelDebug
-	case logging.InfoLevel:
+	case logging.LevelsEqual(lvl, logging.InfoLevel):
 		level = slog.LevelInfo
-	case logging.WarnLevel:
+	case logging.LevelsEqual(lvl, logging.WarnLevel):
 		level = slog.LevelWarn
-	case logging.ErrorLevel:
+	case logging.LevelsEqual(lvl, logging.ErrorLevel):
 		level = slog.LevelError
 	}
 
 	logHandlers := []slog.Handler{
 		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			AddSource: lvl == logging.DebugLevel,
+			AddSource: logging.LevelsEqual(lvl, logging.DebugLevel),
 			Level:     level,
 		}),
 	}
+
+	var loggerProvider *log.LoggerProvider
 
 	if cfg.CollectorEndpoint != "" {
 		slog.Info("configuring otelgprc collector handler", slog.String("endpoint", cfg.CollectorEndpoint))
 
 		options := []otlploggrpc.Option{
 			otlploggrpc.WithEndpoint(cfg.CollectorEndpoint),
-			otlploggrpc.WithTimeout(cfg.Timeout),
+		}
+
+		// Only override the library's default timeout when one is actually configured;
+		// passing a zero Timeout disables the timeout entirely.
+		if cfg.Timeout > 0 {
+			options = append(options, otlploggrpc.WithTimeout(cfg.Timeout))
 		}
 
 		if cfg.Insecure {
@@ -75,7 +78,7 @@ func NewOtelSlogLogger(ctx context.Context, lvl logging.Level, serviceName strin
 		}
 
 		// Create the logger provider
-		lp := log.NewLoggerProvider(
+		loggerProvider = log.NewLoggerProvider(
 			log.WithProcessor(log.NewBatchProcessor(logExporter)),
 			log.WithResource(o11yutils.MustOtelResource(ctx, serviceName)),
 			log.WithAttributeCountLimit(128),
@@ -83,28 +86,41 @@ func NewOtelSlogLogger(ctx context.Context, lvl logging.Level, serviceName strin
 		)
 
 		// Set the logger provider globally
-		global.SetLoggerProvider(lp)
+		global.SetLoggerProvider(loggerProvider)
 
 		logHandlers = append(logHandlers, otelslog.NewHandler(
 			serviceName,
-			otelslog.WithLoggerProvider(lp),
+			otelslog.WithLoggerProvider(loggerProvider),
 			otelslog.WithVersion(version.Get().Version),
 			otelslog.WithSource(true),
 		))
 	}
 
 	logger := &otelSlogLogger{
-		logger: slog.New(slogmulti.Fanout(logHandlers...)),
+		logger:         slog.New(slogmulti.Fanout(logHandlers...)),
+		loggerProvider: loggerProvider,
 	}
 
 	return logger, nil
+}
+
+// Shutdown flushes buffered log records and stops the batch processor's exporter
+// goroutine. It is a no-op for loggers configured without a collector endpoint, and
+// for loggers derived via With* (which do not own the provider). The DI container
+// (samber/do) invokes this automatically on shutdown; Pillars.Shutdown calls it too.
+func (l *otelSlogLogger) Shutdown(ctx context.Context) error {
+	if l.loggerProvider == nil {
+		return nil
+	}
+
+	return errors.Wrap(l.loggerProvider.Shutdown(ctx), "shutting down otelslog logger provider")
 }
 
 // WithName is our obligatory contract fulfillment function.
 // Slog doesn't support named loggers :( so we have this workaround.
 func (l *otelSlogLogger) WithName(name string) logging.Logger {
 	l2 := l.logger.With(slog.String(logging.LoggerNameKey, name))
-	return &otelSlogLogger{logger: l2}
+	return &otelSlogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 // SetRequestIDFunc sets the request ID retrieval function.
@@ -127,20 +143,22 @@ func (l *otelSlogLogger) Debug(input string) {
 // Error satisfies our contract for the logging.Logger Error method.
 func (l *otelSlogLogger) Error(whatWasHappeningWhenErrorOccurred string, err error) {
 	if err != nil {
-		l.logger.Error(fmt.Sprintf("error %s: %s", whatWasHappeningWhenErrorOccurred, err.Error()))
+		l.logger.Error(whatWasHappeningWhenErrorOccurred, slog.Any("error", err))
+		return
 	}
+	l.logger.Error(whatWasHappeningWhenErrorOccurred)
 }
 
 // Clone satisfies our contract for the logging.Logger WithValue method.
 func (l *otelSlogLogger) Clone() logging.Logger {
 	l2 := l.logger.With()
-	return &otelSlogLogger{logger: l2}
+	return &otelSlogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 // WithValue satisfies our contract for the logging.Logger WithValue method.
 func (l *otelSlogLogger) WithValue(key string, value any) logging.Logger {
 	l2 := l.logger.With(slog.Any(key, value))
-	return &otelSlogLogger{logger: l2}
+	return &otelSlogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 // WithValues satisfies our contract for the logging.Logger WithValues method.
@@ -151,13 +169,13 @@ func (l *otelSlogLogger) WithValues(values map[string]any) logging.Logger {
 		l2 = l2.With(slog.Any(key, val))
 	}
 
-	return &otelSlogLogger{logger: l2}
+	return &otelSlogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 // WithError satisfies our contract for the logging.Logger WithError method.
 func (l *otelSlogLogger) WithError(err error) logging.Logger {
 	l2 := l.logger.With(slog.Any("error", err))
-	return &otelSlogLogger{logger: l2}
+	return &otelSlogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 // WithSpan satisfies our contract for the logging.Logger WithSpan method.
@@ -166,7 +184,7 @@ func (l *otelSlogLogger) WithSpan(span trace.Span) logging.Logger {
 
 	l2 := l.logger.With(slog.String(keys.SpanIDKey, si.SpanID), slog.String(keys.TraceIDKey, si.TraceID))
 
-	return &otelSlogLogger{logger: l2}
+	return &otelSlogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }
 
 func (l *otelSlogLogger) attachRequestToLog(req *http.Request) *slog.Logger {
@@ -192,7 +210,7 @@ func (l *otelSlogLogger) attachRequestToLog(req *http.Request) *slog.Logger {
 
 // WithRequest satisfies our contract for the logging.Logger WithRequest method.
 func (l *otelSlogLogger) WithRequest(req *http.Request) logging.Logger {
-	return &otelSlogLogger{logger: l.attachRequestToLog(req)}
+	return &otelSlogLogger{requestIDFunc: l.requestIDFunc, logger: l.attachRequestToLog(req)}
 }
 
 // WithResponse satisfies our contract for the logging.Logger WithResponse method.
@@ -202,5 +220,5 @@ func (l *otelSlogLogger) WithResponse(res *http.Response) logging.Logger {
 		l2 = l.attachRequestToLog(res.Request).With(slog.Int(keys.ResponseStatusKey, res.StatusCode))
 	}
 
-	return &otelSlogLogger{logger: l2}
+	return &otelSlogLogger{requestIDFunc: l.requestIDFunc, logger: l2}
 }

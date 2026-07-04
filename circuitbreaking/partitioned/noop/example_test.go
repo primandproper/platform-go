@@ -3,7 +3,7 @@ package noop_test
 import (
 	"fmt"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking/partitioned/noop"
+	"github.com/primandproper/platform-go/v3/circuitbreaking/partitioned/noop"
 )
 
 func ExampleNewKeyedCircuitBreaker() {

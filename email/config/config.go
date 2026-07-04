@@ -8,19 +8,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	"github.com/primandproper/platform-go/v2/email"
-	"github.com/primandproper/platform-go/v2/email/mailgun"
-	"github.com/primandproper/platform-go/v2/email/mailjet"
-	"github.com/primandproper/platform-go/v2/email/noop"
-	"github.com/primandproper/platform-go/v2/email/postmark"
-	"github.com/primandproper/platform-go/v2/email/resend"
-	"github.com/primandproper/platform-go/v2/email/sendgrid"
-	"github.com/primandproper/platform-go/v2/email/ses"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	"github.com/primandproper/platform-go/v3/email"
+	"github.com/primandproper/platform-go/v3/email/mailgun"
+	"github.com/primandproper/platform-go/v3/email/mailjet"
+	"github.com/primandproper/platform-go/v3/email/noop"
+	"github.com/primandproper/platform-go/v3/email/postmark"
+	"github.com/primandproper/platform-go/v3/email/resend"
+	"github.com/primandproper/platform-go/v3/email/sendgrid"
+	"github.com/primandproper/platform-go/v3/email/ses"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/matcornic/hermes/v2"
@@ -89,6 +89,14 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	return validation.ValidateStructWithContext(
 		ctx,
 		cfg,
+		validation.Field(&cfg.Provider, validation.In(
+			ProviderSendgrid,
+			ProviderMailgun,
+			ProviderMailjet,
+			ProviderResend,
+			ProviderPostmark,
+			ProviderSES,
+		)),
 		validation.Field(&cfg.Sendgrid, validation.When(cfg.Provider == ProviderSendgrid, validation.Required)),
 		validation.Field(&cfg.Mailgun, validation.When(cfg.Provider == ProviderMailgun, validation.Required)),
 		validation.Field(&cfg.Mailjet, validation.When(cfg.Provider == ProviderMailjet, validation.Required)),

@@ -3,10 +3,10 @@ package analyticscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v2/analytics"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/analytics"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 )
 
 // ProvideEventReporter provides an analytics.EventReporter from a config.

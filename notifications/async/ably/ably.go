@@ -2,13 +2,14 @@ package ably
 
 import (
 	"context"
+	"encoding/json"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/notifications/async"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/notifications/async"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	ablyrest "github.com/ably/ably-go/ably"
 )
@@ -81,7 +82,19 @@ func (n *Notifier) Publish(ctx context.Context, channel string, event *async.Eve
 
 	op.Set("channel", channel).Set("event.type", event.Type)
 
-	if err := n.publisher.Publish(ctx, channel, event.Type, event.Data); err != nil {
+	// event.Data is a json.RawMessage ([]byte). Passing it to ably-go directly
+	// makes it base64-encode the payload (encoding "base64"), so subscribers
+	// receive an opaque blob instead of the raw JSON the other backends deliver.
+	// Decode it into a Go value so ably-go transmits it as a JSON object/array.
+	var data any
+	if len(event.Data) > 0 {
+		if err := json.Unmarshal(event.Data, &data); err != nil {
+			n.errorCounter.Add(ctx, 1)
+			return op.Error(err, "decoding event data")
+		}
+	}
+
+	if err := n.publisher.Publish(ctx, channel, event.Type, data); err != nil {
 		n.errorCounter.Add(ctx, 1)
 		return op.Error(err, "publishing to ably channel")
 	}

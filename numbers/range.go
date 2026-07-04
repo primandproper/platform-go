@@ -2,6 +2,7 @@ package numbers
 
 import (
 	"context"
+	"errors"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -36,9 +37,19 @@ type (
 var _ validation.ValidatableWithContext = (*MinRange[int])(nil)
 
 func (x *MinRange[T]) ValidateWithContext(ctx context.Context) error {
+	// Min is a value type that is always present, so `Required` (which rejects the
+	// zero value) would wrongly reject a legitimate range starting at 0. Instead only
+	// enforce that Max, when set, is not below Min.
 	return validation.ValidateStructWithContext(
 		ctx,
 		x,
-		validation.Field(&x.Min, validation.Required),
+		validation.Field(&x.Max, validation.By(x.validateMaxNotBelowMin)),
 	)
+}
+
+func (x *MinRange[T]) validateMaxNotBelowMin(any) error {
+	if x.Max != nil && *x.Max < x.Min {
+		return errors.New("max must be greater than or equal to min")
+	}
+	return nil
 }

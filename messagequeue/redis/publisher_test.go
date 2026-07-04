@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shoenig/test"
@@ -148,6 +148,45 @@ func Test_redisPublisher_Publish(T *testing.T) {
 		// failure must have been recorded on it.
 		op := obs.ObservedOperationWithKeys(t)
 		must.SliceLen(t, 1, op.Errors)
+	})
+}
+
+func Test_redisPublisher_Stop(T *testing.T) {
+	T.Parallel()
+
+	T.Run("does not close the shared client used by other topics", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		provider := ProvideRedisPublisherProvider(
+			loggingnoop.NewLogger(),
+			tracingnoop.NewTracerProvider(),
+			nil,
+			Config{QueueAddresses: []string{t.Name()}},
+		)
+		pp, ok := provider.(*publisherProvider)
+		must.True(t, ok)
+
+		mmp := &mockMessagePublisher{
+			publishFunc: func(context.Context, string, any) *redis.IntCmd { return &redis.IntCmd{} },
+			closeFunc: func() error {
+				t.Error("Stop must not close the shared redis client")
+				return nil
+			},
+		}
+		pp.redisClient = mmp
+
+		pub1, err := provider.ProvidePublisher(ctx, "topic-1")
+		must.NoError(t, err)
+		pub2, err := provider.ProvidePublisher(ctx, "topic-2")
+		must.NoError(t, err)
+
+		pub1.Stop()
+
+		// The second topic's publisher must still function after the first is stopped.
+		test.NoError(t, pub2.Publish(ctx, map[string]string{"key": "value"}))
+		must.SliceLen(t, 1, mmp.publishArgs)
 	})
 }
 
@@ -302,11 +341,12 @@ func Test_provideRedisPublisher(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		publisher := provideRedisPublisher(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, nil, "test-topic")
+		publisher, err := provideRedisPublisher(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, nil, "test-topic")
+		must.NoError(t, err)
 		must.NotNil(t, publisher)
 	})
 
-	T.Run("panics when first NewInt64Counter fails", func(t *testing.T) {
+	T.Run("returns error when first NewInt64Counter fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -319,13 +359,13 @@ func Test_provideRedisPublisher(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			provideRedisPublisher(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t")
-		})
+		actual, err := provideRedisPublisher(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t")
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 1, mp.NewInt64CounterCalls())
 	})
 
-	T.Run("panics when second NewInt64Counter fails", func(t *testing.T) {
+	T.Run("returns error when second NewInt64Counter fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -341,13 +381,13 @@ func Test_provideRedisPublisher(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			provideRedisPublisher(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t")
-		})
+		actual, err := provideRedisPublisher(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t")
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 2, mp.NewInt64CounterCalls())
 	})
 
-	T.Run("panics when NewFloat64Histogram fails", func(t *testing.T) {
+	T.Run("returns error when NewFloat64Histogram fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -359,9 +399,9 @@ func Test_provideRedisPublisher(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			provideRedisPublisher(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t")
-		})
+		actual, err := provideRedisPublisher(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t")
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 2, mp.NewInt64CounterCalls())
 		test.SliceLen(t, 1, mp.NewFloat64HistogramCalls())
 	})

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	"github.com/primandproper/platform-go/v2/database"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	"github.com/primandproper/platform-go/v3/database"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
 
 	"github.com/shoenig/test"
 )
@@ -107,7 +107,7 @@ func TestToAPIError(T *testing.T) {
 	T.Run("unknown error returns fallback", func(t *testing.T) {
 		t.Parallel()
 		code, msg := ToAPIError(errors.New("totally unknown error that no mapper handles"))
-		test.EqOp(t, ErrTalkingToDatabase, code)
+		test.EqOp(t, ErrNothingSpecific, code)
 		test.EqOp(t, "an error occurred", msg)
 	})
 

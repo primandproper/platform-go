@@ -1,30 +1,72 @@
 package loggingcfg
 
 import (
+	"encoding/json"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/logging/otelgrpc"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/logging/otelgrpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
 
-// NOTE: ValidateWithContext calls validation.ValidateStructWithContext(ctx, &cfg, ...),
-// where cfg is already *Config, producing **Config. The validator rejects double
-// pointers, so every call currently returns "only a pointer to a struct can be validated".
-// We assert the current behavior rather than refactor production code; 100% line coverage
-// is still achieved because the single statement is executed.
 func TestConfig_ValidateWithContext(T *testing.T) {
 	T.Parallel()
 
-	T.Run("returns error because of double-pointer", func(t *testing.T) {
+	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
 		cfg := &Config{
 			ServiceName: t.Name(),
 			Level:       logging.InfoLevel,
+			Provider:    ProviderZerolog,
+		}
+
+		test.NoError(t, cfg.ValidateWithContext(ctx))
+	})
+
+	T.Run("rejects missing service name", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cfg := &Config{
+			Level:    logging.InfoLevel,
+			Provider: ProviderZerolog,
+		}
+
+		test.Error(t, cfg.ValidateWithContext(ctx))
+	})
+
+	T.Run("accepts a level decoded from JSON", func(t *testing.T) {
+		t.Parallel()
+
+		// A decoded Level is a fresh pointer, not one of the package singletons; the
+		// old validation.In (reflect.DeepEqual on a pointer type) rejected it.
+		ctx := t.Context()
+		var lvl logging.Level
+		must.NoError(t, json.Unmarshal([]byte(`"debug"`), &lvl))
+
+		cfg := &Config{
+			ServiceName: t.Name(),
+			Level:       lvl,
+			Provider:    ProviderZerolog,
+		}
+
+		test.NoError(t, cfg.ValidateWithContext(ctx))
+	})
+
+	T.Run("rejects an unknown level", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		var lvl logging.Level
+		must.NoError(t, json.Unmarshal([]byte(`"bogus"`), &lvl))
+
+		cfg := &Config{
+			ServiceName: t.Name(),
+			Level:       lvl,
 			Provider:    ProviderZerolog,
 		}
 

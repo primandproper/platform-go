@@ -14,18 +14,18 @@ func TestStripeConfig_ValidateWithContext(T *testing.T) {
 
 		ctx := t.Context()
 		cfg := &Config{
-			APIKey: "blah",
+			WebhookSecret: "blah",
 		}
 
 		test.NoError(t, cfg.ValidateWithContext(ctx))
 	})
 
-	T.Run("with missing API key", func(t *testing.T) {
+	T.Run("with missing webhook secret", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
 		cfg := &Config{
-			APIKey: "",
+			WebhookSecret: "",
 		}
 
 		test.Error(t, cfg.ValidateWithContext(ctx))

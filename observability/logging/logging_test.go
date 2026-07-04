@@ -162,6 +162,14 @@ func TestExtractSpanInfo(T *testing.T) {
 		test.NotEq(t, "", info.SpanID)
 		test.NotEq(t, "", info.TraceID)
 	})
+
+	T.Run("nil span yields a zero-value SpanInfo instead of panicking", func(t *testing.T) {
+		t.Parallel()
+
+		info := ExtractSpanInfo(nil)
+		test.EqOp(t, "", info.SpanID)
+		test.EqOp(t, "", info.TraceID)
+	})
 }
 
 func TestExtractRequestInfo(T *testing.T) {

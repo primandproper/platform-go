@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/database/filtering"
-	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v3/database/filtering"
+	"github.com/primandproper/platform-go/v3/observability/keys"
 
 	"github.com/mssola/useragent"
 	"go.opentelemetry.io/otel/attribute"
@@ -91,6 +91,37 @@ func AttachSessionContextDataToSpan(span trace.Span, sessionCtxData SessionConte
 	}
 }
 
+// redactedHeaderValue replaces the value of a sensitive header attached to a span.
+const redactedHeaderValue = "[REDACTED]"
+
+// sensitiveHeaders holds the canonicalized names of headers whose values must never
+// be attached to a span, to avoid leaking credentials into the trace backend.
+var sensitiveHeaders = map[string]struct{}{
+	"Authorization":       {},
+	"Proxy-Authorization": {},
+	"Cookie":              {},
+	"Set-Cookie":          {},
+	"Api-Key":             {},
+	"X-Api-Key":           {},
+	"X-Auth-Token":        {},
+	"X-Authentication":    {},
+	"X-Csrf-Token":        {},
+}
+
+// attachHeadersToSpan attaches HTTP headers to a span, redacting the values of any
+// sensitive headers (credentials, cookies, API keys) while still recording their presence.
+func attachHeadersToSpan(span trace.Span, prefix string, header http.Header) {
+	for k, v := range header {
+		key := fmt.Sprintf("%s.%s", prefix, k)
+		if _, sensitive := sensitiveHeaders[http.CanonicalHeaderKey(k)]; sensitive {
+			AttachToSpan(span, key, redactedHeaderValue)
+			continue
+		}
+
+		AttachToSpan(span, key, v)
+	}
+}
+
 // AttachRequestToSpan attaches a given HTTP request to a span.
 func AttachRequestToSpan(span trace.Span, req *http.Request) {
 	if req != nil {
@@ -98,9 +129,7 @@ func AttachRequestToSpan(span trace.Span, req *http.Request) {
 		AttachToSpan(span, keys.RequestMethodKey, req.Method)
 		AttachUserAgentDataToSpan(span, req)
 
-		for k, v := range req.Header {
-			AttachToSpan(span, fmt.Sprintf("%s.%s", keys.RequestHeadersKey, k), v)
-		}
+		attachHeadersToSpan(span, keys.RequestHeadersKey, req.Header)
 	}
 }
 
@@ -108,11 +137,13 @@ func AttachRequestToSpan(span trace.Span, req *http.Request) {
 func AttachResponseToSpan(span trace.Span, res *http.Response) {
 	if res != nil {
 		AttachRequestToSpan(span, res.Request)
-		span.SetAttributes(attribute.Int(keys.ResponseStatusKey, res.StatusCode))
-
-		for k, v := range res.Header {
-			AttachToSpan(span, fmt.Sprintf("%s.%s", keys.ResponseHeadersKey, k), v)
+		// Guard the direct SetAttributes call the same way AttachToSpan does, so a nil
+		// (or non-recording) span doesn't panic.
+		if span != nil && span.IsRecording() {
+			span.SetAttributes(attribute.Int(keys.ResponseStatusKey, res.StatusCode))
 		}
+
+		attachHeadersToSpan(span, keys.ResponseHeadersKey, res.Header)
 	}
 }
 

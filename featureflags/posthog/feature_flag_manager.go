@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/featureflags"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/featureflags"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	openfeatureposthog "github.com/dhaus67/openfeature-posthog-go"
 	"github.com/open-feature/go-sdk/openfeature"
@@ -56,32 +57,8 @@ func NewFeatureFlagManager(cfg *Config, logger logging.Logger, tracerProvider tr
 		return nil, platformerrors.Wrap(ErrMissingCredentials, "missing credential 'PersonalAPIKey'")
 	}
 
-	phc := posthog.Config{
-		PersonalApiKey: cfg.PersonalAPIKey,
-	}
-
-	for _, modifier := range configModifiers {
-		modifier(&phc)
-	}
-
-	client, err := posthog.NewWithConfig(
-		cfg.ProjectAPIKey,
-		phc,
-	)
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "failed to create posthog client")
-	}
-
-	provider := openfeatureposthog.NewProvider(client)
-	if err = openfeature.SetNamedProviderAndWait(clientDomain, provider); err != nil {
-		if closeErr := client.Close(); closeErr != nil {
-			logger.Error("error closing OpenFeatureFlag client", closeErr)
-		}
-		return nil, platformerrors.Wrap(err, "failed to set OpenFeature provider")
-	}
-
-	ofClient := openfeature.NewClient(clientDomain)
-
+	// Create the metric instruments before the client/provider so a counter failure
+	// returns without having registered a global provider or opened a client to leak.
 	mp := metrics.EnsureMetricsProvider(metricsProvider)
 
 	evalCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_evaluations", serviceName))
@@ -98,6 +75,37 @@ func NewFeatureFlagManager(cfg *Config, logger logging.Logger, tracerProvider tr
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "creating latency histogram")
 	}
+
+	// Each manager binds its own OpenFeature domain so a second manager can't rebind
+	// the domain (and thus the provider/client) out from under an existing one.
+	domain := fmt.Sprintf("%s_%s", clientDomain, identifiers.New())
+
+	phc := posthog.Config{
+		PersonalApiKey: cfg.PersonalAPIKey,
+		Endpoint:       cfg.Endpoint,
+	}
+
+	for _, modifier := range configModifiers {
+		modifier(&phc)
+	}
+
+	client, err := posthog.NewWithConfig(
+		cfg.ProjectAPIKey,
+		phc,
+	)
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "failed to create posthog client")
+	}
+
+	provider := openfeatureposthog.NewProvider(client)
+	if err = openfeature.SetNamedProviderAndWait(domain, provider); err != nil {
+		if closeErr := client.Close(); closeErr != nil {
+			logger.Error("error closing OpenFeatureFlag client", closeErr)
+		}
+		return nil, platformerrors.Wrap(err, "failed to set OpenFeature provider")
+	}
+
+	ofClient := openfeature.NewClient(domain)
 
 	ffm := &featureFlagManager{
 		posthogClient:  client,

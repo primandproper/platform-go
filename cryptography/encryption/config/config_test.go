@@ -3,8 +3,8 @@ package config
 import (
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 )
@@ -30,12 +30,12 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		test.NoError(t, cfg.ValidateWithContext(ctx))
 	})
 
-	T.Run("empty provider", func(t *testing.T) {
+	T.Run("empty provider errors", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
 		cfg := &Config{}
-		test.NoError(t, cfg.ValidateWithContext(ctx))
+		test.Error(t, cfg.ValidateWithContext(ctx))
 	})
 
 	T.Run("invalid provider", func(t *testing.T) {
@@ -70,19 +70,27 @@ func TestProvideEncryptorDecryptor(T *testing.T) {
 		test.NotNil(t, encDec)
 	})
 
-	T.Run("empty provider defaults to salsa20", func(t *testing.T) {
+	T.Run("empty provider errors", func(t *testing.T) {
 		t.Parallel()
 
 		encDec, err := ProvideEncryptorDecryptor(&Config{}, tracerProvider, logger, key)
-		test.NoError(t, err)
-		test.NotNil(t, encDec)
+		test.Error(t, err)
+		test.Nil(t, encDec)
 	})
 
-	T.Run("invalid provider defaults to salsa20", func(t *testing.T) {
+	T.Run("unknown provider errors", func(t *testing.T) {
 		t.Parallel()
 
 		encDec, err := ProvideEncryptorDecryptor(&Config{Provider: "invalid"}, tracerProvider, logger, key)
-		test.NoError(t, err)
-		test.NotNil(t, encDec)
+		test.Error(t, err)
+		test.Nil(t, encDec)
+	})
+
+	T.Run("nil config errors", func(t *testing.T) {
+		t.Parallel()
+
+		encDec, err := ProvideEncryptorDecryptor(nil, tracerProvider, logger, key)
+		test.Error(t, err)
+		test.Nil(t, encDec)
 	})
 }

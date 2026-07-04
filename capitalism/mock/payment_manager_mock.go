@@ -4,10 +4,11 @@
 package capitalismmock
 
 import (
+	"context"
 	"net/http"
 	"sync"
 
-	"github.com/primandproper/platform-go/v2/capitalism"
+	"github.com/primandproper/platform-go/v3/capitalism"
 )
 
 // Ensure, that PaymentManagerMock does implement capitalism.PaymentManager.
@@ -20,6 +21,15 @@ var _ capitalism.PaymentManager = &PaymentManagerMock{}
 //
 //		// make and configure a mocked capitalism.PaymentManager
 //		mockedPaymentManager := &PaymentManagerMock{
+//			CreateCustomerFunc: func(ctx context.Context, input *capitalism.CustomerCreationInput) (string, error) {
+//				panic("mock out the CreateCustomer method")
+//			},
+//			CreatePaymentIntentFunc: func(ctx context.Context, input *capitalism.PaymentIntentCreationInput) (*capitalism.PaymentIntent, error) {
+//				panic("mock out the CreatePaymentIntent method")
+//			},
+//			CreateSubscriptionFunc: func(ctx context.Context, input *capitalism.SubscriptionCreationInput) (string, error) {
+//				panic("mock out the CreateSubscription method")
+//			},
 //			HandleEventWebhookFunc: func(req *http.Request) error {
 //				panic("mock out the HandleEventWebhook method")
 //			},
@@ -30,18 +40,159 @@ var _ capitalism.PaymentManager = &PaymentManagerMock{}
 //
 //	}
 type PaymentManagerMock struct {
+	// CreateCustomerFunc mocks the CreateCustomer method.
+	CreateCustomerFunc func(ctx context.Context, input *capitalism.CustomerCreationInput) (string, error)
+
+	// CreatePaymentIntentFunc mocks the CreatePaymentIntent method.
+	CreatePaymentIntentFunc func(ctx context.Context, input *capitalism.PaymentIntentCreationInput) (*capitalism.PaymentIntent, error)
+
+	// CreateSubscriptionFunc mocks the CreateSubscription method.
+	CreateSubscriptionFunc func(ctx context.Context, input *capitalism.SubscriptionCreationInput) (string, error)
+
 	// HandleEventWebhookFunc mocks the HandleEventWebhook method.
 	HandleEventWebhookFunc func(req *http.Request) error
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// CreateCustomer holds details about calls to the CreateCustomer method.
+		CreateCustomer []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Input is the input argument value.
+			Input *capitalism.CustomerCreationInput
+		}
+		// CreatePaymentIntent holds details about calls to the CreatePaymentIntent method.
+		CreatePaymentIntent []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Input is the input argument value.
+			Input *capitalism.PaymentIntentCreationInput
+		}
+		// CreateSubscription holds details about calls to the CreateSubscription method.
+		CreateSubscription []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Input is the input argument value.
+			Input *capitalism.SubscriptionCreationInput
+		}
 		// HandleEventWebhook holds details about calls to the HandleEventWebhook method.
 		HandleEventWebhook []struct {
 			// Req is the req argument value.
 			Req *http.Request
 		}
 	}
-	lockHandleEventWebhook sync.RWMutex
+	lockCreateCustomer      sync.RWMutex
+	lockCreatePaymentIntent sync.RWMutex
+	lockCreateSubscription  sync.RWMutex
+	lockHandleEventWebhook  sync.RWMutex
+}
+
+// CreateCustomer calls CreateCustomerFunc.
+func (mock *PaymentManagerMock) CreateCustomer(ctx context.Context, input *capitalism.CustomerCreationInput) (string, error) {
+	if mock.CreateCustomerFunc == nil {
+		panic("PaymentManagerMock.CreateCustomerFunc: method is nil but PaymentManager.CreateCustomer was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Input *capitalism.CustomerCreationInput
+	}{
+		Ctx:   ctx,
+		Input: input,
+	}
+	mock.lockCreateCustomer.Lock()
+	mock.calls.CreateCustomer = append(mock.calls.CreateCustomer, callInfo)
+	mock.lockCreateCustomer.Unlock()
+	return mock.CreateCustomerFunc(ctx, input)
+}
+
+// CreateCustomerCalls gets all the calls that were made to CreateCustomer.
+// Check the length with:
+//
+//	len(mockedPaymentManager.CreateCustomerCalls())
+func (mock *PaymentManagerMock) CreateCustomerCalls() []struct {
+	Ctx   context.Context
+	Input *capitalism.CustomerCreationInput
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Input *capitalism.CustomerCreationInput
+	}
+	mock.lockCreateCustomer.RLock()
+	calls = mock.calls.CreateCustomer
+	mock.lockCreateCustomer.RUnlock()
+	return calls
+}
+
+// CreatePaymentIntent calls CreatePaymentIntentFunc.
+func (mock *PaymentManagerMock) CreatePaymentIntent(ctx context.Context, input *capitalism.PaymentIntentCreationInput) (*capitalism.PaymentIntent, error) {
+	if mock.CreatePaymentIntentFunc == nil {
+		panic("PaymentManagerMock.CreatePaymentIntentFunc: method is nil but PaymentManager.CreatePaymentIntent was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Input *capitalism.PaymentIntentCreationInput
+	}{
+		Ctx:   ctx,
+		Input: input,
+	}
+	mock.lockCreatePaymentIntent.Lock()
+	mock.calls.CreatePaymentIntent = append(mock.calls.CreatePaymentIntent, callInfo)
+	mock.lockCreatePaymentIntent.Unlock()
+	return mock.CreatePaymentIntentFunc(ctx, input)
+}
+
+// CreatePaymentIntentCalls gets all the calls that were made to CreatePaymentIntent.
+// Check the length with:
+//
+//	len(mockedPaymentManager.CreatePaymentIntentCalls())
+func (mock *PaymentManagerMock) CreatePaymentIntentCalls() []struct {
+	Ctx   context.Context
+	Input *capitalism.PaymentIntentCreationInput
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Input *capitalism.PaymentIntentCreationInput
+	}
+	mock.lockCreatePaymentIntent.RLock()
+	calls = mock.calls.CreatePaymentIntent
+	mock.lockCreatePaymentIntent.RUnlock()
+	return calls
+}
+
+// CreateSubscription calls CreateSubscriptionFunc.
+func (mock *PaymentManagerMock) CreateSubscription(ctx context.Context, input *capitalism.SubscriptionCreationInput) (string, error) {
+	if mock.CreateSubscriptionFunc == nil {
+		panic("PaymentManagerMock.CreateSubscriptionFunc: method is nil but PaymentManager.CreateSubscription was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Input *capitalism.SubscriptionCreationInput
+	}{
+		Ctx:   ctx,
+		Input: input,
+	}
+	mock.lockCreateSubscription.Lock()
+	mock.calls.CreateSubscription = append(mock.calls.CreateSubscription, callInfo)
+	mock.lockCreateSubscription.Unlock()
+	return mock.CreateSubscriptionFunc(ctx, input)
+}
+
+// CreateSubscriptionCalls gets all the calls that were made to CreateSubscription.
+// Check the length with:
+//
+//	len(mockedPaymentManager.CreateSubscriptionCalls())
+func (mock *PaymentManagerMock) CreateSubscriptionCalls() []struct {
+	Ctx   context.Context
+	Input *capitalism.SubscriptionCreationInput
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Input *capitalism.SubscriptionCreationInput
+	}
+	mock.lockCreateSubscription.RLock()
+	calls = mock.calls.CreateSubscription
+	mock.lockCreateSubscription.RUnlock()
+	return calls
 }
 
 // HandleEventWebhook calls HandleEventWebhookFunc.

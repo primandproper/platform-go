@@ -4,14 +4,15 @@ import (
 	"errors"
 	"testing"
 
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/identifiers"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	mockCircuitBreaker "github.com/primandproper/platform-go/v3/circuitbreaking/mock"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -99,6 +100,62 @@ func TestNewPostHogEventReporter(T *testing.T) {
 		must.Nil(t, collector)
 
 		test.SliceLen(t, 2, mp.NewInt64CounterCalls())
+	})
+}
+
+func TestBreakerCallback(T *testing.T) {
+	T.Parallel()
+
+	T.Run("Success drives the circuit breaker", func(t *testing.T) {
+		t.Parallel()
+
+		cb := &mockCircuitBreaker.CircuitBreakerMock{SucceededFunc: func() {}}
+		cbk := &breakerCallback{
+			circuitBreaker: cb,
+			errorCounter:   metrics.Int64CounterForTest(t, name+"_errors"),
+			logger:         loggingnoop.NewLogger(),
+		}
+
+		cbk.Success(nil)
+
+		test.SliceLen(t, 1, cb.SucceededCalls())
+	})
+
+	T.Run("Success tolerates a nil circuit breaker", func(t *testing.T) {
+		t.Parallel()
+
+		cbk := &breakerCallback{
+			errorCounter: metrics.Int64CounterForTest(t, name+"_errors"),
+			logger:       loggingnoop.NewLogger(),
+		}
+
+		test.NotPanic(t, func() { cbk.Success(nil) })
+	})
+
+	T.Run("Failure records the error and trips the circuit breaker", func(t *testing.T) {
+		t.Parallel()
+
+		cb := &mockCircuitBreaker.CircuitBreakerMock{FailedFunc: func() {}}
+		cbk := &breakerCallback{
+			circuitBreaker: cb,
+			errorCounter:   metrics.Int64CounterForTest(t, name+"_errors"),
+			logger:         loggingnoop.NewLogger(),
+		}
+
+		cbk.Failure(nil, errors.New("delivery failed"))
+
+		test.SliceLen(t, 1, cb.FailedCalls())
+	})
+
+	T.Run("Failure tolerates a nil circuit breaker", func(t *testing.T) {
+		t.Parallel()
+
+		cbk := &breakerCallback{
+			errorCounter: metrics.Int64CounterForTest(t, name+"_errors"),
+			logger:       loggingnoop.NewLogger(),
+		}
+
+		test.NotPanic(t, func() { cbk.Failure(nil, errors.New("delivery failed")) })
 	})
 }
 

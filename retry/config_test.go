@@ -40,6 +40,25 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		test.EqOp(t, 10*time.Second, cfg.MaxDelay)
 		test.EqOp(t, 3.0, cfg.Multiplier)
 	})
+
+	T.Run("clamps invalid values", func(t *testing.T) {
+		t.Parallel()
+
+		// A Multiplier below 1 shrinks the backoff and negative delays are nonsensical;
+		// EnsureDefaults must replace them since the constructor can't reject them.
+		cfg := &Config{
+			MaxAttempts:  2,
+			InitialDelay: -1 * time.Second,
+			MaxDelay:     -1 * time.Second,
+			Multiplier:   0.5,
+		}
+		cfg.EnsureDefaults()
+
+		test.EqOp(t, uint(2), cfg.MaxAttempts)
+		test.EqOp(t, 100*time.Millisecond, cfg.InitialDelay)
+		test.EqOp(t, 5*time.Second, cfg.MaxDelay)
+		test.EqOp(t, 2.0, cfg.Multiplier)
+	})
 }
 
 func TestConfig_ValidateWithContext(T *testing.T) {

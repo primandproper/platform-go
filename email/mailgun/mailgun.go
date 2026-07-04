@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	"github.com/primandproper/platform-go/v2/email"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	"github.com/primandproper/platform-go/v3/email"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/mailgun/mailgun-go/v4"
 )
@@ -113,7 +113,19 @@ func (e *Emailer) SendEmail(ctx context.Context, details *email.OutboundEmailMes
 		return circuitbreaking.ErrCircuitBroken
 	}
 
-	msg := mailgun.NewMessage(details.FromName, details.Subject, details.HTMLContent, details.ToAddress)
+	from := details.FromAddress
+	if details.FromName != "" {
+		from = fmt.Sprintf("%s <%s>", details.FromName, details.FromAddress)
+	}
+
+	to := details.ToAddress
+	if details.ToName != "" {
+		to = fmt.Sprintf("%s <%s>", details.ToName, details.ToAddress)
+	}
+
+	msg := mailgun.NewMessage(from, details.Subject, "", to)
+	msg.SetHTML(details.HTMLContent)
+
 	if _, _, err := e.client.Send(ctx, msg); err != nil {
 		e.circuitBreaker.Failed()
 		e.errorCounter.Add(ctx, 1)

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/pointer"
-	"github.com/primandproper/platform-go/v2/testutils/containers"
+	"github.com/primandproper/platform-go/v3/pointer"
+	"github.com/primandproper/platform-go/v3/testutils/containers"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/shoenig/test"
@@ -173,6 +173,20 @@ func TestQuoteLiteral(T *testing.T) {
 			name:     "string with special characters",
 			input:    "p@ssw0rd!@#$%",
 			expected: `'p@ssw0rd!@#$%'`,
+		},
+		{
+			name:     "trailing backslash is doubled",
+			input:    `secret\`,
+			expected: `'secret\\'`,
+		},
+		{
+			// MySQL treats backslash as an escape by default, so a naive
+			// single-quote-only quoter would let `\'` escape the closing quote and
+			// break out of the literal. Doubling the backslash neutralizes it: the
+			// value stays entirely inside the quoted string.
+			name:     "backslash-quote injection attempt does not break out",
+			input:    `x\' OR 1=1 --`,
+			expected: `'x\\'' OR 1=1 --'`,
 		},
 	}
 

@@ -4,15 +4,14 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/analytics/posthog"
-	"github.com/primandproper/platform-go/v2/analytics/rudderstack"
-	"github.com/primandproper/platform-go/v2/analytics/segment"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/analytics/posthog"
+	"github.com/primandproper/platform-go/v3/analytics/segment"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -48,6 +47,42 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 
 		must.Error(t, cfg.ValidateWithContext(ctx))
 	})
+
+	T.Run("rejects an invalid proxy source", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cfg := &Config{
+			SourceConfig: SourceConfig{
+				Provider: ProviderSegment,
+				Segment:  &segment.Config{APIToken: t.Name()},
+			},
+			// A proxy source with no provider/credentials must fail validation rather
+			// than silently degrading to a noop at runtime.
+			ProxySources: ProxySourcesConfig{
+				Web: &SourceConfig{Provider: ProviderSegment},
+			},
+		}
+
+		must.Error(t, cfg.ValidateWithContext(ctx))
+	})
+
+	T.Run("accepts a valid proxy source", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		cfg := &Config{
+			SourceConfig: SourceConfig{
+				Provider: ProviderSegment,
+				Segment:  &segment.Config{APIToken: t.Name()},
+			},
+			ProxySources: ProxySourcesConfig{
+				Web: &SourceConfig{Provider: ProviderSegment, Segment: &segment.Config{APIToken: t.Name()}},
+			},
+		}
+
+		must.NoError(t, cfg.ValidateWithContext(ctx))
+	})
 }
 
 func TestConfig_ProvideCollector(T *testing.T) {
@@ -55,7 +90,6 @@ func TestConfig_ProvideCollector(T *testing.T) {
 
 	allProviders := []string{
 		ProviderSegment,
-		ProviderRudderstack,
 		ProviderPostHog,
 	}
 
@@ -69,7 +103,6 @@ func TestConfig_ProvideCollector(T *testing.T) {
 				SourceConfig: SourceConfig{
 					Provider:       provider,
 					Segment:        &segment.Config{APIToken: t.Name()},
-					Rudderstack:    &rudderstack.Config{DataPlaneURL: t.Name(), APIKey: t.Name()},
 					Posthog:        &posthog.Config{APIKey: t.Name()},
 					CircuitBreaker: circuitbreakingcfg.Config{},
 				},
@@ -88,10 +121,9 @@ func TestConfig_ProvideCollector(T *testing.T) {
 		for _, provider := range allProviders {
 			cfg := &Config{
 				SourceConfig: SourceConfig{
-					Provider:    provider,
-					Segment:     &segment.Config{},
-					Rudderstack: &rudderstack.Config{},
-					Posthog:     &posthog.Config{},
+					Provider: provider,
+					Segment:  &segment.Config{},
+					Posthog:  &posthog.Config{},
 				},
 			}
 
@@ -107,21 +139,6 @@ func TestConfig_ProvideCollector(T *testing.T) {
 		cfg := &Config{
 			SourceConfig: SourceConfig{
 				Provider: ProviderSegment,
-			},
-		}
-
-		reporter, err := cfg.ProvideCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
-		test.Nil(t, reporter)
-		test.Error(t, err)
-	})
-
-	T.Run("with rudderstack provider but nil rudderstack config", func(t *testing.T) {
-		t.Parallel()
-
-		ctx := t.Context()
-		cfg := &Config{
-			SourceConfig: SourceConfig{
-				Provider: ProviderRudderstack,
 			},
 		}
 

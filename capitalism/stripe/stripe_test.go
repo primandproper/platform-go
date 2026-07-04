@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	mockencoding "github.com/primandproper/platform-go/v2/encoding/mock"
-	"github.com/primandproper/platform-go/v2/observability"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v2/random"
+	mockencoding "github.com/primandproper/platform-go/v3/encoding/mock"
+	"github.com/primandproper/platform-go/v3/observability"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/random"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -33,8 +33,9 @@ func TestNewStripePaymentManager(T *testing.T) {
 		t.Parallel()
 
 		logger := loggingnoop.NewLogger()
-		pm := ProvideStripePaymentManager(logger, tracingnoop.NewTracerProvider(), &Config{})
+		pm, err := ProvideStripePaymentManager(logger, tracingnoop.NewTracerProvider(), &Config{}, nil)
 
+		must.NoError(t, err)
 		test.NotNil(t, pm)
 	})
 
@@ -42,9 +43,10 @@ func TestNewStripePaymentManager(T *testing.T) {
 		t.Parallel()
 
 		logger := loggingnoop.NewLogger()
-		pm := ProvideStripePaymentManager(logger, tracingnoop.NewTracerProvider(), nil)
+		pm, err := ProvideStripePaymentManager(logger, tracingnoop.NewTracerProvider(), nil, nil)
 
-		test.NotNil(t, pm)
+		test.Error(t, err)
+		test.Nil(t, pm)
 	})
 }
 
@@ -55,7 +57,9 @@ func Test_stripePaymentManager_HandleSubscriptionEventWebhook(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pm := ProvideStripePaymentManager(nil, nil, &Config{}).(*stripePaymentManager)
+		pmIface, err := ProvideStripePaymentManager(nil, nil, &Config{}, nil)
+		must.NoError(t, err)
+		pm := pmIface.(*stripePaymentManager)
 
 		paymentIntent := &stripe.PaymentIntent{
 			APIResource:      stripe.APIResource{},
@@ -133,7 +137,9 @@ func Test_stripePaymentManager_HandleSubscriptionEventWebhook(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pm := ProvideStripePaymentManager(nil, nil, &Config{}).(*stripePaymentManager)
+		pmIface, err := ProvideStripePaymentManager(nil, nil, &Config{}, nil)
+		must.NoError(t, err)
+		pm := pmIface.(*stripePaymentManager)
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://whatever.whocares.gov", http.NoBody)
 		must.NoError(t, err)
@@ -144,11 +150,32 @@ func Test_stripePaymentManager_HandleSubscriptionEventWebhook(T *testing.T) {
 		test.Error(t, err)
 	})
 
+	T.Run("with oversized body", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		pmIface, err := ProvideStripePaymentManager(nil, nil, &Config{}, nil)
+		must.NoError(t, err)
+		pm := pmIface.(*stripePaymentManager)
+		pm.webhookSecret = "some_secret"
+
+		// A body larger than the cap must be rejected rather than read into memory.
+		oversized := bytes.Repeat([]byte("a"), (64<<10)+1)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://whatever.whocares.gov", bytes.NewReader(oversized))
+		must.NoError(t, err)
+		req.Header.Set(stripeSignatureHeaderKey, "sig")
+
+		err = pm.HandleEventWebhook(req)
+		test.Error(t, err)
+	})
+
 	T.Run("with invalid signature", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pm := ProvideStripePaymentManager(nil, nil, &Config{}).(*stripePaymentManager)
+		pmIface, err := ProvideStripePaymentManager(nil, nil, &Config{}, nil)
+		must.NoError(t, err)
+		pm := pmIface.(*stripePaymentManager)
 		pm.webhookSecret = "some_secret"
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://whatever.whocares.gov", bytes.NewReader([]byte(`{}`)))
@@ -164,7 +191,9 @@ func Test_stripePaymentManager_HandleSubscriptionEventWebhook(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pm := ProvideStripePaymentManager(nil, nil, &Config{}).(*stripePaymentManager)
+		pmIface, err := ProvideStripePaymentManager(nil, nil, &Config{}, nil)
+		must.NoError(t, err)
+		pm := pmIface.(*stripePaymentManager)
 
 		paymentIntent := &stripe.PaymentIntent{}
 
@@ -217,7 +246,9 @@ func Test_stripePaymentManager_HandleSubscriptionEventWebhook(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		pm := ProvideStripePaymentManager(nil, nil, &Config{}).(*stripePaymentManager)
+		pmIface, err := ProvideStripePaymentManager(nil, nil, &Config{}, nil)
+		must.NoError(t, err)
+		pm := pmIface.(*stripePaymentManager)
 
 		obs := observability.NewRecordingObserver()
 		pm.o11y = obs

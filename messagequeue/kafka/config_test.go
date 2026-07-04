@@ -46,4 +46,16 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 
 		test.Error(t, cfg.ValidateWithContext(ctx))
 	})
+
+	T.Run("with empty group id", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		cfg := &Config{
+			Brokers: []string{"localhost:9092"},
+		}
+
+		test.Error(t, cfg.ValidateWithContext(ctx))
+	})
 }
