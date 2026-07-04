@@ -2,13 +2,15 @@ package pyroscope
 
 import (
 	"context"
+	"crypto/tls"
 	"maps"
+	"net/http"
 	"runtime"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/profiling"
-	profilingnoop "github.com/primandproper/platform-go/v2/observability/profiling/noop"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/profiling"
+	profilingnoop "github.com/primandproper/platform-go/v3/observability/profiling/noop"
 
 	"github.com/grafana/pyroscope-go"
 )
@@ -46,6 +48,16 @@ func ProvideProfilingProvider(ctx context.Context, logger logging.Logger, servic
 		Logger:            nil, // disable pyroscope's own logging; we use our logger
 		BasicAuthUser:     cfg.BasicAuthUser,
 		BasicAuthPassword: cfg.BasicAuthPassword,
+	}
+
+	if cfg.Insecure {
+		// Opt-in TLS-verification skip for self-signed/internal Pyroscope endpoints. pyroscope-go
+		// exposes no Insecure knob directly, so route uploads through a client that skips verification.
+		pyroCfg.HTTPClient = &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // gated on the explicit Insecure config flag
+			},
+		}
 	}
 
 	profiler, err := pyroscope.Start(pyroCfg)

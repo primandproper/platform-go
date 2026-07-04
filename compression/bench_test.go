@@ -12,10 +12,10 @@ func BenchmarkCompressor(b *testing.B) {
 
 	cases := []struct {
 		name string
-		algo algo
+		algo Algorithm
 	}{
-		{"zstd", algoZstd},
-		{"s2", algoS2},
+		{"zstd", AlgorithmZstd},
+		{"s2", AlgorithmS2},
 	}
 
 	for i := range cases {

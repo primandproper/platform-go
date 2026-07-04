@@ -6,18 +6,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	cbmock "github.com/primandproper/platform-go/v2/circuitbreaking/mock"
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/distributedlock"
-	"github.com/primandproper/platform-go/v2/identifiers"
-	"github.com/primandproper/platform-go/v2/observability"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v2/testutils/containers"
-	"github.com/primandproper/platform-go/v2/testutils/containers/redistest"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	cbmock "github.com/primandproper/platform-go/v3/circuitbreaking/mock"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/distributedlock"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/testutils/containers"
+	"github.com/primandproper/platform-go/v3/testutils/containers/redistest"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shoenig/test"
@@ -204,6 +204,14 @@ func TestNewRedisLocker(T *testing.T) {
 		t.Parallel()
 		_, err := NewRedisLocker(nil, nil, nil, nil, cbnoop.NewCircuitBreaker())
 		must.ErrorIs(t, err, distributedlock.ErrNilConfig)
+	})
+
+	T.Run("empty addresses", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Addresses: nil, KeyPrefix: "lock:"}
+		l, err := NewRedisLocker(cfg, nil, nil, nil, cbnoop.NewCircuitBreaker())
+		must.Error(t, err)
+		test.Nil(t, l)
 	})
 
 	T.Run("standard happy path", func(t *testing.T) {

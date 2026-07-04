@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/embeddings"
-	"github.com/primandproper/platform-go/v2/observability"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/embeddings"
+	"github.com/primandproper/platform-go/v3/observability"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -384,5 +384,16 @@ func TestEmbedder_GenerateEmbedding(T *testing.T) {
 
 		must.Error(t, err)
 		must.Nil(t, result)
+	})
+
+	T.Run("returns an error on nil input", func(t *testing.T) {
+		t.Parallel()
+
+		e, _ := newRecordingEmbedder(t, &Config{APIKey: "test-key"})
+
+		result, err := e.GenerateEmbedding(t.Context(), nil)
+
+		test.ErrorIs(t, err, embeddings.ErrNilInput)
+		test.Nil(t, result)
 	})
 }

@@ -6,12 +6,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	"github.com/primandproper/platform-go/v2/secrets"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v3/secrets"
 )
 
 const name = "env_secret_source"
@@ -57,7 +57,12 @@ func (e *envSecretSource) GetSecret(ctx context.Context, name string) (string, e
 
 	e.lookupCounter.Add(ctx, 1)
 
-	return os.Getenv(name), nil
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		return "", op.Error(secrets.ErrSecretNotFound, "environment variable not set")
+	}
+
+	return value, nil
 }
 
 func (e *envSecretSource) Close() error {

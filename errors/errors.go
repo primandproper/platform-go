@@ -12,6 +12,7 @@ var (
 	Errorf = crdberrors.Errorf
 	Wrap   = crdberrors.Wrap
 	Wrapf  = crdberrors.Wrapf
+	Join   = crdberrors.Join
 
 	EncodeError = crdberrors.EncodeError
 	DecodeError = crdberrors.DecodeError

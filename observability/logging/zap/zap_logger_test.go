@@ -1,16 +1,19 @@
 package zap
 
 import (
+	"bytes"
 	"errors"
 	"net/http"
 	"net/url"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/logging"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func TestNewLogger(T *testing.T) {
@@ -278,5 +281,70 @@ func Test_zapLogger_WithResponse(T *testing.T) {
 		l := NewZapLogger(logging.DebugLevel)
 
 		test.NotNil(t, l.WithResponse(nil))
+	})
+}
+
+func Test_zapLogger_SetLevelOnDerivedLogger(T *testing.T) {
+	T.Parallel()
+
+	T.Run("derived logger shares the root's atomic level", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		atomicLevel := zap.NewAtomicLevelAt(zap.InfoLevel)
+		core := zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&buf), atomicLevel)
+		root := &zapLogger{logger: zap.New(core), atomicLevel: atomicLevel}
+
+		derived, ok := root.WithName(t.Name()).(*zapLogger)
+		must.True(t, ok)
+
+		// Before the fix this nil-dereferenced; now it adjusts the shared atomic level.
+		derived.SetLevel(logging.ErrorLevel)
+
+		test.EqOp(t, zap.ErrorLevel, atomicLevel.Level())
+	})
+}
+
+func Test_zapLogger_NewZapLoggerLevelMapping(T *testing.T) {
+	T.Parallel()
+
+	T.Run("warn level maps to warn", func(t *testing.T) {
+		t.Parallel()
+
+		l, ok := NewZapLogger(logging.WarnLevel).(*zapLogger)
+		must.True(t, ok)
+
+		test.EqOp(t, zap.WarnLevel, l.atomicLevel.Level())
+	})
+
+	T.Run("error level maps to error", func(t *testing.T) {
+		t.Parallel()
+
+		l, ok := NewZapLogger(logging.ErrorLevel).(*zapLogger)
+		must.True(t, ok)
+
+		test.EqOp(t, zap.ErrorLevel, l.atomicLevel.Level())
+	})
+}
+
+func Test_zapLogger_requestIDFuncSurvivesDerivation(T *testing.T) {
+	T.Parallel()
+
+	T.Run("WithName-derived logger still emits the request ID", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		core := zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(&buf), zapcore.DebugLevel)
+		root := &zapLogger{logger: zap.New(core), atomicLevel: zap.NewAtomicLevel()}
+		root.SetRequestIDFunc(func(*http.Request) string { return "req-123" })
+
+		u, err := url.ParseRequestURI("https://example.com/path?things=stuff")
+		must.NoError(t, err)
+
+		root.WithName(t.Name()).
+			WithRequest(&http.Request{Method: http.MethodGet, URL: u}).
+			Info("hello")
+
+		test.StrContains(t, buf.String(), "req-123")
 	})
 }

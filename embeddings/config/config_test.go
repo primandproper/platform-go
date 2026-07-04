@@ -1,17 +1,33 @@
 package embeddingscfg
 
 import (
+	"reflect"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/embeddings/cohere"
-	"github.com/primandproper/platform-go/v2/embeddings/ollama"
-	"github.com/primandproper/platform-go/v2/embeddings/openai"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/embeddings/cohere"
+	"github.com/primandproper/platform-go/v3/embeddings/ollama"
+	"github.com/primandproper/platform-go/v3/embeddings/openai"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+func TestConfig_envTags(T *testing.T) {
+	T.Parallel()
+
+	T.Run("pointer sub-configs use the init option so env populates them", func(t *testing.T) {
+		t.Parallel()
+
+		for _, fieldName := range []string{"OpenAI", "Ollama", "Cohere"} {
+			field, ok := reflect.TypeFor[Config]().FieldByName(fieldName)
+			must.True(t, ok)
+			// ",init" (not "init") allocates the nil pointer sub-config from env.
+			test.EqOp(t, ",init", field.Tag.Get("env"))
+		}
+	})
+}
 
 func TestConfig_ValidateWithContext(T *testing.T) {
 	T.Parallel()

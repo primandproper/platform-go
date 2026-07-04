@@ -12,10 +12,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -141,6 +141,23 @@ func TestServerEncoderDecoder_encodeResponse(T *testing.T) {
 
 		encoderDecoder.encodeResponse(ctx, res, ex, http.StatusOK)
 		test.EqOp(t, fmt.Sprintf("{%q:%q}\n", "name", ex.Name), res.Body.String())
+	})
+
+	T.Run("honors configured content type without a pre-set header", func(t *testing.T) {
+		t.Parallel()
+
+		ex := &example{Name: "name"}
+		encoderDecoder, ok := ProvideServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeXML).(*serverEncoderDecoder)
+		must.True(t, ok)
+
+		ctx := t.Context()
+		res := httptest.NewRecorder()
+
+		// The handler never sets a content type header; the configured XML encoder must still win.
+		encoderDecoder.encodeResponse(ctx, res, ex, http.StatusOK)
+
+		test.EqOp(t, "<example><name>name</name></example>", res.Body.String())
+		test.EqOp(t, contentTypeXML, res.Header().Get(ContentTypeHeaderKey))
 	})
 
 	T.Run("observes response status", func(t *testing.T) {

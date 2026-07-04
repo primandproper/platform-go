@@ -3,14 +3,15 @@ package sqlite
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/database"
-	"github.com/primandproper/platform-go/v2/observability"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/database"
+	"github.com/primandproper/platform-go/v3/observability"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/shoenig/test"
@@ -191,7 +192,7 @@ func TestProvideDatabaseClient(T *testing.T) {
 		ctx := t.Context()
 
 		exampleConfig := &testClientConfig{
-			connectionString: ":memory:",
+			connectionString: filepath.Join(t.TempDir(), "test.db"),
 			maxPingAttempts:  1,
 		}
 
@@ -218,7 +219,7 @@ func TestProvideDatabaseClient(T *testing.T) {
 		ctx := t.Context()
 
 		exampleConfig := &testClientConfig{
-			readConnectionString: ":memory:",
+			readConnectionString: filepath.Join(t.TempDir(), "test.db"),
 			maxPingAttempts:      1,
 		}
 
@@ -233,7 +234,7 @@ func TestProvideDatabaseClient(T *testing.T) {
 		ctx := t.Context()
 
 		exampleConfig := &testClientConfig{
-			writeConnectionString: ":memory:",
+			writeConnectionString: filepath.Join(t.TempDir(), "test.db"),
 			maxPingAttempts:       1,
 		}
 
@@ -248,7 +249,7 @@ func TestProvideDatabaseClient(T *testing.T) {
 		ctx := t.Context()
 
 		exampleConfig := &testClientConfig{
-			connectionString: ":memory:",
+			connectionString: filepath.Join(t.TempDir(), "test.db"),
 			maxPingAttempts:  1,
 		}
 
@@ -263,13 +264,77 @@ func TestProvideDatabaseClient(T *testing.T) {
 		ctx := t.Context()
 
 		exampleConfig := &testClientConfig{
-			readConnectionString: ":memory:",
+			readConnectionString: filepath.Join(t.TempDir(), "test.db"),
 			maxPingAttempts:      1,
 		}
 
 		actual, err := ProvideDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, metricsnoop.NewMetricsProvider())
 		test.NotNil(t, actual)
 		test.NoError(t, err)
+	})
+
+	T.Run("rejects an in-memory database", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		// A private in-memory DB is broken under the read/write pool architecture
+		// (each connection gets its own database), so construction must fail loudly.
+		exampleConfig := &testClientConfig{
+			connectionString: ":memory:",
+			maxPingAttempts:  1,
+		}
+
+		actual, err := ProvideDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, nil)
+		test.Nil(t, actual)
+		test.Error(t, err)
+	})
+
+	T.Run("allows a shared-cache in-memory database", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		exampleConfig := &testClientConfig{
+			connectionString: "file::memory:?cache=shared",
+			maxPingAttempts:  1,
+		}
+
+		actual, err := ProvideDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, nil)
+		test.NotNil(t, actual)
+		test.NoError(t, err)
+	})
+
+	T.Run("enforces foreign keys on a fresh connection", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+
+		// A file DB (not :memory:, which gives each connection its own private database)
+		// so every connection in the pool sees the same schema.
+		exampleConfig := &testClientConfig{
+			writeConnectionString: filepath.Join(t.TempDir(), "fk.db"),
+			maxPingAttempts:       1,
+		}
+
+		actual, err := ProvideDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, nil)
+		must.NoError(t, err)
+
+		c, ok := actual.(*Client)
+		must.True(t, ok)
+
+		_, err = c.writeDB.ExecContext(ctx, `CREATE TABLE parent (id INTEGER PRIMARY KEY)`)
+		must.NoError(t, err)
+		_, err = c.writeDB.ExecContext(ctx, `CREATE TABLE child (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parent(id))`)
+		must.NoError(t, err)
+
+		// Drop idle connections so the next Exec runs on a connection that never served the
+		// old one-off pool PRAGMA. It must still reject the dangling foreign key — which only
+		// holds if foreign_keys is enforced per-connection (via the DSN).
+		c.writeDB.SetMaxIdleConns(0)
+
+		_, err = c.writeDB.ExecContext(ctx, `INSERT INTO child (id, parent_id) VALUES (1, 999)`)
+		test.Error(t, err)
 	})
 }
 

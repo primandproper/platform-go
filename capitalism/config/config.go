@@ -4,11 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/capitalism"
-	"github.com/primandproper/platform-go/v2/capitalism/stripe"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/capitalism"
+	"github.com/primandproper/platform-go/v3/capitalism/noop"
+	"github.com/primandproper/platform-go/v3/capitalism/stripe"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -41,11 +42,17 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideCapitalismImplementation provides a capitalism.PaymentManager implementation based on the config.
-func ProvideCapitalismImplementation(logger logging.Logger, tracerProvider tracing.TracerProvider, cfg *Config) (capitalism.PaymentManager, error) {
+// ProvideCapitalismImplementation provides a capitalism.PaymentManager implementation based on the
+// config. stripeEventHandler is optional (may be nil) and, for the Stripe provider, is invoked with
+// each verified webhook event.
+func ProvideCapitalismImplementation(logger logging.Logger, tracerProvider tracing.TracerProvider, cfg *Config, stripeEventHandler stripe.EventHandler) (capitalism.PaymentManager, error) {
+	if !cfg.Enabled {
+		return noop.NewPaymentManager(), nil
+	}
+
 	switch strings.TrimSpace(strings.ToLower(cfg.Provider)) {
 	case StripeProvider:
-		return stripe.ProvideStripePaymentManager(logger, tracerProvider, cfg.Stripe), nil
+		return stripe.ProvideStripePaymentManager(logger, tracerProvider, cfg.Stripe, stripeEventHandler)
 	default:
 		return nil, errors.Newf("unknown provider: %q", cfg.Provider)
 	}

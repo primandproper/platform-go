@@ -6,9 +6,9 @@ import (
 	"encoding/base64"
 	"io"
 
-	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/keys"
 
-	"golang.org/x/crypto/salsa20"
+	"golang.org/x/crypto/nacl/secretbox"
 )
 
 func (e *salsa20Impl) Encrypt(ctx context.Context, content string) (string, error) {
@@ -17,13 +17,12 @@ func (e *salsa20Impl) Encrypt(ctx context.Context, content string) (string, erro
 
 	op.Set(keys.LengthKey, len(content))
 
-	out := make([]byte, nonceSize+len(content))
-	nonce := out[:nonceSize]
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+	var nonce [nonceSize]byte
+	if _, err := io.ReadFull(rand.Reader, nonce[:]); err != nil {
 		return "", op.Error(err, "generating nonce")
 	}
 
-	salsa20.XORKeyStream(out[nonceSize:], []byte(content), nonce, &e.key)
+	sealed := secretbox.Seal(nonce[:], []byte(content), &nonce, &e.key)
 
-	return base64.URLEncoding.EncodeToString(out), nil
+	return base64.URLEncoding.EncodeToString(sealed), nil
 }

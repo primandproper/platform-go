@@ -2,10 +2,11 @@ package algolia
 
 import (
 	"testing"
+	"time"
 
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 )
@@ -25,6 +26,17 @@ func TestProvideIndexManager(T *testing.T) {
 		tracerProvider := tracingnoop.NewTracerProvider()
 
 		im, err := ProvideIndexManager[example](logger, tracerProvider, &Config{}, "test", cbnoop.NewCircuitBreaker())
+		test.NoError(t, err)
+		test.NotNil(t, im)
+	})
+
+	T.Run("with timeout configured", func(t *testing.T) {
+		t.Parallel()
+
+		logger := loggingnoop.NewLogger()
+		tracerProvider := tracingnoop.NewTracerProvider()
+
+		im, err := ProvideIndexManager[example](logger, tracerProvider, &Config{Timeout: 5 * time.Second}, "test", cbnoop.NewCircuitBreaker())
 		test.NoError(t, err)
 		test.NotNil(t, im)
 	})

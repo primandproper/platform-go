@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	"github.com/primandproper/platform-go/v2/secrets"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v3/secrets"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -111,7 +111,8 @@ func (s *ssmSecretSource) GetSecret(ctx context.Context, name string) (string, e
 		return "", op.Error(err, "getting parameter %q", name)
 	}
 	if output.Parameter == nil {
-		return "", nil
+		s.errorCounter.Add(ctx, 1)
+		return "", op.Error(secrets.ErrSecretNotFound, "parameter %q not found", name)
 	}
 
 	s.lookupCounter.Add(ctx, 1)
@@ -128,7 +129,10 @@ func (s *ssmSecretSource) resolveName(name string) string {
 		return name
 	}
 	if s.prefix != "" {
-		return s.prefix + name
+		// SSM parameter names are '/'-delimited hierarchies; join with exactly one
+		// separator so Prefix="/app" + "db_password" resolves to "/app/db_password"
+		// rather than "/appdb_password".
+		return strings.TrimSuffix(s.prefix, "/") + "/" + name
 	}
 	return name
 }

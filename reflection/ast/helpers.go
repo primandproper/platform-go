@@ -2,13 +2,13 @@ package ast
 
 import (
 	"bufio"
-	"fmt"
 	goast "go/ast"
+	"go/types"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v3/errors"
 )
 
 // GetModulePath reads the module path from the go.mod file in the given directory.
@@ -17,6 +17,9 @@ func GetModulePath(dir string) (string, error) {
 	if err != nil {
 		return "", errors.Wrap(err, "opening go.mod")
 	}
+	defer func() {
+		_ = f.Close() //nolint:errcheck // read-only file; close error is not actionable here
+	}()
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -26,8 +29,8 @@ func GetModulePath(dir string) (string, error) {
 		}
 	}
 
-	if err = f.Close(); err != nil {
-		return "", errors.Wrap(err, "closing go.mod file")
+	if err = scanner.Err(); err != nil {
+		return "", errors.Wrap(err, "scanning go.mod")
 	}
 
 	return "", errors.New("no module directive found in go.mod")
@@ -97,17 +100,26 @@ func GetTagValue(tag, key string) string {
 
 // GetStructFields returns a map of field names to their type representation
 // from an *ast.StructType. Fields named "_" are excluded.
-// Type representations: "TypeName" for local types, "pkg.TypeName" for imported types.
+//
+// The type representation is the field type rendered as Go source, so all field
+// kinds are handled: "TypeName" (local), "pkg.TypeName" (imported), "*T" (pointer),
+// "[]byte" (slice/array), "map[string]int" (map), "Foo[T]" (generic), and so on.
+// Embedded (anonymous) fields are keyed by the embedded type's base name — e.g. an
+// embedded "pkg.Base" or "*pkg.Base" is keyed "Base". An embedded field whose name
+// cannot be derived (rare, e.g. an anonymous instantiated type with no resolvable
+// base ident) is skipped.
 func GetStructFields(structType *goast.StructType) map[string]string {
 	fields := make(map[string]string)
 
 	for _, field := range structType.Fields.List {
-		fieldType := ""
-		switch t := field.Type.(type) {
-		case *goast.Ident:
-			fieldType = t.Name
-		case *goast.SelectorExpr:
-			fieldType = fmt.Sprintf("%s.%s", t.X, t.Sel.Name)
+		fieldType := types.ExprString(field.Type)
+
+		if len(field.Names) == 0 {
+			// Embedded/anonymous field: derive the name from the type itself.
+			if name := embeddedFieldName(field.Type); name != "" {
+				fields[name] = fieldType
+			}
+			continue
 		}
 
 		for _, name := range field.Names {
@@ -118,4 +130,24 @@ func GetStructFields(structType *goast.StructType) map[string]string {
 	}
 
 	return fields
+}
+
+// embeddedFieldName derives the field name Go assigns to an embedded field from its
+// type expression: the base type identifier, ignoring any leading pointer and any
+// generic type arguments (e.g. "*pkg.Base[T]" is embedded as field "Base").
+func embeddedFieldName(expr goast.Expr) string {
+	switch t := expr.(type) {
+	case *goast.StarExpr:
+		return embeddedFieldName(t.X)
+	case *goast.Ident:
+		return t.Name
+	case *goast.SelectorExpr:
+		return t.Sel.Name
+	case *goast.IndexExpr:
+		return embeddedFieldName(t.X)
+	case *goast.IndexListExpr:
+		return embeddedFieldName(t.X)
+	default:
+		return ""
+	}
 }

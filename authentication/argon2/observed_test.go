@@ -3,10 +3,11 @@ package argon2
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/observability"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
+	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
 
@@ -30,6 +31,18 @@ func newRecordingAuthenticator(t *testing.T) (*Argon2Authenticator, *observabili
 	a.o11y = obs
 
 	return a, obs
+}
+
+func TestArgonParams_parallelism(T *testing.T) {
+	T.Parallel()
+
+	T.Run("is clamped to a valid non-zero range", func(t *testing.T) {
+		t.Parallel()
+
+		// argon2 panics when the parallelism degree narrows to 0, which happens
+		// when runtime.NumCPU() exceeds 255 and is cast straight to uint8.
+		test.Between(t, uint8(minParallelism), argonParams.Parallelism, uint8(maxParallelism))
+	})
 }
 
 func TestArgon2Authenticator_HashPassword_observed(T *testing.T) {

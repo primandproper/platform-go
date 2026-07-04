@@ -2,9 +2,35 @@ package retry
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"math/rand/v2"
 	"time"
 )
+
+// ErrUnretryable marks an error as one that Execute must not retry. Wrap a
+// returned error with Unretryable (or return anything that wraps ErrUnretryable)
+// to stop the retry loop immediately instead of exhausting the remaining attempts.
+var ErrUnretryable = errors.New("unretryable")
+
+// Unretryable wraps err so Execute stops retrying on it. The original error is
+// preserved in the chain, so errors.Is/As against it still work.
+func Unretryable(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %w", ErrUnretryable, err)
+}
+
+// isTerminal reports whether an operation error should abort the retry loop
+// rather than trigger another attempt: a canceled/expired context (retrying can
+// never succeed) or an explicitly non-retryable error.
+func isTerminal(err error) bool {
+	return errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, ErrUnretryable)
+}
 
 // Policy executes operations with retry logic.
 type Policy interface {
@@ -40,6 +66,13 @@ func (e *exponentialBackoff) Execute(ctx context.Context, operation func(ctx con
 		lastErr = operation(ctx)
 		if lastErr == nil {
 			return nil
+		}
+
+		// A canceled/expired context or an explicitly non-retryable error can never
+		// be resolved by another attempt — return immediately instead of sleeping and
+		// burning the remaining attempts.
+		if isTerminal(lastErr) {
+			return lastErr
 		}
 
 		if attempt == e.config.MaxAttempts-1 {

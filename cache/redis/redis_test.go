@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/cache"
-	mockcircuitbreaking "github.com/primandproper/platform-go/v2/circuitbreaking/mock"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	"github.com/primandproper/platform-go/v2/testutils/containers/redistest"
+	"github.com/primandproper/platform-go/v3/cache"
+	mockcircuitbreaking "github.com/primandproper/platform-go/v3/circuitbreaking/mock"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v3/testutils/containers/redistest"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shoenig/test"
@@ -113,6 +113,22 @@ func TestNewRedisCache(T *testing.T) {
 	T.Parallel()
 
 	okCounter := func() metrics.Int64Counter { return metrics.Int64CounterForTest(T, "x") }
+
+	T.Run("with no addresses", func(t *testing.T) {
+		t.Parallel()
+
+		c, err := NewRedisCache[example](&Config{}, time.Minute, nil, nil, nil, nil)
+		test.Error(t, err)
+		test.Nil(t, c)
+	})
+
+	T.Run("with nil config", func(t *testing.T) {
+		t.Parallel()
+
+		c, err := NewRedisCache[example](nil, time.Minute, nil, nil, nil, nil)
+		test.Error(t, err)
+		test.Nil(t, c)
+	})
 
 	T.Run("with single address", func(t *testing.T) {
 		t.Parallel()
@@ -313,6 +329,38 @@ func Test_redisCacheImpl_Get_Unit(T *testing.T) {
 		test.Nil(t, actual)
 
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
+	})
+
+	T.Run("with cache miss", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		impl, client, cb, obs := buildTestImpl(t)
+
+		cb.CannotProceedFunc = func() bool { return false }
+		cb.SucceededFunc = func() {}
+		cb.FailedFunc = func() {}
+
+		client.GetFunc = func(_ context.Context, key string) *redis.StringCmd {
+			test.EqOp(t, exampleKey, key)
+			cmd := redis.NewStringCmd(ctx)
+			cmd.SetErr(redis.Nil)
+			return cmd
+		}
+
+		actual, err := impl.Get(ctx, exampleKey)
+		// A miss is the sentinel callers check for, not a wrapped infra error.
+		test.ErrorIs(t, err, cache.ErrNotFound)
+		test.Nil(t, actual)
+
+		test.SliceLen(t, 1, client.GetCalls())
+		// A miss is a healthy response: the breaker records success, not failure.
+		test.SliceLen(t, 1, cb.SucceededCalls())
+		test.SliceLen(t, 0, cb.FailedCalls())
+
+		// It must not be recorded as an operation error either.
+		op := obs.ObservedOperationWithData(t, map[string]any{})
+		must.SliceLen(t, 0, op.Errors)
 	})
 
 	T.Run("with redis error", func(t *testing.T) {

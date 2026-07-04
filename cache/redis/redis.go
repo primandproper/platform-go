@@ -4,19 +4,20 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	stderrors "errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/cache"
-	"github.com/primandproper/platform-go/v2/cache/redis/slots"
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/cache"
+	"github.com/primandproper/platform-go/v3/cache/redis/slots"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -67,6 +68,10 @@ type redisCacheImpl[T any] struct {
 
 // NewRedisCache builds a new redis-backed cache.
 func NewRedisCache[T any](cfg *Config, expiration time.Duration, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cb circuitbreaking.CircuitBreaker) (cache.Cache[T], error) {
+	if cfg == nil || len(cfg.QueueAddresses) == 0 {
+		return nil, fmt.Errorf("at least one redis address is required")
+	}
+
 	mp := metrics.EnsureMetricsProvider(metricsProvider)
 
 	cacheHitCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_cache_hits", name))
@@ -110,7 +115,7 @@ func NewRedisCache[T any](cfg *Config, expiration time.Duration, logger logging.
 		client:           buildRedisClient(cfg),
 		circuitBreaker:   circuitbreakingcfg.EnsureCircuitBreaker(cb),
 		expiration:       expiration,
-		isCluster:        len(cfg.QueueAddresses) > 1,
+		isCluster:        cfg.clusterMode(),
 	}, nil
 }
 
@@ -131,6 +136,14 @@ func (i *redisCacheImpl[T]) Get(ctx context.Context, key string) (*T, error) {
 
 	res, err := i.client.Get(ctx, key).Result()
 	if err != nil {
+		// A key miss is a healthy response, not an infrastructure failure: don't count it
+		// as an error or trip the breaker, and surface the sentinel callers check for.
+		if stderrors.Is(err, redis.Nil) {
+			i.circuitBreaker.Succeeded()
+			i.cacheMissCounter.Add(ctx, 1)
+			return nil, cache.ErrNotFound
+		}
+
 		i.cacheErrCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
 		return nil, op.Error(err, "getting from cache")
@@ -387,7 +400,7 @@ func (*redisCacheImpl[T]) decode(s string) (*T, error) {
 // buildRedisClient returns a PublisherProvider for a given address.
 func buildRedisClient(cfg *Config) redisClient {
 	var c redisClient
-	if len(cfg.QueueAddresses) > 1 {
+	if cfg.clusterMode() {
 		c = redis.NewClusterClient(&redis.ClusterOptions{
 			Addrs:        cfg.QueueAddresses,
 			Username:     cfg.Username,

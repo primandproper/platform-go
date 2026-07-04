@@ -41,6 +41,23 @@ func TestRegistry_CheckAll(T *testing.T) {
 		test.MapEmpty(t, result.Components)
 	})
 
+	T.Run("a check receives a bounded (timeout) context", func(t *testing.T) {
+		t.Parallel()
+
+		reg := NewRegistry()
+		reg.Register(&mockChecker{name: "a", checkFn: func(ctx context.Context) error {
+			// Each check must run under a deadline so a hung check can't stall the probe.
+			if _, ok := ctx.Deadline(); !ok {
+				return errors.New("expected a deadline on the check context")
+			}
+			return nil
+		}})
+
+		result := reg.CheckAll(context.Background())
+		must.NotNil(t, result)
+		test.EqOp(t, StatusUp, result.Status)
+	})
+
 	T.Run("all checkers up", func(t *testing.T) {
 		t.Parallel()
 

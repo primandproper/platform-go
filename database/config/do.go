@@ -3,10 +3,10 @@ package databasecfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v2/database"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/database"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/samber/do/v2"
 )
@@ -20,16 +20,30 @@ func RegisterClientConfig(i do.Injector) {
 }
 
 // RegisterDatabase registers a database.Client with the injector.
-// Prerequisite: *Config and database.Migrator must be registered in the injector.
+// Prerequisite: *Config must be registered in the injector. A database.Migrator is
+// only required when the config's RunMigrations is true.
 func RegisterDatabase(i do.Injector) {
 	RegisterClientConfig(i)
 	do.Provide[database.Client](i, func(i do.Injector) (database.Client, error) {
+		cfg := do.MustInvoke[*Config](i)
+
+		// Only require a Migrator when migrations are actually enabled, so a service
+		// that doesn't run migrations can build without registering one.
+		var migrator database.Migrator
+		if cfg.RunMigrations {
+			m, err := do.Invoke[database.Migrator](i)
+			if err != nil {
+				return nil, err
+			}
+			migrator = m
+		}
+
 		return ProvideDatabase(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[logging.Logger](i),
 			do.MustInvoke[tracing.TracerProvider](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Migrator](i),
+			cfg,
+			migrator,
 			do.MustInvoke[metrics.Provider](i),
 		)
 	})

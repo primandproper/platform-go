@@ -9,12 +9,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/embeddings"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/embeddings"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 )
 
 const (
@@ -45,10 +45,11 @@ func NewEmbedder(ctx context.Context, cfg *Config, logger logging.Logger, tracer
 		cfg.BaseURL = defaultBaseURL
 	}
 
-	client := &http.Client{}
-	if cfg.Timeout > 0 {
-		client.Timeout = cfg.Timeout
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = embeddings.DefaultRequestTimeout
 	}
+	client := &http.Client{Timeout: timeout}
 
 	return &embedder{
 		o11y:   observability.NewObserverWithTracer(providerName, logger, tracer),
@@ -67,9 +68,18 @@ type embeddingResponse struct {
 }
 
 // GenerateEmbedding implements embeddings.Embedder.
+//
+// Rate limiting: this method does not retry. A non-200 response (including 429 Too Many
+// Requests) is surfaced to the caller as an error carrying the status code; it is not
+// retried or backed off. Callers that want retry/backoff should wrap this call themselves
+// (e.g. with the platform's retry package).
 func (e *embedder) GenerateEmbedding(ctx context.Context, input *embeddings.Input) (*embeddings.Embedding, error) {
 	ctx, op := e.o11y.Begin(ctx)
 	defer op.End()
+
+	if input == nil {
+		return nil, embeddings.ErrNilInput
+	}
 
 	model := input.Model
 	if model == "" {

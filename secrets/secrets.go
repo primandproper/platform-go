@@ -1,6 +1,14 @@
 package secrets
 
-import "context"
+import (
+	"context"
+
+	"github.com/primandproper/platform-go/v3/errors"
+)
+
+// ErrSecretNotFound is returned when a requested secret does not exist, so a
+// missing secret is distinguishable from one whose value is legitimately empty.
+var ErrSecretNotFound = errors.New("secret not found")
 
 // SecretSource provides access to secrets.
 type SecretSource interface {

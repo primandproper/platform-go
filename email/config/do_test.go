@@ -4,12 +4,12 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/email"
-	"github.com/primandproper/platform-go/v2/email/sendgrid"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/email"
+	"github.com/primandproper/platform-go/v3/email/sendgrid"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

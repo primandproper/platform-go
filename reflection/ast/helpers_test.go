@@ -2,6 +2,7 @@ package ast
 
 import (
 	"go/ast"
+	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
@@ -10,6 +11,25 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// structTypeFromSource parses a single struct declaration from source and returns its
+// *ast.StructType, so tests can exercise realistic field types (pointers, slices, maps,
+// generics, embedded fields) without hand-building the AST.
+func structTypeFromSource(t *testing.T, src string) *ast.StructType {
+	t.Helper()
+
+	f, err := parser.ParseFile(token.NewFileSet(), "src.go", "package p\n"+src, 0)
+	must.NoError(t, err)
+
+	gd, ok := f.Decls[0].(*ast.GenDecl)
+	must.True(t, ok)
+	ts, ok := gd.Specs[0].(*ast.TypeSpec)
+	must.True(t, ok)
+	st, ok := ts.Type.(*ast.StructType)
+	must.True(t, ok)
+
+	return st
+}
 
 func TestGetModulePath(T *testing.T) {
 	T.Parallel()
@@ -260,5 +280,43 @@ func TestGetStructFields(T *testing.T) {
 
 		test.EqOp(t, "int", fields["X"])
 		test.EqOp(t, "int", fields["Y"])
+	})
+
+	T.Run("renders pointer, slice, map, and generic field types", func(t *testing.T) {
+		t.Parallel()
+
+		st := structTypeFromSource(t, `type S struct {
+			Ptr     *Foo
+			Bytes   []byte
+			Lookup  map[string]int
+			Generic Box[string]
+			Qual    time.Time
+		}`)
+
+		fields := GetStructFields(st)
+
+		test.EqOp(t, "*Foo", fields["Ptr"])
+		test.EqOp(t, "[]byte", fields["Bytes"])
+		test.EqOp(t, "map[string]int", fields["Lookup"])
+		test.EqOp(t, "Box[string]", fields["Generic"])
+		test.EqOp(t, "time.Time", fields["Qual"])
+	})
+
+	T.Run("keys embedded fields by their base type name", func(t *testing.T) {
+		t.Parallel()
+
+		st := structTypeFromSource(t, `type S struct {
+			BaseError
+			*Embedded
+			pkg.Qualified
+			Field string
+		}`)
+
+		fields := GetStructFields(st)
+
+		test.EqOp(t, "BaseError", fields["BaseError"])
+		test.EqOp(t, "*Embedded", fields["Embedded"])
+		test.EqOp(t, "pkg.Qualified", fields["Qualified"])
+		test.EqOp(t, "string", fields["Field"])
 	})
 }

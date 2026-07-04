@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/analytics"
-	analyticsmock "github.com/primandproper/platform-go/v2/analytics/mock"
-	"github.com/primandproper/platform-go/v2/analytics/noop"
-	"github.com/primandproper/platform-go/v2/observability"
+	"github.com/primandproper/platform-go/v3/analytics"
+	analyticsmock "github.com/primandproper/platform-go/v3/analytics/mock"
+	"github.com/primandproper/platform-go/v3/analytics/noop"
+	"github.com/primandproper/platform-go/v3/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -51,6 +51,56 @@ func TestNewMultiSourceEventReporter(T *testing.T) {
 		r := NewMultiSourceEventReporter(reporters, nil, nil)
 		must.NotNil(t, r)
 		test.MapLen(t, 1, r.reporters)
+	})
+}
+
+func TestMultiSourceEventReporter_Close(T *testing.T) {
+	T.Parallel()
+
+	T.Run("closes every underlying reporter", func(t *testing.T) {
+		t.Parallel()
+
+		ios := &analyticsmock.EventReporterMock{CloseFunc: func() {}}
+		web := &analyticsmock.EventReporterMock{CloseFunc: func() {}}
+
+		m := NewMultiSourceEventReporter(map[string]analytics.EventReporter{
+			"ios": ios,
+			"web": web,
+		}, nil, nil)
+
+		m.Close()
+
+		test.SliceLen(t, 1, ios.CloseCalls())
+		test.SliceLen(t, 1, web.CloseCalls())
+	})
+
+	T.Run("closes a shared reporter exactly once", func(t *testing.T) {
+		t.Parallel()
+
+		shared := &analyticsmock.EventReporterMock{CloseFunc: func() {}}
+
+		m := NewMultiSourceEventReporter(map[string]analytics.EventReporter{
+			"ios": shared,
+			"web": shared,
+		}, nil, nil)
+
+		m.Close()
+
+		test.SliceLen(t, 1, shared.CloseCalls())
+	})
+
+	T.Run("Shutdown delegates to Close", func(t *testing.T) {
+		t.Parallel()
+
+		ios := &analyticsmock.EventReporterMock{CloseFunc: func() {}}
+
+		m := NewMultiSourceEventReporter(map[string]analytics.EventReporter{
+			"ios": ios,
+		}, nil, nil)
+
+		m.Shutdown()
+
+		test.SliceLen(t, 1, ios.CloseCalls())
 	})
 }
 
@@ -188,6 +238,70 @@ func TestMultiSourceEventReporter_TrackAnonymousEvent(T *testing.T) {
 			"source":       "web",
 			"event":        "page_view",
 			"anonymous_id": "anon1",
+		})
+	})
+}
+
+func TestMultiSourceEventReporter_AddUser(T *testing.T) {
+	T.Parallel()
+
+	T.Run("delegates to correct reporter", func(t *testing.T) {
+		t.Parallel()
+
+		mockReporter := &analyticsmock.EventReporterMock{
+			AddUserFunc: func(_ context.Context, userID string, properties map[string]any) error {
+				test.EqOp(t, "user1", userID)
+				test.Eq(t, "ios", properties[SourcePropertyKey])
+				test.Eq(t, "pro", properties["plan"])
+				return nil
+			},
+		}
+
+		reporters := map[string]analytics.EventReporter{
+			"ios": mockReporter,
+		}
+		m, obs := newRecordingReporter(t, reporters)
+
+		err := m.AddUser(t.Context(), "ios", "user1", map[string]any{"plan": "pro"})
+		test.NoError(t, err)
+
+		test.SliceLen(t, 1, mockReporter.AddUserCalls())
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"source":  "ios",
+			"user_id": "user1",
+		})
+	})
+
+	T.Run("uses noop for unknown source", func(t *testing.T) {
+		t.Parallel()
+
+		m := NewMultiSourceEventReporter(nil, nil, nil)
+
+		err := m.AddUser(context.Background(), "unknown", "user1", nil)
+		test.NoError(t, err)
+	})
+
+	T.Run("records values even when reporter errors", func(t *testing.T) {
+		t.Parallel()
+
+		mockReporter := &analyticsmock.EventReporterMock{
+			AddUserFunc: func(_ context.Context, _ string, _ map[string]any) error {
+				return errArbitrary
+			},
+		}
+
+		reporters := map[string]analytics.EventReporter{
+			"ios": mockReporter,
+		}
+		m, obs := newRecordingReporter(t, reporters)
+
+		err := m.AddUser(t.Context(), "ios", "user1", nil)
+		test.Error(t, err)
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"source":  "ios",
+			"user_id": "user1",
 		})
 	})
 }

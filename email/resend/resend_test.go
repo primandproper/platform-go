@@ -4,22 +4,57 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/mail"
 	"net/url"
 	"testing"
 	"time"
 
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/email"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/email"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
+	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
 
+func TestFormatAddress(T *testing.T) {
+	T.Parallel()
+
+	T.Run("bare address when name is empty", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, "real@example.com", formatAddress("", "real@example.com"))
+	})
+
+	T.Run("quotes hostile name to prevent recipient injection", func(t *testing.T) {
+		t.Parallel()
+
+		got := formatAddress(`x <a@attacker.com>,`, "real@example.com")
+
+		parsed, err := mail.ParseAddress(got)
+		must.NoError(t, err)
+		test.EqOp(t, "real@example.com", parsed.Address)
+
+		list, err := mail.ParseAddressList(got)
+		must.NoError(t, err)
+		test.SliceLen(t, 1, list)
+	})
+}
+
 type sendEmailResponse struct {
 	Id string `json:"id"`
+}
+
+// resendPayload mirrors the JSON body Resend's SDK posts to /emails, enough to
+// assert the outbound request carried the fields SendEmail was told to send.
+type resendPayload struct {
+	From    string   `json:"from"`
+	Subject string   `json:"subject"`
+	Html    string   `json:"html"`
+	To      []string `json:"to"`
 }
 
 // newRecordingEmailer builds an Emailer with a RecordingObserver swapped in, so a
@@ -123,6 +158,36 @@ func TestResendEmailer_SendEmail(T *testing.T) {
 			keys.EmailSubjectKey:   details.Subject,
 			keys.EmailToAddressKey: details.ToAddress,
 		})
+	})
+
+	T.Run("sends the correct request shape", func(t *testing.T) {
+		t.Parallel()
+
+		// Distinct values per field so a from/to or subject/body swap (the shape
+		// of the C-08 bug) fails this test rather than sliding through.
+		var gotBody resendPayload
+		ts := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
+			must.NoError(t, json.NewDecoder(req.Body).Decode(&gotBody))
+			must.NoError(t, json.NewEncoder(res).Encode(sendEmailResponse{Id: t.Name()}))
+		}))
+
+		c, _ := newRecordingEmailer(t, &Config{APIToken: t.Name()}, ts.Client(), ts.URL)
+
+		details := &email.OutboundEmailMessage{
+			ToAddress:   "recipient@example.com",
+			ToName:      "Recipient Name",
+			FromAddress: "sender@example.com",
+			FromName:    "Sender Name",
+			Subject:     "the subject line",
+			HTMLContent: "<p>the html body</p>",
+		}
+		must.NoError(t, c.SendEmail(t.Context(), details))
+
+		test.EqOp(t, formatAddress(details.FromName, details.FromAddress), gotBody.From)
+		must.SliceLen(t, 1, gotBody.To)
+		test.EqOp(t, formatAddress(details.ToName, details.ToAddress), gotBody.To[0])
+		test.EqOp(t, details.Subject, gotBody.Subject)
+		test.EqOp(t, details.HTMLContent, gotBody.Html)
 	})
 
 	T.Run("with error executing request", func(t *testing.T) {

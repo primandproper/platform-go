@@ -2,14 +2,15 @@ package llmcfg
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/llm/anthropic"
-	"github.com/primandproper/platform-go/v2/llm/openai"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/llm/anthropic"
+	"github.com/primandproper/platform-go/v3/llm/openai"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -87,6 +88,21 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		}
 
 		test.Error(t, cfg.ValidateWithContext(ctx))
+	})
+}
+
+func TestConfig_envTags(T *testing.T) {
+	T.Parallel()
+
+	T.Run("pointer sub-configs use the init option so env populates them", func(t *testing.T) {
+		t.Parallel()
+
+		for _, fieldName := range []string{"OpenAI", "Anthropic"} {
+			field, ok := reflect.TypeFor[Config]().FieldByName(fieldName)
+			must.True(t, ok)
+			// ",init" (not "init") allocates the nil pointer sub-config from env.
+			test.EqOp(t, ",init", field.Tag.Get("env"))
+		}
 	})
 }
 
@@ -204,7 +220,7 @@ func TestProvideLLMProvider(T *testing.T) {
 
 		cfg := &Config{}
 
-		provider, err := ProvideLLMProvider(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		provider, err := ProvideLLMProvider(t.Context(), cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		must.NoError(t, err)
 		test.NotNil(t, provider)
 	})

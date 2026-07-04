@@ -6,11 +6,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	"github.com/primandproper/platform-go/v2/secrets"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v3/secrets"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -106,11 +106,28 @@ func TestEnvSecretSource_GetSecret(T *testing.T) {
 		})
 	})
 
-	T.Run("returns empty for unset env var", func(t *testing.T) {
+	T.Run("errors for unset env var", func(t *testing.T) {
 		t.Parallel()
 
 		key := "TEST_SECRET_UNSET_" + t.Name()
 		must.NoError(t, os.Unsetenv(key))
+
+		source, err := NewEnvSecretSource(nil, nil, nil)
+		must.NoError(t, err)
+		ctx := context.Background()
+
+		got, err := source.GetSecret(ctx, key)
+		test.Error(t, err)
+		test.True(t, errors.Is(err, secrets.ErrSecretNotFound))
+		test.EqOp(t, "", got)
+	})
+
+	T.Run("returns empty for set-but-empty env var", func(t *testing.T) {
+		t.Parallel()
+
+		key := "TEST_SECRET_EMPTY_" + t.Name()
+		must.NoError(t, os.Setenv(key, ""))
+		t.Cleanup(func() { _ = os.Unsetenv(key) })
 
 		source, err := NewEnvSecretSource(nil, nil, nil)
 		must.NoError(t, err)

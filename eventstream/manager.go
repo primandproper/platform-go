@@ -4,10 +4,10 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 )
 
 const (
@@ -115,12 +115,22 @@ func (m *StreamManager[S]) BroadcastToGroup(ctx context.Context, groupID string,
 
 	op.Set("group_id", groupID).Set("event.type", event.Type)
 
+	// Snapshot the group under the lock, then release it before sending: a stalled
+	// client must never hold the manager lock and block Add/Remove.
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	if groupStreams, ok := m.streams[groupID]; ok {
-		op.Set(keys.LengthKey, len(groupStreams))
+	groupStreams, ok := m.streams[groupID]
+	var snapshot []S
+	if ok {
+		snapshot = make([]S, 0, len(groupStreams))
 		for _, s := range groupStreams {
+			snapshot = append(snapshot, s)
+		}
+	}
+	m.mu.RUnlock()
+
+	if ok {
+		op.Set(keys.LengthKey, len(snapshot))
+		for _, s := range snapshot {
 			if err := s.Send(ctx, event); err != nil {
 				op.Acknowledge(err, "sending event to stream")
 			}
@@ -139,15 +149,21 @@ func (m *StreamManager[S]) BroadcastToGroupFiltered(ctx context.Context, groupID
 
 	op.Set("group_id", groupID).Set("event.type", event.Type)
 
+	// Snapshot the group under the lock, then release it before sending.
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	groupStreams := m.streams[groupID]
+	memberIDs := make([]string, 0, len(groupStreams))
+	snapshot := make([]S, 0, len(groupStreams))
+	for memberID, s := range groupStreams {
+		memberIDs = append(memberIDs, memberID)
+		snapshot = append(snapshot, s)
+	}
+	m.mu.RUnlock()
 
-	if groupStreams, ok := m.streams[groupID]; ok {
-		for memberID, s := range groupStreams {
-			if includeFunc(memberID) {
-				if err := s.Send(ctx, event); err != nil {
-					op.Acknowledge(err, "sending event to stream")
-				}
+	for i, s := range snapshot {
+		if includeFunc(memberIDs[i]) {
+			if err := s.Send(ctx, event); err != nil {
+				op.Acknowledge(err, "sending event to stream")
 			}
 		}
 	}
@@ -160,13 +176,19 @@ func (m *StreamManager[S]) SendToMember(ctx context.Context, groupID, memberID s
 
 	op.Set("group_id", groupID).Set("member_id", memberID).Set("event.type", event.Type)
 
+	// Look up the stream under the lock, then release it before sending.
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-
+	var (
+		s     S
+		found bool
+	)
 	if groupStreams, ok := m.streams[groupID]; ok {
-		if s, found := groupStreams[memberID]; found {
-			return s.Send(ctx, event)
-		}
+		s, found = groupStreams[memberID]
+	}
+	m.mu.RUnlock()
+
+	if found {
+		return s.Send(ctx, event)
 	}
 	return nil
 }

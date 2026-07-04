@@ -4,17 +4,18 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"testing"
 
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/featureflags/launchdarkly"
-	"github.com/primandproper/platform-go/v2/featureflags/posthog"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/featureflags/launchdarkly"
+	"github.com/primandproper/platform-go/v3/featureflags/posthog"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -96,6 +97,38 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		}
 
 		test.Error(t, cfg.ValidateWithContext(ctx))
+	})
+}
+
+func TestConfig_envTags(T *testing.T) {
+	T.Parallel()
+
+	T.Run("launchdarkly sub-config prefix separates cleanly from field names", func(t *testing.T) {
+		t.Parallel()
+
+		field, ok := reflect.TypeFor[Config]().FieldByName("LaunchDarkly")
+		must.True(t, ok)
+		// ",init" (not "init") is the option syntax that allocates the nil pointer sub-config.
+		test.EqOp(t, ",init", field.Tag.Get("env"))
+		// Trailing underscore keeps the prefix separated from nested field env names.
+		test.EqOp(t, "LAUNCH_DARKLY_", field.Tag.Get("envPrefix"))
+
+		sdkKey, ok := reflect.TypeFor[launchdarkly.Config]().FieldByName("SDKKey")
+		must.True(t, ok)
+		test.EqOp(t, "SDK_KEY", sdkKey.Tag.Get("env"))
+
+		// Combined, the SDK key env var resolves to LAUNCH_DARKLY_SDK_KEY, not LAUNCH_DARKLYSDK_KEY.
+		test.EqOp(t, "LAUNCH_DARKLY_SDK_KEY", field.Tag.Get("envPrefix")+sdkKey.Tag.Get("env"))
+	})
+
+	T.Run("pointer sub-configs use the init option", func(t *testing.T) {
+		t.Parallel()
+
+		for _, fieldName := range []string{"LaunchDarkly", "PostHog"} {
+			field, ok := reflect.TypeFor[Config]().FieldByName(fieldName)
+			must.True(t, ok)
+			test.EqOp(t, ",init", field.Tag.Get("env"))
+		}
 	})
 }
 

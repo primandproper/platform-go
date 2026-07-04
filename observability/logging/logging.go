@@ -1,9 +1,7 @@
 package logging
 
 import (
-	"log/slog"
 	"net/http"
-	"os"
 
 	"go.opentelemetry.io/otel/trace"
 )
@@ -26,6 +24,18 @@ var (
 
 func AllLevels() []Level {
 	return []Level{InfoLevel, DebugLevel, ErrorLevel, WarnLevel}
+}
+
+// LevelsEqual reports whether two Levels denote the same log level.
+// Level is a pointer alias, so a plain `==` compares pointer identity — which is
+// wrong for a Level decoded from env/JSON (a fresh pointer that never equals the
+// package singletons). Compare by the underlying value instead.
+func LevelsEqual(a, b Level) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	return *a == *b
 }
 
 type (
@@ -72,8 +82,4 @@ func EnsureLogger(logger Logger) Logger {
 // If logger is nil, a noop Logger is used.
 func NewNamedLogger(logger Logger, name string) Logger {
 	return EnsureLogger(logger).WithName(name)
-}
-
-func init() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 }

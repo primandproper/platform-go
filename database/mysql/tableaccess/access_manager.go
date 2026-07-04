@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/database"
-	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v3/database"
+	"github.com/primandproper/platform-go/v3/errors"
 )
 
 type Privilege string
@@ -51,10 +51,15 @@ func quoteIdent(id string) string {
 	return "`" + strings.ReplaceAll(id, "`", "``") + "`"
 }
 
-// quoteLiteral safely wraps a MySQL string literal in single-quotes,
-// doubling any embedded single-quotes per the SQL spec.
+// quoteLiteral safely wraps a MySQL string literal in single-quotes. MySQL (unlike
+// standard SQL) treats backslash as an escape character by default, so a value
+// ending in a backslash would otherwise escape the closing quote and break out of
+// the literal. Double both backslashes and single-quotes to neutralize that. This
+// assumes the default (NO_BACKSLASH_ESCAPES off) SQL mode.
 func quoteLiteral(s string) string {
-	return `'` + strings.ReplaceAll(s, `'`, `''`) + `'`
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `'`, `''`)
+	return `'` + s + `'`
 }
 
 // CreateUser issues a CREATE USER with a safely-quoted password literal.

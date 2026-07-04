@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/eventstream"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/eventstream"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	gorillawebsocket "github.com/gorilla/websocket"
 	"github.com/shoenig/test"
@@ -169,7 +169,15 @@ func TestWSStream_heartbeatLoop_writeError(T *testing.T) {
 		conn := rawServerConn(t)
 		o11y := observability.NewObserver(name, spy, tracingnoop.NewTracerProvider())
 
-		stream := newWSStream(conn, time.Millisecond, o11y)
+		// Construct the stream directly and drive only the heartbeat loop, so the
+		// read pump doesn't race it to detect the broken connection first.
+		stream := &wsStream{
+			conn:              conn,
+			done:              make(chan struct{}),
+			o11y:              o11y,
+			heartbeatInterval: time.NewTicker(time.Millisecond),
+		}
+		go stream.heartbeatLoop()
 		t.Cleanup(func() { _ = stream.Close() })
 
 		// Break the underlying connection so the next heartbeat ping write fails.
@@ -402,6 +410,147 @@ func TestWSStream_Done(T *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatalf("Done() channel was not closed after Close()")
 		}
+	})
+}
+
+func TestWSStream_Done_clientDisconnect(T *testing.T) {
+	T.Parallel()
+
+	T.Run("closes when the client disconnects", func(t *testing.T) {
+		t.Parallel()
+
+		u := NewUpgrader(nil, tracingnoop.NewTracerProvider(), &Config{HeartbeatInterval: time.Hour})
+		streamReady := make(chan eventstream.EventStream, 1)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stream, err := u.UpgradeToEventStream(w, r)
+			if err != nil {
+				return
+			}
+			streamReady <- stream
+			<-stream.Done()
+		}))
+		defer server.Close()
+
+		conn, _, err := gorillawebsocket.DefaultDialer.Dial("ws"+server.URL[4:], http.Header{"Origin": {server.URL}})
+		must.NoError(t, err)
+
+		stream := <-streamReady
+		done := stream.Done()
+
+		// The client goes away; the read pump must notice and terminate the stream
+		// even though no one ever called the server-side Close.
+		must.NoError(t, conn.Close())
+
+		select {
+		case <-done:
+			// expected: read pump detected the disconnect and closed the stream.
+		case <-time.After(2 * time.Second):
+			t.Fatalf("Done() channel was not closed after the client disconnected")
+		}
+	})
+}
+
+func TestBidirectionalWSStream_Done_clientDisconnect(T *testing.T) {
+	T.Parallel()
+
+	T.Run("closes when the client disconnects", func(t *testing.T) {
+		t.Parallel()
+
+		u := NewUpgrader(nil, tracingnoop.NewTracerProvider(), &Config{HeartbeatInterval: time.Hour})
+		streamReady := make(chan eventstream.BidirectionalEventStream, 1)
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stream, err := u.UpgradeToBidirectionalStream(w, r)
+			if err != nil {
+				return
+			}
+			streamReady <- stream
+			<-stream.Done()
+		}))
+		defer server.Close()
+
+		conn, _, err := gorillawebsocket.DefaultDialer.Dial("ws"+server.URL[4:], http.Header{"Origin": {server.URL}})
+		must.NoError(t, err)
+
+		stream := <-streamReady
+		done := stream.Done()
+
+		must.NoError(t, conn.Close())
+
+		select {
+		case <-done:
+			// expected
+		case <-time.After(2 * time.Second):
+			t.Fatalf("Done() channel was not closed after the client disconnected")
+		}
+	})
+}
+
+func TestUpgrader_CheckOrigin(T *testing.T) {
+	T.Parallel()
+
+	T.Run("same-origin is allowed by default", func(t *testing.T) {
+		t.Parallel()
+
+		u := NewUpgrader(nil, tracingnoop.NewTracerProvider(), &Config{HeartbeatInterval: time.Hour})
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stream, err := u.UpgradeToEventStream(w, r)
+			if err != nil {
+				return
+			}
+			defer stream.Close()
+			<-stream.Done()
+		}))
+		defer server.Close()
+
+		// server.URL's host matches the request host, so this is same-origin.
+		conn, _, err := gorillawebsocket.DefaultDialer.Dial("ws"+server.URL[4:], http.Header{"Origin": {server.URL}})
+		must.NoError(t, err)
+		defer conn.Close()
+	})
+
+	T.Run("cross-origin is rejected by default", func(t *testing.T) {
+		t.Parallel()
+
+		u := NewUpgrader(nil, tracingnoop.NewTracerProvider(), &Config{HeartbeatInterval: time.Hour})
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = u.UpgradeToEventStream(w, r)
+		}))
+		defer server.Close()
+
+		_, resp, err := gorillawebsocket.DefaultDialer.Dial("ws"+server.URL[4:], http.Header{"Origin": {"http://evil.example.com"}})
+		test.ErrorIs(t, err, gorillawebsocket.ErrBadHandshake)
+		must.NotNil(t, resp)
+		test.EqOp(t, http.StatusForbidden, resp.StatusCode)
+	})
+
+	T.Run("configured allowlist permits listed origins and rejects others", func(t *testing.T) {
+		t.Parallel()
+
+		const allowed = "http://allowed.example.com"
+
+		u := NewUpgrader(nil, tracingnoop.NewTracerProvider(), &Config{
+			HeartbeatInterval: time.Hour,
+			AllowedOrigins:    []string{allowed},
+		})
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			stream, err := u.UpgradeToEventStream(w, r)
+			if err != nil {
+				return
+			}
+			defer stream.Close()
+			<-stream.Done()
+		}))
+		defer server.Close()
+
+		conn, _, err := gorillawebsocket.DefaultDialer.Dial("ws"+server.URL[4:], http.Header{"Origin": {allowed}})
+		must.NoError(t, err)
+		defer conn.Close()
+
+		// An origin outside the allowlist (including the otherwise same-origin host) is rejected.
+		_, resp, err := gorillawebsocket.DefaultDialer.Dial("ws"+server.URL[4:], http.Header{"Origin": {server.URL}})
+		test.ErrorIs(t, err, gorillawebsocket.ErrBadHandshake)
+		must.NotNil(t, resp)
+		test.EqOp(t, http.StatusForbidden, resp.StatusCode)
 	})
 }
 

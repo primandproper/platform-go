@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/cache"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/cache"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 )
 
 const name = "in_memory_cache"

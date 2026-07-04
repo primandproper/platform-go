@@ -7,21 +7,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/encoding"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/encoding"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/segmentio/kafka-go"
-)
-
-var (
-	// ErrEmptyInputProvided indicates empty input was provided in an unacceptable context.
-	ErrEmptyInputProvided = platformerrors.New("empty input provided")
 )
 
 type (
@@ -107,6 +101,11 @@ func provideKafkaPublisher(logger logging.Logger, tracerProvider tracing.TracerP
 		Addr:                   kafka.TCP(brokers...),
 		Topic:                  topic,
 		AllowAutoTopicCreation: true,
+		RequiredAcks:           kafka.RequireAll,
+		// Publish is synchronous and typically sends one message at a time; kafka-go's
+		// default BatchTimeout is 1s, so each single Publish would otherwise block ~1s
+		// waiting for the batch to flush. Keep it small to cut that latency floor.
+		BatchTimeout: 10 * time.Millisecond,
 	}
 
 	return &kafkaPublisher{
@@ -168,6 +167,10 @@ func (p *publisherProvider) ProvidePublisher(_ context.Context, topic string) (m
 
 // Ping checks connectivity by attempting to dial a broker.
 func (p *publisherProvider) Ping(ctx context.Context) error {
+	if len(p.brokers) == 0 {
+		return fmt.Errorf("no kafka brokers configured")
+	}
+
 	conn, err := kafka.DialContext(ctx, "tcp", p.brokers[0])
 	if err != nil {
 		return err

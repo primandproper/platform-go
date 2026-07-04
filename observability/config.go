@@ -3,17 +3,18 @@ package observability
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	loggingcfg "github.com/primandproper/platform-go/v2/observability/logging/config"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	metricscfg "github.com/primandproper/platform-go/v2/observability/metrics/config"
-	"github.com/primandproper/platform-go/v2/observability/profiling"
-	profilingcfg "github.com/primandproper/platform-go/v2/observability/profiling/config"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	tracingcfg "github.com/primandproper/platform-go/v2/observability/tracing/config"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	loggingcfg "github.com/primandproper/platform-go/v3/observability/logging/config"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	metricscfg "github.com/primandproper/platform-go/v3/observability/metrics/config"
+	"github.com/primandproper/platform-go/v3/observability/profiling"
+	profilingcfg "github.com/primandproper/platform-go/v3/observability/profiling/config"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	tracingcfg "github.com/primandproper/platform-go/v3/observability/tracing/config"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
+	"github.com/hashicorp/go-multierror"
 )
 
 type (
@@ -30,12 +31,18 @@ type (
 var _ validation.ValidatableWithContext = (*Config)(nil)
 
 // ValidateWithContext validates a Config struct.
+//
+// The sub-configs are struct values whose ValidateWithContext methods have
+// pointer receivers. ozzo dereferences each field pointer to a value before
+// checking for the ValidatableWithContext interface, so a bare
+// validation.Field(&cfg.Logging) never invokes the sub-config's validation.
+// Invoke each one explicitly instead.
 func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	return validation.ValidateStructWithContext(ctx, cfg,
-		validation.Field(&cfg.Logging),
-		validation.Field(&cfg.Metrics),
-		validation.Field(&cfg.Tracing),
-		validation.Field(&cfg.Profiling),
+		validation.Field(&cfg.Logging, validation.By(func(any) error { return cfg.Logging.ValidateWithContext(ctx) })),
+		validation.Field(&cfg.Metrics, validation.By(func(any) error { return cfg.Metrics.ValidateWithContext(ctx) })),
+		validation.Field(&cfg.Tracing, validation.By(func(any) error { return cfg.Tracing.ValidateWithContext(ctx) })),
+		validation.Field(&cfg.Profiling, validation.By(func(any) error { return cfg.Profiling.ValidateWithContext(ctx) })),
 	)
 }
 
@@ -75,4 +82,37 @@ func (cfg *Config) ProvidePillars(ctx context.Context) (*Pillars, error) {
 		MetricsProvider: metricsProvider,
 		Profiler:        profiler,
 	}, nil
+}
+
+// Shutdown gracefully stops the observability pillars, flushing any buffered
+// telemetry so records are not dropped on exit. It is safe to call on a
+// partially populated Pillars.
+func (p *Pillars) Shutdown(ctx context.Context) error {
+	errs := &multierror.Error{}
+
+	if s, ok := p.Logger.(interface{ Shutdown(context.Context) error }); ok {
+		if err := s.Shutdown(ctx); err != nil {
+			errs = multierror.Append(errs, errors.Wrap(err, "shutting down logger"))
+		}
+	}
+
+	if p.TracerProvider != nil {
+		if err := p.TracerProvider.ForceFlush(ctx); err != nil {
+			errs = multierror.Append(errs, errors.Wrap(err, "flushing tracer provider"))
+		}
+	}
+
+	if p.MetricsProvider != nil {
+		if err := p.MetricsProvider.Shutdown(ctx); err != nil {
+			errs = multierror.Append(errs, errors.Wrap(err, "shutting down metrics provider"))
+		}
+	}
+
+	if p.Profiler != nil {
+		if err := p.Profiler.Shutdown(ctx); err != nil {
+			errs = multierror.Append(errs, errors.Wrap(err, "shutting down profiler"))
+		}
+	}
+
+	return errs.ErrorOrNil()
 }

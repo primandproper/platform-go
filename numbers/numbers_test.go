@@ -116,6 +116,25 @@ func TestRoundToDecimalPlaces(T *testing.T) {
 
 		test.InDelta(t, expected, result, float32(0.01))
 	})
+
+	T.Run("large value does not saturate at int32", func(t *testing.T) {
+		t.Parallel()
+
+		// value*10^2 = 2e9 overflows int32; the result must remain 2e7, not the saturated value.
+		result := RoundToDecimalPlaces(2e7, 2)
+		expected := float32(2e7)
+
+		test.EqOp(t, expected, result)
+	})
+
+	T.Run("high precision does not overflow to zero", func(t *testing.T) {
+		t.Parallel()
+
+		// A float32 multiplier saturates to +Inf at precision >= 39, previously yielding 0.
+		result := RoundToDecimalPlaces(3.14, 39)
+
+		test.InDelta(t, float32(3.14), result, float32(0.01))
+	})
 }
 
 func TestScale(T *testing.T) {
@@ -198,6 +217,16 @@ func TestScale(T *testing.T) {
 
 		result := Scale(1000.0, 2.5)
 		expected := float32(2500.0)
+
+		test.EqOp(t, expected, result)
+	})
+
+	T.Run("scale very large value without int32 saturation", func(t *testing.T) {
+		t.Parallel()
+
+		// 2e7 * 2 = 4e7; the rounding intermediate (4e9) overflows int32 in the old implementation.
+		result := Scale(2e7, 2.0)
+		expected := float32(4e7)
 
 		test.EqOp(t, expected, result)
 	})

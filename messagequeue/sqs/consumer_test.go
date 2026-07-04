@@ -5,13 +5,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -79,7 +79,8 @@ func Test_sqsConsumer_Consume(T *testing.T) {
 			return nil
 		}
 
-		consumer := provideSQSConsumer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, mmr, queueURL, handler)
+		consumer, err := provideSQSConsumer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, mmr, queueURL, handler)
+		must.NoError(t, err)
 		stopChan := make(chan bool, 1)
 		errs := make(chan error, 4)
 
@@ -122,7 +123,8 @@ func Test_sqsConsumer_Consume(T *testing.T) {
 			return anticipatedErr
 		}
 
-		consumer := provideSQSConsumer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, mmr, queueURL, handler)
+		consumer, err := provideSQSConsumer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, mmr, queueURL, handler)
+		must.NoError(t, err)
 		stopChan := make(chan bool, 1)
 		errs := make(chan error, 4)
 
@@ -147,6 +149,18 @@ func TestProvideSQSConsumerProvider(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 		cfg := Config{}
+
+		actual, err := ProvideSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
+		test.NoError(t, err)
+		test.NotNil(t, actual)
+	})
+
+	T.Run("with custom QueueAddress endpoint override", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		logger := loggingnoop.NewLogger()
+		cfg := Config{QueueAddress: "http://localhost:4566"}
 
 		actual, err := ProvideSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
 		test.NoError(t, err)
@@ -240,11 +254,12 @@ func Test_provideSQSConsumer(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		consumer := provideSQSConsumer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, nil, "https://sqs.us-east-1.amazonaws.com/123/test", nil)
+		consumer, err := provideSQSConsumer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, nil, "https://sqs.us-east-1.amazonaws.com/123/test", nil)
+		must.NoError(t, err)
 		must.NotNil(t, consumer)
 	})
 
-	T.Run("panics when NewInt64Counter fails", func(t *testing.T) {
+	T.Run("returns error when NewInt64Counter fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -253,9 +268,9 @@ func Test_provideSQSConsumer(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			provideSQSConsumer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t", nil)
-		})
+		actual, err := provideSQSConsumer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t", nil)
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 1, mp.NewInt64CounterCalls())
 	})
 }

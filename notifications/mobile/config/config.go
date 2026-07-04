@@ -4,13 +4,14 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/notifications/mobile"
-	"github.com/primandproper/platform-go/v2/notifications/mobile/apns"
-	"github.com/primandproper/platform-go/v2/notifications/mobile/fcm"
-	"github.com/primandproper/platform-go/v2/notifications/mobile/noop"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/notifications/mobile"
+	"github.com/primandproper/platform-go/v3/notifications/mobile/apns"
+	"github.com/primandproper/platform-go/v3/notifications/mobile/fcm"
+	"github.com/primandproper/platform-go/v3/notifications/mobile/noop"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -41,8 +42,8 @@ type (
 
 	// Config is the push notifications configuration.
 	Config struct {
-		APNs     *APNsConfig `env:"init"     envPrefix:"APNS_" json:"apns"`
-		FCM      *FCMConfig  `env:"init"     envPrefix:"FCM_"  json:"fcm"`
+		APNs     *APNsConfig `env:",init"    envPrefix:"APNS_" json:"apns"`
+		FCM      *FCMConfig  `env:",init"    envPrefix:"FCM_"  json:"fcm"`
 		Provider string      `env:"PROVIDER" json:"provider"`
 	}
 )
@@ -67,8 +68,9 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 }
 
 // ProvidePushSender returns a PushNotificationSender based on config.
-// When provider is "apns_fcm" and at least one platform config is valid, returns MultiPlatformPushSender.
-// Each platform is initialized independently; a failed init for one does not disable the other.
+// When provider is "apns_fcm", each configured platform must initialize
+// successfully; a failed init surfaces as an error rather than silently
+// degrading to a noop that would report every SendPush as a success.
 func (cfg *Config) ProvidePushSender(
 	ctx context.Context,
 	logger logging.Logger,
@@ -88,10 +90,9 @@ func (cfg *Config) ProvidePushSender(
 			}
 			s, err := apns.NewSender(apnsCfg, tracerProvider, logger, metricsProvider)
 			if err != nil {
-				logger.WithValue("error", err).Debug("push notifications: APNs sender init failed, iOS push disabled")
-			} else {
-				apnsSender = s
+				return nil, errors.Wrap(err, "initializing APNs sender")
 			}
+			apnsSender = s
 		}
 
 		var fcmSender *fcm.Sender
@@ -99,15 +100,13 @@ func (cfg *Config) ProvidePushSender(
 			fcmCfg := &fcm.Config{CredentialsPath: cfg.FCM.CredentialsPath}
 			s, err := fcm.NewSender(ctx, fcmCfg, tracerProvider, logger, metricsProvider)
 			if err != nil {
-				logger.WithValue("error", err).Debug("push notifications: FCM sender init failed, Android push disabled")
-			} else {
-				fcmSender = s
+				return nil, errors.Wrap(err, "initializing FCM sender")
 			}
+			fcmSender = s
 		}
 
 		if apnsSender == nil && fcmSender == nil {
-			logger.Debug("push notifications: no platform senders available, using noop")
-			return noop.NewPushNotificationSender(), nil
+			return nil, errors.New("apns_fcm provider selected but neither APNs nor FCM is configured")
 		}
 		return mobile.NewMultiPlatformPushSender(apnsSender, fcmSender, logger, tracerProvider), nil
 	default:

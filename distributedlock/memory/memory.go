@@ -6,13 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/distributedlock"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/identifiers"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/distributedlock"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 )
 
 const serviceName = "in_memory_distributed_lock"
@@ -104,6 +104,17 @@ func (l *locker) Acquire(ctx context.Context, key string, ttl time.Duration) (di
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
+	// Opportunistically sweep entries whose TTL has elapsed. Per-key expiry below
+	// only reclaims a key that is acquired again; without this sweep, keys acquired
+	// once and never re-acquired would accumulate for the life of the process. n is
+	// the number of live locks, which for this single-process backend is small.
+	now := time.Now()
+	for k, h := range l.held {
+		if now.After(h.expires) {
+			delete(l.held, k)
+		}
+	}
 
 	if existing, ok := l.held[key]; ok && time.Now().Before(existing.expires) {
 		l.contendCounter.Add(ctx, 1)

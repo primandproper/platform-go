@@ -3,8 +3,8 @@ package llm_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/llm"
-	llmnoop "github.com/primandproper/platform-go/v2/llm/noop"
+	"github.com/primandproper/platform-go/v3/llm"
+	llmnoop "github.com/primandproper/platform-go/v3/llm/noop"
 
 	"github.com/shoenig/test"
 )

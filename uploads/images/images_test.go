@@ -2,17 +2,47 @@ package images
 
 import (
 	"bytes"
+	"encoding/binary"
+	"hash/crc32"
 	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"io"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/testutils"
+	"github.com/primandproper/platform-go/v3/testutils"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// buildPNGHeaderWithDimensions crafts a PNG signature and IHDR chunk declaring the given
+// dimensions, without any pixel data. image.DecodeConfig reads the declared size from this alone.
+func buildPNGHeaderWithDimensions(t *testing.T, width, height uint32) []byte {
+	t.Helper()
+
+	var b bytes.Buffer
+	b.Write([]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a})
+
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:4], width)
+	binary.BigEndian.PutUint32(ihdr[4:8], height)
+	ihdr[8] = 8 // bit depth
+	ihdr[9] = 6 // color type: truecolor with alpha
+
+	chunk := append([]byte("IHDR"), ihdr...)
+
+	var lenBuf [4]byte
+	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(ihdr)))
+	b.Write(lenBuf[:])
+	b.Write(chunk)
+
+	var crcBuf [4]byte
+	binary.BigEndian.PutUint32(crcBuf[:], crc32.ChecksumIEEE(chunk))
+	b.Write(crcBuf[:])
+
+	return b.Bytes()
+}
 
 func buildPNGBytes(t *testing.T) []byte {
 	t.Helper()
@@ -91,6 +121,17 @@ func TestDecode(T *testing.T) {
 
 		img, err := Decode(bytes.NewReader(nil))
 		test.Error(t, err)
+		test.Nil(t, img)
+	})
+
+	T.Run("rejects oversized dimensions before decoding pixels", func(t *testing.T) {
+		t.Parallel()
+
+		// A tiny header declaring 30000x30000 would force a multi-gigabyte allocation if decoded.
+		data := buildPNGHeaderWithDimensions(t, 30000, 30000)
+
+		img, err := Decode(bytes.NewReader(data))
+		test.ErrorIs(t, err, ErrImageTooLarge)
 		test.Nil(t, img)
 	})
 }

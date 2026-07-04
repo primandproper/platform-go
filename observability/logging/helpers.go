@@ -12,8 +12,13 @@ type SpanInfo struct {
 	TraceID string
 }
 
-// ExtractSpanInfo extracts span and trace IDs from a trace.Span.
+// ExtractSpanInfo extracts span and trace IDs from a trace.Span. A nil span
+// yields a zero-value SpanInfo rather than panicking, so WithSpan(nil) is safe.
 func ExtractSpanInfo(span trace.Span) SpanInfo {
+	if span == nil {
+		return SpanInfo{}
+	}
+
 	spanCtx := span.SpanContext()
 	return SpanInfo{
 		SpanID:  spanCtx.SpanID().String(),

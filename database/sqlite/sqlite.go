@@ -3,15 +3,16 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/database"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/database"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/XSAM/otelsql"
 	"go.opentelemetry.io/otel/attribute"
@@ -51,6 +52,13 @@ func ProvideDatabaseClient(ctx context.Context, logger logging.Logger, tracerPro
 	}
 	if metricsProvider != nil {
 		opts = append(opts, otelsql.WithMeterProvider(metricsProvider.MeterProvider()))
+	}
+
+	// Gate raw SQL text on spans behind the config's LogQueries flag. When the
+	// config opts out (the default), suppress db.statement so query text is not
+	// leaked into traces.
+	if lq, ok := cfg.(interface{ GetLogQueries() bool }); ok && !lq.GetLogQueries() {
+		opts = append(opts, otelsql.WithSpanOptions(otelsql.SpanOptions{DisableQuery: true}))
 	}
 
 	var readDB, writeDB *sql.DB
@@ -112,17 +120,26 @@ func ProvideDatabaseClient(ctx context.Context, logger logging.Logger, tracerPro
 }
 
 func connect(ctx context.Context, connStr string, cfg database.ClientConfig, opts []otelsql.Option, isWriter bool) (*sql.DB, error) {
-	db, err := otelsql.Open("sqlite", connStr, opts...)
+	// A private in-memory database is broken under this read/write pool
+	// architecture: each connection modernc.org/sqlite opens gets its own separate
+	// database, so writes vanish between statements. Reject it up front rather than
+	// failing mysteriously at query time; a shared-cache DSN (cache=shared) is fine.
+	if isUnsafeMemorySQLiteDSN(connStr) {
+		return nil, errors.New("in-memory sqlite databases are not supported without cache=shared: each pooled connection would get its own private database; use a file path or a shared-cache DSN")
+	}
+
+	// foreign_keys is a per-connection setting: a one-off PRAGMA on the pool only reaches
+	// the single connection that served it, leaving every other pooled/recycled conn with
+	// enforcement off. Setting it in the DSN makes modernc.org/sqlite apply it on every
+	// connection it opens.
+	db, err := otelsql.Open("sqlite", withSQLitePragma(connStr, "foreign_keys(1)"), opts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "connecting to sqlite database")
 	}
 
+	// journal_mode=WAL is persisted in the database file, so setting it once is sufficient.
 	if _, err = db.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
 		return nil, errors.Wrap(err, "enabling WAL mode")
-	}
-
-	if _, err = db.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
-		return nil, errors.Wrap(err, "enabling foreign keys")
 	}
 
 	if isWriter {
@@ -138,6 +155,29 @@ func connect(ctx context.Context, connStr string, cfg database.ClientConfig, opt
 	return db, nil
 }
 
+// isUnsafeMemorySQLiteDSN reports whether a DSN designates an in-memory database
+// (":memory:" or "mode=memory") without a shared cache. Such a database is
+// per-connection, which the multi-connection read/write pools here cannot use.
+func isUnsafeMemorySQLiteDSN(dsn string) bool {
+	lower := strings.ToLower(dsn)
+	if !strings.Contains(lower, ":memory:") && !strings.Contains(lower, "mode=memory") {
+		return false
+	}
+
+	return !strings.Contains(lower, "cache=shared")
+}
+
+// withSQLitePragma appends a modernc.org/sqlite `_pragma=` query parameter to a DSN,
+// which the driver applies to every connection it opens.
+func withSQLitePragma(dsn, pragma string) string {
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+
+	return dsn + sep + "_pragma=" + pragma
+}
+
 // ReadDB provides the database object.
 func (q *Client) ReadDB() *sql.DB {
 	return q.readDB
@@ -150,19 +190,23 @@ func (q *Client) WriteDB() *sql.DB {
 
 // Close closes the database connection.
 func (q *Client) Close() error {
+	var errs error
+
 	if err := q.readDB.Close(); err != nil {
 		q.o11y.Logger().Error("closing read database connection", err)
-		return err
+		errs = errors.Join(errs, err)
 	}
 
+	// Always attempt to close the write pool even if the read pool failed to close,
+	// so a read-close error can't leak the write connection.
 	if q.writeDB != q.readDB {
 		if err := q.writeDB.Close(); err != nil {
 			q.o11y.Logger().Error("closing write database connection", err)
-			return err
+			errs = errors.Join(errs, err)
 		}
 	}
 
-	return nil
+	return errs
 }
 
 // IsReady returns whether the database is ready for the querier.
@@ -190,20 +234,27 @@ func (q *Client) IsReady(ctx context.Context) bool {
 func (q *Client) waitForPing(ctx context.Context, op observability.Operation, db *sql.DB, connectionURL string, maxAttempts int, waitPeriod time.Duration) bool {
 	logger := op.Logger().WithValue(keys.ConnectionURLKey, connectionURL)
 
-	attemptCount := 0
-	for {
-		if err := db.PingContext(ctx); err != nil {
-			logger.WithValue("attempt_count", attemptCount).Info("ping failed, waiting for db")
-			time.Sleep(waitPeriod)
-
-			attemptCount++
-			if attemptCount >= maxAttempts {
-				return false
-			}
-		} else {
+	for attemptCount := range maxAttempts {
+		if err := db.PingContext(ctx); err == nil {
 			return true
 		}
+
+		logger.WithValue("attempt_count", attemptCount).Info("ping failed, waiting for db")
+
+		// Don't sleep after the final attempt, and abort promptly if the caller's
+		// context is canceled rather than sleeping through it.
+		if attemptCount == maxAttempts-1 {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(waitPeriod):
+		}
 	}
+
+	return false
 }
 
 func defaultTimeFunc() time.Time {

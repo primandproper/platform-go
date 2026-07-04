@@ -4,16 +4,16 @@ import (
 	"context"
 	"strings"
 
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	"github.com/primandproper/platform-go/v2/database"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	vectorsearch "github.com/primandproper/platform-go/v2/search/vector"
-	"github.com/primandproper/platform-go/v2/search/vector/noop"
-	"github.com/primandproper/platform-go/v2/search/vector/pgvector"
-	"github.com/primandproper/platform-go/v2/search/vector/qdrant"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	"github.com/primandproper/platform-go/v3/database"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	vectorsearch "github.com/primandproper/platform-go/v3/search/vector"
+	"github.com/primandproper/platform-go/v3/search/vector/noop"
+	"github.com/primandproper/platform-go/v3/search/vector/pgvector"
+	"github.com/primandproper/platform-go/v3/search/vector/qdrant"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -36,8 +36,11 @@ type Config struct {
 
 var _ validation.ValidatableWithContext = (*Config)(nil)
 
-// ValidateWithContext validates a Config struct.
+// ValidateWithContext validates a Config struct. Provider is canonicalized (trim + lowercase)
+// first so validation matches the same normalization ProvideIndex dispatches on.
 func (cfg *Config) ValidateWithContext(ctx context.Context) error {
+	cfg.Provider = strings.TrimSpace(strings.ToLower(cfg.Provider))
+
 	return validation.ValidateStructWithContext(ctx, cfg,
 		validation.Field(&cfg.Provider, validation.In(PGvectorProvider, QdrantProvider)),
 		validation.Field(&cfg.Pgvector, validation.When(cfg.Provider == PGvectorProvider, validation.Required)),

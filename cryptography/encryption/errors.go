@@ -1,7 +1,7 @@
 package encryption
 
 import (
-	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v3/errors"
 )
 
 var (
@@ -9,4 +9,7 @@ var (
 
 	// ErrMalformedCiphertext is returned when ciphertext is too short to contain a nonce.
 	ErrMalformedCiphertext = errors.New("malformed ciphertext")
+
+	// ErrAuthenticationFailed is returned when ciphertext fails its authentication check.
+	ErrAuthenticationFailed = errors.New("ciphertext authentication failed")
 )

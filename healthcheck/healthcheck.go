@@ -3,7 +3,12 @@ package healthcheck
 import (
 	"context"
 	"sync"
+	"time"
 )
+
+// defaultCheckTimeout bounds each individual health check so one slow/hung
+// component can't stall the whole probe endpoint. Checks must honor ctx cancellation.
+const defaultCheckTimeout = 5 * time.Second
 
 // Status represents component health status.
 type Status string
@@ -69,14 +74,37 @@ func (r *registry) CheckAll(ctx context.Context) *Result {
 		Components: make(map[string]ComponentResult),
 	}
 
-	for _, c := range checkers {
-		name := c.Name()
-		err := c.Check(ctx)
-		if err != nil {
-			result.Components[name] = ComponentResult{Status: StatusDown, Message: err.Error()}
+	// Run the checks concurrently, each under its own timeout, so a single slow check
+	// bounds only itself instead of serially stalling the probe.
+	type outcome struct {
+		name string
+		res  ComponentResult
+	}
+	outcomes := make([]outcome, len(checkers))
+
+	var wg sync.WaitGroup
+	for i, c := range checkers {
+		wg.Add(1)
+		go func(i int, c Checker) {
+			defer wg.Done()
+
+			checkCtx, cancel := context.WithTimeout(ctx, defaultCheckTimeout)
+			defer cancel()
+
+			if err := c.Check(checkCtx); err != nil {
+				outcomes[i] = outcome{name: c.Name(), res: ComponentResult{Status: StatusDown, Message: err.Error()}}
+			} else {
+				outcomes[i] = outcome{name: c.Name(), res: ComponentResult{Status: StatusUp}}
+			}
+		}(i, c)
+	}
+	wg.Wait()
+
+	for i := range outcomes {
+		o := &outcomes[i]
+		result.Components[o.name] = o.res
+		if o.res.Status == StatusDown {
 			result.Status = StatusDown
-		} else {
-			result.Components[name] = ComponentResult{Status: StatusUp}
 		}
 	}
 

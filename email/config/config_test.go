@@ -5,19 +5,19 @@ import (
 	"net/http"
 	"testing"
 
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/email"
-	"github.com/primandproper/platform-go/v2/email/mailgun"
-	"github.com/primandproper/platform-go/v2/email/mailjet"
-	"github.com/primandproper/platform-go/v2/email/postmark"
-	"github.com/primandproper/platform-go/v2/email/resend"
-	"github.com/primandproper/platform-go/v2/email/sendgrid"
-	"github.com/primandproper/platform-go/v2/email/ses"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/email"
+	"github.com/primandproper/platform-go/v3/email/mailgun"
+	"github.com/primandproper/platform-go/v3/email/mailjet"
+	"github.com/primandproper/platform-go/v3/email/postmark"
+	"github.com/primandproper/platform-go/v3/email/resend"
+	"github.com/primandproper/platform-go/v3/email/sendgrid"
+	"github.com/primandproper/platform-go/v3/email/ses"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -82,6 +82,20 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 
 		cfg := &Config{Provider: ProviderSES}
 		must.Error(t, cfg.ValidateWithContext(t.Context()))
+	})
+
+	T.Run("unknown provider fails validation", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{Provider: "sendgird"}
+		must.Error(t, cfg.ValidateWithContext(t.Context()))
+	})
+
+	T.Run("empty provider is permitted for noop fallback", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{Provider: ""}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
 	})
 }
 

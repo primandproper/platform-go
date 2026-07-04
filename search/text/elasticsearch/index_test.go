@@ -2,15 +2,16 @@ package elasticsearch
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	mockcircuitbreaking "github.com/primandproper/platform-go/v2/circuitbreaking/mock"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	mockcircuitbreaking "github.com/primandproper/platform-go/v3/circuitbreaking/mock"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/shoenig/test"
@@ -238,6 +239,11 @@ func TestIndexManager_Search_Unit(T *testing.T) {
 		t.Parallel()
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var sent searchQuery
+			must.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+			test.EqOp(t, "test", sent.Query.MultiMatch.Query)
+			test.SliceContains(t, sent.Query.MultiMatch.Fields, "*")
+
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Elastic-Product", "Elasticsearch")
 			w.WriteHeader(http.StatusOK)
@@ -283,12 +289,8 @@ func TestIndexManager_Search_Unit(T *testing.T) {
 
 		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
-		// NOTE: the search function has a named return 'err' that is overwritten
-		// by the deferred res.Body.Close() call, so the error is lost. The code
-		// does exercise the IsError() branch and calls circuitBreaker.Failed(),
-		// but ultimately returns nil error due to the defer clobbering it.
 		results, err := im.Search(context.Background(), "test")
-		test.NoError(t, err)
+		test.Error(t, err)
 		test.Nil(t, results)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.FailedCalls())
@@ -312,10 +314,8 @@ func TestIndexManager_Search_Unit(T *testing.T) {
 
 		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
-		// NOTE: same issue as error response test - the deferred res.Body.Close()
-		// overwrites the named return 'err' with nil.
 		results, err := im.Search(context.Background(), "test")
-		test.NoError(t, err)
+		test.Error(t, err)
 		test.Nil(t, results)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.FailedCalls())
@@ -343,10 +343,8 @@ func TestIndexManager_Search_ErrorResponseDecodeFailure_Unit(T *testing.T) {
 
 		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
-		// NOTE: the named return 'err' from the deferred res.Body.Close() clobbers
-		// the error, so this returns nil error despite the decode failure.
 		results, err := im.Search(context.Background(), "test")
-		test.NoError(t, err)
+		test.Error(t, err)
 		test.Nil(t, results)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.FailedCalls())
@@ -374,10 +372,8 @@ func TestIndexManager_Search_SourceUnmarshalError_Unit(T *testing.T) {
 
 		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
-		// NOTE: the named return 'err' from the deferred res.Body.Close() clobbers
-		// the error, so this returns nil error despite the unmarshal failure.
 		results, err := im.Search(context.Background(), "test")
-		test.NoError(t, err)
+		test.Error(t, err)
 		test.Nil(t, results)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
 		test.SliceLen(t, 1, cb.FailedCalls())
@@ -449,18 +445,102 @@ func TestIndexManager_Delete_Unit(T *testing.T) {
 			"id": "123",
 		})
 	})
+
+	T.Run("with non-success status code", func(t *testing.T) {
+		t.Parallel()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Elastic-Product", "Elasticsearch")
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprint(w, `{"error":{"type":"internal","reason":"boom"}}`)
+		}))
+		t.Cleanup(server.Close)
+
+		cb := &mockcircuitbreaking.CircuitBreakerMock{
+			CannotProceedFunc: func() bool { return false },
+			FailedFunc:        func() {},
+		}
+
+		im, obs := buildTestIndexManagerWithServer(t, server, cb)
+
+		err := im.Delete(context.Background(), "123")
+		test.Error(t, err)
+		test.SliceLen(t, 1, cb.CannotProceedCalls())
+		test.SliceLen(t, 1, cb.FailedCalls())
+		test.SliceEmpty(t, cb.SucceededCalls())
+
+		obs.ObservedOperationWithData(t, map[string]any{
+			"id": "123",
+		})
+	})
 }
 
 func TestIndexManager_Wipe_Unit(T *testing.T) {
 	T.Parallel()
 
-	T.Run("returns unimplemented error", func(t *testing.T) {
+	T.Run("with successful wipe", func(t *testing.T) {
 		t.Parallel()
 
-		im := &indexManager[example]{}
+		var gotMethod, gotPath string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotMethod, gotPath = r.Method, r.URL.Path
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Elastic-Product", "Elasticsearch")
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprint(w, `{"deleted":3,"failures":[]}`)
+		}))
+		t.Cleanup(server.Close)
+
+		cb := &mockcircuitbreaking.CircuitBreakerMock{
+			CannotProceedFunc: func() bool { return false },
+			SucceededFunc:     func() {},
+		}
+
+		im, _ := buildTestIndexManagerWithServer(t, server, cb)
+
+		err := im.Wipe(context.Background())
+		test.NoError(t, err)
+		test.SliceLen(t, 1, cb.SucceededCalls())
+		// A delete-by-query hits POST /<index>/_delete_by_query.
+		test.EqOp(t, http.MethodPost, gotMethod)
+		test.StrContains(t, gotPath, "_delete_by_query")
+	})
+
+	T.Run("with non-success status code", func(t *testing.T) {
+		t.Parallel()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Elastic-Product", "Elasticsearch")
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = fmt.Fprint(w, `{"error":{"type":"internal","reason":"boom"}}`)
+		}))
+		t.Cleanup(server.Close)
+
+		cb := &mockcircuitbreaking.CircuitBreakerMock{
+			CannotProceedFunc: func() bool { return false },
+			FailedFunc:        func() {},
+		}
+
+		im, _ := buildTestIndexManagerWithServer(t, server, cb)
 
 		err := im.Wipe(context.Background())
 		test.Error(t, err)
-		test.EqOp(t, "unimplemented", err.Error())
+		test.SliceLen(t, 1, cb.FailedCalls())
+		test.SliceEmpty(t, cb.SucceededCalls())
+	})
+
+	T.Run("circuit broken", func(t *testing.T) {
+		t.Parallel()
+
+		cb := &mockcircuitbreaking.CircuitBreakerMock{
+			CannotProceedFunc: func() bool { return true },
+		}
+
+		im, _ := buildTestIndexManagerWithServer(t, httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})), cb)
+
+		err := im.Wipe(context.Background())
+		test.ErrorIs(t, err, circuitbreaking.ErrCircuitBroken)
 	})
 }

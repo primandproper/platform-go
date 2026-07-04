@@ -8,12 +8,12 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	"github.com/primandproper/platform-go/v2/panicking"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v3/panicking"
 
 	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"
@@ -151,8 +151,10 @@ func (e *serverEncoderDecoder) encodeResponse(ctx context.Context, res http.Resp
 
 	op.Set(keys.ResponseStatusKey, statusCode)
 
+	// choose the encoder from the configured content type, not the writer's pre-set header,
+	// so a configured encoder is honored even when the handler never sets a header.
 	var enc encoder
-	switch contentTypeFromString(res.Header().Get(ContentTypeHeaderKey)) {
+	switch e.contentType {
 	case ContentTypeXML:
 		res.Header().Set(ContentTypeHeaderKey, contentTypeXML)
 		enc = xml.NewEncoder(res)
@@ -165,10 +167,8 @@ func (e *serverEncoderDecoder) encodeResponse(ctx context.Context, res http.Resp
 	case ContentTypeEmoji:
 		res.Header().Set(ContentTypeHeaderKey, contentTypeEmoji)
 		enc = newEmojiEncoder(res)
-	case ContentTypeJSON:
-		res.Header().Set(ContentTypeHeaderKey, contentTypeJSON)
-		fallthrough
 	default:
+		res.Header().Set(ContentTypeHeaderKey, contentTypeJSON)
 		enc = json.NewEncoder(res)
 	}
 

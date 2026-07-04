@@ -3,12 +3,13 @@ package redis
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/identifiers"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/ratelimiting"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/ratelimiting"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/redis/go-redis/v9"
@@ -63,10 +64,15 @@ type rateLimiter struct {
 	rejectedCounter metrics.Int64Counter
 	errorCounter    metrics.Int64Counter
 	requestsPerSec  float64
+	burstSize       int
 }
 
 // NewRedisRateLimiter returns a RateLimiter backed by Redis using a sliding window algorithm.
-func NewRedisRateLimiter(cfg Config, metricsProvider metrics.Provider, requestsPerSec float64) (ratelimiting.RateLimiter, error) {
+func NewRedisRateLimiter(cfg Config, metricsProvider metrics.Provider, requestsPerSec float64, burstSize int) (ratelimiting.RateLimiter, error) {
+	if len(cfg.Addresses) == 0 {
+		return nil, fmt.Errorf("at least one redis address is required")
+	}
+
 	var client redisClient
 	if len(cfg.Addresses) > 1 {
 		client = redis.NewClusterClient(&redis.ClusterOptions{
@@ -102,6 +108,7 @@ func NewRedisRateLimiter(cfg Config, metricsProvider metrics.Provider, requestsP
 	return &rateLimiter{
 		client:          client,
 		requestsPerSec:  requestsPerSec,
+		burstSize:       burstSize,
 		allowedCounter:  allowedCounter,
 		rejectedCounter: rejectedCounter,
 		errorCounter:    errorCounter,
@@ -111,7 +118,19 @@ func NewRedisRateLimiter(cfg Config, metricsProvider metrics.Provider, requestsP
 // Allow returns true if the key is within the rate limit.
 func (r *rateLimiter) Allow(ctx context.Context, key string) (bool, error) {
 	now := time.Now().UnixMilli()
-	windowMS := int64(1000)
+
+	// Map the token-bucket-style (requestsPerSec, burstSize) config onto a sliding
+	// window: allow up to `limit` requests per window, where the window is the time
+	// to accrue a full burst at the steady rate (burst / rate seconds). This honors
+	// BurstSize and avoids the old int64(requestsPerSec) truncation that floored any
+	// sub-1 rate to a limit of 0 (rejecting everything).
+	limit := max(int64(r.burstSize), 1)
+	rate := r.requestsPerSec
+	if rate <= 0 {
+		rate = 1
+	}
+	windowMS := max(int64(math.Ceil(float64(limit)/rate*1000)), 1)
+
 	// The member must be unique per request: ZADD on a duplicate member only
 	// updates its score, so keying solely on the millisecond timestamp would
 	// collapse every request within the same millisecond into a single ZSET
@@ -123,7 +142,7 @@ func (r *rateLimiter) Allow(ctx context.Context, key string) (bool, error) {
 		[]string{fmt.Sprintf("ratelimit:%s", key)},
 		now,
 		windowMS,
-		int64(r.requestsPerSec),
+		limit,
 		member,
 	).Int64()
 	if err != nil {

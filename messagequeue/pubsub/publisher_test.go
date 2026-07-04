@@ -5,14 +5,14 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v2/testutils/containers"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/testutils/containers"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -26,11 +26,12 @@ func TestBuildPubSubPublisher(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		publisher := buildPubSubPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), nil, "test-topic")
+		publisher, err := buildPubSubPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), nil, "test-topic")
+		must.NoError(t, err)
 		must.NotNil(t, publisher)
 	})
 
-	T.Run("panics when first NewInt64Counter fails", func(t *testing.T) {
+	T.Run("returns error when first NewInt64Counter fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -43,13 +44,13 @@ func TestBuildPubSubPublisher(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			buildPubSubPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
-		})
+		actual, err := buildPubSubPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 1, mp.NewInt64CounterCalls())
 	})
 
-	T.Run("panics when second NewInt64Counter fails", func(t *testing.T) {
+	T.Run("returns error when second NewInt64Counter fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -65,13 +66,13 @@ func TestBuildPubSubPublisher(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			buildPubSubPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
-		})
+		actual, err := buildPubSubPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 2, mp.NewInt64CounterCalls())
 	})
 
-	T.Run("panics when NewFloat64Histogram fails", func(t *testing.T) {
+	T.Run("returns error when NewFloat64Histogram fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -83,9 +84,9 @@ func TestBuildPubSubPublisher(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			buildPubSubPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
-		})
+		actual, err := buildPubSubPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 2, mp.NewInt64CounterCalls())
 		test.SliceLen(t, 1, mp.NewFloat64HistogramCalls())
 	})

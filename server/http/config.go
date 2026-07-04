@@ -15,6 +15,9 @@ type (
 		SSLCertificateFile    string        `env:"SSL_CERTIFICATE_FILEPATH"     json:"sslCertificate,omitempty"`
 		SSLCertificateKeyFile string        `env:"SSL_CERTIFICATE_KEY_FILEPATH" json:"sslCertificateKey,omitempty"`
 		StartupDeadline       time.Duration `env:"STARTUP_DEADLINE"             json:"startupDeadline,omitempty"`
+		ReadTimeout           time.Duration `env:"READ_TIMEOUT"                 json:"readTimeout,omitempty"`
+		WriteTimeout          time.Duration `env:"WRITE_TIMEOUT"                json:"writeTimeout,omitempty"`
+		IdleTimeout           time.Duration `env:"IDLE_TIMEOUT"                 json:"idleTimeout,omitempty"`
 		Port                  uint16        `env:"PORT"                         json:"port"`
 		Debug                 bool          `env:"DEBUG"                        json:"debug"`
 	}

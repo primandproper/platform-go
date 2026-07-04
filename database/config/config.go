@@ -10,18 +10,19 @@ import (
 	"strings"
 	"time"
 
-	encryptioncfg "github.com/primandproper/platform-go/v2/cryptography/encryption/config"
-	"github.com/primandproper/platform-go/v2/database"
-	"github.com/primandproper/platform-go/v2/database/mysql"
-	"github.com/primandproper/platform-go/v2/database/postgres"
-	"github.com/primandproper/platform-go/v2/database/sqlite"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	encryptioncfg "github.com/primandproper/platform-go/v3/cryptography/encryption/config"
+	"github.com/primandproper/platform-go/v3/database"
+	"github.com/primandproper/platform-go/v3/database/mysql"
+	"github.com/primandproper/platform-go/v3/database/postgres"
+	"github.com/primandproper/platform-go/v3/database/sqlite"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/XSAM/otelsql"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
@@ -70,6 +71,7 @@ const (
 	defaultConnMaxLifetime = 30 * time.Minute
 	defaultMaxIdleConns    = 5
 	defaultMaxOpenConns    = 7
+	defaultMaxPingAttempts = 50
 )
 
 var (
@@ -98,6 +100,10 @@ func (cfg *Config) EnsureDefaults() {
 	if cfg.MaxOpenConns == 0 {
 		cfg.MaxOpenConns = defaultMaxOpenConns
 	}
+
+	if cfg.MaxPingAttempts == 0 {
+		cfg.MaxPingAttempts = defaultMaxPingAttempts
+	}
 }
 
 // GetReadConnectionString implements database.ClientConfig.
@@ -122,7 +128,11 @@ func (cfg *Config) connectionStringForProvider(cd ConnectionDetails) string {
 }
 
 // GetMaxPingAttempts implements database.ClientConfig.
+// Returns 50 when unset (zero) so IsReady retries rather than making a single attempt.
 func (cfg *Config) GetMaxPingAttempts() uint64 {
+	if cfg.MaxPingAttempts == 0 {
+		return defaultMaxPingAttempts
+	}
 	return cfg.MaxPingAttempts
 }
 
@@ -158,13 +168,38 @@ func (cfg *Config) GetConnMaxLifetime() time.Duration {
 	return cfg.ConnMaxLifetime
 }
 
-// ValidateWithContext validates an DatabaseSettings struct.
+// GetLogQueries reports whether SQL query text should be recorded on database
+// spans. The database client providers consume this via an optional interface
+// assertion; when false (the default), otelsql is configured to suppress the
+// db.statement attribute so raw SQL is not emitted into traces.
+func (cfg *Config) GetLogQueries() bool {
+	return cfg.LogQueries
+}
+
+// ValidateWithContext validates a Config. Connection requirements are
+// provider-aware: SQLite only needs a database file path (on either the read or
+// write connection), while Postgres and MySQL require a fully specified read
+// connection. A write connection, when supplied, is validated regardless of
+// provider.
 func (cfg *Config) ValidateWithContext(ctx context.Context) error {
-	return validation.ValidateStructWithContext(
-		ctx,
-		cfg,
-		validation.Field(&cfg.ReadConnection, validation.Required),
-	)
+	if strings.TrimSpace(strings.ToLower(cfg.Provider)) == ProviderSQLite {
+		if cfg.ReadConnection.Database == "" && cfg.WriteConnection.Database == "" {
+			return errors.New("sqlite requires a database file path on the read or write connection")
+		}
+		return nil
+	}
+
+	if err := cfg.ReadConnection.ValidateWithContext(ctx); err != nil {
+		return errors.Wrap(err, "validating read connection")
+	}
+
+	if cfg.WriteConnection != (ConnectionDetails{}) {
+		if err := cfg.WriteConnection.ValidateWithContext(ctx); err != nil {
+			return errors.Wrap(err, "validating write connection")
+		}
+	}
+
+	return nil
 }
 
 // LoadConnectionDetailsFromURL wraps an inner function.
@@ -224,36 +259,62 @@ func (x *ConnectionDetails) ValidateWithContext(ctx context.Context) error {
 
 var _ fmt.Stringer = (*ConnectionDetails)(nil)
 
+// sslMode maps DisableSSL onto a libpq sslmode value. When SSL is not explicitly
+// disabled we emit "prefer", which is pgx's own default (encrypt if the server
+// offers it, otherwise fall back), so this is a no-op for existing deployments
+// while making DisableSSL actually take effect.
+func (x *ConnectionDetails) sslMode() string {
+	if x.DisableSSL {
+		return "disable"
+	}
+	return "prefer"
+}
+
+// quotePGConnValue single-quotes a libpq keyword/value connection-string value,
+// backslash-escaping embedded backslashes and single quotes so a value containing
+// a space, quote, or "key=value"-looking payload cannot corrupt or inject
+// additional connection parameters.
+func quotePGConnValue(v string) string {
+	return "'" + strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(v) + "'"
+}
+
 func (x *ConnectionDetails) String() string {
-	return fmt.Sprintf(
-		"user=%s password=%s database=%s host=%s port=%d",
-		x.Username,
-		x.Password,
-		x.Database,
-		x.Host,
-		x.Port,
-	)
+	return strings.Join([]string{
+		"user=" + quotePGConnValue(x.Username),
+		"password=" + quotePGConnValue(x.Password),
+		"database=" + quotePGConnValue(x.Database),
+		"host=" + quotePGConnValue(x.Host),
+		fmt.Sprintf("port=%d", x.Port),
+		"sslmode=" + x.sslMode(),
+	}, " ")
 }
 
 func (x *ConnectionDetails) URI() string {
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s/%s?sslmode=disable",
-		x.Username,
-		x.Password,
-		net.JoinHostPort(x.Host, strconv.FormatUint(uint64(x.Port), 10)),
-		x.Database,
-	)
+	u := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(x.Username, x.Password),
+		Host:     net.JoinHostPort(x.Host, strconv.FormatUint(uint64(x.Port), 10)),
+		Path:     "/" + x.Database,
+		RawQuery: url.Values{"sslmode": {x.sslMode()}}.Encode(),
+	}
+	return u.String()
 }
 
-// MySQLDSN returns a MySQL DSN connection string.
+// MySQLDSN returns a MySQL DSN connection string. parseTime=true is required so the
+// driver scans DATETIME/TIMESTAMP columns into time.Time rather than []byte, which
+// the null-value helpers (e.g. TimeFromNullTime) depend on. The driver defaults loc
+// to UTC, so times come back in UTC. The DSN is assembled via the driver's own
+// Config so credentials/host values are escaped rather than concatenated.
 func (x *ConnectionDetails) MySQLDSN() string {
-	return fmt.Sprintf(
-		"%s:%s@tcp(%s)/%s",
-		x.Username,
-		x.Password,
-		net.JoinHostPort(x.Host, strconv.FormatUint(uint64(x.Port), 10)),
-		x.Database,
-	)
+	cfg := mysqldriver.NewConfig()
+	cfg.User = x.Username
+	cfg.Passwd = x.Password
+	cfg.Net = "tcp"
+	cfg.Addr = net.JoinHostPort(x.Host, strconv.FormatUint(uint64(x.Port), 10))
+	cfg.DBName = x.Database
+	cfg.ParseTime = true
+
+	return cfg.FormatDSN()
 }
 
 // SQLiteDSN returns the database file path for SQLite.

@@ -3,10 +3,9 @@ package oteltrace
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	o11yutils "github.com/primandproper/platform-go/v2/observability/utils"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	o11yutils "github.com/primandproper/platform-go/v3/observability/utils"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
@@ -21,10 +20,6 @@ type errorHandler struct {
 
 func (h errorHandler) Handle(err error) {
 	h.logger.Error("tracer reported issue", err)
-}
-
-func init() {
-	otel.SetErrorHandler(errorHandler{logger: loggingnoop.NewLogger().WithName("otel_errors")})
 }
 
 // SetupOtelGRPC creates a new trace provider instance and registers it as global trace provider.

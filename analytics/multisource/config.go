@@ -4,20 +4,21 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/analytics"
-	analyticscfg "github.com/primandproper/platform-go/v2/analytics/config"
-	"github.com/primandproper/platform-go/v2/analytics/noop"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/analytics"
+	analyticscfg "github.com/primandproper/platform-go/v3/analytics/config"
+	"github.com/primandproper/platform-go/v3/analytics/noop"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 )
 
 // ProvideMultiSourceEventReporter builds a MultiSourceEventReporter from proxy sources config.
 // For each source, attempts to create an EventReporter via ProvideCollector.
 // If creation fails (e.g. missing credentials) or provider is unset, uses Noop for that source.
 //
-// For PostHog: a single API key is shared across all sources. One PostHog client is created and
-// reused for every PostHog source; the source name is logged as a property on each event.
+// For PostHog: reporters are deduplicated by API key. Sources sharing the same PostHog API key
+// reuse a single client (the source name is set as a property on each event), while sources with
+// distinct API keys each get their own client so their credentials and circuit breaker are honored.
 func ProvideMultiSourceEventReporter(
 	ctx context.Context,
 	proxySources map[string]*analyticscfg.SourceConfig,
@@ -33,17 +34,23 @@ func ProvideMultiSourceEventReporter(
 		return NewMultiSourceEventReporter(reporters, logger, tracerProvider), nil
 	}
 
-	var sharedPostHogReporter analytics.EventReporter
+	postHogReportersByKey := make(map[string]analytics.EventReporter)
 
 	for source, sourceCfg := range proxySources {
 		log.WithValue("source", source).WithValue("provider", sourceCfg.Provider).Info("configuring analytics reporter for proxy source")
 
 		provider := strings.ToLower(strings.TrimSpace(sourceCfg.Provider))
-		if provider == analyticscfg.ProviderPostHog && sharedPostHogReporter != nil {
-			// PostHog uses one API key for all sources; reuse the shared client.
-			log.WithValue("source", source).Info("reusing shared PostHog reporter for proxy source")
-			reporters[source] = sharedPostHogReporter
-			continue
+
+		// Deduplicate PostHog reporters by API key: sources sharing a key reuse one client,
+		// distinct keys each get their own so credentials and circuit breakers aren't discarded.
+		var postHogKey string
+		if provider == analyticscfg.ProviderPostHog && sourceCfg.Posthog != nil && sourceCfg.Posthog.APIKey != "" {
+			postHogKey = sourceCfg.Posthog.APIKey
+			if existing, ok := postHogReportersByKey[postHogKey]; ok {
+				log.WithValue("source", source).Info("reusing PostHog reporter for proxy source with matching API key")
+				reporters[source] = existing
+				continue
+			}
 		}
 
 		r, err := sourceCfg.ProvideCollector(ctx, log, tracerProvider, metricsProvider)
@@ -58,8 +65,8 @@ func ProvideMultiSourceEventReporter(
 			continue
 		}
 
-		if provider == analyticscfg.ProviderPostHog {
-			sharedPostHogReporter = r
+		if postHogKey != "" {
+			postHogReportersByKey[postHogKey] = r
 		}
 
 		log.WithValue("source", source).WithValue("provider", sourceCfg.Provider).Info("analytics reporter configured for proxy source")

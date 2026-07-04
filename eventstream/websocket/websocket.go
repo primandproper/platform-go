@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/eventstream"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/eventstream"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	gorillawebsocket "github.com/gorilla/websocket"
 )
@@ -29,6 +29,7 @@ const (
 	defaultHeartbeatInterval = 30 * time.Second
 	defaultBufferSize        = 1024
 	incomingChannelBuffer    = 64
+	writeWait                = 10 * time.Second
 )
 
 // Upgrader upgrades HTTP connections to WebSocket event streams.
@@ -44,6 +45,8 @@ func NewUpgrader(logger logging.Logger, tracerProvider tracing.TracerProvider, c
 	readBuf := defaultBufferSize
 	writeBuf := defaultBufferSize
 
+	var allowedOrigins []string
+
 	if cfg != nil {
 		if cfg.HeartbeatInterval > 0 {
 			heartbeat = cfg.HeartbeatInterval
@@ -54,6 +57,7 @@ func NewUpgrader(logger logging.Logger, tracerProvider tracing.TracerProvider, c
 		if cfg.WriteBufferSize > 0 {
 			writeBuf = cfg.WriteBufferSize
 		}
+		allowedOrigins = cfg.AllowedOrigins
 	}
 
 	return &Upgrader{
@@ -61,9 +65,33 @@ func NewUpgrader(logger logging.Logger, tracerProvider tracing.TracerProvider, c
 		wsUpgrader: gorillawebsocket.Upgrader{
 			ReadBufferSize:  readBuf,
 			WriteBufferSize: writeBuf,
-			CheckOrigin:     func(*http.Request) bool { return true },
+			CheckOrigin:     originChecker(allowedOrigins),
 		},
 		heartbeatInterval: heartbeat,
+	}
+}
+
+// originChecker builds a CheckOrigin function. With no allowed origins configured
+// it returns nil, so gorilla applies its default same-origin policy; otherwise it
+// permits only the exact Origin header values in the allowlist (plus originless,
+// non-browser clients).
+func originChecker(allowedOrigins []string) func(*http.Request) bool {
+	if len(allowedOrigins) == 0 {
+		return nil
+	}
+
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		allowed[o] = struct{}{}
+	}
+
+	return func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true
+		}
+		_, ok := allowed[origin]
+		return ok
 	}
 }
 
@@ -95,11 +123,25 @@ type wsStream struct {
 	conn              *gorillawebsocket.Conn
 	heartbeatInterval *time.Ticker
 	done              chan struct{}
+	pongWait          time.Duration
 	mu                sync.Mutex
 	closed            bool
 }
 
 func newWSStream(conn *gorillawebsocket.Conn, heartbeat time.Duration, o11y observability.Observer) *wsStream {
+	s := newWSStreamBase(conn, heartbeat, o11y)
+
+	// A send-only stream must still read to process control frames (pong/close)
+	// and to notice when the client goes away.
+	go s.readPump()
+
+	return s
+}
+
+// newWSStreamBase builds a wsStream and starts its heartbeat, but leaves reading
+// to the caller: the unidirectional stream runs readPump, while the bidirectional
+// stream reads in its own readLoop.
+func newWSStreamBase(conn *gorillawebsocket.Conn, heartbeat time.Duration, o11y observability.Observer) *wsStream {
 	s := &wsStream{
 		conn: conn,
 		done: make(chan struct{}),
@@ -108,10 +150,29 @@ func newWSStream(conn *gorillawebsocket.Conn, heartbeat time.Duration, o11y obse
 
 	if heartbeat > 0 {
 		s.heartbeatInterval = time.NewTicker(heartbeat)
+		s.pongWait = heartbeat + heartbeat/2
+		_ = s.conn.SetReadDeadline(time.Now().Add(s.pongWait)) //nolint:errcheck // best-effort; a dead conn surfaces on the next read
+		s.conn.SetPongHandler(func(string) error {
+			return s.conn.SetReadDeadline(time.Now().Add(s.pongWait))
+		})
 		go s.heartbeatLoop()
 	}
 
 	return s
+}
+
+// readPump drains inbound frames so gorilla can process control frames, and
+// closes the stream when the client disconnects or the read deadline lapses.
+func (s *wsStream) readPump() {
+	for {
+		if _, _, err := s.conn.ReadMessage(); err != nil {
+			if gorillawebsocket.IsUnexpectedCloseError(err, gorillawebsocket.CloseNormalClosure, gorillawebsocket.CloseGoingAway) {
+				s.o11y.Logger().Error("reading from websocket", err)
+			}
+			_ = s.Close() //nolint:errcheck // cleanup on an already-failing connection
+			return
+		}
+	}
 }
 
 func (s *wsStream) heartbeatLoop() {
@@ -121,10 +182,14 @@ func (s *wsStream) heartbeatLoop() {
 			return
 		case <-s.heartbeatInterval.C:
 			s.mu.Lock()
+			_ = s.conn.SetWriteDeadline(time.Now().Add(writeWait)) //nolint:errcheck // best-effort; the WriteMessage below surfaces a dead conn
 			err := s.conn.WriteMessage(gorillawebsocket.PingMessage, nil)
 			s.mu.Unlock()
 			if err != nil {
 				s.o11y.Logger().Error("sending heartbeat ping", err)
+				// The connection is dead. Close the stream so `done` fires and the
+				// manager deregisters it, instead of leaving a broken stream registered.
+				_ = s.Close() //nolint:errcheck // cleanup on an already-failing connection
 				return
 			}
 		}
@@ -145,7 +210,13 @@ func (s *wsStream) Send(ctx context.Context, event *eventstream.Event) error {
 		return errors.New("stream closed")
 	}
 
-	return s.conn.WriteJSON(event)
+	_ = s.conn.SetWriteDeadline(time.Now().Add(writeWait)) //nolint:errcheck // best-effort; the WriteJSON below surfaces a dead conn
+
+	if err := s.conn.WriteJSON(event); err != nil {
+		return op.Error(err, "writing event to websocket")
+	}
+
+	return nil
 }
 
 // Done returns a channel that closes when the stream terminates.
@@ -180,7 +251,7 @@ type bidirectionalWSStream struct {
 
 func newBidirectionalWSStream(conn *gorillawebsocket.Conn, heartbeat time.Duration, o11y observability.Observer) *bidirectionalWSStream {
 	s := &bidirectionalWSStream{
-		wsStream: newWSStream(conn, heartbeat, o11y),
+		wsStream: newWSStreamBase(conn, heartbeat, o11y),
 		incoming: make(chan *eventstream.Event, incomingChannelBuffer),
 	}
 
@@ -189,13 +260,20 @@ func newBidirectionalWSStream(conn *gorillawebsocket.Conn, heartbeat time.Durati
 	return s
 }
 
+// readLoop is the bidirectional stream's reader: it delivers inbound events, keeps
+// the read deadline fresh, and closes the stream when the client disconnects.
 func (s *bidirectionalWSStream) readLoop() {
 	defer close(s.incoming)
+	defer func() { _ = s.Close() }() //nolint:errcheck // cleanup on stream teardown
 
 	for {
 		_, msg, err := s.conn.ReadMessage()
 		if err != nil {
 			return
+		}
+
+		if s.pongWait > 0 {
+			_ = s.conn.SetReadDeadline(time.Now().Add(s.pongWait)) //nolint:errcheck // best-effort; the next ReadMessage surfaces a dead conn
 		}
 
 		var event eventstream.Event

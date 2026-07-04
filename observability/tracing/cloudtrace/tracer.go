@@ -3,11 +3,10 @@ package cloudtrace
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	o11yutils "github.com/primandproper/platform-go/v2/observability/utils"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	o11yutils "github.com/primandproper/platform-go/v3/observability/utils"
 
 	texporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/trace"
 	"go.opentelemetry.io/otel"
@@ -20,10 +19,6 @@ type errorHandler struct {
 
 func (h errorHandler) Handle(err error) {
 	h.logger.Error("tracer reported issue", err)
-}
-
-func init() {
-	otel.SetErrorHandler(errorHandler{logger: loggingnoop.NewLogger().WithName("otel_errors")})
 }
 
 // SetupCloudTrace creates a new trace provider instance and registers it as global trace provider.

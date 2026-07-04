@@ -1,21 +1,23 @@
 package launchdarkly
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	mockCircuitBreaker "github.com/primandproper/platform-go/v2/circuitbreaking/mock"
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/featureflags"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	mockCircuitBreaker "github.com/primandproper/platform-go/v3/circuitbreaking/mock"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/featureflags"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk-evaluation/v2/ldmodel"
@@ -28,6 +30,7 @@ import (
 	"github.com/open-feature/go-sdk/openfeature"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"go.opentelemetry.io/otel/metric"
 )
 
 func evalCtx(targetingKey string) featureflags.EvaluationContext {
@@ -226,6 +229,67 @@ func TestNewFeatureFlagManager(T *testing.T) {
 		})
 		must.NoError(t, err)
 		must.NotNil(t, actual)
+	})
+}
+
+func TestNewFeatureFlagManager_metricInitErrors(T *testing.T) {
+	T.Parallel()
+
+	T.Run("with error creating eval counter", func(t *testing.T) {
+		t.Parallel()
+
+		mp := &mockmetrics.ProviderMock{
+			NewInt64CounterFunc: func(counterName string, _ ...metric.Int64CounterOption) (metrics.Int64Counter, error) {
+				test.EqOp(t, serviceName+"_evaluations", counterName)
+				return metrics.Int64CounterForTest(t, "x"), errors.New("arbitrary")
+			},
+		}
+
+		actual, err := NewFeatureFlagManager(&Config{SDKKey: t.Name()}, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, http.DefaultClient, cbnoop.NewCircuitBreaker())
+		must.Error(t, err)
+		must.Nil(t, actual)
+		test.SliceLen(t, 1, mp.NewInt64CounterCalls())
+	})
+
+	T.Run("with error creating error counter", func(t *testing.T) {
+		t.Parallel()
+
+		mp := &mockmetrics.ProviderMock{
+			NewInt64CounterFunc: func(counterName string, _ ...metric.Int64CounterOption) (metrics.Int64Counter, error) {
+				switch counterName {
+				case serviceName + "_evaluations":
+					return metrics.Int64CounterForTest(t, "x"), nil
+				case serviceName + "_errors":
+					return metrics.Int64CounterForTest(t, "x"), errors.New("arbitrary")
+				}
+				t.Fatalf("unexpected NewInt64Counter call: %q", counterName)
+				return nil, nil
+			},
+		}
+
+		actual, err := NewFeatureFlagManager(&Config{SDKKey: t.Name()}, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, http.DefaultClient, cbnoop.NewCircuitBreaker())
+		must.Error(t, err)
+		must.Nil(t, actual)
+		test.SliceLen(t, 2, mp.NewInt64CounterCalls())
+	})
+
+	T.Run("with error creating latency histogram", func(t *testing.T) {
+		t.Parallel()
+
+		mp := &mockmetrics.ProviderMock{
+			NewInt64CounterFunc: func(string, ...metric.Int64CounterOption) (metrics.Int64Counter, error) {
+				return metrics.Int64CounterForTest(t, "x"), nil
+			},
+			NewFloat64HistogramFunc: func(histName string, _ ...metric.Float64HistogramOption) (metrics.Float64Histogram, error) {
+				test.EqOp(t, serviceName+"_latency_ms", histName)
+				return nil, errors.New("arbitrary")
+			},
+		}
+
+		actual, err := NewFeatureFlagManager(&Config{SDKKey: t.Name()}, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, http.DefaultClient, cbnoop.NewCircuitBreaker())
+		must.Error(t, err)
+		must.Nil(t, actual)
+		test.SliceLen(t, 1, mp.NewFloat64HistogramCalls())
 	})
 }
 

@@ -17,38 +17,30 @@ func TestMinRange_ValidateWithContext(T *testing.T) {
 		test.NoError(t, x.ValidateWithContext(context.Background()))
 	})
 
-	T.Run("invalid", func(t *testing.T) {
+	T.Run("a zero minimum is a valid range", func(t *testing.T) {
 		t.Parallel()
 
-		x := &MinRange[float32]{}
+		// Min is a value type that is always present; a range starting at 0 is
+		// legitimate and must not be rejected as "missing".
+		test.NoError(t, (&MinRange[float32]{}).ValidateWithContext(context.Background()))
+		test.NoError(t, (&MinRange[uint16]{}).ValidateWithContext(context.Background()))
+		test.NoError(t, (&MinRange[uint32]{}).ValidateWithContext(context.Background()))
+	})
+
+	T.Run("max below min is invalid", func(t *testing.T) {
+		t.Parallel()
+
+		maxVal := 2
+		x := &MinRange[int]{Min: 5, Max: &maxVal}
 		test.Error(t, x.ValidateWithContext(context.Background()))
 	})
 
-	T.Run("valid uint16", func(t *testing.T) {
+	T.Run("max at or above min is valid", func(t *testing.T) {
 		t.Parallel()
 
-		x := &MinRange[uint16]{Min: 1}
-		test.NoError(t, x.ValidateWithContext(context.Background()))
-	})
-
-	T.Run("invalid uint16", func(t *testing.T) {
-		t.Parallel()
-
-		x := &MinRange[uint16]{}
-		test.Error(t, x.ValidateWithContext(context.Background()))
-	})
-
-	T.Run("valid uint32", func(t *testing.T) {
-		t.Parallel()
-
-		x := &MinRange[uint32]{Min: 1}
-		test.NoError(t, x.ValidateWithContext(context.Background()))
-	})
-
-	T.Run("invalid uint32", func(t *testing.T) {
-		t.Parallel()
-
-		x := &MinRange[uint32]{}
-		test.Error(t, x.ValidateWithContext(context.Background()))
+		eq := 5
+		above := 10
+		test.NoError(t, (&MinRange[int]{Min: 5, Max: &eq}).ValidateWithContext(context.Background()))
+		test.NoError(t, (&MinRange[int]{Min: 5, Max: &above}).ValidateWithContext(context.Background()))
 	})
 }

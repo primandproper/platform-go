@@ -5,11 +5,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v3/secrets"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
@@ -170,9 +171,39 @@ func TestSSMSecretSource_GetSecret(T *testing.T) {
 		must.SliceLen(t, 1, op.Errors)
 	})
 
+	T.Run("nil parameter returns not-found error", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Region: "us-east-1"}
+		mc := &mockSSMClient{nilParameter: true}
+		source, obs := newRecordingSource(t, cfg, mc)
+
+		got, err := source.GetSecret(t.Context(), "MISSING_PARAM")
+		must.Error(t, err)
+		test.True(t, errors.Is(err, secrets.ErrSecretNotFound))
+		test.EqOp(t, "", got)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.NameKey: "MISSING_PARAM",
+		})
+		must.SliceLen(t, 1, op.Errors)
+	})
+
 	T.Run("name with prefix", func(t *testing.T) {
 		t.Parallel()
 		cfg := &Config{Region: "us-east-1", Prefix: "/myapp/"}
+		mc := &mockSSMClient{value: "prefixed-value"}
+		source, err := NewSSMSecretSource(context.Background(), cfg, mc, nil, nil, nil)
+		must.NoError(t, err)
+
+		got, err := source.GetSecret(context.Background(), "MY_PARAM")
+		must.NoError(t, err)
+		test.EqOp(t, "prefixed-value", got)
+		test.EqOp(t, "/myapp/MY_PARAM", mc.lastName)
+	})
+
+	T.Run("prefix without trailing slash still gets a separator", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{Region: "us-east-1", Prefix: "/myapp"}
 		mc := &mockSSMClient{value: "prefixed-value"}
 		source, err := NewSSMSecretSource(context.Background(), cfg, mc, nil, nil, nil)
 		must.NoError(t, err)
@@ -214,9 +245,10 @@ func TestSSMSecretSource_Close(T *testing.T) {
 }
 
 type mockSSMClient struct {
-	value    string
-	err      error
-	lastName string
+	value        string
+	err          error
+	lastName     string
+	nilParameter bool
 }
 
 func (m *mockSSMClient) GetParameter(ctx context.Context, params *ssm.GetParameterInput, optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
@@ -225,6 +257,9 @@ func (m *mockSSMClient) GetParameter(ctx context.Context, params *ssm.GetParamet
 	}
 	if m.err != nil {
 		return nil, m.err
+	}
+	if m.nilParameter {
+		return &ssm.GetParameterOutput{}, nil
 	}
 	return &ssm.GetParameterOutput{
 		Parameter: &types.Parameter{

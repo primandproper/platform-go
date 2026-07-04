@@ -5,8 +5,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/keys"
 )
 
 // ChunkResult is one item streamed by StreamChunks: either a chunk of up to n lines, or a terminal
@@ -21,6 +21,11 @@ type ChunkResult struct {
 // failures (n <= 0), in which case no goroutine is started and the channel is nil. Once streaming,
 // a mid-stream read error or context cancellation is delivered as the final ChunkResult.Err and the
 // channel is then closed; io.EOF is clean completion (the channel simply closes).
+//
+// The caller MUST either drain the channel to completion or cancel ctx to stop early. Abandoning the
+// channel without canceling ctx blocks the background goroutine forever on its next send, leaking the
+// goroutine, its span, and (for StreamChunksFile) the open file handle — cancellation is the only way
+// to unblock a stalled send.
 func StreamChunks(ctx context.Context, src io.Reader, n int) (<-chan ChunkResult, error) {
 	return defaultReader.streamChunks(ctx, "", src, n, nil)
 }

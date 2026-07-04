@@ -5,11 +5,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v3/secrets"
 
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	"github.com/shoenig/test"
@@ -171,6 +172,24 @@ func TestGCPSecretSource_GetSecret(T *testing.T) {
 		must.SliceLen(t, 1, op.Errors)
 	})
 
+	T.Run("nil payload returns not-found error", func(t *testing.T) {
+		t.Parallel()
+		cfg := &Config{ProjectID: "test-project"}
+		mc := &mockGCPClient{nilPayload: true}
+		source, obs := newRecordingSource(t, cfg, mc)
+		defer source.Close()
+
+		got, err := source.GetSecret(t.Context(), "MISSING_SECRET")
+		must.Error(t, err)
+		test.True(t, errors.Is(err, secrets.ErrSecretNotFound))
+		test.EqOp(t, "", got)
+
+		op := obs.ObservedOperationWithData(t, map[string]any{
+			keys.NameKey: "MISSING_SECRET",
+		})
+		must.SliceLen(t, 1, op.Errors)
+	})
+
 	T.Run("full resource name passed through", func(t *testing.T) {
 		t.Parallel()
 		cfg := &Config{ProjectID: "test-project"}
@@ -203,14 +222,18 @@ func TestGCPSecretSource_Close(T *testing.T) {
 }
 
 type mockGCPClient struct {
-	err    error
-	value  string
-	closed bool
+	err        error
+	value      string
+	closed     bool
+	nilPayload bool
 }
 
 func (m *mockGCPClient) AccessSecretVersion(ctx context.Context, req *secretmanagerpb.AccessSecretVersionRequest) (*secretmanagerpb.AccessSecretVersionResponse, error) {
 	if m.err != nil {
 		return nil, m.err
+	}
+	if m.nilPayload {
+		return &secretmanagerpb.AccessSecretVersionResponse{}, nil
 	}
 	return &secretmanagerpb.AccessSecretVersionResponse{
 		Payload: &secretmanagerpb.SecretPayload{Data: []byte(m.value)},

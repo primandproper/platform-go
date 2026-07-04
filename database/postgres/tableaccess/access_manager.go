@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/database"
-	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v3/database"
+	"github.com/primandproper/platform-go/v3/errors"
 )
 
 type Privilege string
@@ -54,7 +54,10 @@ func quoteIdent(id string) string {
 }
 
 // quoteLiteral safely wraps a Postgres string literal in single‑quotes,
-// doubling any embedded single‑quotes per the SQL spec.
+// doubling any embedded single‑quotes per the SQL spec. This is safe only under
+// standard_conforming_strings=on (the Postgres default since 9.1), where backslash
+// is an ordinary character rather than an escape and therefore cannot break out of
+// the literal.
 func quoteLiteral(s string) string {
 	return `'` + strings.ReplaceAll(s, `'`, `''`) + `'`
 }

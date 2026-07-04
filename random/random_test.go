@@ -2,11 +2,12 @@ package random
 
 import (
 	"errors"
+	"io"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -16,6 +17,27 @@ type erroneousReader struct{}
 
 func (r *erroneousReader) Read(p []byte) (n int, err error) {
 	return -1, errors.New("blah")
+}
+
+// shortReader mimics an io.Reader that hands back one byte at a time with a nil
+// error (as the io.Reader contract permits), then runs dry. The old single-Read
+// generateSecret ignored the returned count and would have returned a
+// partially-zeroed secret with no error; io.ReadFull must instead surface an
+// io.ErrUnexpectedEOF once the source can't satisfy the full length.
+type shortReader struct {
+	remaining int
+}
+
+func (r *shortReader) Read(p []byte) (n int, err error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if r.remaining <= 0 {
+		return 0, io.EOF
+	}
+	p[0] = 0x01
+	r.remaining--
+	return 1, nil
 }
 
 // newRecordingGenerator builds a standardGenerator with a RecordingObserver swapped
@@ -196,6 +218,22 @@ func TestStandardSecretGenerator_GenerateRawBytes(T *testing.T) {
 		obs.ObservedOperationWithData(t, map[string]any{
 			keys.LengthKey: exampleLength,
 		})
+	})
+
+	T.Run("with a short read from the PRNG", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		exampleLength := 123
+
+		s, _ := newRecordingGenerator(t)
+		s.randReader = &shortReader{remaining: exampleLength / 2}
+		value, err := s.GenerateRawBytes(ctx, exampleLength)
+
+		// io.ReadFull turns a short read into an error rather than handing back a
+		// partially-zeroed secret.
+		test.SliceEmpty(t, value)
+		test.Error(t, err)
 	})
 }
 

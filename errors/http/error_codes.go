@@ -41,7 +41,7 @@ const (
 	ErrMisbehavingDependency ErrorCode = "E106"
 	// ErrTalkingToSearchProvider is returned when we fail to interact with the search provider.
 	ErrTalkingToSearchProvider ErrorCode = "E107"
-	// ErrSecretGeneration is returned when a user is not authorized.
+	// ErrSecretGeneration is returned when we fail to generate a secret.
 	ErrSecretGeneration ErrorCode = "E108"
 	// ErrUserIsBanned is returned when a user is banned.
 	ErrUserIsBanned ErrorCode = "E109"

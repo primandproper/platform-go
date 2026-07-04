@@ -5,15 +5,15 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	"github.com/primandproper/platform-go/v2/featureflags"
-	"github.com/primandproper/platform-go/v2/featureflags/launchdarkly"
-	"github.com/primandproper/platform-go/v2/featureflags/noop"
-	"github.com/primandproper/platform-go/v2/featureflags/posthog"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	"github.com/primandproper/platform-go/v3/featureflags"
+	"github.com/primandproper/platform-go/v3/featureflags/launchdarkly"
+	"github.com/primandproper/platform-go/v3/featureflags/noop"
+	"github.com/primandproper/platform-go/v3/featureflags/posthog"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -28,10 +28,10 @@ const (
 type (
 	// Config configures our feature flag manager.
 	Config struct {
-		LaunchDarkly   *launchdarkly.Config      `env:"init"     envPrefix:"LAUNCH_DARKLY"     json:"launchDarkly"`
-		PostHog        *posthog.Config           `env:"init"     envPrefix:"POSTHOG_"          json:"posthog"`
+		LaunchDarkly   *launchdarkly.Config      `env:",init"    envPrefix:"LAUNCH_DARKLY_"    json:"launchDarkly"`
+		PostHog        *posthog.Config           `env:",init"    envPrefix:"POSTHOG_"          json:"posthog"`
 		Provider       string                    `env:"PROVIDER" json:"provider"`
-		CircuitBreaker circuitbreakingcfg.Config `env:"init"     envPrefix:"CIRCUIT_BREAKING_" json:"circuitBreakerConfig"`
+		CircuitBreaker circuitbreakingcfg.Config `env:",init"    envPrefix:"CIRCUIT_BREAKING_" json:"circuitBreakerConfig"`
 	}
 )
 

@@ -8,24 +8,73 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v2/circuitbreaking/config"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	vectorsearch "github.com/primandproper/platform-go/v2/search/vector"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	vectorsearch "github.com/primandproper/platform-go/v3/search/vector"
 )
 
 const serviceName = "qdrant_index"
 
 // ErrUnexpectedStatus indicates qdrant returned a non-2xx response.
 var ErrUnexpectedStatus = platformerrors.New("qdrant returned an unexpected status code")
+
+// ErrUnsupportedID indicates a point ID is neither an unsigned integer nor a UUID —
+// the only two forms qdrant accepts. The platform's identifiers.New() (an xid) is one
+// such rejected form: pgvector stores it fine, but qdrant would 4xx. We reject it up
+// front so callers get a clear error instead of a late, opaque server failure.
+var ErrUnsupportedID = platformerrors.New("qdrant point id must be an unsigned integer or a UUID")
+
+// uuidPattern matches the canonical hyphenated UUID form qdrant accepts as a string ID.
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// pointID validates a caller-supplied ID against the two forms qdrant accepts for a
+// point ID and returns the JSON value to send. Numeric IDs are returned as a uint64 so
+// they serialize as a JSON number — qdrant rejects a numeric string like "42" — while
+// UUIDs are returned unchanged. Anything else (e.g. an xid) is rejected up front.
+func pointID(id string) (any, error) {
+	if id == "" {
+		return nil, platformerrors.ErrInvalidIDProvided
+	}
+	if n, parseErr := strconv.ParseUint(id, 10, 64); parseErr == nil {
+		return n, nil
+	}
+	if uuidPattern.MatchString(id) {
+		return id, nil
+	}
+	return nil, platformerrors.Wrapf(ErrUnsupportedID, "id %q", id)
+}
+
+// scoreToDistance converts a qdrant similarity score into a distance consistent with
+// the vectorsearch.QueryResult.Distance contract, where LOWER means more similar (the
+// same convention the pgvector provider follows). Qdrant reports Cosine and Dot as
+// similarities (higher = closer), whereas Euclid/Manhattan are already distances
+// (lower = closer), so only the similarity metrics are inverted:
+//   - Cosine: 1 - score  (score in [-1,1] → distance in [0,2], mirroring pgvector's <=>)
+//   - Dot:    -score      (mirroring pgvector's <#> negative inner product)
+//   - Euclid: score       (already a distance)
+//
+// distance is the qdrant distance string produced by metricToDistance.
+func scoreToDistance(distance string, score float32) float32 {
+	switch distance {
+	case "Cosine":
+		return 1 - score
+	case "Dot":
+		return -score
+	default:
+		return score
+	}
+}
 
 type indexManager[T any] struct {
 	o11y           observability.Observer
@@ -212,16 +261,17 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 
 	type point struct {
 		Payload any       `json:"payload,omitempty"`
-		ID      string    `json:"id"`
+		ID      any       `json:"id"`
 		Vector  []float32 `json:"vector"`
 	}
 
 	points := make([]point, 0, len(vectors))
 	for n := range vectors {
 		v := vectors[n]
-		if v.ID == "" {
+		pid, idErr := pointID(v.ID)
+		if idErr != nil {
 			i.errCounter.Add(ctx, 1)
-			return platformerrors.ErrInvalidIDProvided
+			return idErr
 		}
 		if len(v.Embedding) == 0 {
 			i.errCounter.Add(ctx, 1)
@@ -232,7 +282,7 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 			return platformerrors.Wrapf(vectorsearch.ErrDimensionMismatch, "got %d, want %d", len(v.Embedding), i.dimension)
 		}
 		points = append(points, point{
-			ID:      v.ID,
+			ID:      pid,
 			Vector:  v.Embedding,
 			Payload: payloadFromMetadata(v.Metadata),
 		})
@@ -276,7 +326,17 @@ func (i *indexManager[T]) Delete(ctx context.Context, ids ...string) error {
 		i.latencyHist.Record(ctx, float64(time.Since(startTime).Milliseconds()))
 	}()
 
-	body := map[string]any{"points": ids}
+	points := make([]any, 0, len(ids))
+	for _, id := range ids {
+		pid, idErr := pointID(id)
+		if idErr != nil {
+			i.errCounter.Add(ctx, 1)
+			return idErr
+		}
+		points = append(points, pid)
+	}
+
+	body := map[string]any{"points": points}
 	status, respBody, err := i.jsonReq(ctx, http.MethodPost, i.collectionPath("/points/delete?wait=true"), body)
 	if err != nil {
 		i.errCounter.Add(ctx, 1)
@@ -416,7 +476,7 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 		results = append(results, vectorsearch.QueryResult[T]{
 			ID:       idStr,
 			Metadata: meta,
-			Distance: r.Score,
+			Distance: scoreToDistance(i.distance, r.Score),
 		})
 	}
 
@@ -514,7 +574,10 @@ func stringifyID(raw any) (string, error) {
 	case string:
 		return v, nil
 	case float64:
-		return fmt.Sprintf("%v", v), nil
+		// Qdrant point IDs are integers; format without scientific notation so a large
+		// ID like 10000000 round-trips as "10000000" rather than fmt's "%v" → "1e+07",
+		// which would target a different point on a later Delete/Upsert.
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
 	case json.Number:
 		return v.String(), nil
 	default:

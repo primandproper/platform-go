@@ -3,9 +3,9 @@ package config
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/cryptography/encryption"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/cryptography/encryption"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -22,7 +22,7 @@ func TestRegisterEncryptorDecryptor(T *testing.T) {
 		do.ProvideValue(i, &Config{Provider: ProviderAES})
 		do.ProvideValue(i, tracingnoop.NewTracerProvider())
 		do.ProvideValue(i, loggingnoop.NewLogger())
-		do.ProvideValue(i, []byte(testKey))
+		do.ProvideValue(i, encryption.MasterKey(testKey))
 
 		RegisterEncryptorDecryptor(i)
 

@@ -6,11 +6,12 @@ import (
 	"encoding/base64"
 	"fmt"
 	"image/png"
+	"net/url"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/boombuler/barcode"
 	"github.com/boombuler/barcode/qr"
@@ -18,7 +19,7 @@ import (
 
 const (
 	o11yName          = "qr_code_builder"
-	base64ImagePrefix = "data:image/jpeg;base64,"
+	base64ImagePrefix = "data:image/png;base64,"
 )
 
 type (
@@ -57,13 +58,17 @@ func (s *builder) BuildQRCode(ctx context.Context, username, twoFactorSecret str
 	_, op := s.o11y.Begin(ctx)
 	defer op.End()
 
-	// "otpauth://totp/{{ .Issuer }}:{{ .EnsureUsername }}?secret={{ .Secret }}&issuer={{ .Issuer }}",
+	// otpauth://totp/{{ .Issuer }}:{{ .Username }}?secret={{ .Secret }}&issuer={{ .Issuer }}
+	// The issuer, username, and secret are escaped so values containing spaces or reserved
+	// characters (&, #, ?, ...) produce a valid, correctly-parsed URI.
+	query := url.Values{}
+	query.Set("secret", twoFactorSecret)
+	query.Set("issuer", string(s.totpIssuer))
+
 	otpString := fmt.Sprintf(
-		"otpauth://totp/%s:%s?secret=%s&issuer=%s",
-		s.totpIssuer,
-		username,
-		twoFactorSecret,
-		s.totpIssuer,
+		"otpauth://totp/%s?%s",
+		url.PathEscape(fmt.Sprintf("%s:%s", s.totpIssuer, username)),
+		query.Encode(),
 	)
 
 	op.Set(keys.UsernameKey, username).Set(keys.LengthKey, len(otpString))

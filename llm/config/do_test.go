@@ -1,12 +1,13 @@
 package llmcfg
 
 import (
+	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/llm"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/llm"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -20,6 +21,7 @@ func TestRegisterLLMProvider(T *testing.T) {
 		t.Parallel()
 
 		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue(i, loggingnoop.NewLogger())
 		do.ProvideValue(i, tracingnoop.NewTracerProvider())
 		do.ProvideValue[metrics.Provider](i, nil)

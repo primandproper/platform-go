@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
 
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 )
@@ -55,6 +55,11 @@ func (sm *indexManager[T]) Index(ctx context.Context, id string, value any) erro
 		sm.circuitBreaker.Failed()
 		return observability.PrepareError(err, op.Span(), "indexing value")
 	}
+	defer func() {
+		if closeErr := res.Body.Close(); closeErr != nil {
+			op.Acknowledge(closeErr, "closing response body")
+		}
+	}()
 
 	if res.StatusCode != http.StatusCreated && res.StatusCode != http.StatusOK {
 		sm.circuitBreaker.Failed()
@@ -67,7 +72,7 @@ func (sm *indexManager[T]) Index(ctx context.Context, id string, value any) erro
 
 // search executes search queries.
 func (sm *indexManager[T]) search(ctx context.Context, query string) (results []*T, err error) {
-	_, op := sm.o11y.Begin(ctx)
+	ctx, op := sm.o11y.Begin(ctx)
 	defer op.End()
 
 	if sm.circuitBreaker.CannotProceed() {
@@ -83,8 +88,10 @@ func (sm *indexManager[T]) search(ctx context.Context, query string) (results []
 	resultIDs := []*T{}
 	q := searchQuery{
 		Query: queryContainer{
-			Bool: should{
-				Should: []condition{},
+			MultiMatch: multiMatchQuery{
+				Query:  query,
+				Type:   "best_fields",
+				Fields: []string{"*"},
 			},
 		},
 	}
@@ -95,13 +102,14 @@ func (sm *indexManager[T]) search(ctx context.Context, query string) (results []
 	}
 
 	res, err := sm.esClient.Search(
+		sm.esClient.Search.WithContext(ctx),
 		sm.esClient.Search.WithIndex(sm.indexName),
 		sm.esClient.Search.WithBody(bytes.NewReader(queryBody)),
 	)
 	defer func() {
 		if res != nil {
-			if err = res.Body.Close(); err != nil {
-				op.Acknowledge(err, "closing response body")
+			if closeErr := res.Body.Close(); closeErr != nil {
+				op.Acknowledge(closeErr, "closing response body")
 			}
 		}
 	}()
@@ -149,9 +157,42 @@ func (sm *indexManager[T]) Search(ctx context.Context, query string) (ids []*T, 
 	return sm.search(ctx, query)
 }
 
-// Wipe implements our IndexManager interface.
-func (sm *indexManager[T]) Wipe(_ context.Context) (err error) {
-	return platformerrors.New("unimplemented")
+// Wipe implements our IndexManager interface. It removes all documents from the
+// index, leaving the index itself in place (matching the algolia/pgvector/qdrant
+// backends), via a match-all delete-by-query with an immediate refresh.
+func (sm *indexManager[T]) Wipe(ctx context.Context) error {
+	ctx, op := sm.o11y.Begin(ctx)
+	defer op.End()
+
+	if sm.circuitBreaker.CannotProceed() {
+		return circuitbreaking.ErrCircuitBroken
+	}
+
+	op.Set(keys.IndexNameKey, sm.indexName)
+
+	refresh := true
+	res, err := esapi.DeleteByQueryRequest{
+		Index:   []string{sm.indexName},
+		Body:    strings.NewReader(`{"query":{"match_all":{}}}`),
+		Refresh: &refresh,
+	}.Do(ctx, sm.esClient)
+	if err != nil {
+		sm.circuitBreaker.Failed()
+		return observability.PrepareError(err, op.Span(), "wiping index")
+	}
+	defer func() {
+		if closeErr := res.Body.Close(); closeErr != nil {
+			op.Acknowledge(closeErr, "closing response body")
+		}
+	}()
+
+	if res.IsError() {
+		sm.circuitBreaker.Failed()
+		return observability.PrepareError(platformerrors.New(res.String()), op.Span(), "wiping index")
+	}
+
+	sm.circuitBreaker.Succeeded()
+	return nil
 }
 
 // Delete implements our IndexManager interface.
@@ -165,13 +206,36 @@ func (sm *indexManager[T]) Delete(ctx context.Context, id string) error {
 
 	op.Set("id", id).Set(keys.IndexNameKey, sm.indexName)
 
-	_, err := esapi.DeleteRequest{
+	res, err := esapi.DeleteRequest{
 		Index:      sm.indexName,
 		DocumentID: id,
 	}.Do(ctx, sm.esClient)
 	if err != nil {
 		sm.circuitBreaker.Failed()
 		return observability.PrepareError(err, op.Span(), "deleting from elasticsearch")
+	}
+	defer func() {
+		if closeErr := res.Body.Close(); closeErr != nil {
+			op.Acknowledge(closeErr, "closing response body")
+		}
+	}()
+
+	// A delete targeting a document that does not exist returns 404 with
+	// result "not_found". Treat that as success: the desired end state (document
+	// absent) already holds, so Delete is idempotent for callers that retry or
+	// delete speculatively.
+	if res.StatusCode == http.StatusNotFound {
+		op.Logger().Debug("document not found, treating delete as no-op")
+		sm.circuitBreaker.Succeeded()
+		return nil
+	}
+
+	// esapi only returns a non-nil err for transport-level failures; an HTTP error
+	// status (401/500) surfaces on the response itself. Without this check a
+	// failed delete would count as a success and leave the document in place.
+	if res.IsError() {
+		sm.circuitBreaker.Failed()
+		return observability.PrepareError(platformerrors.New(res.String()), op.Span(), "deleting from elasticsearch")
 	}
 
 	op.Logger().Debug("removed from index")

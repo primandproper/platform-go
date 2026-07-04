@@ -3,8 +3,8 @@ package encoding
 import (
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 )
@@ -96,5 +96,12 @@ func Test_contentTypeFromString(T *testing.T) {
 		t.Parallel()
 
 		test.EqOp(t, ContentTypeJSON, contentTypeFromString("unknown"))
+	})
+
+	T.Run("ignores charset parameter", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, ContentTypeXML, contentTypeFromString("application/xml; charset=utf-8"))
+		test.EqOp(t, ContentTypeJSON, contentTypeFromString("application/json; charset=utf-8"))
 	})
 }

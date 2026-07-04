@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -20,6 +20,7 @@ const (
 
 func buildConfigForTest() *Config {
 	return &Config{
+		CookieName:            "platform_cookie",
 		Base64EncodedHashKey:  base64.StdEncoding.EncodeToString([]byte(testKey)),
 		Base64EncodedBlockKey: base64.StdEncoding.EncodeToString([]byte(testKey)),
 	}
@@ -62,6 +63,20 @@ func TestNewCookieManager(T *testing.T) {
 		test.Nil(t, m)
 	})
 
+	T.Run("rejects an invalid config", func(t *testing.T) {
+		t.Parallel()
+
+		// SameSite=None without SecureOnly is rejected by config validation, which
+		// NewCookieManager must now run before building the manager.
+		cfg := buildConfigForTest()
+		cfg.SameSite = SameSiteNone
+		cfg.SecureOnly = false
+
+		m, err := NewCookieManager(cfg, tracingnoop.NewTracerProvider())
+		test.Error(t, err)
+		test.Nil(t, m)
+	})
+
 	T.Run("with invalid hash key", func(t *testing.T) {
 		t.Parallel()
 
@@ -71,6 +86,8 @@ func TestNewCookieManager(T *testing.T) {
 		m, err := NewCookieManager(cfg, tracingnoop.NewTracerProvider())
 		test.Error(t, err)
 		test.Nil(t, m)
+		// The error must never echo the (secret) key material back to logs.
+		test.StrNotContains(t, err.Error(), cfg.Base64EncodedHashKey)
 	})
 
 	T.Run("with invalid block key", func(t *testing.T) {
@@ -82,6 +99,8 @@ func TestNewCookieManager(T *testing.T) {
 		m, err := NewCookieManager(cfg, tracingnoop.NewTracerProvider())
 		test.Error(t, err)
 		test.Nil(t, m)
+		// The error must never echo the (secret) key material back to logs.
+		test.StrNotContains(t, err.Error(), cfg.Base64EncodedBlockKey)
 	})
 }
 

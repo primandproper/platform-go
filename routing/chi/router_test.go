@@ -3,13 +3,14 @@ package chi
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v2/routing"
+	"github.com/primandproper/platform-go/v3/observability"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/routing"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/shoenig/test"
@@ -37,6 +38,30 @@ func Test_buildChiMux(T *testing.T) {
 		t.Parallel()
 
 		test.NotNil(t, buildChiMux(observability.NewObserverForTest(t.Name()), metricsnoop.NewMetricsProvider(), &Config{}))
+	})
+
+	T.Run("CORS requires https for a non-localhost origin", func(t *testing.T) {
+		t.Parallel()
+
+		mux := buildChiMux(observability.NewObserverForTest(t.Name()), metricsnoop.NewMetricsProvider(), &Config{
+			ValidDomains: []string{"example.com"},
+		})
+		mux.Get("/", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+
+		allowOrigin := func(origin string) string {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
+			must.NoError(t, err)
+			req.Header.Set("Origin", origin)
+
+			rw := httptest.NewRecorder()
+			mux.ServeHTTP(rw, req)
+			return rw.Header().Get("Access-Control-Allow-Origin")
+		}
+
+		// An https origin on an allowed host is echoed back; the plaintext origin on the
+		// same host is rejected (credentials must not flow over http).
+		test.EqOp(t, "https://example.com", allowOrigin("https://example.com"))
+		test.EqOp(t, "", allowOrigin("http://example.com"))
 	})
 }
 

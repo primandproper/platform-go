@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/authentication/tokens"
-	"github.com/primandproper/platform-go/v2/authentication/tokens/jwt"
-	"github.com/primandproper/platform-go/v2/authentication/tokens/paseto"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/authentication/tokens"
+	"github.com/primandproper/platform-go/v3/authentication/tokens/jwt"
+	"github.com/primandproper/platform-go/v3/authentication/tokens/paseto"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -42,7 +42,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	return validation.ValidateStructWithContext(
 		ctx,
 		cfg,
-		validation.Field(&cfg.Provider, validation.In(ProviderJWT, ProviderPASETO)),
+		validation.Field(&cfg.Provider, validation.Required, validation.In(ProviderJWT, ProviderPASETO)),
 		validation.Field(&cfg.Issuer, validation.Required),
 		validation.Field(&cfg.Audience, validation.Required),
 		validation.Field(&cfg.Base64EncodedSigningKey, validation.Required),
@@ -66,6 +66,6 @@ func (cfg *Config) ProvideTokenIssuer(logger logging.Logger, tracerProvider trac
 	case ProviderPASETO:
 		return paseto.NewPASETOSigner(logger, tracerProvider, cfg.Issuer, cfg.Audience, decryptedSigningKey)
 	default:
-		return tokens.NewNoopTokenIssuer(), nil
+		return nil, fmt.Errorf("unknown token issuer provider: %q", cfg.Provider)
 	}
 }

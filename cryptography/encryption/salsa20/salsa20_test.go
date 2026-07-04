@@ -4,11 +4,11 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v2/random"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/random"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -66,6 +66,30 @@ func TestStandardEncryptor(T *testing.T) {
 		actual2, err := encryptor.Decrypt(ctx, encrypted2)
 		test.NoError(t, err)
 		test.EqOp(t, expected, actual2)
+	})
+
+	T.Run("decrypt rejects tampered ciphertext", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		secret, err := random.GenerateHexEncodedString(ctx, 16)
+		must.NoError(t, err)
+
+		encryptor, err := NewEncryptorDecryptor(tracingnoop.NewTracerProvider(), loggingnoop.NewLogger(), []byte(secret))
+		must.NoError(t, err)
+
+		encrypted, err := encryptor.Encrypt(ctx, "sensitive payload")
+		must.NoError(t, err)
+
+		raw, err := base64.URLEncoding.DecodeString(encrypted)
+		must.NoError(t, err)
+
+		// Flip a bit in the authenticated ciphertext body (past the nonce).
+		raw[len(raw)-1] ^= 0x01
+		tampered := base64.URLEncoding.EncodeToString(raw)
+
+		_, err = encryptor.Decrypt(ctx, tampered)
+		must.Error(t, err)
 	})
 
 	T.Run("decrypt observes content length", func(t *testing.T) {

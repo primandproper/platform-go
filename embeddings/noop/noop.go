@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/embeddings"
+	"github.com/primandproper/platform-go/v3/embeddings"
 )
 
 var _ embeddings.Embedder = (*Embedder)(nil)
@@ -19,6 +19,10 @@ func NewEmbedder() embeddings.Embedder {
 
 // GenerateEmbedding is a no-op that returns an empty vector.
 func (*Embedder) GenerateEmbedding(_ context.Context, input *embeddings.Input) (*embeddings.Embedding, error) {
+	if input == nil {
+		return nil, embeddings.ErrNilInput
+	}
+
 	return &embeddings.Embedding{
 		Vector:      []float32{},
 		SourceText:  input.Content,

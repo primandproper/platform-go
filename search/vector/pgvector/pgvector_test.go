@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/database"
-	"github.com/primandproper/platform-go/v2/identifiers"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	vectorsearch "github.com/primandproper/platform-go/v2/search/vector"
-	"github.com/primandproper/platform-go/v2/testutils/containers"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/database"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	vectorsearch "github.com/primandproper/platform-go/v3/search/vector"
+	"github.com/primandproper/platform-go/v3/testutils/containers"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/shoenig/test"
@@ -188,6 +188,26 @@ func TestIndexManager_ObservesIndexName(T *testing.T) {
 			keys.IndexNameKey: im.indexName,
 		})
 		must.SliceLen(t, 1, op.Errors)
+	})
+}
+
+func TestIndexManager_Query_RejectsNonStringFilter(T *testing.T) {
+	T.Parallel()
+
+	T.Run("non-string filter is rejected rather than silently ignored", func(t *testing.T) {
+		t.Parallel()
+
+		im, _ := newRecordingIndex(t)
+
+		// A structured filter (e.g. one meant for the qdrant provider) must not be
+		// silently dropped — dropping a tenant-scoping filter could leak rows across
+		// tenants. It must fail loudly before any SQL is built or executed.
+		_, err := im.Query(t.Context(), vectorsearch.QueryRequest{
+			Embedding: []float32{1, 0, 0},
+			TopK:      1,
+			Filter:    map[string]any{"tenant": "acme"},
+		})
+		must.ErrorIs(t, err, ErrInvalidFilter)
 	})
 }
 

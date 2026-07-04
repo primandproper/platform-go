@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	mockcircuitbreaking "github.com/primandproper/platform-go/v2/circuitbreaking/mock"
-	cbnoop "github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	mockcircuitbreaking "github.com/primandproper/platform-go/v3/circuitbreaking/mock"
+	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	algoliasearch "github.com/algolia/algoliasearch-client-go/v3/algolia/search"
 	algoliatransport "github.com/algolia/algoliasearch-client-go/v3/algolia/transport"
@@ -167,6 +167,7 @@ func TestIndexManager_Index(T *testing.T) {
 
 		cb := &mockcircuitbreaking.CircuitBreakerMock{
 			CannotProceedFunc: func() bool { return false },
+			SucceededFunc:     func() {},
 		}
 
 		im, obs := buildTestIndexManagerWithMockServer(t, handler, cb)
@@ -175,10 +176,31 @@ func TestIndexManager_Index(T *testing.T) {
 		err := im.Index(context.Background(), "123", value)
 		test.NoError(t, err)
 		test.SliceLen(t, 1, cb.CannotProceedCalls())
+		// A successful index must record success on the breaker.
+		test.SliceLen(t, 1, cb.SucceededCalls())
 
 		obs.ObservedOperationWithData(t, map[string]any{
 			idKey: "123",
 		})
+	})
+
+	T.Run("index failure trips the breaker", func(t *testing.T) {
+		t.Parallel()
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		})
+
+		cb := &mockcircuitbreaking.CircuitBreakerMock{
+			CannotProceedFunc: func() bool { return false },
+			FailedFunc:        func() {},
+		}
+
+		im, _ := buildTestIndexManagerWithMockServer(t, handler, cb)
+
+		err := im.Index(context.Background(), "123", map[string]string{"id": "123"})
+		test.Error(t, err)
+		test.SliceLen(t, 1, cb.FailedCalls())
 	})
 }
 

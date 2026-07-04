@@ -3,8 +3,8 @@ package tracing
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/logging/slog"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/logging/slog"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -20,7 +20,7 @@ func (h errorHandler) Handle(err error) {
 }
 
 func init() {
-	// set PackagePrefix to a noop error handler just so one is set
+	// set a noop error handler just so one is set
 	otel.SetErrorHandler(errorHandler{logger: slog.NewSlogLogger(logging.ErrorLevel).WithName("otel_errors")})
 }
 

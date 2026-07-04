@@ -5,18 +5,17 @@ import (
 	"database/sql"
 	stderrors "errors"
 	"fmt"
-	"sync"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	msgconfig "github.com/primandproper/platform-go/v2/messagequeue/config"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	"github.com/primandproper/platform-go/v2/random"
-	textsearch "github.com/primandproper/platform-go/v2/search/text"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	msgconfig "github.com/primandproper/platform-go/v3/messagequeue/config"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v3/random"
+	textsearch "github.com/primandproper/platform-go/v3/search/text"
 
 	"github.com/hashicorp/go-multierror"
 	"go.opentelemetry.io/otel/attribute"
@@ -27,19 +26,17 @@ const (
 	serviceName = "indexer"
 )
 
-type Config struct {
-	SearchDataIndexerTopicName string `env:"SEARCH_DATA_INDEX_TOPIC_NAME" json:"searchDataIndexerTopicName"`
-}
-
 type Function func(context.Context) ([]string, error)
 
+// IndexScheduler picks a registered index type and publishes indexing requests for it. The
+// indexFunctions map is populated at construction and never mutated afterwards, so reads of it
+// need no synchronization.
 type IndexScheduler struct {
 	o11y                     observability.Observer
 	handledRecordsCounter    metrics.Int64Counter
 	searchDataIndexPublisher messagequeue.Publisher
 	indexFunctions           map[string]Function
 	allIndexTypes            []string
-	indexManagementHat       sync.RWMutex
 }
 
 func NewIndexScheduler(
@@ -91,12 +88,10 @@ func (i *IndexScheduler) IndexTypes(ctx context.Context) error {
 	op.Set(keys.IndexNameKey, chosenIndex)
 	op.Logger().Info("index type chosen")
 
-	i.indexManagementHat.RLock()
 	actionFunc, ok := i.indexFunctions[chosenIndex]
 	if !ok {
 		return errors.Newf("unknown index type %s", chosenIndex)
 	}
-	i.indexManagementHat.RUnlock()
 
 	ids, err := actionFunc(ctx)
 	if err != nil {

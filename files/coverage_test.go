@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/encoding"
-	"github.com/primandproper/platform-go/v2/files"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/encoding"
+	"github.com/primandproper/platform-go/v3/files"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

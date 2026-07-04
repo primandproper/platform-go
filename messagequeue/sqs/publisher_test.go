@@ -6,13 +6,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/shoenig/test"
@@ -40,7 +40,8 @@ func Test_sqsPublisher_Publish(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil)
+		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
 		a, err := provider.ProvidePublisher(ctx, t.Name())
@@ -82,7 +83,8 @@ func Test_sqsPublisher_Publish(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil)
+		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
 		a, err := provider.ProvidePublisher(ctx, t.Name())
@@ -120,7 +122,8 @@ func Test_sqsPublisher_PublishAsync(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil)
+		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
 		a, err := provider.ProvidePublisher(ctx, t.Name())
@@ -154,7 +157,8 @@ func Test_sqsPublisher_PublishAsync(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil)
+		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
 		a, err := provider.ProvidePublisher(ctx, t.Name())
@@ -179,7 +183,8 @@ func Test_sqsPublisher_PublishAsync(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil)
+		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
 		a, err := provider.ProvidePublisher(ctx, t.Name())
@@ -217,7 +222,19 @@ func TestProvideSQSPublisherProvider(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		actual := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil)
+		actual, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		must.NoError(t, provErr)
+		test.NotNil(t, actual)
+	})
+
+	T.Run("with custom QueueAddress endpoint override", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		logger := loggingnoop.NewLogger()
+
+		actual, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{QueueAddress: "http://localhost:4566"})
+		must.NoError(t, provErr)
 		test.NotNil(t, actual)
 	})
 }
@@ -231,7 +248,8 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil)
+		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
 		actual, err := provider.ProvidePublisher(ctx, t.Name())
@@ -245,7 +263,8 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil)
+		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
 		actual, err := provider.ProvidePublisher(ctx, t.Name())
@@ -263,7 +282,8 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil)
+		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
 		actual, err := provider.ProvidePublisher(ctx, "")
@@ -278,11 +298,12 @@ func Test_provideSQSPublisher(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		publisher := provideSQSPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), nil, "test-topic")
+		publisher, err := provideSQSPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), nil, "test-topic")
+		must.NoError(t, err)
 		must.NotNil(t, publisher)
 	})
 
-	T.Run("panics when first NewInt64Counter fails", func(t *testing.T) {
+	T.Run("returns error when first NewInt64Counter fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -295,13 +316,13 @@ func Test_provideSQSPublisher(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			provideSQSPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
-		})
+		actual, err := provideSQSPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 1, mp.NewInt64CounterCalls())
 	})
 
-	T.Run("panics when second NewInt64Counter fails", func(t *testing.T) {
+	T.Run("returns error when second NewInt64Counter fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -317,13 +338,13 @@ func Test_provideSQSPublisher(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			provideSQSPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
-		})
+		actual, err := provideSQSPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 2, mp.NewInt64CounterCalls())
 	})
 
-	T.Run("panics when NewFloat64Histogram fails", func(t *testing.T) {
+	T.Run("returns error when NewFloat64Histogram fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -335,9 +356,9 @@ func Test_provideSQSPublisher(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			provideSQSPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
-		})
+		actual, err := provideSQSPublisher(loggingnoop.NewLogger(), nil, tracingnoop.NewTracerProvider(), mp, "t")
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 2, mp.NewInt64CounterCalls())
 		test.SliceLen(t, 1, mp.NewFloat64HistogramCalls())
 	})

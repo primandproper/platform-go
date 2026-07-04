@@ -1,20 +1,30 @@
 package config
 
 import (
-	"github.com/primandproper/platform-go/v2/capitalism"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/capitalism"
+	"github.com/primandproper/platform-go/v3/capitalism/stripe"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/samber/do/v2"
 )
 
-// RegisterPaymentManager registers a capitalism.PaymentManager with the injector.
+// RegisterPaymentManager registers a capitalism.PaymentManager with the injector. A
+// stripe.EventHandler may optionally be registered in the container; when present, it is wired into
+// the Stripe manager so consumers can act on verified webhook events.
 func RegisterPaymentManager(i do.Injector) {
 	do.Provide[capitalism.PaymentManager](i, func(i do.Injector) (capitalism.PaymentManager, error) {
+		// The event handler is optional; a resolution error means none was registered.
+		var stripeEventHandler stripe.EventHandler
+		if h, err := do.Invoke[stripe.EventHandler](i); err == nil {
+			stripeEventHandler = h
+		}
+
 		return ProvideCapitalismImplementation(
 			do.MustInvoke[logging.Logger](i),
 			do.MustInvoke[tracing.TracerProvider](i),
 			do.MustInvoke[*Config](i),
+			stripeEventHandler,
 		)
 	})
 }

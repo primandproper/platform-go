@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/llm"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
-	"github.com/primandproper/platform-go/v2/pointer"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/llm"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v3/pointer"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
 	anyllmopenai "github.com/mozilla-ai/any-llm-go/providers/openai"
@@ -77,6 +77,12 @@ type openaiProvider struct {
 }
 
 // Completion implements llm.Provider.
+//
+// Rate limiting: this method does not retry. The underlying any-llm library classifies a
+// 429 as *anyllm.RateLimitError (which carries a RetryAfter) but never retries on its own,
+// so the error is surfaced to the caller unchanged. Callers that want backoff should wrap
+// this call themselves (e.g. with the platform's retry package), inspecting the error via
+// errors.As for *anyllm.RateLimitError / errors.Is for anyllm.ErrRateLimit.
 func (p *openaiProvider) Completion(ctx context.Context, params llm.CompletionParams) (*llm.CompletionResult, error) {
 	ctx, op := p.o11y.Begin(ctx)
 	defer op.End()

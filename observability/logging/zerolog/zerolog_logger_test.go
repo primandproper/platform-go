@@ -1,13 +1,15 @@
 package zerolog
 
 import (
+	"bytes"
 	"errors"
 	"net/http"
 	"net/url"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/logging"
 
+	"github.com/rs/zerolog"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"go.opentelemetry.io/otel/trace"
@@ -245,5 +247,26 @@ func Test_zerologLogger_WithResponse(T *testing.T) {
 		l := NewZerologLogger(logging.DebugLevel)
 
 		test.NotNil(t, l.WithResponse(nil))
+	})
+}
+
+func Test_zerologLogger_requestIDFuncSurvivesDerivation(T *testing.T) {
+	T.Parallel()
+
+	T.Run("WithName-derived logger still emits the request ID", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		root := &zerologLogger{logger: zerolog.New(&buf)}
+		root.SetRequestIDFunc(func(*http.Request) string { return "req-123" })
+
+		u, err := url.ParseRequestURI("https://example.com/path?things=stuff")
+		must.NoError(t, err)
+
+		root.WithName(t.Name()).
+			WithRequest(&http.Request{Method: http.MethodGet, URL: u}).
+			Info("hello")
+
+		test.StrContains(t, buf.String(), "req-123")
 	})
 }

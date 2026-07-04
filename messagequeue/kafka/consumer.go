@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/segmentio/kafka-go"
 )
@@ -31,6 +32,33 @@ type (
 )
 
 var _ messagequeue.Consumer = (*kafkaConsumer)(nil)
+
+// fetchErrorBackoff is the pause after a failed fetch before retrying, so a
+// persistent broker error doesn't hot-spin the consume loop.
+const fetchErrorBackoff = 250 * time.Millisecond
+
+// sendErr delivers err on errs without wedging: it also selects on ctx so a
+// consumer whose error channel is no longer being drained still unblocks when the
+// context is canceled during shutdown.
+func (c *kafkaConsumer) sendErr(ctx context.Context, errs chan error, err error) {
+	if errs == nil {
+		return
+	}
+
+	// Prefer delivering the error whenever the channel can accept it right now — a
+	// handler that cancels ctx and then returns an error would otherwise race the
+	// send against ctx.Done() (both ready) and randomly drop the error.
+	select {
+	case errs <- err:
+		return
+	default:
+	}
+
+	select {
+	case errs <- err:
+	case <-ctx.Done():
+	}
+}
 
 func provideKafkaConsumer(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, brokers []string, groupID, topic string, handlerFunc func(context.Context, []byte) error) (*kafkaConsumer, error) {
 	mp := metrics.EnsureMetricsProvider(metricsProvider)
@@ -60,22 +88,40 @@ func (c *kafkaConsumer) Consume(ctx context.Context, stopChan chan bool, errs ch
 		stopChan = make(chan bool, 1)
 	}
 
-	for {
+	// Cancel the fetch context when stop is signaled so a FetchMessage blocked
+	// waiting for a message returns promptly instead of ignoring stop until the next
+	// message arrives. The watcher also exits on ctx.Done (fired by defer cancel), so
+	// it doesn't leak on the normal shutdown path.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
 		select {
-		case <-ctx.Done():
-			return
 		case <-stopChan:
-			return
-		default:
+			cancel()
+		case <-ctx.Done():
 		}
+	}()
 
+	// The reader owns network connections and consumer-group membership; close it on
+	// exit so neither leaks.
+	defer func() {
+		if err := c.reader.Close(); err != nil {
+			c.o11y.Logger().Error("closing kafka reader", err)
+		}
+	}()
+
+	for {
 		msg, err := c.reader.FetchMessage(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
 			}
-			if errs != nil {
-				errs <- err
+			c.sendErr(ctx, errs, err)
+			// Back off before refetching so a persistent fetch error doesn't hot-spin.
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(fetchErrorBackoff):
 			}
 			continue
 		}
@@ -87,14 +133,17 @@ func (c *kafkaConsumer) Consume(ctx context.Context, stopChan chan bool, errs ch
 
 		if err = c.handlerFunc(msgCtx, msg.Value); err != nil {
 			op.Acknowledge(err, "handling message")
-			if errs != nil {
-				errs <- err
-			}
-		} else if err = c.reader.CommitMessages(msgCtx, msg); err != nil {
+			c.sendErr(msgCtx, errs, err)
+			// Kafka commits are cumulative by offset, so committing a later message
+			// would advance the group past this failed one and lose it. Stop instead,
+			// leaving the offset uncommitted for redelivery on restart/rebalance.
+			op.End()
+			return
+		}
+
+		if err = c.reader.CommitMessages(msgCtx, msg); err != nil {
 			op.Acknowledge(err, "committing message")
-			if errs != nil {
-				errs <- err
-			}
+			c.sendErr(msgCtx, errs, err)
 		}
 
 		op.End()
@@ -127,10 +176,14 @@ func ProvideKafkaConsumerProvider(logger logging.Logger, tracerProvider tracing.
 	}
 }
 
+// Close is a no-op: each cached consumer owns its Kafka reader and closes it when
+// its Consume loop exits, so the provider holds no independent resource to release.
+func (p *consumerProvider) Close() {}
+
 // ProvideConsumer returns a Consumer for the given topic.
 func (p *consumerProvider) ProvideConsumer(_ context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
 	if topic == "" {
-		return nil, ErrEmptyInputProvided
+		return nil, messagequeue.ErrEmptyTopicName
 	}
 
 	p.consumerCacheMu.Lock()

@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v3/errors"
 )
 
 // GetTagNameByValue searches struct s (or *s) for a field whose value equals fieldValue
@@ -30,7 +30,7 @@ func GetTagNameByValue(strukt, fieldValue any, tagKey string) (string, error) {
 		v = v.Elem()
 	}
 	if v.Kind() != reflect.Struct {
-		return "", errors.Newf("GetTagNameByValue: expected struct or pointer to struct, got %strukt", v.Kind())
+		return "", errors.Newf("GetTagNameByValue: expected struct or pointer to struct, got %s", v.Kind())
 	}
 
 	t := v.Type()
@@ -119,6 +119,10 @@ func GetFieldTypes(strukt any) (map[string]any, error) {
 		}
 	}
 
+	return getFieldTypes(t, map[reflect.Type]bool{})
+}
+
+func getFieldTypes(t reflect.Type, visited map[reflect.Type]bool) (map[string]any, error) {
 	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
@@ -126,6 +130,11 @@ func GetFieldTypes(strukt any) (map[string]any, error) {
 	if t.Kind() != reflect.Struct {
 		return nil, errors.Newf("GetFieldTypes: expected struct or pointer to struct, got %v", t.Kind())
 	}
+
+	// Track types on the current recursion path so self-referential types (e.g. Next *Node)
+	// terminate instead of recursing until the stack overflows.
+	visited[t] = true
+	defer delete(visited, t)
 
 	result := make(map[string]any)
 
@@ -145,7 +154,14 @@ func GetFieldTypes(strukt any) (map[string]any, error) {
 
 		// If it's a struct, recursively get its fields
 		if fieldType.Kind() == reflect.Struct {
-			nestedMap, err := GetFieldTypes(fieldType)
+			// A field whose type is already on the path is a cycle; record its type name
+			// rather than recursing.
+			if visited[fieldType] {
+				result[x.Name] = fieldType.String()
+				continue
+			}
+
+			nestedMap, err := getFieldTypes(fieldType, visited)
 			if err != nil {
 				return nil, errors.Wrapf(err, "error processing nested struct field %s", x.Name)
 			}

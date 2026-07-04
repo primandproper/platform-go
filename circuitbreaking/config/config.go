@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	"github.com/primandproper/platform-go/v2/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	"github.com/primandproper/platform-go/v3/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	circuit "github.com/rubyist/circuitbreaker"
@@ -57,7 +57,7 @@ func (cfg *Config) EnsureDefaults() {
 	}
 
 	if cfg.MinimumSampleThreshold == 0 {
-		cfg.MinimumSampleThreshold = 1_000_000
+		cfg.MinimumSampleThreshold = 20
 	}
 }
 
@@ -110,6 +110,12 @@ func (cfg *Config) ProvideCircuitBreaker(ctx context.Context, logger logging.Log
 		opt(options)
 	}
 
+	// Apply defaults before validating: otherwise an unset NAME (the common case)
+	// fails the Required check and silently degrades to a noop breaker — protection
+	// that looks wired but does nothing. Defaulting first makes the "UNKNOWN" name
+	// take effect and validation pass.
+	cfg.EnsureDefaults()
+
 	logger = logging.EnsureLogger(logger).WithValue("circuit_breaker", cfg.Name)
 
 	if err := cfg.ValidateWithContext(ctx); err != nil {
@@ -117,7 +123,7 @@ func (cfg *Config) ProvideCircuitBreaker(ctx context.Context, logger logging.Log
 		return noop.NewCircuitBreaker(), nil
 	}
 
-	cfg.EnsureDefaults()
+	metricsProvider = metrics.EnsureMetricsProvider(metricsProvider)
 
 	brokenCounter, err := metricsProvider.NewInt64Counter(fmt.Sprintf("%s_circuit_breaker_tripped", cfg.Name))
 	if err != nil {
@@ -136,7 +142,9 @@ func (cfg *Config) ProvideCircuitBreaker(ctx context.Context, logger logging.Log
 
 	cb := circuit.NewBreakerWithOptions(&circuit.Options{
 		ShouldTrip: func(cb *circuit.Breaker) bool {
-			return uint64(cb.Failures()+cb.Successes()) >= cfg.MinimumSampleThreshold && cb.ErrorRate() >= cfg.ErrorRate
+			// cb.ErrorRate() is a fraction (0.9 == 90%); cfg.ErrorRate is a percentage
+			// (0–100), so convert before comparing or any configured rate >1 is unreachable.
+			return uint64(cb.Failures()+cb.Successes()) >= cfg.MinimumSampleThreshold && cb.ErrorRate() >= cfg.ErrorRate/100.0
 		},
 		WindowTime:    circuit.DefaultWindowTime,
 		WindowBuckets: circuit.DefaultWindowBuckets,
@@ -165,16 +173,27 @@ func handleCircuitBreakerEvents(
 	brokenCounter metrics.Int64Counter,
 	addOptions ...metric.AddOption,
 ) {
-	for be := range events {
-		switch be {
-		case circuit.BreakerTripped:
-			brokenCounter.Add(ctx, 1, addOptions...)
-		case circuit.BreakerReset:
-			resetCounter.Add(ctx, 1, addOptions...)
-		case circuit.BreakerFail:
-			failureCounter.Add(ctx, 1, addOptions...)
-		case circuit.BreakerReady:
-			logger.Debug("circuit breaker is ready")
+	// Exit when the caller's context is canceled so this goroutine doesn't leak for
+	// the life of the process (one per breaker). The breaker's event channel is
+	// buffered and drops on overflow, so abandoning it here is safe.
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case be, ok := <-events:
+			if !ok {
+				return
+			}
+			switch be {
+			case circuit.BreakerTripped:
+				brokenCounter.Add(ctx, 1, addOptions...)
+			case circuit.BreakerReset:
+				resetCounter.Add(ctx, 1, addOptions...)
+			case circuit.BreakerFail:
+				failureCounter.Add(ctx, 1, addOptions...)
+			case circuit.BreakerReady:
+				logger.Debug("circuit breaker is ready")
+			}
 		}
 	}
 }

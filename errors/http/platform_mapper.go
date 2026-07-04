@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	"github.com/primandproper/platform-go/v2/database"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	"github.com/primandproper/platform-go/v3/database"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
 )
 
 // PlatformMapper maps platform-level errors to HTTP error codes and messages.

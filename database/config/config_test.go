@@ -4,13 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
+	"path/filepath"
 	"testing"
 	"time"
 
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform-go/v2/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
@@ -157,7 +160,7 @@ func TestConfig_GetReadConnectionString(T *testing.T) {
 			},
 		}
 
-		expected := "user=user password=pass database=db host=localhost port=5432"
+		expected := "user='user' password='pass' database='db' host='localhost' port=5432 sslmode=prefer"
 		test.EqOp(t, expected, cfg.GetReadConnectionString())
 	})
 }
@@ -178,7 +181,7 @@ func TestConfig_GetWriteConnectionString(T *testing.T) {
 			},
 		}
 
-		expected := "user=writer password=secret database=mydb host=writehost port=5433"
+		expected := "user='writer' password='secret' database='mydb' host='writehost' port=5433 sslmode=prefer"
 		test.EqOp(t, expected, cfg.GetWriteConnectionString())
 	})
 }
@@ -193,11 +196,11 @@ func TestConfig_GetMaxPingAttempts(T *testing.T) {
 		test.EqOp(t, uint64(42), cfg.GetMaxPingAttempts())
 	})
 
-	T.Run("zero value", func(t *testing.T) {
+	T.Run("returns default when zero", func(t *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{}
-		test.EqOp(t, uint64(0), cfg.GetMaxPingAttempts())
+		test.EqOp(t, uint64(defaultMaxPingAttempts), cfg.GetMaxPingAttempts())
 	})
 }
 
@@ -273,6 +276,24 @@ func TestConfig_GetConnMaxLifetime(T *testing.T) {
 	})
 }
 
+func TestConfig_GetLogQueries(T *testing.T) {
+	T.Parallel()
+
+	T.Run("defaults to false", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{}
+		test.EqOp(t, false, cfg.GetLogQueries())
+	})
+
+	T.Run("returns set value", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{LogQueries: true}
+		test.EqOp(t, true, cfg.GetLogQueries())
+	})
+}
+
 func TestConfig_ValidateWithContext_additional(T *testing.T) {
 	T.Parallel()
 
@@ -297,6 +318,43 @@ func TestConfig_ValidateWithContext_additional(T *testing.T) {
 		}
 
 		test.NoError(t, cfg.ValidateWithContext(t.Context()))
+	})
+
+	T.Run("sqlite validates with only a database file path", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			Provider:       ProviderSQLite,
+			ReadConnection: ConnectionDetails{Database: "/tmp/test.db"},
+		}
+
+		test.NoError(t, cfg.ValidateWithContext(t.Context()))
+	})
+
+	T.Run("sqlite requires a database file path", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{Provider: ProviderSQLite}
+
+		test.Error(t, cfg.ValidateWithContext(t.Context()))
+	})
+
+	T.Run("rejects an incomplete write connection", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			ReadConnection: ConnectionDetails{
+				Host:     "localhost",
+				Username: "root",
+				Password: "password",
+				Port:     5432,
+				Database: "test",
+			},
+			// Missing everything but Host — a supplied write connection is validated.
+			WriteConnection: ConnectionDetails{Host: "writehost"},
+		}
+
+		test.Error(t, cfg.ValidateWithContext(t.Context()))
 	})
 }
 
@@ -338,8 +396,40 @@ func TestConnectionDetails_String(T *testing.T) {
 			Port:     5432,
 		}
 
-		expected := "user=admin password=secret database=mydb host=dbhost port=5432"
+		expected := "user='admin' password='secret' database='mydb' host='dbhost' port=5432 sslmode=prefer"
 		test.EqOp(t, expected, d.String())
+	})
+
+	T.Run("quotes and escapes values so they cannot inject parameters", func(t *testing.T) {
+		t.Parallel()
+
+		d := &ConnectionDetails{
+			Username: "admin",
+			Password: "p'w s host=evil",
+			Database: "mydb",
+			Host:     "dbhost",
+			Port:     5432,
+		}
+
+		// The password's space, single-quote, and "host=evil" payload must stay
+		// inside the quoted value rather than adding a second host= parameter.
+		expected := `user='admin' password='p\'w s host=evil' database='mydb' host='dbhost' port=5432 sslmode=prefer`
+		test.EqOp(t, expected, d.String())
+	})
+
+	T.Run("DisableSSL emits sslmode=disable", func(t *testing.T) {
+		t.Parallel()
+
+		d := &ConnectionDetails{
+			Username:   "admin",
+			Password:   "secret",
+			Database:   "mydb",
+			Host:       "dbhost",
+			Port:       5432,
+			DisableSSL: true,
+		}
+
+		test.StrContains(t, d.String(), "sslmode=disable")
 	})
 }
 
@@ -357,8 +447,42 @@ func TestConnectionDetails_URI(T *testing.T) {
 			Port:     5432,
 		}
 
-		expected := "postgres://admin:secret@dbhost:5432/mydb?sslmode=disable"
+		expected := "postgres://admin:secret@dbhost:5432/mydb?sslmode=prefer"
 		test.EqOp(t, expected, d.URI())
+	})
+
+	T.Run("DisableSSL emits sslmode=disable", func(t *testing.T) {
+		t.Parallel()
+
+		d := &ConnectionDetails{
+			Username:   "admin",
+			Password:   "secret",
+			Database:   "mydb",
+			Host:       "dbhost",
+			Port:       5432,
+			DisableSSL: true,
+		}
+
+		test.EqOp(t, "postgres://admin:secret@dbhost:5432/mydb?sslmode=disable", d.URI())
+	})
+
+	T.Run("escapes credentials with special characters", func(t *testing.T) {
+		t.Parallel()
+
+		d := &ConnectionDetails{
+			Username: "ad@min",
+			Password: "p@ss/word?x",
+			Database: "mydb",
+			Host:     "dbhost",
+			Port:     5432,
+		}
+
+		// The URL round-trips: parsing the result must recover the exact password.
+		parsed, err := url.Parse(d.URI())
+		must.NoError(t, err)
+		pw, ok := parsed.User.Password()
+		test.True(t, ok)
+		test.EqOp(t, "p@ss/word?x", pw)
 	})
 }
 
@@ -401,8 +525,33 @@ func TestConnectionDetails_MySQLDSN(T *testing.T) {
 			Port:     3306,
 		}
 
-		expected := "admin:secret@tcp(dbhost:3306)/mydb"
-		test.EqOp(t, expected, d.MySQLDSN())
+		expected := "admin:secret@tcp(dbhost:3306)/mydb?parseTime=true"
+		got := d.MySQLDSN()
+		test.EqOp(t, expected, got)
+		// parseTime=true is required so DATETIME/TIMESTAMP scan into time.Time.
+		test.StrContains(t, got, "parseTime=true")
+	})
+
+	T.Run("escapes a password with special characters", func(t *testing.T) {
+		t.Parallel()
+
+		d := &ConnectionDetails{
+			Username: "admin",
+			Password: "p@ss/w:rd",
+			Database: "mydb",
+			Host:     "dbhost",
+			Port:     3306,
+		}
+
+		// The driver's own DSN parser must recover the exact credentials, proving the
+		// '@', '/', and ':' in the password didn't corrupt the DSN.
+		parsed, err := mysqldriver.ParseDSN(d.MySQLDSN())
+		must.NoError(t, err)
+		test.EqOp(t, "admin", parsed.User)
+		test.EqOp(t, "p@ss/w:rd", parsed.Passwd)
+		test.EqOp(t, "dbhost:3306", parsed.Addr)
+		test.EqOp(t, "mydb", parsed.DBName)
+		test.True(t, parsed.ParseTime)
 	})
 }
 
@@ -447,7 +596,7 @@ func TestConfig_GetReadConnectionString_ProviderAware(T *testing.T) {
 			},
 		}
 
-		expected := "user=user password=pass database=db host=localhost port=5432"
+		expected := "user='user' password='pass' database='db' host='localhost' port=5432 sslmode=prefer"
 		test.EqOp(t, expected, cfg.GetReadConnectionString())
 	})
 
@@ -465,7 +614,7 @@ func TestConfig_GetReadConnectionString_ProviderAware(T *testing.T) {
 			},
 		}
 
-		expected := "user:pass@tcp(localhost:3306)/db"
+		expected := "user:pass@tcp(localhost:3306)/db?parseTime=true"
 		test.EqOp(t, expected, cfg.GetReadConnectionString())
 	})
 
@@ -500,7 +649,7 @@ func TestConfig_GetWriteConnectionString_ProviderAware(T *testing.T) {
 			},
 		}
 
-		expected := "writer:secret@tcp(writehost:3306)/mydb"
+		expected := "writer:secret@tcp(writehost:3306)/mydb?parseTime=true"
 		test.EqOp(t, expected, cfg.GetWriteConnectionString())
 	})
 
@@ -687,10 +836,10 @@ func TestProvideDatabase(T *testing.T) {
 		cfg := &Config{
 			Provider: ProviderSQLite,
 			ReadConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 			WriteConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 		}
 
@@ -706,10 +855,10 @@ func TestProvideDatabase(T *testing.T) {
 			Provider:              ProviderSQLite,
 			EnableDatabaseMetrics: true,
 			ReadConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 			WriteConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 		}
 
@@ -725,10 +874,10 @@ func TestProvideDatabase(T *testing.T) {
 			Provider:              ProviderSQLite,
 			EnableDatabaseMetrics: true,
 			ReadConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 			WriteConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 		}
 
@@ -744,10 +893,10 @@ func TestProvideDatabase(T *testing.T) {
 			Provider:      ProviderSQLite,
 			RunMigrations: true,
 			ReadConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 			WriteConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 		}
 
@@ -783,10 +932,10 @@ func TestProvideDatabase(T *testing.T) {
 			Provider:      ProviderSQLite,
 			RunMigrations: true,
 			ReadConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 			WriteConnection: ConnectionDetails{
-				Database: ":memory:",
+				Database: filepath.Join(t.TempDir(), "test.db"),
 			},
 		}
 

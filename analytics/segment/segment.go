@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v2/analytics"
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/analytics"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	segment "github.com/segmentio/analytics-go/v3"
 )
@@ -34,7 +34,31 @@ type (
 		errorCounter   metrics.Int64Counter
 		circuitBreaker circuitbreaking.CircuitBreaker
 	}
+
+	// breakerCallback bridges the Segment client's asynchronous delivery outcomes
+	// to the circuit breaker. Enqueue only appends to an in-memory buffer, so the
+	// breaker has to be driven from the background flush's Success/Failure callbacks
+	// to reflect real delivery health rather than "the buffer accepted the message".
+	breakerCallback struct {
+		circuitBreaker circuitbreaking.CircuitBreaker
+		errorCounter   metrics.Int64Counter
+		logger         logging.Logger
+	}
 )
+
+func (cb *breakerCallback) Success(segment.Message) {
+	if cb.circuitBreaker != nil {
+		cb.circuitBreaker.Succeeded()
+	}
+}
+
+func (cb *breakerCallback) Failure(_ segment.Message, err error) {
+	cb.errorCounter.Add(context.Background(), 1)
+	if cb.circuitBreaker != nil {
+		cb.circuitBreaker.Failed()
+	}
+	cb.logger.Error("segment event delivery failed", err)
+}
 
 // NewSegmentEventReporter returns a new Segment-backed EventReporter.
 func NewSegmentEventReporter(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, apiKey string, circuitBreaker circuitbreaking.CircuitBreaker) (analytics.EventReporter, error) {
@@ -54,9 +78,22 @@ func NewSegmentEventReporter(logger logging.Logger, tracerProvider tracing.Trace
 		return nil, platformerrors.Wrap(err, "creating error counter")
 	}
 
+	logger = logging.EnsureLogger(logger)
+
+	client, err := segment.NewWithConfig(apiKey, segment.Config{
+		Callback: &breakerCallback{
+			circuitBreaker: circuitBreaker,
+			errorCounter:   errorCounter,
+			logger:         logger,
+		},
+	})
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "creating segment client")
+	}
+
 	c := &EventReporter{
 		o11y:           observability.NewObserver(name, logger, tracerProvider),
-		client:         segment.New(apiKey),
+		client:         client,
 		eventCounter:   eventCounter,
 		errorCounter:   errorCounter,
 		circuitBreaker: circuitBreaker,
@@ -102,7 +139,8 @@ func (c *EventReporter) AddUser(ctx context.Context, userID string, properties m
 	}
 
 	c.eventCounter.Add(ctx, 1)
-	c.circuitBreaker.Succeeded()
+	// Delivery success is signaled asynchronously via the client callback, not by a
+	// successful enqueue (which only buffers the event).
 	return nil
 }
 
@@ -150,6 +188,7 @@ func (c *EventReporter) eventOccurred(ctx context.Context, event, userID string,
 	}
 
 	c.eventCounter.Add(ctx, 1)
-	c.circuitBreaker.Succeeded()
+	// Delivery success is signaled asynchronously via the client callback, not by a
+	// successful enqueue (which only buffers the event).
 	return nil
 }

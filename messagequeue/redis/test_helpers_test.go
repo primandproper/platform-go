@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/testutils/containers/redistest"
+	"github.com/primandproper/platform-go/v3/testutils/containers/redistest"
 )
 
 func BuildContainerBackedRedisConfigForTest(t *testing.T) (config *Config, shutdownFunc func(context.Context) error, err error) {

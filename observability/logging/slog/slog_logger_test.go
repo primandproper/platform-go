@@ -1,12 +1,14 @@
 package slog
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/logging"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -229,5 +231,26 @@ func Test_zerologLogger_WithResponse(T *testing.T) {
 		l := NewSlogLogger(logging.DebugLevel)
 
 		test.NotNil(t, l.WithResponse(nil))
+	})
+}
+
+func Test_slogLogger_requestIDFuncSurvivesDerivation(T *testing.T) {
+	T.Parallel()
+
+	T.Run("WithName-derived logger still emits the request ID", func(t *testing.T) {
+		t.Parallel()
+
+		var buf bytes.Buffer
+		root := &slogLogger{logger: slog.New(slog.NewJSONHandler(&buf, nil))}
+		root.SetRequestIDFunc(func(*http.Request) string { return "req-123" })
+
+		u, err := url.ParseRequestURI("https://example.com/path?things=stuff")
+		must.NoError(t, err)
+
+		root.WithName(t.Name()).
+			WithRequest(&http.Request{Method: http.MethodGet, URL: u}).
+			Info("hello")
+
+		test.StrContains(t, buf.String(), "req-123")
 	})
 }

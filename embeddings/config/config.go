@@ -3,12 +3,12 @@ package embeddingscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v2/embeddings"
-	"github.com/primandproper/platform-go/v2/embeddings/cohere"
-	"github.com/primandproper/platform-go/v2/embeddings/ollama"
-	"github.com/primandproper/platform-go/v2/embeddings/openai"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/embeddings"
+	"github.com/primandproper/platform-go/v3/embeddings/cohere"
+	"github.com/primandproper/platform-go/v3/embeddings/ollama"
+	"github.com/primandproper/platform-go/v3/embeddings/openai"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -24,9 +24,9 @@ const (
 
 // Config is the configuration for the embeddings provider.
 type Config struct {
-	OpenAI   *openai.Config `env:"init"     envPrefix:"OPENAI_" json:"openai"`
-	Ollama   *ollama.Config `env:"init"     envPrefix:"OLLAMA_" json:"ollama"`
-	Cohere   *cohere.Config `env:"init"     envPrefix:"COHERE_" json:"cohere"`
+	OpenAI   *openai.Config `env:",init"    envPrefix:"OPENAI_" json:"openai"`
+	Ollama   *ollama.Config `env:",init"    envPrefix:"OLLAMA_" json:"ollama"`
+	Cohere   *cohere.Config `env:",init"    envPrefix:"COHERE_" json:"cohere"`
 	Provider string         `env:"PROVIDER" json:"provider"`
 }
 

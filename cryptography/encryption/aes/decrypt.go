@@ -6,8 +6,8 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 
-	"github.com/primandproper/platform-go/v2/cryptography/encryption"
-	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v3/cryptography/encryption"
+	"github.com/primandproper/platform-go/v3/observability/keys"
 )
 
 func (e *aesImpl) Decrypt(ctx context.Context, content string) (string, error) {

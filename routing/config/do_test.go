@@ -3,7 +3,7 @@ package routingcfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/routing"
+	"github.com/primandproper/platform-go/v3/routing"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

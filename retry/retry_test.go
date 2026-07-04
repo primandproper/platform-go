@@ -79,6 +79,47 @@ func TestExponentialBackoffPolicy_Execute(T *testing.T) {
 		test.EqOp(t, 3, attempts)
 	})
 
+	T.Run("stops immediately on a canceled context error", func(t *testing.T) {
+		t.Parallel()
+
+		policy := NewExponentialBackoffPolicy(Config{
+			MaxAttempts:  5,
+			InitialDelay: time.Millisecond,
+			MaxDelay:     10 * time.Millisecond,
+		})
+		attempts := 0
+
+		err := policy.Execute(context.Background(), func(ctx context.Context) error {
+			attempts++
+			return context.Canceled
+		})
+
+		test.ErrorIs(t, err, context.Canceled)
+		// Retrying a canceled context is pointless; it must not burn all 5 attempts.
+		test.EqOp(t, 1, attempts)
+	})
+
+	T.Run("stops immediately on an Unretryable error", func(t *testing.T) {
+		t.Parallel()
+
+		policy := NewExponentialBackoffPolicy(Config{
+			MaxAttempts:  5,
+			InitialDelay: time.Millisecond,
+			MaxDelay:     10 * time.Millisecond,
+		})
+		attempts := 0
+		underlying := errors.New("fatal")
+
+		err := policy.Execute(context.Background(), func(ctx context.Context) error {
+			attempts++
+			return Unretryable(underlying)
+		})
+
+		test.ErrorIs(t, err, ErrUnretryable)
+		test.ErrorIs(t, err, underlying)
+		test.EqOp(t, 1, attempts)
+	})
+
 	// Regression: a sub-2ns InitialDelay makes int64(delay)/2 truncate to 0, and
 	// rand.Int64N(0) panics. With jitter enabled this would crash on the first
 	// backoff instead of retrying.

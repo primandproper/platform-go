@@ -3,7 +3,7 @@ package partitioned
 import (
 	"sync"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
 )
 
 // KeyedCircuitBreaker hands out an independent CircuitBreaker per registered key.

@@ -1,6 +1,7 @@
 package encoding
 
 import (
+	"mime"
 	"strings"
 )
 
@@ -63,7 +64,14 @@ func ContentTypeToString(c ContentType) string {
 }
 
 func contentTypeFromString(val string) ContentType {
-	switch strings.ToLower(strings.TrimSpace(val)) {
+	// parse off any parameters (e.g. "application/xml; charset=utf-8") so we match on the
+	// base media type; fall back to the raw value if it has no parameters to parse.
+	base := strings.ToLower(strings.TrimSpace(val))
+	if mediaType, _, err := mime.ParseMediaType(val); err == nil {
+		base = mediaType
+	}
+
+	switch base {
 	case contentTypeJSON:
 		return ContentTypeJSON
 	case contentTypeXML:

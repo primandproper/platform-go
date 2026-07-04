@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability/keys"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability/keys"
 )
 
 const (
@@ -46,9 +46,11 @@ func (m *indexManager[T]) Index(ctx context.Context, id string, value any) error
 	delete(newValue, idKey)
 
 	if _, err = m.client.SaveObject(newValue); err != nil {
+		m.circuitBreaker.Failed()
 		return err
 	}
 
+	m.circuitBreaker.Succeeded()
 	return nil
 }
 

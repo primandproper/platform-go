@@ -3,9 +3,9 @@ package config
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v2/capitalism/stripe"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/capitalism/stripe"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -21,7 +21,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		cfg := &Config{
 			Enabled:  true,
 			Provider: StripeProvider,
-			Stripe:   &stripe.Config{APIKey: t.Name()},
+			Stripe:   &stripe.Config{WebhookSecret: t.Name()},
 		}
 
 		test.NoError(t, cfg.ValidateWithContext(ctx))
@@ -58,11 +58,24 @@ func TestProvideCapitalismImplementation(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{
+			Enabled:  true,
 			Provider: StripeProvider,
-			Stripe:   &stripe.Config{APIKey: t.Name()},
+			Stripe:   &stripe.Config{WebhookSecret: t.Name()},
 		}
 
-		pm, err := ProvideCapitalismImplementation(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg)
+		pm, err := ProvideCapitalismImplementation(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg, nil)
+		must.NoError(t, err)
+		test.NotNil(t, pm)
+	})
+
+	T.Run("disabled returns noop", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			Enabled: false,
+		}
+
+		pm, err := ProvideCapitalismImplementation(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg, nil)
 		must.NoError(t, err)
 		test.NotNil(t, pm)
 	})
@@ -71,10 +84,11 @@ func TestProvideCapitalismImplementation(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{
+			Enabled:  true,
 			Provider: "unknown",
 		}
 
-		pm, err := ProvideCapitalismImplementation(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg)
+		pm, err := ProvideCapitalismImplementation(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg, nil)
 		test.Nil(t, pm)
 		test.Error(t, err)
 	})

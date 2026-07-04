@@ -6,14 +6,15 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/circuitbreaking"
-	platformerrors "github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/featureflags"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/circuitbreaking"
+	platformerrors "github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/featureflags"
+	"github.com/primandproper/platform-go/v3/identifiers"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	ld "github.com/launchdarkly/go-server-sdk/v6"
 	"github.com/launchdarkly/go-server-sdk/v6/ldcomponents"
@@ -63,6 +64,29 @@ func NewFeatureFlagManager(cfg *Config, logger logging.Logger, tracerProvider tr
 		cfg.InitTimeout = 5 * time.Second
 	}
 
+	// Create the metric instruments before the client/provider so a counter failure
+	// returns without having registered a global provider or opened a client to leak.
+	mp := metrics.EnsureMetricsProvider(metricsProvider)
+
+	evalCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_evaluations", serviceName))
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "creating eval counter")
+	}
+
+	errorCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_errors", serviceName))
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "creating error counter")
+	}
+
+	latencyHist, err := mp.NewFloat64Histogram(fmt.Sprintf("%s_latency_ms", serviceName))
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "creating latency histogram")
+	}
+
+	// Each manager binds its own OpenFeature domain so a second manager can't rebind
+	// the domain (and thus the provider/client) out from under an existing one.
+	domain := fmt.Sprintf("%s_%s", clientDomain, identifiers.New())
+
 	ldConfig := ld.Config{
 		HTTP: ldcomponents.HTTPConfiguration().HTTPClientFactory(func() *http.Client { return httpClient }),
 	}
@@ -81,31 +105,14 @@ func NewFeatureFlagManager(cfg *Config, logger logging.Logger, tracerProvider tr
 	}
 
 	provider := ofld.NewProvider(client)
-	if err = openfeature.SetNamedProviderAndWait(clientDomain, provider); err != nil {
+	if err = openfeature.SetNamedProviderAndWait(domain, provider); err != nil {
 		if closeErr := client.Close(); closeErr != nil {
 			logger.Error("error closing OpenFeatureFlag client", closeErr)
 		}
 		return nil, platformerrors.Wrap(err, "failed to set OpenFeature provider")
 	}
 
-	ofClient := openfeature.NewClient(clientDomain)
-
-	mp := metrics.EnsureMetricsProvider(metricsProvider)
-
-	evalCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_evaluations", serviceName))
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "creating eval counter")
-	}
-
-	errorCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_errors", serviceName))
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "creating error counter")
-	}
-
-	latencyHist, err := mp.NewFloat64Histogram(fmt.Sprintf("%s_latency_ms", serviceName))
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "creating latency histogram")
-	}
+	ofClient := openfeature.NewClient(domain)
 
 	ffm := &featureFlagManager{
 		o11y:           observability.NewObserver(serviceName, logger, tracerProvider),

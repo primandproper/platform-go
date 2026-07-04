@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/database"
-	"github.com/primandproper/platform-go/v2/errors"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/database"
+	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/XSAM/otelsql"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -50,6 +50,13 @@ func ProvideDatabaseClient(ctx context.Context, logger logging.Logger, tracerPro
 	}
 	if metricsProvider != nil {
 		opts = append(opts, otelsql.WithMeterProvider(metricsProvider.MeterProvider()))
+	}
+
+	// Gate raw SQL text on spans behind the config's LogQueries flag. When the
+	// config opts out (the default), suppress db.statement so query text is not
+	// leaked into traces.
+	if lq, ok := cfg.(interface{ GetLogQueries() bool }); ok && !lq.GetLogQueries() {
+		opts = append(opts, otelsql.WithSpanOptions(otelsql.SpanOptions{DisableQuery: true}))
 	}
 
 	var readDB, writeDB *sql.DB
@@ -135,19 +142,23 @@ func (q *Client) WriteDB() *sql.DB {
 
 // Close closes the database connection.
 func (q *Client) Close() error {
+	var errs error
+
 	if err := q.readDB.Close(); err != nil {
 		q.o11y.Logger().Error("closing read database connection", err)
-		return err
+		errs = errors.Join(errs, err)
 	}
 
+	// Always attempt to close the write pool even if the read pool failed to close,
+	// so a read-close error can't leak the write connection.
 	if q.writeDB != q.readDB {
 		if err := q.writeDB.Close(); err != nil {
 			q.o11y.Logger().Error("closing write database connection", err)
-			return err
+			errs = errors.Join(errs, err)
 		}
 	}
 
-	return nil
+	return errs
 }
 
 // IsReady returns whether the database is ready for the querier.
@@ -175,20 +186,27 @@ func (q *Client) IsReady(ctx context.Context) bool {
 func (q *Client) waitForPing(ctx context.Context, op observability.Operation, db *sql.DB, connectionName string, maxAttempts int, waitPeriod time.Duration) bool {
 	logger := op.Logger().WithValue("connection", connectionName)
 
-	attemptCount := 0
-	for {
-		if err := db.PingContext(ctx); err != nil {
-			logger.WithValue("attempt_count", attemptCount).Info("ping failed, waiting for db")
-			time.Sleep(waitPeriod)
-
-			attemptCount++
-			if attemptCount >= maxAttempts {
-				return false
-			}
-		} else {
+	for attemptCount := range maxAttempts {
+		if err := db.PingContext(ctx); err == nil {
 			return true
 		}
+
+		logger.WithValue("attempt_count", attemptCount).Info("ping failed, waiting for db")
+
+		// Don't sleep after the final attempt, and abort promptly if the caller's
+		// context is canceled rather than sleeping through it.
+		if attemptCount == maxAttempts-1 {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(waitPeriod):
+		}
 	}
+
+	return false
 }
 
 func defaultTimeFunc() time.Time {

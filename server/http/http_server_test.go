@@ -19,10 +19,10 @@ import (
 	"testing"
 	"time"
 
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v2/panicking"
-	"github.com/primandproper/platform-go/v2/routing"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/panicking"
+	"github.com/primandproper/platform-go/v3/routing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -239,7 +239,7 @@ func TestServer_Serve(T *testing.T) {
 			logger:         loggingnoop.NewLogger(),
 			router:         stubRouter{},
 			panicker:       panicking.NewProductionPanicker(),
-			httpServer:     provideStdLibHTTPServer(0),
+			httpServer:     provideStdLibHTTPServer(Config{}),
 			tracerProvider: tracingnoop.NewTracerProvider(),
 			config:         Config{},
 		}
@@ -265,7 +265,7 @@ func TestServer_Serve(T *testing.T) {
 			logger:         loggingnoop.NewLogger(),
 			router:         stubRouter{},
 			panicker:       panicking.NewProductionPanicker(),
-			httpServer:     provideStdLibHTTPServer(0),
+			httpServer:     provideStdLibHTTPServer(Config{}),
 			tracerProvider: tracingnoop.NewTracerProvider(),
 			config: Config{
 				SSLCertificateFile:    certFile,
@@ -284,14 +284,14 @@ func TestServer_Serve(T *testing.T) {
 		<-done
 	})
 
-	T.Run("logs error for HTTPS with invalid cert files", func(t *testing.T) {
+	T.Run("panics on HTTPS with invalid cert files", func(t *testing.T) {
 		t.Parallel()
 
 		srv := &server{
 			logger:         loggingnoop.NewLogger(),
 			router:         stubRouter{},
 			panicker:       panicking.NewProductionPanicker(),
-			httpServer:     provideStdLibHTTPServer(0),
+			httpServer:     provideStdLibHTTPServer(Config{}),
 			tracerProvider: tracingnoop.NewTracerProvider(),
 			config: Config{
 				SSLCertificateFile:    "/nonexistent/cert.pem",
@@ -299,11 +299,16 @@ func TestServer_Serve(T *testing.T) {
 			},
 		}
 
-		// ListenAndServeTLS fails immediately with invalid cert paths.
+		// ListenAndServeTLS fails immediately with invalid cert paths; the failure must
+		// propagate rather than leaving a listenerless zombie process.
+		defer func() {
+			test.NotNil(t, recover())
+		}()
+
 		srv.Serve()
 	})
 
-	T.Run("logs error for HTTP listen failure", func(t *testing.T) {
+	T.Run("panics on HTTP listen failure", func(t *testing.T) {
 		t.Parallel()
 
 		// Occupy a port so ListenAndServe fails with "address already in use".
@@ -313,7 +318,7 @@ func TestServer_Serve(T *testing.T) {
 
 		port := lis.Addr().(*net.TCPAddr).Port
 
-		httpSrv := provideStdLibHTTPServer(uint16(port))
+		httpSrv := provideStdLibHTTPServer(Config{Port: uint16(port)})
 
 		srv := &server{
 			logger:         loggingnoop.NewLogger(),
@@ -324,7 +329,51 @@ func TestServer_Serve(T *testing.T) {
 			config:         Config{},
 		}
 
+		defer func() {
+			test.NotNil(t, recover())
+		}()
+
 		srv.Serve()
+	})
+}
+
+func TestServer_listen(T *testing.T) {
+	T.Parallel()
+
+	T.Run("binds with StartupDeadline configured", func(t *testing.T) {
+		t.Parallel()
+
+		srv := &server{
+			logger:         loggingnoop.NewLogger(),
+			router:         stubRouter{},
+			panicker:       panicking.NewProductionPanicker(),
+			httpServer:     provideStdLibHTTPServer(Config{Port: 0}),
+			tracerProvider: tracingnoop.NewTracerProvider(),
+			config:         Config{StartupDeadline: time.Second},
+		}
+
+		listener, err := srv.listen()
+		must.NoError(t, err)
+		must.NotNil(t, listener)
+		test.NoError(t, listener.Close())
+	})
+
+	T.Run("binds without StartupDeadline", func(t *testing.T) {
+		t.Parallel()
+
+		srv := &server{
+			logger:         loggingnoop.NewLogger(),
+			router:         stubRouter{},
+			panicker:       panicking.NewProductionPanicker(),
+			httpServer:     provideStdLibHTTPServer(Config{Port: 0}),
+			tracerProvider: tracingnoop.NewTracerProvider(),
+			config:         Config{},
+		}
+
+		listener, err := srv.listen()
+		must.NoError(t, err)
+		must.NotNil(t, listener)
+		test.NoError(t, listener.Close())
 	})
 }
 
@@ -366,7 +415,7 @@ func Test_provideStdLibHTTPServer(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		srv := provideStdLibHTTPServer(8080)
+		srv := provideStdLibHTTPServer(Config{Port: 8080})
 
 		test.NotNil(t, srv)
 		test.EqOp(t, ":8080", srv.Addr)
@@ -377,10 +426,32 @@ func Test_provideStdLibHTTPServer(T *testing.T) {
 		test.EqOp(t, uint16(tls.VersionTLS12), srv.TLSConfig.MinVersion)
 	})
 
+	T.Run("write timeout exceeds the router request timeout so it is reachable", func(t *testing.T) {
+		t.Parallel()
+
+		srv := provideStdLibHTTPServer(Config{})
+
+		test.Greater(t, maxTimeout, srv.WriteTimeout)
+	})
+
+	T.Run("honors configured timeouts", func(t *testing.T) {
+		t.Parallel()
+
+		srv := provideStdLibHTTPServer(Config{
+			ReadTimeout:  7 * time.Second,
+			WriteTimeout: 200 * time.Second,
+			IdleTimeout:  90 * time.Second,
+		})
+
+		test.EqOp(t, 7*time.Second, srv.ReadTimeout)
+		test.EqOp(t, 200*time.Second, srv.WriteTimeout)
+		test.EqOp(t, 90*time.Second, srv.IdleTimeout)
+	})
+
 	T.Run("with zero port", func(t *testing.T) {
 		t.Parallel()
 
-		srv := provideStdLibHTTPServer(0)
+		srv := provideStdLibHTTPServer(Config{})
 
 		test.NotNil(t, srv)
 		test.EqOp(t, ":0", srv.Addr)

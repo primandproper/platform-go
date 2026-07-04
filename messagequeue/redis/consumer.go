@@ -3,14 +3,15 @@ package redis
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	"github.com/primandproper/platform-go/v2/observability/logging"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	"github.com/primandproper/platform-go/v2/observability/tracing"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	"github.com/primandproper/platform-go/v3/observability/tracing"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -22,6 +23,7 @@ type (
 
 	channelProvider interface {
 		Channel(...redis.ChannelOption) <-chan *redis.Message
+		Close() error
 	}
 
 	redisConsumer struct {
@@ -32,12 +34,34 @@ type (
 	}
 )
 
+// sendErr delivers err on errs without wedging: it also selects on ctx so a
+// consumer whose error channel is no longer being drained still unblocks when the
+// context is canceled during shutdown.
+func (r *redisConsumer) sendErr(ctx context.Context, errs chan error, err error) {
+	if errs == nil {
+		return
+	}
+
+	// Prefer delivering the error whenever the channel can accept it right now, so a
+	// canceled ctx doesn't race the send (both select cases ready) and drop the error.
+	select {
+	case errs <- err:
+		return
+	default:
+	}
+
+	select {
+	case errs <- err:
+	case <-ctx.Done():
+	}
+}
+
 func provideRedisConsumer(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, redisClient subscriptionProvider, topic string, handlerFunc func(context.Context, []byte) error) (*redisConsumer, error) {
 	mp := metrics.EnsureMetricsProvider(metricsProvider)
 
 	consumedCounter, err := mp.NewInt64Counter(fmt.Sprintf("%s_consumed", topic))
 	if err != nil {
-		panic(fmt.Sprintf("creating consumed counter: %v", err))
+		return nil, fmt.Errorf("creating consumed counter: %w", err)
 	}
 
 	subscription := redisClient.Subscribe(ctx, topic)
@@ -66,21 +90,33 @@ func (r *redisConsumer) Consume(ctx context.Context, stopChan chan bool, errs ch
 	if stopChan == nil {
 		stopChan = make(chan bool, 1)
 	}
+
+	// Closing the subscription on exit unsubscribes from the topic and releases the
+	// server-side subscription rather than leaking it.
+	defer func() {
+		if err := r.subscription.Close(); err != nil {
+			r.o11y.Logger().Error("closing redis subscription", err)
+		}
+	}()
+
 	subChan := r.subscription.Channel()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case msg := <-subChan:
+		case msg, ok := <-subChan:
+			if !ok {
+				// go-redis closes this channel when the PubSub is closed; a receive on a
+				// closed channel yields a nil *Message that would panic on msg.Channel.
+				return
+			}
 			msgCtx, op := r.o11y.BeginCustom(ctx, "consume_message")
 			op.Set(keys.TopicKey, msg.Channel).Set(keys.LengthKey, len(msg.Payload))
 			r.consumedCounter.Add(msgCtx, 1)
 			if err := r.handlerFunc(msgCtx, []byte(msg.Payload)); err != nil {
 				op.Acknowledge(err, "handling message")
-				if errs != nil {
-					errs <- err
-				}
+				r.sendErr(msgCtx, errs, err)
 			}
 			op.End()
 		case <-stopChan:
@@ -129,12 +165,22 @@ func ProvideRedisConsumerProvider(logger logging.Logger, tracerProvider tracing.
 	}
 }
 
+// Close closes the shared Redis client, mirroring the publisher provider. Cached
+// consumers close their own subscriptions when their Consume loops exit.
+func (p *consumerProvider) Close() {
+	if closer, ok := p.redisClient.(io.Closer); ok {
+		if err := closer.Close(); err != nil {
+			p.o11y.Logger().Error("closing redis consumer client", err)
+		}
+	}
+}
+
 // ProvideConsumer returns a Consumer for a given topic.
 func (p *consumerProvider) ProvideConsumer(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
 	logger := p.o11y.Logger().WithValue(keys.TopicKey, topic)
 
 	if topic == "" {
-		return nil, ErrEmptyInputProvided
+		return nil, messagequeue.ErrEmptyTopicName
 	}
 
 	p.consumerCacheMu.RLock()
@@ -154,8 +200,12 @@ func (p *consumerProvider) ProvideConsumer(ctx context.Context, topic string, ha
 
 	p.consumerCacheMu.Lock()
 	defer p.consumerCacheMu.Unlock()
-	// Re-check in case a concurrent caller beat us to it.
+	// Re-check in case a concurrent caller beat us to it. If so, close the
+	// subscription we just opened so the losing racer's live subscription doesn't leak.
 	if cachedPub, ok := p.consumerCache[topic]; ok {
+		if err = c.subscription.Close(); err != nil {
+			logger.Error("closing redundant redis subscription", err)
+		}
 		return cachedPub, nil
 	}
 	p.consumerCache[topic] = c

@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/messagequeue"
-	"github.com/primandproper/platform-go/v2/observability"
-	"github.com/primandproper/platform-go/v2/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	"github.com/primandproper/platform-go/v2/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v2/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/messagequeue"
+	"github.com/primandproper/platform-go/v3/observability"
+	"github.com/primandproper/platform-go/v3/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	"github.com/primandproper/platform-go/v3/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -242,14 +242,14 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 
 		actual, err := conPro.ProvideConsumer(t.Context(), "", nil)
 		test.Nil(t, actual)
-		test.ErrorIs(t, err, ErrEmptyInputProvided)
+		test.ErrorIs(t, err, messagequeue.ErrEmptyTopicName)
 	})
 }
 
 func Test_provideRedisConsumer(T *testing.T) {
 	T.Parallel()
 
-	T.Run("panics when NewInt64Counter fails", func(t *testing.T) {
+	T.Run("returns error when NewInt64Counter fails", func(t *testing.T) {
 		t.Parallel()
 
 		mp := &mockmetrics.ProviderMock{
@@ -258,9 +258,9 @@ func Test_provideRedisConsumer(T *testing.T) {
 			},
 		}
 
-		test.Panic(t, func() {
-			provideRedisConsumer(t.Context(), loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t", nil)
-		})
+		actual, err := provideRedisConsumer(t.Context(), loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, nil, "t", nil)
+		test.Error(t, err)
+		test.Nil(t, actual)
 		test.SliceLen(t, 1, mp.NewInt64CounterCalls())
 	})
 }

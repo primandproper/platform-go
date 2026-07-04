@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v2/authentication/tokens"
-	"github.com/primandproper/platform-go/v2/observability"
-	loggingnoop "github.com/primandproper/platform-go/v2/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v2/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v3/authentication/tokens"
+	"github.com/primandproper/platform-go/v3/observability"
+	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/shoenig/test"
@@ -227,6 +227,19 @@ func Test_signer_ParseToken(T *testing.T) {
 
 		parsed, err := s.ParseToken(t.Context(), craftJWT(t, claims))
 		test.ErrorIs(t, err, jwt.ErrTokenExpired)
+		test.Nil(t, parsed)
+	})
+
+	T.Run("rejects token missing exp claim", func(t *testing.T) {
+		t.Parallel()
+
+		s, _ := newRecordingSigner(t)
+
+		claims := validJWTClaims(s)
+		delete(claims, "exp")
+
+		parsed, err := s.ParseToken(t.Context(), craftJWT(t, claims))
+		test.ErrorIs(t, err, jwt.ErrTokenRequiredClaimMissing)
 		test.Nil(t, parsed)
 	})
 
