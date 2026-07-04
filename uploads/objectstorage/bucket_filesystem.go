@@ -6,11 +6,6 @@ import (
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
 
-const (
-	// FilesystemProvider indicates we'd like to use the filesystem adapter for blob.
-	FilesystemProvider = "filesystem"
-)
-
 type (
 	// FilesystemConfig configures a filesystem-based objectstorage provider.
 	FilesystemConfig struct {

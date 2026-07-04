@@ -57,22 +57,9 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		cfg := &Config{
 			BucketName: t.Name(),
 			Provider:   S3Provider,
-			S3Config:   &S3Config{BucketName: t.Name()},
 		}
 
 		test.NoError(t, cfg.ValidateWithContext(ctx))
-	})
-
-	T.Run("with s3 provider missing config", func(t *testing.T) {
-		t.Parallel()
-
-		ctx := t.Context()
-		cfg := &Config{
-			BucketName: t.Name(),
-			Provider:   S3Provider,
-		}
-
-		test.Error(t, cfg.ValidateWithContext(ctx))
 	})
 
 	T.Run("with gcp provider", func(t *testing.T) {
@@ -82,22 +69,9 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		cfg := &Config{
 			BucketName: t.Name(),
 			Provider:   GCPCloudStorageProvider,
-			GCP:        &GCPConfig{BucketName: t.Name()},
 		}
 
 		test.NoError(t, cfg.ValidateWithContext(ctx))
-	})
-
-	T.Run("with gcp provider missing config", func(t *testing.T) {
-		t.Parallel()
-
-		ctx := t.Context()
-		cfg := &Config{
-			BucketName: t.Name(),
-			Provider:   GCPCloudStorageProvider,
-		}
-
-		test.Error(t, cfg.ValidateWithContext(ctx))
 	})
 
 	T.Run("with r2 provider", func(t *testing.T) {
@@ -109,7 +83,6 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 			Provider:   R2Provider,
 			R2Config: &R2Config{
 				AccountID:       t.Name(),
-				BucketName:      t.Name(),
 				AccessKeyID:     t.Name(),
 				SecretAccessKey: t.Name(),
 			},
@@ -140,7 +113,6 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 			BackblazeB2Config: &BackblazeB2Config{
 				ApplicationKeyID: t.Name(),
 				ApplicationKey:   t.Name(),
-				BucketName:       t.Name(),
 				Region:           t.Name(),
 			},
 		}
@@ -184,14 +156,14 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		test.Error(t, cfg.ValidateWithContext(ctx))
 	})
 
-	T.Run("with non-s3 provider having s3 config is invalid", func(t *testing.T) {
+	T.Run("with mismatched provider sub-config is invalid", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
 		cfg := &Config{
-			BucketName: t.Name(),
-			Provider:   MemoryProvider,
-			S3Config:   &S3Config{BucketName: t.Name()},
+			BucketName:       t.Name(),
+			Provider:         MemoryProvider,
+			FilesystemConfig: &FilesystemConfig{RootDirectory: t.Name()},
 		}
 
 		test.Error(t, cfg.ValidateWithContext(ctx))
@@ -281,7 +253,6 @@ func TestNewUploadManager(T *testing.T) {
 		cfg := &Config{
 			BucketName: t.Name(),
 			Provider:   GCPCloudStorageProvider,
-			GCP:        &GCPConfig{BucketName: t.Name()},
 		}
 
 		x, err := NewUploadManager(ctx, l, tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider(), cfg)
@@ -299,26 +270,11 @@ func TestUploader_selectBucket(T *testing.T) {
 		ctx := t.Context()
 		u := &Uploader{}
 		cfg := &Config{
-			Provider: S3Provider,
-			S3Config: &S3Config{
-				BucketName: t.Name(),
-			},
+			BucketName: t.Name(),
+			Provider:   S3Provider,
 		}
 
 		test.NoError(t, u.selectBucket(ctx, cfg))
-	})
-
-	T.Run("s3 with nil config", func(t *testing.T) {
-		t.Parallel()
-
-		ctx := t.Context()
-		u := &Uploader{}
-		cfg := &Config{
-			Provider: S3Provider,
-			S3Config: nil,
-		}
-
-		test.Error(t, u.selectBucket(ctx, cfg))
 	})
 
 	T.Run("memory provider", func(t *testing.T) {
@@ -327,7 +283,8 @@ func TestUploader_selectBucket(T *testing.T) {
 		ctx := t.Context()
 		u := &Uploader{}
 		cfg := &Config{
-			Provider: MemoryProvider,
+			BucketName: t.Name(),
+			Provider:   MemoryProvider,
 		}
 
 		test.NoError(t, u.selectBucket(ctx, cfg))
@@ -339,10 +296,10 @@ func TestUploader_selectBucket(T *testing.T) {
 		ctx := t.Context()
 		u := &Uploader{}
 		cfg := &Config{
-			Provider: R2Provider,
+			BucketName: t.Name(),
+			Provider:   R2Provider,
 			R2Config: &R2Config{
 				AccountID:       t.Name(),
-				BucketName:      t.Name(),
 				AccessKeyID:     t.Name(),
 				SecretAccessKey: t.Name(),
 			},
@@ -357,8 +314,9 @@ func TestUploader_selectBucket(T *testing.T) {
 		ctx := t.Context()
 		u := &Uploader{}
 		cfg := &Config{
-			Provider: R2Provider,
-			R2Config: nil,
+			BucketName: t.Name(),
+			Provider:   R2Provider,
+			R2Config:   nil,
 		}
 
 		test.Error(t, u.selectBucket(ctx, cfg))
@@ -370,11 +328,11 @@ func TestUploader_selectBucket(T *testing.T) {
 		ctx := t.Context()
 		u := &Uploader{}
 		cfg := &Config{
-			Provider: BackblazeB2Provider,
+			BucketName: t.Name(),
+			Provider:   BackblazeB2Provider,
 			BackblazeB2Config: &BackblazeB2Config{
 				ApplicationKeyID: t.Name(),
 				ApplicationKey:   t.Name(),
-				BucketName:       t.Name(),
 				Region:           t.Name(),
 			},
 		}
@@ -388,6 +346,7 @@ func TestUploader_selectBucket(T *testing.T) {
 		ctx := t.Context()
 		u := &Uploader{}
 		cfg := &Config{
+			BucketName:        t.Name(),
 			Provider:          BackblazeB2Provider,
 			BackblazeB2Config: nil,
 		}
@@ -403,7 +362,8 @@ func TestUploader_selectBucket(T *testing.T) {
 		ctx := t.Context()
 		u := &Uploader{}
 		cfg := &Config{
-			Provider: FilesystemProvider,
+			BucketName: t.Name(),
+			Provider:   FilesystemProvider,
 			FilesystemConfig: &FilesystemConfig{
 				RootDirectory: tempDir,
 			},
@@ -418,6 +378,7 @@ func TestUploader_selectBucket(T *testing.T) {
 		ctx := t.Context()
 		u := &Uploader{}
 		cfg := &Config{
+			BucketName:       t.Name(),
 			Provider:         FilesystemProvider,
 			FilesystemConfig: nil,
 		}
@@ -431,6 +392,7 @@ func TestUploader_selectBucket(T *testing.T) {
 		ctx := t.Context()
 		u := &Uploader{}
 		cfg := &Config{
+			BucketName:   t.Name(),
 			Provider:     MemoryProvider,
 			BucketPrefix: "my-prefix/",
 		}
@@ -439,18 +401,17 @@ func TestUploader_selectBucket(T *testing.T) {
 		test.NotNil(t, u.bucket)
 	})
 
-	T.Run("unknown provider falls through to filesystem default", func(t *testing.T) {
+	T.Run("unknown provider returns an error", func(t *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
 		u := &Uploader{}
-		tempDir := os.TempDir()
 		cfg := &Config{
-			Provider:         "something_unknown",
-			FilesystemConfig: &FilesystemConfig{RootDirectory: tempDir},
+			BucketName: t.Name(),
+			Provider:   "something_unknown",
 		}
 
-		test.NoError(t, u.selectBucket(ctx, cfg))
+		test.ErrorIs(t, u.selectBucket(ctx, cfg), ErrUnknownProvider)
 	})
 
 	T.Run("gcp provider fails without credentials", func(t *testing.T) {
@@ -459,10 +420,8 @@ func TestUploader_selectBucket(T *testing.T) {
 		ctx := t.Context()
 		u := &Uploader{}
 		cfg := &Config{
-			Provider: GCPCloudStorageProvider,
-			GCP: &GCPConfig{
-				BucketName: t.Name(),
-			},
+			BucketName: t.Name(),
+			Provider:   GCPCloudStorageProvider,
 		}
 
 		test.Error(t, u.selectBucket(ctx, cfg))
@@ -474,6 +433,7 @@ func TestUploader_selectBucket(T *testing.T) {
 		ctx := t.Context()
 		u := &Uploader{}
 		cfg := &Config{
+			BucketName:       t.Name(),
 			Provider:         FilesystemProvider,
 			FilesystemConfig: &FilesystemConfig{RootDirectory: string([]byte{0x00})},
 		}

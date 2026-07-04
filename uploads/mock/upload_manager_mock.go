@@ -5,6 +5,8 @@ package mockuploads
 
 import (
 	"context"
+	"io"
+	"iter"
 	"sync"
 
 	"github.com/primandproper/platform-go/v2/uploads"
@@ -20,11 +22,17 @@ var _ uploads.UploadManager = &UploadManagerMock{}
 //
 //		// make and configure a mocked uploads.UploadManager
 //		mockedUploadManager := &UploadManagerMock{
-//			ReadFileFunc: func(ctx context.Context, path string) ([]byte, error) {
-//				panic("mock out the ReadFile method")
+//			DeleteFunc: func(ctx context.Context, path string) error {
+//				panic("mock out the Delete method")
 //			},
-//			SaveFileFunc: func(ctx context.Context, path string, content []byte) error {
-//				panic("mock out the SaveFile method")
+//			ExistsFunc: func(ctx context.Context, path string) (bool, error) {
+//				panic("mock out the Exists method")
+//			},
+//			OpenFunc: func(ctx context.Context, path string) (io.ReadCloser, error) {
+//				panic("mock out the Open method")
+//			},
+//			SaveFunc: func(ctx context.Context, path string, r io.Reader, opts ...uploads.SaveOption) error {
+//				panic("mock out the Save method")
 //			},
 //		}
 //
@@ -33,39 +41,63 @@ var _ uploads.UploadManager = &UploadManagerMock{}
 //
 //	}
 type UploadManagerMock struct {
-	// ReadFileFunc mocks the ReadFile method.
-	ReadFileFunc func(ctx context.Context, path string) ([]byte, error)
+	// DeleteFunc mocks the Delete method.
+	DeleteFunc func(ctx context.Context, path string) error
 
-	// SaveFileFunc mocks the SaveFile method.
-	SaveFileFunc func(ctx context.Context, path string, content []byte) error
+	// ExistsFunc mocks the Exists method.
+	ExistsFunc func(ctx context.Context, path string) (bool, error)
+
+	// OpenFunc mocks the Open method.
+	OpenFunc func(ctx context.Context, path string) (io.ReadCloser, error)
+
+	// SaveFunc mocks the Save method.
+	SaveFunc func(ctx context.Context, path string, r io.Reader, opts ...uploads.SaveOption) error
 
 	// calls tracks calls to the methods.
 	calls struct {
-		// ReadFile holds details about calls to the ReadFile method.
-		ReadFile []struct {
+		// Delete holds details about calls to the Delete method.
+		Delete []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Path is the path argument value.
 			Path string
 		}
-		// SaveFile holds details about calls to the SaveFile method.
-		SaveFile []struct {
+		// Exists holds details about calls to the Exists method.
+		Exists []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Path is the path argument value.
 			Path string
-			// Content is the content argument value.
-			Content []byte
+		}
+		// Open holds details about calls to the Open method.
+		Open []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Path is the path argument value.
+			Path string
+		}
+		// Save holds details about calls to the Save method.
+		Save []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Path is the path argument value.
+			Path string
+			// R is the r argument value.
+			R io.Reader
+			// Opts is the opts argument value.
+			Opts []uploads.SaveOption
 		}
 	}
-	lockReadFile sync.RWMutex
-	lockSaveFile sync.RWMutex
+	lockDelete sync.RWMutex
+	lockExists sync.RWMutex
+	lockOpen   sync.RWMutex
+	lockSave   sync.RWMutex
 }
 
-// ReadFile calls ReadFileFunc.
-func (mock *UploadManagerMock) ReadFile(ctx context.Context, path string) ([]byte, error) {
-	if mock.ReadFileFunc == nil {
-		panic("UploadManagerMock.ReadFileFunc: method is nil but UploadManager.ReadFile was just called")
+// Delete calls DeleteFunc.
+func (mock *UploadManagerMock) Delete(ctx context.Context, path string) error {
+	if mock.DeleteFunc == nil {
+		panic("UploadManagerMock.DeleteFunc: method is nil but UploadManager.Delete was just called")
 	}
 	callInfo := struct {
 		Ctx  context.Context
@@ -74,17 +106,17 @@ func (mock *UploadManagerMock) ReadFile(ctx context.Context, path string) ([]byt
 		Ctx:  ctx,
 		Path: path,
 	}
-	mock.lockReadFile.Lock()
-	mock.calls.ReadFile = append(mock.calls.ReadFile, callInfo)
-	mock.lockReadFile.Unlock()
-	return mock.ReadFileFunc(ctx, path)
+	mock.lockDelete.Lock()
+	mock.calls.Delete = append(mock.calls.Delete, callInfo)
+	mock.lockDelete.Unlock()
+	return mock.DeleteFunc(ctx, path)
 }
 
-// ReadFileCalls gets all the calls that were made to ReadFile.
+// DeleteCalls gets all the calls that were made to Delete.
 // Check the length with:
 //
-//	len(mockedUploadManager.ReadFileCalls())
-func (mock *UploadManagerMock) ReadFileCalls() []struct {
+//	len(mockedUploadManager.DeleteCalls())
+func (mock *UploadManagerMock) DeleteCalls() []struct {
 	Ctx  context.Context
 	Path string
 } {
@@ -92,48 +124,430 @@ func (mock *UploadManagerMock) ReadFileCalls() []struct {
 		Ctx  context.Context
 		Path string
 	}
-	mock.lockReadFile.RLock()
-	calls = mock.calls.ReadFile
-	mock.lockReadFile.RUnlock()
+	mock.lockDelete.RLock()
+	calls = mock.calls.Delete
+	mock.lockDelete.RUnlock()
 	return calls
 }
 
-// SaveFile calls SaveFileFunc.
-func (mock *UploadManagerMock) SaveFile(ctx context.Context, path string, content []byte) error {
-	if mock.SaveFileFunc == nil {
-		panic("UploadManagerMock.SaveFileFunc: method is nil but UploadManager.SaveFile was just called")
+// Exists calls ExistsFunc.
+func (mock *UploadManagerMock) Exists(ctx context.Context, path string) (bool, error) {
+	if mock.ExistsFunc == nil {
+		panic("UploadManagerMock.ExistsFunc: method is nil but UploadManager.Exists was just called")
 	}
 	callInfo := struct {
-		Ctx     context.Context
-		Path    string
-		Content []byte
+		Ctx  context.Context
+		Path string
 	}{
-		Ctx:     ctx,
-		Path:    path,
-		Content: content,
+		Ctx:  ctx,
+		Path: path,
 	}
-	mock.lockSaveFile.Lock()
-	mock.calls.SaveFile = append(mock.calls.SaveFile, callInfo)
-	mock.lockSaveFile.Unlock()
-	return mock.SaveFileFunc(ctx, path, content)
+	mock.lockExists.Lock()
+	mock.calls.Exists = append(mock.calls.Exists, callInfo)
+	mock.lockExists.Unlock()
+	return mock.ExistsFunc(ctx, path)
 }
 
-// SaveFileCalls gets all the calls that were made to SaveFile.
+// ExistsCalls gets all the calls that were made to Exists.
 // Check the length with:
 //
-//	len(mockedUploadManager.SaveFileCalls())
-func (mock *UploadManagerMock) SaveFileCalls() []struct {
-	Ctx     context.Context
-	Path    string
-	Content []byte
+//	len(mockedUploadManager.ExistsCalls())
+func (mock *UploadManagerMock) ExistsCalls() []struct {
+	Ctx  context.Context
+	Path string
 } {
 	var calls []struct {
-		Ctx     context.Context
-		Path    string
-		Content []byte
+		Ctx  context.Context
+		Path string
 	}
-	mock.lockSaveFile.RLock()
-	calls = mock.calls.SaveFile
-	mock.lockSaveFile.RUnlock()
+	mock.lockExists.RLock()
+	calls = mock.calls.Exists
+	mock.lockExists.RUnlock()
+	return calls
+}
+
+// Open calls OpenFunc.
+func (mock *UploadManagerMock) Open(ctx context.Context, path string) (io.ReadCloser, error) {
+	if mock.OpenFunc == nil {
+		panic("UploadManagerMock.OpenFunc: method is nil but UploadManager.Open was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Path string
+	}{
+		Ctx:  ctx,
+		Path: path,
+	}
+	mock.lockOpen.Lock()
+	mock.calls.Open = append(mock.calls.Open, callInfo)
+	mock.lockOpen.Unlock()
+	return mock.OpenFunc(ctx, path)
+}
+
+// OpenCalls gets all the calls that were made to Open.
+// Check the length with:
+//
+//	len(mockedUploadManager.OpenCalls())
+func (mock *UploadManagerMock) OpenCalls() []struct {
+	Ctx  context.Context
+	Path string
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Path string
+	}
+	mock.lockOpen.RLock()
+	calls = mock.calls.Open
+	mock.lockOpen.RUnlock()
+	return calls
+}
+
+// Save calls SaveFunc.
+func (mock *UploadManagerMock) Save(ctx context.Context, path string, r io.Reader, opts ...uploads.SaveOption) error {
+	if mock.SaveFunc == nil {
+		panic("UploadManagerMock.SaveFunc: method is nil but UploadManager.Save was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Path string
+		R    io.Reader
+		Opts []uploads.SaveOption
+	}{
+		Ctx:  ctx,
+		Path: path,
+		R:    r,
+		Opts: opts,
+	}
+	mock.lockSave.Lock()
+	mock.calls.Save = append(mock.calls.Save, callInfo)
+	mock.lockSave.Unlock()
+	return mock.SaveFunc(ctx, path, r, opts...)
+}
+
+// SaveCalls gets all the calls that were made to Save.
+// Check the length with:
+//
+//	len(mockedUploadManager.SaveCalls())
+func (mock *UploadManagerMock) SaveCalls() []struct {
+	Ctx  context.Context
+	Path string
+	R    io.Reader
+	Opts []uploads.SaveOption
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Path string
+		R    io.Reader
+		Opts []uploads.SaveOption
+	}
+	mock.lockSave.RLock()
+	calls = mock.calls.Save
+	mock.lockSave.RUnlock()
+	return calls
+}
+
+// Ensure, that RangeReaderMock does implement uploads.RangeReader.
+// If this is not the case, regenerate this file with moq.
+var _ uploads.RangeReader = &RangeReaderMock{}
+
+// RangeReaderMock is a mock implementation of uploads.RangeReader.
+//
+//	func TestSomethingThatUsesRangeReader(t *testing.T) {
+//
+//		// make and configure a mocked uploads.RangeReader
+//		mockedRangeReader := &RangeReaderMock{
+//			OpenRangeFunc: func(ctx context.Context, path string, offset int64, length int64) (io.ReadCloser, error) {
+//				panic("mock out the OpenRange method")
+//			},
+//		}
+//
+//		// use mockedRangeReader in code that requires uploads.RangeReader
+//		// and then make assertions.
+//
+//	}
+type RangeReaderMock struct {
+	// OpenRangeFunc mocks the OpenRange method.
+	OpenRangeFunc func(ctx context.Context, path string, offset int64, length int64) (io.ReadCloser, error)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// OpenRange holds details about calls to the OpenRange method.
+		OpenRange []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Path is the path argument value.
+			Path string
+			// Offset is the offset argument value.
+			Offset int64
+			// Length is the length argument value.
+			Length int64
+		}
+	}
+	lockOpenRange sync.RWMutex
+}
+
+// OpenRange calls OpenRangeFunc.
+func (mock *RangeReaderMock) OpenRange(ctx context.Context, path string, offset int64, length int64) (io.ReadCloser, error) {
+	if mock.OpenRangeFunc == nil {
+		panic("RangeReaderMock.OpenRangeFunc: method is nil but RangeReader.OpenRange was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Path   string
+		Offset int64
+		Length int64
+	}{
+		Ctx:    ctx,
+		Path:   path,
+		Offset: offset,
+		Length: length,
+	}
+	mock.lockOpenRange.Lock()
+	mock.calls.OpenRange = append(mock.calls.OpenRange, callInfo)
+	mock.lockOpenRange.Unlock()
+	return mock.OpenRangeFunc(ctx, path, offset, length)
+}
+
+// OpenRangeCalls gets all the calls that were made to OpenRange.
+// Check the length with:
+//
+//	len(mockedRangeReader.OpenRangeCalls())
+func (mock *RangeReaderMock) OpenRangeCalls() []struct {
+	Ctx    context.Context
+	Path   string
+	Offset int64
+	Length int64
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Path   string
+		Offset int64
+		Length int64
+	}
+	mock.lockOpenRange.RLock()
+	calls = mock.calls.OpenRange
+	mock.lockOpenRange.RUnlock()
+	return calls
+}
+
+// Ensure, that URLSignerMock does implement uploads.URLSigner.
+// If this is not the case, regenerate this file with moq.
+var _ uploads.URLSigner = &URLSignerMock{}
+
+// URLSignerMock is a mock implementation of uploads.URLSigner.
+//
+//	func TestSomethingThatUsesURLSigner(t *testing.T) {
+//
+//		// make and configure a mocked uploads.URLSigner
+//		mockedURLSigner := &URLSignerMock{
+//			SignedURLFunc: func(ctx context.Context, path string, opts *uploads.SignedURLOptions) (string, error) {
+//				panic("mock out the SignedURL method")
+//			},
+//		}
+//
+//		// use mockedURLSigner in code that requires uploads.URLSigner
+//		// and then make assertions.
+//
+//	}
+type URLSignerMock struct {
+	// SignedURLFunc mocks the SignedURL method.
+	SignedURLFunc func(ctx context.Context, path string, opts *uploads.SignedURLOptions) (string, error)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// SignedURL holds details about calls to the SignedURL method.
+		SignedURL []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Path is the path argument value.
+			Path string
+			// Opts is the opts argument value.
+			Opts *uploads.SignedURLOptions
+		}
+	}
+	lockSignedURL sync.RWMutex
+}
+
+// SignedURL calls SignedURLFunc.
+func (mock *URLSignerMock) SignedURL(ctx context.Context, path string, opts *uploads.SignedURLOptions) (string, error) {
+	if mock.SignedURLFunc == nil {
+		panic("URLSignerMock.SignedURLFunc: method is nil but URLSigner.SignedURL was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Path string
+		Opts *uploads.SignedURLOptions
+	}{
+		Ctx:  ctx,
+		Path: path,
+		Opts: opts,
+	}
+	mock.lockSignedURL.Lock()
+	mock.calls.SignedURL = append(mock.calls.SignedURL, callInfo)
+	mock.lockSignedURL.Unlock()
+	return mock.SignedURLFunc(ctx, path, opts)
+}
+
+// SignedURLCalls gets all the calls that were made to SignedURL.
+// Check the length with:
+//
+//	len(mockedURLSigner.SignedURLCalls())
+func (mock *URLSignerMock) SignedURLCalls() []struct {
+	Ctx  context.Context
+	Path string
+	Opts *uploads.SignedURLOptions
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Path string
+		Opts *uploads.SignedURLOptions
+	}
+	mock.lockSignedURL.RLock()
+	calls = mock.calls.SignedURL
+	mock.lockSignedURL.RUnlock()
+	return calls
+}
+
+// Ensure, that AttributerMock does implement uploads.Attributer.
+// If this is not the case, regenerate this file with moq.
+var _ uploads.Attributer = &AttributerMock{}
+
+// AttributerMock is a mock implementation of uploads.Attributer.
+//
+//	func TestSomethingThatUsesAttributer(t *testing.T) {
+//
+//		// make and configure a mocked uploads.Attributer
+//		mockedAttributer := &AttributerMock{
+//			AttributesFunc: func(ctx context.Context, path string) (*uploads.Attributes, error) {
+//				panic("mock out the Attributes method")
+//			},
+//		}
+//
+//		// use mockedAttributer in code that requires uploads.Attributer
+//		// and then make assertions.
+//
+//	}
+type AttributerMock struct {
+	// AttributesFunc mocks the Attributes method.
+	AttributesFunc func(ctx context.Context, path string) (*uploads.Attributes, error)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// Attributes holds details about calls to the Attributes method.
+		Attributes []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Path is the path argument value.
+			Path string
+		}
+	}
+	lockAttributes sync.RWMutex
+}
+
+// Attributes calls AttributesFunc.
+func (mock *AttributerMock) Attributes(ctx context.Context, path string) (*uploads.Attributes, error) {
+	if mock.AttributesFunc == nil {
+		panic("AttributerMock.AttributesFunc: method is nil but Attributer.Attributes was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Path string
+	}{
+		Ctx:  ctx,
+		Path: path,
+	}
+	mock.lockAttributes.Lock()
+	mock.calls.Attributes = append(mock.calls.Attributes, callInfo)
+	mock.lockAttributes.Unlock()
+	return mock.AttributesFunc(ctx, path)
+}
+
+// AttributesCalls gets all the calls that were made to Attributes.
+// Check the length with:
+//
+//	len(mockedAttributer.AttributesCalls())
+func (mock *AttributerMock) AttributesCalls() []struct {
+	Ctx  context.Context
+	Path string
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Path string
+	}
+	mock.lockAttributes.RLock()
+	calls = mock.calls.Attributes
+	mock.lockAttributes.RUnlock()
+	return calls
+}
+
+// Ensure, that ListerMock does implement uploads.Lister.
+// If this is not the case, regenerate this file with moq.
+var _ uploads.Lister = &ListerMock{}
+
+// ListerMock is a mock implementation of uploads.Lister.
+//
+//	func TestSomethingThatUsesLister(t *testing.T) {
+//
+//		// make and configure a mocked uploads.Lister
+//		mockedLister := &ListerMock{
+//			ListFunc: func(ctx context.Context, prefix string) iter.Seq2[uploads.ObjectInfo, error] {
+//				panic("mock out the List method")
+//			},
+//		}
+//
+//		// use mockedLister in code that requires uploads.Lister
+//		// and then make assertions.
+//
+//	}
+type ListerMock struct {
+	// ListFunc mocks the List method.
+	ListFunc func(ctx context.Context, prefix string) iter.Seq2[uploads.ObjectInfo, error]
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// List holds details about calls to the List method.
+		List []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Prefix is the prefix argument value.
+			Prefix string
+		}
+	}
+	lockList sync.RWMutex
+}
+
+// List calls ListFunc.
+func (mock *ListerMock) List(ctx context.Context, prefix string) iter.Seq2[uploads.ObjectInfo, error] {
+	if mock.ListFunc == nil {
+		panic("ListerMock.ListFunc: method is nil but Lister.List was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Prefix string
+	}{
+		Ctx:    ctx,
+		Prefix: prefix,
+	}
+	mock.lockList.Lock()
+	mock.calls.List = append(mock.calls.List, callInfo)
+	mock.lockList.Unlock()
+	return mock.ListFunc(ctx, prefix)
+}
+
+// ListCalls gets all the calls that were made to List.
+// Check the length with:
+//
+//	len(mockedLister.ListCalls())
+func (mock *ListerMock) ListCalls() []struct {
+	Ctx    context.Context
+	Prefix string
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Prefix string
+	}
+	mock.lockList.RLock()
+	calls = mock.calls.List
+	mock.lockList.RUnlock()
 	return calls
 }

@@ -16,7 +16,6 @@ func TestBackblazeB2Config_ValidateWithContext(T *testing.T) {
 		cfg := &BackblazeB2Config{
 			ApplicationKeyID: t.Name(),
 			ApplicationKey:   t.Name(),
-			BucketName:       t.Name(),
 			Region:           t.Name(),
 		}
 
@@ -29,7 +28,6 @@ func TestBackblazeB2Config_ValidateWithContext(T *testing.T) {
 		ctx := t.Context()
 		cfg := &BackblazeB2Config{
 			ApplicationKey: t.Name(),
-			BucketName:     t.Name(),
 			Region:         t.Name(),
 		}
 
@@ -42,20 +40,6 @@ func TestBackblazeB2Config_ValidateWithContext(T *testing.T) {
 		ctx := t.Context()
 		cfg := &BackblazeB2Config{
 			ApplicationKeyID: t.Name(),
-			BucketName:       t.Name(),
-			Region:           t.Name(),
-		}
-
-		test.Error(t, cfg.ValidateWithContext(ctx))
-	})
-
-	T.Run("with missing bucket name", func(t *testing.T) {
-		t.Parallel()
-
-		ctx := t.Context()
-		cfg := &BackblazeB2Config{
-			ApplicationKeyID: t.Name(),
-			ApplicationKey:   t.Name(),
 			Region:           t.Name(),
 		}
 
@@ -69,7 +53,6 @@ func TestBackblazeB2Config_ValidateWithContext(T *testing.T) {
 		cfg := &BackblazeB2Config{
 			ApplicationKeyID: t.Name(),
 			ApplicationKey:   t.Name(),
-			BucketName:       t.Name(),
 		}
 
 		test.Error(t, cfg.ValidateWithContext(ctx))

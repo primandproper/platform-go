@@ -25,14 +25,11 @@ import (
 	"gocloud.dev/gcp"
 )
 
-const (
-	// MemoryProvider indicates we'd like to use the memory adapter for blob.
-	MemoryProvider = "memory"
-)
-
 var (
 	// ErrNilConfig denotes that the provided configuration is nil.
 	ErrNilConfig = platformerrors.New("nil config provided")
+	// ErrUnknownProvider denotes that the configured provider is not recognized.
+	ErrUnknownProvider = platformerrors.New("unknown storage provider")
 )
 
 type (
@@ -51,16 +48,13 @@ type (
 	// Config configures our UploadManager.
 	Config struct {
 		_                 struct{}                  `json:"-"`
-		FilesystemConfig  *FilesystemConfig         `env:"init"                envPrefix:"FILESYSTEM_"            json:"filesystem,omitempty"`
-		S3Config          *S3Config                 `env:"init"                envPrefix:"S3_"                    json:"s3,omitempty"`
-		GCP               *GCPConfig                `env:"init"                envPrefix:"GCP_"                   json:"gcpConfig,omitempty"`
-		R2Config          *R2Config                 `env:"init"                envPrefix:"R2_"                    json:"r2,omitempty"`
-		BackblazeB2Config *BackblazeB2Config        `env:"init"                envPrefix:"BACKBLAZE_B2_"          json:"backblazeB2,omitempty"`
-		BucketPrefix      string                    `env:"BUCKET_PREFIX"       json:"bucketPrefix,omitempty"`
-		BucketName        string                    `env:"BUCKET_NAME"         json:"bucketName,omitempty"`
-		UploadFilenameKey string                    `env:"UPLOAD_FILENAME_KEY" json:"uploadFilenameKey,omitempty"`
-		Provider          string                    `env:"PROVIDER"            json:"provider,omitempty"`
-		CircuitBreaker    circuitbreakingcfg.Config `env:"init"                envPrefix:"CIRCUIT_BREAKING_"      json:"circuitBreakerConfig"`
+		FilesystemConfig  *FilesystemConfig         `env:"init"          envPrefix:"FILESYSTEM_"       json:"filesystem,omitempty"`
+		R2Config          *R2Config                 `env:"init"          envPrefix:"R2_"               json:"r2,omitempty"`
+		BackblazeB2Config *BackblazeB2Config        `env:"init"          envPrefix:"BACKBLAZE_B2_"     json:"backblazeB2,omitempty"`
+		BucketPrefix      string                    `env:"BUCKET_PREFIX" json:"bucketPrefix,omitempty"`
+		BucketName        string                    `env:"BUCKET_NAME"   json:"bucketName,omitempty"`
+		Provider          string                    `env:"PROVIDER"      json:"provider,omitempty"`
+		CircuitBreaker    circuitbreakingcfg.Config `env:"init"          envPrefix:"CIRCUIT_BREAKING_" json:"circuitBreakerConfig"`
 	}
 )
 
@@ -71,8 +65,6 @@ func (c *Config) ValidateWithContext(ctx context.Context) error {
 	return validation.ValidateStructWithContext(ctx, c,
 		validation.Field(&c.BucketName, validation.Required),
 		validation.Field(&c.Provider, validation.In(S3Provider, FilesystemProvider, MemoryProvider, GCPCloudStorageProvider, R2Provider, BackblazeB2Provider)),
-		validation.Field(&c.S3Config, validation.When(c.Provider == S3Provider, validation.Required).Else(validation.Nil)),
-		validation.Field(&c.GCP, validation.When(c.Provider == GCPCloudStorageProvider, validation.Required).Else(validation.Nil)),
 		validation.Field(&c.FilesystemConfig, validation.When(c.Provider == FilesystemProvider, validation.Required).Else(validation.Nil)),
 		validation.Field(&c.R2Config, validation.When(c.Provider == R2Provider, validation.Required).Else(validation.Nil)),
 		validation.Field(&c.BackblazeB2Config, validation.When(c.Provider == BackblazeB2Provider, validation.Required).Else(validation.Nil)),
@@ -83,6 +75,10 @@ func (c *Config) ValidateWithContext(ctx context.Context) error {
 func NewUploadManager(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cfg *Config) (*Uploader, error) {
 	if cfg == nil {
 		return nil, ErrNilConfig
+	}
+
+	if err := cfg.ValidateWithContext(ctx); err != nil {
+		return nil, platformerrors.Wrap(err, "upload manager provided invalid config")
 	}
 
 	cb, err := cfg.CircuitBreaker.ProvideCircuitBreaker(ctx, logger, metricsProvider)
@@ -129,10 +125,6 @@ func NewUploadManager(ctx context.Context, logger logging.Logger, tracerProvider
 		latencyHist:    latencyHist,
 	}
 
-	if err = cfg.ValidateWithContext(ctx); err != nil {
-		return nil, platformerrors.Wrap(err, "upload manager provided invalid config")
-	}
-
 	if err = u.selectBucket(ctx, cfg); err != nil {
 		return nil, platformerrors.Wrap(err, "initializing bucket")
 	}
@@ -143,11 +135,7 @@ func NewUploadManager(ctx context.Context, logger logging.Logger, tracerProvider
 func (u *Uploader) selectBucket(ctx context.Context, cfg *Config) (err error) {
 	switch strings.TrimSpace(strings.ToLower(cfg.Provider)) {
 	case S3Provider:
-		if cfg.S3Config == nil {
-			return ErrNilConfig
-		}
-
-		if u.bucket, err = s3blob.OpenBucketV2(ctx, s3v2.New(s3v2.Options{}), cfg.S3Config.BucketName, &s3blob.Options{
+		if u.bucket, err = s3blob.OpenBucketV2(ctx, s3v2.New(s3v2.Options{}), cfg.BucketName, &s3blob.Options{
 			UseLegacyList: false,
 		}); err != nil {
 			return platformerrors.Wrap(err, "initializing s3 bucket")
@@ -163,7 +151,7 @@ func (u *Uploader) selectBucket(ctx context.Context, cfg *Config) (err error) {
 			return platformerrors.Wrap(clientErr, "initializing GCP objectstorage")
 		}
 
-		u.bucket, err = gcsblob.OpenBucket(ctx, client, cfg.GCP.BucketName, nil)
+		u.bucket, err = gcsblob.OpenBucket(ctx, client, cfg.BucketName, nil)
 		if err != nil {
 			return platformerrors.Wrap(err, "initializing GCP objectstorage")
 		}
@@ -186,7 +174,7 @@ func (u *Uploader) selectBucket(ctx context.Context, cfg *Config) (err error) {
 			Region:       "auto",
 		})
 
-		if u.bucket, err = s3blob.OpenBucketV2(ctx, client, cfg.R2Config.BucketName, &s3blob.Options{
+		if u.bucket, err = s3blob.OpenBucketV2(ctx, client, cfg.BucketName, &s3blob.Options{
 			UseLegacyList: false,
 		}); err != nil {
 			return platformerrors.Wrap(err, "initializing r2 bucket")
@@ -203,14 +191,14 @@ func (u *Uploader) selectBucket(ctx context.Context, cfg *Config) (err error) {
 			Region:       cfg.BackblazeB2Config.Region,
 		})
 
-		if u.bucket, err = s3blob.OpenBucketV2(ctx, client, cfg.BackblazeB2Config.BucketName, &s3blob.Options{
+		if u.bucket, err = s3blob.OpenBucketV2(ctx, client, cfg.BucketName, &s3blob.Options{
 			UseLegacyList: false,
 		}); err != nil {
 			return platformerrors.Wrap(err, "initializing backblaze b2 bucket")
 		}
 	case MemoryProvider:
 		u.bucket = memblob.OpenBucket(&memblob.Options{})
-	default:
+	case FilesystemProvider:
 		if cfg.FilesystemConfig == nil {
 			return ErrNilConfig
 		}
@@ -221,6 +209,8 @@ func (u *Uploader) selectBucket(ctx context.Context, cfg *Config) (err error) {
 		}); err != nil {
 			return platformerrors.Wrap(err, "initializing filesystem bucket")
 		}
+	default:
+		return platformerrors.Wrapf(ErrUnknownProvider, "%q", cfg.Provider)
 	}
 
 	if cfg.BucketPrefix != "" {

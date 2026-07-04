@@ -17,11 +17,9 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		ctx := t.Context()
 		cfg := &Config{
 			Storage: objectstorage.Config{
-				FilesystemConfig:  &objectstorage.FilesystemConfig{RootDirectory: "/blah"},
-				S3Config:          &objectstorage.S3Config{BucketName: "blahs"},
-				BucketName:        "blahs",
-				UploadFilenameKey: "blahs",
-				Provider:          "blahs",
+				FilesystemConfig: &objectstorage.FilesystemConfig{RootDirectory: "/blah"},
+				BucketName:       "blahs",
+				Provider:         "blahs",
 			},
 			Debug: false,
 		}
