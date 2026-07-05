@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v3/cache"
+	"github.com/primandproper/platform-go/v4/cache"
 )
 
 var _ cache.BatchCache[any] = (*Cache[any])(nil)

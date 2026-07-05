@@ -5,12 +5,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v3/observability"
-	"github.com/primandproper/platform-go/v3/observability/keys"
-	"github.com/primandproper/platform-go/v3/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v3/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
-	"github.com/primandproper/platform-go/v3/secrets"
+	"github.com/primandproper/platform-go/v4/observability"
+	"github.com/primandproper/platform-go/v4/observability/keys"
+	"github.com/primandproper/platform-go/v4/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v4/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v4/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v4/secrets"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"

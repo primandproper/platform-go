@@ -1,9 +1,9 @@
 package noop
 
 import (
-	"github.com/primandproper/platform-go/v3/circuitbreaking"
-	cbnoop "github.com/primandproper/platform-go/v3/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v3/circuitbreaking/partitioned"
+	"github.com/primandproper/platform-go/v4/circuitbreaking"
+	cbnoop "github.com/primandproper/platform-go/v4/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v4/circuitbreaking/partitioned"
 )
 
 var _ partitioned.KeyedCircuitBreaker = (*keyedCircuitBreaker)(nil)

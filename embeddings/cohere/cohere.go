@@ -9,12 +9,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/v3/embeddings"
-	"github.com/primandproper/platform-go/v3/errors"
-	"github.com/primandproper/platform-go/v3/observability"
-	"github.com/primandproper/platform-go/v3/observability/keys"
-	"github.com/primandproper/platform-go/v3/observability/logging"
-	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v4/embeddings"
+	"github.com/primandproper/platform-go/v4/errors"
+	"github.com/primandproper/platform-go/v4/observability"
+	"github.com/primandproper/platform-go/v4/observability/keys"
+	"github.com/primandproper/platform-go/v4/observability/logging"
+	"github.com/primandproper/platform-go/v4/observability/tracing"
 )
 
 const (

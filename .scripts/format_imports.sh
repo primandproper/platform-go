@@ -4,7 +4,7 @@ set -euo pipefail
 # Format Go imports using gci
 # Usage: format_imports.sh <package_prefix> <project_root>
 
-PACKAGE_PREFIX="${1:-github.com/primandproper/platform-go/v3}"
+PACKAGE_PREFIX="${1:-github.com/primandproper/platform-go/v4}"
 PROJECT_ROOT="${2:-$(pwd)}"
 
 # Org prefix is the module path's parent, ignoring any major-version suffix

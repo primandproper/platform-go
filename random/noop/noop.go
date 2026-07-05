@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v3/random"
+	"github.com/primandproper/platform-go/v4/random"
 )
 
 var _ random.Generator = (*Generator)(nil)

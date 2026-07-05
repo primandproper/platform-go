@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v3/llm"
-	llmnoop "github.com/primandproper/platform-go/v3/llm/noop"
+	"github.com/primandproper/platform-go/v4/llm"
+	llmnoop "github.com/primandproper/platform-go/v4/llm/noop"
 )
 
 func Example() {

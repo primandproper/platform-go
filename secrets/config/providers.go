@@ -3,12 +3,12 @@ package secretscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v3/errors"
-	"github.com/primandproper/platform-go/v3/observability/logging"
-	"github.com/primandproper/platform-go/v3/observability/metrics"
-	"github.com/primandproper/platform-go/v3/observability/tracing"
-	"github.com/primandproper/platform-go/v3/secrets"
-	"github.com/primandproper/platform-go/v3/secrets/env"
+	"github.com/primandproper/platform-go/v4/errors"
+	"github.com/primandproper/platform-go/v4/observability/logging"
+	"github.com/primandproper/platform-go/v4/observability/metrics"
+	"github.com/primandproper/platform-go/v4/observability/tracing"
+	"github.com/primandproper/platform-go/v4/secrets"
+	"github.com/primandproper/platform-go/v4/secrets/env"
 )
 
 // ProvideSecretSourceFromConfig provides a SecretSource from config.

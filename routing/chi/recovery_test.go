@@ -7,9 +7,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/primandproper/platform-go/v3/observability"
-	"github.com/primandproper/platform-go/v3/observability/logging"
-	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v4/observability"
+	"github.com/primandproper/platform-go/v4/observability/logging"
+	metricsnoop "github.com/primandproper/platform-go/v4/observability/metrics/noop"
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/shoenig/test"

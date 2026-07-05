@@ -4,12 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v3/cryptography/encryption"
-	"github.com/primandproper/platform-go/v3/cryptography/encryption/aes"
-	"github.com/primandproper/platform-go/v3/cryptography/encryption/salsa20"
-	perrors "github.com/primandproper/platform-go/v3/errors"
-	"github.com/primandproper/platform-go/v3/observability/logging"
-	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v4/cryptography/encryption"
+	"github.com/primandproper/platform-go/v4/cryptography/encryption/aes"
+	"github.com/primandproper/platform-go/v4/cryptography/encryption/salsa20"
+	perrors "github.com/primandproper/platform-go/v4/errors"
+	"github.com/primandproper/platform-go/v4/observability/logging"
+	"github.com/primandproper/platform-go/v4/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

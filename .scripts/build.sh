@@ -7,7 +7,7 @@ set -euo pipefail
 # 2) Build all packages (no VCS): build.sh <package_list>
 #    e.g. build.sh "$(go list ./...)"
 
-VERSION_PKG="github.com/primandproper/platform-go/v3/version"
+VERSION_PKG="github.com/primandproper/platform-go/v4/version"
 
 if [[ "${1:-}" == "-o" ]]; then
 	OUT="${2:?missing output path after -o}"

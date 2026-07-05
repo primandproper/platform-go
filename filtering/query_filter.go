@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v3/observability/keys"
-	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v4/observability/keys"
+	"github.com/primandproper/platform-go/v4/observability/logging"
 )
 
 const (

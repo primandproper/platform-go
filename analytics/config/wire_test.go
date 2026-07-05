@@ -3,10 +3,10 @@ package analyticscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v3/analytics/segment"
-	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform-go/v3/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v4/analytics/segment"
+	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/v4/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
 
 	"github.com/shoenig/test/must"
 )

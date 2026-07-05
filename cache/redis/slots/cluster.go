@@ -3,7 +3,7 @@ package slots
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v4/errors"
 
 	"github.com/redis/go-redis/v9"
 )

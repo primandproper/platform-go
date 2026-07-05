@@ -5,11 +5,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v3/observability/logging"
-	"github.com/primandproper/platform-go/v3/observability/profiling"
-	profilingnoop "github.com/primandproper/platform-go/v3/observability/profiling/noop"
-	"github.com/primandproper/platform-go/v3/observability/profiling/pprof"
-	"github.com/primandproper/platform-go/v3/observability/profiling/pyroscope"
+	"github.com/primandproper/platform-go/v4/observability/logging"
+	"github.com/primandproper/platform-go/v4/observability/profiling"
+	profilingnoop "github.com/primandproper/platform-go/v4/observability/profiling/noop"
+	"github.com/primandproper/platform-go/v4/observability/profiling/pprof"
+	"github.com/primandproper/platform-go/v4/observability/profiling/pyroscope"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

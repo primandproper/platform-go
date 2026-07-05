@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	mockencoding "github.com/primandproper/platform-go/v3/encoding/mock"
-	"github.com/primandproper/platform-go/v3/observability"
-	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v3/random"
+	mockencoding "github.com/primandproper/platform-go/v4/encoding/mock"
+	"github.com/primandproper/platform-go/v4/observability"
+	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v4/random"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

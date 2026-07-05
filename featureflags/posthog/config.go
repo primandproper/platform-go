@@ -1,7 +1,7 @@
 package posthog
 
 import (
-	circuitbreakingcfg "github.com/primandproper/platform-go/v3/circuitbreaking/config"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v4/circuitbreaking/config"
 )
 
 type (
