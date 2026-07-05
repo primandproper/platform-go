@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v3/bitmask"
+	"github.com/primandproper/platform-go/v4/bitmask"
 )
 
 type Permission uint8

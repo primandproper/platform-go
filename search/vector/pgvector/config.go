@@ -3,8 +3,8 @@ package pgvector
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v3/errors"
-	vectorsearch "github.com/primandproper/platform-go/v3/search/vector"
+	"github.com/primandproper/platform-go/v4/errors"
+	vectorsearch "github.com/primandproper/platform-go/v4/search/vector"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

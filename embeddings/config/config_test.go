@@ -4,11 +4,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/primandproper/platform-go/v3/embeddings/cohere"
-	"github.com/primandproper/platform-go/v3/embeddings/ollama"
-	"github.com/primandproper/platform-go/v3/embeddings/openai"
-	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
-	"github.com/primandproper/platform-go/v3/observability/tracing"
+	"github.com/primandproper/platform-go/v4/embeddings/cohere"
+	"github.com/primandproper/platform-go/v4/embeddings/ollama"
+	"github.com/primandproper/platform-go/v4/embeddings/openai"
+	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
+	"github.com/primandproper/platform-go/v4/observability/tracing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

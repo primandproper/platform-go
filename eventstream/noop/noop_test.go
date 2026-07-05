@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/primandproper/platform-go/v3/eventstream"
+	"github.com/primandproper/platform-go/v4/eventstream"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

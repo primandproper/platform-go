@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/primandproper/platform-go/v3/errors"
-	"github.com/primandproper/platform-go/v3/observability/logging"
-	"github.com/primandproper/platform-go/v3/observability/profiling"
-	profilingnoop "github.com/primandproper/platform-go/v3/observability/profiling/noop"
+	"github.com/primandproper/platform-go/v4/errors"
+	"github.com/primandproper/platform-go/v4/observability/logging"
+	"github.com/primandproper/platform-go/v4/observability/profiling"
+	profilingnoop "github.com/primandproper/platform-go/v4/observability/profiling/noop"
 )
 
 // ProvideProfilingProvider creates a pprof-based profiling provider that exposes

@@ -3,9 +3,9 @@ package argon2_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v3/authentication/argon2"
-	loggingnoop "github.com/primandproper/platform-go/v3/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v3/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v4/authentication/argon2"
+	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
 
 	"github.com/shoenig/test/must"
 )

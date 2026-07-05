@@ -9,4 +9,4 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_CONTAINER_TESTS="${RUN_CONTAINER_TESTS}" "${SCRIPT_DIR}/pull_test_containers.sh"
 
 # shellcheck disable=SC2086,SC2046
-CGO_ENABLED=1 RUN_CONTAINER_TESTS=${RUN_CONTAINER_TESTS} go test -shuffle=on -race -vet=all -failfast $(go list github.com/primandproper/platform-go/v3/... | grep -Ev '(cmd|integration|mock|fakes|converters|utils|generated)')
+CGO_ENABLED=1 RUN_CONTAINER_TESTS=${RUN_CONTAINER_TESTS} go test -shuffle=on -race -vet=all -failfast $(go list github.com/primandproper/platform-go/v4/... | grep -Ev '(cmd|integration|mock|fakes|converters|utils|generated)')

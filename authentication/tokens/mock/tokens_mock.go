@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v3/authentication/tokens"
+	"github.com/primandproper/platform-go/v4/authentication/tokens"
 )
 
 // Ensure, that IssuerMock does implement tokens.Issuer.

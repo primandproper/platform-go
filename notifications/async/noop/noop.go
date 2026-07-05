@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v3/notifications/async"
+	"github.com/primandproper/platform-go/v4/notifications/async"
 )
 
 var _ async.AsyncNotifier = (*asyncNotifier)(nil)

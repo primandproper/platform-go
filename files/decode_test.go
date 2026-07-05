@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v3/encoding"
-	"github.com/primandproper/platform-go/v3/errors"
-	"github.com/primandproper/platform-go/v3/files"
+	"github.com/primandproper/platform-go/v4/encoding"
+	"github.com/primandproper/platform-go/v4/errors"
+	"github.com/primandproper/platform-go/v4/files"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

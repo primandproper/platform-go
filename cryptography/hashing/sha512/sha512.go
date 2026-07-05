@@ -4,7 +4,7 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 
-	"github.com/primandproper/platform-go/v3/cryptography/hashing"
+	"github.com/primandproper/platform-go/v4/cryptography/hashing"
 )
 
 var _ hashing.Hasher = (*sha512Hasher)(nil)

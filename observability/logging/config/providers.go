@@ -3,7 +3,7 @@ package loggingcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v3/observability/logging"
+	"github.com/primandproper/platform-go/v4/observability/logging"
 )
 
 // ProvideLogger provides a Logger from config.

@@ -3,7 +3,7 @@ package cache
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v3/errors"
+	"github.com/primandproper/platform-go/v4/errors"
 )
 
 var (
