@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/v3/database/filtering"
+	"github.com/primandproper/platform-go/v3/filtering"
 	"github.com/primandproper/platform-go/v3/observability/keys"
 
 	"github.com/mssola/useragent"
