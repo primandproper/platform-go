@@ -54,24 +54,24 @@ type Pillars struct {
 	Profiler        profiling.Provider
 }
 
-// ProvidePillars creates and returns all four observability pillars.
-func (cfg *Config) ProvidePillars(ctx context.Context) (*Pillars, error) {
-	logger, err := cfg.Logging.ProvideLogger(ctx)
+// NewPillars creates and returns all four observability pillars.
+func (cfg *Config) NewPillars(ctx context.Context) (*Pillars, error) {
+	logger, err := cfg.Logging.NewLogger(ctx)
 	if err != nil {
 		return nil, errors.Wrap(err, "setting up logger")
 	}
 
-	tracerProvider, err := cfg.Tracing.ProvideTracerProvider(ctx, logger)
+	tracerProvider, err := cfg.Tracing.NewTracerProvider(ctx, logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "setting up tracer provider")
 	}
 
-	metricsProvider, err := cfg.Metrics.ProvideMetricsProvider(ctx, logger)
+	metricsProvider, err := cfg.Metrics.NewMetricsProvider(ctx, logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "setting up metrics provider")
 	}
 
-	profiler, err := cfg.Profiling.ProvideProfilingProvider(ctx, logger)
+	profiler, err := cfg.Profiling.NewProfilingProvider(ctx, logger)
 	if err != nil {
 		return nil, errors.Wrap(err, "setting up profiling provider")
 	}

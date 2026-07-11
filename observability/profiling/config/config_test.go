@@ -76,7 +76,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideProfilingProvider(T *testing.T) {
+func TestConfig_NewProfilingProvider(T *testing.T) {
 	T.Parallel()
 
 	logger := loggingnoop.NewLogger()
@@ -84,7 +84,7 @@ func TestConfig_ProvideProfilingProvider(T *testing.T) {
 	T.Run("default provider returns noop", func(t *testing.T) {
 		t.Parallel()
 		c := &Config{Provider: ""}
-		p, err := c.ProvideProfilingProvider(t.Context(), logger)
+		p, err := c.NewProfilingProvider(t.Context(), logger)
 		must.NoError(t, err)
 		test.NotNil(t, p)
 	})
@@ -92,7 +92,7 @@ func TestConfig_ProvideProfilingProvider(T *testing.T) {
 	T.Run("unknown provider returns noop", func(t *testing.T) {
 		t.Parallel()
 		c := &Config{Provider: "unknown"}
-		p, err := c.ProvideProfilingProvider(t.Context(), logger)
+		p, err := c.NewProfilingProvider(t.Context(), logger)
 		must.NoError(t, err)
 		test.NotNil(t, p)
 	})
@@ -100,7 +100,7 @@ func TestConfig_ProvideProfilingProvider(T *testing.T) {
 	T.Run("pprof with nil config uses defaults", func(t *testing.T) {
 		t.Parallel()
 		c := &Config{Provider: ProviderPprof}
-		p, err := c.ProvideProfilingProvider(t.Context(), logger)
+		p, err := c.NewProfilingProvider(t.Context(), logger)
 		must.NoError(t, err)
 		test.NotNil(t, p)
 		must.NoError(t, p.Shutdown(t.Context()))
@@ -112,7 +112,7 @@ func TestConfig_ProvideProfilingProvider(T *testing.T) {
 			Provider: ProviderPprof,
 			Pprof:    &pprof.Config{Port: 16060},
 		}
-		p, err := c.ProvideProfilingProvider(t.Context(), logger)
+		p, err := c.NewProfilingProvider(t.Context(), logger)
 		must.NoError(t, err)
 		test.NotNil(t, p)
 		must.NoError(t, p.Shutdown(t.Context()))
@@ -121,7 +121,7 @@ func TestConfig_ProvideProfilingProvider(T *testing.T) {
 	T.Run("pyroscope with nil config returns noop", func(t *testing.T) {
 		t.Parallel()
 		c := &Config{Provider: ProviderPyroscope}
-		p, err := c.ProvideProfilingProvider(t.Context(), logger)
+		p, err := c.NewProfilingProvider(t.Context(), logger)
 		must.NoError(t, err)
 		test.NotNil(t, p)
 	})
@@ -135,7 +135,7 @@ func TestConfig_ProvideProfilingProvider(T *testing.T) {
 				ServerAddress: "http://localhost:4040",
 			},
 		}
-		p, err := c.ProvideProfilingProvider(t.Context(), logger)
+		p, err := c.NewProfilingProvider(t.Context(), logger)
 		must.NoError(t, err)
 		test.NotNil(t, p)
 		test.EqOp(t, 15*time.Second, c.Pyroscope.UploadRate)
@@ -152,7 +152,7 @@ func TestConfig_ProvideProfilingProvider(T *testing.T) {
 				UploadRate:    5 * time.Second,
 			},
 		}
-		p, err := c.ProvideProfilingProvider(t.Context(), logger)
+		p, err := c.NewProfilingProvider(t.Context(), logger)
 		must.NoError(t, err)
 		test.NotNil(t, p)
 		test.EqOp(t, 5*time.Second, c.Pyroscope.UploadRate)

@@ -13,7 +13,7 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-func TestConfig_ProvideTracerProvider(T *testing.T) {
+func TestConfig_NewTracerProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -21,7 +21,7 @@ func TestConfig_ProvideTracerProvider(T *testing.T) {
 
 		cfg := &Config{}
 
-		tracerProvider, err := cfg.ProvideTracerProvider(
+		tracerProvider, err := cfg.NewTracerProvider(
 			t.Context(),
 			loggingnoop.NewLogger(),
 		)
@@ -43,7 +43,7 @@ func TestConfig_ProvideTracerProvider(T *testing.T) {
 			},
 		}
 
-		tracerProvider, err := cfg.ProvideTracerProvider(
+		tracerProvider, err := cfg.NewTracerProvider(
 			t.Context(),
 			loggingnoop.NewLogger(),
 		)
@@ -53,9 +53,9 @@ func TestConfig_ProvideTracerProvider(T *testing.T) {
 	})
 }
 
-// TestConfig_ProvideTracerProvider_CloudTrace covers the cloudtrace branch.
+// TestConfig_NewTracerProvider_CloudTrace covers the cloudtrace branch.
 // It must not run in parallel because it sets GOOGLE_APPLICATION_CREDENTIALS.
-func TestConfig_ProvideTracerProvider_CloudTrace(t *testing.T) {
+func TestConfig_NewTracerProvider_CloudTrace(t *testing.T) {
 	dir := t.TempDir()
 	credPath := filepath.Join(dir, "creds.json")
 	must.NoError(t, os.WriteFile(credPath, []byte(`{"type":"authorized_user","client_id":"x","client_secret":"y","refresh_token":"z"}`), 0o600))
@@ -70,7 +70,7 @@ func TestConfig_ProvideTracerProvider_CloudTrace(t *testing.T) {
 		},
 	}
 
-	tracerProvider, err := cfg.ProvideTracerProvider(
+	tracerProvider, err := cfg.NewTracerProvider(
 		t.Context(),
 		loggingnoop.NewLogger(),
 	)
@@ -79,9 +79,9 @@ func TestConfig_ProvideTracerProvider_CloudTrace(t *testing.T) {
 	test.NotNil(t, tracerProvider)
 }
 
-// TestConfig_ProvideTracerProvider_CloudTraceError covers the cloudtrace error branch.
+// TestConfig_NewTracerProvider_CloudTraceError covers the cloudtrace error branch.
 // It must not run in parallel because it sets GOOGLE_APPLICATION_CREDENTIALS.
-func TestConfig_ProvideTracerProvider_CloudTraceError(t *testing.T) {
+func TestConfig_NewTracerProvider_CloudTraceError(t *testing.T) {
 	dir := t.TempDir()
 	credPath := filepath.Join(dir, "nonexistent.json")
 	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", credPath)
@@ -95,7 +95,7 @@ func TestConfig_ProvideTracerProvider_CloudTraceError(t *testing.T) {
 		},
 	}
 
-	tracerProvider, err := cfg.ProvideTracerProvider(
+	tracerProvider, err := cfg.NewTracerProvider(
 		t.Context(),
 		loggingnoop.NewLogger(),
 	)
@@ -104,8 +104,8 @@ func TestConfig_ProvideTracerProvider_CloudTraceError(t *testing.T) {
 	test.Nil(t, tracerProvider)
 }
 
-// TestConfig_ProvideTracerProvider_OtelError covers the otelgrpc error branch.
-func TestConfig_ProvideTracerProvider_OtelError(T *testing.T) {
+// TestConfig_NewTracerProvider_OtelError covers the otelgrpc error branch.
+func TestConfig_NewTracerProvider_OtelError(T *testing.T) {
 	T.Parallel()
 
 	T.Run("with invalid otel endpoint", func(t *testing.T) {
@@ -121,14 +121,14 @@ func TestConfig_ProvideTracerProvider_OtelError(T *testing.T) {
 			},
 		}
 
-		tracerProvider, err := cfg.ProvideTracerProvider(t.Context(), loggingnoop.NewLogger())
+		tracerProvider, err := cfg.NewTracerProvider(t.Context(), loggingnoop.NewLogger())
 		test.Error(t, err)
 		test.Nil(t, tracerProvider)
 	})
 }
 
-// TestConfig_ProvideTracer_Error covers the error wrap branch in ProvideTracer.
-func TestConfig_ProvideTracer_Error(T *testing.T) {
+// TestConfig_NewTracer_Error covers the error wrap branch in NewTracer.
+func TestConfig_NewTracer_Error(T *testing.T) {
 	T.Parallel()
 
 	T.Run("propagates provider error", func(t *testing.T) {
@@ -143,13 +143,13 @@ func TestConfig_ProvideTracer_Error(T *testing.T) {
 			},
 		}
 
-		tracer, err := cfg.ProvideTracer(t.Context(), loggingnoop.NewLogger(), t.Name())
+		tracer, err := cfg.NewTracer(t.Context(), loggingnoop.NewLogger(), t.Name())
 		test.Error(t, err)
 		test.Nil(t, tracer)
 	})
 }
 
-func TestConfig_ProvideTracer(T *testing.T) {
+func TestConfig_NewTracer(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -157,7 +157,7 @@ func TestConfig_ProvideTracer(T *testing.T) {
 
 		cfg := &Config{}
 
-		tracer, err := cfg.ProvideTracer(t.Context(), loggingnoop.NewLogger(), t.Name())
+		tracer, err := cfg.NewTracer(t.Context(), loggingnoop.NewLogger(), t.Name())
 		test.NoError(t, err)
 		test.NotNil(t, tracer)
 	})
@@ -175,7 +175,7 @@ func TestConfig_ProvideTracer(T *testing.T) {
 			},
 		}
 
-		tracer, err := cfg.ProvideTracer(t.Context(), loggingnoop.NewLogger(), t.Name())
+		tracer, err := cfg.NewTracer(t.Context(), loggingnoop.NewLogger(), t.Name())
 		test.NoError(t, err)
 		test.NotNil(t, tracer)
 	})
@@ -241,7 +241,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestProvideTracerProvider(T *testing.T) {
+func TestNewTracerProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -249,7 +249,7 @@ func TestProvideTracerProvider(T *testing.T) {
 
 		cfg := &Config{}
 
-		tracerProvider, err := ProvideTracerProvider(t.Context(), cfg, loggingnoop.NewLogger())
+		tracerProvider, err := NewTracerProvider(t.Context(), cfg, loggingnoop.NewLogger())
 		test.NoError(t, err)
 		test.NotNil(t, tracerProvider)
 	})

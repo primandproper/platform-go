@@ -67,7 +67,7 @@ func buildTestPublisher(t *testing.T) (*kafkaPublisher, *mockKafkaWriter, *obser
 
 	pub := &kafkaPublisher{
 		writer:            writer,
-		encoder:           encoding.ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON),
+		encoder:           encoding.NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON),
 		o11y:              obs,
 		topic:             t.Name(),
 		publishedCounter:  publishedCounter,
@@ -250,7 +250,7 @@ func Test_kafkaPublisher_PublishAsync(T *testing.T) {
 	})
 }
 
-func TestProvideKafkaPublisherProvider(T *testing.T) {
+func TestNewKafkaPublisherProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -261,7 +261,7 @@ func TestProvideKafkaPublisherProvider(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		actual := ProvideKafkaPublisherProvider(
+		actual := NewKafkaPublisherProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			nil,
@@ -271,7 +271,7 @@ func TestProvideKafkaPublisherProvider(T *testing.T) {
 	})
 }
 
-func Test_publisherProvider_ProvidePublisher(T *testing.T) {
+func Test_publisherProvider_NewPublisher(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -284,7 +284,7 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaPublisherProvider(
+		provider := NewKafkaPublisherProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			nil,
@@ -292,7 +292,7 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		)
 		must.NotNil(t, provider)
 
-		actual, err := provider.ProvidePublisher(ctx, t.Name())
+		actual, err := provider.NewPublisher(ctx, t.Name())
 		test.NoError(t, err)
 		test.NotNil(t, actual)
 	})
@@ -307,7 +307,7 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaPublisherProvider(
+		provider := NewKafkaPublisherProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			nil,
@@ -315,7 +315,7 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		)
 		must.NotNil(t, provider)
 
-		actual, err := provider.ProvidePublisher(ctx, "")
+		actual, err := provider.NewPublisher(ctx, "")
 		test.Error(t, err)
 		test.ErrorIs(t, err, messagequeue.ErrEmptyTopicName)
 		test.Nil(t, actual)
@@ -331,7 +331,7 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaPublisherProvider(
+		provider := NewKafkaPublisherProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			nil,
@@ -339,11 +339,11 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		)
 		must.NotNil(t, provider)
 
-		first, err := provider.ProvidePublisher(ctx, t.Name())
+		first, err := provider.NewPublisher(ctx, t.Name())
 		test.NoError(t, err)
 		test.NotNil(t, first)
 
-		second, err := provider.ProvidePublisher(ctx, t.Name())
+		second, err := provider.NewPublisher(ctx, t.Name())
 		test.NoError(t, err)
 		test.NotNil(t, second)
 
@@ -366,7 +366,7 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaPublisherProvider(
+		provider := NewKafkaPublisherProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			mp,
@@ -374,7 +374,7 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		)
 		must.NotNil(t, provider)
 
-		actual, err := provider.ProvidePublisher(ctx, t.Name())
+		actual, err := provider.NewPublisher(ctx, t.Name())
 		test.Error(t, err)
 		test.Nil(t, actual)
 
@@ -399,7 +399,7 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaPublisherProvider(
+		provider := NewKafkaPublisherProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			mp,
@@ -407,7 +407,7 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		)
 		must.NotNil(t, provider)
 
-		actual, err := provider.ProvidePublisher(ctx, t.Name())
+		actual, err := provider.NewPublisher(ctx, t.Name())
 		test.Error(t, err)
 		test.Nil(t, actual)
 
@@ -433,7 +433,7 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaPublisherProvider(
+		provider := NewKafkaPublisherProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			mp,
@@ -441,7 +441,7 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		)
 		must.NotNil(t, provider)
 
-		actual, err := provider.ProvidePublisher(ctx, t.Name())
+		actual, err := provider.NewPublisher(ctx, t.Name())
 		test.Error(t, err)
 		test.Nil(t, actual)
 
@@ -462,7 +462,7 @@ func Test_publisherProvider_Ping(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaPublisherProvider(
+		provider := NewKafkaPublisherProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			nil,
@@ -488,7 +488,7 @@ func Test_publisherProvider_Close(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaPublisherProvider(
+		provider := NewKafkaPublisherProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			nil,
@@ -496,7 +496,7 @@ func Test_publisherProvider_Close(T *testing.T) {
 		)
 		must.NotNil(t, provider)
 
-		_, err := provider.ProvidePublisher(ctx, t.Name())
+		_, err := provider.NewPublisher(ctx, t.Name())
 		must.NoError(t, err)
 
 		pp, ok := provider.(*publisherProvider)
@@ -533,7 +533,7 @@ func Test_publisherProvider_Close(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaPublisherProvider(
+		provider := NewKafkaPublisherProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			nil,

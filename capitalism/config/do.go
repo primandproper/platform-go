@@ -20,7 +20,7 @@ func RegisterPaymentManager(i do.Injector) {
 			stripeEventHandler = h
 		}
 
-		return ProvideCapitalismImplementation(
+		return NewCapitalismImplementation(
 			do.MustInvoke[logging.Logger](i),
 			do.MustInvoke[tracing.TracerProvider](i),
 			do.MustInvoke[*Config](i),

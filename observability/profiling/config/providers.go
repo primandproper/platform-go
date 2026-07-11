@@ -7,7 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v4/observability/profiling"
 )
 
-// ProvideProfilingProviderWire provides a profiling provider from config.
-func ProvideProfilingProviderWire(ctx context.Context, logger logging.Logger, c *Config) (profiling.Provider, error) {
-	return c.ProvideProfilingProvider(ctx, logger)
+// NewProfilingProvider provides a profiling provider from config.
+func NewProfilingProvider(ctx context.Context, logger logging.Logger, c *Config) (profiling.Provider, error) {
+	return c.NewProfilingProvider(ctx, logger)
 }

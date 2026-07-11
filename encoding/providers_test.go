@@ -6,12 +6,12 @@ import (
 	"github.com/shoenig/test"
 )
 
-func TestProvideContentType(T *testing.T) {
+func TestNewContentType(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		test.EqOp(t, ContentTypeJSON, ProvideContentType(Config{ContentType: "application/json"}))
+		test.EqOp(t, ContentTypeJSON, NewContentType(Config{ContentType: "application/json"}))
 	})
 }

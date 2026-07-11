@@ -98,7 +98,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideEmbedder_Empty(T *testing.T) {
+func TestConfig_NewEmbedder_Empty(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -108,13 +108,13 @@ func TestConfig_ProvideEmbedder_Empty(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracer := tracing.NewTracerForTest("test")
 
-		embedder, err := cfg.ProvideEmbedder(t.Context(), logger, tracer)
+		embedder, err := cfg.NewEmbedder(t.Context(), logger, tracer)
 		must.NoError(t, err)
 		must.NotNil(t, embedder, must.Sprintf("expected non-nil embedder (noop)"))
 	})
 }
 
-func TestConfig_ProvideEmbedder_OpenAI(T *testing.T) {
+func TestConfig_NewEmbedder_OpenAI(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -129,13 +129,13 @@ func TestConfig_ProvideEmbedder_OpenAI(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracer := tracing.NewTracerForTest("test")
 
-		embedder, err := cfg.ProvideEmbedder(t.Context(), logger, tracer)
+		embedder, err := cfg.NewEmbedder(t.Context(), logger, tracer)
 		must.NoError(t, err)
 		must.NotNil(t, embedder)
 	})
 }
 
-func TestConfig_ProvideEmbedder_Ollama(T *testing.T) {
+func TestConfig_NewEmbedder_Ollama(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -148,13 +148,13 @@ func TestConfig_ProvideEmbedder_Ollama(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracer := tracing.NewTracerForTest("test")
 
-		embedder, err := cfg.ProvideEmbedder(t.Context(), logger, tracer)
+		embedder, err := cfg.NewEmbedder(t.Context(), logger, tracer)
 		must.NoError(t, err)
 		must.NotNil(t, embedder)
 	})
 }
 
-func TestConfig_ProvideEmbedder_Cohere(T *testing.T) {
+func TestConfig_NewEmbedder_Cohere(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -169,7 +169,7 @@ func TestConfig_ProvideEmbedder_Cohere(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracer := tracing.NewTracerForTest("test")
 
-		embedder, err := cfg.ProvideEmbedder(t.Context(), logger, tracer)
+		embedder, err := cfg.NewEmbedder(t.Context(), logger, tracer)
 		must.NoError(t, err)
 		must.NotNil(t, embedder)
 	})

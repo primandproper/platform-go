@@ -51,7 +51,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestProvideCapitalismImplementation(T *testing.T) {
+func TestNewCapitalismImplementation(T *testing.T) {
 	T.Parallel()
 
 	T.Run("with stripe provider", func(t *testing.T) {
@@ -63,7 +63,7 @@ func TestProvideCapitalismImplementation(T *testing.T) {
 			Stripe:   &stripe.Config{WebhookSecret: t.Name()},
 		}
 
-		pm, err := ProvideCapitalismImplementation(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg, nil)
+		pm, err := NewCapitalismImplementation(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg, nil)
 		must.NoError(t, err)
 		test.NotNil(t, pm)
 	})
@@ -75,7 +75,7 @@ func TestProvideCapitalismImplementation(T *testing.T) {
 			Enabled: false,
 		}
 
-		pm, err := ProvideCapitalismImplementation(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg, nil)
+		pm, err := NewCapitalismImplementation(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg, nil)
 		must.NoError(t, err)
 		test.NotNil(t, pm)
 	})
@@ -88,7 +88,7 @@ func TestProvideCapitalismImplementation(T *testing.T) {
 			Provider: "unknown",
 		}
 
-		pm, err := ProvideCapitalismImplementation(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg, nil)
+		pm, err := NewCapitalismImplementation(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg, nil)
 		test.Nil(t, pm)
 		test.Error(t, err)
 	})

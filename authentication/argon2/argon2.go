@@ -44,8 +44,8 @@ type (
 	}
 )
 
-// ProvideArgon2Authenticator returns an argon2 powered Argon2Authenticator.
-func ProvideArgon2Authenticator(logger logging.Logger, tracerProvider tracing.TracerProvider) authentication.Authenticator {
+// NewArgon2Authenticator returns an argon2 powered Argon2Authenticator.
+func NewArgon2Authenticator(logger logging.Logger, tracerProvider tracing.TracerProvider) authentication.Authenticator {
 	return &Argon2Authenticator{
 		o11y: observability.NewObserver(serviceName, logger, tracerProvider),
 	}

@@ -67,11 +67,11 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvidePushSender returns a PushNotificationSender based on config.
+// NewPushSender returns a PushNotificationSender based on config.
 // When provider is "apns_fcm", each configured platform must initialize
 // successfully; a failed init surfaces as an error rather than silently
 // degrading to a noop that would report every SendPush as a success.
-func (cfg *Config) ProvidePushSender(
+func (cfg *Config) NewPushSender(
 	ctx context.Context,
 	logger logging.Logger,
 	tracerProvider tracing.TracerProvider,

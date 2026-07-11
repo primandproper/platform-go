@@ -11,12 +11,12 @@ import (
 	"github.com/primandproper/platform-go/v4/observability/tracing"
 )
 
-// ProvideEmailer provides an email.Emailer from a config.
-func ProvideEmailer(ctx context.Context, cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, client *http.Client) (email.Emailer, error) {
-	circuitBreaker, err := cfg.CircuitBreaker.ProvideCircuitBreaker(ctx, logger, metricsProvider)
+// NewEmailer provides an email.Emailer from a config.
+func NewEmailer(ctx context.Context, cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, client *http.Client) (email.Emailer, error) {
+	circuitBreaker, err := cfg.CircuitBreaker.NewCircuitBreaker(ctx, logger, metricsProvider)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to initialize email circuit breaker")
 	}
 
-	return cfg.ProvideEmailer(ctx, logger, tracerProvider, client, circuitBreaker, metricsProvider)
+	return cfg.NewEmailer(ctx, logger, tracerProvider, client, circuitBreaker, metricsProvider)
 }

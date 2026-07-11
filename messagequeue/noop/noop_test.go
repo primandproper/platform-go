@@ -8,14 +8,14 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-func TestPublisherProvider_ProvidePublisher(T *testing.T) {
+func TestPublisherProvider_NewPublisher(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
 		p := NewPublisherProvider()
-		pub, err := p.ProvidePublisher(context.Background(), "topic")
+		pub, err := p.NewPublisher(context.Background(), "topic")
 		must.NoError(t, err)
 		test.NotNil(t, pub)
 	})
@@ -78,14 +78,14 @@ func TestPublisher_Stop(T *testing.T) {
 	})
 }
 
-func TestConsumerProvider_ProvideConsumer(T *testing.T) {
+func TestConsumerProvider_NewConsumer(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
 		p := NewConsumerProvider()
-		c, err := p.ProvideConsumer(context.Background(), "topic", func(_ context.Context, _ []byte) error { return nil })
+		c, err := p.NewConsumer(context.Background(), "topic", func(_ context.Context, _ []byte) error { return nil })
 		must.NoError(t, err)
 		test.NotNil(t, c)
 	})

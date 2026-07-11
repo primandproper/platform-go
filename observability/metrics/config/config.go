@@ -29,15 +29,15 @@ type (
 	}
 )
 
-// ProvideMetricsProvider provides a metrics provider.
-func (c *Config) ProvideMetricsProvider(ctx context.Context, logger logging.Logger) (metrics.Provider, error) {
+// NewMetricsProvider provides a metrics provider.
+func (c *Config) NewMetricsProvider(ctx context.Context, logger logging.Logger) (metrics.Provider, error) {
 	if !c.Enabled {
 		return metricsnoop.NewMetricsProvider(), nil
 	}
 
 	switch strings.TrimSpace(strings.ToLower(c.Provider)) {
 	case ProviderOtel:
-		return otelgrpc.ProvideMetricsProvider(ctx, logger, c.ServiceName, c.Otel)
+		return otelgrpc.NewMetricsProvider(ctx, logger, c.ServiceName, c.Otel)
 	default:
 		return metricsnoop.NewMetricsProvider(), nil
 	}

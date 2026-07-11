@@ -9,13 +9,13 @@ import (
 	"github.com/primandproper/platform-go/v4/observability/tracing"
 )
 
-// ProvidePushSender provides a PushNotificationSender from config.
-func ProvidePushSender(
+// NewPushSender provides a PushNotificationSender from config.
+func NewPushSender(
 	ctx context.Context,
 	cfg Config,
 	logger logging.Logger,
 	tracerProvider tracing.TracerProvider,
 	metricsProvider metrics.Provider,
 ) (mobile.PushNotificationSender, error) {
-	return (&cfg).ProvidePushSender(ctx, logger, tracerProvider, metricsProvider)
+	return (&cfg).NewPushSender(ctx, logger, tracerProvider, metricsProvider)
 }

@@ -15,7 +15,7 @@ import (
 // RegisterFeatureFlagManager registers a featureflags.FeatureFlagManager with the injector.
 func RegisterFeatureFlagManager(i do.Injector) {
 	do.Provide[featureflags.FeatureFlagManager](i, func(i do.Injector) (featureflags.FeatureFlagManager, error) {
-		return ProvideFeatureFlagManager(
+		return NewFeatureFlagManager(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
 			do.MustInvoke[logging.Logger](i),

@@ -88,7 +88,7 @@ func NewUploadManager(ctx context.Context, logger logging.Logger, tracerProvider
 		return nil, platformerrors.Wrap(err, "upload manager provided invalid config")
 	}
 
-	cb, err := cfg.CircuitBreaker.ProvideCircuitBreaker(ctx, logger, metricsProvider)
+	cb, err := cfg.CircuitBreaker.NewCircuitBreaker(ctx, logger, metricsProvider)
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "initializing upload manager circuit breaker")
 	}

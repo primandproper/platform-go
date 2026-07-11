@@ -74,7 +74,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideLogger(T *testing.T) {
+func TestConfig_NewLogger(T *testing.T) {
 	T.Parallel()
 
 	T.Run("zerolog provider", func(t *testing.T) {
@@ -85,7 +85,7 @@ func TestConfig_ProvideLogger(T *testing.T) {
 			Provider: ProviderZerolog,
 		}
 
-		l, err := cfg.ProvideLogger(ctx)
+		l, err := cfg.NewLogger(ctx)
 		test.NoError(t, err)
 		test.NotNil(t, l)
 	})
@@ -98,7 +98,7 @@ func TestConfig_ProvideLogger(T *testing.T) {
 			Provider: ProviderZap,
 		}
 
-		l, err := cfg.ProvideLogger(ctx)
+		l, err := cfg.NewLogger(ctx)
 		test.NoError(t, err)
 		test.NotNil(t, l)
 	})
@@ -111,7 +111,7 @@ func TestConfig_ProvideLogger(T *testing.T) {
 			Provider: ProviderSlog,
 		}
 
-		l, err := cfg.ProvideLogger(ctx)
+		l, err := cfg.NewLogger(ctx)
 		test.NoError(t, err)
 		test.NotNil(t, l)
 	})
@@ -126,7 +126,7 @@ func TestConfig_ProvideLogger(T *testing.T) {
 			OtelSlog:    &otelgrpc.Config{},
 		}
 
-		l, err := cfg.ProvideLogger(ctx)
+		l, err := cfg.NewLogger(ctx)
 		test.NoError(t, err)
 		test.NotNil(t, l)
 	})
@@ -140,7 +140,7 @@ func TestConfig_ProvideLogger(T *testing.T) {
 			ServiceName: t.Name(),
 		}
 
-		l, err := cfg.ProvideLogger(ctx)
+		l, err := cfg.NewLogger(ctx)
 		test.Error(t, err)
 		test.Nil(t, l)
 	})
@@ -151,13 +151,13 @@ func TestConfig_ProvideLogger(T *testing.T) {
 		ctx := t.Context()
 		cfg := &Config{}
 
-		l, err := cfg.ProvideLogger(ctx)
+		l, err := cfg.NewLogger(ctx)
 		test.NoError(t, err)
 		test.NotNil(t, l)
 	})
 }
 
-func TestProvideLogger(T *testing.T) {
+func TestNewLogger(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -168,7 +168,7 @@ func TestProvideLogger(T *testing.T) {
 			Provider: ProviderZerolog,
 		}
 
-		l, err := ProvideLogger(ctx, cfg)
+		l, err := NewLogger(ctx, cfg)
 		must.NoError(t, err)
 		test.NotNil(t, l)
 	})

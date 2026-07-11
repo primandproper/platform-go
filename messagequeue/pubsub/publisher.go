@@ -56,7 +56,7 @@ func buildPubSubPublisher(logger logging.Logger, pubsubClient *pubsub.Publisher,
 	}
 
 	return &pubSubPublisher{
-		encoder:           encoding.ProvideClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
+		encoder:           encoding.NewClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
 		o11y:              observability.NewObserver(fmt.Sprintf("%s_publisher", topic), logger, tracerProvider),
 		publisher:         pubsubClient,
 		topic:             topic,
@@ -81,8 +81,8 @@ type publisherProvider struct {
 	publisherCacheHat sync.RWMutex
 }
 
-// ProvidePubSubPublisherProvider returns a PublisherProvider for a given address.
-func ProvidePubSubPublisherProvider(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, client *pubsub.Client, projectID string) messagequeue.PublisherProvider {
+// NewPubSubPublisherProvider returns a PublisherProvider for a given address.
+func NewPubSubPublisherProvider(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, client *pubsub.Client, projectID string) messagequeue.PublisherProvider {
 	return &publisherProvider{
 		logger:          logging.EnsureLogger(logger),
 		pubsubClient:    client,
@@ -111,8 +111,8 @@ func (p *publisherProvider) qualifyTopicName(topicName string) string {
 	return fmt.Sprintf("projects/%s/topics/%s", p.projectID, topicName)
 }
 
-// ProvidePublisher returns a pubSubPublisher for a given topic.
-func (p *publisherProvider) ProvidePublisher(ctx context.Context, topicName string) (messagequeue.Publisher, error) {
+// NewPublisher returns a pubSubPublisher for a given topic.
+func (p *publisherProvider) NewPublisher(ctx context.Context, topicName string) (messagequeue.Publisher, error) {
 	if topicName == "" {
 		return nil, messagequeue.ErrEmptyTopicName
 	}

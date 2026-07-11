@@ -14,7 +14,7 @@ import (
 // RegisterSecretSource registers a secrets.SecretSource with the injector.
 func RegisterSecretSource(i do.Injector) {
 	do.Provide[secrets.SecretSource](i, func(i do.Injector) (secrets.SecretSource, error) {
-		return ProvideSecretSourceFromConfig(
+		return NewSecretSource(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
 			do.MustInvoke[logging.Logger](i),

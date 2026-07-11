@@ -20,7 +20,7 @@ func ExampleNewPublisherProvider() {
 	provider := noop.NewPublisherProvider()
 	defer provider.Close()
 
-	pub, err := provider.ProvidePublisher(context.Background(), "user-events")
+	pub, err := provider.NewPublisher(context.Background(), "user-events")
 	if err != nil {
 		panic(err)
 	}

@@ -182,11 +182,11 @@ var _ messagequeue.PublisherProvider = &PublisherProviderMock{}
 //			CloseFunc: func()  {
 //				panic("mock out the Close method")
 //			},
+//			NewPublisherFunc: func(ctx context.Context, topic string) (messagequeue.Publisher, error) {
+//				panic("mock out the NewPublisher method")
+//			},
 //			PingFunc: func(ctx context.Context) error {
 //				panic("mock out the Ping method")
-//			},
-//			ProvidePublisherFunc: func(ctx context.Context, topic string) (messagequeue.Publisher, error) {
-//				panic("mock out the ProvidePublisher method")
 //			},
 //		}
 //
@@ -198,33 +198,33 @@ type PublisherProviderMock struct {
 	// CloseFunc mocks the Close method.
 	CloseFunc func()
 
+	// NewPublisherFunc mocks the NewPublisher method.
+	NewPublisherFunc func(ctx context.Context, topic string) (messagequeue.Publisher, error)
+
 	// PingFunc mocks the Ping method.
 	PingFunc func(ctx context.Context) error
-
-	// ProvidePublisherFunc mocks the ProvidePublisher method.
-	ProvidePublisherFunc func(ctx context.Context, topic string) (messagequeue.Publisher, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Close holds details about calls to the Close method.
 		Close []struct {
 		}
-		// Ping holds details about calls to the Ping method.
-		Ping []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-		}
-		// ProvidePublisher holds details about calls to the ProvidePublisher method.
-		ProvidePublisher []struct {
+		// NewPublisher holds details about calls to the NewPublisher method.
+		NewPublisher []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Topic is the topic argument value.
 			Topic string
 		}
+		// Ping holds details about calls to the Ping method.
+		Ping []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+		}
 	}
-	lockClose            sync.RWMutex
-	lockPing             sync.RWMutex
-	lockProvidePublisher sync.RWMutex
+	lockClose        sync.RWMutex
+	lockNewPublisher sync.RWMutex
+	lockPing         sync.RWMutex
 }
 
 // Close calls CloseFunc.
@@ -251,6 +251,42 @@ func (mock *PublisherProviderMock) CloseCalls() []struct {
 	mock.lockClose.RLock()
 	calls = mock.calls.Close
 	mock.lockClose.RUnlock()
+	return calls
+}
+
+// NewPublisher calls NewPublisherFunc.
+func (mock *PublisherProviderMock) NewPublisher(ctx context.Context, topic string) (messagequeue.Publisher, error) {
+	if mock.NewPublisherFunc == nil {
+		panic("PublisherProviderMock.NewPublisherFunc: method is nil but PublisherProvider.NewPublisher was just called")
+	}
+	callInfo := struct {
+		Ctx   context.Context
+		Topic string
+	}{
+		Ctx:   ctx,
+		Topic: topic,
+	}
+	mock.lockNewPublisher.Lock()
+	mock.calls.NewPublisher = append(mock.calls.NewPublisher, callInfo)
+	mock.lockNewPublisher.Unlock()
+	return mock.NewPublisherFunc(ctx, topic)
+}
+
+// NewPublisherCalls gets all the calls that were made to NewPublisher.
+// Check the length with:
+//
+//	len(mockedPublisherProvider.NewPublisherCalls())
+func (mock *PublisherProviderMock) NewPublisherCalls() []struct {
+	Ctx   context.Context
+	Topic string
+} {
+	var calls []struct {
+		Ctx   context.Context
+		Topic string
+	}
+	mock.lockNewPublisher.RLock()
+	calls = mock.calls.NewPublisher
+	mock.lockNewPublisher.RUnlock()
 	return calls
 }
 
@@ -283,42 +319,6 @@ func (mock *PublisherProviderMock) PingCalls() []struct {
 	mock.lockPing.RLock()
 	calls = mock.calls.Ping
 	mock.lockPing.RUnlock()
-	return calls
-}
-
-// ProvidePublisher calls ProvidePublisherFunc.
-func (mock *PublisherProviderMock) ProvidePublisher(ctx context.Context, topic string) (messagequeue.Publisher, error) {
-	if mock.ProvidePublisherFunc == nil {
-		panic("PublisherProviderMock.ProvidePublisherFunc: method is nil but PublisherProvider.ProvidePublisher was just called")
-	}
-	callInfo := struct {
-		Ctx   context.Context
-		Topic string
-	}{
-		Ctx:   ctx,
-		Topic: topic,
-	}
-	mock.lockProvidePublisher.Lock()
-	mock.calls.ProvidePublisher = append(mock.calls.ProvidePublisher, callInfo)
-	mock.lockProvidePublisher.Unlock()
-	return mock.ProvidePublisherFunc(ctx, topic)
-}
-
-// ProvidePublisherCalls gets all the calls that were made to ProvidePublisher.
-// Check the length with:
-//
-//	len(mockedPublisherProvider.ProvidePublisherCalls())
-func (mock *PublisherProviderMock) ProvidePublisherCalls() []struct {
-	Ctx   context.Context
-	Topic string
-} {
-	var calls []struct {
-		Ctx   context.Context
-		Topic string
-	}
-	mock.lockProvidePublisher.RLock()
-	calls = mock.calls.ProvidePublisher
-	mock.lockProvidePublisher.RUnlock()
 	return calls
 }
 
@@ -413,8 +413,8 @@ var _ messagequeue.ConsumerProvider = &ConsumerProviderMock{}
 //			CloseFunc: func()  {
 //				panic("mock out the Close method")
 //			},
-//			ProvideConsumerFunc: func(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
-//				panic("mock out the ProvideConsumer method")
+//			NewConsumerFunc: func(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
+//				panic("mock out the NewConsumer method")
 //			},
 //		}
 //
@@ -426,16 +426,16 @@ type ConsumerProviderMock struct {
 	// CloseFunc mocks the Close method.
 	CloseFunc func()
 
-	// ProvideConsumerFunc mocks the ProvideConsumer method.
-	ProvideConsumerFunc func(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error)
+	// NewConsumerFunc mocks the NewConsumer method.
+	NewConsumerFunc func(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
 		// Close holds details about calls to the Close method.
 		Close []struct {
 		}
-		// ProvideConsumer holds details about calls to the ProvideConsumer method.
-		ProvideConsumer []struct {
+		// NewConsumer holds details about calls to the NewConsumer method.
+		NewConsumer []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Topic is the topic argument value.
@@ -444,8 +444,8 @@ type ConsumerProviderMock struct {
 			HandlerFunc messagequeue.ConsumerFunc
 		}
 	}
-	lockClose           sync.RWMutex
-	lockProvideConsumer sync.RWMutex
+	lockClose       sync.RWMutex
+	lockNewConsumer sync.RWMutex
 }
 
 // Close calls CloseFunc.
@@ -475,10 +475,10 @@ func (mock *ConsumerProviderMock) CloseCalls() []struct {
 	return calls
 }
 
-// ProvideConsumer calls ProvideConsumerFunc.
-func (mock *ConsumerProviderMock) ProvideConsumer(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
-	if mock.ProvideConsumerFunc == nil {
-		panic("ConsumerProviderMock.ProvideConsumerFunc: method is nil but ConsumerProvider.ProvideConsumer was just called")
+// NewConsumer calls NewConsumerFunc.
+func (mock *ConsumerProviderMock) NewConsumer(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
+	if mock.NewConsumerFunc == nil {
+		panic("ConsumerProviderMock.NewConsumerFunc: method is nil but ConsumerProvider.NewConsumer was just called")
 	}
 	callInfo := struct {
 		Ctx         context.Context
@@ -489,17 +489,17 @@ func (mock *ConsumerProviderMock) ProvideConsumer(ctx context.Context, topic str
 		Topic:       topic,
 		HandlerFunc: handlerFunc,
 	}
-	mock.lockProvideConsumer.Lock()
-	mock.calls.ProvideConsumer = append(mock.calls.ProvideConsumer, callInfo)
-	mock.lockProvideConsumer.Unlock()
-	return mock.ProvideConsumerFunc(ctx, topic, handlerFunc)
+	mock.lockNewConsumer.Lock()
+	mock.calls.NewConsumer = append(mock.calls.NewConsumer, callInfo)
+	mock.lockNewConsumer.Unlock()
+	return mock.NewConsumerFunc(ctx, topic, handlerFunc)
 }
 
-// ProvideConsumerCalls gets all the calls that were made to ProvideConsumer.
+// NewConsumerCalls gets all the calls that were made to NewConsumer.
 // Check the length with:
 //
-//	len(mockedConsumerProvider.ProvideConsumerCalls())
-func (mock *ConsumerProviderMock) ProvideConsumerCalls() []struct {
+//	len(mockedConsumerProvider.NewConsumerCalls())
+func (mock *ConsumerProviderMock) NewConsumerCalls() []struct {
 	Ctx         context.Context
 	Topic       string
 	HandlerFunc messagequeue.ConsumerFunc
@@ -509,8 +509,8 @@ func (mock *ConsumerProviderMock) ProvideConsumerCalls() []struct {
 		Topic       string
 		HandlerFunc messagequeue.ConsumerFunc
 	}
-	mock.lockProvideConsumer.RLock()
-	calls = mock.calls.ProvideConsumer
-	mock.lockProvideConsumer.RUnlock()
+	mock.lockNewConsumer.RLock()
+	calls = mock.calls.NewConsumer
+	mock.lockNewConsumer.RUnlock()
 	return calls
 }

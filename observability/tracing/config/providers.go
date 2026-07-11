@@ -7,7 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v4/observability/tracing"
 )
 
-// ProvideTracerProvider provides a TracerProvider from config.
-func ProvideTracerProvider(ctx context.Context, c *Config, l logging.Logger) (traceProvider tracing.TracerProvider, err error) {
-	return c.ProvideTracerProvider(ctx, l)
+// NewTracerProvider provides a TracerProvider from config.
+func NewTracerProvider(ctx context.Context, c *Config, l logging.Logger) (traceProvider tracing.TracerProvider, err error) {
+	return c.NewTracerProvider(ctx, l)
 }

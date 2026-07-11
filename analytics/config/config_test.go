@@ -85,7 +85,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideCollector(T *testing.T) {
+func TestConfig_NewCollector(T *testing.T) {
 	T.Parallel()
 
 	allProviders := []string{
@@ -108,7 +108,7 @@ func TestConfig_ProvideCollector(T *testing.T) {
 				},
 			}
 
-			_, err := cfg.ProvideCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+			_, err := cfg.NewCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 			must.NoError(t, err)
 		}
 	})
@@ -127,7 +127,7 @@ func TestConfig_ProvideCollector(T *testing.T) {
 				},
 			}
 
-			_, err := cfg.ProvideCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+			_, err := cfg.NewCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 			must.Error(t, err)
 		}
 	})
@@ -142,7 +142,7 @@ func TestConfig_ProvideCollector(T *testing.T) {
 			},
 		}
 
-		reporter, err := cfg.ProvideCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		reporter, err := cfg.NewCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		test.Nil(t, reporter)
 		test.Error(t, err)
 	})
@@ -157,7 +157,7 @@ func TestConfig_ProvideCollector(T *testing.T) {
 			},
 		}
 
-		reporter, err := cfg.ProvideCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		reporter, err := cfg.NewCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		test.Nil(t, reporter)
 		test.Error(t, err)
 	})
@@ -172,7 +172,7 @@ func TestConfig_ProvideCollector(T *testing.T) {
 			},
 		}
 
-		reporter, err := cfg.ProvideCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		reporter, err := cfg.NewCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		test.NotNil(t, reporter)
 		test.NoError(t, err)
 	})
@@ -200,7 +200,7 @@ func TestConfig_ProvideCollector(T *testing.T) {
 			},
 		}
 
-		reporter, err := cfg.ProvideCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp)
+		reporter, err := cfg.NewCollector(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp)
 		test.Nil(t, reporter)
 		test.Error(t, err)
 

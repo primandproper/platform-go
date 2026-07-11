@@ -49,8 +49,8 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideTokenIssuer provides a token issuer.
-func (cfg *Config) ProvideTokenIssuer(logger logging.Logger, tracerProvider tracing.TracerProvider) (tokens.Issuer, error) {
+// NewTokenIssuer provides a token issuer.
+func (cfg *Config) NewTokenIssuer(logger logging.Logger, tracerProvider tracing.TracerProvider) (tokens.Issuer, error) {
 	decryptedSigningKey, err := base64.URLEncoding.DecodeString(cfg.Base64EncodedSigningKey)
 	if err != nil {
 		return nil, fmt.Errorf("decoding json web token signing key: %w", err)

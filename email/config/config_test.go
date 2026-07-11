@@ -141,7 +141,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideEmailer(T *testing.T) {
+func TestConfig_NewEmailer(T *testing.T) {
 	T.Parallel()
 
 	providers := []string{
@@ -166,7 +166,7 @@ func TestConfig_ProvideEmailer(T *testing.T) {
 				Postmark: &postmark.Config{ServerToken: t.Name()},
 			}
 
-			actual, err := cfg.ProvideEmailer(t.Context(), logger, tracingnoop.NewTracerProvider(), &http.Client{}, cbnoop.NewCircuitBreaker(), nil)
+			actual, err := cfg.NewEmailer(t.Context(), logger, tracingnoop.NewTracerProvider(), &http.Client{}, cbnoop.NewCircuitBreaker(), nil)
 			test.NotNil(t, actual)
 			test.NoError(t, err)
 		})
@@ -181,7 +181,7 @@ func TestConfig_ProvideEmailer(T *testing.T) {
 			SES:      &ses.Config{Region: "us-east-1"},
 		}
 
-		actual, err := cfg.ProvideEmailer(t.Context(), logger, tracingnoop.NewTracerProvider(), &http.Client{}, cbnoop.NewCircuitBreaker(), nil)
+		actual, err := cfg.NewEmailer(t.Context(), logger, tracingnoop.NewTracerProvider(), &http.Client{}, cbnoop.NewCircuitBreaker(), nil)
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -194,13 +194,13 @@ func TestConfig_ProvideEmailer(T *testing.T) {
 			Provider: "",
 		}
 
-		actual, err := cfg.ProvideEmailer(t.Context(), logger, tracingnoop.NewTracerProvider(), &http.Client{}, cbnoop.NewCircuitBreaker(), nil)
+		actual, err := cfg.NewEmailer(t.Context(), logger, tracingnoop.NewTracerProvider(), &http.Client{}, cbnoop.NewCircuitBreaker(), nil)
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
 }
 
-func TestProvideEmailer(T *testing.T) {
+func TestNewEmailer(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard falls back to noop", func(t *testing.T) {
@@ -209,7 +209,7 @@ func TestProvideEmailer(T *testing.T) {
 		cfg := &Config{}
 		cfg.CircuitBreaker.Name = t.Name()
 
-		emailer, err := ProvideEmailer(
+		emailer, err := NewEmailer(
 			t.Context(),
 			cfg,
 			loggingnoop.NewLogger(),
@@ -230,7 +230,7 @@ func TestProvideEmailer(T *testing.T) {
 		}
 		cfg.CircuitBreaker.Name = t.Name()
 
-		emailer, err := ProvideEmailer(
+		emailer, err := NewEmailer(
 			t.Context(),
 			cfg,
 			loggingnoop.NewLogger(),
@@ -257,7 +257,7 @@ func TestProvideEmailer(T *testing.T) {
 			},
 		}
 
-		emailer, err := ProvideEmailer(
+		emailer, err := NewEmailer(
 			t.Context(),
 			cfg,
 			loggingnoop.NewLogger(),

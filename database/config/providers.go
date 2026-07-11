@@ -4,9 +4,9 @@ import (
 	"github.com/primandproper/platform-go/v4/database"
 )
 
-// ProvideClientConfig converts Config to database.ClientConfig.
+// NewClientConfig converts Config to database.ClientConfig.
 //
 //nolint:gocritic // hugeParam: intentionally accepts value for compatibility
-func ProvideClientConfig(cfg Config) database.ClientConfig {
+func NewClientConfig(cfg Config) database.ClientConfig {
 	return &cfg
 }

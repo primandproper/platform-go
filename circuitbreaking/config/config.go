@@ -17,8 +17,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// ProvideOption customizes how a CircuitBreaker is provided.
-type ProvideOption func(*provideOptions)
+// Option customizes how a CircuitBreaker is provided.
+type Option func(*provideOptions)
 
 type provideOptions struct {
 	metricAttributes []attribute.KeyValue
@@ -35,7 +35,7 @@ func (o *provideOptions) addOptions() []metric.AddOption {
 // WithMetricAttributes attaches a fixed set of attributes to every metric the
 // circuit breaker emits. It is used to distinguish breakers that share counter
 // names (for example, tagging a per-key breaker with its partition).
-func WithMetricAttributes(attrs ...attribute.KeyValue) ProvideOption {
+func WithMetricAttributes(attrs ...attribute.KeyValue) Option {
 	return func(o *provideOptions) {
 		o.metricAttributes = append(o.metricAttributes, attrs...)
 	}
@@ -99,8 +99,8 @@ func (b *baseImplementation) CannotProceed() bool {
 	return !b.circuitBreaker.Ready()
 }
 
-// ProvideCircuitBreaker provides a CircuitBreaker.
-func (cfg *Config) ProvideCircuitBreaker(ctx context.Context, logger logging.Logger, metricsProvider metrics.Provider, opts ...ProvideOption) (circuitbreaking.CircuitBreaker, error) {
+// NewCircuitBreaker provides a CircuitBreaker.
+func (cfg *Config) NewCircuitBreaker(ctx context.Context, logger logging.Logger, metricsProvider metrics.Provider, opts ...Option) (circuitbreaking.CircuitBreaker, error) {
 	if cfg == nil {
 		return nil, errors.ErrNilInputParameter
 	}
@@ -159,9 +159,9 @@ func (cfg *Config) ProvideCircuitBreaker(ctx context.Context, logger logging.Log
 	}, nil
 }
 
-// ProvideCircuitBreakerFromConfig provides a CircuitBreaker from config.
-func ProvideCircuitBreakerFromConfig(ctx context.Context, cfg *Config, logger logging.Logger, metricsProvider metrics.Provider, opts ...ProvideOption) (circuitbreaking.CircuitBreaker, error) {
-	return cfg.ProvideCircuitBreaker(ctx, logger, metricsProvider, opts...)
+// NewCircuitBreaker provides a CircuitBreaker from config.
+func NewCircuitBreaker(ctx context.Context, cfg *Config, logger logging.Logger, metricsProvider metrics.Provider, opts ...Option) (circuitbreaking.CircuitBreaker, error) {
+	return cfg.NewCircuitBreaker(ctx, logger, metricsProvider, opts...)
 }
 
 func handleCircuitBreakerEvents(

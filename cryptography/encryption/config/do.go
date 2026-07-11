@@ -16,7 +16,7 @@ import (
 // collide with an unrelated []byte value registered in the same container.
 func RegisterEncryptorDecryptor(i do.Injector) {
 	do.Provide[encryption.EncryptorDecryptor](i, func(i do.Injector) (encryption.EncryptorDecryptor, error) {
-		return ProvideEncryptorDecryptor(
+		return NewEncryptorDecryptor(
 			do.MustInvoke[*Config](i),
 			do.MustInvoke[tracing.TracerProvider](i),
 			do.MustInvoke[logging.Logger](i),

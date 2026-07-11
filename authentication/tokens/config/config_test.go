@@ -69,7 +69,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideTokenIssuer(T *testing.T) {
+func TestConfig_NewTokenIssuer(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestConfig_ProvideTokenIssuer(T *testing.T) {
 			Base64EncodedSigningKey: base64.URLEncoding.EncodeToString(random.MustGenerateRawBytes(ctx, 32)),
 		}
 
-		actual, err := cfg.ProvideTokenIssuer(logger, tracingnoop.NewTracerProvider())
+		actual, err := cfg.NewTokenIssuer(logger, tracingnoop.NewTracerProvider())
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -97,7 +97,7 @@ func TestConfig_ProvideTokenIssuer(T *testing.T) {
 			Provider: "",
 		}
 
-		actual, err := cfg.ProvideTokenIssuer(logger, tracingnoop.NewTracerProvider())
+		actual, err := cfg.NewTokenIssuer(logger, tracingnoop.NewTracerProvider())
 		test.Nil(t, actual)
 		test.Error(t, err)
 	})
@@ -113,7 +113,7 @@ func TestConfig_ProvideTokenIssuer(T *testing.T) {
 			Base64EncodedSigningKey: base64.URLEncoding.EncodeToString(random.MustGenerateRawBytes(ctx, 32)),
 		}
 
-		actual, err := cfg.ProvideTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+		actual, err := cfg.NewTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
 		must.NoError(t, err)
 		test.NotNil(t, actual)
 	})
@@ -129,7 +129,7 @@ func TestConfig_ProvideTokenIssuer(T *testing.T) {
 			Base64EncodedSigningKey: base64.URLEncoding.EncodeToString(random.MustGenerateRawBytes(ctx, 32)),
 		}
 
-		actual, err := cfg.ProvideTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+		actual, err := cfg.NewTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
 		test.Error(t, err)
 		test.Nil(t, actual)
 	})
@@ -145,7 +145,7 @@ func TestConfig_ProvideTokenIssuer(T *testing.T) {
 			Base64EncodedSigningKey: base64.URLEncoding.EncodeToString(random.MustGenerateRawBytes(ctx, 32)),
 		}
 
-		actual, err := cfg.ProvideTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+		actual, err := cfg.NewTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
 		test.Error(t, err)
 		test.Nil(t, actual)
 	})
@@ -160,7 +160,7 @@ func TestConfig_ProvideTokenIssuer(T *testing.T) {
 			Base64EncodedSigningKey: "not-valid-base64!!!",
 		}
 
-		actual, err := cfg.ProvideTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+		actual, err := cfg.NewTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
 		test.Error(t, err)
 		test.Nil(t, actual)
 	})
@@ -176,7 +176,7 @@ func TestConfig_ProvideTokenIssuer(T *testing.T) {
 			Base64EncodedSigningKey: base64.URLEncoding.EncodeToString(random.MustGenerateRawBytes(ctx, 16)),
 		}
 
-		actual, err := cfg.ProvideTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+		actual, err := cfg.NewTokenIssuer(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
 		test.Error(t, err)
 		test.Nil(t, actual)
 	})

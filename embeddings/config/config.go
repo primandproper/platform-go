@@ -42,7 +42,7 @@ func (c *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideEmbedder provides an Embedder based on config.
-func (c *Config) ProvideEmbedder(ctx context.Context, logger logging.Logger, tracer tracing.Tracer) (embeddings.Embedder, error) {
-	return ProvideEmbedder(ctx, c, logger, tracer)
+// NewEmbedder provides an Embedder based on config.
+func (c *Config) NewEmbedder(ctx context.Context, logger logging.Logger, tracer tracing.Tracer) (embeddings.Embedder, error) {
+	return NewEmbedder(ctx, c, logger, tracer)
 }

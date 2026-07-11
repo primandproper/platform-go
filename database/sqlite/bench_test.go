@@ -19,7 +19,7 @@ func BenchmarkSQLiteClient(b *testing.B) {
 		maxPingAttempts:  1,
 	}
 
-	client, err := ProvideDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg, nil)
+	client, err := NewDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), cfg, nil)
 	must.NoError(b, err)
 	b.Cleanup(func() { _ = client.Close() })
 

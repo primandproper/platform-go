@@ -40,8 +40,8 @@ func (c *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideLLMProvider provides an LLM provider based on config.
-func (c *Config) ProvideLLMProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (llm.Provider, error) {
+// NewLLMProvider provides an LLM provider based on config.
+func (c *Config) NewLLMProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (llm.Provider, error) {
 	switch strings.TrimSpace(strings.ToLower(c.Provider)) {
 	case ProviderOpenAI:
 		return openai.NewProvider(c.OpenAI, logger, tracerProvider, metricsProvider)

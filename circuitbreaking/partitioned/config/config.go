@@ -45,8 +45,8 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideKeyedCircuitBreaker provides a KeyedCircuitBreaker.
-func (cfg *Config) ProvideKeyedCircuitBreaker(ctx context.Context, logger logging.Logger, metricsProvider metrics.Provider) (partitioned.KeyedCircuitBreaker, error) {
+// NewKeyedCircuitBreaker provides a KeyedCircuitBreaker.
+func (cfg *Config) NewKeyedCircuitBreaker(ctx context.Context, logger logging.Logger, metricsProvider metrics.Provider) (partitioned.KeyedCircuitBreaker, error) {
 	if cfg == nil {
 		return nil, errors.ErrNilInputParameter
 	}
@@ -60,14 +60,14 @@ func (cfg *Config) ProvideKeyedCircuitBreaker(ctx context.Context, logger loggin
 
 	cfg.EnsureDefaults()
 
-	global, err := cfg.Base.ProvideCircuitBreaker(ctx, logger, metricsProvider, circuitbreakingcfg.WithMetricAttributes(attribute.String(partitionAttributeKey, globalPartition)))
+	global, err := cfg.Base.NewCircuitBreaker(ctx, logger, metricsProvider, circuitbreakingcfg.WithMetricAttributes(attribute.String(partitionAttributeKey, globalPartition)))
 	if err != nil {
 		return nil, errors.Wrap(err, "providing global circuit breaker")
 	}
 
 	breakers := make(map[string]circuitbreaking.CircuitBreaker, len(cfg.Keys))
 	for _, key := range cfg.Keys {
-		cb, cbErr := cfg.Base.ProvideCircuitBreaker(ctx, logger, metricsProvider, circuitbreakingcfg.WithMetricAttributes(attribute.String(partitionAttributeKey, key)))
+		cb, cbErr := cfg.Base.NewCircuitBreaker(ctx, logger, metricsProvider, circuitbreakingcfg.WithMetricAttributes(attribute.String(partitionAttributeKey, key)))
 		if cbErr != nil {
 			return nil, errors.Wrapf(cbErr, "providing circuit breaker for key %q", key)
 		}
@@ -78,7 +78,7 @@ func (cfg *Config) ProvideKeyedCircuitBreaker(ctx context.Context, logger loggin
 	return partitioned.NewKeyedCircuitBreaker(global, breakers), nil
 }
 
-// ProvideKeyedCircuitBreakerFromConfig provides a KeyedCircuitBreaker from config.
-func ProvideKeyedCircuitBreakerFromConfig(ctx context.Context, cfg *Config, logger logging.Logger, metricsProvider metrics.Provider) (partitioned.KeyedCircuitBreaker, error) {
-	return cfg.ProvideKeyedCircuitBreaker(ctx, logger, metricsProvider)
+// NewKeyedCircuitBreaker provides a KeyedCircuitBreaker from config.
+func NewKeyedCircuitBreaker(ctx context.Context, cfg *Config, logger logging.Logger, metricsProvider metrics.Provider) (partitioned.KeyedCircuitBreaker, error) {
+	return cfg.NewKeyedCircuitBreaker(ctx, logger, metricsProvider)
 }

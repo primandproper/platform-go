@@ -13,8 +13,8 @@ import (
 	"github.com/primandproper/platform-go/v4/observability/tracing"
 )
 
-// ProvideEmbedder provides an Embedder from config.
-func ProvideEmbedder(ctx context.Context, c *Config, logger logging.Logger, tracer tracing.Tracer) (embeddings.Embedder, error) {
+// NewEmbedder provides an Embedder from config.
+func NewEmbedder(ctx context.Context, c *Config, logger logging.Logger, tracer tracing.Tracer) (embeddings.Embedder, error) {
 	switch strings.TrimSpace(strings.ToLower(c.Provider)) {
 	case ProviderOpenAI:
 		return openai.NewEmbedder(ctx, c.OpenAI, logger, tracer)

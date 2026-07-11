@@ -15,7 +15,7 @@ import (
 // Prerequisite: map[string]*analyticscfg.SourceConfig must be registered in the injector.
 func RegisterMultiSourceEventReporter(i do.Injector) {
 	do.Provide[*MultiSourceEventReporter](i, func(i do.Injector) (*MultiSourceEventReporter, error) {
-		return ProvideMultiSourceEventReporter(
+		return NewMultiSourceEventReporterFromConfig(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[map[string]*analyticscfg.SourceConfig](i),
 			do.MustInvoke[logging.Logger](i),

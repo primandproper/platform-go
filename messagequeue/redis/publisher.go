@@ -103,7 +103,7 @@ func provideRedisPublisher(logger logging.Logger, tracerProvider tracing.TracerP
 	return &redisPublisher{
 		publisher:         redisClient,
 		topic:             topic,
-		encoder:           encoding.ProvideClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
+		encoder:           encoding.NewClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
 		o11y:              observability.NewObserver(fmt.Sprintf("%s_publisher", topic), logger, tracerProvider),
 		publishedCounter:  publishedCounter,
 		publishErrCounter: publishErrCounter,
@@ -120,8 +120,8 @@ type publisherProvider struct {
 	publisherCacheHat sync.RWMutex
 }
 
-// ProvideRedisPublisherProvider returns a PublisherProvider for a given address.
-func ProvideRedisPublisherProvider(l logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cfg Config) messagequeue.PublisherProvider {
+// NewRedisPublisherProvider returns a PublisherProvider for a given address.
+func NewRedisPublisherProvider(l logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cfg Config) messagequeue.PublisherProvider {
 	o11y := observability.NewObserver("redis_publisher_provider", l, tracerProvider)
 	logger := o11y.Logger().WithValue("queue_addresses", cfg.QueueAddresses).
 		WithValue(keys.UsernameKey, cfg.Username).
@@ -158,8 +158,8 @@ func ProvideRedisPublisherProvider(l logging.Logger, tracerProvider tracing.Trac
 	}
 }
 
-// ProvidePublisher returns a Publisher for a given topic.
-func (p *publisherProvider) ProvidePublisher(ctx context.Context, topic string) (messagequeue.Publisher, error) {
+// NewPublisher returns a Publisher for a given topic.
+func (p *publisherProvider) NewPublisher(ctx context.Context, topic string) (messagequeue.Publisher, error) {
 	if topic == "" {
 		return nil, messagequeue.ErrEmptyTopicName
 	}

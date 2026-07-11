@@ -9,7 +9,7 @@ import (
 	"github.com/primandproper/platform-go/v4/observability/tracing"
 )
 
-// ProvideEventReporter provides an analytics.EventReporter from a config.
-func ProvideEventReporter(ctx context.Context, cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (analytics.EventReporter, error) {
-	return cfg.ProvideCollector(ctx, logger, tracerProvider, metricsProvider)
+// NewEventReporter provides an analytics.EventReporter from a config.
+func NewEventReporter(ctx context.Context, cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (analytics.EventReporter, error) {
+	return cfg.NewCollector(ctx, logger, tracerProvider, metricsProvider)
 }

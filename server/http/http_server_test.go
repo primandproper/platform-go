@@ -107,13 +107,13 @@ func generateTestTLSCerts(t *testing.T) (certFile, keyFile string) {
 	return certPath, keyPath
 }
 
-func TestProvideHTTPServer(T *testing.T) {
+func TestNewHTTPServer(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		x, err := ProvideHTTPServer(
+		x, err := NewHTTPServer(
 			Config{
 				SSLCertificateFile:    "",
 				SSLCertificateKeyFile: "",
@@ -134,7 +134,7 @@ func TestProvideHTTPServer(T *testing.T) {
 	T.Run("with custom service name", func(t *testing.T) {
 		t.Parallel()
 
-		x, err := ProvideHTTPServer(
+		x, err := NewHTTPServer(
 			Config{Port: 8080},
 			loggingnoop.NewLogger(),
 			nil,
@@ -149,7 +149,7 @@ func TestProvideHTTPServer(T *testing.T) {
 	T.Run("with empty service name uses default", func(t *testing.T) {
 		t.Parallel()
 
-		x, err := ProvideHTTPServer(
+		x, err := NewHTTPServer(
 			Config{Port: 8080},
 			loggingnoop.NewLogger(),
 			nil,
@@ -164,7 +164,7 @@ func TestProvideHTTPServer(T *testing.T) {
 	T.Run("with SSL config", func(t *testing.T) {
 		t.Parallel()
 
-		x, err := ProvideHTTPServer(
+		x, err := NewHTTPServer(
 			Config{
 				SSLCertificateFile:    "/some/cert.pem",
 				SSLCertificateKeyFile: "/some/key.pem",
@@ -187,7 +187,7 @@ func TestServer_Router(T *testing.T) {
 	T.Run("returns the router", func(t *testing.T) {
 		t.Parallel()
 
-		s, err := ProvideHTTPServer(Config{Port: 0}, nil, nil, nil, "")
+		s, err := NewHTTPServer(Config{Port: 0}, nil, nil, nil, "")
 		must.NoError(t, err)
 
 		// Router returns nil when nil was passed in
@@ -201,7 +201,7 @@ func TestServer_Shutdown(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		s, err := ProvideHTTPServer(Config{Port: 0}, loggingnoop.NewLogger(), nil, nil, "")
+		s, err := NewHTTPServer(Config{Port: 0}, loggingnoop.NewLogger(), nil, nil, "")
 		must.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -217,7 +217,7 @@ func TestServer_Shutdown(T *testing.T) {
 			forceFlushFunc: func(_ context.Context) error { return errors.New("flush failed") },
 		}
 
-		s, err := ProvideHTTPServer(Config{Port: 0}, loggingnoop.NewLogger(), nil, mtp, "")
+		s, err := NewHTTPServer(Config{Port: 0}, loggingnoop.NewLogger(), nil, mtp, "")
 		must.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)

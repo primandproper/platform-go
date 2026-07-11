@@ -11,7 +11,7 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-func TestProvideProfilingProvider(T *testing.T) {
+func TestNewProfilingProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("with nil config", func(t *testing.T) {
@@ -20,7 +20,7 @@ func TestProvideProfilingProvider(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		p, err := ProvideProfilingProvider(ctx, logger, "test-service", nil)
+		p, err := NewProfilingProvider(ctx, logger, "test-service", nil)
 		must.NoError(t, err)
 		test.NotNil(t, p)
 	})
@@ -35,7 +35,7 @@ func TestProvideProfilingProvider(T *testing.T) {
 			UploadRate:    15 * time.Second,
 		}
 
-		p, err := ProvideProfilingProvider(ctx, logger, "test-service", cfg)
+		p, err := NewProfilingProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 		must.NotNil(t, p)
 
@@ -54,7 +54,7 @@ func TestProvideProfilingProvider(T *testing.T) {
 			EnableBlockProfile: true,
 		}
 
-		p, err := ProvideProfilingProvider(ctx, logger, "test-service", cfg)
+		p, err := NewProfilingProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 		must.NotNil(t, p)
 
@@ -72,7 +72,7 @@ func TestProvideProfilingProvider(T *testing.T) {
 			Tags:          map[string]string{"env": "test", "region": "us-east-1"},
 		}
 
-		p, err := ProvideProfilingProvider(ctx, logger, "test-service", cfg)
+		p, err := NewProfilingProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 		must.NotNil(t, p)
 
@@ -93,7 +93,7 @@ func TestProvider_Start(T *testing.T) {
 			UploadRate:    15 * time.Second,
 		}
 
-		p, err := ProvideProfilingProvider(ctx, logger, "test-service", cfg)
+		p, err := NewProfilingProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 
 		test.NoError(t, p.Start(ctx))
@@ -114,7 +114,7 @@ func TestProvider_Shutdown(T *testing.T) {
 			UploadRate:    15 * time.Second,
 		}
 
-		p, err := ProvideProfilingProvider(ctx, logger, "test-service", cfg)
+		p, err := NewProfilingProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 
 		test.NoError(t, p.Shutdown(ctx))

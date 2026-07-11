@@ -14,7 +14,7 @@ func Decode(data []byte, ct *contentType, dest any) error {
 		ct = ContentTypeJSON
 	}
 
-	if err := ProvideServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct).DecodeBytes(context.Background(), data, dest); err != nil {
+	if err := NewServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct).DecodeBytes(context.Background(), data, dest); err != nil {
 		return err
 	}
 
@@ -28,7 +28,7 @@ func MustEncode(data any, ct *contentType) []byte {
 	}
 
 	var b bytes.Buffer
-	if err := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct).Encode(context.Background(), &b, data); err != nil {
+	if err := NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct).Encode(context.Background(), &b, data); err != nil {
 		panic(err)
 	}
 

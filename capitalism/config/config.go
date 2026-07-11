@@ -42,17 +42,17 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideCapitalismImplementation provides a capitalism.PaymentManager implementation based on the
+// NewCapitalismImplementation provides a capitalism.PaymentManager implementation based on the
 // config. stripeEventHandler is optional (may be nil) and, for the Stripe provider, is invoked with
 // each verified webhook event.
-func ProvideCapitalismImplementation(logger logging.Logger, tracerProvider tracing.TracerProvider, cfg *Config, stripeEventHandler stripe.EventHandler) (capitalism.PaymentManager, error) {
+func NewCapitalismImplementation(logger logging.Logger, tracerProvider tracing.TracerProvider, cfg *Config, stripeEventHandler stripe.EventHandler) (capitalism.PaymentManager, error) {
 	if !cfg.Enabled {
 		return noop.NewPaymentManager(), nil
 	}
 
 	switch strings.TrimSpace(strings.ToLower(cfg.Provider)) {
 	case StripeProvider:
-		return stripe.ProvideStripePaymentManager(logger, tracerProvider, cfg.Stripe, stripeEventHandler)
+		return stripe.NewStripePaymentManager(logger, tracerProvider, cfg.Stripe, stripeEventHandler)
 	default:
 		return nil, errors.Newf("unknown provider: %q", cfg.Provider)
 	}

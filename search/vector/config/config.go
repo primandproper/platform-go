@@ -37,7 +37,7 @@ type Config struct {
 var _ validation.ValidatableWithContext = (*Config)(nil)
 
 // ValidateWithContext validates a Config struct. Provider is canonicalized (trim + lowercase)
-// first so validation matches the same normalization ProvideIndex dispatches on.
+// first so validation matches the same normalization NewIndex dispatches on.
 func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	cfg.Provider = strings.TrimSpace(strings.ToLower(cfg.Provider))
 
@@ -48,11 +48,11 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideIndex builds a vectorsearch.Index for the configured provider. The db
+// NewIndex builds a vectorsearch.Index for the configured provider. The db
 // argument is required only when Provider is PGvectorProvider; pass nil otherwise.
 // Unknown or empty providers fall back to a noop index, matching the search/text
 // dispatch convention.
-func ProvideIndex[T any](
+func NewIndex[T any](
 	ctx context.Context,
 	logger logging.Logger,
 	tracerProvider tracing.TracerProvider,
@@ -65,16 +65,16 @@ func ProvideIndex[T any](
 		return nil, vectorsearch.ErrNilConfig
 	}
 
-	circuitBreaker, err := circuitbreakingcfg.ProvideCircuitBreakerFromConfig(ctx, &cfg.CircuitBreaker, logger, metricsProvider)
+	circuitBreaker, err := circuitbreakingcfg.NewCircuitBreaker(ctx, &cfg.CircuitBreaker, logger, metricsProvider)
 	if err != nil {
 		return nil, errors.Wrap(err, "initializing vector search circuit breaker")
 	}
 
 	switch strings.TrimSpace(strings.ToLower(cfg.Provider)) {
 	case PGvectorProvider:
-		return pgvector.ProvideIndex[T](ctx, logger, tracerProvider, metricsProvider, cfg.Pgvector, db, indexName, circuitBreaker)
+		return pgvector.NewIndex[T](ctx, logger, tracerProvider, metricsProvider, cfg.Pgvector, db, indexName, circuitBreaker)
 	case QdrantProvider:
-		return qdrant.ProvideIndex[T](ctx, logger, tracerProvider, metricsProvider, cfg.Qdrant, indexName, circuitBreaker)
+		return qdrant.NewIndex[T](ctx, logger, tracerProvider, metricsProvider, cfg.Qdrant, indexName, circuitBreaker)
 	default:
 		return noop.NewIndex[T](), nil
 	}

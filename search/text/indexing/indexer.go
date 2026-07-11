@@ -53,7 +53,7 @@ func NewIndexScheduler(
 		return nil, err
 	}
 
-	searchDataIndexPublisher, err := messageQueuePublisherProvider.ProvidePublisher(ctx, queues.SearchIndexRequestsTopicName)
+	searchDataIndexPublisher, err := messageQueuePublisherProvider.NewPublisher(ctx, queues.SearchIndexRequestsTopicName)
 	if err != nil {
 		return nil, err
 	}

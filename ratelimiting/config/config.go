@@ -50,8 +50,8 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideRateLimiter returns a RateLimiter from config.
-func (cfg *Config) ProvideRateLimiter(metricsProvider metrics.Provider) (ratelimiting.RateLimiter, error) {
+// NewRateLimiter returns a RateLimiter from config.
+func (cfg *Config) NewRateLimiter(metricsProvider metrics.Provider) (ratelimiting.RateLimiter, error) {
 	if cfg == nil {
 		return noop.NewRateLimiter(), nil
 	}
@@ -69,12 +69,12 @@ func (cfg *Config) ProvideRateLimiter(metricsProvider metrics.Provider) (ratelim
 	}
 }
 
-// ProvideRateLimiterFromConfig provides a RateLimiter from config.
-func ProvideRateLimiterFromConfig(cfg *Config, metricsProvider metrics.Provider) (ratelimiting.RateLimiter, error) {
+// NewRateLimiter provides a RateLimiter from config.
+func NewRateLimiter(cfg *Config, metricsProvider metrics.Provider) (ratelimiting.RateLimiter, error) {
 	if cfg == nil {
 		return noop.NewRateLimiter(), nil
 	}
-	limiter, err := cfg.ProvideRateLimiter(metricsProvider)
+	limiter, err := cfg.NewRateLimiter(metricsProvider)
 	if err != nil {
 		return nil, errors.Wrap(err, "provide rate limiter")
 	}

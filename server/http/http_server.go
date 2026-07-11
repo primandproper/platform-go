@@ -55,9 +55,9 @@ type (
 	}
 )
 
-// ProvideHTTPServer builds a new server instance.
+// NewHTTPServer builds a new server instance.
 // serviceName, when non-empty, is used for the server's logger; otherwise "api_server" is used.
-func ProvideHTTPServer(
+func NewHTTPServer(
 	serverSettings Config,
 	logger logging.Logger,
 	router routing.Router,

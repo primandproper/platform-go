@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/pyroscope-go"
 )
 
-// ProvideProfilingProvider creates a Pyroscope-based profiling provider.
-func ProvideProfilingProvider(ctx context.Context, logger logging.Logger, serviceName string, cfg *Config) (profiling.Provider, error) {
+// NewProfilingProvider creates a Pyroscope-based profiling provider.
+func NewProfilingProvider(ctx context.Context, logger logging.Logger, serviceName string, cfg *Config) (profiling.Provider, error) {
 	if cfg == nil {
 		return profilingnoop.NewProvider(), nil
 	}
@@ -94,7 +94,7 @@ type provider struct {
 }
 
 func (p *provider) Start(ctx context.Context) error {
-	// Pyroscope starts immediately in ProvideProfilingProvider.
+	// Pyroscope starts immediately in NewProfilingProvider.
 	// Start is a no-op for pyroscope since we already called pyroscope.Start.
 	return nil
 }

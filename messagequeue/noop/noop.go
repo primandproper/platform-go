@@ -25,7 +25,7 @@ func (n *publisherProvider) Close() {}
 
 func (n *publisherProvider) Ping(context.Context) error { return nil }
 
-func (n *publisherProvider) ProvidePublisher(context.Context, string) (messagequeue.Publisher, error) {
+func (n *publisherProvider) NewPublisher(context.Context, string) (messagequeue.Publisher, error) {
 	return NewPublisher(), nil
 }
 
@@ -55,7 +55,7 @@ func NewConsumerProvider() messagequeue.ConsumerProvider {
 
 func (n *consumerProvider) Close() {}
 
-func (n *consumerProvider) ProvideConsumer(context.Context, string, messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
+func (n *consumerProvider) NewConsumer(context.Context, string, messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
 	return NewConsumer(), nil
 }
 

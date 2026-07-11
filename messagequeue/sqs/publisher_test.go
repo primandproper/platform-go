@@ -40,11 +40,11 @@ func Test_sqsPublisher_Publish(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		provider, provErr := NewSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
 		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
-		a, err := provider.ProvidePublisher(ctx, t.Name())
+		a, err := provider.NewPublisher(ctx, t.Name())
 		test.NotNil(t, a)
 		test.NoError(t, err)
 
@@ -83,11 +83,11 @@ func Test_sqsPublisher_Publish(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		provider, provErr := NewSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
 		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
-		a, err := provider.ProvidePublisher(ctx, t.Name())
+		a, err := provider.NewPublisher(ctx, t.Name())
 		test.NotNil(t, a)
 		test.NoError(t, err)
 
@@ -122,11 +122,11 @@ func Test_sqsPublisher_PublishAsync(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		provider, provErr := NewSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
 		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
-		a, err := provider.ProvidePublisher(ctx, t.Name())
+		a, err := provider.NewPublisher(ctx, t.Name())
 		test.NotNil(t, a)
 		test.NoError(t, err)
 
@@ -157,11 +157,11 @@ func Test_sqsPublisher_PublishAsync(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		provider, provErr := NewSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
 		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
-		a, err := provider.ProvidePublisher(ctx, t.Name())
+		a, err := provider.NewPublisher(ctx, t.Name())
 		test.NotNil(t, a)
 		test.NoError(t, err)
 
@@ -183,11 +183,11 @@ func Test_sqsPublisher_PublishAsync(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		provider, provErr := NewSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
 		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
-		a, err := provider.ProvidePublisher(ctx, t.Name())
+		a, err := provider.NewPublisher(ctx, t.Name())
 		test.NotNil(t, a)
 		test.NoError(t, err)
 
@@ -213,7 +213,7 @@ func Test_sqsPublisher_PublishAsync(T *testing.T) {
 	})
 }
 
-func TestProvideSQSPublisherProvider(T *testing.T) {
+func TestNewSQSPublisherProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestProvideSQSPublisherProvider(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		actual, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		actual, provErr := NewSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
 		must.NoError(t, provErr)
 		test.NotNil(t, actual)
 	})
@@ -233,13 +233,13 @@ func TestProvideSQSPublisherProvider(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		actual, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{QueueAddress: "http://localhost:4566"})
+		actual, provErr := NewSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{QueueAddress: "http://localhost:4566"})
 		must.NoError(t, provErr)
 		test.NotNil(t, actual)
 	})
 }
 
-func Test_publisherProvider_ProvidePublisher(T *testing.T) {
+func Test_publisherProvider_NewPublisher(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -248,11 +248,11 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		provider, provErr := NewSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
 		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
-		actual, err := provider.ProvidePublisher(ctx, t.Name())
+		actual, err := provider.NewPublisher(ctx, t.Name())
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -263,15 +263,15 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		provider, provErr := NewSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
 		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
-		actual, err := provider.ProvidePublisher(ctx, t.Name())
+		actual, err := provider.NewPublisher(ctx, t.Name())
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 
-		actual, err = provider.ProvidePublisher(ctx, t.Name())
+		actual, err = provider.NewPublisher(ctx, t.Name())
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -282,11 +282,11 @@ func Test_publisherProvider_ProvidePublisher(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider, provErr := ProvideSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
+		provider, provErr := NewSQSPublisherProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, Config{})
 		must.NoError(t, provErr)
 		must.NotNil(t, provider)
 
-		actual, err := provider.ProvidePublisher(ctx, "")
+		actual, err := provider.NewPublisher(ctx, "")
 		test.Nil(t, actual)
 		test.ErrorIs(t, err, messagequeue.ErrEmptyTopicName)
 	})

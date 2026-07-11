@@ -24,6 +24,6 @@ func RegisterUploadManager(i do.Injector) {
 		)
 	})
 	do.Provide[uploads.UploadManager](i, func(i do.Injector) (uploads.UploadManager, error) {
-		return ProvideUploadManager(do.MustInvoke[*Uploader](i)), nil
+		return do.MustInvoke[*Uploader](i), nil
 	})
 }

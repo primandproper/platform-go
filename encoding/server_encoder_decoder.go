@@ -269,8 +269,8 @@ func (e *serverEncoderDecoder) DecodeRequest(ctx context.Context, req *http.Requ
 	return d.Decode(v)
 }
 
-// ProvideServerEncoderDecoder provides a ServerEncoderDecoder.
-func ProvideServerEncoderDecoder(logger logging.Logger, tracerProvider tracing.TracerProvider, contentType ContentType) ServerEncoderDecoder {
+// NewServerEncoderDecoder provides a ServerEncoderDecoder.
+func NewServerEncoderDecoder(logger logging.Logger, tracerProvider tracing.TracerProvider, contentType ContentType) ServerEncoderDecoder {
 	return &serverEncoderDecoder{
 		o11y:        observability.NewObserver(o11yName, logger, tracerProvider),
 		panicker:    panicking.NewProductionPanicker(),

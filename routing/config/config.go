@@ -35,8 +35,8 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideRouter provides a Router from a routing config.
-func ProvideRouter(cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricProvider metrics.Provider) (routing.Router, error) {
+// NewRouter provides a Router from a routing config.
+func NewRouter(cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricProvider metrics.Provider) (routing.Router, error) {
 	switch cfg.Provider {
 	case ProviderChi:
 		return chi.NewRouter(logger, tracerProvider, metricProvider, cfg.Chi), nil
@@ -45,8 +45,8 @@ func ProvideRouter(cfg *Config, logger logging.Logger, tracerProvider tracing.Tr
 	}
 }
 
-// ProvideRouter provides a Router from a routing config.
-func (cfg *Config) ProvideRouter(logger logging.Logger, tracerProvider tracing.TracerProvider, metricProvider metrics.Provider) (routing.Router, error) {
+// NewRouter provides a Router from a routing config.
+func (cfg *Config) NewRouter(logger logging.Logger, tracerProvider tracing.TracerProvider, metricProvider metrics.Provider) (routing.Router, error) {
 	switch cfg.Provider {
 	case ProviderChi:
 		return chi.NewRouter(logger, tracerProvider, metricProvider, cfg.Chi), nil
@@ -55,8 +55,8 @@ func (cfg *Config) ProvideRouter(logger logging.Logger, tracerProvider tracing.T
 	}
 }
 
-// ProvideRouteParamManager provides a RouteParamManager from a routing config.
-func ProvideRouteParamManager(cfg *Config) (routing.RouteParamManager, error) {
+// NewRouteParamManager provides a RouteParamManager from a routing config.
+func NewRouteParamManager(cfg *Config) (routing.RouteParamManager, error) {
 	switch cfg.Provider {
 	case ProviderChi:
 		return chi.NewRouteParamManager(), nil

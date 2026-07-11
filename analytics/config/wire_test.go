@@ -11,7 +11,7 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-func TestProvideCollector(T *testing.T) {
+func TestNewCollector(T *testing.T) {
 	T.Parallel()
 
 	T.Run("noop", func(t *testing.T) {
@@ -21,7 +21,7 @@ func TestProvideCollector(T *testing.T) {
 		cfg := &Config{}
 		logger := loggingnoop.NewLogger()
 
-		actual, err := ProvideEventReporter(ctx, cfg, logger, tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		actual, err := NewEventReporter(ctx, cfg, logger, tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		must.NoError(t, err)
 		must.NotNil(t, actual)
 	})
@@ -40,7 +40,7 @@ func TestProvideCollector(T *testing.T) {
 		}
 		logger := loggingnoop.NewLogger()
 
-		actual, err := ProvideEventReporter(ctx, cfg, logger, tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		actual, err := NewEventReporter(ctx, cfg, logger, tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		must.NoError(t, err)
 		must.NotNil(t, actual)
 	})

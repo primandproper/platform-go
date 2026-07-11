@@ -55,8 +55,8 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideSecretSource returns a SecretSource from config.
-func (cfg *Config) ProvideSecretSource(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (secrets.SecretSource, error) {
+// NewSecretSource returns a SecretSource from config.
+func (cfg *Config) NewSecretSource(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (secrets.SecretSource, error) {
 	if cfg == nil {
 		return env.NewEnvSecretSource(logger, tracerProvider, metricsProvider)
 	}

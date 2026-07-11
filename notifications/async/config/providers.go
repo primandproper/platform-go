@@ -7,7 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v4/observability/tracing"
 )
 
-// ProvideAsyncNotifierFromConfig provides an AsyncNotifier from a config.
-func ProvideAsyncNotifierFromConfig(cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (async.AsyncNotifier, error) {
-	return cfg.ProvideAsyncNotifier(logger, tracerProvider, metricsProvider)
+// NewAsyncNotifier provides an AsyncNotifier from a config.
+func NewAsyncNotifier(cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (async.AsyncNotifier, error) {
+	return cfg.NewAsyncNotifier(logger, tracerProvider, metricsProvider)
 }

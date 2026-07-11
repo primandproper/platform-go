@@ -95,10 +95,10 @@ type indexManager[T any] struct {
 
 var _ vectorsearch.Index[any] = (*indexManager[any])(nil)
 
-// ProvideIndex builds a qdrant-backed vectorsearch.Index. The constructor performs
+// NewIndex builds a qdrant-backed vectorsearch.Index. The constructor performs
 // an idempotent collection-creation step (PUT /collections/{name}); existing
 // collections with the same name and shape are left untouched.
-func ProvideIndex[T any](
+func NewIndex[T any](
 	ctx context.Context,
 	logger logging.Logger,
 	tracerProvider tracing.TracerProvider,

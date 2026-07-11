@@ -23,7 +23,7 @@ import (
 func newRecordingClientEncoder(t *testing.T, ct ContentType) (*clientEncoder, *observability.RecordingObserver) {
 	t.Helper()
 
-	e, ok := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct).(*clientEncoder)
+	e, ok := NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct).(*clientEncoder)
 	must.True(t, ok)
 
 	obs := observability.NewRecordingObserver()
@@ -32,13 +32,13 @@ func newRecordingClientEncoder(t *testing.T, ct ContentType) (*clientEncoder, *o
 	return e, obs
 }
 
-func TestProvideClientEncoder(T *testing.T) {
+func TestNewClientEncoder(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		test.NotNil(t, ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON))
+		test.NotNil(t, NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON))
 	})
 }
 
@@ -76,7 +76,7 @@ func Test_clientEncoder_Unmarshal(T *testing.T) {
 			t.Parallel()
 
 			ctx := t.Context()
-			e := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), tc.contentType)
+			e := NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), tc.contentType)
 
 			expected := &example{Name: "name"}
 			actual := &example{}
@@ -106,7 +106,7 @@ func Test_clientEncoder_Unmarshal(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		e := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON)
+		e := NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON)
 
 		actual := &example{}
 
@@ -139,7 +139,7 @@ func Test_clientEncoder_Encode(T *testing.T) {
 			t.Parallel()
 
 			ctx := t.Context()
-			e := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct)
+			e := NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct)
 
 			res := httptest.NewRecorder()
 
@@ -152,7 +152,7 @@ func Test_clientEncoder_Encode(T *testing.T) {
 			t.Parallel()
 
 			ctx := t.Context()
-			e := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct)
+			e := NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct)
 
 			mw := &ioWriterMock{
 				WriteFunc: func(_ []byte) (int, error) {
@@ -169,7 +169,7 @@ func Test_clientEncoder_Encode(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		e := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON)
+		e := NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON)
 
 		test.Error(t, e.Encode(ctx, nil, &broken{Name: json.Number(t.Name())}))
 	})
@@ -178,7 +178,7 @@ func Test_clientEncoder_Encode(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		e := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeEmoji)
+		e := NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeEmoji)
 
 		var b bytes.Buffer
 		test.Error(t, e.Encode(ctx, &b, make(chan int)))
@@ -193,7 +193,7 @@ func Test_clientEncoder_EncodeReader(T *testing.T) {
 			t.Parallel()
 
 			ctx := t.Context()
-			e := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct)
+			e := NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ct)
 
 			actual, err := e.EncodeReader(ctx, &example{Name: t.Name()})
 			test.NoError(t, err)
@@ -205,7 +205,7 @@ func Test_clientEncoder_EncodeReader(T *testing.T) {
 		t.Parallel()
 
 		ctx := t.Context()
-		e := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON)
+		e := NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON)
 
 		actual, err := e.EncodeReader(ctx, &broken{Name: json.Number(t.Name())})
 		test.Error(t, err)

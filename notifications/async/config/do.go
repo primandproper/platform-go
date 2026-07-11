@@ -12,7 +12,7 @@ import (
 // RegisterAsyncNotifier registers an async.AsyncNotifier with the injector.
 func RegisterAsyncNotifier(i do.Injector) {
 	do.Provide[async.AsyncNotifier](i, func(i do.Injector) (async.AsyncNotifier, error) {
-		return ProvideAsyncNotifierFromConfig(
+		return NewAsyncNotifier(
 			do.MustInvoke[*Config](i),
 			do.MustInvoke[logging.Logger](i),
 			do.MustInvoke[tracing.TracerProvider](i),

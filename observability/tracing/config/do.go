@@ -12,7 +12,7 @@ import (
 // RegisterTracerProvider registers a tracing.TracerProvider with the injector.
 func RegisterTracerProvider(i do.Injector) {
 	do.Provide[tracing.TracerProvider](i, func(i do.Injector) (tracing.TracerProvider, error) {
-		return ProvideTracerProvider(
+		return NewTracerProvider(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
 			do.MustInvoke[logging.Logger](i),

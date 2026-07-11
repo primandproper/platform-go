@@ -54,8 +54,8 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideAsyncNotifier provides an AsyncNotifier based on configuration.
-func (cfg *Config) ProvideAsyncNotifier(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (async.AsyncNotifier, error) {
+// NewAsyncNotifier provides an AsyncNotifier based on configuration.
+func (cfg *Config) NewAsyncNotifier(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (async.AsyncNotifier, error) {
 	switch strings.TrimSpace(strings.ToLower(cfg.Provider)) {
 	case ProviderPusher:
 		return pusher.NewNotifier(cfg.Pusher, logger, tracerProvider, metricsProvider)

@@ -61,13 +61,13 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestProvideCache(T *testing.T) {
+func TestNewCache(T *testing.T) {
 	T.Parallel()
 
 	T.Run("memory provider", func(t *testing.T) {
 		t.Parallel()
 
-		c, err := ProvideCache[example](t.Context(), &Config{
+		c, err := NewCache[example](t.Context(), &Config{
 			Provider: ProviderMemory,
 		}, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 
@@ -84,7 +84,7 @@ func TestProvideCache(T *testing.T) {
 		}
 		cfg.CircuitBreaker.Name = "cache-breaker"
 
-		c, err := ProvideCache[example](
+		c, err := NewCache[example](
 			t.Context(),
 			cfg,
 			loggingnoop.NewLogger(),
@@ -105,7 +105,7 @@ func TestProvideCache(T *testing.T) {
 		}
 		cfg.CircuitBreaker.Name = "cache-breaker-cluster"
 
-		c, err := ProvideCache[example](
+		c, err := NewCache[example](
 			t.Context(),
 			cfg,
 			loggingnoop.NewLogger(),
@@ -137,7 +137,7 @@ func TestProvideCache(T *testing.T) {
 			},
 		}
 
-		c, err := ProvideCache[example](
+		c, err := NewCache[example](
 			t.Context(),
 			cfg,
 			loggingnoop.NewLogger(),
@@ -153,7 +153,7 @@ func TestProvideCache(T *testing.T) {
 	T.Run("invalid provider", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := ProvideCache[example](t.Context(), &Config{}, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		_, err := NewCache[example](t.Context(), &Config{}, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 
 		test.Error(t, err)
 	})

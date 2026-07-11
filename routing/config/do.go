@@ -9,6 +9,6 @@ import (
 // RegisterRouteParamManager registers a routing.RouteParamManager with the injector.
 func RegisterRouteParamManager(i do.Injector) {
 	do.Provide[routing.RouteParamManager](i, func(i do.Injector) (routing.RouteParamManager, error) {
-		return ProvideRouteParamManager(do.MustInvoke[*Config](i))
+		return NewRouteParamManager(do.MustInvoke[*Config](i))
 	})
 }

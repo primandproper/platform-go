@@ -27,7 +27,7 @@ type (
 	}
 )
 
-func ProvideIndexManager[T any](
+func NewIndexManager[T any](
 	logger logging.Logger,
 	tracerProvider tracing.TracerProvider,
 	cfg *Config,

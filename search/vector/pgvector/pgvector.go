@@ -61,10 +61,10 @@ type indexManager[T any] struct {
 
 var _ vectorsearch.Index[any] = (*indexManager[any])(nil)
 
-// ProvideIndex builds a pgvector-backed vectorsearch.Index. It runs an idempotent
+// NewIndex builds a pgvector-backed vectorsearch.Index. It runs an idempotent
 // schema migration on construction (CREATE EXTENSION + CREATE TABLE + CREATE INDEX)
 // so the table for indexName is guaranteed to exist after the constructor returns.
-func ProvideIndex[T any](
+func NewIndex[T any](
 	ctx context.Context,
 	logger logging.Logger,
 	tracerProvider tracing.TracerProvider,

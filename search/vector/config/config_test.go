@@ -90,13 +90,13 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideIndex(T *testing.T) {
+func TestConfig_NewIndex(T *testing.T) {
 	T.Parallel()
 
 	T.Run("nil config", func(t *testing.T) {
 		t.Parallel()
 
-		idx, err := ProvideIndex[testStruct](
+		idx, err := NewIndex[testStruct](
 			t.Context(),
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
@@ -112,7 +112,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 	T.Run("unknown provider returns noop", func(t *testing.T) {
 		t.Parallel()
 
-		idx, err := ProvideIndex[testStruct](
+		idx, err := NewIndex[testStruct](
 			t.Context(),
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
@@ -129,7 +129,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 	T.Run("empty provider returns noop", func(t *testing.T) {
 		t.Parallel()
 
-		idx, err := ProvideIndex[testStruct](
+		idx, err := NewIndex[testStruct](
 			t.Context(),
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
@@ -145,7 +145,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 	T.Run("provider with whitespace returns noop", func(t *testing.T) {
 		t.Parallel()
 
-		idx, err := ProvideIndex[testStruct](
+		idx, err := NewIndex[testStruct](
 			t.Context(),
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
@@ -169,7 +169,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 			},
 		}
 
-		idx, err := ProvideIndex[testStruct](
+		idx, err := NewIndex[testStruct](
 			t.Context(),
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
@@ -209,7 +209,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 			},
 		}
 
-		idx, err := ProvideIndex[testStruct](
+		idx, err := NewIndex[testStruct](
 			t.Context(),
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
@@ -242,7 +242,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 			},
 		}
 
-		idx, err := ProvideIndex[testStruct](
+		idx, err := NewIndex[testStruct](
 			ctx,
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),

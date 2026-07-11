@@ -129,7 +129,7 @@ func buildStubIndex(t *testing.T, stub *qdrantStub, cb circuitbreaking.CircuitBr
 		cb = cbnoop.NewCircuitBreaker()
 	}
 
-	idx, err := ProvideIndex[doc](
+	idx, err := NewIndex[doc](
 		t.Context(),
 		nil, nil, nil,
 		&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
@@ -369,18 +369,18 @@ func TestCollectionPath(T *testing.T) {
 	})
 }
 
-func TestProvideIndex(T *testing.T) {
+func TestNewIndex(T *testing.T) {
 	T.Parallel()
 
 	T.Run("nil config", func(t *testing.T) {
 		t.Parallel()
-		_, err := ProvideIndex[doc](t.Context(), nil, nil, nil, nil, "test", cbnoop.NewCircuitBreaker())
+		_, err := NewIndex[doc](t.Context(), nil, nil, nil, nil, "test", cbnoop.NewCircuitBreaker())
 		must.ErrorIs(t, err, vectorsearch.ErrNilConfig)
 	})
 
 	T.Run("empty collection", func(t *testing.T) {
 		t.Parallel()
-		_, err := ProvideIndex[doc](t.Context(), nil, nil, nil, &Config{
+		_, err := NewIndex[doc](t.Context(), nil, nil, nil, &Config{
 			BaseURL:   "http://example",
 			Dimension: 3,
 			Metric:    vectorsearch.DistanceCosine,
@@ -390,7 +390,7 @@ func TestProvideIndex(T *testing.T) {
 
 	T.Run("invalid metric", func(t *testing.T) {
 		t.Parallel()
-		_, err := ProvideIndex[doc](t.Context(), nil, nil, nil, &Config{
+		_, err := NewIndex[doc](t.Context(), nil, nil, nil, &Config{
 			BaseURL:   "http://example",
 			Dimension: 3,
 			Metric:    "weird",
@@ -400,7 +400,7 @@ func TestProvideIndex(T *testing.T) {
 
 	T.Run("invalid dimension", func(t *testing.T) {
 		t.Parallel()
-		_, err := ProvideIndex[doc](t.Context(), nil, nil, nil, &Config{
+		_, err := NewIndex[doc](t.Context(), nil, nil, nil, &Config{
 			BaseURL:   "http://example",
 			Dimension: 0,
 			Metric:    vectorsearch.DistanceCosine,
@@ -410,7 +410,7 @@ func TestProvideIndex(T *testing.T) {
 
 	T.Run("invalid config missing base URL", func(t *testing.T) {
 		t.Parallel()
-		_, err := ProvideIndex[doc](t.Context(), nil, nil, nil, &Config{
+		_, err := NewIndex[doc](t.Context(), nil, nil, nil, &Config{
 			Dimension: 3,
 			Metric:    vectorsearch.DistanceCosine,
 		}, "test", cbnoop.NewCircuitBreaker())
@@ -424,7 +424,7 @@ func TestProvideIndex(T *testing.T) {
 		srv := httptest.NewServer(stub)
 		t.Cleanup(srv.Close)
 
-		idx, err := ProvideIndex[doc](
+		idx, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
 			"test",
@@ -440,7 +440,7 @@ func TestProvideIndex(T *testing.T) {
 		srv := httptest.NewServer(stub)
 		t.Cleanup(srv.Close)
 
-		_, err := ProvideIndex[doc](
+		_, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
 			"test",
@@ -458,7 +458,7 @@ func TestProvideIndex(T *testing.T) {
 		srv := httptest.NewServer(stub)
 		t.Cleanup(srv.Close)
 
-		_, err := ProvideIndex[doc](
+		_, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
 			"test",
@@ -469,7 +469,7 @@ func TestProvideIndex(T *testing.T) {
 
 	T.Run("ensureCollection unreachable server", func(t *testing.T) {
 		t.Parallel()
-		_, err := ProvideIndex[doc](
+		_, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: "http://127.0.0.1:1", Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: 100 * time.Millisecond},
 			"test",
@@ -484,7 +484,7 @@ func TestProvideIndex(T *testing.T) {
 		srv := httptest.NewServer(stub)
 		t.Cleanup(srv.Close)
 
-		idx, err := ProvideIndex[doc](
+		idx, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: 0},
 			"test",
@@ -504,7 +504,7 @@ func TestProvideIndex(T *testing.T) {
 		}))
 		t.Cleanup(srv.Close)
 
-		_, err := ProvideIndex[doc](
+		_, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, APIKey: "secret", Timeout: time.Second},
 			"test",
@@ -516,7 +516,7 @@ func TestProvideIndex(T *testing.T) {
 }
 
 // httptest-based test verifies the request shape we send to qdrant without needing a real qdrant.
-func TestProvideIndex_StubsCollectionCreation(T *testing.T) {
+func TestNewIndex_StubsCollectionCreation(T *testing.T) {
 	T.Parallel()
 
 	var (
@@ -541,7 +541,7 @@ func TestProvideIndex_StubsCollectionCreation(T *testing.T) {
 	}))
 	defer srv.Close()
 
-	idx, err := ProvideIndex[doc](
+	idx, err := NewIndex[doc](
 		T.Context(),
 		nil, nil, nil,
 		&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
@@ -646,7 +646,7 @@ func TestUpsert(T *testing.T) {
 		t.Parallel()
 		stub := &qdrantStub{}
 		srv := httptest.NewServer(stub)
-		idx, err := ProvideIndex[doc](
+		idx, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
 			"test",
@@ -709,7 +709,7 @@ func TestDelete(T *testing.T) {
 		t.Parallel()
 		stub := &qdrantStub{}
 		srv := httptest.NewServer(stub)
-		idx, err := ProvideIndex[doc](
+		idx, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
 			"test",
@@ -765,10 +765,10 @@ func TestWipe(T *testing.T) {
 		callCount := 0
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
-			// Initial GET during ProvideIndex — collection exists
+			// Initial GET during NewIndex — collection exists
 			case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/collections/"):
 				if callCount == 0 {
-					// First GET (ProvideIndex ensureCollection) — exists
+					// First GET (NewIndex ensureCollection) — exists
 					callCount++
 					w.WriteHeader(http.StatusOK)
 					_, _ = w.Write([]byte(`{"result":true}`))
@@ -789,7 +789,7 @@ func TestWipe(T *testing.T) {
 		}))
 		t.Cleanup(srv.Close)
 
-		idx, err := ProvideIndex[doc](
+		idx, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
 			"test",
@@ -805,7 +805,7 @@ func TestWipe(T *testing.T) {
 		t.Parallel()
 		stub := &qdrantStub{}
 		srv := httptest.NewServer(stub)
-		idx, err := ProvideIndex[doc](
+		idx, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
 			"test",
@@ -866,7 +866,7 @@ func TestQuery(T *testing.T) {
 		}))
 		t.Cleanup(srv.Close)
 
-		idx, err := ProvideIndex[doc](
+		idx, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
 			"test",
@@ -931,7 +931,7 @@ func TestQuery(T *testing.T) {
 		}))
 		t.Cleanup(srv.Close)
 
-		idx, err := ProvideIndex[doc](
+		idx, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
 			"test",
@@ -996,7 +996,7 @@ func TestQuery(T *testing.T) {
 		t.Parallel()
 		stub := &qdrantStub{}
 		srv := httptest.NewServer(stub)
-		idx, err := ProvideIndex[doc](
+		idx, err := NewIndex[doc](
 			t.Context(), nil, nil, nil,
 			&Config{BaseURL: srv.URL, Dimension: 3, Metric: vectorsearch.DistanceCosine, Timeout: time.Second},
 			"test",
@@ -1128,7 +1128,7 @@ func TestQdrantIndex_Container(T *testing.T) {
 
 	provide := func(t *testing.T, name string) vectorsearch.Index[doc] {
 		t.Helper()
-		idx, err := ProvideIndex[doc](t.Context(), nil, nil, nil, cfg, name, cbnoop.NewCircuitBreaker())
+		idx, err := NewIndex[doc](t.Context(), nil, nil, nil, cfg, name, cbnoop.NewCircuitBreaker())
 		must.NoError(t, err)
 		return idx
 	}
@@ -1270,13 +1270,13 @@ func TestQdrantIndex_Container(T *testing.T) {
 		))
 	})
 
-	T.Run("ProvideIndex is idempotent", func(t *testing.T) {
+	T.Run("NewIndex is idempotent", func(t *testing.T) {
 		t.Parallel()
 		ctx := t.Context()
 		name := "idem_" + identifiers.New()
-		idx1, err := ProvideIndex[doc](ctx, nil, nil, nil, cfg, name, cbnoop.NewCircuitBreaker())
+		idx1, err := NewIndex[doc](ctx, nil, nil, nil, cfg, name, cbnoop.NewCircuitBreaker())
 		must.NoError(t, err)
-		idx2, err := ProvideIndex[doc](ctx, nil, nil, nil, cfg, name, cbnoop.NewCircuitBreaker())
+		idx2, err := NewIndex[doc](ctx, nil, nil, nil, cfg, name, cbnoop.NewCircuitBreaker())
 		must.NoError(t, err)
 
 		must.NoError(t, idx1.Upsert(ctx, vectorsearch.Vector[doc]{ID: "11111111-eeee-eeee-eeee-111111111111", Embedding: []float32{1, 0, 0}}))

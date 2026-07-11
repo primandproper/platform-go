@@ -32,8 +32,8 @@ type (
 	}
 )
 
-// ProvideProfilingProvider provides a profiling provider based on config.
-func (c *Config) ProvideProfilingProvider(ctx context.Context, logger logging.Logger) (profiling.Provider, error) {
+// NewProfilingProvider provides a profiling provider based on config.
+func (c *Config) NewProfilingProvider(ctx context.Context, logger logging.Logger) (profiling.Provider, error) {
 	p := strings.TrimSpace(strings.ToLower(c.Provider))
 
 	switch p {
@@ -45,12 +45,12 @@ func (c *Config) ProvideProfilingProvider(ctx context.Context, logger logging.Lo
 		if c.Pyroscope.UploadRate == 0 {
 			c.Pyroscope.UploadRate = 15 * time.Second
 		}
-		return pyroscope.ProvideProfilingProvider(ctx, logger, c.ServiceName, c.Pyroscope)
+		return pyroscope.NewProfilingProvider(ctx, logger, c.ServiceName, c.Pyroscope)
 	case ProviderPprof:
 		if c.Pprof == nil {
 			c.Pprof = &pprof.Config{Port: pprof.DefaultPort}
 		}
-		return pprof.ProvideProfilingProvider(ctx, logger, c.Pprof)
+		return pprof.NewProfilingProvider(ctx, logger, c.Pprof)
 	default:
 		return profilingnoop.NewProvider(), nil
 	}
