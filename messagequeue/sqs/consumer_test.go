@@ -140,7 +140,7 @@ func Test_sqsConsumer_Consume(T *testing.T) {
 	})
 }
 
-func TestProvideSQSConsumerProvider(T *testing.T) {
+func TestNewSQSConsumerProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -150,7 +150,7 @@ func TestProvideSQSConsumerProvider(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		cfg := Config{}
 
-		actual, err := ProvideSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
+		actual, err := NewSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
 		test.NoError(t, err)
 		test.NotNil(t, actual)
 	})
@@ -162,13 +162,13 @@ func TestProvideSQSConsumerProvider(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		cfg := Config{QueueAddress: "http://localhost:4566"}
 
-		actual, err := ProvideSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
+		actual, err := NewSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
 		test.NoError(t, err)
 		test.NotNil(t, actual)
 	})
 }
 
-func Test_consumerProvider_ProvideConsumer(T *testing.T) {
+func Test_consumerProvider_NewConsumer(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -178,7 +178,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		cfg := Config{}
 
-		provider, err := ProvideSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
+		provider, err := NewSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
 		must.NoError(t, err)
 		must.NotNil(t, provider)
 
@@ -189,7 +189,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 		cp.o11y = obs
 
 		topic := "https://sqs.us-east-1.amazonaws.com/123/test"
-		actual, err := provider.ProvideConsumer(ctx, topic, nil)
+		actual, err := provider.NewConsumer(ctx, topic, nil)
 		test.NoError(t, err)
 		test.NotNil(t, actual)
 
@@ -206,15 +206,15 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 		cfg := Config{}
 		topic := "https://sqs.us-east-1.amazonaws.com/123/cached-queue"
 
-		provider, err := ProvideSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
+		provider, err := NewSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
 		must.NoError(t, err)
 		must.NotNil(t, provider)
 
-		actual, err := provider.ProvideConsumer(ctx, topic, nil)
+		actual, err := provider.NewConsumer(ctx, topic, nil)
 		test.NoError(t, err)
 		test.NotNil(t, actual)
 
-		actual2, err := provider.ProvideConsumer(ctx, topic, nil)
+		actual2, err := provider.NewConsumer(ctx, topic, nil)
 		test.NoError(t, err)
 		test.NotNil(t, actual2)
 		test.EqOp(t, actual, actual2)
@@ -227,7 +227,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		cfg := Config{}
 
-		provider, err := ProvideSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
+		provider, err := NewSQSConsumerProvider(ctx, logger, tracingnoop.NewTracerProvider(), nil, cfg)
 		must.NoError(t, err)
 		must.NotNil(t, provider)
 
@@ -237,7 +237,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 		obs := observability.NewRecordingObserver()
 		cp.o11y = obs
 
-		actual, err := provider.ProvideConsumer(ctx, "", nil)
+		actual, err := provider.NewConsumer(ctx, "", nil)
 		test.Error(t, err)
 		test.Nil(t, actual)
 		test.ErrorIs(t, err, messagequeue.ErrEmptyTopicName)

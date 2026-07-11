@@ -15,7 +15,7 @@ import (
 // messagequeue.PublisherProvider with the injector.
 func RegisterMessageQueue(i do.Injector) {
 	do.Provide[messagequeue.ConsumerProvider](i, func(i do.Injector) (messagequeue.ConsumerProvider, error) {
-		return ProvideConsumerProvider(
+		return NewConsumerProvider(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[logging.Logger](i),
 			do.MustInvoke[tracing.TracerProvider](i),
@@ -24,7 +24,7 @@ func RegisterMessageQueue(i do.Injector) {
 		)
 	})
 	do.Provide[messagequeue.PublisherProvider](i, func(i do.Injector) (messagequeue.PublisherProvider, error) {
-		return ProvidePublisherProvider(
+		return NewPublisherProvider(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[logging.Logger](i),
 			do.MustInvoke[tracing.TracerProvider](i),

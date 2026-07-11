@@ -53,7 +53,7 @@ func provideElasticsearchClient(cfg *Config) (*elasticsearch.Client, error) {
 	return c, nil
 }
 
-func ProvideIndexManager[T any](ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, cfg *Config, indexName string, circuitBreaker circuitbreaking.CircuitBreaker) (textsearch.Index[T], error) {
+func NewIndexManager[T any](ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, cfg *Config, indexName string, circuitBreaker circuitbreaking.CircuitBreaker) (textsearch.Index[T], error) {
 	c, err := provideElasticsearchClient(cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "initializing search client")

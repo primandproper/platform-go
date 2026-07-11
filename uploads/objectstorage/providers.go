@@ -1,9 +1,5 @@
 package objectstorage
 
-import (
-	"github.com/primandproper/platform-go/v4/uploads"
-)
-
 const (
 	// FilesystemProvider indicates we'd like to use the filesystem adapter for blob.
 	FilesystemProvider = "filesystem"
@@ -18,8 +14,3 @@ const (
 	// BackblazeB2Provider indicates we'd like to use the Backblaze B2 adapter for blob.
 	BackblazeB2Provider = "backblaze_b2"
 )
-
-// ProvideUploadManager transforms an *objectstorage.Uploader into an UploadManager.
-func ProvideUploadManager(u *Uploader) uploads.UploadManager {
-	return u
-}

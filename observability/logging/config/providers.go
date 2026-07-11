@@ -6,7 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v4/observability/logging"
 )
 
-// ProvideLogger provides a Logger from config.
-func ProvideLogger(ctx context.Context, cfg *Config) (logging.Logger, error) {
-	return cfg.ProvideLogger(ctx)
+// NewLogger provides a Logger from config.
+func NewLogger(ctx context.Context, cfg *Config) (logging.Logger, error) {
+	return cfg.NewLogger(ctx)
 }

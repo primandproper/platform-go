@@ -94,14 +94,14 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 }
 
 //nolint:paralleltest // race condition in the core circuit breaker library, I think?
-func TestProvideCircuitBreakerFromConfig(T *testing.T) {
+func TestNewCircuitBreakerFromConfig(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		cfg := &Config{}
 		cfg.EnsureDefaults()
 
 		ctx := t.Context()
 
-		cb, err := ProvideCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := NewCircuitBreaker(ctx, cfg, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.NotNil(t, cb)
 		test.NoError(t, err)
 	})
@@ -112,7 +112,7 @@ func TestProvideCircuitBreakerFromConfig(T *testing.T) {
 
 		ctx := t.Context()
 
-		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider(),
+		cb, err := cfg.NewCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider(),
 			WithMetricAttributes(attribute.String("partition", "123")))
 		test.NotNil(t, cb)
 		test.NoError(t, err)
@@ -131,7 +131,7 @@ func TestProvideCircuitBreakerFromConfig(T *testing.T) {
 			},
 		}
 
-		cb, err := ProvideCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), mp)
+		cb, err := NewCircuitBreaker(ctx, cfg, loggingnoop.NewLogger(), mp)
 		test.Nil(t, cb)
 		test.Error(t, err)
 
@@ -157,7 +157,7 @@ func TestProvideCircuitBreakerFromConfig(T *testing.T) {
 			},
 		}
 
-		cb, err := ProvideCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), mp)
+		cb, err := NewCircuitBreaker(ctx, cfg, loggingnoop.NewLogger(), mp)
 		test.Nil(t, cb)
 		test.Error(t, err)
 
@@ -184,7 +184,7 @@ func TestProvideCircuitBreakerFromConfig(T *testing.T) {
 			},
 		}
 
-		cb, err := ProvideCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), mp)
+		cb, err := NewCircuitBreaker(ctx, cfg, loggingnoop.NewLogger(), mp)
 		test.Nil(t, cb)
 		test.Error(t, err)
 
@@ -207,12 +207,12 @@ func TestEnsureCircuitBreaker(T *testing.T) {
 }
 
 //nolint:paralleltest // race condition in the core circuit breaker library, I think?
-func TestConfig_ProvideCircuitBreaker(T *testing.T) {
+func TestConfig_NewCircuitBreaker(T *testing.T) {
 	T.Run("with nil config", func(t *testing.T) {
 		ctx := t.Context()
 
 		var cfg *Config
-		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := cfg.NewCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.Nil(t, cb)
 		test.Error(t, err)
 	})
@@ -225,7 +225,7 @@ func TestConfig_ProvideCircuitBreaker(T *testing.T) {
 			ErrorRate: 200,
 		}
 
-		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := cfg.NewCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.NotNil(t, cb)
 		test.NoError(t, err)
 	})
@@ -237,7 +237,7 @@ func TestConfig_ProvideCircuitBreaker(T *testing.T) {
 		// "UNKNOWN" and passes the Required check instead of degrading to a noop.
 		cfg := &Config{Name: ""}
 
-		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := cfg.NewCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.NoError(t, err)
 		_, isReal := cb.(*baseImplementation)
 		test.True(t, isReal)
@@ -248,7 +248,7 @@ func TestConfig_ProvideCircuitBreaker(T *testing.T) {
 
 		cfg := &Config{Name: "cb"}
 
-		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), nil)
+		cb, err := cfg.NewCircuitBreaker(ctx, loggingnoop.NewLogger(), nil)
 		test.NoError(t, err)
 		_, isReal := cb.(*baseImplementation)
 		test.True(t, isReal)
@@ -266,7 +266,7 @@ func TestBaseImplementation(T *testing.T) {
 			MinimumSampleThreshold: 1000,
 		}
 
-		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := cfg.NewCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.NotNil(t, cb)
 		test.NoError(t, err)
 
@@ -282,7 +282,7 @@ func TestBaseImplementation(T *testing.T) {
 			MinimumSampleThreshold: 1000,
 		}
 
-		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := cfg.NewCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.NotNil(t, cb)
 		test.NoError(t, err)
 
@@ -298,7 +298,7 @@ func TestBaseImplementation(T *testing.T) {
 			MinimumSampleThreshold: 1000,
 		}
 
-		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := cfg.NewCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.NotNil(t, cb)
 		test.NoError(t, err)
 
@@ -314,7 +314,7 @@ func TestBaseImplementation(T *testing.T) {
 			MinimumSampleThreshold: 1000,
 		}
 
-		cb, err := cfg.ProvideCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := cfg.NewCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.NotNil(t, cb)
 		test.NoError(t, err)
 
@@ -401,7 +401,7 @@ func TestCircuitBreaker_Integration(T *testing.T) {
 			MinimumSampleThreshold: 2,
 		}
 
-		cb, err := ProvideCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := NewCircuitBreaker(ctx, cfg, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.NoError(t, err)
 		test.NotNil(t, cb)
 
@@ -422,7 +422,7 @@ func TestCircuitBreaker_Integration(T *testing.T) {
 			MinimumSampleThreshold: 1,
 		}
 
-		cb, err := ProvideCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := NewCircuitBreaker(ctx, cfg, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.NotNil(t, cb)
 		test.NoError(t, err)
 

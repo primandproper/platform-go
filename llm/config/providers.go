@@ -9,7 +9,7 @@ import (
 	"github.com/primandproper/platform-go/v4/observability/tracing"
 )
 
-// ProvideLLMProvider provides an LLM provider from config.
-func ProvideLLMProvider(ctx context.Context, c *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (llm.Provider, error) {
-	return c.ProvideLLMProvider(ctx, logger, tracerProvider, metricsProvider)
+// NewLLMProvider provides an LLM provider from config.
+func NewLLMProvider(ctx context.Context, c *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (llm.Provider, error) {
+	return c.NewLLMProvider(ctx, logger, tracerProvider, metricsProvider)
 }

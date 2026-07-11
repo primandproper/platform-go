@@ -14,7 +14,7 @@ import (
 // RegisterPushSender registers a mobile.PushNotificationSender with the injector.
 func RegisterPushSender(i do.Injector) {
 	do.Provide[mobile.PushNotificationSender](i, func(i do.Injector) (mobile.PushNotificationSender, error) {
-		return ProvidePushSender(
+		return NewPushSender(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[Config](i),
 			do.MustInvoke[logging.Logger](i),

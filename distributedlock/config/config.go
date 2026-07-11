@@ -52,10 +52,10 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideLocker constructs a distributedlock.Locker for the configured provider.
+// NewLocker constructs a distributedlock.Locker for the configured provider.
 // The db argument is required only when Provider is PostgresProvider; pass nil
 // otherwise. Unknown or empty providers fall back to the noop locker.
-func ProvideLocker(
+func NewLocker(
 	ctx context.Context,
 	cfg *Config,
 	logger logging.Logger,
@@ -67,7 +67,7 @@ func ProvideLocker(
 		return nil, distributedlock.ErrNilConfig
 	}
 
-	circuitBreaker, err := circuitbreakingcfg.ProvideCircuitBreakerFromConfig(ctx, &cfg.CircuitBreaker, logger, metricsProvider)
+	circuitBreaker, err := circuitbreakingcfg.NewCircuitBreaker(ctx, &cfg.CircuitBreaker, logger, metricsProvider)
 	if err != nil {
 		return nil, errors.Wrap(err, "initializing distributedlock circuit breaker")
 	}

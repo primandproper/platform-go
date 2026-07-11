@@ -64,8 +64,8 @@ func validateLevel(value any) error {
 	return validation.NewError("validation_invalid_log_level", "must be a valid log level")
 }
 
-// ProvideLogger builds a logger according to the provided config.
-func (cfg *Config) ProvideLogger(ctx context.Context) (logger logging.Logger, err error) {
+// NewLogger builds a logger according to the provided config.
+func (cfg *Config) NewLogger(ctx context.Context) (logger logging.Logger, err error) {
 	switch strings.TrimSpace(strings.ToLower(cfg.Provider)) {
 	case ProviderZerolog:
 		logger = zerolog.NewZerologLogger(cfg.Level)

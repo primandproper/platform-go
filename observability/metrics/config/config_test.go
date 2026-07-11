@@ -10,14 +10,14 @@ import (
 	"github.com/shoenig/test"
 )
 
-func TestConfig_ProvideMetricsProvider(T *testing.T) {
+func TestConfig_NewMetricsProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{}
-		metricsProvider, err := cfg.ProvideMetricsProvider(t.Context(), loggingnoop.NewLogger())
+		metricsProvider, err := cfg.NewMetricsProvider(t.Context(), loggingnoop.NewLogger())
 
 		test.NoError(t, err)
 		test.NotNil(t, metricsProvider)
@@ -37,7 +37,7 @@ func TestConfig_ProvideMetricsProvider(T *testing.T) {
 			},
 		}
 
-		metricsProvider, err := cfg.ProvideMetricsProvider(t.Context(), loggingnoop.NewLogger())
+		metricsProvider, err := cfg.NewMetricsProvider(t.Context(), loggingnoop.NewLogger())
 
 		test.NoError(t, err)
 		test.NotNil(t, metricsProvider)
@@ -51,7 +51,7 @@ func TestConfig_ProvideMetricsProvider(T *testing.T) {
 			Provider: "unknown",
 		}
 
-		metricsProvider, err := cfg.ProvideMetricsProvider(t.Context(), loggingnoop.NewLogger())
+		metricsProvider, err := cfg.NewMetricsProvider(t.Context(), loggingnoop.NewLogger())
 
 		test.NoError(t, err)
 		test.NotNil(t, metricsProvider)
@@ -64,7 +64,7 @@ func TestConfig_ProvideMetricsProvider(T *testing.T) {
 			Enabled: false,
 		}
 
-		metricsProvider, err := cfg.ProvideMetricsProvider(t.Context(), loggingnoop.NewLogger())
+		metricsProvider, err := cfg.NewMetricsProvider(t.Context(), loggingnoop.NewLogger())
 
 		test.NoError(t, err)
 		test.NotNil(t, metricsProvider)
@@ -123,14 +123,14 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestProvideMetricsProvider(T *testing.T) {
+func TestNewMetricsProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{}
-		metricsProvider, err := ProvideMetricsProvider(t.Context(), loggingnoop.NewLogger(), cfg)
+		metricsProvider, err := NewMetricsProvider(t.Context(), loggingnoop.NewLogger(), cfg)
 
 		test.NoError(t, err)
 		test.NotNil(t, metricsProvider)

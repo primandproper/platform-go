@@ -37,14 +37,14 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideRateLimiter(T *testing.T) {
+func TestConfig_NewRateLimiter(T *testing.T) {
 	T.Parallel()
 
 	T.Run("nil config returns noop", func(t *testing.T) {
 		t.Parallel()
 
 		var cfg *Config
-		limiter, err := cfg.ProvideRateLimiter(nil)
+		limiter, err := cfg.NewRateLimiter(nil)
 		must.NoError(t, err)
 		must.NotNil(t, limiter)
 
@@ -57,7 +57,7 @@ func TestConfig_ProvideRateLimiter(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{Provider: ""}
-		limiter, err := cfg.ProvideRateLimiter(nil)
+		limiter, err := cfg.NewRateLimiter(nil)
 		must.NoError(t, err)
 		must.NotNil(t, limiter)
 
@@ -70,7 +70,7 @@ func TestConfig_ProvideRateLimiter(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{Provider: ProviderNoop}
-		limiter, err := cfg.ProvideRateLimiter(nil)
+		limiter, err := cfg.NewRateLimiter(nil)
 		must.NoError(t, err)
 		must.NotNil(t, limiter)
 
@@ -87,7 +87,7 @@ func TestConfig_ProvideRateLimiter(T *testing.T) {
 			RequestsPerSec: 1,
 			BurstSize:      1,
 		}
-		limiter, err := cfg.ProvideRateLimiter(nil)
+		limiter, err := cfg.NewRateLimiter(nil)
 		must.NoError(t, err)
 		must.NotNil(t, limiter)
 
@@ -109,7 +109,7 @@ func TestConfig_ProvideRateLimiter(T *testing.T) {
 			RequestsPerSec: 1,
 			BurstSize:      1,
 		}
-		limiter, err := cfg.ProvideRateLimiter(nil)
+		limiter, err := cfg.NewRateLimiter(nil)
 		must.NoError(t, err)
 		test.NotNil(t, limiter)
 	})
@@ -118,20 +118,20 @@ func TestConfig_ProvideRateLimiter(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{Provider: "unknown"}
-		limiter, err := cfg.ProvideRateLimiter(nil)
+		limiter, err := cfg.NewRateLimiter(nil)
 		must.Error(t, err)
 		test.Nil(t, limiter)
 		test.StrContains(t, err.Error(), "unknown")
 	})
 }
 
-func TestProvideRateLimiterFromConfig(T *testing.T) {
+func TestNewRateLimiterFromConfig(T *testing.T) {
 	T.Parallel()
 
 	T.Run("nil config returns noop", func(t *testing.T) {
 		t.Parallel()
 
-		limiter, err := ProvideRateLimiterFromConfig(nil, nil)
+		limiter, err := NewRateLimiter(nil, nil)
 		must.NoError(t, err)
 		must.NotNil(t, limiter)
 	})
@@ -140,7 +140,7 @@ func TestProvideRateLimiterFromConfig(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{Provider: ProviderNoop}
-		limiter, err := ProvideRateLimiterFromConfig(cfg, nil)
+		limiter, err := NewRateLimiter(cfg, nil)
 		must.NoError(t, err)
 		must.NotNil(t, limiter)
 	})
@@ -149,7 +149,7 @@ func TestProvideRateLimiterFromConfig(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{Provider: "unknown"}
-		limiter, err := ProvideRateLimiterFromConfig(cfg, nil)
+		limiter, err := NewRateLimiter(cfg, nil)
 		must.Error(t, err)
 		test.Nil(t, limiter)
 		test.StrContains(t, err.Error(), "provide rate limiter")

@@ -16,6 +16,6 @@ type (
 	// ConsumerProvider is a function that provides a Consumer for a given topic.
 	ConsumerProvider interface {
 		Close()
-		ProvideConsumer(ctx context.Context, topic string, handlerFunc ConsumerFunc) (Consumer, error)
+		NewConsumer(ctx context.Context, topic string, handlerFunc ConsumerFunc) (Consumer, error)
 	}
 )

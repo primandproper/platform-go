@@ -160,8 +160,8 @@ func (e *clientEncoder) EncodeReader(ctx context.Context, data any) (io.Reader, 
 	return bytes.NewReader(out), nil
 }
 
-// ProvideClientEncoder provides a ClientEncoder.
-func ProvideClientEncoder(logger logging.Logger, tracerProvider tracing.TracerProvider, encoding *contentType) ClientEncoder {
+// NewClientEncoder provides a ClientEncoder.
+func NewClientEncoder(logger logging.Logger, tracerProvider tracing.TracerProvider, encoding *contentType) ClientEncoder {
 	return &clientEncoder{
 		o11y:        observability.NewObserver("client_encoder", logger, tracerProvider),
 		contentType: encoding,

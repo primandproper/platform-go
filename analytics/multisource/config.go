@@ -12,14 +12,14 @@ import (
 	"github.com/primandproper/platform-go/v4/observability/tracing"
 )
 
-// ProvideMultiSourceEventReporter builds a MultiSourceEventReporter from proxy sources config.
-// For each source, attempts to create an EventReporter via ProvideCollector.
+// NewMultiSourceEventReporterFromConfig builds a MultiSourceEventReporter from proxy sources config.
+// For each source, attempts to create an EventReporter via NewCollector.
 // If creation fails (e.g. missing credentials) or provider is unset, uses Noop for that source.
 //
 // For PostHog: reporters are deduplicated by API key. Sources sharing the same PostHog API key
 // reuse a single client (the source name is set as a property on each event), while sources with
 // distinct API keys each get their own client so their credentials and circuit breaker are honored.
-func ProvideMultiSourceEventReporter(
+func NewMultiSourceEventReporterFromConfig(
 	ctx context.Context,
 	proxySources map[string]*analyticscfg.SourceConfig,
 	logger logging.Logger,
@@ -53,14 +53,14 @@ func ProvideMultiSourceEventReporter(
 			}
 		}
 
-		r, err := sourceCfg.ProvideCollector(ctx, log, tracerProvider, metricsProvider)
+		r, err := sourceCfg.NewCollector(ctx, log, tracerProvider, metricsProvider)
 		if err != nil {
 			log.WithValue("source", source).WithValue("reason", err.Error()).Error("failed to create reporter for proxy source, using noop", err)
 			reporters[source] = noop.NewEventReporter()
 			continue
 		}
 		if r == nil {
-			log.WithValue("source", source).WithValue("provider", sourceCfg.Provider).Info("ProvideCollector returned nil reporter, using noop")
+			log.WithValue("source", source).WithValue("provider", sourceCfg.Provider).Info("NewCollector returned nil reporter, using noop")
 			reporters[source] = noop.NewEventReporter()
 			continue
 		}

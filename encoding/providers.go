@@ -1,6 +1,6 @@
 package encoding
 
-// ProvideContentType provides a ContentType from a Config.
-func ProvideContentType(cfg Config) ContentType {
+// NewContentType provides a ContentType from a Config.
+func NewContentType(cfg Config) ContentType {
 	return contentTypeFromString(cfg.ContentType)
 }

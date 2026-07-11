@@ -14,7 +14,7 @@ import (
 // RegisterLLMProvider registers an llm.Provider with the injector.
 func RegisterLLMProvider(i do.Injector) {
 	do.Provide[llm.Provider](i, func(i do.Injector) (llm.Provider, error) {
-		return ProvideLLMProvider(
+		return NewLLMProvider(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
 			do.MustInvoke[logging.Logger](i),

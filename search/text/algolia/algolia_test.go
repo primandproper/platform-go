@@ -16,7 +16,7 @@ type example struct {
 	Name string `json:"name"`
 }
 
-func TestProvideIndexManager(T *testing.T) {
+func TestNewIndexManager(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -25,7 +25,7 @@ func TestProvideIndexManager(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracerProvider := tracingnoop.NewTracerProvider()
 
-		im, err := ProvideIndexManager[example](logger, tracerProvider, &Config{}, "test", cbnoop.NewCircuitBreaker())
+		im, err := NewIndexManager[example](logger, tracerProvider, &Config{}, "test", cbnoop.NewCircuitBreaker())
 		test.NoError(t, err)
 		test.NotNil(t, im)
 	})
@@ -36,7 +36,7 @@ func TestProvideIndexManager(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracerProvider := tracingnoop.NewTracerProvider()
 
-		im, err := ProvideIndexManager[example](logger, tracerProvider, &Config{Timeout: 5 * time.Second}, "test", cbnoop.NewCircuitBreaker())
+		im, err := NewIndexManager[example](logger, tracerProvider, &Config{Timeout: 5 * time.Second}, "test", cbnoop.NewCircuitBreaker())
 		test.NoError(t, err)
 		test.NotNil(t, im)
 	})
@@ -47,7 +47,7 @@ func TestProvideIndexManager(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracerProvider := tracingnoop.NewTracerProvider()
 
-		im, err := ProvideIndexManager[example](logger, tracerProvider, nil, "test", cbnoop.NewCircuitBreaker())
+		im, err := NewIndexManager[example](logger, tracerProvider, nil, "test", cbnoop.NewCircuitBreaker())
 		test.Error(t, err)
 		test.Nil(t, im)
 	})

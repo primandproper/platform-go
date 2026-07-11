@@ -81,7 +81,7 @@ func buildTestIndexManagerWithMockServer(t *testing.T, handler http.Handler, cb 
 func buildTestIndexManager(t *testing.T) *indexManager[example] {
 	t.Helper()
 
-	im, err := ProvideIndexManager[example](
+	im, err := NewIndexManager[example](
 		loggingnoop.NewLogger(),
 		tracingnoop.NewTracerProvider(),
 		&Config{AppID: "fake", APIKey: "fake"},
@@ -98,7 +98,7 @@ func buildTestIndexManager(t *testing.T) *indexManager[example] {
 func buildTestIndexManagerWithCircuitBreaker(t *testing.T, cb circuitbreaking.CircuitBreaker) *indexManager[example] {
 	t.Helper()
 
-	im, err := ProvideIndexManager[example](
+	im, err := NewIndexManager[example](
 		loggingnoop.NewLogger(),
 		tracingnoop.NewTracerProvider(),
 		&Config{AppID: "fake", APIKey: "fake"},

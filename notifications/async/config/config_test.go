@@ -68,7 +68,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideAsyncNotifier(T *testing.T) {
+func TestConfig_NewAsyncNotifier(T *testing.T) {
 	T.Parallel()
 
 	T.Run("with websocket", func(t *testing.T) {
@@ -79,7 +79,7 @@ func TestConfig_ProvideAsyncNotifier(T *testing.T) {
 			WebSocket: &asyncws.Config{},
 		}
 
-		actual, err := cfg.ProvideAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		actual, err := cfg.NewAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -91,7 +91,7 @@ func TestConfig_ProvideAsyncNotifier(T *testing.T) {
 			Provider: ProviderSSE,
 		}
 
-		actual, err := cfg.ProvideAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		actual, err := cfg.NewAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -109,7 +109,7 @@ func TestConfig_ProvideAsyncNotifier(T *testing.T) {
 			},
 		}
 
-		actual, err := cfg.ProvideAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		actual, err := cfg.NewAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -124,7 +124,7 @@ func TestConfig_ProvideAsyncNotifier(T *testing.T) {
 			},
 		}
 
-		actual, err := cfg.ProvideAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		actual, err := cfg.NewAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -138,7 +138,7 @@ func TestConfig_ProvideAsyncNotifier(T *testing.T) {
 				Provider: provider,
 			}
 
-			actual, err := cfg.ProvideAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+			actual, err := cfg.NewAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 			test.NotNil(t, actual)
 			test.NoError(t, err)
 		})
@@ -151,13 +151,13 @@ func TestConfig_ProvideAsyncNotifier(T *testing.T) {
 			Provider: "unknown",
 		}
 
-		actual, err := cfg.ProvideAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		actual, err := cfg.NewAsyncNotifier(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		test.Nil(t, actual)
 		test.Error(t, err)
 	})
 }
 
-func TestProvideAsyncNotifierFromConfig(T *testing.T) {
+func TestNewAsyncNotifierFromConfig(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -167,7 +167,7 @@ func TestProvideAsyncNotifierFromConfig(T *testing.T) {
 			Provider: ProviderNoop,
 		}
 
-		actual, err := ProvideAsyncNotifierFromConfig(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		actual, err := NewAsyncNotifier(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		test.NoError(t, err)
 		test.NotNil(t, actual)
 	})
@@ -179,7 +179,7 @@ func TestProvideAsyncNotifierFromConfig(T *testing.T) {
 			Provider: "unknown",
 		}
 
-		actual, err := ProvideAsyncNotifierFromConfig(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		actual, err := NewAsyncNotifier(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		test.Nil(t, actual)
 		test.Error(t, err)
 	})

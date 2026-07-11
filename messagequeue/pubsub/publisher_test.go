@@ -92,13 +92,13 @@ func TestBuildPubSubPublisher(T *testing.T) {
 	})
 }
 
-func TestProvidePubSubPublisherProvider(T *testing.T) {
+func TestNewPubSubPublisherProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		provider := ProvidePubSubPublisherProvider(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, nil, "test-project")
+		provider := NewPubSubPublisherProvider(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, nil, "test-project")
 		must.NotNil(t, provider)
 	})
 }
@@ -134,15 +134,15 @@ func TestPublisherProvider_qualifyTopicName(T *testing.T) {
 	})
 }
 
-func TestPublisherProvider_ProvidePublisher(T *testing.T) {
+func TestPublisherProvider_NewPublisher(T *testing.T) {
 	T.Parallel()
 
 	T.Run("with empty topic", func(t *testing.T) {
 		t.Parallel()
 
-		provider := ProvidePubSubPublisherProvider(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, nil, "test-project")
+		provider := NewPubSubPublisherProvider(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, nil, "test-project")
 
-		pub, err := provider.ProvidePublisher(t.Context(), "")
+		pub, err := provider.NewPublisher(t.Context(), "")
 		test.Nil(t, pub)
 		test.ErrorIs(t, err, messagequeue.ErrEmptyTopicName)
 	})
@@ -167,10 +167,10 @@ func TestPubSubPublisher_Container(T *testing.T) {
 		ctx := t.Context()
 		topicName := infra.newTopic(t)
 
-		provider := ProvidePubSubPublisherProvider(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, infra.client, infra.projectID)
+		provider := NewPubSubPublisherProvider(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, infra.client, infra.projectID)
 		must.NotNil(t, provider)
 
-		publisher, err := provider.ProvidePublisher(ctx, topicName)
+		publisher, err := provider.NewPublisher(ctx, topicName)
 		must.NoError(t, err)
 		must.NotNil(t, publisher)
 

@@ -138,7 +138,7 @@ func TestSetupMetricsProvider(T *testing.T) {
 	})
 }
 
-func TestProvideMetricsProvider(T *testing.T) {
+func TestNewMetricsProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("nil config", func(t *testing.T) {
@@ -147,7 +147,7 @@ func TestProvideMetricsProvider(T *testing.T) {
 		ctx := t.Context()
 		logger := loggingnoop.NewLogger()
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "test-service", nil)
+		provider, err := NewMetricsProvider(ctx, logger, "test-service", nil)
 		test.Nil(t, provider)
 		test.Error(t, err)
 		test.ErrorIs(t, err, ErrNilConfig)
@@ -166,7 +166,7 @@ func TestProvideMetricsProvider(T *testing.T) {
 			EnableHostMetrics:    false,
 		}
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "test-service", cfg)
+		provider, err := NewMetricsProvider(ctx, logger, "test-service", cfg)
 		test.NoError(t, err)
 		test.NotNil(t, provider)
 		_, ok := any(provider).(metrics.Provider)
@@ -190,7 +190,7 @@ func TestProviderImpl_MeterProvider(T *testing.T) {
 			EnableHostMetrics:    false,
 		}
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "test-service", cfg)
+		provider, err := NewMetricsProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 
 		meterProvider := provider.MeterProvider()
@@ -226,7 +226,7 @@ func TestProviderImpl_NewFloat64Counter(T *testing.T) {
 			EnableHostMetrics:    false,
 		}
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "test-service", cfg)
+		provider, err := NewMetricsProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 
 		counter, err := provider.NewFloat64Counter("test_counter")
@@ -253,7 +253,7 @@ func TestProviderImpl_NewFloat64Gauge(T *testing.T) {
 			EnableHostMetrics:    false,
 		}
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "test-service", cfg)
+		provider, err := NewMetricsProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 
 		gauge, err := provider.NewFloat64Gauge("test_gauge")
@@ -280,7 +280,7 @@ func TestProviderImpl_NewFloat64UpDownCounter(T *testing.T) {
 			EnableHostMetrics:    false,
 		}
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "test-service", cfg)
+		provider, err := NewMetricsProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 
 		counter, err := provider.NewFloat64UpDownCounter("test_updown_counter")
@@ -307,7 +307,7 @@ func TestProviderImpl_NewFloat64Histogram(T *testing.T) {
 			EnableHostMetrics:    false,
 		}
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "test-service", cfg)
+		provider, err := NewMetricsProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 
 		histogram, err := provider.NewFloat64Histogram("test_histogram")
@@ -334,7 +334,7 @@ func TestProviderImpl_NewInt64Counter(T *testing.T) {
 			EnableHostMetrics:    false,
 		}
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "test-service", cfg)
+		provider, err := NewMetricsProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 
 		counter, err := provider.NewInt64Counter("test_counter")
@@ -361,7 +361,7 @@ func TestProviderImpl_NewInt64Gauge(T *testing.T) {
 			EnableHostMetrics:    false,
 		}
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "test-service", cfg)
+		provider, err := NewMetricsProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 
 		gauge, err := provider.NewInt64Gauge("test_gauge")
@@ -388,7 +388,7 @@ func TestProviderImpl_NewInt64UpDownCounter(T *testing.T) {
 			EnableHostMetrics:    false,
 		}
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "test-service", cfg)
+		provider, err := NewMetricsProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 
 		counter, err := provider.NewInt64UpDownCounter("test_updown_counter")
@@ -415,7 +415,7 @@ func TestProviderImpl_NewInt64Histogram(T *testing.T) {
 			EnableHostMetrics:    false,
 		}
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "test-service", cfg)
+		provider, err := NewMetricsProvider(ctx, logger, "test-service", cfg)
 		must.NoError(t, err)
 
 		histogram, err := provider.NewInt64Histogram("test_histogram")
@@ -442,7 +442,7 @@ func TestProviderImpl_ServiceNamePrefixing(T *testing.T) {
 			EnableHostMetrics:    false,
 		}
 
-		provider, err := ProvideMetricsProvider(ctx, logger, "my-service", cfg)
+		provider, err := NewMetricsProvider(ctx, logger, "my-service", cfg)
 		must.NoError(t, err)
 
 		// Test that metrics are created with service name prefix

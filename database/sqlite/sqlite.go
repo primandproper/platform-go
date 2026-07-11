@@ -33,10 +33,10 @@ type Client struct {
 	writeDB  *sql.DB
 }
 
-// ProvideDatabaseClient provides a new DataManager client.
+// NewDatabaseClient provides a new DataManager client.
 // If metricsProvider is non-nil, the DB driver will use it so SQL latency and other
 // db.sql.* metrics are emitted (e.g. db_sql_latency_milliseconds_bucket in Prometheus).
-func ProvideDatabaseClient(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, cfg database.ClientConfig, metricsProvider metrics.Provider) (database.Client, error) {
+func NewDatabaseClient(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, cfg database.ClientConfig, metricsProvider metrics.Provider) (database.Client, error) {
 	o11y := observability.NewObserver(tracingName, logger, tracerProvider)
 
 	ctx, op := o11y.Begin(ctx)

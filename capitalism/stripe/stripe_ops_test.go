@@ -69,7 +69,7 @@ func newTestManager(t *testing.T, respond func(path string) (int, string)) (*str
 
 	pm := &stripePaymentManager{
 		client:         sc,
-		encoderDecoder: encoding.ProvideServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON),
+		encoderDecoder: encoding.NewServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON),
 		o11y:           observability.NewObserver(implementationName, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider()),
 	}
 
@@ -115,7 +115,7 @@ func TestStripePaymentManager_CreatePaymentIntent(T *testing.T) {
 	T.Run("errors without an API key", func(t *testing.T) {
 		t.Parallel()
 
-		pm, err := ProvideStripePaymentManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), &Config{WebhookSecret: "whsec"}, nil)
+		pm, err := NewStripePaymentManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), &Config{WebhookSecret: "whsec"}, nil)
 		must.NoError(t, err)
 
 		result, err := pm.CreatePaymentIntent(t.Context(), &capitalism.PaymentIntentCreationInput{Amount: 1, Currency: "usd"})
@@ -167,7 +167,7 @@ func TestStripePaymentManager_CreateCustomer(T *testing.T) {
 	T.Run("errors without an API key", func(t *testing.T) {
 		t.Parallel()
 
-		pm, err := ProvideStripePaymentManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), &Config{WebhookSecret: "whsec"}, nil)
+		pm, err := NewStripePaymentManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), &Config{WebhookSecret: "whsec"}, nil)
 		must.NoError(t, err)
 
 		id, err := pm.CreateCustomer(t.Context(), &capitalism.CustomerCreationInput{Email: "x@y.z"})
@@ -229,7 +229,7 @@ func TestStripePaymentManager_CreateSubscription(T *testing.T) {
 	T.Run("errors without an API key", func(t *testing.T) {
 		t.Parallel()
 
-		pm, err := ProvideStripePaymentManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), &Config{WebhookSecret: "whsec"}, nil)
+		pm, err := NewStripePaymentManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), &Config{WebhookSecret: "whsec"}, nil)
 		must.NoError(t, err)
 
 		id, err := pm.CreateSubscription(t.Context(), &capitalism.SubscriptionCreationInput{CustomerID: "cus_abc", PriceID: "price_xyz"})
@@ -286,7 +286,7 @@ func TestStripePaymentManager_HandleEventWebhook_Callback(T *testing.T) {
 			return nil
 		}
 
-		pm, err := ProvideStripePaymentManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), &Config{WebhookSecret: secret}, handler)
+		pm, err := NewStripePaymentManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), &Config{WebhookSecret: secret}, handler)
 		must.NoError(t, err)
 		impl := pm.(*stripePaymentManager)
 
@@ -307,7 +307,7 @@ func TestStripePaymentManager_HandleEventWebhook_Callback(T *testing.T) {
 			return errArbitraryHandler
 		}
 
-		pm, err := ProvideStripePaymentManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), &Config{WebhookSecret: secret}, handler)
+		pm, err := NewStripePaymentManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), &Config{WebhookSecret: secret}, handler)
 		must.NoError(t, err)
 		impl := pm.(*stripePaymentManager)
 

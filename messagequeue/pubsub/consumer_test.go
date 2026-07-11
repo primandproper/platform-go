@@ -195,28 +195,28 @@ func TestBuildPubSubConsumer(T *testing.T) {
 	})
 }
 
-func TestProvidePubSubConsumerProvider(T *testing.T) {
+func TestNewPubSubConsumerProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
 		logger := loggingnoop.NewLogger()
-		provider := ProvidePubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, nil)
+		provider := NewPubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, nil)
 		must.NotNil(t, provider)
 	})
 }
 
-func TestPubSubConsumerProvider_ProvideConsumer(T *testing.T) {
+func TestPubSubConsumerProvider_NewConsumer(T *testing.T) {
 	T.Parallel()
 
 	T.Run("returns error for empty topic", func(t *testing.T) {
 		t.Parallel()
 
 		logger := loggingnoop.NewLogger()
-		provider := ProvidePubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, nil)
+		provider := NewPubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, nil)
 
-		consumer, err := provider.ProvideConsumer(t.Context(), "", func(_ context.Context, _ []byte) error { return nil })
+		consumer, err := provider.NewConsumer(t.Context(), "", func(_ context.Context, _ []byte) error { return nil })
 		test.Nil(t, consumer)
 		test.ErrorIs(t, err, messagequeue.ErrEmptyTopicName)
 	})
@@ -241,10 +241,10 @@ func TestPubSub_Container(T *testing.T) {
 		topicName := infra.newTopic(t)
 
 		logger := loggingnoop.NewLogger()
-		provider := ProvidePubSubPublisherProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client, infra.projectID)
+		provider := NewPubSubPublisherProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client, infra.projectID)
 		must.NotNil(t, provider)
 
-		publisher, err := provider.ProvidePublisher(ctx, topicName)
+		publisher, err := provider.NewPublisher(ctx, topicName)
 		must.NoError(t, err)
 		must.NotNil(t, publisher)
 
@@ -264,15 +264,15 @@ func TestPubSub_Container(T *testing.T) {
 		topicName := infra.newTopic(t)
 
 		logger := loggingnoop.NewLogger()
-		provider := ProvidePubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client)
+		provider := NewPubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client)
 
 		handler := func(_ context.Context, _ []byte) error { return nil }
 
-		c1, err := provider.ProvideConsumer(ctx, topicName, handler)
+		c1, err := provider.NewConsumer(ctx, topicName, handler)
 		must.NoError(t, err)
 		must.NotNil(t, c1)
 
-		c2, err := provider.ProvideConsumer(ctx, topicName, handler)
+		c2, err := provider.NewConsumer(ctx, topicName, handler)
 		must.NoError(t, err)
 		test.True(t, c1 == c2)
 	})
@@ -290,8 +290,8 @@ func TestPubSub_Container(T *testing.T) {
 		}
 
 		logger := loggingnoop.NewLogger()
-		provider := ProvidePubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client)
-		consumer, err := provider.ProvideConsumer(ctx, topicName, handler)
+		provider := NewPubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client)
+		consumer, err := provider.NewConsumer(ctx, topicName, handler)
 		must.NoError(t, err)
 
 		obs := observability.NewRecordingObserver()
@@ -355,8 +355,8 @@ func TestPubSub_Container(T *testing.T) {
 		}
 
 		logger := loggingnoop.NewLogger()
-		provider := ProvidePubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client)
-		consumer, err := provider.ProvideConsumer(ctx, topicName, handler)
+		provider := NewPubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client)
+		consumer, err := provider.NewConsumer(ctx, topicName, handler)
 		must.NoError(t, err)
 
 		obs := observability.NewRecordingObserver()
@@ -413,8 +413,8 @@ func TestPubSub_Container(T *testing.T) {
 		handler := func(_ context.Context, _ []byte) error { return nil }
 
 		logger := loggingnoop.NewLogger()
-		provider := ProvidePubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client)
-		consumer, err := provider.ProvideConsumer(ctx, topicName, handler)
+		provider := NewPubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client)
+		consumer, err := provider.NewConsumer(ctx, topicName, handler)
 		must.NoError(t, err)
 
 		stopChan := make(chan bool, 1)
@@ -449,8 +449,8 @@ func TestPubSub_Container(T *testing.T) {
 		}
 
 		logger := loggingnoop.NewLogger()
-		provider := ProvidePubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client)
-		consumer, err := provider.ProvideConsumer(ctx, topicName, handler)
+		provider := NewPubSubConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, infra.client)
+		consumer, err := provider.NewConsumer(ctx, topicName, handler)
 		must.NoError(t, err)
 
 		errChan := make(chan error, 1)

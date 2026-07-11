@@ -83,7 +83,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 }
 
 //nolint:paralleltest // race condition in the core circuit breaker library, I think?
-func TestProvideKeyedCircuitBreakerFromConfig(T *testing.T) {
+func TestNewKeyedCircuitBreakerFromConfig(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		cfg := &Config{
 			Base: circuitbreakingcfg.Config{Name: t.Name()},
@@ -93,7 +93,7 @@ func TestProvideKeyedCircuitBreakerFromConfig(T *testing.T) {
 
 		ctx := t.Context()
 
-		cb, err := ProvideKeyedCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := NewKeyedCircuitBreaker(ctx, cfg, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.NotNil(t, cb)
 		test.NoError(t, err)
 
@@ -118,7 +118,7 @@ func TestProvideKeyedCircuitBreakerFromConfig(T *testing.T) {
 			},
 		}
 
-		cb, err := ProvideKeyedCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), mp)
+		cb, err := NewKeyedCircuitBreaker(ctx, cfg, loggingnoop.NewLogger(), mp)
 		test.Nil(t, cb)
 		test.Error(t, err)
 	})
@@ -146,19 +146,19 @@ func TestProvideKeyedCircuitBreakerFromConfig(T *testing.T) {
 			},
 		}
 
-		cb, err := ProvideKeyedCircuitBreakerFromConfig(ctx, cfg, loggingnoop.NewLogger(), mp)
+		cb, err := NewKeyedCircuitBreaker(ctx, cfg, loggingnoop.NewLogger(), mp)
 		test.Nil(t, cb)
 		test.Error(t, err)
 	})
 }
 
 //nolint:paralleltest // race condition in the core circuit breaker library, I think?
-func TestConfig_ProvideKeyedCircuitBreaker(T *testing.T) {
+func TestConfig_NewKeyedCircuitBreaker(T *testing.T) {
 	T.Run("with nil config", func(t *testing.T) {
 		ctx := t.Context()
 
 		var cfg *Config
-		cb, err := cfg.ProvideKeyedCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := cfg.NewKeyedCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.Nil(t, cb)
 		test.Error(t, err)
 	})
@@ -173,7 +173,7 @@ func TestConfig_ProvideKeyedCircuitBreaker(T *testing.T) {
 			},
 		}
 
-		cb, err := cfg.ProvideKeyedCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
+		cb, err := cfg.NewKeyedCircuitBreaker(ctx, loggingnoop.NewLogger(), metricsnoop.NewMetricsProvider())
 		test.NotNil(t, cb)
 		test.NoError(t, err)
 	})

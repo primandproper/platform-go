@@ -11,7 +11,7 @@ import (
 )
 
 func BenchmarkArgon2Authenticator(b *testing.B) {
-	a := argon2.ProvideArgon2Authenticator(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+	a := argon2.NewArgon2Authenticator(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
 	ctx := b.Context()
 	const password = "Pa$$w0rdPa$$w0rdPa$$w0rdPa$$w0rd"
 

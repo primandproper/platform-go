@@ -19,7 +19,7 @@ const (
 func TestArgon2_HashPassword(T *testing.T) {
 	T.Parallel()
 
-	x := argon2.ProvideArgon2Authenticator(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+	x := argon2.NewArgon2Authenticator(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
@@ -35,7 +35,7 @@ func TestArgon2_HashPassword(T *testing.T) {
 func TestArgon2_PasswordMatches(T *testing.T) {
 	T.Parallel()
 
-	x := argon2.ProvideArgon2Authenticator(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+	x := argon2.NewArgon2Authenticator(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
 
 	T.Run("matching password returns true", func(t *testing.T) {
 		t.Parallel()
@@ -68,12 +68,12 @@ func TestArgon2_PasswordMatches(T *testing.T) {
 	})
 }
 
-func TestProvideArgon2Authenticator(T *testing.T) {
+func TestNewArgon2Authenticator(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		argon2.ProvideArgon2Authenticator(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+		argon2.NewArgon2Authenticator(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
 	})
 }

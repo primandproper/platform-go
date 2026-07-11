@@ -136,8 +136,8 @@ type pubsubConsumerProvider struct {
 	consumerCacheMu sync.RWMutex
 }
 
-// ProvidePubSubConsumerProvider returns a ConsumerProvider for a given address.
-func ProvidePubSubConsumerProvider(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, client *pubsub.Client) messagequeue.ConsumerProvider {
+// NewPubSubConsumerProvider returns a ConsumerProvider for a given address.
+func NewPubSubConsumerProvider(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, client *pubsub.Client) messagequeue.ConsumerProvider {
 	return &pubsubConsumerProvider{
 		logger:          logging.EnsureLogger(logger),
 		tracerProvider:  tracerProvider,
@@ -154,8 +154,8 @@ func (p *pubsubConsumerProvider) Close() {
 	}
 }
 
-// ProvideConsumer returns a pubSubConsumer for a given topic.
-func (p *pubsubConsumerProvider) ProvideConsumer(_ context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
+// NewConsumer returns a pubSubConsumer for a given topic.
+func (p *pubsubConsumerProvider) NewConsumer(_ context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
 	if topic == "" {
 		return nil, messagequeue.ErrEmptyTopicName
 	}

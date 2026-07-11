@@ -65,7 +65,7 @@ func TestPillars_Shutdown(T *testing.T) {
 		ctx := t.Context()
 		cfg := &Config{}
 
-		pillars, err := cfg.ProvidePillars(ctx)
+		pillars, err := cfg.NewPillars(ctx)
 		must.NoError(t, err)
 		must.NotNil(t, pillars)
 
@@ -79,7 +79,7 @@ func TestPillars_Shutdown(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvidePillars(T *testing.T) {
+func TestConfig_NewPillars(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -88,7 +88,7 @@ func TestConfig_ProvidePillars(T *testing.T) {
 		ctx := t.Context()
 		cfg := &Config{}
 
-		pillars, err := cfg.ProvidePillars(ctx)
+		pillars, err := cfg.NewPillars(ctx)
 		must.NoError(t, err)
 		must.NotNil(t, pillars)
 		test.NotNil(t, pillars.Logger)

@@ -44,13 +44,13 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideCache provides a Cache.
-func ProvideCache[T any](ctx context.Context, cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (cache.Cache[T], error) {
+// NewCache provides a Cache.
+func NewCache[T any](ctx context.Context, cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider) (cache.Cache[T], error) {
 	switch strings.TrimSpace(strings.ToLower(cfg.Provider)) {
 	case ProviderMemory:
 		return memory.NewInMemoryCache[T](logger, tracerProvider, metricsProvider)
 	case ProviderRedis:
-		cb, err := cfg.CircuitBreaker.ProvideCircuitBreaker(ctx, logger, metricsProvider)
+		cb, err := cfg.CircuitBreaker.NewCircuitBreaker(ctx, logger, metricsProvider)
 		if err != nil {
 			return nil, errors.Wrap(err, "initializing cache circuit breaker")
 		}

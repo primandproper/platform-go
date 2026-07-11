@@ -143,7 +143,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideFeatureFlagManager(T *testing.T) {
+func TestConfig_NewFeatureFlagManager(T *testing.T) {
 	T.Parallel()
 
 	T.Run("with default/noop provider", func(t *testing.T) {
@@ -153,7 +153,7 @@ func TestConfig_ProvideFeatureFlagManager(T *testing.T) {
 			Provider: "",
 		}
 
-		ffm, err := cfg.ProvideFeatureFlagManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, http.DefaultClient, cbnoop.NewCircuitBreaker())
+		ffm, err := cfg.NewFeatureFlagManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, http.DefaultClient, cbnoop.NewCircuitBreaker())
 		must.NoError(t, err)
 		must.NotNil(t, ffm)
 	})
@@ -165,7 +165,7 @@ func TestConfig_ProvideFeatureFlagManager(T *testing.T) {
 			Provider: "something_unknown",
 		}
 
-		ffm, err := cfg.ProvideFeatureFlagManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, http.DefaultClient, cbnoop.NewCircuitBreaker())
+		ffm, err := cfg.NewFeatureFlagManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, http.DefaultClient, cbnoop.NewCircuitBreaker())
 		must.NoError(t, err)
 		must.NotNil(t, ffm)
 	})
@@ -177,7 +177,7 @@ func TestConfig_ProvideFeatureFlagManager(T *testing.T) {
 			Provider: ProviderLaunchDarkly,
 		}
 
-		ffm, err := cfg.ProvideFeatureFlagManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, http.DefaultClient, cbnoop.NewCircuitBreaker())
+		ffm, err := cfg.NewFeatureFlagManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, http.DefaultClient, cbnoop.NewCircuitBreaker())
 		must.Error(t, err)
 		must.Nil(t, ffm)
 	})
@@ -189,7 +189,7 @@ func TestConfig_ProvideFeatureFlagManager(T *testing.T) {
 			Provider: ProviderPostHog,
 		}
 
-		ffm, err := cfg.ProvideFeatureFlagManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, http.DefaultClient, cbnoop.NewCircuitBreaker())
+		ffm, err := cfg.NewFeatureFlagManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, http.DefaultClient, cbnoop.NewCircuitBreaker())
 		must.Error(t, err)
 		must.Nil(t, ffm)
 	})
@@ -202,24 +202,24 @@ func TestConfig_ProvideFeatureFlagManager(T *testing.T) {
 		}
 
 		// Will fail because LaunchDarkly config is nil, but proves the normalization works
-		ffm, err := cfg.ProvideFeatureFlagManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, http.DefaultClient, cbnoop.NewCircuitBreaker())
+		ffm, err := cfg.NewFeatureFlagManager(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, http.DefaultClient, cbnoop.NewCircuitBreaker())
 		must.Error(t, err)
 		must.Nil(t, ffm)
 	})
 }
 
-// TestProvideFeatureFlagManager is not parallel because it uses the circuit breaker subsystem
+// TestNewFeatureFlagManager is not parallel because it uses the circuit breaker subsystem
 // which has a known race condition in the core library.
 //
 //nolint:paralleltest // see comment above
-func TestProvideFeatureFlagManager(T *testing.T) {
+func TestNewFeatureFlagManager(T *testing.T) {
 	T.Run("with noop provider", func(t *testing.T) {
 		ctx := t.Context()
 		cfg := &Config{
 			Provider: "",
 		}
 
-		ffm, err := ProvideFeatureFlagManager(ctx, cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider(), http.DefaultClient)
+		ffm, err := NewFeatureFlagManager(ctx, cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider(), http.DefaultClient)
 		must.NoError(t, err)
 		must.NotNil(t, ffm)
 	})
@@ -241,7 +241,7 @@ func TestProvideFeatureFlagManager(T *testing.T) {
 			CircuitBreaker: cbCfg,
 		}
 
-		ffm, err := ProvideFeatureFlagManager(ctx, cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, http.DefaultClient)
+		ffm, err := NewFeatureFlagManager(ctx, cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp, http.DefaultClient)
 		must.Error(t, err)
 		must.Nil(t, ffm)
 

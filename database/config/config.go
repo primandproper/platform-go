@@ -344,11 +344,11 @@ func (x *ConnectionDetails) LoadFromURL(u string) error {
 	return nil
 }
 
-// ProvideDatabase creates a database client based on the configured provider
+// NewDatabase creates a database client based on the configured provider
 // and optionally runs migrations if RunMigrations is true and a migrator is provided.
 // If metricsProvider is non-nil and cfg.EnableDatabaseMetrics is true, the client will emit db.sql.* metrics
 // (e.g. db_sql_latency_milliseconds). DB metrics are off by default to avoid high cardinality.
-func ProvideDatabase(
+func NewDatabase(
 	ctx context.Context,
 	logger logging.Logger,
 	tracerProvider tracing.TracerProvider,
@@ -363,11 +363,11 @@ func ProvideDatabase(
 
 	switch strings.TrimSpace(strings.ToLower(cfg.Provider)) {
 	case ProviderPostgres:
-		client, err = postgres.ProvideDatabaseClient(ctx, logger, tracerProvider, cfg, dbMetricsProvider)
+		client, err = postgres.NewDatabaseClient(ctx, logger, tracerProvider, cfg, dbMetricsProvider)
 	case ProviderMySQL:
-		client, err = mysql.ProvideDatabaseClient(ctx, logger, tracerProvider, cfg, dbMetricsProvider)
+		client, err = mysql.NewDatabaseClient(ctx, logger, tracerProvider, cfg, dbMetricsProvider)
 	case ProviderSQLite:
-		client, err = sqlite.ProvideDatabaseClient(ctx, logger, tracerProvider, cfg, dbMetricsProvider)
+		client, err = sqlite.NewDatabaseClient(ctx, logger, tracerProvider, cfg, dbMetricsProvider)
 	default:
 		return nil, errors.Newf("invalid database provider: %q", cfg.Provider)
 	}

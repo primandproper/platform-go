@@ -52,17 +52,17 @@ type (
 	}
 )
 
-// ProvideStripePaymentManager builds a Stripe-backed PaymentManager. When cfg.APIKey is set, an API
+// NewStripePaymentManager builds a Stripe-backed PaymentManager. When cfg.APIKey is set, an API
 // client is initialized for outbound operations; otherwise only the inbound webhook path works.
 // handler is optional and invoked for every verified event.
-func ProvideStripePaymentManager(logger logging.Logger, tracerProvider tracing.TracerProvider, cfg *Config, handler EventHandler) (capitalism.PaymentManager, error) {
+func NewStripePaymentManager(logger logging.Logger, tracerProvider tracing.TracerProvider, cfg *Config, handler EventHandler) (capitalism.PaymentManager, error) {
 	if cfg == nil {
 		return nil, ErrNilConfig
 	}
 
 	m := &stripePaymentManager{
 		webhookSecret:  cfg.WebhookSecret,
-		encoderDecoder: encoding.ProvideServerEncoderDecoder(logger, tracerProvider, encoding.ContentTypeJSON),
+		encoderDecoder: encoding.NewServerEncoderDecoder(logger, tracerProvider, encoding.ContentTypeJSON),
 		o11y:           observability.NewObserver(implementationName, logger, tracerProvider),
 		handler:        handler,
 	}

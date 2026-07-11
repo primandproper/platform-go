@@ -108,14 +108,14 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	return nil
 }
 
-// ProvideCollector provides a collector.
-func (cfg *SourceConfig) ProvideCollector(
+// NewCollector provides a collector.
+func (cfg *SourceConfig) NewCollector(
 	ctx context.Context,
 	logger logging.Logger,
 	tracerProvider tracing.TracerProvider,
 	metricsProvider metrics.Provider,
 ) (analytics.EventReporter, error) {
-	cb, err := cfg.CircuitBreaker.ProvideCircuitBreaker(ctx, logger, metricsProvider)
+	cb, err := cfg.CircuitBreaker.NewCircuitBreaker(ctx, logger, metricsProvider)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not create analytics circuit breaker")
 	}

@@ -48,7 +48,7 @@ func TestNewIndexScheduler(T *testing.T) {
 		// Mock message queue provider
 		publisher := &mockpublishers.PublisherMock{}
 		messageQueueProvider := &mockpublishers.PublisherProviderMock{
-			ProvidePublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
+			NewPublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
 				return publisher, nil
 			},
 		}
@@ -66,8 +66,8 @@ func TestNewIndexScheduler(T *testing.T) {
 		test.MapLen(t, 1, scheduler.indexFunctions)
 
 		test.SliceLen(t, 1, metricsProvider.NewInt64CounterCalls())
-		test.SliceLen(t, 1, messageQueueProvider.ProvidePublisherCalls())
-		test.EqOp(t, testQueuesConfig.SearchIndexRequestsTopicName, messageQueueProvider.ProvidePublisherCalls()[0].Topic)
+		test.SliceLen(t, 1, messageQueueProvider.NewPublisherCalls())
+		test.EqOp(t, testQueuesConfig.SearchIndexRequestsTopicName, messageQueueProvider.NewPublisherCalls()[0].Topic)
 	})
 
 	T.Run("with nil index functions", func(t *testing.T) {
@@ -91,7 +91,7 @@ func TestNewIndexScheduler(T *testing.T) {
 		// Mock message queue provider
 		publisher := &mockpublishers.PublisherMock{}
 		messageQueueProvider := &mockpublishers.PublisherProviderMock{
-			ProvidePublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
+			NewPublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
 				return publisher, nil
 			},
 		}
@@ -104,7 +104,7 @@ func TestNewIndexScheduler(T *testing.T) {
 		test.MapLen(t, 0, scheduler.indexFunctions)
 
 		test.SliceLen(t, 1, metricsProvider.NewInt64CounterCalls())
-		test.SliceLen(t, 1, messageQueueProvider.ProvidePublisherCalls())
+		test.SliceLen(t, 1, messageQueueProvider.NewPublisherCalls())
 	})
 
 	T.Run("metrics provider error", func(t *testing.T) {
@@ -129,7 +129,7 @@ func TestNewIndexScheduler(T *testing.T) {
 		test.StrContains(t, err.Error(), "metrics error")
 
 		test.SliceLen(t, 1, metricsProvider.NewInt64CounterCalls())
-		test.SliceLen(t, 0, messageQueueProvider.ProvidePublisherCalls())
+		test.SliceLen(t, 0, messageQueueProvider.NewPublisherCalls())
 	})
 
 	T.Run("message queue provider error", func(t *testing.T) {
@@ -152,7 +152,7 @@ func TestNewIndexScheduler(T *testing.T) {
 
 		// Mock message queue provider to return error - need to return a valid interface and error
 		messageQueueProvider := &mockpublishers.PublisherProviderMock{
-			ProvidePublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
+			NewPublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
 				return &mockpublishers.PublisherMock{}, errors.New("message queue error")
 			},
 		}
@@ -163,7 +163,7 @@ func TestNewIndexScheduler(T *testing.T) {
 		test.StrContains(t, err.Error(), "message queue error")
 
 		test.SliceLen(t, 1, metricsProvider.NewInt64CounterCalls())
-		test.SliceLen(t, 1, messageQueueProvider.ProvidePublisherCalls())
+		test.SliceLen(t, 1, messageQueueProvider.NewPublisherCalls())
 	})
 }
 
@@ -198,7 +198,7 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 			},
 		}
 		messageQueueProvider := &mockpublishers.PublisherProviderMock{
-			ProvidePublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
+			NewPublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
 				return publisher, nil
 			},
 		}
@@ -253,7 +253,7 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 		// Mock message queue provider - no Publish calls expected
 		publisher := &mockpublishers.PublisherMock{}
 		messageQueueProvider := &mockpublishers.PublisherProviderMock{
-			ProvidePublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
+			NewPublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
 				return publisher, nil
 			},
 		}
@@ -301,7 +301,7 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 		// Mock message queue provider - no Publish calls expected
 		publisher := &mockpublishers.PublisherMock{}
 		messageQueueProvider := &mockpublishers.PublisherProviderMock{
-			ProvidePublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
+			NewPublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
 				return publisher, nil
 			},
 		}
@@ -344,7 +344,7 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 		// Mock message queue provider - no Publish calls expected
 		publisher := &mockpublishers.PublisherMock{}
 		messageQueueProvider := &mockpublishers.PublisherProviderMock{
-			ProvidePublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
+			NewPublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
 				return publisher, nil
 			},
 		}
@@ -396,7 +396,7 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 		// Mock message queue provider - no Publish calls expected
 		publisher := &mockpublishers.PublisherMock{}
 		messageQueueProvider := &mockpublishers.PublisherProviderMock{
-			ProvidePublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
+			NewPublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
 				return publisher, nil
 			},
 		}
@@ -448,7 +448,7 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 			},
 		}
 		messageQueueProvider := &mockpublishers.PublisherProviderMock{
-			ProvidePublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
+			NewPublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
 				return publisher, nil
 			},
 		}
@@ -500,7 +500,7 @@ func TestIndexScheduler_IndexTypes(T *testing.T) {
 			},
 		}
 		messageQueueProvider := &mockpublishers.PublisherProviderMock{
-			ProvidePublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
+			NewPublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
 				return publisher, nil
 			},
 		}

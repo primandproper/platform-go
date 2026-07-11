@@ -21,7 +21,7 @@ type (
 	PublisherProvider interface {
 		Close()
 		Ping(ctx context.Context) error
-		ProvidePublisher(ctx context.Context, topic string) (Publisher, error)
+		NewPublisher(ctx context.Context, topic string) (Publisher, error)
 	}
 )
 

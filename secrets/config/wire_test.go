@@ -8,14 +8,14 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-func TestProvideSecretSourceFromConfig(T *testing.T) {
+func TestNewSecretSourceFromConfig(T *testing.T) {
 	T.Parallel()
 
 	T.Run("nil config returns env source", func(t *testing.T) {
 		t.Parallel()
 
 		var cfg *Config
-		source, err := ProvideSecretSourceFromConfig(context.Background(), cfg, nil, nil, nil)
+		source, err := NewSecretSource(context.Background(), cfg, nil, nil, nil)
 		must.NoError(t, err)
 		must.NotNil(t, source)
 
@@ -33,7 +33,7 @@ func TestProvideSecretSourceFromConfig(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{Provider: ""}
-		source, err := ProvideSecretSourceFromConfig(context.Background(), cfg, nil, nil, nil)
+		source, err := NewSecretSource(context.Background(), cfg, nil, nil, nil)
 		must.NoError(t, err)
 		must.NotNil(t, source)
 
@@ -51,7 +51,7 @@ func TestProvideSecretSourceFromConfig(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{Provider: ProviderNoop}
-		source, err := ProvideSecretSourceFromConfig(context.Background(), cfg, nil, nil, nil)
+		source, err := NewSecretSource(context.Background(), cfg, nil, nil, nil)
 		must.NoError(t, err)
 		must.NotNil(t, source)
 
@@ -64,7 +64,7 @@ func TestProvideSecretSourceFromConfig(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{Provider: ProviderEnv}
-		source, err := ProvideSecretSourceFromConfig(context.Background(), cfg, nil, nil, nil)
+		source, err := NewSecretSource(context.Background(), cfg, nil, nil, nil)
 		must.NoError(t, err)
 		must.NotNil(t, source)
 
@@ -82,7 +82,7 @@ func TestProvideSecretSourceFromConfig(T *testing.T) {
 		t.Parallel()
 
 		cfg := &Config{Provider: "vault"}
-		source, err := ProvideSecretSourceFromConfig(context.Background(), cfg, nil, nil, nil)
+		source, err := NewSecretSource(context.Background(), cfg, nil, nil, nil)
 		must.Error(t, err)
 		must.Nil(t, source)
 		must.StrContains(t, err.Error(), "provide secret source")

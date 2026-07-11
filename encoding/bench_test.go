@@ -14,7 +14,7 @@ type benchPayload struct {
 
 func BenchmarkServerEncoderDecoder(b *testing.B) {
 	ctx := b.Context()
-	ed := ProvideServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON)
+	ed := NewServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON)
 
 	in := &benchPayload{Name: "benchmark", ID: 42}
 	encoded := ed.MustEncodeJSON(ctx, in)

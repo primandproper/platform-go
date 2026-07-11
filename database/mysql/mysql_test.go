@@ -182,7 +182,7 @@ func TestQuerier_IsReady(T *testing.T) {
 	})
 }
 
-func TestProvideDatabaseClient(T *testing.T) {
+func TestNewDatabaseClient(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -195,7 +195,7 @@ func TestProvideDatabaseClient(T *testing.T) {
 			maxPingAttempts:  1,
 		}
 
-		actual, err := ProvideDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, nil)
+		actual, err := NewDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, nil)
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -207,7 +207,7 @@ func TestProvideDatabaseClient(T *testing.T) {
 
 		exampleConfig := &testClientConfig{}
 
-		actual, err := ProvideDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, nil)
+		actual, err := NewDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, nil)
 		test.Nil(t, actual)
 		test.Error(t, err)
 	})
@@ -222,7 +222,7 @@ func TestProvideDatabaseClient(T *testing.T) {
 			maxPingAttempts:      1,
 		}
 
-		actual, err := ProvideDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, nil)
+		actual, err := NewDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, nil)
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -237,7 +237,7 @@ func TestProvideDatabaseClient(T *testing.T) {
 			maxPingAttempts:       1,
 		}
 
-		actual, err := ProvideDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, nil)
+		actual, err := NewDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, nil)
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -252,7 +252,7 @@ func TestProvideDatabaseClient(T *testing.T) {
 			maxPingAttempts:  1,
 		}
 
-		actual, err := ProvideDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, metricsnoop.NewMetricsProvider())
+		actual, err := NewDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, metricsnoop.NewMetricsProvider())
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})
@@ -267,7 +267,7 @@ func TestProvideDatabaseClient(T *testing.T) {
 			maxPingAttempts:      1,
 		}
 
-		actual, err := ProvideDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, metricsnoop.NewMetricsProvider())
+		actual, err := NewDatabaseClient(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), exampleConfig, metricsnoop.NewMetricsProvider())
 		test.NotNil(t, actual)
 		test.NoError(t, err)
 	})

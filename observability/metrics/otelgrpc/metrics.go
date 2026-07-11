@@ -98,7 +98,7 @@ func setupMetricsProvider(ctx context.Context, logger logging.Logger, serviceNam
 	return meterProvider, meterProvider.Shutdown, nil
 }
 
-func ProvideMetricsProvider(ctx context.Context, logger logging.Logger, serviceName string, cfg *Config) (metrics.Provider, error) {
+func NewMetricsProvider(ctx context.Context, logger logging.Logger, serviceName string, cfg *Config) (metrics.Provider, error) {
 	if cfg == nil {
 		return nil, ErrNilConfig
 	}

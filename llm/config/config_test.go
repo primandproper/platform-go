@@ -106,7 +106,7 @@ func TestConfig_envTags(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideLLMProvider(T *testing.T) {
+func TestConfig_NewLLMProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("empty provider falls back to noop", func(t *testing.T) {
@@ -115,7 +115,7 @@ func TestConfig_ProvideLLMProvider(T *testing.T) {
 		ctx := t.Context()
 		cfg := &Config{Provider: ""}
 
-		provider, err := cfg.ProvideLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		provider, err := cfg.NewLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		must.NoError(t, err)
 		must.NotNil(t, provider)
 	})
@@ -126,7 +126,7 @@ func TestConfig_ProvideLLMProvider(T *testing.T) {
 		ctx := t.Context()
 		cfg := &Config{Provider: "unknown"}
 
-		provider, err := cfg.ProvideLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		provider, err := cfg.NewLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		must.NoError(t, err)
 		must.NotNil(t, provider)
 	})
@@ -142,7 +142,7 @@ func TestConfig_ProvideLLMProvider(T *testing.T) {
 			},
 		}
 
-		provider, err := cfg.ProvideLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		provider, err := cfg.NewLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		must.NoError(t, err)
 		must.NotNil(t, provider)
 	})
@@ -158,7 +158,7 @@ func TestConfig_ProvideLLMProvider(T *testing.T) {
 			},
 		}
 
-		provider, err := cfg.ProvideLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		provider, err := cfg.NewLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		must.NoError(t, err)
 		must.NotNil(t, provider)
 	})
@@ -180,7 +180,7 @@ func TestConfig_ProvideLLMProvider(T *testing.T) {
 			},
 		}
 
-		provider, err := cfg.ProvideLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp)
+		provider, err := cfg.NewLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp)
 		test.Nil(t, provider)
 		test.Error(t, err)
 
@@ -204,7 +204,7 @@ func TestConfig_ProvideLLMProvider(T *testing.T) {
 			},
 		}
 
-		provider, err := cfg.ProvideLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp)
+		provider, err := cfg.NewLLMProvider(ctx, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), mp)
 		test.Nil(t, provider)
 		test.Error(t, err)
 
@@ -212,7 +212,7 @@ func TestConfig_ProvideLLMProvider(T *testing.T) {
 	})
 }
 
-func TestProvideLLMProvider(T *testing.T) {
+func TestNewLLMProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -220,7 +220,7 @@ func TestProvideLLMProvider(T *testing.T) {
 
 		cfg := &Config{}
 
-		provider, err := ProvideLLMProvider(t.Context(), cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
+		provider, err := NewLLMProvider(t.Context(), cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil)
 		must.NoError(t, err)
 		test.NotNil(t, provider)
 	})

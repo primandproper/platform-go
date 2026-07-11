@@ -37,7 +37,7 @@ type Config struct {
 var _ validation.ValidatableWithContext = (*Config)(nil)
 
 // ValidateWithContext validates a Config struct. Provider is canonicalized (trim + lowercase)
-// first so validation matches the same normalization ProvideIndex dispatches on.
+// first so validation matches the same normalization NewIndex dispatches on.
 func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	cfg.Provider = strings.TrimSpace(strings.ToLower(cfg.Provider))
 
@@ -48,8 +48,8 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideIndex validates a Config struct.
-func ProvideIndex[T any](
+// NewIndex validates a Config struct.
+func NewIndex[T any](
 	ctx context.Context,
 	logger logging.Logger,
 	tracerProvider tracing.TracerProvider,
@@ -61,16 +61,16 @@ func ProvideIndex[T any](
 		return nil, errors.ErrNilInputParameter
 	}
 
-	circuitBreaker, err := circuitbreakingcfg.ProvideCircuitBreakerFromConfig(ctx, &cfg.CircuitBreaker, logger, metricsProvider)
+	circuitBreaker, err := circuitbreakingcfg.NewCircuitBreaker(ctx, &cfg.CircuitBreaker, logger, metricsProvider)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to initialize text search circuit breaker")
 	}
 
 	switch strings.TrimSpace(strings.ToLower(cfg.Provider)) {
 	case ElasticsearchProvider:
-		return elasticsearch.ProvideIndexManager[T](ctx, logger, tracerProvider, cfg.Elasticsearch, indexName, circuitBreaker)
+		return elasticsearch.NewIndexManager[T](ctx, logger, tracerProvider, cfg.Elasticsearch, indexName, circuitBreaker)
 	case AlgoliaProvider:
-		return algolia.ProvideIndexManager[T](logger, tracerProvider, cfg.Algolia, indexName, circuitBreaker)
+		return algolia.NewIndexManager[T](logger, tracerProvider, cfg.Algolia, indexName, circuitBreaker)
 	default:
 		return noop.NewIndexManager[T](), nil
 	}

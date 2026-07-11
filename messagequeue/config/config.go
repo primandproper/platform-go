@@ -87,19 +87,19 @@ func cleanString(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
-// ProvideConsumerProvider provides a ConsumerProvider.
-func ProvideConsumerProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, c *Config) (messagequeue.ConsumerProvider, error) {
+// NewConsumerProvider provides a ConsumerProvider.
+func NewConsumerProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, c *Config) (messagequeue.ConsumerProvider, error) {
 	if c == nil {
 		return nil, ErrNilConfig
 	}
 
 	switch cleanString(string(c.Consumer.Provider)) {
 	case string(ProviderRedis):
-		return redis.ProvideRedisConsumerProvider(logger, tracerProvider, metricsProvider, c.Consumer.Redis), nil
+		return redis.NewRedisConsumerProvider(logger, tracerProvider, metricsProvider, c.Consumer.Redis), nil
 	case string(ProviderSQS):
-		return sqs.ProvideSQSConsumerProvider(ctx, logger, tracerProvider, metricsProvider, c.Consumer.SQS)
+		return sqs.NewSQSConsumerProvider(ctx, logger, tracerProvider, metricsProvider, c.Consumer.SQS)
 	case string(ProviderKafka):
-		return kafka.ProvideKafkaConsumerProvider(logger, tracerProvider, metricsProvider, c.Consumer.Kafka), nil
+		return kafka.NewKafkaConsumerProvider(logger, tracerProvider, metricsProvider, c.Consumer.Kafka), nil
 	case string(ProviderPubSub):
 		client, err := ps.NewClientWithConfig(ctx, c.Consumer.PubSub.ProjectID, &ps.ClientConfig{
 			EnableOpenTelemetryTracing: true,
@@ -108,26 +108,26 @@ func ProvideConsumerProvider(ctx context.Context, logger logging.Logger, tracerP
 			return nil, errors.Wrap(err, "establishing PubSub client")
 		}
 
-		return pubsub.ProvidePubSubConsumerProvider(logger, tracerProvider, metricsProvider, client), nil
+		return pubsub.NewPubSubConsumerProvider(logger, tracerProvider, metricsProvider, client), nil
 	default:
 		logger.Info("Using noop consumer provider")
 		return noop.NewConsumerProvider(), nil
 	}
 }
 
-// ProvidePublisherProvider provides a PublisherProvider.
-func ProvidePublisherProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, c *Config) (messagequeue.PublisherProvider, error) {
+// NewPublisherProvider provides a PublisherProvider.
+func NewPublisherProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, c *Config) (messagequeue.PublisherProvider, error) {
 	if c == nil {
 		return nil, ErrNilConfig
 	}
 
 	switch cleanString(string(c.Publisher.Provider)) {
 	case string(ProviderRedis):
-		return redis.ProvideRedisPublisherProvider(logger, tracerProvider, metricsProvider, c.Publisher.Redis), nil
+		return redis.NewRedisPublisherProvider(logger, tracerProvider, metricsProvider, c.Publisher.Redis), nil
 	case string(ProviderSQS):
-		return sqs.ProvideSQSPublisherProvider(ctx, logger, tracerProvider, metricsProvider, c.Publisher.SQS)
+		return sqs.NewSQSPublisherProvider(ctx, logger, tracerProvider, metricsProvider, c.Publisher.SQS)
 	case string(ProviderKafka):
-		return kafka.ProvideKafkaPublisherProvider(logger, tracerProvider, metricsProvider, c.Publisher.Kafka), nil
+		return kafka.NewKafkaPublisherProvider(logger, tracerProvider, metricsProvider, c.Publisher.Kafka), nil
 	case string(ProviderPubSub):
 		client, err := ps.NewClientWithConfig(ctx, c.Publisher.PubSub.ProjectID, &ps.ClientConfig{
 			EnableOpenTelemetryTracing: true,
@@ -136,7 +136,7 @@ func ProvidePublisherProvider(ctx context.Context, logger logging.Logger, tracer
 			return nil, errors.Wrap(err, "establishing PubSub client")
 		}
 
-		return pubsub.ProvidePubSubPublisherProvider(logger, tracerProvider, metricsProvider, client, c.Publisher.PubSub.ProjectID), nil
+		return pubsub.NewPubSubPublisherProvider(logger, tracerProvider, metricsProvider, client, c.Publisher.PubSub.ProjectID), nil
 	default:
 		logger.Info("Using noop publisher provider")
 		return noop.NewPublisherProvider(), nil

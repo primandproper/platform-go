@@ -15,7 +15,7 @@ import (
 func RegisterClientConfig(i do.Injector) {
 	do.Provide[database.ClientConfig](i, func(i do.Injector) (database.ClientConfig, error) {
 		cfg := do.MustInvoke[*Config](i)
-		return ProvideClientConfig(*cfg), nil
+		return NewClientConfig(*cfg), nil
 	})
 }
 
@@ -38,7 +38,7 @@ func RegisterDatabase(i do.Injector) {
 			migrator = m
 		}
 
-		return ProvideDatabase(
+		return NewDatabase(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[logging.Logger](i),
 			do.MustInvoke[tracing.TracerProvider](i),

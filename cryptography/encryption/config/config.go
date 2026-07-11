@@ -37,8 +37,8 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// ProvideEncryptorDecryptor provides an EncryptorDecryptor based on the configured provider.
-func ProvideEncryptorDecryptor(
+// NewEncryptorDecryptor provides an EncryptorDecryptor based on the configured provider.
+func NewEncryptorDecryptor(
 	cfg *Config,
 	tracerProvider tracing.TracerProvider,
 	logger logging.Logger,

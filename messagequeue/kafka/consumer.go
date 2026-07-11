@@ -162,8 +162,8 @@ type consumerProvider struct {
 
 var _ messagequeue.ConsumerProvider = (*consumerProvider)(nil)
 
-// ProvideKafkaConsumerProvider returns a ConsumerProvider backed by Kafka.
-func ProvideKafkaConsumerProvider(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cfg Config) messagequeue.ConsumerProvider {
+// NewKafkaConsumerProvider returns a ConsumerProvider backed by Kafka.
+func NewKafkaConsumerProvider(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cfg Config) messagequeue.ConsumerProvider {
 	logger.WithValue("brokers", cfg.Brokers).WithValue("group_id", cfg.GroupID).Info("setting up kafka consumer")
 
 	return &consumerProvider{
@@ -180,8 +180,8 @@ func ProvideKafkaConsumerProvider(logger logging.Logger, tracerProvider tracing.
 // its Consume loop exits, so the provider holds no independent resource to release.
 func (p *consumerProvider) Close() {}
 
-// ProvideConsumer returns a Consumer for the given topic.
-func (p *consumerProvider) ProvideConsumer(_ context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
+// NewConsumer returns a Consumer for the given topic.
+func (p *consumerProvider) NewConsumer(_ context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
 	if topic == "" {
 		return nil, messagequeue.ErrEmptyTopicName
 	}

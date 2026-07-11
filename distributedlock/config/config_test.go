@@ -96,12 +96,12 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestProvideLocker(T *testing.T) {
+func TestNewLocker(T *testing.T) {
 	T.Parallel()
 
 	T.Run("nil config", func(t *testing.T) {
 		t.Parallel()
-		_, err := ProvideLocker(
+		_, err := NewLocker(
 			t.Context(),
 			nil,
 			loggingnoop.NewLogger(),
@@ -114,7 +114,7 @@ func TestProvideLocker(T *testing.T) {
 
 	T.Run("memory provider returns a working locker", func(t *testing.T) {
 		t.Parallel()
-		l, err := ProvideLocker(
+		l, err := NewLocker(
 			t.Context(),
 			&Config{Provider: MemoryProvider},
 			loggingnoop.NewLogger(),
@@ -131,7 +131,7 @@ func TestProvideLocker(T *testing.T) {
 
 	T.Run("noop provider", func(t *testing.T) {
 		t.Parallel()
-		l, err := ProvideLocker(
+		l, err := NewLocker(
 			t.Context(),
 			&Config{Provider: NoopProvider},
 			loggingnoop.NewLogger(),
@@ -145,7 +145,7 @@ func TestProvideLocker(T *testing.T) {
 
 	T.Run("unknown provider returns noop", func(t *testing.T) {
 		t.Parallel()
-		l, err := ProvideLocker(
+		l, err := NewLocker(
 			t.Context(),
 			&Config{Provider: "unknown"},
 			loggingnoop.NewLogger(),
@@ -159,7 +159,7 @@ func TestProvideLocker(T *testing.T) {
 
 	T.Run("empty provider returns noop", func(t *testing.T) {
 		t.Parallel()
-		l, err := ProvideLocker(
+		l, err := NewLocker(
 			t.Context(),
 			&Config{},
 			loggingnoop.NewLogger(),
@@ -173,7 +173,7 @@ func TestProvideLocker(T *testing.T) {
 
 	T.Run("provider with whitespace returns noop", func(t *testing.T) {
 		t.Parallel()
-		l, err := ProvideLocker(
+		l, err := NewLocker(
 			t.Context(),
 			&Config{Provider: "   "},
 			loggingnoop.NewLogger(),
@@ -187,7 +187,7 @@ func TestProvideLocker(T *testing.T) {
 
 	T.Run("redis provider", func(t *testing.T) {
 		t.Parallel()
-		l, err := ProvideLocker(
+		l, err := NewLocker(
 			t.Context(),
 			&Config{
 				Provider: RedisProvider,
@@ -207,7 +207,7 @@ func TestProvideLocker(T *testing.T) {
 
 	T.Run("postgres provider", func(t *testing.T) {
 		t.Parallel()
-		l, err := ProvideLocker(
+		l, err := NewLocker(
 			t.Context(),
 			&Config{
 				Provider: PostgresProvider,
@@ -240,7 +240,7 @@ func TestProvideLocker(T *testing.T) {
 			},
 		}
 
-		l, err := ProvideLocker(
+		l, err := NewLocker(
 			t.Context(),
 			cfg,
 			loggingnoop.NewLogger(),

@@ -34,8 +34,8 @@ type (
 	}
 )
 
-// ProvideTracerProvider provides a TracerProvider.
-func (c *Config) ProvideTracerProvider(ctx context.Context, l logging.Logger) (tracing.TracerProvider, error) {
+// NewTracerProvider provides a TracerProvider.
+func (c *Config) NewTracerProvider(ctx context.Context, l logging.Logger) (tracing.TracerProvider, error) {
 	logger := l.WithValue("tracing_provider", c.Provider)
 
 	p := strings.TrimSpace(strings.ToLower(c.Provider))
@@ -63,9 +63,9 @@ func (c *Config) ProvideTracerProvider(ctx context.Context, l logging.Logger) (t
 	}
 }
 
-// ProvideTracer provides an instrumentation handler.
-func (c *Config) ProvideTracer(ctx context.Context, l logging.Logger, name string) (tracing.Tracer, error) {
-	tp, err := c.ProvideTracerProvider(ctx, l)
+// NewTracer provides an instrumentation handler.
+func (c *Config) NewTracer(ctx context.Context, l logging.Logger, name string) (tracing.Tracer, error) {
+	tp, err := c.NewTracerProvider(ctx, l)
 	if err != nil {
 		return nil, errors.Wrap(err, "configuring tracing provider")
 	}

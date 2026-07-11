@@ -478,7 +478,7 @@ func Test_kafkaConsumer_Consume(T *testing.T) {
 	})
 }
 
-func TestProvideKafkaConsumerProvider(T *testing.T) {
+func TestNewKafkaConsumerProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -489,7 +489,7 @@ func TestProvideKafkaConsumerProvider(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		actual := ProvideKafkaConsumerProvider(
+		actual := NewKafkaConsumerProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			nil,
@@ -499,7 +499,7 @@ func TestProvideKafkaConsumerProvider(T *testing.T) {
 	})
 }
 
-func Test_consumerProvider_ProvideConsumer(T *testing.T) {
+func Test_consumerProvider_NewConsumer(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -512,7 +512,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaConsumerProvider(
+		provider := NewKafkaConsumerProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			nil,
@@ -522,7 +522,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 
 		hf := func(context.Context, []byte) error { return nil }
 
-		actual, err := provider.ProvideConsumer(ctx, t.Name(), hf)
+		actual, err := provider.NewConsumer(ctx, t.Name(), hf)
 		test.NoError(t, err)
 		test.NotNil(t, actual)
 	})
@@ -537,7 +537,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaConsumerProvider(
+		provider := NewKafkaConsumerProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			nil,
@@ -545,7 +545,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 		)
 		must.NotNil(t, provider)
 
-		actual, err := provider.ProvideConsumer(ctx, "", nil)
+		actual, err := provider.NewConsumer(ctx, "", nil)
 		test.Error(t, err)
 		test.ErrorIs(t, err, messagequeue.ErrEmptyTopicName)
 		test.Nil(t, actual)
@@ -567,7 +567,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaConsumerProvider(
+		provider := NewKafkaConsumerProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			mp,
@@ -577,7 +577,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 
 		hf := func(context.Context, []byte) error { return nil }
 
-		actual, err := provider.ProvideConsumer(ctx, t.Name(), hf)
+		actual, err := provider.NewConsumer(ctx, t.Name(), hf)
 		test.Error(t, err)
 		test.Nil(t, actual)
 
@@ -594,7 +594,7 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 			GroupID: "test-group",
 		}
 
-		provider := ProvideKafkaConsumerProvider(
+		provider := NewKafkaConsumerProvider(
 			loggingnoop.NewLogger(),
 			tracingnoop.NewTracerProvider(),
 			nil,
@@ -604,11 +604,11 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 
 		hf := func(context.Context, []byte) error { return nil }
 
-		first, err := provider.ProvideConsumer(ctx, t.Name(), hf)
+		first, err := provider.NewConsumer(ctx, t.Name(), hf)
 		test.NoError(t, err)
 		test.NotNil(t, first)
 
-		second, err := provider.ProvideConsumer(ctx, t.Name(), hf)
+		second, err := provider.NewConsumer(ctx, t.Name(), hf)
 		test.NoError(t, err)
 		test.NotNil(t, second)
 

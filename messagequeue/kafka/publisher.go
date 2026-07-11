@@ -110,7 +110,7 @@ func provideKafkaPublisher(logger logging.Logger, tracerProvider tracing.TracerP
 
 	return &kafkaPublisher{
 		writer:            writer,
-		encoder:           encoding.ProvideClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
+		encoder:           encoding.NewClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
 		o11y:              observability.NewObserver(fmt.Sprintf("%s_publisher", topic), logger, tracerProvider),
 		topic:             topic,
 		publishedCounter:  publishedCounter,
@@ -130,8 +130,8 @@ type publisherProvider struct {
 
 var _ messagequeue.PublisherProvider = (*publisherProvider)(nil)
 
-// ProvideKafkaPublisherProvider returns a PublisherProvider backed by Kafka.
-func ProvideKafkaPublisherProvider(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cfg Config) messagequeue.PublisherProvider {
+// NewKafkaPublisherProvider returns a PublisherProvider backed by Kafka.
+func NewKafkaPublisherProvider(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cfg Config) messagequeue.PublisherProvider {
 	logger.WithValue("brokers", cfg.Brokers).Info("setting up kafka publisher")
 
 	return &publisherProvider{
@@ -143,8 +143,8 @@ func ProvideKafkaPublisherProvider(logger logging.Logger, tracerProvider tracing
 	}
 }
 
-// ProvidePublisher returns a Publisher for the given topic.
-func (p *publisherProvider) ProvidePublisher(_ context.Context, topic string) (messagequeue.Publisher, error) {
+// NewPublisher returns a Publisher for the given topic.
+func (p *publisherProvider) NewPublisher(_ context.Context, topic string) (messagequeue.Publisher, error) {
 	if topic == "" {
 		return nil, messagequeue.ErrEmptyTopicName
 	}

@@ -34,7 +34,7 @@ func TestRegisterIndexScheduler(T *testing.T) {
 
 		publisher := &mockpublishers.PublisherMock{}
 		messageQueueProvider := &mockpublishers.PublisherProviderMock{
-			ProvidePublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
+			NewPublisherFunc: func(_ context.Context, _ string) (messagequeue.Publisher, error) {
 				return publisher, nil
 			},
 		}
@@ -59,7 +59,7 @@ func TestRegisterIndexScheduler(T *testing.T) {
 		test.NotNil(t, scheduler)
 
 		test.SliceLen(t, 1, metricsProvider.NewInt64CounterCalls())
-		test.SliceLen(t, 1, messageQueueProvider.ProvidePublisherCalls())
-		test.EqOp(t, "test_topic", messageQueueProvider.ProvidePublisherCalls()[0].Topic)
+		test.SliceLen(t, 1, messageQueueProvider.NewPublisherCalls())
+		test.EqOp(t, "test_topic", messageQueueProvider.NewPublisherCalls()[0].Topic)
 	})
 }

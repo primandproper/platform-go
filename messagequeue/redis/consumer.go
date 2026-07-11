@@ -134,8 +134,8 @@ type consumerProvider struct {
 	consumerCacheMu sync.RWMutex
 }
 
-// ProvideRedisConsumerProvider returns a ConsumerProvider for a given address.
-func ProvideRedisConsumerProvider(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cfg Config) messagequeue.ConsumerProvider {
+// NewRedisConsumerProvider returns a ConsumerProvider for a given address.
+func NewRedisConsumerProvider(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, cfg Config) messagequeue.ConsumerProvider {
 	o11y := observability.NewObserver("redis_consumer_provider", logger, tracerProvider)
 	o11y.Logger().WithValue("queue_addresses", cfg.QueueAddresses).
 		WithValue(keys.UsernameKey, cfg.Username).
@@ -175,8 +175,8 @@ func (p *consumerProvider) Close() {
 	}
 }
 
-// ProvideConsumer returns a Consumer for a given topic.
-func (p *consumerProvider) ProvideConsumer(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
+// NewConsumer returns a Consumer for a given topic.
+func (p *consumerProvider) NewConsumer(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
 	logger := p.o11y.Logger().WithValue(keys.TopicKey, topic)
 
 	if topic == "" {

@@ -63,13 +63,13 @@ func TestConfig_BuildClient(T *testing.T) {
 	})
 }
 
-func TestProvideHTTPClient(T *testing.T) {
+func TestNewHTTPClient(T *testing.T) {
 	T.Parallel()
 
 	T.Run("with nil config uses defaults", func(t *testing.T) {
 		t.Parallel()
 
-		client := ProvideHTTPClient(nil)
+		client := NewHTTPClient(nil)
 		must.NotNil(t, client)
 		test.EqOp(t, defaultTimeout, client.Timeout)
 	})
@@ -80,7 +80,7 @@ func TestProvideHTTPClient(T *testing.T) {
 		cfg := &Config{
 			Timeout: 7 * time.Second,
 		}
-		client := ProvideHTTPClient(cfg)
+		client := NewHTTPClient(cfg)
 		must.NotNil(t, client)
 		test.EqOp(t, 7*time.Second, client.Timeout)
 	})

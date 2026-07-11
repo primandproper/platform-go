@@ -159,8 +159,8 @@ type consumerProvider struct {
 	consumerCacheMu sync.RWMutex
 }
 
-// ProvideSQSConsumerProvider returns a ConsumerProvider for SQS.
-func ProvideSQSConsumerProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, queueCfg Config) (messagequeue.ConsumerProvider, error) {
+// NewSQSConsumerProvider returns a ConsumerProvider for SQS.
+func NewSQSConsumerProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, queueCfg Config) (messagequeue.ConsumerProvider, error) {
 	var loadOpts []func(*config.LoadOptions) error
 	if queueCfg.QueueAddress != "" {
 		// Override the AWS endpoint (e.g. to point at localstack) when configured.
@@ -186,8 +186,8 @@ func ProvideSQSConsumerProvider(ctx context.Context, logger logging.Logger, trac
 // release.
 func (p *consumerProvider) Close() {}
 
-// ProvideConsumer returns a Consumer for the given topic (queue URL).
-func (p *consumerProvider) ProvideConsumer(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
+// NewConsumer returns a Consumer for the given topic (queue URL).
+func (p *consumerProvider) NewConsumer(ctx context.Context, topic string, handlerFunc messagequeue.ConsumerFunc) (messagequeue.Consumer, error) {
 	_, op := p.o11y.Begin(ctx)
 	defer op.End()
 

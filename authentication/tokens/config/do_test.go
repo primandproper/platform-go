@@ -14,7 +14,7 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-func TestProvideTokenIssuer(T *testing.T) {
+func TestNewTokenIssuer(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -28,7 +28,7 @@ func TestProvideTokenIssuer(T *testing.T) {
 			Base64EncodedSigningKey: base64.URLEncoding.EncodeToString(random.MustGenerateRawBytes(ctx, 32)),
 		}
 
-		issuer, err := ProvideTokenIssuer(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+		issuer, err := NewTokenIssuer(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
 		must.NoError(t, err)
 		test.NotNil(t, issuer)
 	})

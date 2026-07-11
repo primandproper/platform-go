@@ -15,7 +15,7 @@ func Test_clientEncoder_ContentType(T *testing.T) {
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		e := ProvideClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON)
+		e := NewClientEncoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), ContentTypeJSON)
 
 		test.NotEq(t, "", e.ContentType())
 	})

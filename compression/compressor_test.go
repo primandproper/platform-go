@@ -68,7 +68,7 @@ func Test_compressor_CompressBytes(T *testing.T) {
 			Name: "testing",
 		}
 
-		encoder := encoding.ProvideServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON)
+		encoder := encoding.NewServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON)
 
 		expected := "KLUv_QQAmQAAeyJuYW1lIjoidGVzdGluZyJ9Ch6HXww="
 		compressed, err := comp.CompressBytes(encoder.MustEncodeJSON(ctx, x))
@@ -89,7 +89,7 @@ func Test_compressor_CompressBytes(T *testing.T) {
 			Name: "testing",
 		}
 
-		encoder := encoding.ProvideServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON)
+		encoder := encoding.NewServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON)
 
 		expected := "_wYAAFMyc1R3TwEXAABui7jXeyJuYW1lIjoidGVzdGluZyJ9Cg=="
 		compressed, err := comp.CompressBytes(encoder.MustEncodeJSON(ctx, x))
@@ -112,7 +112,7 @@ func Test_compressor_CompressBytes(T *testing.T) {
 			Name: "testing",
 		}
 
-		encoder := encoding.ProvideServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON)
+		encoder := encoding.NewServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON)
 
 		compressed, err := comp.CompressBytes(encoder.MustEncodeJSON(ctx, x))
 		test.Error(t, err)
@@ -140,7 +140,7 @@ func Test_compressor_DecompressBytes(T *testing.T) {
 				Name: "testing",
 			}
 
-			encoder := encoding.ProvideServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON)
+			encoder := encoding.NewServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON)
 
 			compressed, err := comp.CompressBytes(encoder.MustEncodeJSON(ctx, x))
 			test.NoError(t, err)
@@ -166,7 +166,7 @@ func Test_compressor_DecompressBytes(T *testing.T) {
 			Name: "testing",
 		}
 
-		encoder := encoding.ProvideServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON)
+		encoder := encoding.NewServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON)
 
 		compressed, err := comp.CompressBytes(encoder.MustEncodeJSON(ctx, x))
 		test.NoError(t, err)

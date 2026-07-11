@@ -38,7 +38,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestProvideRouter(T *testing.T) {
+func TestNewRouter(T *testing.T) {
 	T.Parallel()
 
 	T.Run("with chi provider", func(t *testing.T) {
@@ -49,7 +49,7 @@ func TestProvideRouter(T *testing.T) {
 			Chi:      &chi.Config{ServiceName: t.Name()},
 		}
 
-		router, err := ProvideRouter(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		router, err := NewRouter(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		must.NoError(t, err)
 		test.NotNil(t, router)
 	})
@@ -61,13 +61,13 @@ func TestProvideRouter(T *testing.T) {
 			Provider: "bogus",
 		}
 
-		router, err := ProvideRouter(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		router, err := NewRouter(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		test.Nil(t, router)
 		test.Error(t, err)
 	})
 }
 
-func TestConfig_ProvideRouter(T *testing.T) {
+func TestConfig_NewRouter(T *testing.T) {
 	T.Parallel()
 
 	T.Run("with chi provider", func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestConfig_ProvideRouter(T *testing.T) {
 			Chi:      &chi.Config{ServiceName: t.Name()},
 		}
 
-		router, err := cfg.ProvideRouter(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		router, err := cfg.NewRouter(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		must.NoError(t, err)
 		test.NotNil(t, router)
 	})
@@ -90,13 +90,13 @@ func TestConfig_ProvideRouter(T *testing.T) {
 			Provider: "bogus",
 		}
 
-		router, err := cfg.ProvideRouter(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		router, err := cfg.NewRouter(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		test.Nil(t, router)
 		test.Error(t, err)
 	})
 }
 
-func TestProvideRouteParamManager(T *testing.T) {
+func TestNewRouteParamManager(T *testing.T) {
 	T.Parallel()
 
 	T.Run("with chi provider", func(t *testing.T) {
@@ -106,7 +106,7 @@ func TestProvideRouteParamManager(T *testing.T) {
 			Provider: ProviderChi,
 		}
 
-		manager, err := ProvideRouteParamManager(cfg)
+		manager, err := NewRouteParamManager(cfg)
 		must.NoError(t, err)
 		test.NotNil(t, manager)
 	})
@@ -118,13 +118,13 @@ func TestProvideRouteParamManager(T *testing.T) {
 			Provider: "bogus",
 		}
 
-		manager, err := ProvideRouteParamManager(cfg)
+		manager, err := NewRouteParamManager(cfg)
 		test.Nil(t, manager)
 		test.Error(t, err)
 	})
 }
 
-func TestProvideRouterViaConfig(T *testing.T) {
+func TestNewRouterViaConfig(T *testing.T) {
 	T.Parallel()
 
 	T.Run("with chi provider", func(t *testing.T) {
@@ -135,7 +135,7 @@ func TestProvideRouterViaConfig(T *testing.T) {
 			Chi:      &chi.Config{ServiceName: t.Name()},
 		}
 
-		router, err := ProvideRouterViaConfig(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		router, err := NewRouter(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		must.NoError(t, err)
 		test.NotNil(t, router)
 	})
@@ -147,7 +147,7 @@ func TestProvideRouterViaConfig(T *testing.T) {
 			Provider: "bogus",
 		}
 
-		router, err := ProvideRouterViaConfig(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		router, err := NewRouter(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		test.Nil(t, router)
 		test.Error(t, err)
 	})

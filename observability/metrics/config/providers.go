@@ -7,7 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v4/observability/metrics"
 )
 
-// ProvideMetricsProvider provides a metrics.Provider from config.
-func ProvideMetricsProvider(ctx context.Context, logger logging.Logger, c *Config) (metrics.Provider, error) {
-	return c.ProvideMetricsProvider(ctx, logger)
+// NewMetricsProvider provides a metrics.Provider from config.
+func NewMetricsProvider(ctx context.Context, logger logging.Logger, c *Config) (metrics.Provider, error) {
+	return c.NewMetricsProvider(ctx, logger)
 }

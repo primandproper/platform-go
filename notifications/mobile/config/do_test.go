@@ -35,13 +35,13 @@ func TestRegisterPushSender(T *testing.T) {
 	})
 }
 
-func TestProvidePushSender(T *testing.T) {
+func TestNewPushSender(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		sender, err := ProvidePushSender(
+		sender, err := NewPushSender(
 			t.Context(),
 			Config{Provider: ProviderNoop},
 			loggingnoop.NewLogger(),

@@ -125,7 +125,7 @@ func TestRegisterDatabase(T *testing.T) {
 	})
 }
 
-func TestProvideClientConfig(T *testing.T) {
+func TestNewClientConfig(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -134,7 +134,7 @@ func TestProvideClientConfig(T *testing.T) {
 		cfg := Config{
 			Provider: ProviderPostgres,
 		}
-		cc := ProvideClientConfig(cfg)
+		cc := NewClientConfig(cfg)
 		must.NotNil(t, cc)
 	})
 }

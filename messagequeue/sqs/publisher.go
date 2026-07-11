@@ -103,7 +103,7 @@ func provideSQSPublisher(logger logging.Logger, sqsClient messagePublisher, trac
 	return &sqsPublisher{
 		publisher:         sqsClient,
 		topic:             topic,
-		encoder:           encoding.ProvideClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
+		encoder:           encoding.NewClientEncoder(logger, tracerProvider, encoding.ContentTypeJSON),
 		o11y:              observability.NewObserver(fmt.Sprintf("%s_publisher", topic), logger, tracerProvider),
 		publishedCounter:  publishedCounter,
 		publishErrCounter: publishErrCounter,
@@ -120,8 +120,8 @@ type publisherProvider struct {
 	publisherCacheHat sync.RWMutex
 }
 
-// ProvideSQSPublisherProvider returns a PublisherProvider for a given address.
-func ProvideSQSPublisherProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, queueCfg Config) (messagequeue.PublisherProvider, error) {
+// NewSQSPublisherProvider returns a PublisherProvider for a given address.
+func NewSQSPublisherProvider(ctx context.Context, logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, queueCfg Config) (messagequeue.PublisherProvider, error) {
 	var loadOpts []func(*config.LoadOptions) error
 	if queueCfg.QueueAddress != "" {
 		// Override the AWS endpoint (e.g. to point at localstack) when configured,
@@ -132,7 +132,7 @@ func ProvideSQSPublisherProvider(ctx context.Context, logger logging.Logger, tra
 	cfg, err := config.LoadDefaultConfig(ctx, loadOpts...)
 	if err != nil {
 		// Return the error instead of panicking, matching the consumer twin
-		// (ProvideSQSConsumerProvider) so a config-load failure is a handleable error
+		// (NewSQSConsumerProvider) so a config-load failure is a handleable error
 		// rather than a crash.
 		return nil, errors.Wrap(err, "loading default AWS config")
 	}
@@ -147,8 +147,8 @@ func ProvideSQSPublisherProvider(ctx context.Context, logger logging.Logger, tra
 	}, nil
 }
 
-// ProvidePublisher returns a Publisher for a given topic.
-func (p *publisherProvider) ProvidePublisher(ctx context.Context, topic string) (messagequeue.Publisher, error) {
+// NewPublisher returns a Publisher for a given topic.
+func (p *publisherProvider) NewPublisher(ctx context.Context, topic string) (messagequeue.Publisher, error) {
 	if topic == "" {
 		return nil, messagequeue.ErrEmptyTopicName
 	}

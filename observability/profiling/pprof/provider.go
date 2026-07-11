@@ -14,9 +14,9 @@ import (
 	profilingnoop "github.com/primandproper/platform-go/v4/observability/profiling/noop"
 )
 
-// ProvideProfilingProvider creates a pprof-based profiling provider that exposes
+// NewProfilingProvider creates a pprof-based profiling provider that exposes
 // /debug/pprof endpoints on an HTTP server.
-func ProvideProfilingProvider(ctx context.Context, logger logging.Logger, cfg *Config) (profiling.Provider, error) {
+func NewProfilingProvider(ctx context.Context, logger logging.Logger, cfg *Config) (profiling.Provider, error) {
 	if cfg == nil {
 		return profilingnoop.NewProvider(), nil
 	}

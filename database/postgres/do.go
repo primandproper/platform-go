@@ -15,7 +15,7 @@ import (
 // Prerequisite: database.ClientConfig must be registered (e.g. via databasecfg.RegisterClientConfig).
 func RegisterDatabaseClient(i do.Injector) {
 	do.Provide[database.Client](i, func(i do.Injector) (database.Client, error) {
-		return ProvideDatabaseClient(
+		return NewDatabaseClient(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[logging.Logger](i),
 			do.MustInvoke[tracing.TracerProvider](i),

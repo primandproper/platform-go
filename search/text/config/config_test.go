@@ -188,7 +188,7 @@ func TestConfig_Constants(T *testing.T) {
 	})
 }
 
-func TestConfig_ProvideIndex(T *testing.T) {
+func TestConfig_NewIndex(T *testing.T) {
 	T.Parallel()
 
 	T.Run("elasticsearch provider", func(t *testing.T) {
@@ -207,7 +207,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracerProvider := tracingnoop.NewTracerProvider()
 		metricsProvider := metricsnoop.NewMetricsProvider()
-		index, err := ProvideIndex[testStruct](ctx, logger, tracerProvider, metricsProvider, cfg, "test-index")
+		index, err := NewIndex[testStruct](ctx, logger, tracerProvider, metricsProvider, cfg, "test-index")
 		test.Error(t, err)
 		test.Nil(t, index)
 	})
@@ -228,7 +228,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracerProvider := tracingnoop.NewTracerProvider()
 		metricsProvider := metricsnoop.NewMetricsProvider()
-		index, err := ProvideIndex[testStruct](ctx, logger, tracerProvider, metricsProvider, cfg, "test-index")
+		index, err := NewIndex[testStruct](ctx, logger, tracerProvider, metricsProvider, cfg, "test-index")
 		test.NoError(t, err)
 		test.NotNil(t, index)
 	})
@@ -244,7 +244,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracerProvider := tracingnoop.NewTracerProvider()
 		metricsProvider := metricsnoop.NewMetricsProvider()
-		index, err := ProvideIndex[testStruct](ctx, logger, tracerProvider, metricsProvider, cfg, "test-index")
+		index, err := NewIndex[testStruct](ctx, logger, tracerProvider, metricsProvider, cfg, "test-index")
 		test.NoError(t, err)
 		test.NotNil(t, index)
 	})
@@ -260,7 +260,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracerProvider := tracingnoop.NewTracerProvider()
 		metricsProvider := metricsnoop.NewMetricsProvider()
-		index, err := ProvideIndex[testStruct](ctx, logger, tracerProvider, metricsProvider, cfg, "test-index")
+		index, err := NewIndex[testStruct](ctx, logger, tracerProvider, metricsProvider, cfg, "test-index")
 		test.NoError(t, err)
 		test.NotNil(t, index)
 	})
@@ -276,7 +276,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 		logger := loggingnoop.NewLogger()
 		tracerProvider := tracingnoop.NewTracerProvider()
 		metricsProvider := metricsnoop.NewMetricsProvider()
-		index, err := ProvideIndex[testStruct](ctx, logger, tracerProvider, metricsProvider, cfg, "test-index")
+		index, err := NewIndex[testStruct](ctx, logger, tracerProvider, metricsProvider, cfg, "test-index")
 		test.NoError(t, err)
 		test.NotNil(t, index)
 	})
@@ -294,8 +294,8 @@ func TestConfig_ProvideIndex(T *testing.T) {
 			},
 		}
 
-		// Force the very first counter creation to fail so ProvideCircuitBreaker
-		// returns an error, which is wrapped by ProvideIndex.
+		// Force the very first counter creation to fail so NewCircuitBreaker
+		// returns an error, which is wrapped by NewIndex.
 		mp := &mockmetrics.ProviderMock{
 			NewInt64CounterFunc: func(counterName string, _ ...metric.Int64CounterOption) (metrics.Int64Counter, error) {
 				test.EqOp(t, "test-breaker_circuit_breaker_tripped", counterName)
@@ -305,7 +305,7 @@ func TestConfig_ProvideIndex(T *testing.T) {
 
 		logger := loggingnoop.NewLogger()
 		tracerProvider := tracingnoop.NewTracerProvider()
-		index, err := ProvideIndex[testStruct](ctx, logger, tracerProvider, mp, cfg, "test-index")
+		index, err := NewIndex[testStruct](ctx, logger, tracerProvider, mp, cfg, "test-index")
 		test.Error(t, err)
 		test.Nil(t, index)
 		test.StrContains(t, err.Error(), "circuit breaker")

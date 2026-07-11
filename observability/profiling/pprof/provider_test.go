@@ -10,12 +10,12 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-func TestProvideProfilingProvider(T *testing.T) {
+func TestNewProfilingProvider(T *testing.T) {
 	T.Parallel()
 
 	T.Run("nil config returns noop", func(t *testing.T) {
 		t.Parallel()
-		p, err := ProvideProfilingProvider(context.Background(), loggingnoop.NewLogger(), nil)
+		p, err := NewProfilingProvider(context.Background(), loggingnoop.NewLogger(), nil)
 		must.NoError(t, err)
 		test.NotNil(t, p)
 	})
@@ -23,7 +23,7 @@ func TestProvideProfilingProvider(T *testing.T) {
 	T.Run("zero port uses default", func(t *testing.T) {
 		t.Parallel()
 		cfg := &Config{Port: 0}
-		p, err := ProvideProfilingProvider(context.Background(), loggingnoop.NewLogger(), cfg)
+		p, err := NewProfilingProvider(context.Background(), loggingnoop.NewLogger(), cfg)
 		must.NoError(t, err)
 		test.NotNil(t, p)
 		must.NoError(t, p.Shutdown(context.Background()))
@@ -36,7 +36,7 @@ func TestProvideProfilingProvider(T *testing.T) {
 			EnableMutexProfile: true,
 			EnableBlockProfile: true,
 		}
-		p, err := ProvideProfilingProvider(context.Background(), loggingnoop.NewLogger(), cfg)
+		p, err := NewProfilingProvider(context.Background(), loggingnoop.NewLogger(), cfg)
 		must.NoError(t, err)
 		test.NotNil(t, p)
 		must.NoError(t, p.Shutdown(context.Background()))
@@ -45,7 +45,7 @@ func TestProvideProfilingProvider(T *testing.T) {
 	T.Run("start and shutdown", func(t *testing.T) {
 		t.Parallel()
 		cfg := &Config{Port: 16062}
-		p, err := ProvideProfilingProvider(context.Background(), loggingnoop.NewLogger(), cfg)
+		p, err := NewProfilingProvider(context.Background(), loggingnoop.NewLogger(), cfg)
 		must.NoError(t, err)
 		must.NoError(t, p.Start(context.Background()))
 		must.NoError(t, p.Shutdown(context.Background()))

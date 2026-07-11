@@ -47,7 +47,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
-func TestProvideEncryptorDecryptor(T *testing.T) {
+func TestNewEncryptorDecryptor(T *testing.T) {
 	T.Parallel()
 
 	tracerProvider := tracingnoop.NewTracerProvider()
@@ -57,7 +57,7 @@ func TestProvideEncryptorDecryptor(T *testing.T) {
 	T.Run("aes provider", func(t *testing.T) {
 		t.Parallel()
 
-		encDec, err := ProvideEncryptorDecryptor(&Config{Provider: ProviderAES}, tracerProvider, logger, key)
+		encDec, err := NewEncryptorDecryptor(&Config{Provider: ProviderAES}, tracerProvider, logger, key)
 		test.NoError(t, err)
 		test.NotNil(t, encDec)
 	})
@@ -65,7 +65,7 @@ func TestProvideEncryptorDecryptor(T *testing.T) {
 	T.Run("salsa20 provider", func(t *testing.T) {
 		t.Parallel()
 
-		encDec, err := ProvideEncryptorDecryptor(&Config{Provider: ProviderSalsa20}, tracerProvider, logger, key)
+		encDec, err := NewEncryptorDecryptor(&Config{Provider: ProviderSalsa20}, tracerProvider, logger, key)
 		test.NoError(t, err)
 		test.NotNil(t, encDec)
 	})
@@ -73,7 +73,7 @@ func TestProvideEncryptorDecryptor(T *testing.T) {
 	T.Run("empty provider errors", func(t *testing.T) {
 		t.Parallel()
 
-		encDec, err := ProvideEncryptorDecryptor(&Config{}, tracerProvider, logger, key)
+		encDec, err := NewEncryptorDecryptor(&Config{}, tracerProvider, logger, key)
 		test.Error(t, err)
 		test.Nil(t, encDec)
 	})
@@ -81,7 +81,7 @@ func TestProvideEncryptorDecryptor(T *testing.T) {
 	T.Run("unknown provider errors", func(t *testing.T) {
 		t.Parallel()
 
-		encDec, err := ProvideEncryptorDecryptor(&Config{Provider: "invalid"}, tracerProvider, logger, key)
+		encDec, err := NewEncryptorDecryptor(&Config{Provider: "invalid"}, tracerProvider, logger, key)
 		test.Error(t, err)
 		test.Nil(t, encDec)
 	})
@@ -89,7 +89,7 @@ func TestProvideEncryptorDecryptor(T *testing.T) {
 	T.Run("nil config errors", func(t *testing.T) {
 		t.Parallel()
 
-		encDec, err := ProvideEncryptorDecryptor(nil, tracerProvider, logger, key)
+		encDec, err := NewEncryptorDecryptor(nil, tracerProvider, logger, key)
 		test.Error(t, err)
 		test.Nil(t, encDec)
 	})

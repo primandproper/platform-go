@@ -24,14 +24,14 @@ import (
 func buildRedisBackedConsumer(t *testing.T, cfg *Config, topic string, handlerFunc func(context.Context, []byte) error) messagequeue.Consumer {
 	t.Helper()
 
-	provider := ProvideRedisConsumerProvider(
+	provider := NewRedisConsumerProvider(
 		loggingnoop.NewLogger(),
 		tracingnoop.NewTracerProvider(),
 		nil,
 		*cfg,
 	)
 
-	consumer, err := provider.ProvideConsumer(t.Context(), topic, handlerFunc)
+	consumer, err := provider.NewConsumer(t.Context(), topic, handlerFunc)
 	must.NoError(t, err)
 
 	return consumer
@@ -169,7 +169,7 @@ func Test_redisConsumer_Consume(T *testing.T) {
 	})
 }
 
-func Test_consumerProvider_ProvideConsumer(T *testing.T) {
+func Test_consumerProvider_NewConsumer(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
@@ -187,11 +187,11 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 			}
 		}()
 
-		conPro := ProvideRedisConsumerProvider(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, *cfg)
+		conPro := NewRedisConsumerProvider(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, *cfg)
 		must.NotNil(t, conPro)
 
 		hf := func(context.Context, []byte) error { return nil }
-		actual, err := conPro.ProvideConsumer(ctx, t.Name(), hf)
+		actual, err := conPro.NewConsumer(ctx, t.Name(), hf)
 		test.NoError(t, err)
 		test.NotNil(t, actual)
 	})
@@ -211,16 +211,16 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 			}
 		}()
 
-		conPro := ProvideRedisConsumerProvider(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, *cfg)
+		conPro := NewRedisConsumerProvider(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), nil, *cfg)
 		must.NotNil(t, conPro)
 
 		hf := func(context.Context, []byte) error { return nil }
 
-		first, err := conPro.ProvideConsumer(ctx, t.Name(), hf)
+		first, err := conPro.NewConsumer(ctx, t.Name(), hf)
 		test.NoError(t, err)
 		must.NotNil(t, first)
 
-		second, err := conPro.ProvideConsumer(ctx, t.Name(), hf)
+		second, err := conPro.NewConsumer(ctx, t.Name(), hf)
 		test.NoError(t, err)
 		must.NotNil(t, second)
 
@@ -237,10 +237,10 @@ func Test_consumerProvider_ProvideConsumer(T *testing.T) {
 			QueueAddresses: []string{t.Name()},
 		}
 
-		conPro := ProvideRedisConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, cfg)
+		conPro := NewRedisConsumerProvider(logger, tracingnoop.NewTracerProvider(), nil, cfg)
 		must.NotNil(t, conPro)
 
-		actual, err := conPro.ProvideConsumer(t.Context(), "", nil)
+		actual, err := conPro.NewConsumer(t.Context(), "", nil)
 		test.Nil(t, actual)
 		test.ErrorIs(t, err, messagequeue.ErrEmptyTopicName)
 	})

@@ -51,7 +51,7 @@ func (c *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-func (c *Config) ProvideFeatureFlagManager(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, httpClient *http.Client, circuitBreaker circuitbreaking.CircuitBreaker) (featureflags.FeatureFlagManager, error) {
+func (c *Config) NewFeatureFlagManager(logger logging.Logger, tracerProvider tracing.TracerProvider, metricsProvider metrics.Provider, httpClient *http.Client, circuitBreaker circuitbreaking.CircuitBreaker) (featureflags.FeatureFlagManager, error) {
 	switch strings.TrimSpace(strings.ToLower(c.Provider)) {
 	case ProviderLaunchDarkly:
 		return launchdarkly.NewFeatureFlagManager(c.LaunchDarkly, logger, tracerProvider, metricsProvider, httpClient, circuitBreaker)
