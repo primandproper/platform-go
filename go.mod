@@ -21,6 +21,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.68.3
 	github.com/boombuler/barcode v1.1.0
 	github.com/brianvoe/gofakeit/v7 v7.14.1
+	github.com/caarlos0/env/v11 v11.4.1
 	github.com/cockroachdb/errors v1.12.0
 	github.com/dhaus67/openfeature-posthog-go v0.1.2
 	github.com/disintegration/imaging v1.6.2
@@ -37,6 +38,7 @@ require (
 	github.com/grafana/pyroscope-go v1.2.7
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/jackc/pgx/v5 v5.9.1
+	github.com/joho/godotenv v1.5.1
 	github.com/keighl/postmark v0.0.0-20190821160221-28358b1a94e3
 	github.com/keith-turner/ecoji/v2 v2.0.2
 	github.com/klauspost/compress v1.18.5
