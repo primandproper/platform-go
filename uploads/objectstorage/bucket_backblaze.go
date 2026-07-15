@@ -9,11 +9,11 @@ import (
 type (
 	// BackblazeB2Config configures a Backblaze B2-based objectstorage provider.
 	BackblazeB2Config struct {
-		_ struct{} `json:"-"`
+		_ struct{} `json:"-" yaml:"-"`
 
-		ApplicationKeyID string `env:"APPLICATION_KEY_ID" json:"applicationKeyID"`
-		ApplicationKey   string `env:"APPLICATION_KEY"    json:"applicationKey"`
-		Region           string `env:"REGION"             json:"region"`
+		ApplicationKeyID string `env:"APPLICATION_KEY_ID" json:"applicationKeyID" yaml:"applicationKeyID"`
+		ApplicationKey   string `env:"APPLICATION_KEY"    json:"applicationKey"   yaml:"applicationKey"`
+		Region           string `env:"REGION"             json:"region"           yaml:"region"`
 	}
 )
 

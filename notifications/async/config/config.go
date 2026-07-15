@@ -34,11 +34,11 @@ const (
 type (
 	// Config is the configuration for the async notifications provider.
 	Config struct {
-		Pusher    *pusher.Config   `env:"init"     envPrefix:"PUSHER_"    json:"pusher,omitempty"`
-		Ably      *ably.Config     `env:"init"     envPrefix:"ABLY_"      json:"ably,omitempty"`
-		WebSocket *asyncws.Config  `env:"init"     envPrefix:"WEBSOCKET_" json:"websocket,omitempty"`
-		SSE       *asyncsse.Config `env:"init"     envPrefix:"SSE_"       json:"sse,omitempty"`
-		Provider  string           `env:"PROVIDER" json:"provider"`
+		Pusher    *pusher.Config   `env:"init"     envPrefix:"PUSHER_"    json:"pusher,omitempty"    yaml:"pusher,omitempty"`
+		Ably      *ably.Config     `env:"init"     envPrefix:"ABLY_"      json:"ably,omitempty"      yaml:"ably,omitempty"`
+		WebSocket *asyncws.Config  `env:"init"     envPrefix:"WEBSOCKET_" json:"websocket,omitempty" yaml:"websocket,omitempty"`
+		SSE       *asyncsse.Config `env:"init"     envPrefix:"SSE_"       json:"sse,omitempty"       yaml:"sse,omitempty"`
+		Provider  string           `env:"PROVIDER" json:"provider"        yaml:"provider"`
 	}
 )
 

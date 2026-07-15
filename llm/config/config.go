@@ -24,9 +24,9 @@ const (
 
 // Config is the configuration for the LLM provider.
 type Config struct {
-	OpenAI    *openai.Config    `env:",init"    envPrefix:"OPENAI_"    json:"openai"`
-	Anthropic *anthropic.Config `env:",init"    envPrefix:"ANTHROPIC_" json:"anthropic"`
-	Provider  string            `env:"PROVIDER" json:"provider"`
+	OpenAI    *openai.Config    `env:",init"    envPrefix:"OPENAI_"    json:"openai"    yaml:"openai"`
+	Anthropic *anthropic.Config `env:",init"    envPrefix:"ANTHROPIC_" json:"anthropic" yaml:"anthropic"`
+	Provider  string            `env:"PROVIDER" json:"provider"        yaml:"provider"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

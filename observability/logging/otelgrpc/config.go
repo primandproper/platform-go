@@ -9,11 +9,11 @@ import (
 
 type (
 	Config struct {
-		_ struct{} `json:"-"`
+		_ struct{} `json:"-" yaml:"-"`
 
-		CollectorEndpoint string        `env:"ENDPOINT_URL" json:"endpointURL"`
-		Insecure          bool          `env:"INSECURE"     json:"insecure"`
-		Timeout           time.Duration `env:"TIMEOUT"      json:"timeout"`
+		CollectorEndpoint string        `env:"ENDPOINT_URL" json:"endpointURL" yaml:"endpointURL"`
+		Insecure          bool          `env:"INSECURE"     json:"insecure"    yaml:"insecure"`
+		Timeout           time.Duration `env:"TIMEOUT"      json:"timeout"     yaml:"timeout"`
 	}
 )
 

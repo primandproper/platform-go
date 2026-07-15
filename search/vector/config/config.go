@@ -27,11 +27,11 @@ const (
 
 // Config dispatches to a vectorsearch provider implementation.
 type Config struct {
-	_              struct{}                  `json:"-"`
-	Pgvector       *pgvector.Config          `env:"init"     envPrefix:"PGVECTOR_"        json:"pgvector"`
-	Qdrant         *qdrant.Config            `env:"init"     envPrefix:"QDRANT_"          json:"qdrant"`
-	Provider       string                    `env:"PROVIDER" json:"provider"`
-	CircuitBreaker circuitbreakingcfg.Config `env:"init"     envPrefix:"CIRCUIT_BREAKER_" json:"circuitBreakerConfig"`
+	_              struct{}                  `json:"-"       yaml:"-"`
+	Pgvector       *pgvector.Config          `env:"init"     envPrefix:"PGVECTOR_"        json:"pgvector"             yaml:"pgvector"`
+	Qdrant         *qdrant.Config            `env:"init"     envPrefix:"QDRANT_"          json:"qdrant"               yaml:"qdrant"`
+	Provider       string                    `env:"PROVIDER" json:"provider"              yaml:"provider"`
+	CircuitBreaker circuitbreakingcfg.Config `env:"init"     envPrefix:"CIRCUIT_BREAKER_" json:"circuitBreakerConfig" yaml:"circuitBreakerConfig"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

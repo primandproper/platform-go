@@ -15,11 +15,11 @@ import (
 // so BaseURL must point at the qdrant HTTP endpoint (default port 6333), not the
 // gRPC port.
 type Config struct {
-	BaseURL   string                      `env:"BASE_URL"  json:"baseURL"`
-	APIKey    string                      `env:"API_KEY"   json:"apiKey,omitempty"`
-	Metric    vectorsearch.DistanceMetric `env:"METRIC"    envDefault:"cosine"     json:"metric"`
-	Timeout   time.Duration               `env:"TIMEOUT"   envDefault:"30s"        json:"timeout"`
-	Dimension int                         `env:"DIMENSION" json:"dimension"`
+	BaseURL   string                      `env:"BASE_URL"  json:"baseURL"          yaml:"baseURL"`
+	APIKey    string                      `env:"API_KEY"   json:"apiKey,omitempty" yaml:"apiKey,omitempty"`
+	Metric    vectorsearch.DistanceMetric `env:"METRIC"    envDefault:"cosine"     json:"metric"           yaml:"metric"`
+	Timeout   time.Duration               `env:"TIMEOUT"   envDefault:"30s"        json:"timeout"          yaml:"timeout"`
+	Dimension int                         `env:"DIMENSION" json:"dimension"        yaml:"dimension"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

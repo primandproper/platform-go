@@ -9,7 +9,7 @@ import (
 type (
 	// Config configures Resend to send email.
 	Config struct {
-		APIToken string `env:"API_TOKEN" json:"apiToken"`
+		APIToken string `env:"API_TOKEN" json:"apiToken" yaml:"apiToken"`
 	}
 )
 

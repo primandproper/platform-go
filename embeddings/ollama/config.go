@@ -11,9 +11,9 @@ var _ validation.ValidatableWithContext = (*Config)(nil)
 
 // Config configures the Ollama embeddings provider.
 type Config struct {
-	BaseURL      string        `env:"BASE_URL"      json:"baseURL,omitempty"`
-	DefaultModel string        `env:"DEFAULT_MODEL" json:"defaultModel,omitempty"`
-	Timeout      time.Duration `env:"TIMEOUT"       json:"timeout"`
+	BaseURL      string        `env:"BASE_URL"      json:"baseURL,omitempty"      yaml:"baseURL,omitempty"`
+	DefaultModel string        `env:"DEFAULT_MODEL" json:"defaultModel,omitempty" yaml:"defaultModel,omitempty"`
+	Timeout      time.Duration `env:"TIMEOUT"       json:"timeout"                yaml:"timeout"`
 }
 
 // ValidateWithContext validates the config.

@@ -9,7 +9,7 @@ import (
 type (
 	// Config configures SendGrid to send email.
 	Config struct {
-		APIToken string `env:"API_TOKEN" json:"apiToken"`
+		APIToken string `env:"API_TOKEN" json:"apiToken" yaml:"apiToken"`
 	}
 )
 

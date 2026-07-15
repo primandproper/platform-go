@@ -9,8 +9,8 @@ import (
 type (
 	// Config configures Mailgun to send email.
 	Config struct {
-		PrivateAPIKey string `env:"PRIVATE_API_KEY" json:"privateAPIKey"`
-		Domain        string `env:"DOMAIN"          json:"domain"`
+		PrivateAPIKey string `env:"PRIVATE_API_KEY" json:"privateAPIKey" yaml:"privateAPIKey"`
+		Domain        string `env:"DOMAIN"          json:"domain"        yaml:"domain"`
 	}
 )
 

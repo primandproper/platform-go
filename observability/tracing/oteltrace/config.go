@@ -9,10 +9,10 @@ import (
 type (
 	// Config contains settings related to tracing.
 	Config struct {
-		_ struct{} `json:"-"`
+		_ struct{} `json:"-" yaml:"-"`
 
-		CollectorEndpoint string `env:"COLLECTOR_ENDPOINT" json:"collector_endpoint,omitempty"`
-		Insecure          bool   `env:"INSECURE"           json:"insecure,omitempty"`
+		CollectorEndpoint string `env:"COLLECTOR_ENDPOINT" json:"collector_endpoint,omitempty" yaml:"collector_endpoint,omitempty"`
+		Insecure          bool   `env:"INSECURE"           json:"insecure,omitempty"           yaml:"insecure,omitempty"`
 	}
 )
 

@@ -27,10 +27,10 @@ const (
 type (
 	// Config is the configuration for the cache.
 	Config struct {
-		Redis          *redis.Config             `env:"init"     envPrefix:"REDIS_"            json:"redis"`
-		Provider       string                    `env:"PROVIDER" json:"provider"`
-		CircuitBreaker circuitbreakingcfg.Config `env:"init"     envPrefix:"CIRCUIT_BREAKING_" json:"circuitBreakerConfig"`
-		Expiry         time.Duration             `env:"EXPIRY"   envDefault:"1h"               json:"expiry"`
+		Redis          *redis.Config             `env:"init"     envPrefix:"REDIS_"            json:"redis"                yaml:"redis"`
+		Provider       string                    `env:"PROVIDER" json:"provider"               yaml:"provider"`
+		CircuitBreaker circuitbreakingcfg.Config `env:"init"     envPrefix:"CIRCUIT_BREAKING_" json:"circuitBreakerConfig" yaml:"circuitBreakerConfig"`
+		Expiry         time.Duration             `env:"EXPIRY"   envDefault:"1h"               json:"expiry"               yaml:"expiry"`
 	}
 )
 

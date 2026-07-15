@@ -15,12 +15,12 @@ const defaultDirectoryMode os.FileMode = 0o700
 type (
 	// FilesystemConfig configures a filesystem-based objectstorage provider.
 	FilesystemConfig struct {
-		_ struct{} `json:"-"`
+		_ struct{} `json:"-" yaml:"-"`
 
-		RootDirectory string `env:"ROOT_DIRECTORY" json:"rootDirectory"`
+		RootDirectory string `env:"ROOT_DIRECTORY" json:"rootDirectory" yaml:"rootDirectory"`
 		// DirectoryMode is the os.FileMode for directories the backend creates.
 		// Defaults to 0700 when unset (zero).
-		DirectoryMode os.FileMode `env:"DIRECTORY_MODE" json:"directoryMode"`
+		DirectoryMode os.FileMode `env:"DIRECTORY_MODE" json:"directoryMode" yaml:"directoryMode"`
 	}
 )
 

@@ -42,9 +42,9 @@ func WithMetricAttributes(attrs ...attribute.KeyValue) Option {
 }
 
 type Config struct {
-	Name                   string  `env:"NAME"                     json:"name"`
-	ErrorRate              float64 `env:"ERROR_RATE"               json:"circuitBreakerErrorPercentage"`
-	MinimumSampleThreshold uint64  `env:"MINIMUM_SAMPLE_THRESHOLD" json:"circuitBreakerMinimumOccurrenceThreshold"`
+	Name                   string  `env:"NAME"                     json:"name"                                     yaml:"name"`
+	ErrorRate              float64 `env:"ERROR_RATE"               json:"circuitBreakerErrorPercentage"            yaml:"circuitBreakerErrorPercentage"`
+	MinimumSampleThreshold uint64  `env:"MINIMUM_SAMPLE_THRESHOLD" json:"circuitBreakerMinimumOccurrenceThreshold" yaml:"circuitBreakerMinimumOccurrenceThreshold"`
 }
 
 func (cfg *Config) EnsureDefaults() {

@@ -17,7 +17,7 @@ const DefaultConnWaitTimeout = 5 * time.Second
 type Config struct {
 	// Namespace is mixed into the lock-id hash so independent services sharing a
 	// Postgres cluster do not collide on the same advisory-lock id space.
-	Namespace int32 `env:"NAMESPACE" envDefault:"0" json:"namespace"`
+	Namespace int32 `env:"NAMESPACE" envDefault:"0" json:"namespace" yaml:"namespace"`
 
 	// ConnWaitTimeout bounds how long Acquire will wait to reserve a connection
 	// from the write pool. Each held lock pins one write connection for its whole
@@ -25,7 +25,7 @@ type Config struct {
 	// in database/sql's Conn(). When the wait is exceeded, Acquire returns
 	// distributedlock.ErrLockNotAcquired instead of blocking. Zero uses
 	// DefaultConnWaitTimeout; a negative value disables the bound (wait forever).
-	ConnWaitTimeout time.Duration `env:"CONN_WAIT_TIMEOUT" envDefault:"5s" json:"connWaitTimeout"`
+	ConnWaitTimeout time.Duration `env:"CONN_WAIT_TIMEOUT" envDefault:"5s" json:"connWaitTimeout" yaml:"connWaitTimeout"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

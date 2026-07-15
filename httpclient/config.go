@@ -15,10 +15,10 @@ const (
 
 // Config configures an HTTP client.
 type Config struct {
-	Timeout             time.Duration `env:"TIMEOUT"                 json:"timeout"`
-	MaxIdleConns        int           `env:"MAX_IDLE_CONNS"          json:"maxIdleConns"`
-	MaxIdleConnsPerHost int           `env:"MAX_IDLE_CONNS_PER_HOST" json:"maxIdleConnsPerHost"`
-	EnableTracing       bool          `env:"ENABLE_TRACING"          json:"enableTracing"`
+	Timeout             time.Duration `env:"TIMEOUT"                 json:"timeout"             yaml:"timeout"`
+	MaxIdleConns        int           `env:"MAX_IDLE_CONNS"          json:"maxIdleConns"        yaml:"maxIdleConns"`
+	MaxIdleConnsPerHost int           `env:"MAX_IDLE_CONNS_PER_HOST" json:"maxIdleConnsPerHost" yaml:"maxIdleConnsPerHost"`
+	EnableTracing       bool          `env:"ENABLE_TRACING"          json:"enableTracing"       yaml:"enableTracing"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

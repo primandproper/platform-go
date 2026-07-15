@@ -40,32 +40,32 @@ type (
 
 	// MessageQueueConfig is used to indicate how the messaging provider should be configured.
 	MessageQueueConfig struct {
-		_        struct{}      `json:"-"`
-		Kafka    kafka.Config  `envPrefix:"KAFKA_"  json:"kafka"`
-		Provider provider      `env:"PROVIDER"      json:"provider,omitempty"`
-		SQS      sqs.Config    `envPrefix:"SQS_"    json:"sqs"`
-		PubSub   pubsub.Config `envPrefix:"PUBSUB_" json:"pubSub"`
-		Redis    redis.Config  `envPrefix:"REDIS_"  json:"redis"`
+		_        struct{}      `json:"-"            yaml:"-"`
+		Kafka    kafka.Config  `envPrefix:"KAFKA_"  json:"kafka"              yaml:"kafka"`
+		Provider provider      `env:"PROVIDER"      json:"provider,omitempty" yaml:"provider,omitempty"`
+		SQS      sqs.Config    `envPrefix:"SQS_"    json:"sqs"                yaml:"sqs"`
+		PubSub   pubsub.Config `envPrefix:"PUBSUB_" json:"pubSub"             yaml:"pubSub"`
+		Redis    redis.Config  `envPrefix:"REDIS_"  json:"redis"              yaml:"redis"`
 	}
 
 	// Config is used to indicate how the messaging provider should be configured.
 	Config struct {
-		_ struct{} `json:"-"`
+		_ struct{} `json:"-" yaml:"-"`
 
-		Consumer  MessageQueueConfig `envPrefix:"CONSUMER_"  json:"consumer"`
-		Publisher MessageQueueConfig `envPrefix:"PUBLISHER_" json:"publisher"`
+		Consumer  MessageQueueConfig `envPrefix:"CONSUMER_"  json:"consumer"  yaml:"consumer"`
+		Publisher MessageQueueConfig `envPrefix:"PUBLISHER_" json:"publisher" yaml:"publisher"`
 	}
 
 	// QueuesConfig contains the various queue names.
 	QueuesConfig struct {
-		_ struct{} `json:"-"`
+		_ struct{} `json:"-" yaml:"-"`
 
-		DataChangesTopicName              string `env:"DATA_CHANGES_TOPIC_NAME"               json:"dataChangesTopicName"`
-		OutboundEmailsTopicName           string `env:"OUTBOUND_EMAILS_TOPIC_NAME"            json:"outboundEmailsTopicName"`
-		SearchIndexRequestsTopicName      string `env:"SEARCH_INDEX_REQUESTS_TOPIC_NAME"      json:"searchIndexRequestsTopicName"`
-		MobileNotificationsTopicName      string `env:"MOBILE_NOTIFICATIONS_TOPIC_NAME"       json:"mobileNotificationsTopicName"`
-		UserDataAggregationTopicName      string `env:"USER_DATA_AGGREGATION_TOPIC_NAME"      json:"userDataAggregationTopicName"`
-		WebhookExecutionRequestsTopicName string `env:"WEBHOOK_EXECUTION_REQUESTS_TOPIC_NAME" json:"webhookExecutionRequestsTopicName"`
+		DataChangesTopicName              string `env:"DATA_CHANGES_TOPIC_NAME"               json:"dataChangesTopicName"              yaml:"dataChangesTopicName"`
+		OutboundEmailsTopicName           string `env:"OUTBOUND_EMAILS_TOPIC_NAME"            json:"outboundEmailsTopicName"           yaml:"outboundEmailsTopicName"`
+		SearchIndexRequestsTopicName      string `env:"SEARCH_INDEX_REQUESTS_TOPIC_NAME"      json:"searchIndexRequestsTopicName"      yaml:"searchIndexRequestsTopicName"`
+		MobileNotificationsTopicName      string `env:"MOBILE_NOTIFICATIONS_TOPIC_NAME"       json:"mobileNotificationsTopicName"      yaml:"mobileNotificationsTopicName"`
+		UserDataAggregationTopicName      string `env:"USER_DATA_AGGREGATION_TOPIC_NAME"      json:"userDataAggregationTopicName"      yaml:"userDataAggregationTopicName"`
+		WebhookExecutionRequestsTopicName string `env:"WEBHOOK_EXECUTION_REQUESTS_TOPIC_NAME" json:"webhookExecutionRequestsTopicName" yaml:"webhookExecutionRequestsTopicName"`
 	}
 )
 

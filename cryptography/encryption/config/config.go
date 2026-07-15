@@ -24,7 +24,7 @@ const (
 type (
 	// Config is the configuration for the encryption provider.
 	Config struct {
-		Provider string `env:"PROVIDER" json:"provider"`
+		Provider string `env:"PROVIDER" json:"provider" yaml:"provider"`
 	}
 )
 

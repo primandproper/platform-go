@@ -10,16 +10,16 @@ import (
 type (
 	// Config describes the settings pertinent to the HTTP serving portion of the service.
 	Config struct {
-		_ struct{} `json:"-"`
+		_ struct{} `json:"-" yaml:"-"`
 
-		SSLCertificateFile    string        `env:"SSL_CERTIFICATE_FILEPATH"     json:"sslCertificate,omitempty"`
-		SSLCertificateKeyFile string        `env:"SSL_CERTIFICATE_KEY_FILEPATH" json:"sslCertificateKey,omitempty"`
-		StartupDeadline       time.Duration `env:"STARTUP_DEADLINE"             json:"startupDeadline,omitempty"`
-		ReadTimeout           time.Duration `env:"READ_TIMEOUT"                 json:"readTimeout,omitempty"`
-		WriteTimeout          time.Duration `env:"WRITE_TIMEOUT"                json:"writeTimeout,omitempty"`
-		IdleTimeout           time.Duration `env:"IDLE_TIMEOUT"                 json:"idleTimeout,omitempty"`
-		Port                  uint16        `env:"PORT"                         json:"port"`
-		Debug                 bool          `env:"DEBUG"                        json:"debug"`
+		SSLCertificateFile    string        `env:"SSL_CERTIFICATE_FILEPATH"     json:"sslCertificate,omitempty"    yaml:"sslCertificate,omitempty"`
+		SSLCertificateKeyFile string        `env:"SSL_CERTIFICATE_KEY_FILEPATH" json:"sslCertificateKey,omitempty" yaml:"sslCertificateKey,omitempty"`
+		StartupDeadline       time.Duration `env:"STARTUP_DEADLINE"             json:"startupDeadline,omitempty"   yaml:"startupDeadline,omitempty"`
+		ReadTimeout           time.Duration `env:"READ_TIMEOUT"                 json:"readTimeout,omitempty"       yaml:"readTimeout,omitempty"`
+		WriteTimeout          time.Duration `env:"WRITE_TIMEOUT"                json:"writeTimeout,omitempty"      yaml:"writeTimeout,omitempty"`
+		IdleTimeout           time.Duration `env:"IDLE_TIMEOUT"                 json:"idleTimeout,omitempty"       yaml:"idleTimeout,omitempty"`
+		Port                  uint16        `env:"PORT"                         json:"port"                        yaml:"port"`
+		Debug                 bool          `env:"DEBUG"                        json:"debug"                       yaml:"debug"`
 	}
 )
 
