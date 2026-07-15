@@ -21,6 +21,16 @@ func TestLoadFromEnvironment(t *testing.T) {
 	test.EqOp(t, 8080, cfg.Port)
 }
 
+// TestLoadFromEnvironment_ApplyError exercises the error path where the
+// environment holds a value the target field cannot parse.
+func TestLoadFromEnvironment_ApplyError(t *testing.T) {
+	t.Setenv("PORT", "not-an-int") // Port is an int; parsing fails.
+
+	cfg, err := LoadFromEnvironment[sampleConfig]()
+	test.Error(t, err)
+	test.Nil(t, cfg)
+}
+
 // TestLoadFromJSONFile_OverlaysEnvironment uses t.Setenv and therefore runs
 // serially, separate from the parallel subtests below.
 func TestLoadFromJSONFile_OverlaysEnvironment(t *testing.T) {
@@ -60,6 +70,20 @@ func TestLoadFromJSONFile(t *testing.T) {
 		_, err := LoadFromJSONFile[sampleConfig](path)
 		test.Error(t, err)
 	})
+}
+
+// TestLoadFromJSONFile_ApplyEnvError covers loadFile's env-overlay error branch:
+// the file decodes cleanly but a bad env value fails ApplyEnvironmentVariables.
+func TestLoadFromJSONFile_ApplyEnvError(t *testing.T) {
+	t.Setenv("PORT", "not-an-int") // Port is an int; parsing fails after decode.
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	must.NoError(t, os.WriteFile(path, []byte(`{"Name":"decoded"}`), 0o600))
+
+	cfg, err := LoadFromJSONFile[sampleConfig](path)
+	test.Error(t, err)
+	test.Nil(t, cfg)
 }
 
 func TestLoadFromTOMLFile(t *testing.T) {
@@ -145,6 +169,17 @@ func TestLoadFromDotEnvFile(t *testing.T) {
 	test.EqOp(t, 1234, cfg.Port)
 }
 
+// TestLoadFromDotEnvFile_MissingFile covers the godotenv.Load error branch. A
+// missing file fails before any environment mutation, so this test is
+// parallel-safe.
+func TestLoadFromDotEnvFile_MissingFile(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := LoadFromDotEnvFile[dotEnvConfig](filepath.Join(t.TempDir(), "nonexistent.env"))
+	test.Error(t, err)
+	test.Nil(t, cfg)
+}
+
 func TestResolveDotEnvPath(t *testing.T) {
 	t.Parallel()
 
@@ -165,6 +200,20 @@ func TestResolveDotEnvPath(t *testing.T) {
 
 		resolved, err := ResolveDotEnvPath(t.TempDir(), ".env")
 		must.NoError(t, err)
+		test.EqOp(t, "", resolved)
+	})
+
+	t.Run("returns error for a stat failure that is not ErrNotExist", func(t *testing.T) {
+		t.Parallel()
+
+		// Use a regular file as the base dir: joining a filename beneath it makes
+		// os.Stat fail with ENOTDIR, which is not os.ErrNotExist.
+		dir := t.TempDir()
+		notADir := filepath.Join(dir, "regular-file")
+		must.NoError(t, os.WriteFile(notADir, []byte("x"), 0o600))
+
+		resolved, err := ResolveDotEnvPath(notADir, ".env")
+		test.Error(t, err)
 		test.EqOp(t, "", resolved)
 	})
 }
