@@ -24,8 +24,8 @@ const (
 type (
 	// Config is the configuration for the event stream provider.
 	Config struct {
-		WebSocket *websocket.Config `env:"init"     envPrefix:"WEBSOCKET_" json:"websocket,omitempty"`
-		Provider  string            `env:"PROVIDER" json:"provider"`
+		WebSocket *websocket.Config `env:"init"     envPrefix:"WEBSOCKET_" json:"websocket,omitempty" yaml:"websocket,omitempty"`
+		Provider  string            `env:"PROVIDER" json:"provider"        yaml:"provider"`
 	}
 )
 

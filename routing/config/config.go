@@ -20,10 +20,10 @@ const (
 
 // Config configures our router.
 type Config struct {
-	_ struct{} `json:"-"`
+	_ struct{} `json:"-" yaml:"-"`
 
-	Chi      *chi.Config `env:"init"     envPrefix:"CHI_"          json:"chiConfig,omitempty"`
-	Provider string      `env:"PROVIDER" json:"provider,omitempty"`
+	Chi      *chi.Config `env:"init"     envPrefix:"CHI_"          json:"chiConfig,omitempty" yaml:"chiConfig,omitempty"`
+	Provider string      `env:"PROVIDER" json:"provider,omitempty" yaml:"provider,omitempty"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

@@ -9,8 +9,8 @@ import (
 type (
 	// Config configures Mailjet to send email.
 	Config struct {
-		APIKey    string `env:"API_KEY"    json:"publicKey"`
-		SecretKey string `env:"SECRET_KEY" json:"secretKey"`
+		APIKey    string `env:"API_KEY"    json:"publicKey" yaml:"publicKey"`
+		SecretKey string `env:"SECRET_KEY" json:"secretKey" yaml:"secretKey"`
 	}
 )
 

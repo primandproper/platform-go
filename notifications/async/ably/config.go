@@ -8,7 +8,7 @@ import (
 
 // Config holds Ably async notifier configuration.
 type Config struct {
-	APIKey string `env:"API_KEY" json:"apiKey"`
+	APIKey string `env:"API_KEY" json:"apiKey" yaml:"apiKey"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

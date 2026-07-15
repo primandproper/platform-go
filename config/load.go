@@ -9,8 +9,10 @@ import (
 
 	"github.com/primandproper/platform-go/v4/errors"
 
+	"github.com/BurntSushi/toml"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/joho/godotenv"
+	"gopkg.in/yaml.v3"
 )
 
 // LoadFromEnvironment builds a *T populated entirely from environment variables.
@@ -30,14 +32,35 @@ func LoadFromEnvironment[T any](opts ...Option) (*T, error) {
 // env var is unset is reset to that default even if the file supplied a value,
 // so give such fields their env var (or no envDefault) when the file should win.
 func LoadFromJSONFile[T any](path string, opts ...Option) (*T, error) {
+	return loadFile[T](path, "JSON", json.Unmarshal, opts...)
+}
+
+// LoadFromTOMLFile behaves like LoadFromJSONFile but decodes a TOML file (via
+// BurntSushi/toml). TOML keys map to struct fields by their `toml:` tag, falling
+// back to a case-insensitive field-name match.
+func LoadFromTOMLFile[T any](path string, opts ...Option) (*T, error) {
+	return loadFile[T](path, "TOML", toml.Unmarshal, opts...)
+}
+
+// LoadFromYAMLFile behaves like LoadFromJSONFile but decodes a YAML file (via
+// gopkg.in/yaml.v3). YAML keys map to struct fields by their `yaml:` tag,
+// falling back to the lower-cased field name.
+func LoadFromYAMLFile[T any](path string, opts ...Option) (*T, error) {
+	return loadFile[T](path, "YAML", yaml.Unmarshal, opts...)
+}
+
+// loadFile reads the file at path, decodes it with unmarshal into a fresh *T,
+// then overlays environment variables. format names the encoding for error
+// messages (e.g. "JSON").
+func loadFile[T any](path, format string, unmarshal func([]byte, any) error, opts ...Option) (*T, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		return nil, errors.Wrapf(err, "reading config file %q", path)
 	}
 
 	cfg := new(T)
-	if err = json.Unmarshal(contents, cfg); err != nil {
-		return nil, errors.Wrapf(err, "decoding config file %q", path)
+	if err = unmarshal(contents, cfg); err != nil {
+		return nil, errors.Wrapf(err, "decoding %s config file %q", format, path)
 	}
 
 	if err = ApplyEnvironmentVariables(cfg, opts...); err != nil {

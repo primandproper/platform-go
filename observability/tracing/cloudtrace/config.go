@@ -9,9 +9,9 @@ import (
 type (
 	// Config contains settings related to tracing.
 	Config struct {
-		_ struct{} `json:"-"`
+		_ struct{} `json:"-" yaml:"-"`
 
-		ProjectID string `env:"GOOGLE_CLOUD_TRACE_PROJECT_ID" json:"projectID,omitempty"`
+		ProjectID string `env:"GOOGLE_CLOUD_TRACE_PROJECT_ID" json:"projectID,omitempty" yaml:"projectID,omitempty"`
 	}
 )
 

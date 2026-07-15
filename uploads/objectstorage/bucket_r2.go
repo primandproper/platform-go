@@ -9,11 +9,11 @@ import (
 type (
 	// R2Config configures a Cloudflare R2-based objectstorage provider.
 	R2Config struct {
-		_ struct{} `json:"-"`
+		_ struct{} `json:"-" yaml:"-"`
 
-		AccountID       string `env:"ACCOUNT_ID"        json:"accountID"`
-		AccessKeyID     string `env:"ACCESS_KEY_ID"     json:"accessKeyID"`
-		SecretAccessKey string `env:"SECRET_ACCESS_KEY" json:"secretAccessKey"`
+		AccountID       string `env:"ACCOUNT_ID"        json:"accountID"       yaml:"accountID"`
+		AccessKeyID     string `env:"ACCESS_KEY_ID"     json:"accessKeyID"     yaml:"accessKeyID"`
+		SecretAccessKey string `env:"SECRET_ACCESS_KEY" json:"secretAccessKey" yaml:"secretAccessKey"`
 	}
 )
 

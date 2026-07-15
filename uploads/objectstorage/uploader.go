@@ -50,14 +50,14 @@ type (
 
 	// Config configures our UploadManager.
 	Config struct {
-		_                 struct{}                  `json:"-"`
-		FilesystemConfig  *FilesystemConfig         `env:"init"          envPrefix:"FILESYSTEM_"       json:"filesystem,omitempty"`
-		R2Config          *R2Config                 `env:"init"          envPrefix:"R2_"               json:"r2,omitempty"`
-		BackblazeB2Config *BackblazeB2Config        `env:"init"          envPrefix:"BACKBLAZE_B2_"     json:"backblazeB2,omitempty"`
-		BucketPrefix      string                    `env:"BUCKET_PREFIX" json:"bucketPrefix,omitempty"`
-		BucketName        string                    `env:"BUCKET_NAME"   json:"bucketName,omitempty"`
-		Provider          string                    `env:"PROVIDER"      json:"provider,omitempty"`
-		CircuitBreaker    circuitbreakingcfg.Config `env:"init"          envPrefix:"CIRCUIT_BREAKING_" json:"circuitBreakerConfig"`
+		_                 struct{}                  `json:"-"            yaml:"-"`
+		FilesystemConfig  *FilesystemConfig         `env:"init"          envPrefix:"FILESYSTEM_"       json:"filesystem,omitempty"   yaml:"filesystem,omitempty"`
+		R2Config          *R2Config                 `env:"init"          envPrefix:"R2_"               json:"r2,omitempty"           yaml:"r2,omitempty"`
+		BackblazeB2Config *BackblazeB2Config        `env:"init"          envPrefix:"BACKBLAZE_B2_"     json:"backblazeB2,omitempty"  yaml:"backblazeB2,omitempty"`
+		BucketPrefix      string                    `env:"BUCKET_PREFIX" json:"bucketPrefix,omitempty" yaml:"bucketPrefix,omitempty"`
+		BucketName        string                    `env:"BUCKET_NAME"   json:"bucketName,omitempty"   yaml:"bucketName,omitempty"`
+		Provider          string                    `env:"PROVIDER"      json:"provider,omitempty"     yaml:"provider,omitempty"`
+		CircuitBreaker    circuitbreakingcfg.Config `env:"init"          envPrefix:"CIRCUIT_BREAKING_" json:"circuitBreakerConfig"   yaml:"circuitBreakerConfig"`
 	}
 )
 

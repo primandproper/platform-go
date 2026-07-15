@@ -8,8 +8,8 @@ import (
 
 // Config configures the AWS SSM Parameter Store client.
 type Config struct {
-	Region string `env:"REGION" json:"region"`
-	Prefix string `env:"PREFIX" json:"prefix,omitempty"`
+	Region string `env:"REGION" json:"region"           yaml:"region"`
+	Prefix string `env:"PREFIX" json:"prefix,omitempty" yaml:"prefix,omitempty"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

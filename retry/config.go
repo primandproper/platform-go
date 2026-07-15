@@ -16,11 +16,11 @@ const (
 
 // Config configures retry behavior.
 type Config struct {
-	MaxAttempts  uint          `env:"MAX_ATTEMPTS"  json:"maxAttempts"`
-	InitialDelay time.Duration `env:"INITIAL_DELAY" json:"initialDelay"`
-	MaxDelay     time.Duration `env:"MAX_DELAY"     json:"maxDelay"`
-	Multiplier   float64       `env:"MULTIPLIER"    json:"multiplier"`
-	UseJitter    bool          `env:"USE_JITTER"    json:"useJitter"`
+	MaxAttempts  uint          `env:"MAX_ATTEMPTS"  json:"maxAttempts"  yaml:"maxAttempts"`
+	InitialDelay time.Duration `env:"INITIAL_DELAY" json:"initialDelay" yaml:"initialDelay"`
+	MaxDelay     time.Duration `env:"MAX_DELAY"     json:"maxDelay"     yaml:"maxDelay"`
+	Multiplier   float64       `env:"MULTIPLIER"    json:"multiplier"   yaml:"multiplier"`
+	UseJitter    bool          `env:"USE_JITTER"    json:"useJitter"    yaml:"useJitter"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

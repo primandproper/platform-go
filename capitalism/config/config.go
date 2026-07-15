@@ -22,9 +22,9 @@ const (
 type (
 	// Config allows for the configuration of this package and its subpackages.
 	Config struct {
-		Stripe   *stripe.Config `env:"init"     envPrefix:"STRIPE_" json:"stripe"`
-		Provider string         `env:"PROVIDER" json:"provider"`
-		Enabled  bool           `env:"ENABLED"  json:"enabled"`
+		Stripe   *stripe.Config `env:"init"     envPrefix:"STRIPE_" json:"stripe"   yaml:"stripe"`
+		Provider string         `env:"PROVIDER" json:"provider"     yaml:"provider"`
+		Enabled  bool           `env:"ENABLED"  json:"enabled"      yaml:"enabled"`
 	}
 )
 

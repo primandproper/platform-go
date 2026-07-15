@@ -8,8 +8,8 @@ import (
 
 // Config configures the Kubernetes secret source.
 type Config struct {
-	Namespace  string `env:"NAMESPACE"  json:"namespace"`
-	Kubeconfig string `env:"KUBECONFIG" json:"kubeconfig,omitempty"`
+	Namespace  string `env:"NAMESPACE"  json:"namespace"            yaml:"namespace"`
+	Kubeconfig string `env:"KUBECONFIG" json:"kubeconfig,omitempty" yaml:"kubeconfig,omitempty"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

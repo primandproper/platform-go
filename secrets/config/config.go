@@ -33,14 +33,14 @@ const (
 
 // Config configures secret source selection.
 type Config struct {
-	GCPClient     gcp.SecretVersionAccessor `json:"-"`
-	SSMClient     ssm.GetParameterAPI       `json:"-"`
-	KubectlClient kubectl.SecretGetter      `json:"-"`
-	Env           *env.Config               `env:"init"     envPrefix:"ENV_"     json:"env,omitempty"`
-	GCP           *gcp.Config               `env:"init"     envPrefix:"GCP_"     json:"gcp,omitempty"`
-	SSM           *ssm.Config               `env:"init"     envPrefix:"SSM_"     json:"ssm,omitempty"`
-	Kubectl       *kubectl.Config           `env:"init"     envPrefix:"KUBECTL_" json:"kubectl,omitempty"`
-	Provider      string                    `env:"PROVIDER" json:"provider"`
+	GCPClient     gcp.SecretVersionAccessor `json:"-"       yaml:"-"`
+	SSMClient     ssm.GetParameterAPI       `json:"-"       yaml:"-"`
+	KubectlClient kubectl.SecretGetter      `json:"-"       yaml:"-"`
+	Env           *env.Config               `env:"init"     envPrefix:"ENV_"     json:"env,omitempty"     yaml:"env,omitempty"`
+	GCP           *gcp.Config               `env:"init"     envPrefix:"GCP_"     json:"gcp,omitempty"     yaml:"gcp,omitempty"`
+	SSM           *ssm.Config               `env:"init"     envPrefix:"SSM_"     json:"ssm,omitempty"     yaml:"ssm,omitempty"`
+	Kubectl       *kubectl.Config           `env:"init"     envPrefix:"KUBECTL_" json:"kubectl,omitempty" yaml:"kubectl,omitempty"`
+	Provider      string                    `env:"PROVIDER" json:"provider"      yaml:"provider"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

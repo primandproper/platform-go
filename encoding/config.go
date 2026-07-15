@@ -8,9 +8,9 @@ import (
 
 // Config configures input/output encoding for the service.
 type Config struct {
-	_ struct{} `json:"-"`
+	_ struct{} `json:"-" yaml:"-"`
 
-	ContentType string `env:"CONTENT_TYPE" json:"contentType"`
+	ContentType string `env:"CONTENT_TYPE" json:"contentType" yaml:"contentType"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

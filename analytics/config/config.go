@@ -28,21 +28,21 @@ const (
 type (
 	// SourceConfig is the per-source analytics config (provider + credentials). Used for proxy sources; no ProxySources to avoid recursion.
 	SourceConfig struct {
-		Segment        *segment.Config           `env:",init"                  envPrefix:"SEGMENT_"  json:"segment"`
-		Posthog        *posthog.Config           `env:",init"                  envPrefix:"POSTHOG_"  json:"posthog"`
-		Provider       string                    `env:"PROVIDER"               json:"provider"`
-		CircuitBreaker circuitbreakingcfg.Config `envPrefix:"CIRCUIT_BREAKER_" json:"circuitBreaker"`
+		Segment        *segment.Config           `env:",init"                  envPrefix:"SEGMENT_"  json:"segment"        yaml:"segment"`
+		Posthog        *posthog.Config           `env:",init"                  envPrefix:"POSTHOG_"  json:"posthog"        yaml:"posthog"`
+		Provider       string                    `env:"PROVIDER"               json:"provider"       yaml:"provider"`
+		CircuitBreaker circuitbreakingcfg.Config `envPrefix:"CIRCUIT_BREAKER_" json:"circuitBreaker" yaml:"circuitBreaker"`
 	}
 
 	// ProxySourcesConfig holds per-source analytics config for the analytics proxy gRPC service. Sources are codified: ios and web.
 	ProxySourcesConfig struct {
-		IOS *SourceConfig `env:",init" envPrefix:"IOS_" json:"ios"`
-		Web *SourceConfig `env:",init" envPrefix:"WEB_" json:"web"`
+		IOS *SourceConfig `env:",init" envPrefix:"IOS_" json:"ios" yaml:"ios"`
+		Web *SourceConfig `env:",init" envPrefix:"WEB_" json:"web" yaml:"web"`
 	}
 
 	// Config is the configuration structure.
 	Config struct {
-		ProxySources ProxySourcesConfig `envPrefix:"PROXY_SOURCES_" json:"proxySources"`
+		ProxySources ProxySourcesConfig `envPrefix:"PROXY_SOURCES_" json:"proxySources" yaml:"proxySources"`
 		SourceConfig
 	}
 )

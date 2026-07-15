@@ -8,12 +8,12 @@ import (
 
 // Config configures our router.
 type Config struct {
-	_ struct{} `json:"-"`
+	_ struct{} `json:"-" yaml:"-"`
 
-	ServiceName            string   `env:"SERVICE_NAME"              json:"serviceName,omitempty"`
-	ValidDomains           []string `env:"VALID_DOMAINS"             json:"validDomains,omitempty"`
-	EnableCORSForLocalhost bool     `env:"ENABLE_CORS_FOR_LOCALHOST" json:"enableCORSForLocalhost"`
-	SilenceRouteLogging    bool     `env:"SILENCE_ROUTE_LOGGING"     json:"silenceRouteLogging,omitempty"`
+	ServiceName            string   `env:"SERVICE_NAME"              json:"serviceName,omitempty"         yaml:"serviceName,omitempty"`
+	ValidDomains           []string `env:"VALID_DOMAINS"             json:"validDomains,omitempty"        yaml:"validDomains,omitempty"`
+	EnableCORSForLocalhost bool     `env:"ENABLE_CORS_FOR_LOCALHOST" json:"enableCORSForLocalhost"        yaml:"enableCORSForLocalhost"`
+	SilenceRouteLogging    bool     `env:"SILENCE_ROUTE_LOGGING"     json:"silenceRouteLogging,omitempty" yaml:"silenceRouteLogging,omitempty"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

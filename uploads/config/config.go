@@ -10,10 +10,10 @@ import (
 
 // Config contains settings for the uploads object storage.
 type Config struct {
-	_ struct{} `json:"-"`
+	_ struct{} `json:"-" yaml:"-"`
 
-	Storage objectstorage.Config `envPrefix:"STORAGE_" json:"storageConfig"`
-	Debug   bool                 `env:"DEBUG"          json:"debug"`
+	Storage objectstorage.Config `envPrefix:"STORAGE_" json:"storageConfig" yaml:"storageConfig"`
+	Debug   bool                 `env:"DEBUG"          json:"debug"         yaml:"debug"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

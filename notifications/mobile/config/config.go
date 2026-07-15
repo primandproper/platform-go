@@ -26,25 +26,25 @@ const (
 type (
 	// APNsConfig configures APNs for iOS push notifications.
 	APNsConfig struct {
-		AuthKeyPath string `env:"AUTH_KEY_PATH" json:"authKeyPath"`
-		KeyID       string `env:"KEY_ID"        json:"keyID"`
-		TeamID      string `env:"TEAM_ID"       json:"teamID"`
-		BundleID    string `env:"BUNDLE_ID"     json:"bundleID"`
-		Production  bool   `env:"PRODUCTION"    json:"production"`
+		AuthKeyPath string `env:"AUTH_KEY_PATH" json:"authKeyPath" yaml:"authKeyPath"`
+		KeyID       string `env:"KEY_ID"        json:"keyID"       yaml:"keyID"`
+		TeamID      string `env:"TEAM_ID"       json:"teamID"      yaml:"teamID"`
+		BundleID    string `env:"BUNDLE_ID"     json:"bundleID"    yaml:"bundleID"`
+		Production  bool   `env:"PRODUCTION"    json:"production"  yaml:"production"`
 	}
 
 	// FCMConfig configures FCM for Android push notifications.
 	FCMConfig struct {
 		// CredentialsPath is the path to the Firebase service account JSON file.
 		// If empty, Application Default Credentials (ADC) are used.
-		CredentialsPath string `env:"CREDENTIALS_PATH" json:"credentialsPath"`
+		CredentialsPath string `env:"CREDENTIALS_PATH" json:"credentialsPath" yaml:"credentialsPath"`
 	}
 
 	// Config is the push notifications configuration.
 	Config struct {
-		APNs     *APNsConfig `env:",init"    envPrefix:"APNS_" json:"apns"`
-		FCM      *FCMConfig  `env:",init"    envPrefix:"FCM_"  json:"fcm"`
-		Provider string      `env:"PROVIDER" json:"provider"`
+		APNs     *APNsConfig `env:",init"    envPrefix:"APNS_" json:"apns"     yaml:"apns"`
+		FCM      *FCMConfig  `env:",init"    envPrefix:"FCM_"  json:"fcm"      yaml:"fcm"`
+		Provider string      `env:"PROVIDER" json:"provider"   yaml:"provider"`
 	}
 )
 

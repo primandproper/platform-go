@@ -62,6 +62,64 @@ func TestLoadFromJSONFile(t *testing.T) {
 	})
 }
 
+func TestLoadFromTOMLFile(t *testing.T) {
+	t.Parallel()
+
+	t.Run("decodes and applies defaults", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.toml")
+		must.NoError(t, os.WriteFile(path, []byte("name = \"fromfile\"\nverbose = true\n"), 0o600))
+
+		cfg, err := LoadFromTOMLFile[sampleConfig](path)
+		must.NoError(t, err)
+		test.EqOp(t, "fromfile", cfg.Name)
+		test.EqOp(t, true, cfg.Verbose)
+		test.EqOp(t, 8080, cfg.Port) // from envDefault
+	})
+
+	t.Run("errors on invalid TOML", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		path := filepath.Join(dir, "bad.toml")
+		must.NoError(t, os.WriteFile(path, []byte("name = = broken"), 0o600))
+
+		_, err := LoadFromTOMLFile[sampleConfig](path)
+		test.Error(t, err)
+	})
+}
+
+func TestLoadFromYAMLFile(t *testing.T) {
+	t.Parallel()
+
+	t.Run("decodes and applies defaults", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.yaml")
+		must.NoError(t, os.WriteFile(path, []byte("name: fromfile\nverbose: true\n"), 0o600))
+
+		cfg, err := LoadFromYAMLFile[sampleConfig](path)
+		must.NoError(t, err)
+		test.EqOp(t, "fromfile", cfg.Name)
+		test.EqOp(t, true, cfg.Verbose)
+		test.EqOp(t, 8080, cfg.Port) // from envDefault
+	})
+
+	t.Run("errors on invalid YAML", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		path := filepath.Join(dir, "bad.yaml")
+		must.NoError(t, os.WriteFile(path, []byte("name: : :\n\t- broken"), 0o600))
+
+		_, err := LoadFromYAMLFile[sampleConfig](path)
+		test.Error(t, err)
+	})
+}
+
 // dotEnvConfig uses env keys unique to the dotenv test. godotenv.Load mutates
 // the real process environment (not a test-scoped copy), so distinct keys keep
 // it from leaking into the other tests when they run in a shuffled order.

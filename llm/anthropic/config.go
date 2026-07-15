@@ -9,10 +9,10 @@ import (
 
 // Config configures the Anthropic LLM provider.
 type Config struct {
-	APIKey       string        `env:"API_KEY"       json:"apiKey,omitempty"`
-	BaseURL      string        `env:"BASE_URL"      json:"baseURL,omitempty"`
-	DefaultModel string        `env:"DEFAULT_MODEL" json:"defaultModel,omitempty"`
-	Timeout      time.Duration `env:"TIMEOUT"       json:"timeout"`
+	APIKey       string        `env:"API_KEY"       json:"apiKey,omitempty"       yaml:"apiKey,omitempty"`
+	BaseURL      string        `env:"BASE_URL"      json:"baseURL,omitempty"      yaml:"baseURL,omitempty"`
+	DefaultModel string        `env:"DEFAULT_MODEL" json:"defaultModel,omitempty" yaml:"defaultModel,omitempty"`
+	Timeout      time.Duration `env:"TIMEOUT"       json:"timeout"                yaml:"timeout"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

@@ -32,11 +32,11 @@ const (
 
 // Config dispatches to a distributedlock provider implementation.
 type Config struct {
-	_              struct{}                  `json:"-"`
-	Redis          *redislock.Config         `env:"init"     envPrefix:"REDIS_"            json:"redis"`
-	Postgres       *pglock.Config            `env:"init"     envPrefix:"POSTGRES_"         json:"postgres"`
-	Provider       string                    `env:"PROVIDER" json:"provider"`
-	CircuitBreaker circuitbreakingcfg.Config `env:"init"     envPrefix:"CIRCUIT_BREAKING_" json:"circuitBreakerConfig"`
+	_              struct{}                  `json:"-"       yaml:"-"`
+	Redis          *redislock.Config         `env:"init"     envPrefix:"REDIS_"            json:"redis"                yaml:"redis"`
+	Postgres       *pglock.Config            `env:"init"     envPrefix:"POSTGRES_"         json:"postgres"             yaml:"postgres"`
+	Provider       string                    `env:"PROVIDER" json:"provider"               yaml:"provider"`
+	CircuitBreaker circuitbreakingcfg.Config `env:"init"     envPrefix:"CIRCUIT_BREAKING_" json:"circuitBreakerConfig" yaml:"circuitBreakerConfig"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)

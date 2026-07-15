@@ -44,18 +44,18 @@ const (
 type (
 	// Config is the configuration structure.
 	Config struct {
-		Sendgrid                            *sendgrid.Config          `env:"init"                                    envPrefix:"SENDGRID_"                      json:"sendgrid"`
-		Mailgun                             *mailgun.Config           `env:"init"                                    envPrefix:"MAILGUN_"                       json:"mailgun"`
-		Mailjet                             *mailjet.Config           `env:"init"                                    envPrefix:"MAILJET_"                       json:"mailjet"`
-		Resend                              *resend.Config            `env:"init"                                    envPrefix:"RESEND_"                        json:"resend"`
-		Postmark                            *postmark.Config          `env:"init"                                    envPrefix:"POSTMARK_"                      json:"postmark"`
-		SES                                 *ses.Config               `env:"init"                                    envPrefix:"SES_"                           json:"ses"`
-		Provider                            string                    `env:"PROVIDER"                                json:"provider"`
-		BaseURL                             template.URL              `env:"BASE_URL"                                json:"baseURL"`
-		OutboundInvitesEmailAddress         string                    `env:"OUTBOUND_INVITES_EMAIL_ADDRESS"          json:"outboundInvitesEmailAddress"`
-		PasswordResetCreationEmailAddress   string                    `env:"PASSWORD_RESET_CREATION_EMAIL_ADDRESS"   json:"passwordResetCreationEmailAddress"`
-		PasswordResetRedemptionEmailAddress string                    `env:"PASSWORD_RESET_REDEMPTION_EMAIL_ADDRESS" json:"passwordResetRedemptionEmailAddress"`
-		CircuitBreaker                      circuitbreakingcfg.Config `env:"init"                                    envPrefix:"CIRCUIT_BREAKING_"              json:"circuitBreakerConfig"`
+		Sendgrid                            *sendgrid.Config          `env:"init"                                    envPrefix:"SENDGRID_"                      json:"sendgrid"                            yaml:"sendgrid"`
+		Mailgun                             *mailgun.Config           `env:"init"                                    envPrefix:"MAILGUN_"                       json:"mailgun"                             yaml:"mailgun"`
+		Mailjet                             *mailjet.Config           `env:"init"                                    envPrefix:"MAILJET_"                       json:"mailjet"                             yaml:"mailjet"`
+		Resend                              *resend.Config            `env:"init"                                    envPrefix:"RESEND_"                        json:"resend"                              yaml:"resend"`
+		Postmark                            *postmark.Config          `env:"init"                                    envPrefix:"POSTMARK_"                      json:"postmark"                            yaml:"postmark"`
+		SES                                 *ses.Config               `env:"init"                                    envPrefix:"SES_"                           json:"ses"                                 yaml:"ses"`
+		Provider                            string                    `env:"PROVIDER"                                json:"provider"                            yaml:"provider"`
+		BaseURL                             template.URL              `env:"BASE_URL"                                json:"baseURL"                             yaml:"baseURL"`
+		OutboundInvitesEmailAddress         string                    `env:"OUTBOUND_INVITES_EMAIL_ADDRESS"          json:"outboundInvitesEmailAddress"         yaml:"outboundInvitesEmailAddress"`
+		PasswordResetCreationEmailAddress   string                    `env:"PASSWORD_RESET_CREATION_EMAIL_ADDRESS"   json:"passwordResetCreationEmailAddress"   yaml:"passwordResetCreationEmailAddress"`
+		PasswordResetRedemptionEmailAddress string                    `env:"PASSWORD_RESET_REDEMPTION_EMAIL_ADDRESS" json:"passwordResetRedemptionEmailAddress" yaml:"passwordResetRedemptionEmailAddress"`
+		CircuitBreaker                      circuitbreakingcfg.Config `env:"init"                                    envPrefix:"CIRCUIT_BREAKING_"              json:"circuitBreakerConfig"                yaml:"circuitBreakerConfig"`
 	}
 )
 

@@ -25,9 +25,9 @@ const (
 
 type (
 	Config struct {
-		HTTPSCertificateFile  string `env:"TLS_CERTIFICATE_FILEPATH"     json:"tlsCertificate,omitempty"`
-		TLSCertificateKeyFile string `env:"TLS_CERTIFICATE_KEY_FILEPATH" json:"tlsCertificateKey,omitempty"`
-		Port                  uint16 `env:"PORT"                         json:"port"`
+		HTTPSCertificateFile  string `env:"TLS_CERTIFICATE_FILEPATH"     json:"tlsCertificate,omitempty"    yaml:"tlsCertificate,omitempty"`
+		TLSCertificateKeyFile string `env:"TLS_CERTIFICATE_KEY_FILEPATH" json:"tlsCertificateKey,omitempty" yaml:"tlsCertificateKey,omitempty"`
+		Port                  uint16 `env:"PORT"                         json:"port"                        yaml:"port"`
 	}
 
 	Server struct {
