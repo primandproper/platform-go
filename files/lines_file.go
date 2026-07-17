@@ -3,7 +3,6 @@ package files
 import (
 	"context"
 	"iter"
-	"os"
 
 	"github.com/primandproper/platform-go/v4/errors"
 	"github.com/primandproper/platform-go/v4/observability/keys"
@@ -13,7 +12,7 @@ import (
 // error is yielded by the iterator. The file is closed when iteration is exhausted or the caller
 // breaks out of the range.
 func (r *standardReader) LinesFile(name string) (iter.Seq2[string, error], error) {
-	f, err := os.Open(name)
+	f, err := r.fsys.Open(name)
 	if err != nil {
 		return nil, errors.Wrap(err, "opening file")
 	}
@@ -32,7 +31,7 @@ func (r *standardReader) LinesFile(name string) (iter.Seq2[string, error], error
 // ChunksFile opens name and yields successive slices of up to n lines, closing the file when
 // iteration ends or the caller breaks.
 func (r *standardReader) ChunksFile(name string, n int) (iter.Seq2[[]string, error], error) {
-	f, err := os.Open(name)
+	f, err := r.fsys.Open(name)
 	if err != nil {
 		return nil, errors.Wrap(err, "opening file")
 	}
@@ -55,7 +54,7 @@ func (r *standardReader) SliceLinesFile(ctx context.Context, name string, offset
 
 	op.Set(keys.FilenameKey, name)
 
-	f, err := os.Open(name)
+	f, err := r.fsys.Open(name)
 	if err != nil {
 		return nil, op.Error(err, "opening file")
 	}

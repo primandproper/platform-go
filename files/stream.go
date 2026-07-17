@@ -3,7 +3,6 @@ package files
 import (
 	"context"
 	"io"
-	"os"
 
 	"github.com/primandproper/platform-go/v4/errors"
 	"github.com/primandproper/platform-go/v4/observability/keys"
@@ -35,7 +34,7 @@ func StreamChunks(ctx context.Context, src io.Reader, n int) (<-chan ChunkResult
 // synchronously with a nil channel and no goroutine; streamChunks is the single chunk-size
 // validator and closes the file via cleanup if it rejects n.
 func (r *standardReader) StreamChunksFile(ctx context.Context, name string, n int) (<-chan ChunkResult, error) {
-	f, err := os.Open(name)
+	f, err := r.fsys.Open(name)
 	if err != nil {
 		return nil, errors.Wrap(err, "opening file")
 	}
