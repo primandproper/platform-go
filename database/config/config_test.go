@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform-go/v4/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
+	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
 
 	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/shoenig/test"

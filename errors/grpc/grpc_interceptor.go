@@ -3,7 +3,7 @@ package grpc
 import (
 	"context"
 
-	platformerrors "github.com/primandproper/platform-go/v4/errors"
+	platformerrors "github.com/primandproper/platform-go/v5/errors"
 
 	"github.com/cockroachdb/errors/errorspb"
 	gogoproto "github.com/gogo/protobuf/proto"

@@ -19,10 +19,13 @@ import (
 	"testing"
 	"time"
 
-	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v4/panicking"
-	"github.com/primandproper/platform-go/v4/routing"
+	"github.com/primandproper/platform-go/v5/encoding"
+	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v5/panicking"
+	"github.com/primandproper/platform-go/v5/routing"
+	"github.com/primandproper/platform-go/v5/routing/chi"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -48,26 +51,16 @@ func (m *mockTracerProvider) ForceFlush(ctx context.Context) error {
 	return m.forceFlushFunc(ctx)
 }
 
-// stubRouter satisfies routing.Router for testing Serve().
-type stubRouter struct{}
+// testRouter builds a real *routing.Router (chi-backed) for exercising Serve().
+func testRouter(t *testing.T) *routing.Router {
+	t.Helper()
 
-func (stubRouter) Routes() []*routing.Route                            { return nil }
-func (stubRouter) Handler() http.Handler                               { return http.NewServeMux() }
-func (stubRouter) Handle(string, http.Handler)                         {}
-func (stubRouter) HandleFunc(string, http.HandlerFunc)                 {}
-func (stubRouter) WithMiddleware(...routing.Middleware) routing.Router { return stubRouter{} }
-func (stubRouter) Route(string, func(r routing.Router)) routing.Router { return stubRouter{} }
-func (stubRouter) Connect(string, http.HandlerFunc)                    {}
-func (stubRouter) Delete(string, http.HandlerFunc)                     {}
-func (stubRouter) Get(string, http.HandlerFunc)                        {}
-func (stubRouter) Head(string, http.HandlerFunc)                       {}
-func (stubRouter) Options(string, http.HandlerFunc)                    {}
-func (stubRouter) Patch(string, http.HandlerFunc)                      {}
-func (stubRouter) Post(string, http.HandlerFunc)                       {}
-func (stubRouter) Put(string, http.HandlerFunc)                        {}
-func (stubRouter) Trace(string, http.HandlerFunc)                      {}
-func (stubRouter) AddRoute(string, string, http.HandlerFunc, ...routing.Middleware) error {
-	return nil
+	logger := loggingnoop.NewLogger()
+	tracerProvider := tracingnoop.NewTracerProvider()
+	backend := chi.NewBackend(logger, tracerProvider, metricsnoop.NewMetricsProvider(), &chi.Config{ServiceName: t.Name()})
+	enc := encoding.NewServerEncoderDecoder(logger, tracerProvider, encoding.ContentTypeJSON)
+
+	return routing.New(backend, enc, logger, tracerProvider)
 }
 
 func generateTestTLSCerts(t *testing.T) (certFile, keyFile string) {
@@ -237,7 +230,7 @@ func TestServer_Serve(T *testing.T) {
 
 		srv := &server{
 			logger:         loggingnoop.NewLogger(),
-			router:         stubRouter{},
+			router:         testRouter(t),
 			panicker:       panicking.NewProductionPanicker(),
 			httpServer:     provideStdLibHTTPServer(Config{}),
 			tracerProvider: tracingnoop.NewTracerProvider(),
@@ -263,7 +256,7 @@ func TestServer_Serve(T *testing.T) {
 
 		srv := &server{
 			logger:         loggingnoop.NewLogger(),
-			router:         stubRouter{},
+			router:         testRouter(t),
 			panicker:       panicking.NewProductionPanicker(),
 			httpServer:     provideStdLibHTTPServer(Config{}),
 			tracerProvider: tracingnoop.NewTracerProvider(),
@@ -289,7 +282,7 @@ func TestServer_Serve(T *testing.T) {
 
 		srv := &server{
 			logger:         loggingnoop.NewLogger(),
-			router:         stubRouter{},
+			router:         testRouter(t),
 			panicker:       panicking.NewProductionPanicker(),
 			httpServer:     provideStdLibHTTPServer(Config{}),
 			tracerProvider: tracingnoop.NewTracerProvider(),
@@ -322,7 +315,7 @@ func TestServer_Serve(T *testing.T) {
 
 		srv := &server{
 			logger:         loggingnoop.NewLogger(),
-			router:         stubRouter{},
+			router:         testRouter(t),
 			panicker:       panicking.NewProductionPanicker(),
 			httpServer:     httpSrv,
 			tracerProvider: tracingnoop.NewTracerProvider(),
@@ -345,7 +338,7 @@ func TestServer_listen(T *testing.T) {
 
 		srv := &server{
 			logger:         loggingnoop.NewLogger(),
-			router:         stubRouter{},
+			router:         testRouter(t),
 			panicker:       panicking.NewProductionPanicker(),
 			httpServer:     provideStdLibHTTPServer(Config{Port: 0}),
 			tracerProvider: tracingnoop.NewTracerProvider(),
@@ -363,7 +356,7 @@ func TestServer_listen(T *testing.T) {
 
 		srv := &server{
 			logger:         loggingnoop.NewLogger(),
-			router:         stubRouter{},
+			router:         testRouter(t),
 			panicker:       panicking.NewProductionPanicker(),
 			httpServer:     provideStdLibHTTPServer(Config{Port: 0}),
 			tracerProvider: tracingnoop.NewTracerProvider(),

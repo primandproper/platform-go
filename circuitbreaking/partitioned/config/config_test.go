@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	circuitbreakingcfg "github.com/primandproper/platform-go/v4/circuitbreaking/config"
-	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
-	"github.com/primandproper/platform-go/v4/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v4/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v4/observability/metrics/noop"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v5/circuitbreaking/config"
+	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
+	"github.com/primandproper/platform-go/v5/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v5/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
 
 	"github.com/shoenig/test"
 	"go.opentelemetry.io/otel/metric"

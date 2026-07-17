@@ -8,10 +8,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/primandproper/platform-go/v4/circuitbreaking"
-	mockcircuitbreaking "github.com/primandproper/platform-go/v4/circuitbreaking/mock"
-	"github.com/primandproper/platform-go/v4/observability"
-	"github.com/primandproper/platform-go/v4/observability/keys"
+	"github.com/primandproper/platform-go/v5/circuitbreaking"
+	mockcircuitbreaking "github.com/primandproper/platform-go/v5/circuitbreaking/mock"
+	"github.com/primandproper/platform-go/v5/observability"
+	"github.com/primandproper/platform-go/v5/observability/keys"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/shoenig/test"

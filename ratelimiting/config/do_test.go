@@ -3,8 +3,8 @@ package ratelimitingcfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v4/observability/metrics"
-	"github.com/primandproper/platform-go/v4/ratelimiting"
+	"github.com/primandproper/platform-go/v5/observability/metrics"
+	"github.com/primandproper/platform-go/v5/ratelimiting"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

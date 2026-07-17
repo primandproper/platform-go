@@ -3,14 +3,19 @@ package routingcfg
 import (
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform-go/v4/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v4/routing/chi"
+	"github.com/primandproper/platform-go/v5/encoding"
+	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v5/routing/chi"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+func testEncoder() encoding.ServerEncoderDecoder {
+	return encoding.NewServerEncoderDecoder(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), encoding.ContentTypeJSON)
+}
 
 func TestConfig_ValidateWithContext(T *testing.T) {
 	T.Parallel()
@@ -38,6 +43,35 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 	})
 }
 
+func TestNewBackend(T *testing.T) {
+	T.Parallel()
+
+	T.Run("with chi provider", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			Provider: ProviderChi,
+			Chi:      &chi.Config{ServiceName: t.Name()},
+		}
+
+		backend, err := NewBackend(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		must.NoError(t, err)
+		test.NotNil(t, backend)
+	})
+
+	T.Run("with unknown provider", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{
+			Provider: "bogus",
+		}
+
+		backend, err := NewBackend(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		test.Nil(t, backend)
+		test.Error(t, err)
+	})
+}
+
 func TestNewRouter(T *testing.T) {
 	T.Parallel()
 
@@ -49,7 +83,7 @@ func TestNewRouter(T *testing.T) {
 			Chi:      &chi.Config{ServiceName: t.Name()},
 		}
 
-		router, err := NewRouter(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		router, err := NewRouter(cfg, testEncoder(), loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		must.NoError(t, err)
 		test.NotNil(t, router)
 	})
@@ -61,93 +95,7 @@ func TestNewRouter(T *testing.T) {
 			Provider: "bogus",
 		}
 
-		router, err := NewRouter(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
-		test.Nil(t, router)
-		test.Error(t, err)
-	})
-}
-
-func TestConfig_NewRouter(T *testing.T) {
-	T.Parallel()
-
-	T.Run("with chi provider", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := &Config{
-			Provider: ProviderChi,
-			Chi:      &chi.Config{ServiceName: t.Name()},
-		}
-
-		router, err := cfg.NewRouter(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
-		must.NoError(t, err)
-		test.NotNil(t, router)
-	})
-
-	T.Run("with unknown provider", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := &Config{
-			Provider: "bogus",
-		}
-
-		router, err := cfg.NewRouter(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
-		test.Nil(t, router)
-		test.Error(t, err)
-	})
-}
-
-func TestNewRouteParamManager(T *testing.T) {
-	T.Parallel()
-
-	T.Run("with chi provider", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := &Config{
-			Provider: ProviderChi,
-		}
-
-		manager, err := NewRouteParamManager(cfg)
-		must.NoError(t, err)
-		test.NotNil(t, manager)
-	})
-
-	T.Run("with unknown provider", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := &Config{
-			Provider: "bogus",
-		}
-
-		manager, err := NewRouteParamManager(cfg)
-		test.Nil(t, manager)
-		test.Error(t, err)
-	})
-}
-
-func TestNewRouterViaConfig(T *testing.T) {
-	T.Parallel()
-
-	T.Run("with chi provider", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := &Config{
-			Provider: ProviderChi,
-			Chi:      &chi.Config{ServiceName: t.Name()},
-		}
-
-		router, err := NewRouter(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
-		must.NoError(t, err)
-		test.NotNil(t, router)
-	})
-
-	T.Run("with unknown provider", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := &Config{
-			Provider: "bogus",
-		}
-
-		router, err := NewRouter(cfg, loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
+		router, err := NewRouter(cfg, testEncoder(), loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider())
 		test.Nil(t, router)
 		test.Error(t, err)
 	})

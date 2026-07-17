@@ -3,7 +3,7 @@ package secrets
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v4/errors"
+	"github.com/primandproper/platform-go/v5/errors"
 )
 
 // ErrSecretNotFound is returned when a requested secret does not exist, so a

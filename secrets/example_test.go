@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/primandproper/platform-go/v4/secrets/env"
+	"github.com/primandproper/platform-go/v5/secrets/env"
 )
 
 func Example_envSecretSource() {

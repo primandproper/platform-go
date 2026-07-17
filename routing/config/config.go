@@ -3,12 +3,13 @@ package routingcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v4/errors"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/metrics"
-	"github.com/primandproper/platform-go/v4/observability/tracing"
-	"github.com/primandproper/platform-go/v4/routing"
-	"github.com/primandproper/platform-go/v4/routing/chi"
+	"github.com/primandproper/platform-go/v5/encoding"
+	"github.com/primandproper/platform-go/v5/errors"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/metrics"
+	"github.com/primandproper/platform-go/v5/observability/tracing"
+	"github.com/primandproper/platform-go/v5/routing"
+	"github.com/primandproper/platform-go/v5/routing/chi"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -35,32 +36,31 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	)
 }
 
-// NewRouter provides a Router from a routing config.
-func NewRouter(cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricProvider metrics.Provider) (routing.Router, error) {
+// NewBackend provides a routing.Backend from a routing config, selecting the
+// underlying router library by provider.
+func NewBackend(cfg *Config, logger logging.Logger, tracerProvider tracing.TracerProvider, metricProvider metrics.Provider) (routing.Backend, error) {
 	switch cfg.Provider {
 	case ProviderChi:
-		return chi.NewRouter(logger, tracerProvider, metricProvider, cfg.Chi), nil
+		return chi.NewBackend(logger, tracerProvider, metricProvider, cfg.Chi), nil
 	default:
 		return nil, errors.Newf("unknown provider: %s", cfg.Provider)
 	}
 }
 
-// NewRouter provides a Router from a routing config.
-func (cfg *Config) NewRouter(logger logging.Logger, tracerProvider tracing.TracerProvider, metricProvider metrics.Provider) (routing.Router, error) {
-	switch cfg.Provider {
-	case ProviderChi:
-		return chi.NewRouter(logger, tracerProvider, metricProvider, cfg.Chi), nil
-	default:
-		return nil, errors.Newf("unknown provider: %s", cfg.Provider)
+// NewRouter provides a fully-wired *routing.Router from a routing config: it
+// selects the backend by provider and layers the declarative Router on top.
+func NewRouter(
+	cfg *Config,
+	enc encoding.ServerEncoderDecoder,
+	logger logging.Logger,
+	tracerProvider tracing.TracerProvider,
+	metricProvider metrics.Provider,
+	opts ...routing.RouterOption,
+) (*routing.Router, error) {
+	backend, err := NewBackend(cfg, logger, tracerProvider, metricProvider)
+	if err != nil {
+		return nil, err
 	}
-}
 
-// NewRouteParamManager provides a RouteParamManager from a routing config.
-func NewRouteParamManager(cfg *Config) (routing.RouteParamManager, error) {
-	switch cfg.Provider {
-	case ProviderChi:
-		return chi.NewRouteParamManager(), nil
-	default:
-		return nil, errors.Newf("unknown provider: %s", cfg.Provider)
-	}
+	return routing.New(backend, enc, logger, tracerProvider, opts...), nil
 }

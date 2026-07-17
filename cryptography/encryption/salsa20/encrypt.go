@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"io"
 
-	"github.com/primandproper/platform-go/v4/observability/keys"
+	"github.com/primandproper/platform-go/v5/observability/keys"
 
 	"golang.org/x/crypto/nacl/secretbox"
 )

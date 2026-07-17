@@ -1,386 +1,128 @@
 package chi
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/primandproper/platform-go/v4/observability"
-	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform-go/v4/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v4/routing"
+	"github.com/primandproper/platform-go/v5/observability"
+	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v5/routing"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
 
-func buildRouterForTest() routing.Router {
-	return NewRouter(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider(), &Config{})
+func newTestBackend(t *testing.T, cfg *Config) routing.Backend {
+	t.Helper()
+
+	return NewBackend(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider(), cfg)
 }
 
-func TestNewRouter(T *testing.T) {
+func TestNewBackend(T *testing.T) {
 	T.Parallel()
 
-	T.Run("standard", func(t *testing.T) {
+	T.Run("returns a usable backend", func(t *testing.T) {
 		t.Parallel()
 
-		test.NotNil(t, NewRouter(loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider(), &Config{}))
+		b := newTestBackend(t, &Config{ServiceName: t.Name()})
+		test.NotNil(t, b)
+		test.NotNil(t, b.Handler())
 	})
 }
 
-func Test_buildChiMux(T *testing.T) {
+func TestBackend_HandleAndPathValue(T *testing.T) {
 	T.Parallel()
 
-	T.Run("standard", func(t *testing.T) {
+	T.Run("registers a route and resolves path values", func(t *testing.T) {
 		t.Parallel()
 
-		test.NotNil(t, buildChiMux(observability.NewObserverForTest(t.Name()), metricsnoop.NewMetricsProvider(), &Config{}))
+		b := newTestBackend(t, &Config{ServiceName: t.Name()})
+
+		var gotID string
+		b.Handle(http.MethodGet, "/things/{id}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotID = b.PathValue(r, "id")
+			w.WriteHeader(http.StatusNoContent)
+		}))
+
+		rec := httptest.NewRecorder()
+		b.Handler().ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/things/42", http.NoBody))
+
+		test.EqOp(t, http.StatusNoContent, rec.Code)
+		test.EqOp(t, "42", gotID)
 	})
+}
 
-	T.Run("CORS requires https for a non-localhost origin", func(t *testing.T) {
+func TestBackend_Use(T *testing.T) {
+	T.Parallel()
+
+	T.Run("applies middleware and drops nils", func(t *testing.T) {
 		t.Parallel()
 
-		mux := buildChiMux(observability.NewObserverForTest(t.Name()), metricsnoop.NewMetricsProvider(), &Config{
-			ValidDomains: []string{"example.com"},
+		b := newTestBackend(t, &Config{ServiceName: t.Name()})
+
+		// nil is filtered by convertMiddleware; the real middleware sets a header.
+		b.Use(nil, func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("X-Middleware", "on")
+				next.ServeHTTP(w, r)
+			})
 		})
-		mux.Get("/", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
-		allowOrigin := func(origin string) string {
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
-			must.NoError(t, err)
-			req.Header.Set("Origin", origin)
-
-			rw := httptest.NewRecorder()
-			mux.ServeHTTP(rw, req)
-			return rw.Header().Get("Access-Control-Allow-Origin")
-		}
-
-		// An https origin on an allowed host is echoed back; the plaintext origin on the
-		// same host is rejected (credentials must not flow over http).
-		test.EqOp(t, "https://example.com", allowOrigin("https://example.com"))
-		test.EqOp(t, "", allowOrigin("http://example.com"))
-	})
-}
-
-func Test_convertMiddleware(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		test.NotNil(t, convertMiddleware(func(http.Handler) http.Handler { return nil }))
-	})
-}
-
-func Test_router_AddRoute(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		methods := []string{
-			http.MethodGet,
-			http.MethodHead,
-			http.MethodPost,
-			http.MethodPut,
-			http.MethodPatch,
-			http.MethodDelete,
-			http.MethodConnect,
-			http.MethodOptions,
-			http.MethodTrace,
-		}
-
-		for _, method := range methods {
-			test.NoError(t, r.AddRoute(method, "/path", nil))
-		}
-	})
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		test.Error(t, r.AddRoute("blah", "/path", nil))
-	})
-}
-
-func Test_router_Connect(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		r.Connect("/test", nil)
-	})
-}
-
-func Test_router_Delete(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		r.Delete("/test", nil)
-	})
-}
-
-func Test_router_Get(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		r.Get("/test", nil)
-	})
-}
-
-func Test_router_Handle(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		r.Handle("/test", nil)
-	})
-}
-
-func Test_router_HandleFunc(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		r.HandleFunc("/test", nil)
-	})
-}
-
-func Test_router_Handler(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		test.NotNil(t, r.Handler())
-	})
-}
-
-func Test_router_Head(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		r.Head("/test", nil)
-	})
-}
-
-func Test_router_LogRoutes(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		test.NoError(t, r.AddRoute(http.MethodGet, "/path", nil))
-
-		r.Routes()
-	})
-}
-
-func Test_router_Options(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		r.Options("/test", nil)
-	})
-}
-
-func Test_router_Patch(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		r.Patch("/test", nil)
-	})
-}
-
-func Test_router_Post(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		r.Post("/test", nil)
-	})
-}
-
-func Test_router_Put(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		r.Put("/thing", nil)
-	})
-}
-
-func Test_router_Route(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		test.NotNil(t, r.Route("/test", func(routing.Router) {}))
-	})
-}
-
-func Test_router_Trace(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		r.Trace("/test", nil)
-	})
-}
-
-func Test_router_WithMiddleware(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouterForTest()
-
-		test.NotNil(t, r.WithMiddleware())
-	})
-}
-
-func Test_router_clone(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouter(nil, nil, tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider(), &Config{})
-
-		test.NotNil(t, r.clone())
-	})
-}
-
-func Test_router_BuildRouteParamIDFetcher(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouter(nil, nil, tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider(), &Config{})
-		l := loggingnoop.NewLogger()
-		ctx := t.Context()
-		exampleKey := "blah"
-
-		rf := r.BuildRouteParamIDFetcher(l, exampleKey, "desc")
-		test.NotNil(t, rf)
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/blah", http.NoBody)
-		test.NoError(t, err)
-		must.NotNil(t, req)
-
-		expected := uint64(123456)
-
-		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
-			URLParams: chi.RouteParams{
-				Keys:   []string{exampleKey},
-				Values: []string{"123456"},
-			},
+		b.Handle(http.MethodGet, "/u", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
 		}))
 
-		actual := rf(req)
-		test.EqOp(t, expected, actual)
-	})
+		rec := httptest.NewRecorder()
+		b.Handler().ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/u", http.NoBody))
 
-	T.Run("without appropriate value attached to context", func(t *testing.T) {
-		t.Parallel()
-
-		r := buildRouter(nil, nil, tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider(), &Config{})
-		l := loggingnoop.NewLogger()
-		ctx := t.Context()
-		exampleKey := "blah"
-
-		rf := r.BuildRouteParamIDFetcher(l, exampleKey, "desc")
-		test.NotNil(t, rf)
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/blah", http.NoBody)
-		test.NoError(t, err)
-		must.NotNil(t, req)
-
-		actual := rf(req)
-		test.EqOp(t, uint64(0), actual)
+		test.EqOp(t, http.StatusOK, rec.Code)
+		test.EqOp(t, "on", rec.Header().Get("X-Middleware"))
 	})
 }
 
-func Test_router_BuildRouteParamStringIDFetcher(T *testing.T) {
+func Test_buildChiMux_CORS(T *testing.T) {
 	T.Parallel()
 
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
+	mux := buildChiMux(
+		observability.NewObserverForTest(T.Name()),
+		metricsnoop.NewMetricsProvider(),
+		&Config{ValidDomains: []string{"example.com"}, EnableCORSForLocalhost: true},
+	)
+	mux.Get("/", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
-		r := buildRouter(nil, nil, tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider(), &Config{})
-		ctx := t.Context()
-		exampleKey := "blah"
+	allowOrigin := func(t *testing.T, origin string) string {
+		t.Helper()
 
-		rf := r.BuildRouteParamStringIDFetcher(exampleKey)
-		test.NotNil(t, rf)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
+		must.NoError(t, err)
+		req.Header.Set("Origin", origin)
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/blah", http.NoBody)
-		test.NoError(t, err)
-		must.NotNil(t, req)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
 
-		expected := "fake_user_id"
+		return rec.Header().Get("Access-Control-Allow-Origin")
+	}
 
-		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
-			URLParams: chi.RouteParams{
-				Keys:   []string{exampleKey},
-				Values: []string{expected},
-			},
-		}))
+	cases := []struct {
+		name   string
+		origin string
+		want   string
+	}{
+		{name: "https on allowed host is echoed", origin: "https://example.com", want: "https://example.com"},
+		{name: "http on allowed host is rejected", origin: "http://example.com", want: ""},
+		{name: "http localhost is allowed", origin: "http://localhost", want: "http://localhost"},
+		{name: "disallowed host is rejected", origin: "https://evil.example", want: ""},
+		{name: "unparseable origin is rejected", origin: "http://\x7f", want: ""},
+	}
 
-		actual := rf(req)
-		test.EqOp(t, expected, actual)
-	})
+	for _, tc := range cases {
+		T.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			test.EqOp(t, tc.want, allowOrigin(t, tc.origin))
+		})
+	}
 }

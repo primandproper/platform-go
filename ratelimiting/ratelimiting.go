@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform-go/v4/errors"
-	"github.com/primandproper/platform-go/v4/observability/metrics"
+	"github.com/primandproper/platform-go/v5/errors"
+	"github.com/primandproper/platform-go/v5/observability/metrics"
 
 	"golang.org/x/time/rate"
 )

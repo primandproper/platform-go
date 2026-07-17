@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 
-	"github.com/primandproper/platform-go/v4/cryptography/encryption"
-	"github.com/primandproper/platform-go/v4/observability/keys"
+	"github.com/primandproper/platform-go/v5/cryptography/encryption"
+	"github.com/primandproper/platform-go/v5/observability/keys"
 
 	"golang.org/x/crypto/nacl/secretbox"
 )

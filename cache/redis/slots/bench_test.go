@@ -3,7 +3,7 @@ package slots_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v4/cache/redis/slots"
+	"github.com/primandproper/platform-go/v5/cache/redis/slots"
 )
 
 func BenchmarkSlotForKey(b *testing.B) {

@@ -3,10 +3,10 @@ package config
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v4/notifications/mobile"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/metrics"
-	"github.com/primandproper/platform-go/v4/observability/tracing"
+	"github.com/primandproper/platform-go/v5/notifications/mobile"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/metrics"
+	"github.com/primandproper/platform-go/v5/observability/tracing"
 )
 
 // NewPushSender provides a PushNotificationSender from config.
