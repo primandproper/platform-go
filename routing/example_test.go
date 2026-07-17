@@ -12,7 +12,7 @@ import (
 	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
 	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
 	"github.com/primandproper/platform-go/v5/routing"
-	"github.com/primandproper/platform-go/v5/routing/chi"
+	"github.com/primandproper/platform-go/v5/routing/backends/chi"
 )
 
 // The input for creating a user. Tags decide where each field is bound:

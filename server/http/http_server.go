@@ -159,7 +159,7 @@ func (s *server) listen() (net.Listener, error) {
 }
 
 const (
-	// maxTimeout mirrors the router's request timeout (routing/chi maxTimeout). The server's
+	// maxTimeout mirrors the router's request timeout (routing/backends/chi maxTimeout). The server's
 	// write timeout must exceed it, or a slow handler is killed mid-write before the router's
 	// own timeout can ever fire.
 	maxTimeout  = 120 * time.Second

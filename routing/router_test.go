@@ -15,7 +15,7 @@ import (
 	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
 	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
 	"github.com/primandproper/platform-go/v5/routing"
-	"github.com/primandproper/platform-go/v5/routing/chi"
+	"github.com/primandproper/platform-go/v5/routing/backends/chi"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/shoenig/test"

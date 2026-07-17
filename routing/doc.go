@@ -10,9 +10,10 @@ interface methods cannot be generic, registration is done with these functions
 rather than methods on the Router.
 
 A Router is backed by a Backend — the pluggable seam that a concrete mux library
-(chi, gin, ...) implements. The Router builds everything on top of the Backend's
-primitives and never depends on the library directly, so the underlying router is
-swappable without touching route code:
+implements. Implementations ship for chi, the net/http.ServeMux standard library
+(stdlib), julienschmidt/httprouter, and gin-gonic/gin. The Router builds
+everything on top of the Backend's primitives and never depends on the library
+directly, so the underlying router is swappable without touching route code:
 
 	backend := chi.NewBackend(logger, tracerProvider, metricProvider, cfg)
 	r := routing.New(backend, encoder, logger, tracerProvider, routing.WithTitle("My API"))

@@ -7,7 +7,7 @@ import (
 	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
 	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
 	"github.com/primandproper/platform-go/v5/routing"
-	"github.com/primandproper/platform-go/v5/routing/chi"
+	"github.com/primandproper/platform-go/v5/routing/backends/chi"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

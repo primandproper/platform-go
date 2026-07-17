@@ -25,7 +25,7 @@ import (
 	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
 	"github.com/primandproper/platform-go/v5/panicking"
 	"github.com/primandproper/platform-go/v5/routing"
-	"github.com/primandproper/platform-go/v5/routing/chi"
+	"github.com/primandproper/platform-go/v5/routing/backends/chi"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
