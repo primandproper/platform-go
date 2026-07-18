@@ -70,6 +70,43 @@ func TestFS(T *testing.T) {
 		test.Eq(t, []string{"a", "b", "c"}, drainSeq(t, seq))
 	})
 
+	T.Run("NewFS reads relative names", func(t *testing.T) {
+		t.Parallel()
+
+		d := files.NewFS(mapFS(), loggingnoop.NewLogger(), tracingnoop.NewTracerProvider())
+		seq, err := d.Lines("top.txt")
+		must.NoError(t, err)
+		test.Eq(t, []string{"a", "b", "c"}, drainSeq(t, seq))
+	})
+
+	T.Run("Chunks yields chunks of lines", func(t *testing.T) {
+		t.Parallel()
+
+		seq, err := files.OpenFS(mapFS()).Chunks("top.txt", 2)
+		must.NoError(t, err)
+
+		got := [][]string{}
+		for chunk, err := range seq {
+			must.NoError(t, err)
+			got = append(got, chunk)
+		}
+		test.Eq(t, [][]string{{"a", "b"}, {"c"}}, got)
+	})
+
+	T.Run("StreamChunks streams chunks of lines", func(t *testing.T) {
+		t.Parallel()
+
+		ch, err := files.OpenFS(mapFS()).StreamChunks(t.Context(), "top.txt", 2)
+		must.NoError(t, err)
+
+		got := [][]string{}
+		for res := range ch {
+			must.NoError(t, res.Err)
+			got = append(got, res.Lines)
+		}
+		test.Eq(t, [][]string{{"a", "b"}, {"c"}}, got)
+	})
+
 	T.Run("Sub descends into a subtree", func(t *testing.T) {
 		t.Parallel()
 
@@ -79,6 +116,13 @@ func TestFS(T *testing.T) {
 		got, err := sub.SliceLines(t.Context(), "nested.txt", 0, 1)
 		must.NoError(t, err)
 		test.Eq(t, []string{"x"}, got)
+	})
+
+	T.Run("Sub rejects an invalid path", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := files.OpenFS(mapFS()).Sub("../escape")
+		test.Error(t, err)
 	})
 
 	T.Run("FS exposes the root for the decode helpers", func(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/primandproper/platform-go/v5/encoding"
 	"github.com/primandproper/platform-go/v5/errors"
@@ -91,6 +92,23 @@ func TestMustDecodeHelpers(T *testing.T) {
 		missing := filepath.Join(t.TempDir(), "nope.json")
 		test.Panic(t, func() {
 			_ = files.MustDecodeFile[sample](t.Context(), missing, encoding.ContentTypeJSON)
+		})
+	})
+
+	T.Run("MustDecodeFileFS returns the value", func(t *testing.T) {
+		t.Parallel()
+
+		got := files.MustDecodeFileFS[sample](t.Context(), fstest.MapFS{
+			"config.json": {Data: []byte(`{"name":"platform","count":9}`)},
+		}, "config.json", encoding.ContentTypeJSON)
+		test.EqOp(t, sample{Name: "platform", Count: 9}, got)
+	})
+
+	T.Run("MustDecodeFileFS panics on a missing file", func(t *testing.T) {
+		t.Parallel()
+
+		test.Panic(t, func() {
+			_ = files.MustDecodeFileFS[sample](t.Context(), fstest.MapFS{}, "nope.json", encoding.ContentTypeJSON)
 		})
 	})
 }
