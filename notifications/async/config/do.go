@@ -1,10 +1,10 @@
 package asynccfg
 
 import (
-	"github.com/primandproper/platform-go/v4/notifications/async"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/metrics"
-	"github.com/primandproper/platform-go/v4/observability/tracing"
+	"github.com/primandproper/platform-go/v5/notifications/async"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/metrics"
+	"github.com/primandproper/platform-go/v5/observability/tracing"
 
 	"github.com/samber/do/v2"
 )

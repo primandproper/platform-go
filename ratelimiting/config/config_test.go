@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	redisrl "github.com/primandproper/platform-go/v4/ratelimiting/redis"
+	redisrl "github.com/primandproper/platform-go/v5/ratelimiting/redis"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

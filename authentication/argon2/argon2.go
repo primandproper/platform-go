@@ -4,10 +4,10 @@ import (
 	"context"
 	"runtime"
 
-	"github.com/primandproper/platform-go/v4/authentication"
-	"github.com/primandproper/platform-go/v4/observability"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/tracing"
+	"github.com/primandproper/platform-go/v5/authentication"
+	"github.com/primandproper/platform-go/v5/observability"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/tracing"
 
 	"github.com/alexedwards/argon2id"
 )

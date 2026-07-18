@@ -2,14 +2,15 @@ package files
 
 import (
 	"context"
+	"io"
+	"io/fs"
 	"iter"
-	"os"
 
-	"github.com/primandproper/platform-go/v4/observability"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
-	"github.com/primandproper/platform-go/v4/observability/tracing"
-	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v5/observability"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
+	"github.com/primandproper/platform-go/v5/observability/tracing"
+	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
 )
 
 const o11yName = "files_reader"
@@ -32,31 +33,48 @@ type (
 	}
 
 	standardReader struct {
+		fsys           fs.FS
 		o11y           observability.Observer
 		logger         logging.Logger
 		tracerProvider tracing.TracerProvider
 	}
 )
 
-// newStandardReader keeps the raw logger and tracer provider around so the decode helpers can
-// build an encoding.ClientEncoder that traces under the same tracer as the file read.
+// newStandardReader builds a Reader over the OS filesystem. It keeps the raw logger and tracer
+// provider around so the decode helpers can build an encoding.ClientEncoder that traces under the
+// same tracer as the file read.
 func newStandardReader(logger logging.Logger, tracerProvider tracing.TracerProvider) *standardReader {
+	return newStandardReaderFS(osFS{}, logger, tracerProvider)
+}
+
+// newStandardReaderFS is newStandardReader over an arbitrary fs.FS.
+func newStandardReaderFS(fsys fs.FS, logger logging.Logger, tracerProvider tracing.TracerProvider) *standardReader {
 	return &standardReader{
+		fsys:           fsys,
 		o11y:           observability.NewObserver(o11yName, logger, tracerProvider),
 		logger:         logger,
 		tracerProvider: tracerProvider,
 	}
 }
 
-// NewReader builds a new Reader.
+// NewReader builds a Reader that opens files on the OS filesystem, accepting any path os.Open would
+// (including absolute paths and ".."). Use NewReaderFS to read from an embed.FS or other fs.FS.
 func NewReader(logger logging.Logger, tracerProvider tracing.TracerProvider) Reader {
 	return newStandardReader(logger, tracerProvider)
 }
 
-// closeQuietly closes f, logging any error. Closing a file opened only for reading practically never
+// NewReaderFS builds a Reader that opens files through fsys — an embed.FS, fstest.MapFS, os.DirFS,
+// archive/zip.Reader, or any other fs.FS. Names are interpreted by fsys and so must satisfy
+// fs.ValidPath (slash-separated, unrooted, no "."/".." elements). Every read, slice, stream, and
+// decode behavior is identical to NewReader; only the open is redirected.
+func NewReaderFS(fsys fs.FS, logger logging.Logger, tracerProvider tracing.TracerProvider) Reader {
+	return newStandardReaderFS(fsys, logger, tracerProvider)
+}
+
+// closeQuietly closes c, logging any error. Closing a file opened only for reading practically never
 // fails and there is nothing actionable to do if it does, so the error is logged rather than returned.
-func (r *standardReader) closeQuietly(f *os.File) {
-	if err := f.Close(); err != nil {
+func (r *standardReader) closeQuietly(c io.Closer) {
+	if err := c.Close(); err != nil {
 		r.logger.Error("closing file", err)
 	}
 }

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v4/retry"
+	"github.com/primandproper/platform-go/v5/retry"
 )
 
 const (

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/tracing"
-	"github.com/primandproper/platform-go/v4/panicking"
-	"github.com/primandproper/platform-go/v4/routing"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/tracing"
+	"github.com/primandproper/platform-go/v5/panicking"
+	"github.com/primandproper/platform-go/v5/routing"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"golang.org/x/net/http2"
@@ -41,13 +41,13 @@ type (
 	Server interface {
 		Serve()
 		Shutdown(context.Context) error
-		Router() routing.Router
+		Router() *routing.Router
 	}
 
 	// server is our API http server.
 	server struct {
 		logger         logging.Logger
-		router         routing.Router
+		router         *routing.Router
 		panicker       panicking.Panicker
 		httpServer     *http.Server
 		tracerProvider tracing.TracerProvider
@@ -60,7 +60,7 @@ type (
 func NewHTTPServer(
 	serverSettings Config,
 	logger logging.Logger,
-	router routing.Router,
+	router *routing.Router,
 	tracerProvider tracing.TracerProvider,
 	serviceName string,
 ) (Server, error) {
@@ -83,7 +83,7 @@ func NewHTTPServer(
 }
 
 // Router returns the router.
-func (s *server) Router() routing.Router {
+func (s *server) Router() *routing.Router {
 	return s.router
 }
 
@@ -159,7 +159,7 @@ func (s *server) listen() (net.Listener, error) {
 }
 
 const (
-	// maxTimeout mirrors the router's request timeout (routing/chi maxTimeout). The server's
+	// maxTimeout mirrors the router's request timeout (routing/backends/chi maxTimeout). The server's
 	// write timeout must exceed it, or a slow handler is killed mid-write before the router's
 	// own timeout can ever fire.
 	maxTimeout  = 120 * time.Second

@@ -3,9 +3,9 @@ package circuitbreakingcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v4/circuitbreaking"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/metrics"
+	"github.com/primandproper/platform-go/v5/circuitbreaking"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/metrics"
 
 	"github.com/samber/do/v2"
 )

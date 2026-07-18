@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"testing/fstest"
 
-	"github.com/primandproper/platform-go/v4/encoding"
-	"github.com/primandproper/platform-go/v4/files"
+	"github.com/primandproper/platform-go/v5/encoding"
+	"github.com/primandproper/platform-go/v5/files"
 )
 
 func ExampleLines() {
@@ -57,4 +58,26 @@ func ExampleDecode() {
 
 	fmt.Println(cfg.Name)
 	// Output: platform
+}
+
+// ExampleOpenFS reads a name-addressed file from an fs.FS. An embed.FS works identically — pass it
+// to OpenFS (or NewReaderFS) instead of the fstest.MapFS used here for a self-contained example.
+func ExampleOpenFS() {
+	fsys := fstest.MapFS{"greeting.txt": {Data: []byte("hello\nworld\n")}}
+
+	lines, err := files.OpenFS(fsys).Lines("greeting.txt")
+	if err != nil {
+		panic(err)
+	}
+
+	for line, err := range lines {
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println(line)
+	}
+	// Output:
+	// hello
+	// world
 }

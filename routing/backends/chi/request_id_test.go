@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/primandproper/platform-go/v4/identifiers"
+	"github.com/primandproper/platform-go/v5/identifiers"
 
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/shoenig/test"
@@ -26,5 +26,14 @@ func TestRequestIDFunc(T *testing.T) {
 
 		actual := RequestIDFunc(req)
 		test.EqOp(t, expected, actual)
+	})
+
+	T.Run("returns empty when no request ID is present", func(t *testing.T) {
+		t.Parallel()
+
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
+		must.NoError(t, err)
+
+		test.EqOp(t, "", RequestIDFunc(req))
 	})
 }

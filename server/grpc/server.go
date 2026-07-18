@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	perrors "github.com/primandproper/platform-go/v4/errors"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/tracing"
+	perrors "github.com/primandproper/platform-go/v5/errors"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/tracing"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"

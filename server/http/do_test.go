@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v4/routing"
+	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v5/routing"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -22,7 +22,7 @@ func TestRegisterHTTPServer(T *testing.T) {
 		i := do.New()
 		do.ProvideValue(i, Config{Port: 8080, StartupDeadline: time.Second})
 		do.ProvideValue(i, loggingnoop.NewLogger())
-		do.ProvideValue[routing.Router](i, nil)
+		do.ProvideValue(i, (*routing.Router)(nil))
 		do.ProvideValue(i, tracingnoop.NewTracerProvider())
 
 		RegisterHTTPServer(i, "test_service")

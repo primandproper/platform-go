@@ -3,13 +3,13 @@ package files
 import (
 	"context"
 	"io"
-	"os"
+	"io/fs"
 
-	"github.com/primandproper/platform-go/v4/encoding"
-	"github.com/primandproper/platform-go/v4/errors"
-	"github.com/primandproper/platform-go/v4/observability/keys"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/tracing"
+	"github.com/primandproper/platform-go/v5/encoding"
+	"github.com/primandproper/platform-go/v5/errors"
+	"github.com/primandproper/platform-go/v5/observability/keys"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/tracing"
 )
 
 // Decode reads all of r and unmarshals it into a T as content type ct — any encoding the encoding
@@ -36,6 +36,33 @@ func DecodeFile[T any](ctx context.Context, name string, ct encoding.ContentType
 	}
 
 	return decodeBytes[T](ctx, defaultReader.logger, defaultReader.tracerProvider, data, ct)
+}
+
+// DecodeFileFS opens name within fsys, reads it, and unmarshals it into a T as content type ct. It
+// is DecodeFile over an arbitrary fs.FS (embed.FS, fstest.MapFS, os.DirFS, …); name must satisfy
+// fs.ValidPath. The read is traced via the default Reader's logger and tracer, and the encoder
+// traces under the same tracer.
+func DecodeFileFS[T any](ctx context.Context, fsys fs.FS, name string, ct encoding.ContentType) (T, error) {
+	var v T
+
+	r := newStandardReaderFS(fsys, defaultReader.logger, defaultReader.tracerProvider)
+
+	data, err := r.readFile(ctx, name)
+	if err != nil {
+		return v, err
+	}
+
+	return decodeBytes[T](ctx, r.logger, r.tracerProvider, data, ct)
+}
+
+// MustDecodeFileFS is like DecodeFileFS but panics on error.
+func MustDecodeFileFS[T any](ctx context.Context, fsys fs.FS, name string, ct encoding.ContentType) T {
+	v, err := DecodeFileFS[T](ctx, fsys, name, ct)
+	if err != nil {
+		panic(err)
+	}
+
+	return v
 }
 
 // MustDecode is like Decode but panics on error.
@@ -82,7 +109,9 @@ func (r *standardReader) readFile(ctx context.Context, name string) ([]byte, err
 
 	op.Set(keys.FilenameKey, name)
 
-	data, err := os.ReadFile(name)
+	// fs.ReadFile uses fsys's own ReadFile when it has one (embed.FS and osFS-backed os.ReadFile both
+	// do), otherwise it falls back to Open+ReadAll.
+	data, err := fs.ReadFile(r.fsys, name)
 	if err != nil {
 		return nil, op.Error(err, "reading file")
 	}

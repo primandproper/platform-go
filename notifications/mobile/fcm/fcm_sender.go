@@ -4,11 +4,11 @@ import (
 	"context"
 	"os"
 
-	"github.com/primandproper/platform-go/v4/errors"
-	"github.com/primandproper/platform-go/v4/observability"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/metrics"
-	"github.com/primandproper/platform-go/v4/observability/tracing"
+	"github.com/primandproper/platform-go/v5/errors"
+	"github.com/primandproper/platform-go/v5/observability"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/metrics"
+	"github.com/primandproper/platform-go/v5/observability/tracing"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"

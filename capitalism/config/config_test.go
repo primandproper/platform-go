@@ -3,9 +3,9 @@ package config
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v4/capitalism/stripe"
-	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v5/capitalism/stripe"
+	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

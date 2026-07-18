@@ -1,10 +1,10 @@
 package aes
 
 import (
-	"github.com/primandproper/platform-go/v4/cryptography/encryption"
-	"github.com/primandproper/platform-go/v4/observability"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/tracing"
+	"github.com/primandproper/platform-go/v5/cryptography/encryption"
+	"github.com/primandproper/platform-go/v5/observability"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/tracing"
 )
 
 const name = "aes_encryptor"

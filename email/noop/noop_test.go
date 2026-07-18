@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v4/email"
+	"github.com/primandproper/platform-go/v5/email"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

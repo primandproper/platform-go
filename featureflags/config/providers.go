@@ -4,11 +4,11 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/primandproper/platform-go/v4/errors"
-	"github.com/primandproper/platform-go/v4/featureflags"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/metrics"
-	"github.com/primandproper/platform-go/v4/observability/tracing"
+	"github.com/primandproper/platform-go/v5/errors"
+	"github.com/primandproper/platform-go/v5/featureflags"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/metrics"
+	"github.com/primandproper/platform-go/v5/observability/tracing"
 )
 
 // NewFeatureFlagManager provides a FeatureFlagManager from config.

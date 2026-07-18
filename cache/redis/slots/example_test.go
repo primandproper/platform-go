@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/primandproper/platform-go/v4/cache/redis/slots"
+	"github.com/primandproper/platform-go/v5/cache/redis/slots"
 )
 
 // Builds a KeyGenerator for a 3-node cluster (one slot per node) and shows

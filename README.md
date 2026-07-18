@@ -63,7 +63,7 @@ Implementations are listed in parentheses; most concerns also provide a `noop`.
 | Package           | Purpose                   | Implementations |
 |-------------------|---------------------------|-----------------|
 | `server`          | Service servers           | grpc, http      |
-| `routing`         | HTTP router abstraction   | chi             |
+| `routing`         | HTTP router abstraction   | chi, stdlib, httprouter, gin |
 | `httpclient`      | Instrumented HTTP client  | —               |
 | `cookies`         | Cookie management         | —               |
 | `encoding`        | Content encoding/decoding | —               |

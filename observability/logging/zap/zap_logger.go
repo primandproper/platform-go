@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/primandproper/platform-go/v4/observability/keys"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
+	"github.com/primandproper/platform-go/v5/observability/keys"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"

@@ -3,8 +3,8 @@ package config
 import (
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform-go/v4/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
+	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 )

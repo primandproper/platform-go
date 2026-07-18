@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v4/eventstream"
-	"github.com/primandproper/platform-go/v4/observability"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	tracingnoop "github.com/primandproper/platform-go/v4/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v5/eventstream"
+	"github.com/primandproper/platform-go/v5/observability"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
 
 	gorillawebsocket "github.com/gorilla/websocket"
 	"github.com/shoenig/test"

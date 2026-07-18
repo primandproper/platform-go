@@ -3,7 +3,7 @@ package pointer_test
 import (
 	"fmt"
 
-	"github.com/primandproper/platform-go/v4/pointer"
+	"github.com/primandproper/platform-go/v5/pointer"
 )
 
 func ExampleTo() {

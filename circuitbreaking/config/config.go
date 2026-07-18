@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/primandproper/platform-go/v4/circuitbreaking"
-	"github.com/primandproper/platform-go/v4/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v4/errors"
-	"github.com/primandproper/platform-go/v4/observability/logging"
-	"github.com/primandproper/platform-go/v4/observability/metrics"
+	"github.com/primandproper/platform-go/v5/circuitbreaking"
+	"github.com/primandproper/platform-go/v5/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v5/errors"
+	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v5/observability/metrics"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	circuit "github.com/rubyist/circuitbreaker"
