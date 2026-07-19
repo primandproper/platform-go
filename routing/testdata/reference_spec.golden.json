@@ -1,0 +1,556 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Reference API",
+    "version": "1.2.3"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "operationId": "get_health",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingTestReferenceStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orgs/{orgID}/users": {
+      "post": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Create a user",
+        "operationId": "post_orgs_orgID_users",
+        "parameters": [
+          {
+            "name": "orgID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingTestCreateReferenceUserInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpAPIResponseGithubComPrimandproperPlatformGoV5RoutingTestReferenceUser"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpAPIError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orgs/{orgID}/users/{userID}": {
+      "delete": {
+        "tags": [
+          "users"
+        ],
+        "operationId": "delete_orgs_orgID_users_userID",
+        "parameters": [
+          {
+            "name": "orgID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "userID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "Fetch a user",
+        "operationId": "get_orgs_orgID_users_userID",
+        "parameters": [
+          {
+            "name": "orgID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "userID",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpAPIResponseGithubComPrimandproperPlatformGoV5RoutingTestReferenceUser"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stress": {
+      "post": {
+        "tags": [
+          "stress"
+        ],
+        "summary": "Full-spectrum type",
+        "operationId": "post_stress",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoutingTestStressAllTypes"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpAPIResponseGithubComPrimandproperPlatformGoV5RoutingTestStressAllTypes"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "FilteringPagination": {
+        "type": "object",
+        "properties": {
+          "appliedQueryFilter": {
+            "$ref": "#/components/schemas/FilteringQueryFilter"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "filteredCount": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "maxResponseSize": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "previousCursor": {
+            "type": "string"
+          },
+          "totalCount": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        }
+      },
+      "FilteringQueryFilter": {
+        "type": "object",
+        "properties": {
+          "createdAfter": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdBefore": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cursor": {
+            "type": "string",
+            "nullable": true
+          },
+          "includeArchived": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "maxResponseSize": {
+            "minimum": 0,
+            "type": "integer",
+            "nullable": true
+          },
+          "sortBy": {
+            "type": "string",
+            "nullable": true
+          },
+          "updatedAfter": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updatedBefore": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "HttpAPIError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "HttpAPIResponseGithubComPrimandproperPlatformGoV5RoutingTestReferenceUser": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RoutingTestReferenceUser"
+          },
+          "details": {
+            "$ref": "#/components/schemas/HttpResponseDetails"
+          },
+          "error": {
+            "$ref": "#/components/schemas/HttpAPIError"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/FilteringPagination"
+          }
+        }
+      },
+      "HttpAPIResponseGithubComPrimandproperPlatformGoV5RoutingTestStressAllTypes": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RoutingTestStressAllTypes"
+          },
+          "details": {
+            "$ref": "#/components/schemas/HttpResponseDetails"
+          },
+          "error": {
+            "$ref": "#/components/schemas/HttpAPIError"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/FilteringPagination"
+          }
+        }
+      },
+      "HttpResponseDetails": {
+        "type": "object",
+        "properties": {
+          "currentAccountID": {
+            "type": "string"
+          },
+          "traceID": {
+            "type": "string"
+          }
+        }
+      },
+      "RoutingTestCreateReferenceUserInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "RoutingTestReferenceStatus": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "RoutingTestReferenceUser": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "RoutingTestStressAllTypes": {
+        "type": "object",
+        "properties": {
+          "any": {},
+          "array": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "nullable": true
+          },
+          "bool": {
+            "type": "boolean"
+          },
+          "byte": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bytes": {
+            "type": "string",
+            "format": "base64"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "deep": {
+            "$ref": "#/components/schemas/RoutingTestStressMiddle"
+          },
+          "embeddedField": {
+            "type": "string"
+          },
+          "float32": {
+            "type": "number",
+            "format": "float"
+          },
+          "float64": {
+            "type": "number",
+            "format": "double"
+          },
+          "int": {
+            "type": "integer"
+          },
+          "int16": {
+            "type": "integer"
+          },
+          "int32": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "int64": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "int8": {
+            "type": "integer"
+          },
+          "intSlice": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "nullable": true
+          },
+          "mapAny": {
+            "type": "object",
+            "additionalProperties": {},
+            "nullable": true
+          },
+          "mapScalar": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "nullable": true
+          },
+          "mapSlice": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          },
+          "mapStruct": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RoutingTestStressInner"
+            },
+            "nullable": true
+          },
+          "nested": {
+            "$ref": "#/components/schemas/RoutingTestStressInner"
+          },
+          "nestedSlice": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          },
+          "ptrBool": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "ptrInt": {
+            "type": "integer",
+            "nullable": true
+          },
+          "ptrSlice": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingTestStressInner"
+            },
+            "nullable": true
+          },
+          "ptrString": {
+            "type": "string",
+            "nullable": true
+          },
+          "ptrStruct": {
+            "$ref": "#/components/schemas/RoutingTestStressInner"
+          },
+          "ptrTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "rune": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "status": {
+            "type": "string"
+          },
+          "string": {
+            "type": "string"
+          },
+          "stringSlice": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "structSlice": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingTestStressInner"
+            },
+            "nullable": true
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "uint": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "uint16": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "uint32": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "uint64": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "uint8": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        }
+      },
+      "RoutingTestStressInner": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "RoutingTestStressMiddle": {
+        "type": "object",
+        "properties": {
+          "inner": {
+            "$ref": "#/components/schemas/RoutingTestStressInner"
+          },
+          "inners": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoutingTestStressInner"
+            },
+            "nullable": true
+          }
+        }
+      }
+    }
+  }
+}
