@@ -5,11 +5,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/primandproper/platform-go/v5/observability"
-	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v5/routing"
+	"github.com/primandproper/platform-go/v6/observability"
+	loggingnoop "github.com/primandproper/platform-go/v6/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/v6/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v6/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v6/routing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

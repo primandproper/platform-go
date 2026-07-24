@@ -6,13 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v5/distributedlock"
-	"github.com/primandproper/platform-go/v5/errors"
-	"github.com/primandproper/platform-go/v5/identifiers"
-	"github.com/primandproper/platform-go/v5/observability"
-	"github.com/primandproper/platform-go/v5/observability/logging"
-	"github.com/primandproper/platform-go/v5/observability/metrics"
-	"github.com/primandproper/platform-go/v5/observability/tracing"
+	"github.com/primandproper/platform-go/v6/distributedlock"
+	"github.com/primandproper/platform-go/v6/errors"
+	"github.com/primandproper/platform-go/v6/identifiers"
+	"github.com/primandproper/platform-go/v6/observability"
+	"github.com/primandproper/platform-go/v6/observability/logging"
+	"github.com/primandproper/platform-go/v6/observability/metrics"
+	"github.com/primandproper/platform-go/v6/observability/tracing"
 )
 
 const serviceName = "in_memory_distributed_lock"

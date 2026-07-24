@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v5/errors"
+	platformerrors "github.com/primandproper/platform-go/v6/errors"
 )
 
 var (

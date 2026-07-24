@@ -8,7 +8,7 @@ import (
 	"encoding/base64"
 	"io"
 
-	"github.com/primandproper/platform-go/v5/observability/keys"
+	"github.com/primandproper/platform-go/v6/observability/keys"
 )
 
 func (e *aesImpl) Encrypt(ctx context.Context, content string) (string, error) {

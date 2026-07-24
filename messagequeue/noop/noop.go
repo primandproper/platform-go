@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v5/messagequeue"
+	"github.com/primandproper/platform-go/v6/messagequeue"
 )
 
 var (

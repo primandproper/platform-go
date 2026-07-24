@@ -1,7 +1,7 @@
 package database
 
 import (
-	platformerrors "github.com/primandproper/platform-go/v5/errors"
+	platformerrors "github.com/primandproper/platform-go/v6/errors"
 )
 
 // ErrUserAlreadyExists indicates that a user with that username has already been created.

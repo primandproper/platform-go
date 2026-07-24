@@ -3,7 +3,7 @@ package noop
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v5/cache"
+	"github.com/primandproper/platform-go/v6/cache"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

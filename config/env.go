@@ -7,7 +7,7 @@
 package config
 
 import (
-	"github.com/primandproper/platform-go/v5/errors"
+	"github.com/primandproper/platform-go/v6/errors"
 
 	"github.com/caarlos0/env/v11"
 )

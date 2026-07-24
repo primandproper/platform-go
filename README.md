@@ -1,10 +1,10 @@
 # platform-go
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/primandproper/platform-go/v5.svg)](https://pkg.go.dev/github.com/primandproper/platform-go/v5) [![codecov](https://codecov.io/github/primandproper/platform-go/graph/badge.svg?token=69RLLWLJ39)](https://codecov.io/github/primandproper/platform-go)
+[![Go Reference](https://pkg.go.dev/badge/github.com/primandproper/platform-go/v6.svg)](https://pkg.go.dev/github.com/primandproper/platform-go/v6) [![codecov](https://codecov.io/github/primandproper/platform-go/graph/badge.svg?token=69RLLWLJ39)](https://codecov.io/github/primandproper/platform-go)
 
 A Go library providing infrastructure abstractions for cloud-native services. Each package defines a stable interface with one or more provider implementations, selected at runtime via config. Layers that touch the network — HTTP, gRPC, database, messaging — instrument with OpenTelemetry.
 
-**Module:** `github.com/primandproper/platform-go/v5`
+**Module:** `github.com/primandproper/platform-go/v6`
 **Go:** 1.26
 
 ## Project Status & Stability
@@ -23,7 +23,7 @@ If you depend on this library, pin to a released tag. If you want to track upcom
 ## Installation
 
 ```bash
-go get github.com/primandproper/platform-go/v5@latest
+go get github.com/primandproper/platform-go/v6@latest
 ```
 
 Because breaking changes ride the major-version import path, upgrading across majors is an explicit, opt-in edit to your import paths — never a surprise from `go get -u`.

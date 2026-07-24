@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v5/database"
+	"github.com/primandproper/platform-go/v6/database"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/shoenig/test"

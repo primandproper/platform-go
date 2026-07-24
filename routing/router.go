@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/primandproper/platform-go/v5/encoding"
-	httpx "github.com/primandproper/platform-go/v5/errors/http"
-	"github.com/primandproper/platform-go/v5/observability"
-	"github.com/primandproper/platform-go/v5/observability/logging"
-	"github.com/primandproper/platform-go/v5/observability/tracing"
+	"github.com/primandproper/platform-go/v6/encoding"
+	httpx "github.com/primandproper/platform-go/v6/errors/http"
+	"github.com/primandproper/platform-go/v6/observability"
+	"github.com/primandproper/platform-go/v6/observability/logging"
+	"github.com/primandproper/platform-go/v6/observability/tracing"
 
 	"github.com/swaggest/openapi-go/openapi3"
 	"go.opentelemetry.io/otel/trace"

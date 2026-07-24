@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v5/circuitbreaking"
-	"github.com/primandproper/platform-go/v5/database"
-	platformerrors "github.com/primandproper/platform-go/v5/errors"
+	"github.com/primandproper/platform-go/v6/circuitbreaking"
+	"github.com/primandproper/platform-go/v6/database"
+	platformerrors "github.com/primandproper/platform-go/v6/errors"
 
 	"github.com/shoenig/test"
 )

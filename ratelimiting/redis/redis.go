@@ -6,10 +6,10 @@ import (
 	"math"
 	"time"
 
-	"github.com/primandproper/platform-go/v5/errors"
-	"github.com/primandproper/platform-go/v5/identifiers"
-	"github.com/primandproper/platform-go/v5/observability/metrics"
-	"github.com/primandproper/platform-go/v5/ratelimiting"
+	"github.com/primandproper/platform-go/v6/errors"
+	"github.com/primandproper/platform-go/v6/identifiers"
+	"github.com/primandproper/platform-go/v6/observability/metrics"
+	"github.com/primandproper/platform-go/v6/ratelimiting"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/redis/go-redis/v9"

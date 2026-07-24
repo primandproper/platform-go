@@ -1,10 +1,10 @@
 package observability
 
 import (
-	loggingcfg "github.com/primandproper/platform-go/v5/observability/logging/config"
-	metricscfg "github.com/primandproper/platform-go/v5/observability/metrics/config"
-	profilingcfg "github.com/primandproper/platform-go/v5/observability/profiling/config"
-	tracingcfg "github.com/primandproper/platform-go/v5/observability/tracing/config"
+	loggingcfg "github.com/primandproper/platform-go/v6/observability/logging/config"
+	metricscfg "github.com/primandproper/platform-go/v6/observability/metrics/config"
+	profilingcfg "github.com/primandproper/platform-go/v6/observability/profiling/config"
+	tracingcfg "github.com/primandproper/platform-go/v6/observability/tracing/config"
 
 	"github.com/samber/do/v2"
 )

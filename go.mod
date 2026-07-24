@@ -1,4 +1,4 @@
-module github.com/primandproper/platform-go/v5
+module github.com/primandproper/platform-go/v6
 
 go 1.26
 

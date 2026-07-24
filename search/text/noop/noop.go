@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	textsearch "github.com/primandproper/platform-go/v5/search/text"
+	textsearch "github.com/primandproper/platform-go/v6/search/text"
 )
 
 var _ textsearch.Index[any] = (*indexManager[any])(nil)

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/primandproper/platform-go/v5/notifications/async"
+	"github.com/primandproper/platform-go/v6/notifications/async"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

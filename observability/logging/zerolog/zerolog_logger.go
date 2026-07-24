@@ -7,14 +7,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v5/observability/keys"
-	"github.com/primandproper/platform-go/v5/observability/logging"
+	"github.com/primandproper/platform-go/v6/observability/keys"
+	"github.com/primandproper/platform-go/v6/observability/logging"
 
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/trace"
 )
 
-const here = "github.com/primandproper/platform-go/v5/"
+const here = "github.com/primandproper/platform-go/v6/"
 
 func init() {
 	// The wrapper's logging methods add exactly one frame between the caller and
