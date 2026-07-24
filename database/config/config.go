@@ -10,15 +10,15 @@ import (
 	"strings"
 	"time"
 
-	encryptioncfg "github.com/primandproper/platform-go/v5/cryptography/encryption/config"
-	"github.com/primandproper/platform-go/v5/database"
-	"github.com/primandproper/platform-go/v5/database/mysql"
-	"github.com/primandproper/platform-go/v5/database/postgres"
-	"github.com/primandproper/platform-go/v5/database/sqlite"
-	"github.com/primandproper/platform-go/v5/errors"
-	"github.com/primandproper/platform-go/v5/observability/logging"
-	"github.com/primandproper/platform-go/v5/observability/metrics"
-	"github.com/primandproper/platform-go/v5/observability/tracing"
+	encryptioncfg "github.com/primandproper/platform-go/v6/cryptography/encryption/config"
+	"github.com/primandproper/platform-go/v6/database"
+	"github.com/primandproper/platform-go/v6/database/mysql"
+	"github.com/primandproper/platform-go/v6/database/postgres"
+	"github.com/primandproper/platform-go/v6/database/sqlite"
+	"github.com/primandproper/platform-go/v6/errors"
+	"github.com/primandproper/platform-go/v6/observability/logging"
+	"github.com/primandproper/platform-go/v6/observability/metrics"
+	"github.com/primandproper/platform-go/v6/observability/tracing"
 
 	"github.com/XSAM/otelsql"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -376,9 +376,15 @@ func NewDatabase(
 		return nil, err
 	}
 
-	// Run migrations if enabled and migrator is provided
+	// Run migrations if enabled and migrator is provided. Migrations need the concrete
+	// *sql.DB, which lives behind the RawAccess capability rather than the safe Client
+	// surface.
 	if cfg.RunMigrations && migrator != nil {
-		if err = migrator.Migrate(ctx, client.WriteDB()); err != nil {
+		raw, ok := client.(database.RawAccess)
+		if !ok {
+			return nil, errors.New("configured database client does not expose raw access required for migrations")
+		}
+		if err = migrator.Migrate(ctx, raw.WriteDB()); err != nil {
 			return nil, errors.Wrap(err, "running migrations")
 		}
 	}

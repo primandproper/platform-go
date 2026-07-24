@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/primandproper/platform-go/v5/capitalism"
+	"github.com/primandproper/platform-go/v6/capitalism"
 )
 
 var _ capitalism.PaymentManager = (*paymentManager)(nil)

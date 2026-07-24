@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v5/authentication/tokens"
-	"github.com/primandproper/platform-go/v5/authentication/tokens/jwt"
-	"github.com/primandproper/platform-go/v5/authentication/tokens/paseto"
-	"github.com/primandproper/platform-go/v5/observability/logging"
-	"github.com/primandproper/platform-go/v5/observability/tracing"
+	"github.com/primandproper/platform-go/v6/authentication/tokens"
+	"github.com/primandproper/platform-go/v6/authentication/tokens/jwt"
+	"github.com/primandproper/platform-go/v6/authentication/tokens/paseto"
+	"github.com/primandproper/platform-go/v6/observability/logging"
+	"github.com/primandproper/platform-go/v6/observability/tracing"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

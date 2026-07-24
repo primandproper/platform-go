@@ -22,7 +22,7 @@ import (
 
 // modulePrefix is trimmed from package import paths so section headers read as
 // repo-relative paths (e.g. "cryptography/hashing").
-const modulePrefix = "github.com/primandproper/platform-go/v5/"
+const modulePrefix = "github.com/primandproper/platform-go/v6/"
 
 // benchLine matches a standard testing.B result line, e.g.
 //

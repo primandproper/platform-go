@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v5/featureflags"
+	"github.com/primandproper/platform-go/v6/featureflags"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

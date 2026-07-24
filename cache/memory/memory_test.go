@@ -3,7 +3,7 @@ package memory
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v5/observability"
+	"github.com/primandproper/platform-go/v6/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

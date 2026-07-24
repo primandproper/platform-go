@@ -3,8 +3,8 @@ package profilingcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v5/observability/logging"
-	"github.com/primandproper/platform-go/v5/observability/profiling"
+	"github.com/primandproper/platform-go/v6/observability/logging"
+	"github.com/primandproper/platform-go/v6/observability/profiling"
 
 	"github.com/samber/do/v2"
 )

@@ -7,12 +7,12 @@ import (
 	"net/mail"
 	"testing"
 
-	cbnoop "github.com/primandproper/platform-go/v5/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v5/email"
-	"github.com/primandproper/platform-go/v5/observability"
-	"github.com/primandproper/platform-go/v5/observability/keys"
-	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
+	cbnoop "github.com/primandproper/platform-go/v6/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v6/email"
+	"github.com/primandproper/platform-go/v6/observability"
+	"github.com/primandproper/platform-go/v6/observability/keys"
+	loggingnoop "github.com/primandproper/platform-go/v6/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v6/observability/tracing/noop"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sesv2"

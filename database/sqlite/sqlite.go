@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v5/database"
-	"github.com/primandproper/platform-go/v5/errors"
-	"github.com/primandproper/platform-go/v5/observability"
-	"github.com/primandproper/platform-go/v5/observability/keys"
-	"github.com/primandproper/platform-go/v5/observability/logging"
-	"github.com/primandproper/platform-go/v5/observability/metrics"
-	"github.com/primandproper/platform-go/v5/observability/tracing"
+	"github.com/primandproper/platform-go/v6/database"
+	"github.com/primandproper/platform-go/v6/errors"
+	"github.com/primandproper/platform-go/v6/observability"
+	"github.com/primandproper/platform-go/v6/observability/keys"
+	"github.com/primandproper/platform-go/v6/observability/logging"
+	"github.com/primandproper/platform-go/v6/observability/metrics"
+	"github.com/primandproper/platform-go/v6/observability/tracing"
 
 	"github.com/XSAM/otelsql"
 	"go.opentelemetry.io/otel/attribute"
@@ -183,9 +183,29 @@ func (q *Client) ReadDB() *sql.DB {
 	return q.readDB
 }
 
-// WriteDB provides the database object.
+// WriteDB provides the database object. It satisfies database.RawAccess; prefer Writer
+// and WithTransaction on the Client interface.
 func (q *Client) WriteDB() *sql.DB {
 	return q.writeDB
+}
+
+// Reader returns a non-transactional executor for the read database.
+func (q *Client) Reader() database.SQLQueryExecutor {
+	return q.readDB
+}
+
+// Writer returns a non-transactional executor for the write database.
+func (q *Client) Writer() database.SQLQueryExecutor {
+	return q.writeDB
+}
+
+// WithTransaction runs fn inside a transaction on the write database, committing on a
+// nil return and rolling back on error or panic. See database.RunInTransaction.
+func (q *Client) WithTransaction(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+	ctx, op := q.o11y.Begin(ctx)
+	defer op.End()
+
+	return database.RunInTransaction(ctx, q.writeDB, q.RollbackTransaction, fn)
 }
 
 // Close closes the database connection.

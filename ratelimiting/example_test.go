@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v5/ratelimiting"
+	"github.com/primandproper/platform-go/v6/ratelimiting"
 )
 
 func ExampleNewInMemoryRateLimiter() {

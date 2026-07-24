@@ -11,17 +11,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v5/circuitbreaking"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v5/circuitbreaking/config"
-	"github.com/primandproper/platform-go/v5/database"
-	"github.com/primandproper/platform-go/v5/distributedlock"
-	platformerrors "github.com/primandproper/platform-go/v5/errors"
-	"github.com/primandproper/platform-go/v5/identifiers"
-	"github.com/primandproper/platform-go/v5/observability"
-	"github.com/primandproper/platform-go/v5/observability/keys"
-	"github.com/primandproper/platform-go/v5/observability/logging"
-	"github.com/primandproper/platform-go/v5/observability/metrics"
-	"github.com/primandproper/platform-go/v5/observability/tracing"
+	"github.com/primandproper/platform-go/v6/circuitbreaking"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v6/circuitbreaking/config"
+	"github.com/primandproper/platform-go/v6/database"
+	"github.com/primandproper/platform-go/v6/distributedlock"
+	platformerrors "github.com/primandproper/platform-go/v6/errors"
+	"github.com/primandproper/platform-go/v6/identifiers"
+	"github.com/primandproper/platform-go/v6/observability"
+	"github.com/primandproper/platform-go/v6/observability/keys"
+	"github.com/primandproper/platform-go/v6/observability/logging"
+	"github.com/primandproper/platform-go/v6/observability/metrics"
+	"github.com/primandproper/platform-go/v6/observability/tracing"
 )
 
 const serviceName = "postgres_distributed_lock"
@@ -33,7 +33,8 @@ var (
 
 type locker struct {
 	o11y            observability.Observer
-	db              database.Client
+	readDB          *sql.DB
+	writeDB         *sql.DB
 	circuitBreaker  circuitbreaking.CircuitBreaker
 	acquireCounter  metrics.Int64Counter
 	releaseCounter  metrics.Int64Counter
@@ -61,6 +62,12 @@ func NewPostgresLocker(
 	}
 	if db == nil {
 		return nil, distributedlock.ErrNilDatabaseClient
+	}
+	// Advisory locks pin a specific session, which needs the concrete *sql.DB (Conn) —
+	// available only through the RawAccess capability, not the safe Client surface.
+	raw, ok := db.(database.RawAccess)
+	if !ok {
+		return nil, platformerrors.New("database client does not expose raw access required for advisory locks")
 	}
 
 	connWaitTimeout := cfg.ConnWaitTimeout
@@ -97,7 +104,8 @@ func NewPostgresLocker(
 
 	return &locker{
 		o11y:            observability.NewObserver(serviceName, logger, tracerProvider),
-		db:              db,
+		readDB:          raw.ReadDB(),
+		writeDB:         raw.WriteDB(),
 		circuitBreaker:  circuitbreakingcfg.EnsureCircuitBreaker(cb),
 		acquireCounter:  acquireCounter,
 		releaseCounter:  releaseCounter,
@@ -143,7 +151,7 @@ func (l *locker) Acquire(ctx context.Context, key string, ttl time.Duration) (di
 		defer cancel()
 	}
 
-	conn, err := l.db.WriteDB().Conn(connCtx)
+	conn, err := l.writeDB.Conn(connCtx)
 	if err != nil {
 		// If our own bounding timeout fired while the caller's context is still
 		// live, the write pool is saturated by other held locks. Report that as
@@ -202,7 +210,7 @@ func (l *locker) Acquire(ctx context.Context, key string, ttl time.Duration) (di
 
 // Ping implements distributedlock.Locker by pinging the underlying read DB.
 func (l *locker) Ping(ctx context.Context) error {
-	return l.db.ReadDB().PingContext(ctx)
+	return l.readDB.PingContext(ctx)
 }
 
 // Close releases all outstanding locks held by this Locker. After Close, individual

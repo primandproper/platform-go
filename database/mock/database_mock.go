@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v5/database"
+	"github.com/primandproper/platform-go/v6/database"
 )
 
 // Ensure, that ClientMock does implement database.Client.
@@ -28,14 +28,14 @@ var _ database.Client = &ClientMock{}
 //			CurrentTimeFunc: func() time.Time {
 //				panic("mock out the CurrentTime method")
 //			},
-//			ReadDBFunc: func() *sql.DB {
-//				panic("mock out the ReadDB method")
+//			ReaderFunc: func() database.SQLQueryExecutor {
+//				panic("mock out the Reader method")
 //			},
-//			RollbackTransactionFunc: func(ctx context.Context, tx database.SQLQueryExecutorAndTransactionManager)  {
-//				panic("mock out the RollbackTransaction method")
+//			WithTransactionFunc: func(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+//				panic("mock out the WithTransaction method")
 //			},
-//			WriteDBFunc: func() *sql.DB {
-//				panic("mock out the WriteDB method")
+//			WriterFunc: func() database.SQLQueryExecutor {
+//				panic("mock out the Writer method")
 //			},
 //		}
 //
@@ -50,14 +50,14 @@ type ClientMock struct {
 	// CurrentTimeFunc mocks the CurrentTime method.
 	CurrentTimeFunc func() time.Time
 
-	// ReadDBFunc mocks the ReadDB method.
-	ReadDBFunc func() *sql.DB
+	// ReaderFunc mocks the Reader method.
+	ReaderFunc func() database.SQLQueryExecutor
 
-	// RollbackTransactionFunc mocks the RollbackTransaction method.
-	RollbackTransactionFunc func(ctx context.Context, tx database.SQLQueryExecutorAndTransactionManager)
+	// WithTransactionFunc mocks the WithTransaction method.
+	WithTransactionFunc func(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error
 
-	// WriteDBFunc mocks the WriteDB method.
-	WriteDBFunc func() *sql.DB
+	// WriterFunc mocks the Writer method.
+	WriterFunc func() database.SQLQueryExecutor
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -67,25 +67,25 @@ type ClientMock struct {
 		// CurrentTime holds details about calls to the CurrentTime method.
 		CurrentTime []struct {
 		}
-		// ReadDB holds details about calls to the ReadDB method.
-		ReadDB []struct {
+		// Reader holds details about calls to the Reader method.
+		Reader []struct {
 		}
-		// RollbackTransaction holds details about calls to the RollbackTransaction method.
-		RollbackTransaction []struct {
+		// WithTransaction holds details about calls to the WithTransaction method.
+		WithTransaction []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Tx is the tx argument value.
-			Tx database.SQLQueryExecutorAndTransactionManager
+			// Fn is the fn argument value.
+			Fn func(tx database.SQLQueryExecutorAndTransactionManager) error
 		}
-		// WriteDB holds details about calls to the WriteDB method.
-		WriteDB []struct {
+		// Writer holds details about calls to the Writer method.
+		Writer []struct {
 		}
 	}
-	lockClose               sync.RWMutex
-	lockCurrentTime         sync.RWMutex
-	lockReadDB              sync.RWMutex
-	lockRollbackTransaction sync.RWMutex
-	lockWriteDB             sync.RWMutex
+	lockClose           sync.RWMutex
+	lockCurrentTime     sync.RWMutex
+	lockReader          sync.RWMutex
+	lockWithTransaction sync.RWMutex
+	lockWriter          sync.RWMutex
 }
 
 // Close calls CloseFunc.
@@ -142,10 +142,142 @@ func (mock *ClientMock) CurrentTimeCalls() []struct {
 	return calls
 }
 
+// Reader calls ReaderFunc.
+func (mock *ClientMock) Reader() database.SQLQueryExecutor {
+	if mock.ReaderFunc == nil {
+		panic("ClientMock.ReaderFunc: method is nil but Client.Reader was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockReader.Lock()
+	mock.calls.Reader = append(mock.calls.Reader, callInfo)
+	mock.lockReader.Unlock()
+	return mock.ReaderFunc()
+}
+
+// ReaderCalls gets all the calls that were made to Reader.
+// Check the length with:
+//
+//	len(mockedClient.ReaderCalls())
+func (mock *ClientMock) ReaderCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockReader.RLock()
+	calls = mock.calls.Reader
+	mock.lockReader.RUnlock()
+	return calls
+}
+
+// WithTransaction calls WithTransactionFunc.
+func (mock *ClientMock) WithTransaction(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+	if mock.WithTransactionFunc == nil {
+		panic("ClientMock.WithTransactionFunc: method is nil but Client.WithTransaction was just called")
+	}
+	callInfo := struct {
+		Ctx context.Context
+		Fn  func(tx database.SQLQueryExecutorAndTransactionManager) error
+	}{
+		Ctx: ctx,
+		Fn:  fn,
+	}
+	mock.lockWithTransaction.Lock()
+	mock.calls.WithTransaction = append(mock.calls.WithTransaction, callInfo)
+	mock.lockWithTransaction.Unlock()
+	return mock.WithTransactionFunc(ctx, fn)
+}
+
+// WithTransactionCalls gets all the calls that were made to WithTransaction.
+// Check the length with:
+//
+//	len(mockedClient.WithTransactionCalls())
+func (mock *ClientMock) WithTransactionCalls() []struct {
+	Ctx context.Context
+	Fn  func(tx database.SQLQueryExecutorAndTransactionManager) error
+} {
+	var calls []struct {
+		Ctx context.Context
+		Fn  func(tx database.SQLQueryExecutorAndTransactionManager) error
+	}
+	mock.lockWithTransaction.RLock()
+	calls = mock.calls.WithTransaction
+	mock.lockWithTransaction.RUnlock()
+	return calls
+}
+
+// Writer calls WriterFunc.
+func (mock *ClientMock) Writer() database.SQLQueryExecutor {
+	if mock.WriterFunc == nil {
+		panic("ClientMock.WriterFunc: method is nil but Client.Writer was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockWriter.Lock()
+	mock.calls.Writer = append(mock.calls.Writer, callInfo)
+	mock.lockWriter.Unlock()
+	return mock.WriterFunc()
+}
+
+// WriterCalls gets all the calls that were made to Writer.
+// Check the length with:
+//
+//	len(mockedClient.WriterCalls())
+func (mock *ClientMock) WriterCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockWriter.RLock()
+	calls = mock.calls.Writer
+	mock.lockWriter.RUnlock()
+	return calls
+}
+
+// Ensure, that RawAccessMock does implement database.RawAccess.
+// If this is not the case, regenerate this file with moq.
+var _ database.RawAccess = &RawAccessMock{}
+
+// RawAccessMock is a mock implementation of database.RawAccess.
+//
+//	func TestSomethingThatUsesRawAccess(t *testing.T) {
+//
+//		// make and configure a mocked database.RawAccess
+//		mockedRawAccess := &RawAccessMock{
+//			ReadDBFunc: func() *sql.DB {
+//				panic("mock out the ReadDB method")
+//			},
+//			WriteDBFunc: func() *sql.DB {
+//				panic("mock out the WriteDB method")
+//			},
+//		}
+//
+//		// use mockedRawAccess in code that requires database.RawAccess
+//		// and then make assertions.
+//
+//	}
+type RawAccessMock struct {
+	// ReadDBFunc mocks the ReadDB method.
+	ReadDBFunc func() *sql.DB
+
+	// WriteDBFunc mocks the WriteDB method.
+	WriteDBFunc func() *sql.DB
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// ReadDB holds details about calls to the ReadDB method.
+		ReadDB []struct {
+		}
+		// WriteDB holds details about calls to the WriteDB method.
+		WriteDB []struct {
+		}
+	}
+	lockReadDB  sync.RWMutex
+	lockWriteDB sync.RWMutex
+}
+
 // ReadDB calls ReadDBFunc.
-func (mock *ClientMock) ReadDB() *sql.DB {
+func (mock *RawAccessMock) ReadDB() *sql.DB {
 	if mock.ReadDBFunc == nil {
-		panic("ClientMock.ReadDBFunc: method is nil but Client.ReadDB was just called")
+		panic("RawAccessMock.ReadDBFunc: method is nil but RawAccess.ReadDB was just called")
 	}
 	callInfo := struct {
 	}{}
@@ -158,8 +290,8 @@ func (mock *ClientMock) ReadDB() *sql.DB {
 // ReadDBCalls gets all the calls that were made to ReadDB.
 // Check the length with:
 //
-//	len(mockedClient.ReadDBCalls())
-func (mock *ClientMock) ReadDBCalls() []struct {
+//	len(mockedRawAccess.ReadDBCalls())
+func (mock *RawAccessMock) ReadDBCalls() []struct {
 } {
 	var calls []struct {
 	}
@@ -169,46 +301,10 @@ func (mock *ClientMock) ReadDBCalls() []struct {
 	return calls
 }
 
-// RollbackTransaction calls RollbackTransactionFunc.
-func (mock *ClientMock) RollbackTransaction(ctx context.Context, tx database.SQLQueryExecutorAndTransactionManager) {
-	if mock.RollbackTransactionFunc == nil {
-		panic("ClientMock.RollbackTransactionFunc: method is nil but Client.RollbackTransaction was just called")
-	}
-	callInfo := struct {
-		Ctx context.Context
-		Tx  database.SQLQueryExecutorAndTransactionManager
-	}{
-		Ctx: ctx,
-		Tx:  tx,
-	}
-	mock.lockRollbackTransaction.Lock()
-	mock.calls.RollbackTransaction = append(mock.calls.RollbackTransaction, callInfo)
-	mock.lockRollbackTransaction.Unlock()
-	mock.RollbackTransactionFunc(ctx, tx)
-}
-
-// RollbackTransactionCalls gets all the calls that were made to RollbackTransaction.
-// Check the length with:
-//
-//	len(mockedClient.RollbackTransactionCalls())
-func (mock *ClientMock) RollbackTransactionCalls() []struct {
-	Ctx context.Context
-	Tx  database.SQLQueryExecutorAndTransactionManager
-} {
-	var calls []struct {
-		Ctx context.Context
-		Tx  database.SQLQueryExecutorAndTransactionManager
-	}
-	mock.lockRollbackTransaction.RLock()
-	calls = mock.calls.RollbackTransaction
-	mock.lockRollbackTransaction.RUnlock()
-	return calls
-}
-
 // WriteDB calls WriteDBFunc.
-func (mock *ClientMock) WriteDB() *sql.DB {
+func (mock *RawAccessMock) WriteDB() *sql.DB {
 	if mock.WriteDBFunc == nil {
-		panic("ClientMock.WriteDBFunc: method is nil but Client.WriteDB was just called")
+		panic("RawAccessMock.WriteDBFunc: method is nil but RawAccess.WriteDB was just called")
 	}
 	callInfo := struct {
 	}{}
@@ -221,8 +317,8 @@ func (mock *ClientMock) WriteDB() *sql.DB {
 // WriteDBCalls gets all the calls that were made to WriteDB.
 // Check the length with:
 //
-//	len(mockedClient.WriteDBCalls())
-func (mock *ClientMock) WriteDBCalls() []struct {
+//	len(mockedRawAccess.WriteDBCalls())
+func (mock *RawAccessMock) WriteDBCalls() []struct {
 } {
 	var calls []struct {
 	}

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/v5/observability/tracing"
+	"github.com/primandproper/platform-go/v6/observability/tracing"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )

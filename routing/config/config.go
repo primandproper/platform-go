@@ -3,16 +3,16 @@ package routingcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v5/encoding"
-	"github.com/primandproper/platform-go/v5/errors"
-	"github.com/primandproper/platform-go/v5/observability/logging"
-	"github.com/primandproper/platform-go/v5/observability/metrics"
-	"github.com/primandproper/platform-go/v5/observability/tracing"
-	"github.com/primandproper/platform-go/v5/routing"
-	"github.com/primandproper/platform-go/v5/routing/backends/chi"
-	"github.com/primandproper/platform-go/v5/routing/backends/gin"
-	"github.com/primandproper/platform-go/v5/routing/backends/httprouter"
-	"github.com/primandproper/platform-go/v5/routing/backends/stdlib"
+	"github.com/primandproper/platform-go/v6/encoding"
+	"github.com/primandproper/platform-go/v6/errors"
+	"github.com/primandproper/platform-go/v6/observability/logging"
+	"github.com/primandproper/platform-go/v6/observability/metrics"
+	"github.com/primandproper/platform-go/v6/observability/tracing"
+	"github.com/primandproper/platform-go/v6/routing"
+	"github.com/primandproper/platform-go/v6/routing/backends/chi"
+	"github.com/primandproper/platform-go/v6/routing/backends/gin"
+	"github.com/primandproper/platform-go/v6/routing/backends/httprouter"
+	"github.com/primandproper/platform-go/v6/routing/backends/stdlib"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

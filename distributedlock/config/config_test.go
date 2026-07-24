@@ -7,16 +7,16 @@ import (
 	"testing"
 	"time"
 
-	circuitbreakingcfg "github.com/primandproper/platform-go/v5/circuitbreaking/config"
-	"github.com/primandproper/platform-go/v5/database"
-	"github.com/primandproper/platform-go/v5/distributedlock"
-	pglock "github.com/primandproper/platform-go/v5/distributedlock/postgres"
-	redislock "github.com/primandproper/platform-go/v5/distributedlock/redis"
-	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
-	"github.com/primandproper/platform-go/v5/observability/metrics"
-	mockmetrics "github.com/primandproper/platform-go/v5/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v6/circuitbreaking/config"
+	"github.com/primandproper/platform-go/v6/database"
+	"github.com/primandproper/platform-go/v6/distributedlock"
+	pglock "github.com/primandproper/platform-go/v6/distributedlock/postgres"
+	redislock "github.com/primandproper/platform-go/v6/distributedlock/redis"
+	loggingnoop "github.com/primandproper/platform-go/v6/observability/logging/noop"
+	"github.com/primandproper/platform-go/v6/observability/metrics"
+	mockmetrics "github.com/primandproper/platform-go/v6/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v6/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v6/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -28,11 +28,17 @@ import (
 // the client but does not use it until a lock is acquired.
 type stubDBClient struct{}
 
-func (c *stubDBClient) WriteDB() *sql.DB       { return nil }
-func (c *stubDBClient) ReadDB() *sql.DB        { return nil }
-func (c *stubDBClient) Close() error           { return nil }
-func (c *stubDBClient) CurrentTime() time.Time { return time.Now() }
+func (c *stubDBClient) WriteDB() *sql.DB                  { return nil }
+func (c *stubDBClient) ReadDB() *sql.DB                   { return nil }
+func (c *stubDBClient) Reader() database.SQLQueryExecutor { return nil }
+func (c *stubDBClient) Writer() database.SQLQueryExecutor { return nil }
+func (c *stubDBClient) Close() error                      { return nil }
+func (c *stubDBClient) CurrentTime() time.Time            { return time.Now() }
 func (c *stubDBClient) RollbackTransaction(_ context.Context, _ database.SQLQueryExecutorAndTransactionManager) {
+}
+
+func (c *stubDBClient) WithTransaction(_ context.Context, _ func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+	return nil
 }
 
 func TestConfig_ValidateWithContext(T *testing.T) {

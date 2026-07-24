@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v5/database"
-	"github.com/primandproper/platform-go/v5/observability"
-	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v6/database"
+	"github.com/primandproper/platform-go/v6/observability"
+	loggingnoop "github.com/primandproper/platform-go/v6/observability/logging/noop"
+	metricsnoop "github.com/primandproper/platform-go/v6/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/platform-go/v6/observability/tracing/noop"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/shoenig/test"
@@ -316,6 +316,47 @@ func TestQuerier_rollbackTransaction(T *testing.T) {
 
 		op := obs.ObservedOperationWithData(t, map[string]any{})
 		must.SliceLen(t, 0, op.Errors)
+	})
+}
+
+func TestClient_WithTransaction(T *testing.T) {
+	T.Parallel()
+
+	T.Run("commits on nil return", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		c, db := buildTestClient(t)
+
+		db.ExpectBegin()
+		db.ExpectExec("UPDATE things").WillReturnResult(sqlmock.NewResult(1, 1))
+		db.ExpectCommit()
+
+		err := c.WithTransaction(ctx, func(tx database.SQLQueryExecutorAndTransactionManager) error {
+			_, execErr := tx.ExecContext(ctx, "UPDATE things SET x = 1")
+			return execErr
+		})
+
+		test.NoError(t, err)
+		must.NoError(t, db.ExpectationsWereMet())
+	})
+
+	T.Run("rolls back on error", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		c, db := buildTestClient(t)
+
+		db.ExpectBegin()
+		db.ExpectRollback()
+
+		sentinel := errors.New("boom")
+		err := c.WithTransaction(ctx, func(_ database.SQLQueryExecutorAndTransactionManager) error {
+			return sentinel
+		})
+
+		test.ErrorIs(t, err, sentinel)
+		must.NoError(t, db.ExpectationsWereMet())
 	})
 }
 

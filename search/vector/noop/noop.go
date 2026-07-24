@@ -3,7 +3,7 @@ package noop
 import (
 	"context"
 
-	vectorsearch "github.com/primandproper/platform-go/v5/search/vector"
+	vectorsearch "github.com/primandproper/platform-go/v6/search/vector"
 )
 
 var _ vectorsearch.Index[any] = (*indexManager[any])(nil)

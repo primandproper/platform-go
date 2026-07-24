@@ -4,12 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v5/observability/logging"
-	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
-	"github.com/primandproper/platform-go/v5/observability/logging/otelgrpc"
-	"github.com/primandproper/platform-go/v5/observability/logging/slog"
-	"github.com/primandproper/platform-go/v5/observability/logging/zap"
-	"github.com/primandproper/platform-go/v5/observability/logging/zerolog"
+	"github.com/primandproper/platform-go/v6/observability/logging"
+	loggingnoop "github.com/primandproper/platform-go/v6/observability/logging/noop"
+	"github.com/primandproper/platform-go/v6/observability/logging/otelgrpc"
+	"github.com/primandproper/platform-go/v6/observability/logging/slog"
+	"github.com/primandproper/platform-go/v6/observability/logging/zap"
+	"github.com/primandproper/platform-go/v6/observability/logging/zerolog"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

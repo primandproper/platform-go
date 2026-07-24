@@ -3,8 +3,8 @@ package sqlite
 import (
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform-go/v5/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v5/observability/tracing/noop"
+	loggingnoop "github.com/primandproper/platform-go/v6/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v6/observability/tracing/noop"
 
 	"github.com/shoenig/test/must"
 )
@@ -23,7 +23,7 @@ func BenchmarkSQLiteClient(b *testing.B) {
 	must.NoError(b, err)
 	b.Cleanup(func() { _ = client.Close() })
 
-	db := client.WriteDB()
+	db := client.Writer()
 	_, err = db.ExecContext(ctx, "CREATE TABLE bench (id INTEGER PRIMARY KEY, name TEXT)")
 	must.NoError(b, err)
 	_, err = db.ExecContext(ctx, "INSERT INTO bench (id, name) VALUES (1, 'seed')")

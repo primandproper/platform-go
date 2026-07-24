@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform-go/v5/cache"
+	"github.com/primandproper/platform-go/v6/cache"
 )
 
 // Ensure, that CacheMock does implement cache.Cache.

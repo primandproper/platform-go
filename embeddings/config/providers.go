@@ -4,13 +4,13 @@ import (
 	"context"
 	"strings"
 
-	"github.com/primandproper/platform-go/v5/embeddings"
-	"github.com/primandproper/platform-go/v5/embeddings/cohere"
-	embeddingsnoop "github.com/primandproper/platform-go/v5/embeddings/noop"
-	"github.com/primandproper/platform-go/v5/embeddings/ollama"
-	"github.com/primandproper/platform-go/v5/embeddings/openai"
-	"github.com/primandproper/platform-go/v5/observability/logging"
-	"github.com/primandproper/platform-go/v5/observability/tracing"
+	"github.com/primandproper/platform-go/v6/embeddings"
+	"github.com/primandproper/platform-go/v6/embeddings/cohere"
+	embeddingsnoop "github.com/primandproper/platform-go/v6/embeddings/noop"
+	"github.com/primandproper/platform-go/v6/embeddings/ollama"
+	"github.com/primandproper/platform-go/v6/embeddings/openai"
+	"github.com/primandproper/platform-go/v6/observability/logging"
+	"github.com/primandproper/platform-go/v6/observability/tracing"
 )
 
 // NewEmbedder provides an Embedder from config.

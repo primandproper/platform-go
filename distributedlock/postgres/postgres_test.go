@@ -7,16 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v5/circuitbreaking"
-	cbmock "github.com/primandproper/platform-go/v5/circuitbreaking/mock"
-	cbnoop "github.com/primandproper/platform-go/v5/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v5/database"
-	"github.com/primandproper/platform-go/v5/distributedlock"
-	"github.com/primandproper/platform-go/v5/identifiers"
-	"github.com/primandproper/platform-go/v5/observability"
-	"github.com/primandproper/platform-go/v5/observability/metrics"
-	metricsnoop "github.com/primandproper/platform-go/v5/observability/metrics/noop"
-	"github.com/primandproper/platform-go/v5/testutils/containers"
+	"github.com/primandproper/platform-go/v6/circuitbreaking"
+	cbmock "github.com/primandproper/platform-go/v6/circuitbreaking/mock"
+	cbnoop "github.com/primandproper/platform-go/v6/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v6/database"
+	"github.com/primandproper/platform-go/v6/distributedlock"
+	"github.com/primandproper/platform-go/v6/identifiers"
+	"github.com/primandproper/platform-go/v6/observability"
+	"github.com/primandproper/platform-go/v6/observability/metrics"
+	metricsnoop "github.com/primandproper/platform-go/v6/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v6/testutils/containers"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -30,20 +30,30 @@ import (
 
 const postgresImage = "postgres:17-alpine"
 
-// testDBClient is a minimal database.Client backed by a single *sql.DB. It exists
-// only to avoid pulling in database/postgres for tests in this leaf package.
+// testDBClient is a minimal database.Client (and database.RawAccess) backed by a single
+// *sql.DB. It exists only to avoid pulling in database/postgres for tests in this leaf
+// package.
 type testDBClient struct {
 	db *sql.DB
 }
 
-func (c *testDBClient) WriteDB() *sql.DB { return c.db }
-func (c *testDBClient) ReadDB() *sql.DB  { return c.db }
-func (c *testDBClient) Close() error     { return c.db.Close() }
-func (c *testDBClient) CurrentTime() time.Time {
-	return time.Now()
-}
+var (
+	_ database.Client    = (*testDBClient)(nil)
+	_ database.RawAccess = (*testDBClient)(nil)
+)
+
+func (c *testDBClient) WriteDB() *sql.DB                  { return c.db }
+func (c *testDBClient) ReadDB() *sql.DB                   { return c.db }
+func (c *testDBClient) Reader() database.SQLQueryExecutor { return c.db }
+func (c *testDBClient) Writer() database.SQLQueryExecutor { return c.db }
+func (c *testDBClient) Close() error                      { return c.db.Close() }
+func (c *testDBClient) CurrentTime() time.Time            { return time.Now() }
 func (c *testDBClient) RollbackTransaction(_ context.Context, tx database.SQLQueryExecutorAndTransactionManager) {
 	_ = tx.Rollback()
+}
+
+func (c *testDBClient) WithTransaction(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+	return database.RunInTransaction(ctx, c.db, c.RollbackTransaction, fn)
 }
 
 func buildContainerBackedPostgres(t *testing.T) (client *testDBClient, shutdown func(context.Context) error) {

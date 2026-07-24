@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"runtime"
 
-	"github.com/primandproper/platform-go/v5/errors"
-	"github.com/primandproper/platform-go/v5/observability/logging"
-	"github.com/primandproper/platform-go/v5/observability/profiling"
-	profilingnoop "github.com/primandproper/platform-go/v5/observability/profiling/noop"
+	"github.com/primandproper/platform-go/v6/errors"
+	"github.com/primandproper/platform-go/v6/observability/logging"
+	"github.com/primandproper/platform-go/v6/observability/profiling"
+	profilingnoop "github.com/primandproper/platform-go/v6/observability/profiling/noop"
 
 	"github.com/grafana/pyroscope-go"
 )
