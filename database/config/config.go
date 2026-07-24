@@ -376,9 +376,15 @@ func NewDatabase(
 		return nil, err
 	}
 
-	// Run migrations if enabled and migrator is provided
+	// Run migrations if enabled and migrator is provided. Migrations need the concrete
+	// *sql.DB, which lives behind the RawAccess capability rather than the safe Client
+	// surface.
 	if cfg.RunMigrations && migrator != nil {
-		if err = migrator.Migrate(ctx, client.WriteDB()); err != nil {
+		raw, ok := client.(database.RawAccess)
+		if !ok {
+			return nil, errors.New("configured database client does not expose raw access required for migrations")
+		}
+		if err = migrator.Migrate(ctx, raw.WriteDB()); err != nil {
 			return nil, errors.Wrap(err, "running migrations")
 		}
 	}

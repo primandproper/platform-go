@@ -30,20 +30,30 @@ import (
 
 const postgresImage = "postgres:17-alpine"
 
-// testDBClient is a minimal database.Client backed by a single *sql.DB. It exists
-// only to avoid pulling in database/postgres for tests in this leaf package.
+// testDBClient is a minimal database.Client (and database.RawAccess) backed by a single
+// *sql.DB. It exists only to avoid pulling in database/postgres for tests in this leaf
+// package.
 type testDBClient struct {
 	db *sql.DB
 }
 
-func (c *testDBClient) WriteDB() *sql.DB { return c.db }
-func (c *testDBClient) ReadDB() *sql.DB  { return c.db }
-func (c *testDBClient) Close() error     { return c.db.Close() }
-func (c *testDBClient) CurrentTime() time.Time {
-	return time.Now()
-}
+var (
+	_ database.Client    = (*testDBClient)(nil)
+	_ database.RawAccess = (*testDBClient)(nil)
+)
+
+func (c *testDBClient) WriteDB() *sql.DB                  { return c.db }
+func (c *testDBClient) ReadDB() *sql.DB                   { return c.db }
+func (c *testDBClient) Reader() database.SQLQueryExecutor { return c.db }
+func (c *testDBClient) Writer() database.SQLQueryExecutor { return c.db }
+func (c *testDBClient) Close() error                      { return c.db.Close() }
+func (c *testDBClient) CurrentTime() time.Time            { return time.Now() }
 func (c *testDBClient) RollbackTransaction(_ context.Context, tx database.SQLQueryExecutorAndTransactionManager) {
 	_ = tx.Rollback()
+}
+
+func (c *testDBClient) WithTransaction(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+	return database.RunInTransaction(ctx, c.db, c.RollbackTransaction, fn)
 }
 
 func buildContainerBackedPostgres(t *testing.T) (client *testDBClient, shutdown func(context.Context) error) {

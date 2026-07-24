@@ -2,9 +2,7 @@ package pgvector
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -183,23 +181,6 @@ func (i *indexManager[T]) ensureTable(ctx context.Context) error {
 
 	op.Set(keys.IndexNameKey, i.indexName)
 
-	tx, err := i.db.WriteDB().BeginTx(ctx, nil)
-	if err != nil {
-		i.errCounter.Add(ctx, 1)
-		return op.Error(err, "starting ensureTable transaction")
-	}
-	// Rollback is a no-op after a successful Commit per the database/sql contract.
-	defer func() {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			op.Acknowledge(rollbackErr, "rolling back ensureTable transaction")
-		}
-	}()
-
-	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, ensureSchemaLockKey); err != nil {
-		i.errCounter.Add(ctx, 1)
-		return op.Error(err, "acquiring pgvector schema advisory lock")
-	}
-
 	stmts := []string{
 		`CREATE EXTENSION IF NOT EXISTS vector`,
 		fmt.Sprintf(
@@ -216,17 +197,25 @@ func (i *indexManager[T]) ensureTable(ctx context.Context) error {
 		),
 	}
 
-	for _, stmt := range stmts {
-		if _, err = tx.ExecContext(ctx, stmt); err != nil {
-			i.errCounter.Add(ctx, 1)
-			return op.Error(err, "ensuring pgvector schema (%s)", firstWords(stmt))
+	// The advisory lock is transaction-scoped, so concurrent callers serialize until this
+	// transaction commits or rolls back — both released for us by WithTransaction.
+	if err := i.db.WithTransaction(ctx, func(tx database.SQLQueryExecutorAndTransactionManager) error {
+		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, ensureSchemaLockKey); err != nil {
+			return op.Error(err, "acquiring pgvector schema advisory lock")
 		}
+
+		for _, stmt := range stmts {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				return op.Error(err, "ensuring pgvector schema (%s)", firstWords(stmt))
+			}
+		}
+
+		return nil
+	}); err != nil {
+		i.errCounter.Add(ctx, 1)
+		return err
 	}
 
-	if commitErr := tx.Commit(); commitErr != nil {
-		i.errCounter.Add(ctx, 1)
-		return op.Error(commitErr, "committing pgvector schema migration")
-	}
 	return nil
 }
 
@@ -284,7 +273,8 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 		})
 	}
 
-	//nolint:gosec // G201: the only interpolated values are internally-quoted identifiers (quotedIndex/quotedMetadataCol), not user input; row values are bound as parameters.
+	// The only interpolated values are internally-quoted identifiers (quotedIndex/
+	// quotedMetadataCol), not user input; row values are bound as parameters.
 	stmt := fmt.Sprintf(
 		`INSERT INTO %s (id, embedding, %s) VALUES ($1, $2::vector, $3::jsonb)
 		 ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding, %s = EXCLUDED.%s`,
@@ -293,29 +283,18 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 
 	// Run the whole batch in one transaction so a mid-batch failure rolls back the
 	// rows already written rather than leaving a partial batch committed.
-	tx, err := i.db.WriteDB().BeginTx(ctx, nil)
-	if err != nil {
-		i.errCounter.Add(ctx, 1)
-		i.circuitBreaker.Failed()
-		return op.Error(err, "beginning upsert transaction")
-	}
-
-	for n := range rows {
-		r := &rows[n]
-		if _, err = tx.ExecContext(ctx, stmt, r.id, r.embedding, r.payload); err != nil {
-			if rbErr := tx.Rollback(); rbErr != nil {
-				op.Acknowledge(rbErr, "rolling back upsert transaction")
+	if err := i.db.WithTransaction(ctx, func(tx database.SQLQueryExecutorAndTransactionManager) error {
+		for n := range rows {
+			r := &rows[n]
+			if _, err := tx.ExecContext(ctx, stmt, r.id, r.embedding, r.payload); err != nil {
+				return op.Error(err, "upserting vector %q", r.id)
 			}
-			i.errCounter.Add(ctx, 1)
-			i.circuitBreaker.Failed()
-			return op.Error(err, "upserting vector %q", r.id)
 		}
-	}
-
-	if err = tx.Commit(); err != nil {
+		return nil
+	}); err != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
-		return op.Error(err, "committing upsert transaction")
+		return err
 	}
 
 	i.upsertCounter.Add(ctx, int64(len(rows)))
@@ -344,7 +323,7 @@ func (i *indexManager[T]) Delete(ctx context.Context, ids ...string) error {
 	}()
 
 	stmt := fmt.Sprintf(`DELETE FROM %s WHERE id = ANY($1)`, i.quotedIndex)
-	if _, err := i.db.WriteDB().ExecContext(ctx, stmt, pgTextArray(ids)); err != nil {
+	if _, err := i.db.Writer().ExecContext(ctx, stmt, pgTextArray(ids)); err != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
 		return op.Error(err, "deleting vectors")
@@ -372,7 +351,7 @@ func (i *indexManager[T]) Wipe(ctx context.Context) error {
 	}()
 
 	stmt := fmt.Sprintf(`TRUNCATE TABLE %s`, i.quotedIndex)
-	if _, err := i.db.WriteDB().ExecContext(ctx, stmt); err != nil {
+	if _, err := i.db.Writer().ExecContext(ctx, stmt); err != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()
 		return op.Error(err, "wiping pgvector index")
@@ -433,7 +412,7 @@ func (i *indexManager[T]) Query(ctx context.Context, req vectorsearch.QueryReque
 		i.quotedMetadataCol, i.distanceOperator, i.quotedIndex, where,
 	)
 
-	rows, err := i.db.ReadDB().QueryContext(ctx, stmt, encodeVector(req.Embedding), req.TopK)
+	rows, err := i.db.Reader().QueryContext(ctx, stmt, encodeVector(req.Embedding), req.TopK)
 	if err != nil {
 		i.errCounter.Add(ctx, 1)
 		i.circuitBreaker.Failed()

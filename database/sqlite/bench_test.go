@@ -23,7 +23,7 @@ func BenchmarkSQLiteClient(b *testing.B) {
 	must.NoError(b, err)
 	b.Cleanup(func() { _ = client.Close() })
 
-	db := client.WriteDB()
+	db := client.Writer()
 	_, err = db.ExecContext(ctx, "CREATE TABLE bench (id INTEGER PRIMARY KEY, name TEXT)")
 	must.NoError(b, err)
 	_, err = db.ExecContext(ctx, "INSERT INTO bench (id, name) VALUES (1, 'seed')")

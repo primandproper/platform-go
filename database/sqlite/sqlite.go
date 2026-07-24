@@ -183,9 +183,29 @@ func (q *Client) ReadDB() *sql.DB {
 	return q.readDB
 }
 
-// WriteDB provides the database object.
+// WriteDB provides the database object. It satisfies database.RawAccess; prefer Writer
+// and WithTransaction on the Client interface.
 func (q *Client) WriteDB() *sql.DB {
 	return q.writeDB
+}
+
+// Reader returns a non-transactional executor for the read database.
+func (q *Client) Reader() database.SQLQueryExecutor {
+	return q.readDB
+}
+
+// Writer returns a non-transactional executor for the write database.
+func (q *Client) Writer() database.SQLQueryExecutor {
+	return q.writeDB
+}
+
+// WithTransaction runs fn inside a transaction on the write database, committing on a
+// nil return and rolling back on error or panic. See database.RunInTransaction.
+func (q *Client) WithTransaction(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+	ctx, op := q.o11y.Begin(ctx)
+	defer op.End()
+
+	return database.RunInTransaction(ctx, q.writeDB, q.RollbackTransaction, fn)
 }
 
 // Close closes the database connection.

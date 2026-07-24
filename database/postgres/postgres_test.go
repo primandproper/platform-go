@@ -319,6 +319,47 @@ func TestQuerier_rollbackTransaction(T *testing.T) {
 	})
 }
 
+func TestClient_WithTransaction(T *testing.T) {
+	T.Parallel()
+
+	T.Run("commits on nil return", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		c, db := buildTestClient(t)
+
+		db.ExpectBegin()
+		db.ExpectExec("UPDATE things").WillReturnResult(sqlmock.NewResult(1, 1))
+		db.ExpectCommit()
+
+		err := c.WithTransaction(ctx, func(tx database.SQLQueryExecutorAndTransactionManager) error {
+			_, execErr := tx.ExecContext(ctx, "UPDATE things SET x = 1")
+			return execErr
+		})
+
+		test.NoError(t, err)
+		must.NoError(t, db.ExpectationsWereMet())
+	})
+
+	T.Run("rolls back on error", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		c, db := buildTestClient(t)
+
+		db.ExpectBegin()
+		db.ExpectRollback()
+
+		sentinel := errors.New("boom")
+		err := c.WithTransaction(ctx, func(_ database.SQLQueryExecutorAndTransactionManager) error {
+			return sentinel
+		})
+
+		test.ErrorIs(t, err, sentinel)
+		must.NoError(t, db.ExpectationsWereMet())
+	})
+}
+
 func TestClient_ReadDB(T *testing.T) {
 	T.Parallel()
 

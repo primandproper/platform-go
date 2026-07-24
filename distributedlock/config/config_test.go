@@ -28,11 +28,17 @@ import (
 // the client but does not use it until a lock is acquired.
 type stubDBClient struct{}
 
-func (c *stubDBClient) WriteDB() *sql.DB       { return nil }
-func (c *stubDBClient) ReadDB() *sql.DB        { return nil }
-func (c *stubDBClient) Close() error           { return nil }
-func (c *stubDBClient) CurrentTime() time.Time { return time.Now() }
+func (c *stubDBClient) WriteDB() *sql.DB                  { return nil }
+func (c *stubDBClient) ReadDB() *sql.DB                   { return nil }
+func (c *stubDBClient) Reader() database.SQLQueryExecutor { return nil }
+func (c *stubDBClient) Writer() database.SQLQueryExecutor { return nil }
+func (c *stubDBClient) Close() error                      { return nil }
+func (c *stubDBClient) CurrentTime() time.Time            { return time.Now() }
 func (c *stubDBClient) RollbackTransaction(_ context.Context, _ database.SQLQueryExecutorAndTransactionManager) {
+}
+
+func (c *stubDBClient) WithTransaction(_ context.Context, _ func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+	return nil
 }
 
 func TestConfig_ValidateWithContext(T *testing.T) {

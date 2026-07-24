@@ -57,14 +57,18 @@ type testDBClient struct {
 	db *sql.DB
 }
 
-func (c *testDBClient) WriteDB() *sql.DB { return c.db }
-func (c *testDBClient) ReadDB() *sql.DB  { return c.db }
-func (c *testDBClient) Close() error     { return c.db.Close() }
-func (c *testDBClient) CurrentTime() time.Time {
-	return time.Now()
-}
+func (c *testDBClient) WriteDB() *sql.DB                  { return c.db }
+func (c *testDBClient) ReadDB() *sql.DB                   { return c.db }
+func (c *testDBClient) Reader() database.SQLQueryExecutor { return c.db }
+func (c *testDBClient) Writer() database.SQLQueryExecutor { return c.db }
+func (c *testDBClient) Close() error                      { return c.db.Close() }
+func (c *testDBClient) CurrentTime() time.Time            { return time.Now() }
 func (c *testDBClient) RollbackTransaction(_ context.Context, tx database.SQLQueryExecutorAndTransactionManager) {
 	_ = tx.Rollback()
+}
+
+func (c *testDBClient) WithTransaction(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+	return database.RunInTransaction(ctx, c.db, c.RollbackTransaction, fn)
 }
 
 func buildContainerBackedPgvector(t *testing.T) (client *testDBClient, shutdown func(context.Context) error) {
