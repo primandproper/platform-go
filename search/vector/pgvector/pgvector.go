@@ -199,7 +199,7 @@ func (i *indexManager[T]) ensureTable(ctx context.Context) error {
 
 	// The advisory lock is transaction-scoped, so concurrent callers serialize until this
 	// transaction commits or rolls back — both released for us by WithTransaction.
-	if err := i.db.WithTransaction(ctx, func(tx database.SQLQueryExecutorAndTransactionManager) error {
+	if err := i.db.WithTransaction(ctx, func(tx database.SQLQueryExecutor) error {
 		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, ensureSchemaLockKey); err != nil {
 			return op.Error(err, "acquiring pgvector schema advisory lock")
 		}
@@ -283,7 +283,7 @@ func (i *indexManager[T]) Upsert(ctx context.Context, vectors ...vectorsearch.Ve
 
 	// Run the whole batch in one transaction so a mid-batch failure rolls back the
 	// rows already written rather than leaving a partial batch committed.
-	if err := i.db.WithTransaction(ctx, func(tx database.SQLQueryExecutorAndTransactionManager) error {
+	if err := i.db.WithTransaction(ctx, func(tx database.SQLQueryExecutor) error {
 		for n := range rows {
 			r := &rows[n]
 			if _, err := tx.ExecContext(ctx, stmt, r.id, r.embedding, r.payload); err != nil {

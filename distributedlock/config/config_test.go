@@ -37,7 +37,7 @@ func (c *stubDBClient) CurrentTime() time.Time            { return time.Now() }
 func (c *stubDBClient) RollbackTransaction(_ context.Context, _ database.SQLQueryExecutorAndTransactionManager) {
 }
 
-func (c *stubDBClient) WithTransaction(_ context.Context, _ func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+func (c *stubDBClient) WithTransaction(_ context.Context, _ func(tx database.SQLQueryExecutor) error) error {
 	return nil
 }
 

@@ -12,9 +12,9 @@ import (
 // behind each Client's WithTransaction method — application code should prefer
 // Client.WithTransaction, which wraps this with the implementation's observability.
 //
-// The transaction handle is the only executor fn receives, so statements cannot
-// accidentally target the read replica or another connection. Lifecycle is managed for
-// the caller:
+// fn receives the transaction as a bare executor (SQLQueryExecutor), not the transaction
+// handle: it cannot commit or roll back, and its statements cannot accidentally target
+// the read replica or another connection. Lifecycle is managed entirely here:
 //
 //   - rollback is invoked (with the transaction) on any non-nil error from fn, and the
 //     error is returned unwrapped.
@@ -28,7 +28,7 @@ func RunInTransaction(
 	ctx context.Context,
 	writeDB *sql.DB,
 	rollback func(ctx context.Context, tx SQLQueryExecutorAndTransactionManager),
-	fn func(tx SQLQueryExecutorAndTransactionManager) error,
+	fn func(tx SQLQueryExecutor) error,
 ) error {
 	if writeDB == nil || rollback == nil || fn == nil {
 		return platformerrors.ErrNilInputProvided

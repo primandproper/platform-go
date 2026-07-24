@@ -52,7 +52,7 @@ func (c *testDBClient) RollbackTransaction(_ context.Context, tx database.SQLQue
 	_ = tx.Rollback()
 }
 
-func (c *testDBClient) WithTransaction(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+func (c *testDBClient) WithTransaction(ctx context.Context, fn func(tx database.SQLQueryExecutor) error) error {
 	return database.RunInTransaction(ctx, c.db, c.RollbackTransaction, fn)
 }
 

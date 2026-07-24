@@ -332,7 +332,7 @@ func TestClient_WithTransaction(T *testing.T) {
 		db.ExpectExec("UPDATE things").WillReturnResult(sqlmock.NewResult(1, 1))
 		db.ExpectCommit()
 
-		err := c.WithTransaction(ctx, func(tx database.SQLQueryExecutorAndTransactionManager) error {
+		err := c.WithTransaction(ctx, func(tx database.SQLQueryExecutor) error {
 			_, execErr := tx.ExecContext(ctx, "UPDATE things SET x = 1")
 			return execErr
 		})
@@ -351,7 +351,7 @@ func TestClient_WithTransaction(T *testing.T) {
 		db.ExpectRollback()
 
 		sentinel := errors.New("boom")
-		err := c.WithTransaction(ctx, func(_ database.SQLQueryExecutorAndTransactionManager) error {
+		err := c.WithTransaction(ctx, func(_ database.SQLQueryExecutor) error {
 			return sentinel
 		})
 

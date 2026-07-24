@@ -31,7 +31,7 @@ var _ database.Client = &ClientMock{}
 //			ReaderFunc: func() database.SQLQueryExecutor {
 //				panic("mock out the Reader method")
 //			},
-//			WithTransactionFunc: func(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+//			WithTransactionFunc: func(ctx context.Context, fn func(tx database.SQLQueryExecutor) error) error {
 //				panic("mock out the WithTransaction method")
 //			},
 //			WriterFunc: func() database.SQLQueryExecutor {
@@ -54,7 +54,7 @@ type ClientMock struct {
 	ReaderFunc func() database.SQLQueryExecutor
 
 	// WithTransactionFunc mocks the WithTransaction method.
-	WithTransactionFunc func(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error
+	WithTransactionFunc func(ctx context.Context, fn func(tx database.SQLQueryExecutor) error) error
 
 	// WriterFunc mocks the Writer method.
 	WriterFunc func() database.SQLQueryExecutor
@@ -75,7 +75,7 @@ type ClientMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Fn is the fn argument value.
-			Fn func(tx database.SQLQueryExecutorAndTransactionManager) error
+			Fn func(tx database.SQLQueryExecutor) error
 		}
 		// Writer holds details about calls to the Writer method.
 		Writer []struct {
@@ -170,13 +170,13 @@ func (mock *ClientMock) ReaderCalls() []struct {
 }
 
 // WithTransaction calls WithTransactionFunc.
-func (mock *ClientMock) WithTransaction(ctx context.Context, fn func(tx database.SQLQueryExecutorAndTransactionManager) error) error {
+func (mock *ClientMock) WithTransaction(ctx context.Context, fn func(tx database.SQLQueryExecutor) error) error {
 	if mock.WithTransactionFunc == nil {
 		panic("ClientMock.WithTransactionFunc: method is nil but Client.WithTransaction was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
-		Fn  func(tx database.SQLQueryExecutorAndTransactionManager) error
+		Fn  func(tx database.SQLQueryExecutor) error
 	}{
 		Ctx: ctx,
 		Fn:  fn,
@@ -193,11 +193,11 @@ func (mock *ClientMock) WithTransaction(ctx context.Context, fn func(tx database
 //	len(mockedClient.WithTransactionCalls())
 func (mock *ClientMock) WithTransactionCalls() []struct {
 	Ctx context.Context
-	Fn  func(tx database.SQLQueryExecutorAndTransactionManager) error
+	Fn  func(tx database.SQLQueryExecutor) error
 } {
 	var calls []struct {
 		Ctx context.Context
-		Fn  func(tx database.SQLQueryExecutorAndTransactionManager) error
+		Fn  func(tx database.SQLQueryExecutor) error
 	}
 	mock.lockWithTransaction.RLock()
 	calls = mock.calls.WithTransaction
