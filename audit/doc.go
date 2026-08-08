@@ -91,16 +91,35 @@ Redaction for a policy that belongs to a deployment.
 
 # Retention
 
-Sweeper prunes entries past the retention window, and takes two precautions that
-an ordinary reaper would not. It removes only a prefix of a scope's chain, never
-a row from the middle, so the survivors stay contiguous and verifiable against
-each other. And it records the hash of the last entry it removed as that scope's
-prune watermark, so the oldest surviving entry still links to something and
-Verify can tell retention's gap from a deletion. Both happen in one transaction:
-a deletion whose watermark did not land would read as tampering.
+PruneTarget removes entries past the retention window, and takes two precautions
+that an ordinary reaper would not. It removes only a prefix of a scope's chain,
+never a row from the middle, so the survivors stay contiguous and verifiable
+against each other. And it records the hash of the last entry it removed as that
+scope's prune watermark, so the oldest surviving entry still links to something
+and Verify can tell retention's gap from a deletion. Both happen in the same
+transaction: a deletion whose watermark did not land would read as tampering.
+
+This package owns no sweep loop. PruneTarget satisfies retention.Target, so the
+pruning is a retention.Policy the application registers alongside every other
+one it enforces — scheduled by a jobs.Scheduler, holding that scheduler's
+distributed lock so a fleet sweeps once rather than once per replica, reporting
+a backlog, and accounted for by an audit entry per run:
+
+	policy, err := auditcfg.NewRetentionPolicy(ctx, cfg)
+
+There is no import of retention here and there cannot be one — retention imports
+this package, to write that entry. Go's interfaces are structural, so the target
+satisfies it anyway; the compile-time assertion saying so lives in this
+package's external test.
+
+That accounting entry is written into the log the sweep just pruned, which is
+the intended reading: until it existed, the one deletion this module performed
+against the audit log was the one deletion nothing recorded.
 
 The default window is seven years, which is long. A default that quietly deleted
-evidence somebody was required to keep would be the worse failure.
+evidence somebody was required to keep would be the worse failure — and the
+one-hour floor RetentionConfig enforces is there for the same reason, since
+retention.Policy itself permits a zero age.
 
 # Reading it
 
@@ -141,11 +160,16 @@ Pass the metrics providers. audit_chain_breaks is the one to alert on:
 everything else here describes throughput, but a non-zero break count means the
 log has stopped being evidence. The rest are audit_entries_recorded,
 audit_record_latency_ms (Record runs inside somebody's transaction, so its cost
-is lock hold time on their rows), audit_verifications, audit_entries_pruned,
-audit_sweep_errors, and audit_sweep_latency_ms.
+is lock hold time on their rows), and audit_verifications.
 
-Spans cover Record, each read, each verification, and each sweep that had
-something to do. No span or log line carries a value from Changes or Metadata —
+Pruning is instrumented by retention rather than here, under the policy's name
+— retention_rows_removed, retention_backlog, retention_batches,
+retention_sweep_errors, and retention_sweep_latency_ms. The backlog gauge is the
+one worth alerting on, because it is what separates a log that is clean from one
+whose sweep is stuck.
+
+Spans cover Record, each read, and each verification. No span or log line
+carries a value from Changes or Metadata —
 those hold exactly what Redaction exists to keep out of durable storage, and a
 span exporter is durable storage.
 */

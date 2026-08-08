@@ -270,11 +270,51 @@ func (t *tables) buildCountEntries(d dialect.Dialect, q *Query, filter *filterin
 
 // buildSelectPrunableScopes renders the retention sweep's first question: which
 // scopes hold anything old enough to prune.
-func (t *tables) buildSelectPrunableScopes(d dialect.Dialect, before time.Time, limit int) (query string, args []any) {
+//
+// It pages by scope rather than capping how many a sweep may see, because the
+// count it returns is what tells the sweep whether it has run out of work — a
+// page short of the limit means there is nothing behind it. The cursor is the
+// last scope of the previous page, which is a keyset and not an offset, so a
+// scope written behind the cursor while the batch runs cannot displace one that
+// has not been visited yet.
+//
+// after is a pointer for the same reason Query.Scope is: the empty string is a
+// real scope, the one platform-level events are recorded in. A plain string
+// would make the first page — which has no cursor — indistinguishable from a
+// page positioned just past that scope, and the log's own events would be the
+// ones never pruned.
+func (t *tables) buildSelectPrunableScopes(
+	d dialect.Dialect,
+	before time.Time,
+	after *string,
+	limit int,
+) (query string, args []any) {
+	args = []any{before.UTC()}
+
+	cursor := ""
+	if after != nil {
+		cursor = " AND scope > " + d.Placeholder(2)
+		args = append(args, *after)
+	}
+
 	return fmt.Sprintf(
-		"SELECT DISTINCT scope FROM %s WHERE recorded_at < %s LIMIT %s",
+		"SELECT DISTINCT scope FROM %s WHERE recorded_at <= %s%s ORDER BY scope LIMIT %s",
+		t.entries, d.Placeholder(1), cursor, d.Placeholder(len(args)+1),
+	), append(args, limit)
+}
+
+// buildCountPrunableEntries renders the retention backlog reading: how many
+// entries are at or before the cutoff, saturating at ceiling.
+//
+// Bounded by a subquery rather than counted outright, so the cost of the
+// reading does not grow with the size of the problem it reports — which would
+// make it most expensive exactly when somebody most needs it. The alias is not
+// decoration: Postgres and MySQL both require a derived table to have one.
+func (t *tables) buildCountPrunableEntries(d dialect.Dialect, before time.Time, ceiling int) (query string, args []any) {
+	return fmt.Sprintf(
+		"SELECT COUNT(*) FROM (SELECT 1 FROM %s WHERE recorded_at <= %s LIMIT %s) AS audit_prune_backlog",
 		t.entries, d.Placeholder(1), d.Placeholder(2),
-	), []any{before.UTC(), limit}
+	), []any{before.UTC(), ceiling}
 }
 
 // buildSelectPruneBounds renders the two positions that decide what a sweep may
@@ -285,6 +325,11 @@ func (t *tables) buildSelectPrunableScopes(d dialect.Dialect, before time.Time, 
 // CASE expression is what allows it — a second aggregate cannot carry its own
 // WHERE clause, but it can be fed a NULL for every row the predicate excludes.
 //
+// The predicate is strictly greater than the cutoff, because an entry recorded
+// exactly at it is one this sweep may remove — the same at-or-before reading
+// the scope listing and the backlog count use. The three have to agree, or a
+// row sits in the backlog that no sweep will ever take.
+//
 // The second value is the reason the sweep is expressed in positions at all
 // rather than deleting by timestamp directly. recorded_at comes from the
 // recording process's clock, so across several processes it is not perfectly
@@ -294,7 +339,7 @@ func (t *tables) buildSelectPrunableScopes(d dialect.Dialect, before time.Time, 
 // first entry that must survive keeps the survivors a contiguous suffix, always.
 func (t *tables) buildSelectPruneBounds(d dialect.Dialect, scope string, before time.Time) (query string, args []any) {
 	return fmt.Sprintf(
-		"SELECT MIN(seq), MIN(CASE WHEN recorded_at >= %s THEN seq END) FROM %s WHERE scope = %s",
+		"SELECT MIN(seq), MIN(CASE WHEN recorded_at > %s THEN seq END) FROM %s WHERE scope = %s",
 		d.Placeholder(1), t.entries, d.Placeholder(2),
 	), []any{before.UTC(), scope}
 }

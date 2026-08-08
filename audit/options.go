@@ -111,38 +111,7 @@ func WithRedaction(resourceType string, redaction Redaction) RecorderOption {
 	}
 }
 
-// SweeperOption configures a Sweeper.
-type SweeperOption func(*Sweeper)
-
-// WithSweeperClock swaps the clock driving the sweep ticker and the cutoff.
-func WithSweeperClock(c clock.Clock) SweeperOption {
-	return func(s *Sweeper) {
-		if c != nil {
-			s.clock = c
-		}
-	}
-}
-
-// WithSweeperLogger attaches a logger. Sweeps report their errors through it
-// and nowhere else — there is no caller to return them to.
-func WithSweeperLogger(logger logging.Logger) SweeperOption {
-	return func(s *Sweeper) {
-		s.logger = logger
-	}
-}
-
-// WithSweeperTracerProvider attaches a tracer provider. A tick that prunes
-// nothing is not traced: a root span every interval is noise.
-func WithSweeperTracerProvider(tracerProvider tracing.Provider) SweeperOption {
-	return func(s *Sweeper) {
-		s.tracerProvider = tracerProvider
-	}
-}
-
-// WithSweeperMetricsProvider attaches a metrics provider, enabling
-// audit_entries_pruned, audit_sweep_errors, and audit_sweep_latency_ms.
-func WithSweeperMetricsProvider(metricsProvider metrics.Provider) SweeperOption {
-	return func(s *Sweeper) {
-		s.metricsProvider = metricsProvider
-	}
-}
+// There are no PruneTarget options. It is a value with exported fields, like
+// retention.Table, and it carries no observability of its own: the sweep that
+// drives it is a retention.Sweeper's, and so are the spans, the logger, and the
+// instruments describing it.

@@ -6,7 +6,6 @@ import (
 
 	"github.com/primandproper/platform-go/v10/analytics"
 	analyticsmock "github.com/primandproper/platform-go/v10/analytics/mock"
-	"github.com/primandproper/platform-go/v10/audit"
 	"github.com/primandproper/platform-go/v10/database"
 	databasemock "github.com/primandproper/platform-go/v10/database/mock"
 	"github.com/primandproper/platform-go/v10/dataprivacy"
@@ -82,7 +81,6 @@ func TestNew_ordering(T *testing.T) {
 		do.ProvideValue(i, &saga.Worker{})
 		do.ProvideValue(i, &webhooks.Worker{})
 		do.ProvideValue(i, &dataprivacy.Worker{})
-		do.ProvideValue(i, &audit.Sweeper{})
 
 		do.ProvideValue(i, &metering.Flusher{})
 
@@ -115,7 +113,6 @@ func TestNew_ordering(T *testing.T) {
 			"saga worker",
 			"webhooks worker",
 			"dataprivacy worker",
-			"audit sweeper",
 		}, names(svc.runners))
 
 		test.Eq(t, []string{"metering flusher"}, names(svc.flushes))

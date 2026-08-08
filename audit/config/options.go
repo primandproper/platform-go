@@ -31,7 +31,6 @@ type options struct {
 
 	recorder []audit.RecorderOption
 	reader   []audit.ReaderOption
-	sweeper  []audit.SweeperOption
 }
 
 // newOptions applies opts, ignoring nil entries.
@@ -87,8 +86,7 @@ func WithReaderOptions(opts ...audit.ReaderOption) Option {
 	return func(o *options) { o.reader = append(o.reader, opts...) }
 }
 
-// WithSweeperOptions passes opts to NewSweeper, which applies them after the
-// options it derives from configuration. Other constructors ignore them.
-func WithSweeperOptions(opts ...audit.SweeperOption) Option {
-	return func(o *options) { o.sweeper = append(o.sweeper, opts...) }
-}
+// There is no passthrough for the retention target. audit.PruneTarget is a
+// value with exported fields and no options of its own, and the sweep that
+// drives it belongs to a retention.Sweeper — whose options are
+// retentioncfg's to pass.

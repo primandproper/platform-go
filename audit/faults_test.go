@@ -315,66 +315,6 @@ func (e *rowFailingExecutor) QueryRowContext(ctx context.Context, query string, 
 	return e.SQLQueryExecutor.QueryRowContext(ctx, "SELECT nonexistent_column", args...)
 }
 
-func TestSweeper_PropagatesFailures(T *testing.T) {
-	T.Parallel()
-
-	T.Run("counts a scope listing that fails instead of reporting a sweep", func(t *testing.T) {
-		t.Parallel()
-
-		c := newStubClock()
-
-		s, err := NewSweeper(t.Context(),
-			&SweeperConfig{Dialect: dialect.SQLite, Retention: time.Hour},
-			newFailingClient(t), WithSweeperClock(c))
-		must.NoError(t, err)
-
-		// Errors are logged and counted rather than returned — there is no
-		// caller to hand them to — so the observable contract is that nothing
-		// was pruned.
-		test.EqOp(t, int64(0), s.Sweep(t.Context()))
-	})
-
-	T.Run("carries on past a scope that fails", func(t *testing.T) {
-		t.Parallel()
-
-		client := newTestClient(t)
-		c := newStubClock()
-		recorder := newTestRecorder(t, c)
-
-		record(t, client, recorder, entryFor("acct_1", "r1"), entryFor("acct_2", "r1"))
-		c.advance(4 * time.Hour)
-
-		// Scopes list fine and the deletes would succeed, but the watermark
-		// cannot be written — a half-applied migration looks exactly like this.
-		// Every scope therefore fails and rolls back, and the sweep reports
-		// having pruned nothing rather than propagating or lying.
-		exec(t, client, "DROP TABLE "+"audit_log_chains")
-
-		s := sweeperFor(t, client, c, func(cfg *SweeperConfig) { cfg.Retention = time.Hour })
-		test.EqOp(t, int64(0), s.Sweep(t.Context()))
-
-		// The rollback is the part that matters: a deletion whose watermark did
-		// not land would leave a gap Verify could not tell from tampering.
-		test.EqOp(t, 2, countRows(t, client, "audit_log_entries", "1=1"))
-	})
-
-	T.Run("counts a scope listing that fails", func(t *testing.T) {
-		t.Parallel()
-
-		client := newTestClient(t)
-		c := newStubClock()
-		recorder := newTestRecorder(t, c)
-
-		record(t, client, recorder, entryFor("acct_1", "r1"))
-		c.advance(4 * time.Hour)
-
-		exec(t, client, "DROP TABLE "+"audit_log_entries")
-
-		s := sweeperFor(t, client, c, func(cfg *SweeperConfig) { cfg.Retention = time.Hour })
-		test.EqOp(t, int64(0), s.Sweep(t.Context()))
-	})
-}
-
 func TestScanRows_ReportsIterationFailure(T *testing.T) {
 	T.Parallel()
 

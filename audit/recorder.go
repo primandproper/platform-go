@@ -80,8 +80,8 @@ func NewRecorder(d dialect.Dialect, opts ...RecorderOption) (Recorder, error) {
 		}
 	}
 
-	if !validPrefix.MatchString(r.prefix) {
-		return nil, platformerrors.Wrapf(ErrInvalidTablePrefix, "audit table prefix %q", r.prefix)
+	if err := ValidateTablePrefix(r.prefix); err != nil {
+		return nil, err
 	}
 	r.tables = newTables(r.prefix)
 

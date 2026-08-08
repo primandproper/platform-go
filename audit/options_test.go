@@ -2,7 +2,6 @@ package audit
 
 import (
 	"testing"
-	"time"
 
 	"github.com/primandproper/platform-go/v10/clock"
 	"github.com/primandproper/platform-go/v10/database/dialect"
@@ -168,70 +167,5 @@ func TestReaderOptions(T *testing.T) {
 		r, err := NewReader(newTestClient(t), nil)
 		must.NoError(t, err)
 		test.NotNil(t, r)
-	})
-}
-
-func TestSweeperOptions(T *testing.T) {
-	T.Parallel()
-
-	T.Run("apply what they are given", func(t *testing.T) {
-		t.Parallel()
-
-		c := newStubClock()
-		logger := loggingnoop.NewLogger()
-
-		s := &Sweeper{}
-		for _, opt := range []SweeperOption{
-			WithSweeperClock(c),
-			WithSweeperLogger(logger),
-			WithSweeperTracerProvider(tracingnoop.NewTracerProvider()),
-			WithSweeperMetricsProvider(metrics.EnsureMetricsProvider(nil)),
-		} {
-			opt(s)
-		}
-
-		test.EqOp(t, clock.Clock(c), s.clock)
-		test.EqOp(t, logger, s.logger)
-		test.NotNil(t, s.tracerProvider)
-		test.NotNil(t, s.metricsProvider)
-	})
-
-	T.Run("ignore a nil clock", func(t *testing.T) {
-		t.Parallel()
-
-		c := newStubClock()
-		s := &Sweeper{clock: c}
-		WithSweeperClock(nil)(s)
-
-		test.EqOp(t, clock.Clock(c), s.clock)
-	})
-
-	T.Run("reports an instrument that cannot be built", func(t *testing.T) {
-		t.Parallel()
-
-		for failAt := 1; failAt <= 3; failAt++ {
-			_, err := NewSweeper(t.Context(),
-				&SweeperConfig{Dialect: dialect.SQLite, Retention: time.Hour},
-				newTestClient(t),
-				WithSweeperMetricsProvider(failingMetricsProvider(failAt)))
-			test.ErrorIs(t, err, errInstrument, test.Sprintf("instrument %d", failAt))
-		}
-	})
-
-	T.Run("ignores nil options", func(t *testing.T) {
-		t.Parallel()
-
-		s, err := NewSweeper(t.Context(),
-			&SweeperConfig{Dialect: dialect.SQLite, Retention: time.Hour}, newTestClient(t), nil)
-		must.NoError(t, err)
-		test.NotNil(t, s)
-	})
-
-	T.Run("rejects an invalid config", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := NewSweeper(t.Context(),
-			&SweeperConfig{Dialect: "cassandra"}, newTestClient(t))
-		test.Error(t, err)
 	})
 }

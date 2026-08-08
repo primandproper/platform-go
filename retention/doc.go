@@ -40,8 +40,24 @@ A Table target is a table, the timestamp column age is measured from, and the
 key column a batch is bounded by. There is no predicate field, on purpose: a
 free-text SQL fragment reaching a query through configuration is the one thing
 in this package that could not be vetted at startup, and a policy that needs a
-predicate needs Go, not a string. Implement Target instead — it is three
-methods, and Table is the reference implementation.
+predicate needs Go, not a string. Implement Target instead — it is four methods,
+and Table is the reference implementation.
+
+# The audit log is the second implementation
+
+audit.PruneTarget is what Target being an interface was for. The audit log
+cannot be swept by a predicate: its entries chain per scope, and a DELETE taking
+whatever a timestamp selected would punch a hole in the middle of a chain, which
+is indistinguishable from tampering. So it prunes each scope as a prefix and
+writes the removed entry's hash back as that scope's watermark — behavior no
+declarative target could express, in a policy that is otherwise ordinary:
+
+	policy, err := auditcfg.NewRetentionPolicy(ctx, auditConfig)
+
+The dependency runs one way only. This package imports audit, to record the
+entry accounting for each sweep; audit does not import this one, and satisfies
+Target structurally instead. Which means the sweep that prunes the audit log
+writes its own accounting entry into the log it just pruned.
 
 # The sweep is scheduled, not looped
 

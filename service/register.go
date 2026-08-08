@@ -230,7 +230,10 @@ func registerDurableWorkflows(i do.Injector, cfg *Config) {
 		do.ProvideValue(i, cfg.Audit)
 		auditcfg.RegisterRecorder(i)
 		auditcfg.RegisterReader(i)
-		auditcfg.RegisterSweeper(i)
+		// No sweeper: pruning the audit log is a retention.Policy the
+		// application appends to its policy set, so that it is scheduled and
+		// coordinated by the same jobs.Scheduler as every other one. See
+		// auditcfg.NewRetentionPolicy.
 	}
 
 	if cfg.DataPrivacy != nil {

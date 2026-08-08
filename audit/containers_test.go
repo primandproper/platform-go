@@ -71,18 +71,23 @@ func (e *dialectEnv) reader(t *testing.T, prefix string) Reader {
 	return r
 }
 
-// sweeper builds a Sweeper bound to the supplied prefix.
-func (e *dialectEnv) sweeper(t *testing.T, c *stubClock, prefix string, retention time.Duration) *Sweeper {
+// prune runs one retention batch against the supplied prefix, the way a
+// retention.Sweeper would: inside a transaction it owns, with a row budget.
+func (e *dialectEnv) prune(t *testing.T, c *stubClock, prefix string, retention time.Duration) int64 {
 	t.Helper()
 
-	s, err := NewSweeper(t.Context(), &SweeperConfig{
-		Dialect:     e.dialect,
-		TablePrefix: prefix,
-		Retention:   retention,
-	}, e.client, WithSweeperClock(c))
-	must.NoError(t, err)
+	target := PruneTarget{Clock: c, TablePrefix: prefix}
+	cutoff := c.Now().UTC().Add(-retention)
 
-	return s
+	var removed int64
+	must.NoError(t, e.client.WithTransaction(t.Context(), func(q database.SQLQueryExecutor) error {
+		var err error
+		removed, err = target.Sweep(t.Context(), q, e.dialect, cutoff, 100)
+
+		return err
+	}))
+
+	return removed
 }
 
 // runDialectSuite is the behavioral contract every dialect owes. SQLite is
@@ -234,10 +239,10 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			return recorder.Record(t.Context(), q, entryFor("acct_1", "r2"))
 		}))
 
-		// Exercises the CASE-expression prune bounds on a real server, which is
-		// the statement most likely to differ between dialects.
-		sweeper := env.sweeper(t, c, prefix, time.Hour)
-		test.EqOp(t, int64(1), sweeper.Sweep(t.Context()))
+		// Exercises the CASE-expression prune bounds and the keyset scope page
+		// on a real server, which are the statements most likely to differ
+		// between dialects.
+		test.EqOp(t, int64(1), env.prune(t, c, prefix, time.Hour))
 
 		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
 		must.NoError(t, err)

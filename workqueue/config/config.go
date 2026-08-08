@@ -20,7 +20,7 @@ config: cachecfg.Config selects a provider and carries a circuit breaker,
 outboxcfg.Config pairs a message queue with a relay, webhookscfg.Config gathers a
 worker, an HTTP client, and a breaker. Where one of them does nest a leaf
 package's config, that config is named for the role it plays there —
-audit.SweeperConfig, saga.WorkerConfig, outbox.RelayConfig.
+audit.RetentionConfig, saga.WorkerConfig, outbox.RelayConfig.
 
 A work queue has exactly one thing to configure, so a wrapper here would hold a
 single workqueue.Config field and nothing else. It would carry env:",init" with

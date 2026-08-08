@@ -350,8 +350,55 @@ func TestBuildPruneQueries(T *testing.T) {
 		// One statement over one index range rather than two, which the CASE is
 		// what allows: a second aggregate cannot carry its own WHERE clause.
 		test.StrContains(t, query, "MIN(seq)")
-		test.StrContains(t, query, "MIN(CASE WHEN recorded_at >= $1 THEN seq END)")
+
+		// Strictly greater, because an entry recorded exactly at the cutoff is
+		// one this sweep may remove — the same reading the scope listing and
+		// the backlog count use.
+		test.StrContains(t, query, "MIN(CASE WHEN recorded_at > $1 THEN seq END)")
 		test.Eq(t, []any{cutoff, "acct_1"}, args)
+	})
+
+	T.Run("reads the first page of scopes without a cursor", func(t *testing.T) {
+		t.Parallel()
+
+		cutoff := time.Date(2026, time.July, 31, 0, 0, 0, 0, time.UTC)
+
+		query, args := testTables.buildSelectPrunableScopes(dialect.Postgres, cutoff, nil, 100)
+
+		// No cursor predicate at all on the first page. The empty string is a
+		// real scope, so "scope > ''" would exclude the one platform-level
+		// events are recorded in — forever.
+		test.StrContains(t, query, "recorded_at <= $1")
+		test.StrNotContains(t, query, "scope >")
+		test.StrContains(t, query, "ORDER BY scope LIMIT $2")
+		test.Eq(t, []any{cutoff, 100}, args)
+	})
+
+	T.Run("advances by keyset on the pages after it", func(t *testing.T) {
+		t.Parallel()
+
+		cutoff := time.Date(2026, time.July, 31, 0, 0, 0, 0, time.UTC)
+		after := ""
+
+		query, args := testTables.buildSelectPrunableScopes(dialect.Postgres, cutoff, &after, 100)
+
+		test.StrContains(t, query, "AND scope > $2")
+		test.StrContains(t, query, "ORDER BY scope LIMIT $3")
+		test.Eq(t, []any{cutoff, "", 100}, args)
+	})
+
+	T.Run("bounds the backlog reading rather than counting the table", func(t *testing.T) {
+		t.Parallel()
+
+		cutoff := time.Date(2026, time.July, 31, 0, 0, 0, 0, time.UTC)
+
+		query, args := testTables.buildCountPrunableEntries(dialect.Postgres, cutoff, 1000)
+
+		// A gauge, not an inventory: the LIMIT is what keeps the reading from
+		// being most expensive exactly when the backlog is worst.
+		test.StrContains(t, query, "SELECT 1 FROM audit_log_entries WHERE recorded_at <= $1 LIMIT $2")
+		test.StrContains(t, query, "AS audit_prune_backlog")
+		test.Eq(t, []any{cutoff, 1000}, args)
 	})
 
 	T.Run("takes the highest surviving position at or below the boundary", func(t *testing.T) {

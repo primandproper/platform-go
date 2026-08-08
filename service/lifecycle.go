@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v10/audit"
 	"github.com/primandproper/platform-go/v10/dataprivacy"
 	"github.com/primandproper/platform-go/v10/eventcapture"
 	"github.com/primandproper/platform-go/v10/jobs"
@@ -65,7 +64,6 @@ type (
 // injector — it joins through WithRunners like any application-owned loop. The
 // assertion is here anyway, because the convention it satisfies is the same.
 var (
-	_ Runner = (*audit.Sweeper)(nil)
 	_ Runner = (*dataprivacy.Worker)(nil)
 	_ Runner = (*eventcapture.Recorder[struct{}])(nil)
 	_ Runner = (*jobs.Pool)(nil)

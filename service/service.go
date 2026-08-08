@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v10/analytics"
-	"github.com/primandproper/platform-go/v10/audit"
 	"github.com/primandproper/platform-go/v10/database"
 	"github.com/primandproper/platform-go/v10/dataprivacy"
 	"github.com/primandproper/platform-go/v10/distributedlock"
@@ -242,6 +241,10 @@ func (s *Service) resolveHealth(r *resolver, checks []healthcheck.Checker) {
 //     draining.
 //   - The remaining loops own their own tables and depend on nothing above
 //     them, so their order among themselves is stable rather than meaningful.
+//
+// The audit log's retention sweep is not here. It is a retention.Policy run by
+// the jobs scheduler, so it is already governed by the scheduler's place in
+// this order rather than by a loop of its own.
 func (s *Service) resolveRunners(r *resolver) {
 	resolve(r, func(relay *outbox.Relay) { s.addRunner("outbox relay", relay) })
 	resolve(r, func(p *jobs.Pool) { s.addRunner("jobs pool", p) })
@@ -249,7 +252,6 @@ func (s *Service) resolveRunners(r *resolver) {
 	resolve(r, func(w *saga.Worker) { s.addRunner("saga worker", w) })
 	resolve(r, func(w *webhooks.Worker) { s.addRunner("webhooks worker", w) })
 	resolve(r, func(w *dataprivacy.Worker) { s.addRunner("dataprivacy worker", w) })
-	resolve(r, func(sw *audit.Sweeper) { s.addRunner("audit sweeper", sw) })
 }
 
 // resolveFlushes collects the drains that have no loop of their own and have to

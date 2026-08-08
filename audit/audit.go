@@ -28,21 +28,19 @@ const DefaultTablePrefix = ""
 // the fields most likely to hold exactly what Redaction exists to keep out of
 // durable storage, and a span exporter is durable storage.
 const (
-	entryIDKey         = "audit.entry_id"
-	entryCountKey      = "audit.entry_count"
-	scopeKey           = "audit.scope"
-	scopeCountKey      = "audit.scope_count"
-	seqKey             = "audit.seq"
-	resourceTypeKey    = "audit.resource_type"
-	resourceIDKey      = "audit.resource_id"
-	eventTypeKey       = "audit.event_type"
-	actorIDKey         = "audit.actor_id"
-	actorTypeKey       = "audit.actor_type"
-	checkedKey         = "audit.checked"
-	intactKey          = "audit.intact"
-	breakReasonKey     = "audit.break_reason"
-	prunedKey          = "audit.pruned"
-	retentionCutoffKey = "audit.retention_cutoff"
+	entryIDKey      = "audit.entry_id"
+	entryCountKey   = "audit.entry_count"
+	scopeKey        = "audit.scope"
+	scopeCountKey   = "audit.scope_count"
+	seqKey          = "audit.seq"
+	resourceTypeKey = "audit.resource_type"
+	resourceIDKey   = "audit.resource_id"
+	eventTypeKey    = "audit.event_type"
+	actorIDKey      = "audit.actor_id"
+	actorTypeKey    = "audit.actor_type"
+	checkedKey      = "audit.checked"
+	intactKey       = "audit.intact"
+	breakReasonKey  = "audit.break_reason"
 )
 
 var (
@@ -92,6 +90,22 @@ var (
 // validPrefix matches a table prefix safe to interpolate into query text: a
 // bare identifier fragment, or nothing.
 var validPrefix = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)?$`)
+
+// ValidateTablePrefix reports whether a prefix is safe to interpolate into this
+// package's query text, wrapping ErrInvalidTablePrefix when it is not.
+//
+// It is exported because the prefix has to be the same in four places — the
+// Recorder that writes, the Reader that verifies, the PruneTarget that removes,
+// and the migrations that created the tables — and a caller assembling those
+// from one configuration field should be able to refuse a bad value once,
+// before any of them is built.
+func ValidateTablePrefix(prefix string) error {
+	if !validPrefix.MatchString(prefix) {
+		return platformerrors.Wrapf(ErrInvalidTablePrefix, "audit table prefix %q", prefix)
+	}
+
+	return nil
+}
 
 // EventType names what happened to a resource.
 //

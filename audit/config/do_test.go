@@ -30,9 +30,7 @@ func testDBClient(t *testing.T) database.Client {
 }
 
 func testConfig() *Config {
-	return &Config{
-		Sweeper: audit.SweeperConfig{Dialect: dialect.SQLite},
-	}
+	return &Config{Dialect: dialect.SQLite}
 }
 
 func TestRegisterRecorder(T *testing.T) {
@@ -69,24 +67,5 @@ func TestRegisterReader(T *testing.T) {
 		reader, err := do.Invoke[audit.Reader](i)
 		must.NoError(t, err)
 		test.NotNil(t, reader)
-	})
-}
-
-func TestRegisterSweeper(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		i := do.New()
-		do.ProvideValue[context.Context](i, t.Context())
-		do.ProvideValue[database.Client](i, testDBClient(t))
-		do.ProvideValue(i, testConfig())
-
-		RegisterSweeper(i)
-
-		sweeper, err := do.Invoke[*audit.Sweeper](i)
-		must.NoError(t, err)
-		test.NotNil(t, sweeper)
 	})
 }
