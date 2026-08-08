@@ -45,6 +45,23 @@ func (platformMapper) Map(err error) (code codes.Code, ok bool) {
 	// fail over to another instance that shares the same limiter.
 	case errors.Is(err, ratelimiting.ErrRateLimited):
 		return codes.ResourceExhausted, true
+	// The same code as a rate limit, and for the same reason: gRPC has one name
+	// for "out of quota or rate", and a spent billing allowance is squarely
+	// inside it. Checked before ErrNotEntitled, which it does not wrap but which
+	// is the broader answer, so a caller that returns both does not collapse into
+	// the vaguer one.
+	case errors.Is(err, platformerrors.ErrQuotaExhausted):
+		return codes.ResourceExhausted, true
+	// PermissionDenied rather than FailedPrecondition, which was the other
+	// candidate. gRPC's guidance is that PermissionDenied is for a caller that is
+	// identified and may not do the thing — which is exactly true of an account
+	// whose plan excludes a feature — while FailedPrecondition asks the client to
+	// change system state, and paying for a subscription is not a state change
+	// the RPC's client can perform. HTTP has 402 to be precise with; gRPC does
+	// not, and inventing precision it lacks would only make the code unmappable
+	// by a gateway.
+	case errors.Is(err, platformerrors.ErrNotEntitled):
+		return codes.PermissionDenied, true
 	// Unauthenticated rather than PermissionDenied: gRPC's own guidance
 	// separates "we do not know who you are" from "we know, and you may not".
 	// A signature that does not verify is the first — nothing has been

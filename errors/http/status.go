@@ -21,6 +21,14 @@ var codeToStatus = map[ErrorCode]int{
 	ErrResourceConflict:           http.StatusConflict,            // E115
 	ErrTooManyRequests:            http.StatusTooManyRequests,     // E116
 	ErrInvalidRequestSignature:    http.StatusUnauthorized,        // E117
+	// Both entitlement denials are 402. The status is unfashionable and it is
+	// also the only one that says what is actually true: the request is
+	// well-formed, the caller is authenticated and authorized, and the thing
+	// standing between them and the response is money. A 403 would send them to
+	// an administrator who cannot help, and a 429 would tell them to retry a
+	// request that will fail identically for the rest of the month.
+	ErrNotEntitled:    http.StatusPaymentRequired, // E118
+	ErrQuotaExhausted: http.StatusPaymentRequired, // E119
 }
 
 // HTTPStatusForCode returns the HTTP status code that corresponds to an ErrorCode.

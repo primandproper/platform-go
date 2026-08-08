@@ -21,6 +21,8 @@ var (
 		string(ErrResourceConflict):           ErrResourceConflict,
 		string(ErrTooManyRequests):            ErrTooManyRequests,
 		string(ErrInvalidRequestSignature):    ErrInvalidRequestSignature,
+		string(ErrNotEntitled):                ErrNotEntitled,
+		string(ErrQuotaExhausted):             ErrQuotaExhausted,
 	}
 )
 
@@ -84,4 +86,21 @@ const (
 	// where clock skew, the one benign cause, can be said out loud without
 	// saying anything about the key.
 	ErrInvalidRequestSignature ErrorCode = "E117"
+	// ErrNotEntitled is returned when the account's plan does not include the
+	// feature the request needs.
+	//
+	// It is not ErrUserIsNotAuthorized, and the difference is the remedy. A 403
+	// tells a client it is the wrong principal for this action; this tells it the
+	// action is not part of what the account bought. The first is answered by an
+	// administrator granting a role, the second by somebody entering a card, and
+	// a client shown the wrong one asks the wrong person.
+	ErrNotEntitled ErrorCode = "E118"
+	// ErrQuotaExhausted is returned when the account is entitled to the feature
+	// and has consumed all of it for the current billing period.
+	//
+	// It is deliberately not ErrTooManyRequests, whose own documentation draws
+	// the same line from the other side: "too fast" resolves by waiting a moment
+	// and "too much this month" does not resolve by waiting at all. Retry-After
+	// is meaningful for one of them and a month long for the other.
+	ErrQuotaExhausted ErrorCode = "E119"
 )

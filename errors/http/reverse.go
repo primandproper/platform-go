@@ -22,6 +22,8 @@ var codeToError = map[ErrorCode]error{
 	ErrDataNotFound:           sql.ErrNoRows,
 	ErrIdempotencyKeyInFlight: idempotency.ErrInFlight,
 	ErrIdempotencyKeyReused:   idempotency.ErrFingerprintMismatch,
+	ErrNotEntitled:            platformerrors.ErrNotEntitled,
+	ErrQuotaExhausted:         platformerrors.ErrQuotaExhausted,
 	ErrResourceConflict:       platformerrors.ErrResourceInUse,
 	ErrTooManyRequests:        ratelimiting.ErrRateLimited,
 	ErrUserIsNotAuthorized:    platformerrors.ErrPermissionDenied,

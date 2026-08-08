@@ -51,6 +51,34 @@ var (
 	// may import a package that imports them back.
 	ErrResourceInUse = crdberrors.New("resource is in use")
 
+	// ErrNotEntitled indicates the account's plan does not include the feature
+	// the request needs. It is a billing answer rather than a security one: the
+	// caller is who they say they are and may do what they asked, they simply
+	// have not bought it.
+	//
+	// It is distinct from ErrPermissionDenied for that reason. Collapsing the two
+	// would answer a customer who needs to upgrade with the message shown to one
+	// who needs a different role, and would put a paid feature behind a status
+	// code that tells a client to stop rather than to buy.
+	//
+	// It lives here rather than in the entitlements package so that errors/http
+	// and errors/grpc can map it without importing entitlements — which would
+	// drag a SQL store, a job scheduler, and a message queue into the import
+	// graph of the package every handler already depends on.
+	ErrNotEntitled = crdberrors.New("not entitled")
+
+	// ErrQuotaExhausted indicates the account is entitled to the feature and has
+	// consumed all of it for the current billing period.
+	//
+	// It is distinct from ratelimiting.ErrRateLimited, which says a request came
+	// too fast and will succeed shortly. This one says a period's allowance is
+	// spent, and the remedies — wait for the period to roll, or buy more — are
+	// neither of them "retry in a moment". A client told the wrong one retries
+	// for a month.
+	//
+	// It lives here for the same reason ErrNotEntitled does.
+	ErrQuotaExhausted = crdberrors.New("quota exhausted")
+
 	// ErrUnknownProvider indicates a config named a provider the package does
 	// not implement — a typo, or a provider from a newer version of this module.
 	//

@@ -92,6 +92,12 @@ func clientMessage(code codes.Code, err error) string {
 var clientSafeSentinels = []error{
 	platformerrors.ErrPermissionDenied,
 	ratelimiting.ErrRateLimited,
+	// Both entitlement sentinels. Their messages name no feature and no limit —
+	// "not entitled" and "quota exhausted" — and both codes they map to are
+	// otherwise ambiguous enough that a client cannot tell which of two very
+	// different remedies applies.
+	platformerrors.ErrNotEntitled,
+	platformerrors.ErrQuotaExhausted,
 	// Both signature sentinels: neither says anything about the key, and the
 	// stale one names clock skew, which is the difference between a caller that
 	// can fix itself and one that files a ticket.

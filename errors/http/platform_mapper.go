@@ -36,6 +36,19 @@ func (platformMapper) Map(err error) (code ErrorCode, msg string, ok bool) {
 		return ErrUserIsNotAuthorized, "permission denied", true
 	case errors.Is(err, platformerrors.ErrResourceInUse):
 		return ErrResourceConflict, "resource is in use", true
+	// Ordered before ErrNotEntitled, which it does not wrap, but which is the
+	// broader of the two: an account that has spent its allowance is entitled,
+	// and an account that is not entitled has no allowance to spend. Checking the
+	// specific one first keeps a caller that wraps both from collapsing into the
+	// vaguer answer.
+	case errors.Is(err, platformerrors.ErrQuotaExhausted):
+		// The message says nothing about the limit, the feature, or how much is
+		// left. What remains is on the decision the handler already has, where it
+		// can be rendered next to an upgrade link rather than leaked to whoever
+		// probes an endpoint for the shape of somebody else's plan.
+		return ErrQuotaExhausted, "quota exhausted for the current billing period", true
+	case errors.Is(err, platformerrors.ErrNotEntitled):
+		return ErrNotEntitled, "not entitled", true
 	case errors.Is(err, ratelimiting.ErrRateLimited):
 		// The message says nothing about the limit or the key it was counted
 		// against. Both are useful to an operator and useful to an attacker
