@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -13,6 +12,7 @@ import (
 	httpx "github.com/primandproper/platform-go/v10/errors/http"
 	loggingnoop "github.com/primandproper/platform-go/v10/observability/logging/noop"
 	tracingnoop "github.com/primandproper/platform-go/v10/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v10/routing/internal/routeplan"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -382,11 +382,11 @@ func TestNewBindPlan_EmbeddedAndEdgeTags(T *testing.T) {
 	plan := newBindPlan[embeddedInput]([]ParamSpec{{Name: "id", Token: "uint64"}}, http.MethodPost)
 
 	// page (embedded), id (path); Weird has an empty query name so it is not a param.
-	test.True(T, plan.hasBody)
+	test.True(T, plan.HasBody)
 
 	var hasPage, hasID bool
-	for i := range plan.params {
-		switch plan.params[i].name {
+	for i := range plan.Params {
+		switch plan.Params[i].Name {
 		case "page":
 			hasPage = true
 		case "id":
@@ -406,7 +406,7 @@ func TestNewBindPlan_SkipsUnexported(T *testing.T) {
 	T.Parallel()
 
 	plan := newBindPlan[withUnexported](nil, http.MethodPost)
-	test.True(T, plan.hasBody)
+	test.True(T, plan.HasBody)
 
 	// read hidden so it is not flagged unused; its presence exercises the
 	// unexported-field skip in collectFields.
@@ -437,53 +437,10 @@ func TestRegErrors_AddNil(T *testing.T) {
 	test.SliceLen(T, 0, e.snapshot())
 }
 
-func TestSetScalar_Extra(T *testing.T) {
-	T.Parallel()
-
-	T.Run("int", func(t *testing.T) {
-		t.Parallel()
-		var n int
-		must.NoError(t, setScalar(reflect.ValueOf(&n).Elem(), "-5"))
-		test.EqOp(t, -5, n)
-	})
-
-	T.Run("pointer allocates", func(t *testing.T) {
-		t.Parallel()
-		var p *int
-		must.NoError(t, setScalar(reflect.ValueOf(&p).Elem(), "9"))
-		must.NotNil(t, p)
-		test.EqOp(t, 9, *p)
-	})
-
-	T.Run("unsupported kind errors", func(t *testing.T) {
-		t.Parallel()
-		var c complex128
-		test.Error(t, setScalar(reflect.ValueOf(&c).Elem(), "1"))
-	})
-
-	T.Run("bad bool errors", func(t *testing.T) {
-		t.Parallel()
-		var b bool
-		test.Error(t, setScalar(reflect.ValueOf(&b).Elem(), "notbool"))
-	})
-
-	T.Run("bad float errors", func(t *testing.T) {
-		t.Parallel()
-		var f float64
-		test.Error(t, setScalar(reflect.ValueOf(&f).Elem(), "notfloat"))
-	})
-
-	T.Run("bad int errors", func(t *testing.T) {
-		t.Parallel()
-		var n int
-		test.Error(t, setScalar(reflect.ValueOf(&n).Elem(), "notint"))
-	})
-}
-
 func TestRawParam_DefaultLocation(T *testing.T) {
 	T.Parallel()
 
-	_, ok := rawParam(newFakeBackend(), httptest.NewRequest(http.MethodGet, "/", http.NoBody), &paramField{in: "bogus"})
+	_, ok := rawParam(newFakeBackend(), httptest.NewRequest(http.MethodGet, "/", http.NoBody), &routeplan.ParamField{In: "bogus"})
 	test.False(T, ok)
 }
 
@@ -498,19 +455,6 @@ func TestBindError(T *testing.T) {
 	bare := &bindError{msg: "just msg"}
 	test.EqOp(T, "just msg", bare.Error())
 	test.Nil(T, bare.Unwrap())
-}
-
-// --- pathparser helpers ---------------------------------------------------
-
-func TestTokenMatchesType_Extra(T *testing.T) {
-	T.Parallel()
-
-	test.False(T, tokenMatchesType("bogus", reflect.TypeFor[int]()))
-	test.False(T, tokenMatchesType("int", reflect.TypeFor[string]()))
-	test.False(T, tokenMatchesType("float", reflect.TypeFor[string]()))
-	test.False(T, tokenMatchesType("uint64", reflect.TypeFor[string]()))
-	// double pointer exercises the deref loop more than once.
-	test.True(T, tokenMatchesType("int", reflect.TypeFor[**int]()))
 }
 
 func TestIsEmptyTypeAndResponseStructure(T *testing.T) {

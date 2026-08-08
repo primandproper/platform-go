@@ -39,5 +39,22 @@ and the body while leaving serialization to the route's encoder:
 Path parameters use an inline typed syntax — "/users/{id:uint64}" — which drives
 both runtime binding and the generated parameter schema. Query, header, cookie,
 and body values are bound from struct tags on the typed input.
+
+A route can also be stated as a value rather than as arguments, with Endpoint and
+Register:
+
+	var GetOrder = routing.Endpoint[GetOrderRequest, Order]{
+		Method:  http.MethodGet,
+		Pattern: "/orders/{orderID:uuid}",
+	}
+
+	routing.Register(r, GetOrder, getOrderHandler, routing.WithSummary("Fetch an order"))
+
+The verb helpers are sugar over Register, so the two are interchangeable on this
+side. What a descriptor adds is a second reader: routing/client calls an Endpoint
+over HTTP, inverting the same binding this package applies, so a Go consumer gets
+a compile-checked client with no generated code and no second statement of the
+path or the field names. That does not replace the OpenAPI document, which still
+serves external and polyglot consumers; both come from the same registration.
 */
 package routing

@@ -5,12 +5,13 @@ import (
 	"reflect"
 
 	httpx "github.com/primandproper/platform-go/v10/errors/http"
+	"github.com/primandproper/platform-go/v10/routing/internal/routeplan"
 )
 
 // buildHTTPHandler wraps a typed Handler in an http.HandlerFunc that runs the
 // full request lifecycle: begin a per-operation span, bind and validate the
 // input, invoke the handler, and encode the output (or error).
-func buildHTTPHandler[In, Out any](r *Router, plan *bindPlan, rc *routeConfig, h Handler[In, Out]) http.HandlerFunc {
+func buildHTTPHandler[In, Out any](r *Router, plan *routeplan.Plan, rc *routeConfig, h Handler[In, Out]) http.HandlerFunc {
 	enc := r.encoderFor(rc.contentType)
 	noBody := isEmptyType[Out]()
 	successStatus := rc.successStatus
@@ -22,7 +23,7 @@ func buildHTTPHandler[In, Out any](r *Router, plan *bindPlan, rc *routeConfig, h
 		defer op.End()
 
 		var in In
-		if err := plan.bind(ctx, r, req, reflect.ValueOf(&in).Elem()); err != nil {
+		if err := bind(ctx, plan, r, req, reflect.ValueOf(&in).Elem()); err != nil {
 			r.writeError(ctx, res, op, enc, err)
 
 			return

@@ -2,7 +2,6 @@ package routing
 
 import (
 	"context"
-	"net/http"
 )
 
 type (
@@ -19,20 +18,12 @@ type (
 	// Route is the descriptor returned by a registration call. It records the concrete
 	// method and (annotation-stripped) path the route was registered under, plus the
 	// resolved OpenAPI operation ID.
+	//
+	// It is the after picture, not the before one: Endpoint is what a registration
+	// call takes, Route is what it produced.
 	Route struct {
 		Method      string
 		Path        string
 		OperationID string
 	}
 )
-
-// methodAllowsBody reports whether an HTTP method conventionally carries a request
-// body that the layer should attempt to decode.
-func methodAllowsBody(method string) bool {
-	switch method {
-	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-		return true
-	default:
-		return false
-	}
-}

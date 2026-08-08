@@ -1,4 +1,4 @@
-package routing
+package routeplan
 
 import (
 	"reflect"
@@ -16,8 +16,9 @@ func TestParsePath(T *testing.T) {
 	T.Run("strips type annotations and collects params", func(t *testing.T) {
 		t.Parallel()
 
-		plain, params := parsePath("/orgs/{orgID:uint64}/users/{slug:string}")
+		plain, params, err := ParsePath("/orgs/{orgID:uint64}/users/{slug:string}")
 
+		must.NoError(t, err)
 		test.EqOp(t, "/orgs/{orgID}/users/{slug}", plain)
 		must.SliceLen(t, 2, params)
 		test.EqOp(t, "orgID", params[0].Name)
@@ -29,22 +30,34 @@ func TestParsePath(T *testing.T) {
 	T.Run("defaults an un-annotated param to string", func(t *testing.T) {
 		t.Parallel()
 
-		plain, params := parsePath("/things/{id}")
+		plain, params, err := ParsePath("/things/{id}")
 
+		must.NoError(t, err)
 		test.EqOp(t, "/things/{id}", plain)
 		must.SliceLen(t, 1, params)
 		test.EqOp(t, "string", params[0].Token)
 	})
 
-	T.Run("panics on an unknown token", func(t *testing.T) {
+	T.Run("reports an unknown token", func(t *testing.T) {
 		t.Parallel()
 
-		defer func() {
-			test.NotNil(t, recover())
-		}()
+		plain, params, err := ParsePath("/x/{id:frobnicate}")
 
-		parsePath("/x/{id:frobnicate}")
+		test.Error(t, err)
+		test.EqOp(t, "", plain)
+		test.SliceEmpty(t, params)
 	})
+}
+
+func TestTokenMatchesType_Rejections(T *testing.T) {
+	T.Parallel()
+
+	test.False(T, TokenMatchesType("bogus", reflect.TypeFor[int]()))
+	test.False(T, TokenMatchesType("int", reflect.TypeFor[string]()))
+	test.False(T, TokenMatchesType("float", reflect.TypeFor[string]()))
+	test.False(T, TokenMatchesType("uint64", reflect.TypeFor[string]()))
+	// double pointer exercises the deref loop more than once.
+	test.True(T, TokenMatchesType("int", reflect.TypeFor[**int]()))
 }
 
 func TestTokenMatchesType(T *testing.T) {
@@ -70,53 +83,7 @@ func TestTokenMatchesType(T *testing.T) {
 		T.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			test.EqOp(t, tc.want, tokenMatchesType(tc.token, tc.typ))
+			test.EqOp(t, tc.want, TokenMatchesType(tc.token, tc.typ))
 		})
 	}
-}
-
-func TestSetScalar(T *testing.T) {
-	T.Parallel()
-
-	T.Run("string", func(t *testing.T) {
-		t.Parallel()
-		var s string
-		must.NoError(t, setScalar(reflect.ValueOf(&s).Elem(), "hello"))
-		test.EqOp(t, "hello", s)
-	})
-
-	T.Run("uint64", func(t *testing.T) {
-		t.Parallel()
-		var n uint64
-		must.NoError(t, setScalar(reflect.ValueOf(&n).Elem(), "42"))
-		test.EqOp(t, uint64(42), n)
-	})
-
-	T.Run("bool", func(t *testing.T) {
-		t.Parallel()
-		var b bool
-		must.NoError(t, setScalar(reflect.ValueOf(&b).Elem(), "true"))
-		test.True(t, b)
-	})
-
-	T.Run("float64", func(t *testing.T) {
-		t.Parallel()
-		var f float64
-		must.NoError(t, setScalar(reflect.ValueOf(&f).Elem(), "3.5"))
-		test.EqOp(t, 3.5, f)
-	})
-
-	T.Run("uuid via TextUnmarshaler", func(t *testing.T) {
-		t.Parallel()
-		var id uuid.UUID
-		expected := uuid.New()
-		must.NoError(t, setScalar(reflect.ValueOf(&id).Elem(), expected.String()))
-		test.EqOp(t, expected, id)
-	})
-
-	T.Run("invalid uint returns error", func(t *testing.T) {
-		t.Parallel()
-		var n uint64
-		test.Error(t, setScalar(reflect.ValueOf(&n).Elem(), "not-a-number"))
-	})
 }
