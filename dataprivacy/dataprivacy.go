@@ -158,6 +158,28 @@ var (
 	// sign URLs. Not every provider can — the filesystem one certainly cannot —
 	// and Open is the path that works everywhere.
 	ErrNoURLSigner = platformerrors.New("dataprivacy upload manager cannot sign URLs")
+
+	// ErrNilFetch indicates CollectAll or CollectorFor given no read to page
+	// through. It wraps errors.ErrNilInputParameter, so a caller may check
+	// either.
+	ErrNilFetch = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil dataprivacy paged read")
+
+	// ErrNilPage indicates a paged read that returned neither a page nor an
+	// error.
+	//
+	// It is an error rather than an end-of-results, because the two are not the
+	// same thing and only one of them is safe to guess at: a nil result treated
+	// as the end produces a short export that reads as a complete one.
+	ErrNilPage = platformerrors.New("dataprivacy paged read returned no result")
+
+	// ErrCursorStalled indicates a paged read that answered a full page with
+	// the cursor it was asked for, so the walk would repeat that page forever.
+	//
+	// Stopping there instead would be worse than failing. The rows past the
+	// stall are held about the subject and would be missing from the artifact,
+	// and a truncated subject access request is indistinguishable from a
+	// complete one to everyone except the regulator asking about the rest.
+	ErrCursorStalled = platformerrors.New("dataprivacy paged read did not advance")
 )
 
 // SubjectType distinguishes the kinds of thing a request can be about.

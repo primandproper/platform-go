@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/v12/database"
 	"github.com/primandproper/platform-go/v12/dataprivacy"
 	dataprivacymock "github.com/primandproper/platform-go/v12/dataprivacy/mock"
+	"github.com/primandproper/platform-go/v12/filtering"
 	"github.com/primandproper/platform-go/v12/operations"
 	uploadsnoop "github.com/primandproper/platform-go/v12/uploads/noop"
 )
@@ -31,6 +32,62 @@ func ExampleCollector() {
 
 	fmt.Println(string(fragment))
 	// Output: {"email":"someone@example.com","id":"user-1"}
+}
+
+// CollectorFor covers the collector that is one paged read. Walking the cursor
+// to its end and saying "nothing held" as an omitted section are this package's
+// semantics, so a domain supplies only its own read.
+func ExampleCollectorFor() {
+	// In a real collector this is the domain's repository method.
+	list := func(_ context.Context, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[exampleWebhook], error) {
+		return filtering.NewQueryFilteredResult(
+			[]*exampleWebhook{{ID: "webhook-1", Owner: subject.ID}},
+			1, 1,
+			func(w *exampleWebhook) string { return w.ID },
+			filter,
+		), nil
+	}
+
+	collector := dataprivacy.CollectorFor(list)
+
+	fragment, err := collector.Collect(context.Background(), dataprivacy.Subject{ID: "user-1"})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(string(fragment))
+	// Output: [{"id":"webhook-1","owner":"user-1"}]
+}
+
+// exampleWebhook stands in for whatever a domain's list read returns.
+type exampleWebhook struct {
+	ID    string `json:"id"`
+	Owner string `json:"owner"`
+}
+
+// Fragment is how a collector that is not a plain list read says "nothing about
+// this subject": nil, so the section is omitted from the artifact rather than
+// written as null.
+func ExampleFragment() {
+	settings, held := struct {
+		Locale string `json:"locale"`
+	}{Locale: "en-GB"}, true
+
+	fragment, err := dataprivacy.Fragment(held, settings)
+	if err != nil {
+		panic(err)
+	}
+
+	empty, err := dataprivacy.Fragment(false, settings)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(string(fragment))
+	fmt.Println(empty == nil)
+	// Output:
+	// {"locale":"en-GB"}
+	// true
 }
 
 // An Eraser reports what it destroyed, what it anonymized, and what it kept.

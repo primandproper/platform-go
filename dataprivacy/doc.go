@@ -44,6 +44,32 @@ whole aggregate, so a subject's entire export failed because one unrelated table
 was slow. Fragments keyed by domain fix both: registration is local, and a
 failure is recorded against its key.
 
+# Writing a collector
+
+Two of the things every collector does are this package's semantics rather than
+the domain's, and both are quiet when they are wrong. A paged read has to be
+walked to its end — a collector that reads one page and stops returns a
+truncated subject access request, which is a compliance defect that looks
+exactly like a correct one. And "this domain holds nothing" has to be said as a
+nil fragment, so the section is omitted from the artifact rather than written as
+null; an artifact padded with empty objects for every domain in the application
+reads as a form rather than an answer.
+
+Both are here rather than inferred per consumer:
+
+	registry.RegisterCollector("webhooks", dataprivacy.CollectorFor(
+	    func(ctx context.Context, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[webhooks.Webhook], error) {
+	        return repo.ListWebhooksForUser(ctx, subject.ID, filter)
+	    },
+	))
+
+That is what most collectors are once the observability preamble is removed. One
+that wants the preamble — its own span, its own logger — writes it and calls
+CollectAll and Fragment itself, and a domain whose "nothing held" is something
+other than an empty list calls Fragment with its own answer. What stays with the
+consumer either way is the span, the logger, and the repository call: the read
+is the domain's and always will be.
+
 # Collect and erase are separate interfaces
 
 Erasure is not the inverse of export. Some data must be retained — financial
