@@ -1,6 +1,7 @@
 package querygen
 
 import (
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -673,5 +674,40 @@ func TestGenerator_boundIsPerStatement(T *testing.T) {
 
 		test.EqOp(t, first.SQL, second.SQL)
 		test.StrContains(t, second.SQL, "$1")
+	})
+}
+
+func TestListArgumentsAreTheOnesFilteringBinds(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a list statement names every filter argument and no others", func(t *testing.T) {
+		t.Parallel()
+
+		// This is the tie between the two halves of a filtered read: the
+		// statements emitted here name the arguments, and filtering.BindValues
+		// produces the values they take. The names are shared — the Arg
+		// constants in this package are aliases of filtering's — so a mismatch
+		// cannot be a spelling; it is a window argument that reached one half
+		// and not the other.
+		//
+		// Either direction is silent at runtime. An argument the SQL names and
+		// nothing binds is an unbound placeholder, which at least fails loudly
+		// on Postgres and quietly binds the next value along on the positional
+		// dialects. An argument bound under a name no statement mentions binds
+		// nothing and filters nothing, which is what a filter nobody set looks
+		// like.
+		expected := slices.Sorted(maps.Keys(filtering.BindValues(nil)))
+
+		for _, d := range everyDialect() {
+			// No ownership column and no matches, so what is left is the
+			// filter's own vocabulary. The list is deduplicated because the
+			// positional dialects repeat a name once per occurrence.
+			got := For(d).BoundList(boundTable, boundColumns())
+
+			names := slices.Sorted(slices.Values(got.Args))
+			names = slices.Compact(names)
+
+			test.Eq(t, expected, names, test.Sprintf("dialect %q", d))
+		}
 	})
 }

@@ -3,6 +3,8 @@ package querygen
 import (
 	"fmt"
 	"slices"
+
+	"github.com/primandproper/platform-go/v12/filtering"
 )
 
 // The columns this module has opinions about. A table is free to hold any others
@@ -40,14 +42,22 @@ const (
 // The sqlc argument names the emitted queries bind. They are the SQL-side
 // spelling of filtering.QueryFilter — see the package comment for the mapping
 // between these, the struct fields, and the URL parameters.
+//
+// They are aliases rather than literals because filtering.Bind produces the
+// values these arguments take, and a name is only useful if the statement and
+// the binding agree on it. Spelled in both places they could disagree, and the
+// failure would be silent: a value bound under a name no statement mentions
+// binds nothing and filters nothing, which is what a filter nobody set looks
+// like. Spelled once, adding a window argument is one edit and both halves
+// follow.
 const (
-	CursorArg          = "cursor"
-	LimitArg           = "result_limit"
-	IncludeArchivedArg = "include_archived"
-	CreatedAfterArg    = "created_after"
-	CreatedBeforeArg   = "created_before"
-	UpdatedAfterArg    = "updated_after"
-	UpdatedBeforeArg   = "updated_before"
+	CursorArg          = filtering.ArgCursor
+	LimitArg           = filtering.ArgResultLimit
+	IncludeArchivedArg = filtering.ArgIncludeArchived
+	CreatedAfterArg    = filtering.ArgCreatedAfter
+	CreatedBeforeArg   = filtering.ArgCreatedBefore
+	UpdatedAfterArg    = filtering.ArgUpdatedAfter
+	UpdatedBeforeArg   = filtering.ArgUpdatedBefore
 )
 
 // IDsArg is the sqlc argument the bulk stamp binds its id list through. It is

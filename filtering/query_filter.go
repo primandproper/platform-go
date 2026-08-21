@@ -13,6 +13,17 @@
 // It builds no SQL and touches no database. This package decides what a caller
 // asked for; translating that into a query belongs to whatever store answers it.
 //
+// The two ends of that translation are here, because both are restatements of
+// rules this package owns rather than of anything a store knows. Bind converts
+// a filter into the driver-typed values a filtered read binds — the nil
+// default, the page-size clamp, and the seven conversions, applied once — and
+// Drain turns the rows that come back into the QueryFilteredResult they are
+// answered with. What stays with the store is the SQL and the row-to-domain
+// conversion, which is the half that is genuinely per-table. A store that
+// writes those two ends by hand writes them once per list query, and a copy
+// that drops the archived flag or reads its counts off the wrong row is a copy
+// that keeps working and answers wrongly.
+//
 // Page size is clamped rather than rejected: a request for more than
 // MaxQueryFilterLimit gets MaxQueryFilterLimit, and an absent one gets
 // DefaultQueryFilterLimit. A parameter that is present and unreadable is a
