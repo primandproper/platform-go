@@ -141,13 +141,15 @@ func BenchmarkQueryFilter_ToPagination(b *testing.B) {
 	}
 }
 
-// BenchmarkQueryFilterSchema prices the decode QueryFilterSchema does per call
-// so that its caller owns the map it gets.
+// BenchmarkQueryFilterSchema prices the reflection QueryFilterSchema does per
+// call, plus the decode that gives its caller a map of its own.
 //
-// Nothing calls it per request — a tool definition is built once at startup —
-// so this is here to confirm the copy is cheap enough that keeping callers from
-// editing each other's document never needs revisiting, not because anything is
-// tuning it.
+// Neither is cached, and the reflection stopped being cached when the page-size
+// ceiling became a var: a cached document freezes whichever ceiling was in
+// place when it was first asked for. Nothing calls this per request — a tool
+// definition or an OpenAPI document is built once, at startup — so this is here
+// to confirm that always-current is cheap enough never to need revisiting, not
+// because anything is tuning it.
 func BenchmarkQueryFilterSchema(b *testing.B) {
 	for b.Loop() {
 		schemaSink = QueryFilterSchema()

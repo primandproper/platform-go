@@ -3,6 +3,9 @@ package filtering
 import (
 	"encoding/json"
 	"maps"
+	"math"
+	"net/http"
+	"net/url"
 	"reflect"
 	"slices"
 	"strings"
@@ -11,13 +14,22 @@ import (
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"github.com/swaggest/openapi-go"
+	"github.com/swaggest/openapi-go/openapi3"
 )
 
 // The schema is reflected off QueryFilter, so most of what could go wrong with
 // it is a tag that says the wrong thing rather than code that computes the wrong
 // thing. These tests are written against the constants and the struct itself for
-// that reason: a tag holds "250" because a tag cannot hold MaxQueryFilterLimit,
-// and the assertion below is what stands in for the compiler noticing.
+// that reason: a tag holds "50" because a tag cannot hold
+// DefaultQueryFilterLimit, and the assertions below are what stand in for the
+// compiler noticing.
+//
+// The page-size ceiling is the exception, and is tested the other way round.
+// MaxQueryFilterLimit is a var, so there is no tag to drift — PrepareJSONSchema
+// writes the bound out of the var — and what has to be checked instead is that
+// it is written at all, and that it is still written after somebody changes it.
+// TestMaxQueryFilterLimit_Override is that.
 
 // jsonNames is every property name QueryFilter's tags declare, in field order.
 // It fails on an exported field with no `json` tag rather than skipping it,
@@ -148,8 +160,10 @@ func TestQueryFilterSchema_Bounds(t *testing.T) {
 
 	test.EqOp(t, "integer", prop["type"])
 
-	// The tags spell these out because a struct tag cannot name a constant.
-	// This is the assertion that keeps the two spellings the same number.
+	// The minimum and the default are tags, spelled out because a struct tag
+	// cannot name a constant. These are the assertions that keep the two
+	// spellings the same number. The maximum is not a tag at all, and comes
+	// from PrepareJSONSchema.
 	minimum, ok := prop["minimum"].(float64)
 	must.True(t, ok, must.Sprint("maxResponseSize has no minimum"))
 	test.EqOp(t, float64(0), minimum)
@@ -248,7 +262,7 @@ func TestQueryFilterSchema_KeysRoundTrip(t *testing.T) {
 	test.EqOp(t, stamp, *qf.UpdatedBefore)
 
 	must.NotNil(t, qf.MaxResponseSize)
-	test.EqOp(t, uint16(MaxQueryFilterLimit), *qf.MaxResponseSize)
+	test.EqOp(t, MaxQueryFilterLimit, *qf.MaxResponseSize)
 
 	must.NotNil(t, qf.IncludeArchived)
 	test.EqOp(t, true, *qf.IncludeArchived)
@@ -274,4 +288,136 @@ func TestQueryFilterSchema_MarshalsBackToItself(t *testing.T) {
 	for name := range written {
 		test.True(t, slices.Contains(declared, name), test.Sprintf("marshaled key %q is not in the schema", name))
 	}
+}
+
+// TestMaxQueryFilterLimit_Override is the ceiling being a var rather than a
+// constant: a service that needs a bigger page than platform picked can have
+// one, and gets it in the document it publishes as well as in the clamp.
+//
+// It is the only test in this package that writes a package-level var, and so
+// the only one that does not call t.Parallel(). Every other test here reads
+// MaxQueryFilterLimit, and the sequential phase — which finishes before any
+// parallel test resumes — is the only place a write to it is not a race. The
+// suite runs under -race, which is what keeps that claim honest.
+//
+//nolint:paralleltest // mutates the package-level page-size ceiling; must run serially
+func TestMaxQueryFilterLimit_Override(t *testing.T) {
+	const raised = 512
+
+	original := MaxQueryFilterLimit
+	t.Cleanup(func() { MaxQueryFilterLimit = original })
+
+	// Read the schema before raising the ceiling. A cached document would be
+	// frozen by this call, and every assertion below would then be reading a
+	// 250 that the clamp no longer applies — which is the whole reason the
+	// reflection is not cached.
+	before, ok := property(t, maxResponseSizeProperty)["maximum"].(float64)
+	must.True(t, ok, must.Sprint("maxResponseSize has no maximum"))
+	test.EqOp(t, float64(original), before)
+
+	MaxQueryFilterLimit = raised
+
+	t.Run("the clamp follows it", func(t *testing.T) { //nolint:paralleltest // mutates the package-level page-size ceiling; must run serially
+		test.EqOp(t, uint16(raised), ClampResponseSize(1000))
+
+		// Still clamped before the narrowing, at the new ceiling as at the old.
+		test.EqOp(t, uint16(raised), ClampResponseSize(70000))
+		test.EqOp(t, uint16(raised), ClampResponseSize(math.MaxUint64))
+
+		// And a value that was over the old ceiling is now simply a page size.
+		test.EqOp(t, uint16(300), ClampResponseSize(300))
+	})
+
+	t.Run("every path that applies it follows it", func(t *testing.T) { //nolint:paralleltest // mutates the package-level page-size ceiling; must run serially
+		qf := &QueryFilter{}
+		must.NoError(t, qf.FromParams(url.Values{QueryKeyLimit: []string{"1000"}}))
+		must.NotNil(t, qf.MaxResponseSize)
+		test.EqOp(t, uint16(raised), *qf.MaxResponseSize)
+
+		set := &QueryFilter{}
+		set.SetMaxResponseSize(1000)
+		must.NotNil(t, set.MaxResponseSize)
+		test.EqOp(t, uint16(raised), *set.MaxResponseSize)
+
+		normalized := &QueryFilter{MaxResponseSize: new(uint16(400))}
+		must.NoError(t, normalized.Normalize())
+		test.EqOp(t, uint16(400), *normalized.MaxResponseSize)
+	})
+
+	t.Run("the published schema follows it", func(t *testing.T) { //nolint:paralleltest // mutates the package-level page-size ceiling; must run serially
+		maximum, found := property(t, maxResponseSizeProperty)["maximum"].(float64)
+		must.True(t, found, must.Sprint("maxResponseSize has no maximum"))
+		test.EqOp(t, float64(raised), maximum)
+	})
+
+	// The reason the bound is written by a Preparer rather than patched onto
+	// QueryFilterSchema's map: a consumer's own response type carries a filter,
+	// and it is reflected by routing's OpenAPI reflector, which this package
+	// has no call of its own to patch afterwards.
+	t.Run("a consumer's OpenAPI document follows it", func(t *testing.T) { //nolint:paralleltest // mutates the package-level page-size ceiling; must run serially
+		type listResponse struct {
+			Pagination Pagination `json:"pagination"`
+		}
+
+		reflector := openapi3.NewReflector()
+
+		oc, err := reflector.NewOperationContext(http.MethodGet, "/things")
+		must.NoError(t, err)
+		oc.SetID("listThings")
+		oc.AddRespStructure(listResponse{}, openapi.WithHTTPStatus(http.StatusOK))
+		must.NoError(t, reflector.AddOperation(oc))
+
+		raw, err := reflector.Spec.MarshalJSON()
+		must.NoError(t, err)
+
+		var document map[string]any
+		must.NoError(t, json.Unmarshal(raw, &document))
+
+		schemas := componentSchemas(t, document)
+
+		filter, found := schemas["FilteringQueryFilter"].(map[string]any)
+		must.True(t, found, must.Sprintf("spec has no QueryFilter schema, only %v", slices.Sorted(maps.Keys(schemas))))
+
+		properties, found := filter["properties"].(map[string]any)
+		must.True(t, found, must.Sprint("QueryFilter schema has no properties"))
+
+		size, found := properties[maxResponseSizeProperty].(map[string]any)
+		must.True(t, found, must.Sprint("QueryFilter schema has no maxResponseSize"))
+
+		maximum, found := size["maximum"].(float64)
+		must.True(t, found, must.Sprint("maxResponseSize has no maximum in the OpenAPI document"))
+		test.EqOp(t, float64(raised), maximum)
+	})
+
+	t.Run("lowering it works the same way", func(t *testing.T) { //nolint:paralleltest // mutates the package-level page-size ceiling; must run serially
+		MaxQueryFilterLimit = 10
+
+		test.EqOp(t, uint16(10), ClampResponseSize(1000))
+
+		maximum, found := property(t, maxResponseSizeProperty)["maximum"].(float64)
+		must.True(t, found, must.Sprint("maxResponseSize has no maximum"))
+		test.EqOp(t, float64(10), maximum)
+	})
+
+	// Restored here rather than left to the Cleanup, because the point being
+	// made is that the document is not frozen in either direction.
+	MaxQueryFilterLimit = original
+
+	after, ok := property(t, maxResponseSizeProperty)["maximum"].(float64)
+	must.True(t, ok, must.Sprint("maxResponseSize has no maximum"))
+	test.EqOp(t, float64(original), after)
+}
+
+// componentSchemas digs the reflected component schemas out of a marshaled
+// OpenAPI document.
+func componentSchemas(t *testing.T, document map[string]any) map[string]any {
+	t.Helper()
+
+	components, ok := document["components"].(map[string]any)
+	must.True(t, ok, must.Sprint("spec has no components"))
+
+	schemas, ok := components["schemas"].(map[string]any)
+	must.True(t, ok, must.Sprint("spec has no component schemas"))
+
+	return schemas
 }

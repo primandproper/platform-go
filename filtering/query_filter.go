@@ -48,9 +48,20 @@
 //
 // Defaults and bounds apply to a filter however it arrived. Parsing one out of
 // query parameters is only the transport that has a parser here; Normalize is
-// the same rule for a filter decoded from anywhere else, and is what the
-// `default` and `maximum` tags on QueryFilter describe to a caller that will
-// never call it.
+// the same rule for a filter decoded from anywhere else, and is what the schema
+// describes to a caller that will never call it.
+//
+// The page-size ceiling is a var rather than a constant, so a service that
+// wants a different one is not held to platform's. MaxQueryFilterLimit says
+// what setting it costs and when it may be set; the schema follows it, so
+// raising the clamp raises what the type publishes about itself as well.
+//
+// The page-size ceiling is the one bound Normalize cannot be left to apply on
+// its own, because a decoder reaches uint16 before it reaches a QueryFilter and
+// a page size that narrows before it is clamped wraps rather than clamps.
+// SetMaxResponseSize takes the wide value a wire format actually carries and
+// applies the ceiling in the order that works; ClampResponseSize is the same
+// rule for a parser that has the number before it has a filter.
 //
 // QueryFilterSchema describes the request half as JSON Schema, for the surfaces
 // that ask for a filter in that dialect rather than in query parameters: a
@@ -84,14 +95,40 @@ var (
 	SortDescending = new(sortDescendingString)
 )
 
+// MaxQueryFilterLimit is the largest page a list query is answered with.
+// Anything above it clamps to it, and ClampResponseSize is where that happens.
+//
+// It is a var because the ceiling is a policy question and this module is the
+// wrong place to answer it for everybody: a service whose rows are three narrow
+// columns has no reason to be held to a number picked with somebody else's rows
+// in mind. Set it once during initialization — before the first filter is
+// parsed and before any schema is reflected — and leave it alone after that.
+// Nothing here guards it, so a write racing a list request is a data race like
+// any other.
+//
+// The published bound follows it, which is the half that is easy to leave
+// behind. QueryFilter carries no `maximum` struct tag, deliberately: a tag is
+// fixed when this package compiles and this number is not, so a tag would go on
+// promising 250 to every generated client and every tool-calling model while
+// the clamp quietly enforced something else. PrepareJSONSchema writes the
+// current value into every reflection of the type instead.
+//
+// The type is uint16 rather than an untyped constant because that is the type
+// of the field it bounds, which makes a ceiling too large to store in a page
+// size a compile error at the assignment rather than a truncation at the clamp.
+// The field is uint16 rather than uint8 for its own reason: at uint8 the ceiling
+// sat five above the limit, so `maxResponseSize: 300` was an unmarshal error
+// rather than the clamp every other over-limit value gets. ClampResponseSize
+// still takes a uint64, and still has to.
+//
+// DefaultQueryFilterLimit is deliberately not settable the same way. It is
+// applied at runtime here, but it is also written into SQL at generate time —
+// database/querygen emits `LIMIT COALESCE(sqlc.narg(result_limit), 50)` into
+// files that are checked in — so a value changed in a running process would
+// disagree with statements that shipped before it started.
+var MaxQueryFilterLimit uint16 = 250
+
 const (
-	// MaxQueryFilterLimit is the maximum value for list queries. Anything larger
-	// clamps to it.
-	//
-	// The field is uint16 rather than uint8 deliberately: at uint8 the ceiling
-	// sat five above the limit, so `maxResponseSize: 300` was an unmarshal
-	// error rather than the clamp every other over-limit value gets.
-	MaxQueryFilterLimit = 250
 	// DefaultQueryFilterLimit represents how many results we return in a response by default.
 	DefaultQueryFilterLimit = 50
 
@@ -181,9 +218,15 @@ type (
 	// the point, because a second copy of this struct can be wrong and nothing
 	// would say so.
 	//
-	// The numbers are literals because a struct tag cannot name a constant.
-	// TestQueryFilterSchema_Bounds ties each one back to the constant it
-	// repeats, which is what keeps the tag and the clamp from drifting apart.
+	// The numbers here are literals because a struct tag cannot name a
+	// constant. TestQueryFilterSchema_Bounds ties each one back to the constant
+	// it repeats, which is what keeps the tag and the code from drifting apart.
+	//
+	// MaxResponseSize's ceiling is the one number that is not here at all. A tag
+	// cannot name a constant, but it also cannot hold a value a consumer can
+	// change, and MaxQueryFilterLimit is a var — so `maximum` is written by
+	// PrepareJSONSchema, out of the var itself, on every reflection of this
+	// type. `minimum` stays a tag, because zero is not a policy question.
 	//
 	// `nullable:"false"` is on every field because these are optional, not
 	// nullable: an absent one filters nothing, and none of them is ever emitted
@@ -212,7 +255,7 @@ type (
 
 		UpdatedBefore *time.Time `description:"Only rows last updated before this instant." json:"updatedBefore,omitempty" nullable:"false"`
 
-		MaxResponseSize *uint16 `default:"50" description:"Maximum number of rows in one page. Absent means 50. A value above the maximum is clamped to it rather than rejected, so asking for more than the ceiling is answered with the ceiling." json:"maxResponseSize,omitempty" maximum:"250" minimum:"0" nullable:"false"`
+		MaxResponseSize *uint16 `default:"50" description:"Maximum number of rows in one page. Absent means 50. A value above the maximum is clamped to it rather than rejected, so asking for more than the ceiling is answered with the ceiling." json:"maxResponseSize,omitempty" minimum:"0" nullable:"false"`
 
 		IncludeArchived *bool `default:"false" description:"Include archived rows. Absent leaves them out." json:"includeArchived,omitempty" nullable:"false"`
 
@@ -337,7 +380,7 @@ func (qf *QueryFilter) FromParams(params url.Values) error {
 		if err != nil {
 			errs = append(errs, unreadable(QueryKeyLimit, raw, err))
 		} else {
-			qf.MaxResponseSize = new(clampResponseSize(i))
+			qf.MaxResponseSize = new(ClampResponseSize(i))
 		}
 	}
 
@@ -373,7 +416,23 @@ func (qf *QueryFilter) FromParams(params url.Values) error {
 	return platformerrors.Join(errs...)
 }
 
-// clampResponseSize is the page-size ceiling, and the only place it is applied.
+// ClampResponseSize is the page-size ceiling, and the only place it is applied.
+//
+// It takes a uint64 because the ceiling has to be applied before the narrowing
+// to uint16, not after. Every wire format narrows first if it is left to do it
+// alone: protobuf has no uint16, so a page size crosses as a uint32; JSON hands
+// a decoder a number; a query parameter hands it a string. All three reach
+// *uint16 before there is a QueryFilter to hold one, which is before Normalize
+// can see the value — and a narrowing that happens first is silent. A requested
+// 70000 wraps to 4464, Normalize clamps that to MaxQueryFilterLimit, and the
+// client receives a legible-looking answer to a question it did not ask.
+// Normalize cannot catch it by construction, because by the time it runs 4464 is
+// indistinguishable from a page size the client actually sent.
+//
+// SetMaxResponseSize is this applied to a filter, and is what a decoder holding
+// one should reach for, since a clamp that must be called is a clamp that can be
+// forgotten. This is the bare function, for a parser that has the wide value
+// before it has a filter to put it in.
 //
 // Still clamped rather than rejected: MaxQueryFilterLimit documents an
 // over-large limit as a clamp, and a client asking for more than the ceiling has
@@ -381,8 +440,8 @@ func (qf *QueryFilter) FromParams(params url.Values) error {
 // than filled in — FromParams distinguishes a supplied value from an absent one
 // and Normalize is what supplies the default, so a clamp that also defaulted
 // would take that distinction away from both.
-func clampResponseSize(size uint64) uint16 {
-	return uint16(min(size, MaxQueryFilterLimit))
+func ClampResponseSize(size uint64) uint16 {
+	return uint16(min(size, uint64(MaxQueryFilterLimit)))
 }
 
 // Normalize applies the defaults and bounds a filter is answered under, so a
@@ -414,7 +473,7 @@ func (qf *QueryFilter) Normalize() error {
 	if qf.MaxResponseSize == nil || *qf.MaxResponseSize == 0 {
 		qf.MaxResponseSize = new(uint16(DefaultQueryFilterLimit))
 	} else {
-		qf.MaxResponseSize = new(clampResponseSize(uint64(*qf.MaxResponseSize)))
+		qf.MaxResponseSize = new(ClampResponseSize(uint64(*qf.MaxResponseSize)))
 	}
 
 	if qf.SortBy == nil {
@@ -444,6 +503,20 @@ func (qf *QueryFilter) SetCursor(cursor *string) {
 	if cursor != nil {
 		qf.Cursor = cursor
 	}
+}
+
+// SetMaxResponseSize sets the page size from the wide type a wire format
+// actually carries, clamping before the narrowing to uint16 rather than after.
+//
+// This is the setter a decoder wants, and it takes a uint64 so that there is no
+// order left to get wrong: assigning MaxResponseSize directly means narrowing
+// first, which is the silent wrap ClampResponseSize describes.
+//
+// Zero is stored as zero rather than replaced with the default, exactly as
+// ClampResponseSize leaves it alone — Normalize is what supplies the default,
+// and it reads a zero page size as an absent one.
+func (qf *QueryFilter) SetMaxResponseSize(size uint64) {
+	qf.MaxResponseSize = new(ClampResponseSize(size))
 }
 
 // ToValues returns a url.Values from a QueryFilter.
