@@ -11,11 +11,11 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/clock"
-	clockmock "github.com/primandproper/platform-go/v12/clock/mock"
-	"github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
-	metricsmock "github.com/primandproper/platform-go/v12/observability/metrics/mock"
+	"github.com/primandproper/platform-go/v13/clock"
+	clockmock "github.com/primandproper/platform-go/v13/clock/mock"
+	"github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
+	metricsmock "github.com/primandproper/platform-go/v13/observability/metrics/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

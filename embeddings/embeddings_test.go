@@ -3,8 +3,8 @@ package embeddings_test
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/embeddings"
-	embeddingsnoop "github.com/primandproper/platform-go/v12/embeddings/noop"
+	"github.com/primandproper/platform-go/v13/embeddings"
+	embeddingsnoop "github.com/primandproper/platform-go/v13/embeddings/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

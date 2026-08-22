@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"reflect"
 
-	httpx "github.com/primandproper/platform-go/v12/errors/http"
+	httpx "github.com/primandproper/platform-go/v13/errors/http"
 )
 
 // buildHTTPHandler wraps a typed Handler in an http.HandlerFunc that runs the

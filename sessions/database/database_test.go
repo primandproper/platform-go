@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/database/dialect"
-	"github.com/primandproper/platform-go/v12/encoding"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/sessions"
+	"github.com/primandproper/platform-go/v13/database/dialect"
+	"github.com/primandproper/platform-go/v13/encoding"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/sessions"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

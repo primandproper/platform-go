@@ -3,9 +3,9 @@ package querygen
 import (
 	"fmt"
 
-	"github.com/primandproper/platform-go/v12/database/dialect"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/filtering"
+	"github.com/primandproper/platform-go/v13/database/dialect"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/filtering"
 )
 
 // Generator emits sqlc input for one SQL dialect.

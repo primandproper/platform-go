@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/primandproper/platform-go/v12/capitalism"
+	"github.com/primandproper/platform-go/v13/capitalism"
 )
 
 // Ensure, that PaymentManagerMock does implement capitalism.PaymentManager.

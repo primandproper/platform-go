@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/cryptography/shredding"
+	"github.com/primandproper/platform-go/v13/cryptography/shredding"
 )
 
 // Ensure, that StoreMock does implement shredding.Store.

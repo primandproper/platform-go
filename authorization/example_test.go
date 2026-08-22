@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v12/authorization"
-	"github.com/primandproper/platform-go/v12/authorization/static"
+	"github.com/primandproper/platform-go/v13/authorization"
+	"github.com/primandproper/platform-go/v13/authorization/static"
 )
 
 // Permissions are ordinary constants in the consuming package. A consumer that

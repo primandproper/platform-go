@@ -3,8 +3,8 @@ package entitlements
 import (
 	"context"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/metering"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/metering"
 )
 
 // UnlimitedLimit is the metering limit a QuotaSource reports for a grant with

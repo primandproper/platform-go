@@ -108,8 +108,8 @@ import (
 	"testing"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/testutils/containers"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/testutils/containers"
 
 	// The pgx stdlib driver is registered here so that callers get a working
 	// "pgx" driver from importing pgtest alone.

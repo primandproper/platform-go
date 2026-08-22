@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/database"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/outbox"
+	"github.com/primandproper/platform-go/v13/database"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/outbox"
 )
 
 // DefaultEventTopic is the outbox topic lifecycle events are published to when

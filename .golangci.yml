@@ -242,7 +242,7 @@ formatters:
     gci:
       sections:
         - standard
-        - prefix(github.com/primandproper/platform-go/v12)
+        - prefix(github.com/primandproper/platform-go/v13)
         - prefix(github.com/primandproper)
         - default
       custom-order: true

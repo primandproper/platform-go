@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/cookies"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability"
-	"github.com/primandproper/platform-go/v12/sessions"
+	"github.com/primandproper/platform-go/v13/cookies"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability"
+	"github.com/primandproper/platform-go/v13/sessions"
 )
 
 // serviceName names the loggers and spans this package emits. The counters live

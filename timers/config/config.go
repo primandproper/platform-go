@@ -27,8 +27,8 @@ package timerscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v12/database"
-	"github.com/primandproper/platform-go/v12/timers"
+	"github.com/primandproper/platform-go/v13/database"
+	"github.com/primandproper/platform-go/v13/timers"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

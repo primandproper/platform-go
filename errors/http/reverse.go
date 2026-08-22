@@ -3,11 +3,11 @@ package http
 import (
 	"database/sql"
 
-	"github.com/primandproper/platform-go/v12/circuitbreaking"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/idempotency"
-	"github.com/primandproper/platform-go/v12/ratelimiting"
-	textsearch "github.com/primandproper/platform-go/v12/search/text"
+	"github.com/primandproper/platform-go/v13/circuitbreaking"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/idempotency"
+	"github.com/primandproper/platform-go/v13/ratelimiting"
+	textsearch "github.com/primandproper/platform-go/v13/search/text"
 )
 
 // codeToError inverts PlatformMapper for the codes that came from exactly one

@@ -22,9 +22,9 @@ package zap
 import (
 	"net/http"
 
-	"github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability/keys"
-	"github.com/primandproper/platform-go/v12/observability/logging"
+	"github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability/keys"
+	"github.com/primandproper/platform-go/v13/observability/logging"
 
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"

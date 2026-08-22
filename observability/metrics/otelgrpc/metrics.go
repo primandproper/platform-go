@@ -31,10 +31,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability/logging"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
-	o11yutils "github.com/primandproper/platform-go/v12/observability/utils"
+	"github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability/logging"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
+	o11yutils "github.com/primandproper/platform-go/v13/observability/utils"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"go.opentelemetry.io/contrib/instrumentation/host"

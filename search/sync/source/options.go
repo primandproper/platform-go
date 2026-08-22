@@ -1,11 +1,11 @@
 package syncsource
 
 import (
-	"github.com/primandproper/platform-go/v12/observability"
-	"github.com/primandproper/platform-go/v12/observability/logging"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
-	"github.com/primandproper/platform-go/v12/observability/tracing"
-	searchsync "github.com/primandproper/platform-go/v12/search/sync"
+	"github.com/primandproper/platform-go/v13/observability"
+	"github.com/primandproper/platform-go/v13/observability/logging"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
+	"github.com/primandproper/platform-go/v13/observability/tracing"
+	searchsync "github.com/primandproper/platform-go/v13/search/sync"
 )
 
 // Option configures what NewSyncer and NewReindexer build. The zero

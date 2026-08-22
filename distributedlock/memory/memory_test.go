@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/distributedlock"
-	"github.com/primandproper/platform-go/v12/distributedlock/distributedlocktest"
-	"github.com/primandproper/platform-go/v12/observability"
+	"github.com/primandproper/platform-go/v13/distributedlock"
+	"github.com/primandproper/platform-go/v13/distributedlock/distributedlocktest"
+	"github.com/primandproper/platform-go/v13/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

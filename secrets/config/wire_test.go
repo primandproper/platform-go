@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/secrets"
+	"github.com/primandproper/platform-go/v13/secrets"
 
 	"github.com/shoenig/test/must"
 )

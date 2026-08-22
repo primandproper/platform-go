@@ -19,7 +19,7 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v12/cache"
+	"github.com/primandproper/platform-go/v13/cache"
 )
 
 var _ cache.Cache[any] = (*Cache[any])(nil)

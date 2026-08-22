@@ -3,8 +3,8 @@ package random
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
+	"github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

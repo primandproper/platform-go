@@ -6,7 +6,7 @@ import (
 	"image"
 	"image/png"
 
-	"github.com/primandproper/platform-go/v12/uploads/images"
+	"github.com/primandproper/platform-go/v13/uploads/images"
 )
 
 func ExampleDecode() {

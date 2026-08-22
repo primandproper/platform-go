@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability/keys"
-	"github.com/primandproper/platform-go/v12/observability/logging"
-	textsearch "github.com/primandproper/platform-go/v12/search/text"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability/keys"
+	"github.com/primandproper/platform-go/v13/observability/logging"
+	textsearch "github.com/primandproper/platform-go/v13/search/text"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

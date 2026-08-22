@@ -3,8 +3,8 @@ package httpclient
 import (
 	"net/http"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability"
 
 	"github.com/samber/do/v2"
 )

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/database/ddl"
-	"github.com/primandproper/platform-go/v12/database/dialect"
+	"github.com/primandproper/platform-go/v13/database/ddl"
+	"github.com/primandproper/platform-go/v13/database/dialect"
 )
 
 // Every time this package binds is a UTC time.Time, for the reason spelled out

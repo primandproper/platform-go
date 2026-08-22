@@ -18,7 +18,7 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v12/observability/tracing"
+	"github.com/primandproper/platform-go/v13/observability/tracing"
 
 	"go.opentelemetry.io/otel/trace"
 	otelnoop "go.opentelemetry.io/otel/trace/noop"

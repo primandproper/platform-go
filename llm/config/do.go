@@ -3,8 +3,8 @@ package llmcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v12/llm"
-	"github.com/primandproper/platform-go/v12/observability"
+	"github.com/primandproper/platform-go/v13/llm"
+	"github.com/primandproper/platform-go/v13/observability"
 
 	"github.com/samber/do/v2"
 )

@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/circuitbreaking"
-	cbnoop "github.com/primandproper/platform-go/v12/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v12/cryptography/requestsigning"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/retry"
+	"github.com/primandproper/platform-go/v13/circuitbreaking"
+	cbnoop "github.com/primandproper/platform-go/v13/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v13/cryptography/requestsigning"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/retry"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

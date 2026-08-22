@@ -3,11 +3,11 @@ package searchsync
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/clock"
-	"github.com/primandproper/platform-go/v12/observability/logging"
-	nooplogging "github.com/primandproper/platform-go/v12/observability/logging/noop"
-	noopmetrics "github.com/primandproper/platform-go/v12/observability/metrics/noop"
-	nooptracing "github.com/primandproper/platform-go/v12/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v13/clock"
+	"github.com/primandproper/platform-go/v13/observability/logging"
+	nooplogging "github.com/primandproper/platform-go/v13/observability/logging/noop"
+	noopmetrics "github.com/primandproper/platform-go/v13/observability/metrics/noop"
+	nooptracing "github.com/primandproper/platform-go/v13/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

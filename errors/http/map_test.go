@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/circuitbreaking"
-	"github.com/primandproper/platform-go/v12/database"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/idempotency"
-	"github.com/primandproper/platform-go/v12/links"
-	"github.com/primandproper/platform-go/v12/sessions"
+	"github.com/primandproper/platform-go/v13/circuitbreaking"
+	"github.com/primandproper/platform-go/v13/database"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/idempotency"
+	"github.com/primandproper/platform-go/v13/links"
+	"github.com/primandproper/platform-go/v13/sessions"
 
 	"github.com/shoenig/test"
 )

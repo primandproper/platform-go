@@ -21,7 +21,7 @@ package redisclient
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/errors"
 
 	"github.com/redis/go-redis/v9"
 )

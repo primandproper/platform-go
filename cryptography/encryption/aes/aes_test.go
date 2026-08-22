@@ -3,8 +3,8 @@ package aes
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/cryptography/encryption"
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/cryptography/encryption"
+	"github.com/primandproper/platform-go/v13/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

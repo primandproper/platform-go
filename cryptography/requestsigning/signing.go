@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/cryptography/hashing"
-	hmachasher "github.com/primandproper/platform-go/v12/cryptography/hashing/hmac"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/cryptography/hashing"
+	hmachasher "github.com/primandproper/platform-go/v13/cryptography/hashing/hmac"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 // signingPayload renders the bytes a signature actually covers:

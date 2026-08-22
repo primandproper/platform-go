@@ -3,7 +3,7 @@ package slots
 import (
 	"strconv"
 
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/errors"
 )
 
 // SlotRange is an inclusive [Start, End] range of Redis Cluster slots.

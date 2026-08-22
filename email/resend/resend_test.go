@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	cbnoop "github.com/primandproper/platform-go/v12/circuitbreaking/noop"
-	"github.com/primandproper/platform-go/v12/email"
-	"github.com/primandproper/platform-go/v12/observability"
-	"github.com/primandproper/platform-go/v12/observability/keys"
+	cbnoop "github.com/primandproper/platform-go/v13/circuitbreaking/noop"
+	"github.com/primandproper/platform-go/v13/email"
+	"github.com/primandproper/platform-go/v13/observability"
+	"github.com/primandproper/platform-go/v13/observability/keys"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

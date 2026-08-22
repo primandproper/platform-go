@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/database/dialect"
+	"github.com/primandproper/platform-go/v13/database/dialect"
 
 	"github.com/shoenig/test"
 )

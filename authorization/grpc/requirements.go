@@ -4,8 +4,8 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/primandproper/platform-go/v12/authorization"
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/authorization"
+	"github.com/primandproper/platform-go/v13/errors"
 )
 
 var (

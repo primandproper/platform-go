@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/cryptography/hashing"
-	"github.com/primandproper/platform-go/v12/cryptography/hashing/hmac"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/cryptography/hashing"
+	"github.com/primandproper/platform-go/v13/cryptography/hashing/hmac"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

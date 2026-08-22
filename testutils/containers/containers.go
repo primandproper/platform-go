@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	retrycfg "github.com/primandproper/platform-go/v12/retry/config"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	retrycfg "github.com/primandproper/platform-go/v13/retry/config"
 
 	"github.com/shoenig/test/must"
 	"github.com/testcontainers/testcontainers-go"

@@ -20,9 +20,9 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/database"
-	"github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability"
+	"github.com/primandproper/platform-go/v13/database"
+	"github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability"
 )
 
 // ClosePools releases whatever was opened, for the failure paths after a

@@ -3,7 +3,7 @@ package injection
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/errors"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

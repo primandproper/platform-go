@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform-go/v12/llm"
+	"github.com/primandproper/platform-go/v13/llm"
 )
 
 // Ensure, that ProviderMock does implement llm.Provider.

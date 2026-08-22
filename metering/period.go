@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 // Period names the window usage accumulates in.

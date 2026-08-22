@@ -6,7 +6,7 @@ import (
 	"slices"
 	"sort"
 
-	searchsync "github.com/primandproper/platform-go/v12/search/sync"
+	searchsync "github.com/primandproper/platform-go/v13/search/sync"
 )
 
 // order is the domain object, and orderDoc is what the index holds. The

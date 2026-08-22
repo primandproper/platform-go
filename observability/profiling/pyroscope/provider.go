@@ -31,9 +31,9 @@ import (
 	"net/http"
 	"runtime"
 
-	"github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability/logging"
-	"github.com/primandproper/platform-go/v12/observability/profiling"
+	"github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability/logging"
+	"github.com/primandproper/platform-go/v13/observability/profiling"
 
 	"github.com/grafana/pyroscope-go"
 )

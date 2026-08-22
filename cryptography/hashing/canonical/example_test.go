@@ -3,7 +3,7 @@ package canonical_test
 import (
 	"fmt"
 
-	"github.com/primandproper/platform-go/v12/cryptography/hashing/canonical"
+	"github.com/primandproper/platform-go/v13/cryptography/hashing/canonical"
 )
 
 // recipe is a value whose digest must not depend on how Go happens to declare

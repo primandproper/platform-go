@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
-	metricsmock "github.com/primandproper/platform-go/v12/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v12/observability/metrics/noop"
+	"github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
+	metricsmock "github.com/primandproper/platform-go/v13/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v13/observability/metrics/noop"
 
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	gax "github.com/googleapis/gax-go/v2"

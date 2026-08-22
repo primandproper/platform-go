@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/errors"
 )
 
 // GobCodec is the opt-in Codec for values CBOR cannot carry, using

@@ -1,7 +1,7 @@
 package idempotency
 
 import (
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 // Sentinels. errors/http and errors/grpc map these onto status codes, so those

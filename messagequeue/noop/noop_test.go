@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/messagequeue"
+	"github.com/primandproper/platform-go/v13/messagequeue"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

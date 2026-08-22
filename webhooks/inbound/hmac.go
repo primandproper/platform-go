@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/primandproper/platform-go/v12/cryptography/hashing"
-	"github.com/primandproper/platform-go/v12/cryptography/hashing/hmac"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/cryptography/hashing"
+	"github.com/primandproper/platform-go/v13/cryptography/hashing/hmac"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 const (

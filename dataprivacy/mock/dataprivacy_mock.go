@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/database"
-	"github.com/primandproper/platform-go/v12/dataprivacy"
-	"github.com/primandproper/platform-go/v12/filtering"
+	"github.com/primandproper/platform-go/v13/database"
+	"github.com/primandproper/platform-go/v13/dataprivacy"
+	"github.com/primandproper/platform-go/v13/filtering"
 )
 
 // Ensure, that StoreMock does implement dataprivacy.Store.

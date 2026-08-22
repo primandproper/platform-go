@@ -14,7 +14,7 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v12/analytics"
+	"github.com/primandproper/platform-go/v13/analytics"
 )
 
 var _ analytics.EventReporter = (*EventReporter)(nil)

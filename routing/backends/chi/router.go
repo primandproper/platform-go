@@ -13,13 +13,13 @@ package chi
 import (
 	"net/http"
 
-	"github.com/primandproper/platform-go/v12/observability"
-	"github.com/primandproper/platform-go/v12/observability/logging"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
-	"github.com/primandproper/platform-go/v12/observability/tracing"
-	"github.com/primandproper/platform-go/v12/routing"
-	"github.com/primandproper/platform-go/v12/routing/backends/internal/httpmw"
-	"github.com/primandproper/platform-go/v12/routing/backends/internal/pathvalues"
+	"github.com/primandproper/platform-go/v13/observability"
+	"github.com/primandproper/platform-go/v13/observability/logging"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
+	"github.com/primandproper/platform-go/v13/observability/tracing"
+	"github.com/primandproper/platform-go/v13/routing"
+	"github.com/primandproper/platform-go/v13/routing/backends/internal/httpmw"
+	"github.com/primandproper/platform-go/v13/routing/backends/internal/pathvalues"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/cryptography/requestsigning"
+	"github.com/primandproper/platform-go/v13/cryptography/requestsigning"
 )
 
 // The receiving end. Verification is where these schemes are actually got

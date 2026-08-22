@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability/logging"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability/logging"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

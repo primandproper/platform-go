@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/clock"
-	"github.com/primandproper/platform-go/v12/database"
-	"github.com/primandproper/platform-go/v12/database/dialect"
-	"github.com/primandproper/platform-go/v12/database/sqlite"
-	loggingnoop "github.com/primandproper/platform-go/v12/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v12/observability/tracing/noop"
-	"github.com/primandproper/platform-go/v12/sessions"
-	"github.com/primandproper/platform-go/v12/sessions/database/migrations"
+	"github.com/primandproper/platform-go/v13/clock"
+	"github.com/primandproper/platform-go/v13/database"
+	"github.com/primandproper/platform-go/v13/database/dialect"
+	"github.com/primandproper/platform-go/v13/database/sqlite"
+	loggingnoop "github.com/primandproper/platform-go/v13/observability/logging/noop"
+	tracingnoop "github.com/primandproper/platform-go/v13/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v13/sessions"
+	"github.com/primandproper/platform-go/v13/sessions/database/migrations"
 
 	"github.com/shoenig/test/must"
 )

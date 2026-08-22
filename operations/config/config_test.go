@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/operations"
+	"github.com/primandproper/platform-go/v13/operations"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

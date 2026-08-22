@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	cachememory "github.com/primandproper/platform-go/v12/cache/memory"
-	"github.com/primandproper/platform-go/v12/distributedlock"
-	dlmemory "github.com/primandproper/platform-go/v12/distributedlock/memory"
-	"github.com/primandproper/platform-go/v12/links"
+	cachememory "github.com/primandproper/platform-go/v13/cache/memory"
+	"github.com/primandproper/platform-go/v13/distributedlock"
+	dlmemory "github.com/primandproper/platform-go/v13/distributedlock/memory"
+	"github.com/primandproper/platform-go/v13/links"
 )
 
 // newExampleMinter wires a Minter over in-process pieces. A real deployment

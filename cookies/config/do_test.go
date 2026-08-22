@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/cookies"
-	tracingnoop "github.com/primandproper/platform-go/v12/observability/tracing/noop"
+	"github.com/primandproper/platform-go/v13/cookies"
+	tracingnoop "github.com/primandproper/platform-go/v13/observability/tracing/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

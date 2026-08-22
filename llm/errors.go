@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 // The conditions a provider can report. Every error a Provider returns matches

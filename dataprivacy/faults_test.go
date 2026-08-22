@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/database"
-	"github.com/primandproper/platform-go/v12/database/dialect"
-	_ "github.com/primandproper/platform-go/v12/database/sqlite"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/filtering"
+	"github.com/primandproper/platform-go/v13/database"
+	"github.com/primandproper/platform-go/v13/database/dialect"
+	_ "github.com/primandproper/platform-go/v13/database/sqlite"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/filtering"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

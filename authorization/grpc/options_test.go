@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform-go/v12/observability/logging/noop"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
-	metricsmock "github.com/primandproper/platform-go/v12/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v12/observability/metrics/noop"
+	loggingnoop "github.com/primandproper/platform-go/v13/observability/logging/noop"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
+	metricsmock "github.com/primandproper/platform-go/v13/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v13/observability/metrics/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -3,8 +3,8 @@ package textsearchcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v12/observability"
-	textsearch "github.com/primandproper/platform-go/v12/search/text"
+	"github.com/primandproper/platform-go/v13/observability"
+	textsearch "github.com/primandproper/platform-go/v13/search/text"
 
 	"github.com/samber/do/v2"
 )

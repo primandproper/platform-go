@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/observability"
+	"github.com/primandproper/platform-go/v13/observability"
 
 	"github.com/boombuler/barcode"
 	"github.com/boombuler/barcode/qr"

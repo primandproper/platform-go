@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	authtotp "github.com/primandproper/platform-go/v12/authentication/totp"
+	authtotp "github.com/primandproper/platform-go/v13/authentication/totp"
 
 	"github.com/pquerna/otp/totp"
 	"github.com/shoenig/test/must"

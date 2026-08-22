@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/primandproper/platform-go/v12/llm"
+	"github.com/primandproper/platform-go/v13/llm"
 
 	anyllm "github.com/mozilla-ai/any-llm-go"
 )

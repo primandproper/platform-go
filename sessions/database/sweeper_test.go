@@ -6,7 +6,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/sessions"
+	"github.com/primandproper/platform-go/v13/sessions"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

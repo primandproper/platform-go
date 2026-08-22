@@ -3,8 +3,8 @@ package audit
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v12/database/ddl"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/database/ddl"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.

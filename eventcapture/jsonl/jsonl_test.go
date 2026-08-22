@@ -9,8 +9,8 @@ import (
 	"testing/synctest"
 	"time"
 
-	clockmock "github.com/primandproper/platform-go/v12/clock/mock"
-	loggingnoop "github.com/primandproper/platform-go/v12/observability/logging/noop"
+	clockmock "github.com/primandproper/platform-go/v13/clock/mock"
+	loggingnoop "github.com/primandproper/platform-go/v13/observability/logging/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -3,9 +3,9 @@ package workqueuecfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/observability"
-	"github.com/primandproper/platform-go/v12/observability/logging"
-	"github.com/primandproper/platform-go/v12/workqueue"
+	"github.com/primandproper/platform-go/v13/observability"
+	"github.com/primandproper/platform-go/v13/observability/logging"
+	"github.com/primandproper/platform-go/v13/workqueue"
 
 	"github.com/shoenig/test"
 )

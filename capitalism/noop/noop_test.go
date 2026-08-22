@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/capitalism"
+	"github.com/primandproper/platform-go/v13/capitalism"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

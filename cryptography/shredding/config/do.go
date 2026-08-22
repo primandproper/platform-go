@@ -3,12 +3,12 @@ package shreddingcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v12/cryptography/encryption"
-	"github.com/primandproper/platform-go/v12/cryptography/shredding"
-	"github.com/primandproper/platform-go/v12/database"
-	"github.com/primandproper/platform-go/v12/internal/injection"
-	"github.com/primandproper/platform-go/v12/messagequeue"
-	"github.com/primandproper/platform-go/v12/observability"
+	"github.com/primandproper/platform-go/v13/cryptography/encryption"
+	"github.com/primandproper/platform-go/v13/cryptography/shredding"
+	"github.com/primandproper/platform-go/v13/database"
+	"github.com/primandproper/platform-go/v13/internal/injection"
+	"github.com/primandproper/platform-go/v13/messagequeue"
+	"github.com/primandproper/platform-go/v13/observability"
 
 	"github.com/samber/do/v2"
 )

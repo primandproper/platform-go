@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/authentication/oauth2server"
-	"github.com/primandproper/platform-go/v12/identifiers"
+	"github.com/primandproper/platform-go/v13/authentication/oauth2server"
+	"github.com/primandproper/platform-go/v13/identifiers"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

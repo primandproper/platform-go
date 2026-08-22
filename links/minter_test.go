@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/cache"
-	cachemock "github.com/primandproper/platform-go/v12/cache/mock"
-	"github.com/primandproper/platform-go/v12/cryptography/hashing"
-	"github.com/primandproper/platform-go/v12/cryptography/hashing/sha256"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/cache"
+	cachemock "github.com/primandproper/platform-go/v13/cache/mock"
+	"github.com/primandproper/platform-go/v13/cryptography/hashing"
+	"github.com/primandproper/platform-go/v13/cryptography/hashing/sha256"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

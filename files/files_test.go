@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/files"
+	"github.com/primandproper/platform-go/v13/files"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

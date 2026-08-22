@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/database"
-	"github.com/primandproper/platform-go/v12/filtering"
-	"github.com/primandproper/platform-go/v12/tenancy"
-	"github.com/primandproper/platform-go/v12/webhooks"
+	"github.com/primandproper/platform-go/v13/database"
+	"github.com/primandproper/platform-go/v13/filtering"
+	"github.com/primandproper/platform-go/v13/tenancy"
+	"github.com/primandproper/platform-go/v13/webhooks"
 )
 
 // Ensure, that StoreMock does implement webhooks.Store.

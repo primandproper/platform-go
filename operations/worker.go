@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
-	"github.com/primandproper/platform-go/v12/panicking"
-	"github.com/primandproper/platform-go/v12/workqueue"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
+	"github.com/primandproper/platform-go/v13/panicking"
+	"github.com/primandproper/platform-go/v13/workqueue"
 )
 
 // panicStackKey carries a contained panic's stack to the span, and only to the

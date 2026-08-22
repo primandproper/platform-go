@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability"
+	"github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability"
 )
 
 // ErrPlatformNotSupported is returned when attempting to send to a platform

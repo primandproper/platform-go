@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/cryptography/shredding"
-	"github.com/primandproper/platform-go/v12/database"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/identifiers"
-	"github.com/primandproper/platform-go/v12/operations"
+	"github.com/primandproper/platform-go/v13/cryptography/shredding"
+	"github.com/primandproper/platform-go/v13/database"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/identifiers"
+	"github.com/primandproper/platform-go/v13/operations"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

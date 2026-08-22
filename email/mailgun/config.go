@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/url"
 
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/errors"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/mailgun/mailgun-go/v4"

@@ -1,7 +1,7 @@
 package sessions
 
 import (
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 // Sentinels. errors/http maps these onto status codes, so that package imports

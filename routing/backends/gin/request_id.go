@@ -3,7 +3,7 @@ package gin
 import (
 	"net/http"
 
-	"github.com/primandproper/platform-go/v12/routing/backends/internal/httpmw"
+	"github.com/primandproper/platform-go/v13/routing/backends/internal/httpmw"
 )
 
 // RequestIDFunc returns the request ID assigned to a request by the backend's

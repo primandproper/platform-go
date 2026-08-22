@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/audit"
-	"github.com/primandproper/platform-go/v12/retention"
+	"github.com/primandproper/platform-go/v13/audit"
+	"github.com/primandproper/platform-go/v13/retention"
 )
 
 // A policy set is data: what to delete from, how old it has to be, and why.

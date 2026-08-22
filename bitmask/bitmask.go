@@ -5,7 +5,7 @@ import (
 	"math/bits"
 	"strconv"
 
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/errors"
 )
 
 // Unsigned is a constraint for fixed-width unsigned integer types that can be used as bitmask values.

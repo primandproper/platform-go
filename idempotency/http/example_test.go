@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"strings"
 
-	cachememory "github.com/primandproper/platform-go/v12/cache/memory"
-	"github.com/primandproper/platform-go/v12/distributedlock"
-	dlmemory "github.com/primandproper/platform-go/v12/distributedlock/memory"
-	"github.com/primandproper/platform-go/v12/idempotency"
-	idempotencyhttp "github.com/primandproper/platform-go/v12/idempotency/http"
+	cachememory "github.com/primandproper/platform-go/v13/cache/memory"
+	"github.com/primandproper/platform-go/v13/distributedlock"
+	dlmemory "github.com/primandproper/platform-go/v13/distributedlock/memory"
+	"github.com/primandproper/platform-go/v13/idempotency"
+	idempotencyhttp "github.com/primandproper/platform-go/v13/idempotency/http"
 )
 
 func newMiddleware() (func(http.Handler) http.Handler, error) {

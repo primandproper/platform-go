@@ -5,7 +5,7 @@ import (
 	"hash/fnv"
 	"strconv"
 
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/errors"
 )
 
 // Topology describes the cluster shape a KeyGenerator should plan against:

@@ -8,7 +8,7 @@ import (
 	"image/gif"
 	"math"
 
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/errors"
 
 	xdraw "golang.org/x/image/draw"
 )

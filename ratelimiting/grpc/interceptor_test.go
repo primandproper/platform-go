@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	grpcerrors "github.com/primandproper/platform-go/v12/errors/grpc"
-	"github.com/primandproper/platform-go/v12/ratelimiting"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	grpcerrors "github.com/primandproper/platform-go/v13/errors/grpc"
+	"github.com/primandproper/platform-go/v13/ratelimiting"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

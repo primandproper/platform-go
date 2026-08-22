@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/primandproper/platform-go/v12/encoding"
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/encoding"
+	"github.com/primandproper/platform-go/v13/errors"
 )
 
 const (

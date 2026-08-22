@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	httpx "github.com/primandproper/platform-go/v12/errors/http"
+	httpx "github.com/primandproper/platform-go/v13/errors/http"
 )
 
 // ErrInvalidResponseStatus reports that a Result named a status an

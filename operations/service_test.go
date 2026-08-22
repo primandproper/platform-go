@@ -4,9 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

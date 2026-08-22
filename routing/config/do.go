@@ -3,9 +3,9 @@ package routingcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v12/encoding"
-	"github.com/primandproper/platform-go/v12/observability"
-	"github.com/primandproper/platform-go/v12/routing"
+	"github.com/primandproper/platform-go/v13/encoding"
+	"github.com/primandproper/platform-go/v13/observability"
+	"github.com/primandproper/platform-go/v13/routing"
 
 	"github.com/samber/do/v2"
 )

@@ -7,7 +7,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform-go/v12/messagequeue"
+	"github.com/primandproper/platform-go/v13/messagequeue"
 )
 
 // Ensure, that PublisherMock does implement messagequeue.Publisher.

@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	httpx "github.com/primandproper/platform-go/v12/errors/http"
-	loggingnoop "github.com/primandproper/platform-go/v12/observability/logging/noop"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
-	metricsmock "github.com/primandproper/platform-go/v12/observability/metrics/mock"
-	metricsnoop "github.com/primandproper/platform-go/v12/observability/metrics/noop"
+	httpx "github.com/primandproper/platform-go/v13/errors/http"
+	loggingnoop "github.com/primandproper/platform-go/v13/observability/logging/noop"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
+	metricsmock "github.com/primandproper/platform-go/v13/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/platform-go/v13/observability/metrics/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

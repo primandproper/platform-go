@@ -50,8 +50,8 @@ package migrations
 import (
 	_ "embed"
 
-	"github.com/primandproper/platform-go/v12/database/ddl"
-	"github.com/primandproper/platform-go/v12/database/dialect"
+	"github.com/primandproper/platform-go/v13/database/ddl"
+	"github.com/primandproper/platform-go/v13/database/dialect"
 )
 
 //go:embed postgres.sql

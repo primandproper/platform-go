@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/authentication/webauthn"
-	"github.com/primandproper/platform-go/v12/identifiers"
+	"github.com/primandproper/platform-go/v13/authentication/webauthn"
+	"github.com/primandproper/platform-go/v13/identifiers"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/shoenig/test"

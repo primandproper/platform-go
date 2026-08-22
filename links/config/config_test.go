@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
-	cachecfg "github.com/primandproper/platform-go/v12/cache/config"
-	distributedlockcfg "github.com/primandproper/platform-go/v12/distributedlock/config"
-	"github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/links"
+	cachecfg "github.com/primandproper/platform-go/v13/cache/config"
+	distributedlockcfg "github.com/primandproper/platform-go/v13/distributedlock/config"
+	"github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/links"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

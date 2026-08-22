@@ -14,7 +14,7 @@ package noop
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v12/notifications/mobile"
+	"github.com/primandproper/platform-go/v13/notifications/mobile"
 )
 
 var _ mobile.PushNotificationSender = (*pushNotificationSender)(nil)

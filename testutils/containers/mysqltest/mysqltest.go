@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/testutils/containers"
+	"github.com/primandproper/platform-go/v13/testutils/containers"
 
 	// The go-sql-driver is registered here so that callers get a working
 	// "mysql" driver from importing mysqltest alone.

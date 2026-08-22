@@ -5,12 +5,12 @@ import (
 	"reflect"
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/llm/anthropic"
-	"github.com/primandproper/platform-go/v12/llm/openai"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
-	"github.com/primandproper/platform-go/v12/observability/metrics/metricstest"
-	metricsmock "github.com/primandproper/platform-go/v12/observability/metrics/mock"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/llm/anthropic"
+	"github.com/primandproper/platform-go/v13/llm/openai"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
+	"github.com/primandproper/platform-go/v13/observability/metrics/metricstest"
+	metricsmock "github.com/primandproper/platform-go/v13/observability/metrics/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

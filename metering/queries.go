@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/database"
-	"github.com/primandproper/platform-go/v12/database/ddl"
-	"github.com/primandproper/platform-go/v12/database/dialect"
+	"github.com/primandproper/platform-go/v13/database"
+	"github.com/primandproper/platform-go/v13/database/ddl"
+	"github.com/primandproper/platform-go/v13/database/dialect"
 )
 
 // A note on timestamps, because one dialect does something surprising.

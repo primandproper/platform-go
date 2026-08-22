@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/circuitbreaking"
-	circuitbreakingmock "github.com/primandproper/platform-go/v12/circuitbreaking/mock"
-	"github.com/primandproper/platform-go/v12/circuitbreaking/partitioned"
+	"github.com/primandproper/platform-go/v13/circuitbreaking"
+	circuitbreakingmock "github.com/primandproper/platform-go/v13/circuitbreaking/mock"
+	"github.com/primandproper/platform-go/v13/circuitbreaking/partitioned"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

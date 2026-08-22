@@ -3,9 +3,9 @@ package audit
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/audit/migrations"
-	"github.com/primandproper/platform-go/v12/database"
-	"github.com/primandproper/platform-go/v12/database/dialect"
+	"github.com/primandproper/platform-go/v13/audit/migrations"
+	"github.com/primandproper/platform-go/v13/database"
+	"github.com/primandproper/platform-go/v13/database/dialect"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

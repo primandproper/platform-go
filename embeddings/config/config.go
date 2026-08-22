@@ -11,12 +11,12 @@ import (
 	"context"
 	"slices"
 
-	"github.com/primandproper/platform-go/v12/embeddings"
-	"github.com/primandproper/platform-go/v12/embeddings/cohere"
-	"github.com/primandproper/platform-go/v12/embeddings/ollama"
-	"github.com/primandproper/platform-go/v12/embeddings/openai"
-	"github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/internal/cfgnorm"
+	"github.com/primandproper/platform-go/v13/embeddings"
+	"github.com/primandproper/platform-go/v13/embeddings/cohere"
+	"github.com/primandproper/platform-go/v13/embeddings/ollama"
+	"github.com/primandproper/platform-go/v13/embeddings/openai"
+	"github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/internal/cfgnorm"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

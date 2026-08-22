@@ -3,7 +3,7 @@ package noop
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/random"
+	"github.com/primandproper/platform-go/v13/random"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

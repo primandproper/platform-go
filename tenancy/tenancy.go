@@ -6,7 +6,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 var (

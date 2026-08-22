@@ -3,7 +3,7 @@ package cfgnorm
 import (
 	"reflect"
 
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/errors"
 )
 
 // defaulter is the half of the config convention that is not expressible in a

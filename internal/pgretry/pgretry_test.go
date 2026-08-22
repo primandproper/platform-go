@@ -9,9 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability/logging"
-	metricsmock "github.com/primandproper/platform-go/v12/observability/metrics/mock"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability/logging"
+	metricsmock "github.com/primandproper/platform-go/v13/observability/metrics/mock"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shoenig/test"

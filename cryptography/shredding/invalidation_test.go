@@ -6,8 +6,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/messagequeue"
-	messagequeuemock "github.com/primandproper/platform-go/v12/messagequeue/mock"
+	"github.com/primandproper/platform-go/v13/messagequeue"
+	messagequeuemock "github.com/primandproper/platform-go/v13/messagequeue/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

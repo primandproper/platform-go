@@ -1,7 +1,7 @@
 package fake
 
 import (
-	"github.com/primandproper/platform-go/v12/filtering"
+	"github.com/primandproper/platform-go/v13/filtering"
 )
 
 // DefaultPageSize is how many elements BuildFakePage puts in a page.

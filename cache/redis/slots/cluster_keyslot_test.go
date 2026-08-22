@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/cache/redis/slots"
-	"github.com/primandproper/platform-go/v12/testutils/containers/redistest"
+	"github.com/primandproper/platform-go/v13/cache/redis/slots"
+	"github.com/primandproper/platform-go/v13/testutils/containers/redistest"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/shoenig/test/must"

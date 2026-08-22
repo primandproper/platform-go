@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/authentication/oauth2server"
-	"github.com/primandproper/platform-go/v12/database/ddl"
-	"github.com/primandproper/platform-go/v12/database/dialect"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/authentication/oauth2server"
+	"github.com/primandproper/platform-go/v13/database/ddl"
+	"github.com/primandproper/platform-go/v13/database/dialect"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 // The four table name suffixes, qualified by the configured prefix. They are

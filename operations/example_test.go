@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/primandproper/platform-go/v12/operations"
+	"github.com/primandproper/platform-go/v13/operations"
 )
 
 // exportRequest is what a caller asks for when they start an export. It is the

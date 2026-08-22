@@ -3,9 +3,9 @@ package observability
 import (
 	"testing"
 
-	loggingcfg "github.com/primandproper/platform-go/v12/observability/logging/config"
-	tracingcfg "github.com/primandproper/platform-go/v12/observability/tracing/config"
-	"github.com/primandproper/platform-go/v12/observability/tracing/oteltrace"
+	loggingcfg "github.com/primandproper/platform-go/v13/observability/logging/config"
+	tracingcfg "github.com/primandproper/platform-go/v13/observability/tracing/config"
+	"github.com/primandproper/platform-go/v13/observability/tracing/oteltrace"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

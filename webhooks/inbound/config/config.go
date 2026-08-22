@@ -22,9 +22,9 @@ import (
 	"strings"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/messagequeue"
-	"github.com/primandproper/platform-go/v12/webhooks/inbound"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/messagequeue"
+	"github.com/primandproper/platform-go/v13/webhooks/inbound"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

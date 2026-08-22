@@ -3,7 +3,7 @@ package entitlements
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/authorization"
+	"github.com/primandproper/platform-go/v13/authorization"
 )
 
 // Check is the entitlements counterpart to authorization's Grants.Has: a

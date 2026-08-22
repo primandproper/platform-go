@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/circuitbreaking/noop"
-	loggingnoop "github.com/primandproper/platform-go/v12/observability/logging/noop"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
-	metricsmock "github.com/primandproper/platform-go/v12/observability/metrics/mock"
+	"github.com/primandproper/platform-go/v13/circuitbreaking/noop"
+	loggingnoop "github.com/primandproper/platform-go/v13/observability/logging/noop"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
+	metricsmock "github.com/primandproper/platform-go/v13/observability/metrics/mock"
 
 	circuit "github.com/rubyist/circuitbreaker"
 	"github.com/shoenig/test"

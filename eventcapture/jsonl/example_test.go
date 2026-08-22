@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/primandproper/platform-go/v12/eventcapture/jsonl"
+	"github.com/primandproper/platform-go/v13/eventcapture/jsonl"
 )
 
 // captured is one record's wire shape. The sink prescribes nothing about

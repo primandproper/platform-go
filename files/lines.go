@@ -7,7 +7,7 @@ import (
 	"iter"
 	"strings"
 
-	"github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/errors"
 )
 
 // Lines yields each line of r without its trailing newline (handling both \n and \r\n). An

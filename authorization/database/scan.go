@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/primandproper/platform-go/v12/database"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/database"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 // scanRows drives a result set through scan, closing it afterwards. A close

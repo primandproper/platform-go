@@ -3,7 +3,7 @@ package observability
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/observability/tracing"
+	"github.com/primandproper/platform-go/v13/observability/tracing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	clockmock "github.com/primandproper/platform-go/v12/clock/mock"
-	"github.com/primandproper/platform-go/v12/cryptography/hashing"
-	"github.com/primandproper/platform-go/v12/cryptography/hashing/hmac"
+	clockmock "github.com/primandproper/platform-go/v13/clock/mock"
+	"github.com/primandproper/platform-go/v13/cryptography/hashing"
+	"github.com/primandproper/platform-go/v13/cryptography/hashing/hmac"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

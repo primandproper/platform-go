@@ -3,8 +3,8 @@ package httpclient
 import (
 	"net/http"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/ratelimiting"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/ratelimiting"
 )
 
 // rateLimitTransport spends a token from a per-host bucket before each request.

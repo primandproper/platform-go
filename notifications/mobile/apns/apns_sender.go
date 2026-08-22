@@ -3,11 +3,11 @@ package apns
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v12/charset"
-	"github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability"
-	"github.com/primandproper/platform-go/v12/observability/keys"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
+	"github.com/primandproper/platform-go/v13/charset"
+	"github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability"
+	"github.com/primandproper/platform-go/v13/observability/keys"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/sideshow/apns2"

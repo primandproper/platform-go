@@ -4,10 +4,10 @@ import (
 	"context"
 	stderrors "errors"
 
-	"github.com/primandproper/platform-go/v12/cryptography/requestsigning"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/links"
-	"github.com/primandproper/platform-go/v12/ratelimiting"
+	"github.com/primandproper/platform-go/v13/cryptography/requestsigning"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/links"
+	"github.com/primandproper/platform-go/v13/ratelimiting"
 
 	"github.com/cockroachdb/errors/errorspb"
 	gogoproto "github.com/gogo/protobuf/proto"

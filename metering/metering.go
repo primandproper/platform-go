@@ -5,8 +5,8 @@ import (
 	"math"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/internal/plainname"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/internal/plainname"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.

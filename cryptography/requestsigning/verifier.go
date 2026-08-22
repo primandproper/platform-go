@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 // V1Verifier checks v1 signatures against a keyring it re-reads per request. It

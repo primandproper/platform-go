@@ -3,7 +3,7 @@ package database
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v12/sessions/database/migrations"
+	"github.com/primandproper/platform-go/v13/sessions/database/migrations"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

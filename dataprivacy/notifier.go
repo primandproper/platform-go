@@ -6,8 +6,8 @@ import (
 	"html"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/email"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/email"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 // Notification is what a Notifier is handed when a request reaches a terminal

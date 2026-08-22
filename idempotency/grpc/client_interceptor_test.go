@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/idempotency"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/idempotency"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

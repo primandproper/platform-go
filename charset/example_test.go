@@ -3,7 +3,7 @@ package charset_test
 import (
 	"fmt"
 
-	"github.com/primandproper/platform-go/v12/charset"
+	"github.com/primandproper/platform-go/v13/charset"
 )
 
 func ExampleNew() {

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/primandproper/platform-go/v12/charset"
-	"github.com/primandproper/platform-go/v12/retry"
+	"github.com/primandproper/platform-go/v13/charset"
+	"github.com/primandproper/platform-go/v13/retry"
 )
 
 // StatusError is a response an exchange would not accept: a status outside 2xx.

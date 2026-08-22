@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/primandproper/platform-go/v12/cryptography/encryption"
-	"github.com/primandproper/platform-go/v12/cryptography/encryption/aes"
+	"github.com/primandproper/platform-go/v13/cryptography/encryption"
+	"github.com/primandproper/platform-go/v13/cryptography/encryption/aes"
 
 	"github.com/shoenig/test/must"
 )

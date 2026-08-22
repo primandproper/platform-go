@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/primandproper/platform-go/v12/errors"
-	reflast "github.com/primandproper/platform-go/v12/reflection/ast"
+	"github.com/primandproper/platform-go/v13/errors"
+	reflast "github.com/primandproper/platform-go/v13/reflection/ast"
 )
 
 // Options configures Collect and Generate.

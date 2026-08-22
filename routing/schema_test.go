@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/routing"
+	"github.com/primandproper/platform-go/v13/routing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

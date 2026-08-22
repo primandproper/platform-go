@@ -4,7 +4,7 @@ import (
 	stderrors "errors"
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 
 	"github.com/shoenig/test"
 )

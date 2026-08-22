@@ -8,13 +8,13 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/primandproper/platform-go/v12/cryptography/requestsigning"
-	"github.com/primandproper/platform-go/v12/encoding"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
-	"github.com/primandproper/platform-go/v12/observability"
-	"github.com/primandproper/platform-go/v12/observability/keys"
-	"github.com/primandproper/platform-go/v12/observability/metrics"
-	"github.com/primandproper/platform-go/v12/routing"
+	"github.com/primandproper/platform-go/v13/cryptography/requestsigning"
+	"github.com/primandproper/platform-go/v13/encoding"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
+	"github.com/primandproper/platform-go/v13/observability"
+	"github.com/primandproper/platform-go/v13/observability/keys"
+	"github.com/primandproper/platform-go/v13/observability/metrics"
+	"github.com/primandproper/platform-go/v13/routing"
 )
 
 // serviceName names this component's logger, tracer, and metrics.

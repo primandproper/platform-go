@@ -1,7 +1,7 @@
 package errors
 
 import (
-	"github.com/primandproper/platform-go/v12/charset"
+	"github.com/primandproper/platform-go/v13/charset"
 )
 
 // TruncateError renders err for storage in a bounded column — a last_error, a

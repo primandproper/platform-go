@@ -3,8 +3,8 @@ package httpclient
 import (
 	"net/http"
 
-	"github.com/primandproper/platform-go/v12/observability/keys"
-	"github.com/primandproper/platform-go/v12/observability/tracing"
+	"github.com/primandproper/platform-go/v13/observability/keys"
+	"github.com/primandproper/platform-go/v13/observability/tracing"
 )
 
 // spanOperation names the span observedTransport opens, distinguishing it from

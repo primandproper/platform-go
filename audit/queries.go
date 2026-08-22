@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/database/ddl"
-	"github.com/primandproper/platform-go/v12/database/dialect"
-	"github.com/primandproper/platform-go/v12/filtering"
+	"github.com/primandproper/platform-go/v13/database/ddl"
+	"github.com/primandproper/platform-go/v13/database/dialect"
+	"github.com/primandproper/platform-go/v13/filtering"
 )
 
 // entryColumns is the projection every read scans. Declared once so the SELECT

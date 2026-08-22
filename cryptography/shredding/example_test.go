@@ -8,14 +8,14 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/cryptography/encryption"
-	"github.com/primandproper/platform-go/v12/cryptography/encryption/aes"
-	"github.com/primandproper/platform-go/v12/cryptography/encryption/kms/local"
-	"github.com/primandproper/platform-go/v12/cryptography/shredding"
-	"github.com/primandproper/platform-go/v12/cryptography/shredding/migrations"
-	"github.com/primandproper/platform-go/v12/database"
-	"github.com/primandproper/platform-go/v12/database/dialect"
-	"github.com/primandproper/platform-go/v12/database/sqlite"
+	"github.com/primandproper/platform-go/v13/cryptography/encryption"
+	"github.com/primandproper/platform-go/v13/cryptography/encryption/aes"
+	"github.com/primandproper/platform-go/v13/cryptography/encryption/kms/local"
+	"github.com/primandproper/platform-go/v13/cryptography/shredding"
+	"github.com/primandproper/platform-go/v13/cryptography/shredding/migrations"
+	"github.com/primandproper/platform-go/v13/database"
+	"github.com/primandproper/platform-go/v13/database/dialect"
+	"github.com/primandproper/platform-go/v13/database/sqlite"
 )
 
 // The lifecycle in full: a column encrypted under its subject's own key, and

@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/cache/memory"
-	circuitbreakingcfg "github.com/primandproper/platform-go/v12/circuitbreaking/config"
-	"github.com/primandproper/platform-go/v12/encoding"
-	"github.com/primandproper/platform-go/v12/httpclient"
-	"github.com/primandproper/platform-go/v12/observability"
-	"github.com/primandproper/platform-go/v12/ratelimiting"
-	"github.com/primandproper/platform-go/v12/retry"
-	retrycfg "github.com/primandproper/platform-go/v12/retry/config"
+	"github.com/primandproper/platform-go/v13/cache/memory"
+	circuitbreakingcfg "github.com/primandproper/platform-go/v13/circuitbreaking/config"
+	"github.com/primandproper/platform-go/v13/encoding"
+	"github.com/primandproper/platform-go/v13/httpclient"
+	"github.com/primandproper/platform-go/v13/observability"
+	"github.com/primandproper/platform-go/v13/ratelimiting"
+	"github.com/primandproper/platform-go/v13/retry"
+	retrycfg "github.com/primandproper/platform-go/v13/retry/config"
 )
 
 // A provider integration composes its resilience once, at construction, instead

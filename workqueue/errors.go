@@ -1,8 +1,8 @@
 package workqueue
 
 import (
-	"github.com/primandproper/platform-go/v12/batching"
-	platformerrors "github.com/primandproper/platform-go/v12/errors"
+	"github.com/primandproper/platform-go/v13/batching"
+	platformerrors "github.com/primandproper/platform-go/v13/errors"
 )
 
 var (

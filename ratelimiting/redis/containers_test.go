@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v12/ratelimiting"
-	"github.com/primandproper/platform-go/v12/testutils/containers/redistest"
+	"github.com/primandproper/platform-go/v13/ratelimiting"
+	"github.com/primandproper/platform-go/v13/testutils/containers/redistest"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
