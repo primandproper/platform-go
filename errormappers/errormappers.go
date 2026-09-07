@@ -1,6 +1,7 @@
 package errormappers
 
 import (
+	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	httperrors "github.com/primandproper/platform-go/v14/errors/http"
@@ -15,8 +16,8 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all five unconditionally, including for a service that has no
-// privacy requests and runs no operations. An unused mapper costs one comparison
+// It registers all six unconditionally, including for a service that has no
+// privacy requests, runs no operations and has nobody signing in. An unused mapper costs one comparison
 // against a sentinel the process cannot produce, and that is the cheap direction
 // to be wrong in — the expensive one is an action link answering 500 because
 // nobody registered anything. Conditioning on presence would also mean this
@@ -48,4 +49,13 @@ func Register() {
 
 	httperrors.RegisterHTTPErrorMapper(sessions.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(sessions.GRPCMapper)
+
+	httperrors.RegisterHTTPErrorMapper(signin.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(signin.GRPCMapper)
+
+	// The third package whose wording is meant for the person reading it, and
+	// the one where the codes collide worst: four of its nine are
+	// PermissionDenied and three are FailedPrecondition, each with a different
+	// remedy. See signin.ClientSafeSentinels.
+	grpcerrors.RegisterClientSafeSentinels(signin.ClientSafeSentinels...)
 }

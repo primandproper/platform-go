@@ -170,15 +170,29 @@ from today. The rule is what a new package is measured against either way.
 | `primitives-go` | the database and schema tooling stores are built with     | `database`, `filtering` |
 | `primitives-go` | the cross-cutting values and utilities both tiers build on | `batching`, `bitmask`, `charset`, `circuitbreaking`, `clock`, `config`, `errors`, `fake`, `files`, `identifiers`, `jobs`, `numbers`, `observability`, `panicking`, `pointer`, `qrcodes`, `random`, `reflection`, `retry`, `tenancy`, `testutils`, `version` |
 | `platform-go`   | a noun with a table, and what it owes                     | `audit`, `authentication/oauth2server/database`, `authentication/passwordreset`, `authentication/webauthn/database`, `authorization/database`, `billing`, `comments`, `cryptography/shredding`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `metering`, `notifications`, `operations`, `outbox`, `retention`, `saga`, `search/sync`, `sessions`, `settings`, `timers`, `uploads/registry`, `waitlists`, `webhooks`, `workqueue` |
+| `platform-go`   | a domain flow over another domain's tables                 | `authentication/signin` |
 | `platform-go`   | the composition root that registers both tiers            | `errormappers`, `service` |
 
+The fifth row is the one the rule's own wording anticipates when it asks whether
+a package owns a table *or drives one*. `authentication/signin` owns no schema
+and never will: it is the order the engines and the directory are used in — read
+the handle, compare the hash, check the status, ask for the code, mint the token
+— and every row it touches is `identity`'s. It is still emphatically the domain
+tier, because an application with no users has nobody to sign in, and because the
+refusals it collapses are a product decision rather than a mechanism. A package
+like it is the shape to expect as more domains cross: the flows over the nouns,
+after the nouns.
+
 A package with a path of its own on the other side is a package straddling the
-line, and today six do. Four are a primitive with a store nested inside it — `authentication` hashes
+line, and today seven do. Four are a primitive with a store nested inside it — `authentication` hashes
 passwords and issues tokens, and `authentication/passwordreset` owns a table of
 them; `authorization`, `cryptography` and `uploads` split the same way. Two are
 the mirror: `notifications` owns the inbox and `notifications/mobile` is a push
 provider behind an interface, and `search` is text and vector search while
-`search/sync` is a reindexing worker driven by the outbox.
+`search/sync` is a reindexing worker driven by the outbox. The seventh is
+`authentication/signin`, which is neither: it is a domain flow under a primitive's
+path, there because sign-in is what those engines are for and a `signin` at the
+root would hide that.
 
 The nested stores themselves are self-contained, and Go is content with a parent
 directory holding no `.go` files — `cryptography/` is already exactly that. What
@@ -247,10 +261,29 @@ stated, one layer further out: a consumer keeps its policy and whatever columns
 are genuinely its own, and does not keep a users table, the transaction-shaped
 code around one, or the service and converters over that.
 
+`authentication/signin` is the second across, and it crosses differently: it owns
+no table at all. It is sign-in — the order `argon2`, `totp`, `tokens` and
+`identity` are used in, which is the code every application writes over those
+four and the code where their bugs live. The engines each do one thing and store
+nothing; the directory stores what they produce and never calls them; nothing
+joined them up. What it decides is the refusals, and it collapses four of them
+into one sentinel on purpose, because telling an unknown handle from a wrong
+password is telling an attacker which half of the guess was right. What it
+refuses to decide is the rest: whether a second factor is mandatory, whether the
+administrative door exists, how long a token lives and what it carries are four
+options with four defaults. `authentication/signin/grpc` serves it, and is the
+one surface in the module that reads its tenant off the connection rather than
+off a caller — because a caller signing in has not become one yet.
+
 `webhooks` endpoint management, `billing`, `settings`, `notifications`,
 `metering`, `audit`, `dataprivacy`, `saga`, `timers` and `workqueue` still ship
 a store and no handlers. Each is to follow `identity`, which is the
 pattern-setting one and the reason the rest waited; none has been filed yet.
+
+The flows over those nouns are the other half of the same list, and sign-in is
+the first of them. Passkeys, session management, password reset and email
+verification are each their own addition over an engine this module already
+ships, rather than a branch inside the password flow.
 
 For the primitives the original line is unchanged, and it is this:
 
@@ -262,23 +295,24 @@ For the primitives the original line is unchanged, and it is this:
 Everything below is on the far side of that line, and it is the whole list.
 
 <!-- readmegen:transports -->
-| Transport                          | Kind             | Whose shape it is                                                                 |
-|------------------------------------|------------------|-----------------------------------------------------------------------------------|
-| `server/http`                      | server           | the process: bind, serve, drain, and its own probes                               |
-| `server/grpc`                      | server           | the same, for gRPC                                                                |
-| `errors/http`                      | mapping          | a sentinel to a status code, and back                                             |
-| `errors/grpc`                      | mapping          | a sentinel to a gRPC code, and back                                               |
-| `filtering/grpc`                   | wire conversion  | `QueryFilter` and `Pagination` to their generated messages                        |
-| `authorization/http`               | middleware       | a route's declared requirement, checked before it runs                            |
-| `authorization/grpc`               | middleware       | the same, as interceptors                                                         |
-| `cryptography/requestsigning/http` | middleware       | a signature verified before the handler runs                                      |
-| `idempotency/http`                 | middleware       | the `Idempotency-Key` header, both sides of the wire                              |
-| `idempotency/grpc`                 | middleware       | the same, over metadata                                                           |
-| `ratelimiting/http`                | middleware       | a token per request, 429 when there is none                                       |
-| `ratelimiting/grpc`                | middleware       | the same, as interceptors                                                         |
-| `sessions/http`                    | binding          | a signed cookie, whose security properties are ours                               |
-| `identity/grpc`                    | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store` |
-| `operations/http`                  | resource surface | poll, list, cancel, subscribe — over `Operation`                                  |
+| Transport                          | Kind             | Whose shape it is                                                                     |
+|------------------------------------|------------------|---------------------------------------------------------------------------------------|
+| `server/http`                      | server           | the process: bind, serve, drain, and its own probes                                   |
+| `server/grpc`                      | server           | the same, for gRPC                                                                    |
+| `errors/http`                      | mapping          | a sentinel to a status code, and back                                                 |
+| `errors/grpc`                      | mapping          | a sentinel to a gRPC code, and back                                                   |
+| `filtering/grpc`                   | wire conversion  | `QueryFilter` and `Pagination` to their generated messages                            |
+| `authorization/http`               | middleware       | a route's declared requirement, checked before it runs                                |
+| `authorization/grpc`               | middleware       | the same, as interceptors                                                             |
+| `cryptography/requestsigning/http` | middleware       | a signature verified before the handler runs                                          |
+| `idempotency/http`                 | middleware       | the `Idempotency-Key` header, both sides of the wire                                  |
+| `idempotency/grpc`                 | middleware       | the same, over metadata                                                               |
+| `ratelimiting/http`                | middleware       | a token per request, 429 when there is none                                           |
+| `ratelimiting/grpc`                | middleware       | the same, as interceptors                                                             |
+| `sessions/http`                    | binding          | a signed cookie, whose security properties are ours                                   |
+| `authentication/signin/grpc`       | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service` |
+| `identity/grpc`                    | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`     |
+| `operations/http`                  | resource surface | poll, list, cancel, subscribe — over `Operation`                                      |
 <!-- /readmegen:transports -->
 
 The middleware rows carry nothing domain-shaped: they read a header or a claim

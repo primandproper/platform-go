@@ -136,12 +136,13 @@ var roster = map[string]entry{
 	"webhooks":      {tier: domain},
 	"workqueue":     {tier: domain},
 
-	// The six packages that straddle: a store nested inside a primitive, or a
-	// primitive nested inside a domain. Each overrides the answer its parent
-	// gave, and the README's "Primitives and Domains" section says why each one
-	// splits where it does.
+	// The packages that straddle: a store nested inside a primitive, a primitive
+	// nested inside a domain, or a domain flow nested under the engines it
+	// orchestrates. Each overrides the answer its parent gave, and the README's
+	// "Primitives and Domains" section says why each one splits where it does.
 	"authentication/oauth2server/database": {tier: domain, why: "the client and token tables, under a protocol implementation that is a primitive"},
 	"authentication/passwordreset":         {tier: domain, why: "a table of reset tokens, under engines that hash and issue"},
+	"authentication/signin":                {tier: domain, why: "the order the engines and the directory are used in, owning no table of its own"},
 	"authentication/webauthn/database":     {tier: domain, why: "the ceremony table, under a protocol engine that is a primitive"},
 	"authorization/database":               {tier: domain, why: "the roles and permissions tables, under a policy interface that is a primitive"},
 	"cryptography/shredding":               {tier: domain, why: "the per-subject key table, under primitives that encrypt and sign"},

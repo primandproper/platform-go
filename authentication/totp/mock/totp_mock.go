@@ -87,3 +87,81 @@ func (mock *VerifierMock) VerifyCalls() []struct {
 	mock.lockVerify.RUnlock()
 	return calls
 }
+
+// Ensure, that GeneratorMock does implement totp.Generator.
+// If this is not the case, regenerate this file with moq.
+var _ totp.Generator = &GeneratorMock{}
+
+// GeneratorMock is a mock implementation of totp.Generator.
+//
+//	func TestSomethingThatUsesGenerator(t *testing.T) {
+//
+//		// make and configure a mocked totp.Generator
+//		mockedGenerator := &GeneratorMock{
+//			GenerateFunc: func(ctx context.Context, issuer string, accountName string) (*totp.Enrollment, error) {
+//				panic("mock out the Generate method")
+//			},
+//		}
+//
+//		// use mockedGenerator in code that requires totp.Generator
+//		// and then make assertions.
+//
+//	}
+type GeneratorMock struct {
+	// GenerateFunc mocks the Generate method.
+	GenerateFunc func(ctx context.Context, issuer string, accountName string) (*totp.Enrollment, error)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// Generate holds details about calls to the Generate method.
+		Generate []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Issuer is the issuer argument value.
+			Issuer string
+			// AccountName is the accountName argument value.
+			AccountName string
+		}
+	}
+	lockGenerate sync.RWMutex
+}
+
+// Generate calls GenerateFunc.
+func (mock *GeneratorMock) Generate(ctx context.Context, issuer string, accountName string) (*totp.Enrollment, error) {
+	if mock.GenerateFunc == nil {
+		panic("GeneratorMock.GenerateFunc: method is nil but Generator.Generate was just called")
+	}
+	callInfo := struct {
+		Ctx         context.Context
+		Issuer      string
+		AccountName string
+	}{
+		Ctx:         ctx,
+		Issuer:      issuer,
+		AccountName: accountName,
+	}
+	mock.lockGenerate.Lock()
+	mock.calls.Generate = append(mock.calls.Generate, callInfo)
+	mock.lockGenerate.Unlock()
+	return mock.GenerateFunc(ctx, issuer, accountName)
+}
+
+// GenerateCalls gets all the calls that were made to Generate.
+// Check the length with:
+//
+//	len(mockedGenerator.GenerateCalls())
+func (mock *GeneratorMock) GenerateCalls() []struct {
+	Ctx         context.Context
+	Issuer      string
+	AccountName string
+} {
+	var calls []struct {
+		Ctx         context.Context
+		Issuer      string
+		AccountName string
+	}
+	mock.lockGenerate.RLock()
+	calls = mock.calls.Generate
+	mock.lockGenerate.RUnlock()
+	return calls
+}
