@@ -24,6 +24,12 @@ import (
 // the response carries the redacted invitation, and the token reaches only the
 // address it was minted for.
 //
+// The account has to be one the caller may act on, checked before the token is
+// minted. identity.invitations.send is a grant on the method, so without this a
+// holder could invite anybody — themselves included — into every account in the
+// directory, which is the roster write the fragment's other permissions are
+// careful about wearing an invitation's clothes.
+//
 // The expiry is the request's when it names one and the configured lifetime
 // when it does not. A transport cannot decline to pick, because an invitation
 // with no expiry is a link that works forever. A named expiry is held to the
@@ -42,6 +48,10 @@ func (s *Server) Invite(
 	defer func() { done(err) }()
 
 	op.Set(accountIDKey, request.GetAccountId())
+
+	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+		return nil, err
+	}
 
 	token, err := s.mintToken(ctx)
 	if err != nil {
@@ -153,13 +163,15 @@ func (s *Server) RejectInvitation(
 // CancelInvitation withdraws an invitation on the sender's behalf.
 //
 // No token, because the sender never had one: they are looking at what they
-// sent, addressed by id. Nothing here checks that this caller is that sender.
-// The permission the fragment asks for, PermissionInviteMembers, is a grant on
-// the method and not on the row, so a holder of it may cancel any pending
-// invitation in the directory, and Invitation.FromUser is the field a consumer
-// who wants the narrower rule compares — though the enforcer this module ships
-// hands its interceptor no row to compare it against, so today that check is
-// the consumer's own interceptor's to make, ahead of this handler.
+// sent, addressed by id.
+//
+// Who that may be is [TargetAuthorizer]'s question, asked before the write. By
+// default it is the user Invitation.FromUser names, or anybody holding a live
+// membership in the account the invitation is into — the sender explicitly,
+// because they may have left that account since, and an invitation nobody can
+// withdraw is worse than one its sender can. An invitation the caller may not
+// act on answers codes.PermissionDenied whether or not it exists, so the id
+// space is not enumerable through this method.
 //
 // An invitation that has already been answered reads as absent: the status write
 // matches only a pending row, which is what makes a cancellation that raced an
@@ -177,6 +189,10 @@ func (s *Server) CancelInvitation(
 
 	op.Set(invitationIDKey, request.GetInvitationId())
 
+	if err = s.authorizeInvitation(ctx, op, principal, request.GetInvitationId()); err != nil {
+		return nil, err
+	}
+
 	invitation, err := s.svc.CancelInvitation(
 		ctx, scopeOf(principal), request.GetInvitationId(), request.GetStatusNote())
 	if err != nil {
@@ -187,6 +203,15 @@ func (s *Server) CancelInvitation(
 }
 
 // GetInvitation reads one invitation, redacted.
+//
+// It is the one id-addressed method here with no row check, and that is a
+// decision rather than an omission: the reader this method exists for includes
+// the recipient, who is neither the sender nor a member of the account they have
+// been invited to, so the rule the rest of this file applies would refuse
+// exactly the person the invitation was for. What stands in its place is the
+// redaction — the token never reaches this response — and
+// PermissionReadInvitations, which is a permission of its own precisely so that
+// a consumer can grant it narrowly.
 func (s *Server) GetInvitation(
 	ctx context.Context,
 	request *identitypb.GetInvitationRequest,

@@ -44,6 +44,12 @@ func (s *Server) SetDefaultAccount(
 // It replaces rather than merges, as the store's write does: a caller adding a
 // role reads the membership and sends the union, which is visible in their code,
 // where a merging setter makes revocation impossible through the same call.
+//
+// The account has to be one the caller may act on, and that is the whole of the
+// target. The user on the request is named only as a member of that account —
+// the store's write refuses a pair with no live membership between them — so a
+// second check on the user would be asking about a row the first already
+// covered.
 func (s *Server) SetMembershipRoles(
 	ctx context.Context,
 	request *identitypb.SetMembershipRolesRequest,
@@ -57,6 +63,10 @@ func (s *Server) SetMembershipRoles(
 	defer func() { done(err) }()
 
 	op.Set(accountIDKey, request.GetAccountId()).Set(userIDKey, request.GetUserId())
+
+	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+		return nil, err
+	}
 
 	membership, err := s.svc.SetMembershipRoles(
 		ctx, scopeOf(principal), request.GetUserId(), request.GetAccountId(), request.GetRoles())
@@ -73,6 +83,9 @@ func (s *Server) SetMembershipRoles(
 // Removing the account's owner is refused with ErrLastAccountOwner, which
 // reaches a client as codes.FailedPrecondition: an ownerless account fails every
 // permission check that resolves through its owner. Transfer it first.
+//
+// The account has to be one the caller may act on, and as with SetMembershipRoles
+// that is the whole of the target: the user is named only as a member of it.
 func (s *Server) RemoveMembership(
 	ctx context.Context,
 	request *identitypb.RemoveMembershipRequest,
@@ -86,6 +99,10 @@ func (s *Server) RemoveMembership(
 
 	op.Set(accountIDKey, request.GetAccountId()).Set(userIDKey, request.GetUserId())
 
+	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+		return nil, err
+	}
+
 	membership, err := s.svc.RemoveMembership(
 		ctx, scopeOf(principal), request.GetUserId(), request.GetAccountId())
 	if err != nil {
@@ -97,6 +114,10 @@ func (s *Server) RemoveMembership(
 }
 
 // GetMembership reads one user's standing in one account.
+//
+// The account has to be one the caller may act on, checked before the read. A
+// caller who is in it may ask about anybody's standing there, which is what a
+// roster screen is; a caller who is not is refused whoever they asked about.
 func (s *Server) GetMembership(
 	ctx context.Context,
 	request *identitypb.GetMembershipRequest,
@@ -109,6 +130,10 @@ func (s *Server) GetMembership(
 	defer func() { done(err) }()
 
 	op.Set(accountIDKey, request.GetAccountId()).Set(userIDKey, request.GetUserId())
+
+	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+		return nil, err
+	}
 
 	membership, err := s.store.GetMembership(
 		ctx, s.client.Reader(), scopeOf(principal), request.GetUserId(), request.GetAccountId())
@@ -125,6 +150,11 @@ func (s *Server) GetMembership(
 // Unpaged, as the store's read is: a user belongs to a handful of accounts, and
 // paging a handful means a caller who forgets to loop authorizes against some of
 // somebody's memberships as if the rest did not exist.
+//
+// The user has to be one the caller may act on: by default themselves, or
+// anybody they share a live account with. As with ListAccountsForUser the answer
+// is not narrowed to the shared accounts — the rule decides whether the read
+// happens.
 func (s *Server) ListMembershipsForUser(
 	ctx context.Context,
 	request *identitypb.ListMembershipsForUserRequest,
@@ -139,6 +169,10 @@ func (s *Server) ListMembershipsForUser(
 
 	op.Set(userIDKey, request.GetUserId())
 
+	if err = s.authorizeUser(ctx, op, principal, request.GetUserId()); err != nil {
+		return nil, err
+	}
+
 	memberships, err := s.store.ListMembershipsForUser(
 		ctx, s.client.Reader(), scopeOf(principal), request.GetUserId())
 	if err != nil {
@@ -150,6 +184,9 @@ func (s *Server) ListMembershipsForUser(
 
 // ListAccountMembers pages an account's roster, each membership joined to the
 // user who holds it.
+//
+// The account has to be one the caller may act on, checked after the filter is
+// found well formed and before the read.
 func (s *Server) ListAccountMembers(
 	ctx context.Context,
 	request *identitypb.ListAccountMembersRequest,
@@ -166,6 +203,10 @@ func (s *Server) ListAccountMembers(
 
 	filter, err := s.filterFromProto(op, request.GetFilter())
 	if err != nil {
+		return nil, err
+	}
+
+	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
 		return nil, err
 	}
 

@@ -118,3 +118,25 @@ func WithTokenMinter(mint TokenMinter) Option {
 func defaultTokenMinter(ctx context.Context) (string, error) {
 	return random.GenerateBase64EncodedString(ctx, defaultInvitationTokenBytes)
 }
+
+// WithTargetAuthorizer replaces the rule that decides whether the caller may act
+// on the row a request named. A nil authorizer is ignored, leaving the default
+// [MembershipAuthorizer].
+//
+// It is an option rather than a positional argument because the default is a
+// real answer rather than a placeholder: a consumer who says nothing gets a
+// directory whose request-named RPCs are closed to accounts the caller is not a
+// member of, which is what the per-method permission fragment on its own could
+// not give them. The consumers who need something else — an operator console, a
+// support role that reads every account, a policy engine of their own — are the
+// ones who name it.
+//
+// See [TargetAuthorizer] for what an implementation owes and
+// [MembershipAuthorizer] for the three rules the default applies.
+func WithTargetAuthorizer(authorizer TargetAuthorizer) Option {
+	return func(s *Server) {
+		if authorizer != nil {
+			s.targets = authorizer
+		}
+	}
+}

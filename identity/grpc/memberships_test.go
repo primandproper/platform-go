@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/identity"
+	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
 	"github.com/shoenig/test"
@@ -81,7 +82,9 @@ func TestSetMembershipRolesReplacesRatherThanMerges(T *testing.T) {
 	member := h.seedUser(T, testScope, "member")
 	h.seedMembership(T, testScope, member.ID, account.Account.ID, "billing", "support")
 
-	response, err := h.client.SetMembershipRoles(h.ctx(), &identitypb.SetMembershipRolesRequest{
+	ctx := h.as(&testPrincipal{userID: account.User.ID, scope: testScope})
+
+	response, err := h.client.SetMembershipRoles(ctx, &identitypb.SetMembershipRolesRequest{
 		AccountId: account.Account.ID,
 		UserId:    member.ID,
 		Roles:     []string{"support"},
@@ -91,7 +94,7 @@ func TestSetMembershipRolesReplacesRatherThanMerges(T *testing.T) {
 	test.Eq(T, []string{"support"}, response.GetMembership().GetRoles(),
 		test.Sprint("the roles were merged rather than replaced, so nothing here can revoke one"))
 
-	read, err := h.client.GetMembership(h.ctx(), &identitypb.GetMembershipRequest{
+	read, err := h.client.GetMembership(ctx, &identitypb.GetMembershipRequest{
 		UserId:    member.ID,
 		AccountId: account.Account.ID,
 	})
@@ -108,7 +111,9 @@ func TestRemoveMembershipEndsIt(T *testing.T) {
 	member := h.seedUser(T, testScope, "member")
 	h.seedMembership(T, testScope, member.ID, account.Account.ID, "support")
 
-	response, err := h.client.RemoveMembership(h.ctx(), &identitypb.RemoveMembershipRequest{
+	ctx := h.as(&testPrincipal{userID: account.User.ID, scope: testScope})
+
+	response, err := h.client.RemoveMembership(ctx, &identitypb.RemoveMembershipRequest{
 		AccountId: account.Account.ID,
 		UserId:    member.ID,
 	})
@@ -121,7 +126,7 @@ func TestRemoveMembershipEndsIt(T *testing.T) {
 	test.EqOp(T, member.ID, response.GetMembership().GetBelongsToUser())
 	test.EqOp(T, account.Account.ID, response.GetMembership().GetBelongsToAccount())
 
-	roster, err := h.client.ListAccountMembers(h.ctx(),
+	roster, err := h.client.ListAccountMembers(ctx,
 		&identitypb.ListAccountMembersRequest{AccountId: account.Account.ID})
 	must.NoError(T, err)
 
@@ -141,10 +146,12 @@ func TestRemoveMembershipRefusesTheLastOwner(T *testing.T) {
 
 	account := h.seedAccount(T, testScope, "owner")
 
-	_, err := h.client.RemoveMembership(h.ctx(), &identitypb.RemoveMembershipRequest{
-		AccountId: account.Account.ID,
-		UserId:    account.User.ID,
-	})
+	_, err := h.client.RemoveMembership(
+		h.as(&testPrincipal{userID: account.User.ID, scope: testScope}),
+		&identitypb.RemoveMembershipRequest{
+			AccountId: account.Account.ID,
+			UserId:    account.User.ID,
+		})
 	must.Error(T, err)
 	test.EqOp(T, codes.FailedPrecondition, status.Code(err))
 	test.True(T, errors.Is(err, identity.ErrLastAccountOwner))
@@ -157,27 +164,52 @@ func TestGetMembershipSurfacesAnAbsenceAsNotFound(T *testing.T) {
 
 	account := h.seedAccount(T, testScope, "owner")
 
-	_, err := h.client.GetMembership(h.ctx(), &identitypb.GetMembershipRequest{
-		UserId:    "nobody",
-		AccountId: account.Account.ID,
-	})
+	// The caller is a member of the account, so the row check passes and the
+	// store's own answer is what reaches the client. A caller who was not would
+	// be refused before the read, which is the point of the other suite.
+	_, err := h.client.GetMembership(
+		h.as(&testPrincipal{userID: account.User.ID, scope: testScope}),
+		&identitypb.GetMembershipRequest{
+			UserId:    "nobody",
+			AccountId: account.Account.ID,
+		})
 	must.Error(T, err)
 	test.EqOp(T, codes.NotFound, status.Code(err))
 	test.True(T, errors.Is(err, identity.ErrMembershipNotFound))
 }
 
 // TestListMembershipsForUserIsScopedToTheCallersDirectory: the user id on the
-// request is not a way out of the caller's directory, because the scope the read
-// filters on never came from the request.
+// request is not a way out of the caller's directory, and it is now closed
+// twice.
+//
+// The row check refuses a user the caller shares no live account with, which a
+// neighbor's user necessarily is. Behind it the scope the read filters on still
+// never came from the request, which the second half asks with the check
+// disabled — the property survives a consumer replacing the seam, and that is
+// the half worth pinning.
 func TestListMembershipsForUserIsScopedToTheCallersDirectory(T *testing.T) {
 	T.Parallel()
 
 	h := newHarness(T)
 
+	mine := h.seedAccount(T, testScope, "mine")
 	theirs := h.seedAccount(T, otherScope, "theirs")
 
-	held, err := h.client.ListMembershipsForUser(h.ctx(),
+	_, err := h.client.ListMembershipsForUser(
+		h.as(&testPrincipal{userID: mine.User.ID, scope: testScope}),
 		&identitypb.ListMembershipsForUserRequest{UserId: theirs.User.ID})
+	must.Error(T, err)
+	test.EqOp(T, codes.PermissionDenied, status.Code(err))
+	test.True(T, errors.Is(err, identitygrpc.ErrTargetNotPermitted))
+
+	open := newHarness(T, identitygrpc.WithTargetAuthorizer(permitEverything{}))
+
+	openMine := open.seedAccount(T, testScope, "mine")
+	openTheirs := open.seedAccount(T, otherScope, "theirs")
+
+	held, err := open.client.ListMembershipsForUser(
+		open.as(&testPrincipal{userID: openMine.User.ID, scope: testScope}),
+		&identitypb.ListMembershipsForUserRequest{UserId: openTheirs.User.ID})
 	must.NoError(T, err)
 
 	test.SliceEmpty(T, held.GetResults(),
@@ -196,7 +228,8 @@ func TestListAccountMembersJoinsEachMembershipToItsUser(T *testing.T) {
 	member := h.seedUser(T, testScope, "member")
 	h.seedMembership(T, testScope, member.ID, account.Account.ID, "support")
 
-	roster, err := h.client.ListAccountMembers(h.ctx(),
+	roster, err := h.client.ListAccountMembers(
+		h.as(&testPrincipal{userID: account.User.ID, scope: testScope}),
 		&identitypb.ListAccountMembersRequest{AccountId: account.Account.ID})
 	must.NoError(T, err)
 	must.SliceLen(T, 2, roster.GetResults())
