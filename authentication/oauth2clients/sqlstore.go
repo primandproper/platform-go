@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/platform-go/v14/database/dialect"
 	platformerrors "github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/filtering"
+	"github.com/primandproper/platform-go/v14/internal/sqlguard"
 	"github.com/primandproper/platform-go/v14/observability"
 	"github.com/primandproper/platform-go/v14/observability/logging"
 	"github.com/primandproper/platform-go/v14/observability/tracing"
@@ -53,6 +54,20 @@ var _ Store = (*SQLStore)(nil)
 type SQLStore struct {
 	q    oauth2clientsdb.Querier
 	o11y observability.Observer
+
+	// The two things a write here means when it affects no row. See
+	// internal/sqlguard.
+	//
+	// There are two because the answer is two different facts. An UPDATE or a
+	// DELETE that matched nothing is the row not being there, which is what
+	// missing describes. An INSERT that wrote nothing is the client_id already
+	// being in use — the statement skips a conflicting row rather than raising,
+	// so zero is how a duplicate arrives without parsing a dialect's SQLSTATE —
+	// and that is what taken describes. One guard carrying both would have to
+	// pick one sentinel and one line to log, which is the drift internal/sqlguard
+	// exists to prevent rather than a saving.
+	missing sqlguard.Guard
+	taken   sqlguard.Guard
 
 	// What the options wrote, kept only until the observer is built from it.
 	// Read s.o11y.Logger() for the logger this store actually uses; this one may
@@ -123,6 +138,27 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 	s.q = q
 	s.o11y = observability.NewObserver(storeName, s.logger, s.tracerProvider)
 
+	// Neither guard carries a MissCounter, which is the same statement this
+	// store's constructor makes about instruments generally: what is worth
+	// counting about a registry is the operations over it, and Service is where
+	// those are counted. sqlguard reports a miss on the span and in the log
+	// either way.
+	s.missing = sqlguard.Guard{
+		NotFound:  ErrClientNotFound,
+		Namespace: serviceName,
+		IDKey:     clientKey,
+		Message:   "oauth2 client was gone before the write could reach it",
+		Reason:    "oauth2 client %q is not there to write to",
+	}
+
+	s.taken = sqlguard.Guard{
+		NotFound:  ErrClientIDTaken,
+		Namespace: serviceName,
+		IDKey:     clientKey,
+		Message:   "minted oauth2 client identifier was already registered",
+		Reason:    "oauth2 client %q was minted with an identifier already in use",
+	}
+
 	return s, nil
 }
 
@@ -180,12 +216,11 @@ func (s *SQLStore) CreateClient(
 		RedirectUris:  encodeStrings(client.RedirectURIs),
 		Scopes:        encodeStrings(client.Scopes),
 	})
-	// The insert skips a row whose client_id is already there rather than
-	// raising, so zero rows is how a duplicate is reported without parsing a
-	// dialect's SQLSTATE. It is not a caller error and there is nothing for them
-	// to correct: the identifier was minted here from crypto/rand.
-	if writeErr := guardCount(count, err, ErrClientIDTaken); writeErr != nil {
-		return op.Error(writeErr, "creating oauth2 client %q", client.ID)
+	// A duplicate client_id is not a caller error and there is nothing for them
+	// to correct: the identifier was minted here from crypto/rand. See the taken
+	// guard for why zero rows is how it arrives.
+	if writeErr := s.taken.Count(ctx, op, count, err, client.ID, "create", "creating oauth2 client"); writeErr != nil {
+		return writeErr
 	}
 
 	// The creation time is the database's, so the value the caller handed over
@@ -245,7 +280,7 @@ func (s *SQLStore) UpdateClient(
 		Scopes:       encodeStrings(input.Scopes),
 	})
 
-	return op.Error(guardCount(count, err, ErrClientNotFound), "updating oauth2 client %q", id)
+	return s.missing.Count(ctx, op, count, err, id, "update", "updating oauth2 client")
 }
 
 // ArchiveClient withdraws one registration. See [Store.ArchiveClient].
@@ -276,7 +311,7 @@ func (s *SQLStore) ArchiveClient(
 	count, err := s.q.ArchiveRegisteredClient(ctx, tx,
 		oauth2clientsdb.ArchiveRegisteredClientParams{ID: id, Scope: scope})
 
-	return op.Error(guardCount(count, err, ErrClientNotFound), "archiving oauth2 client %q", id)
+	return s.missing.Count(ctx, op, count, err, id, "archive", "archiving oauth2 client")
 }
 
 // GetClient reads one live registration by row id. See [Store.GetClient].
@@ -536,18 +571,4 @@ func notFound(err, sentinel error) error {
 	}
 
 	return err
-}
-
-// guardCount turns a write's affected-row count into the answer its caller acts
-// on: a write that matched nothing is the row not being there.
-func guardCount(count int64, err, missing error) error {
-	if err != nil {
-		return err
-	}
-
-	if count == 0 {
-		return missing
-	}
-
-	return nil
 }

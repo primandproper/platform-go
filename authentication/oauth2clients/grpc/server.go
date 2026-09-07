@@ -59,6 +59,14 @@ var (
 	// there was nobody there, which is what an unauthenticated request looks
 	// like once a consumer's interceptor has run.
 	ErrNoPrincipal = platformerrors.New("no principal on the oauth2 client registry's request context")
+
+	// ErrNoPrincipalUser is a request whose caller names no person.
+	//
+	// It is separate from ErrNoPrincipal because it is a different failure: the
+	// extractor returned somebody, and that somebody has no identifier. Only the
+	// self-service half refuses it, and [Server.owner] is where — see there for
+	// why an empty owner is a value on this surface rather than a missing one.
+	ErrNoPrincipalUser = platformerrors.New("the caller of the oauth2 client registry names no user")
 )
 
 var _ oauth2clientspb.OAuth2ClientsServiceServer = (*Server)(nil)

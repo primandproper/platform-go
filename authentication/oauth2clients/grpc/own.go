@@ -21,7 +21,12 @@ import (
 // and not in [Permissions], and why they are separate methods rather than a
 // field on the administered ones. See the .proto for the long form.
 //
-// The three that name a row read it first and compare its owner. That check is
+// All five resolve that owner through [Server.owner], which refuses a principal
+// naming nobody: an empty owner is the administered arrangement's value, not an
+// absent one, and a self-service half that accepted it would be the
+// administered half without the permission in front of it.
+//
+// The three that name a row then read it and compare its owner. That check is
 // here rather than in the store because it is a transport decision — the store
 // is told which owner to page by, and these methods are what decides that the
 // owner is the caller.
@@ -46,7 +51,12 @@ func (s *Server) CreateOwnOAuth2Client(
 		return nil, err
 	}
 
-	issued, err := s.svc.CreateClient(ctx, req.scope, req.principal.UserID(), input)
+	userID, err := s.owner(req, "creating an oauth2 client for the caller")
+	if err != nil {
+		return nil, err
+	}
+
+	issued, err := s.svc.CreateClient(ctx, req.scope, userID, input)
 	if err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "creating an oauth2 client")
@@ -97,7 +107,12 @@ func (s *Server) ListOwnOAuth2Clients(
 		return nil, err
 	}
 
-	page, err := s.store.ListClientsForOwner(ctx, s.client.Reader(), req.scope, req.principal.UserID(), filter)
+	userID, err := s.owner(req, "listing the caller's oauth2 clients")
+	if err != nil {
+		return nil, err
+	}
+
+	page, err := s.store.ListClientsForOwner(ctx, s.client.Reader(), req.scope, userID, filter)
 	if err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "listing a user's oauth2 clients")
@@ -195,17 +210,57 @@ func (s *Server) ArchiveOwnOAuth2Client(
 func (s *Server) own(ctx context.Context, req *request, id string) (*oauth2clients.Client, error) {
 	req.op.Set(clientKey, id)
 
+	userID, err := s.owner(req, "reading an oauth2 client the caller owns")
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := s.store.GetClient(ctx, s.client.Reader(), req.scope, id)
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "reading oauth2 client %q", id)
 	}
 
-	if client.BelongsToUser != req.principal.UserID() {
+	if client.BelongsToUser != userID {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(
 			platformerrors.Wrapf(oauth2clients.ErrOwnerMismatch, "oauth2 client %q", id),
 			req.op.Logger(), req.op.Span(), codes.PermissionDenied, "reading oauth2 client %q", id)
 	}
 
 	return client, nil
+}
+
+// owner is the identifier the self-service half acts as, and the refusal that
+// keeps "the registrations the caller owns" from meaning "the ones nobody owns".
+//
+// All five read it rather than the principal's UserID directly, because an empty
+// identifier is not a caller who happens to own nothing. It is a value on this
+// surface, and it names the administered arrangement: the administered
+// CreateOAuth2Client writes it into belongs_to_user deliberately, and
+// [oauth2clients.Client.Administered] exists so that nothing reads it as a
+// missing owner. The store already refuses one for the same reason — see
+// ListClientsForOwner and oauth2clients.ErrEmptyUserID — and this is the rest of
+// that refusal, on the half where an empty owner would be widening rather than
+// narrowing.
+//
+// What it prevents is the whole self-service half collapsing onto the
+// administered rows for a principal that names nobody: a create would mint a
+// registration [oauth2clients.Client.Admits] lets authorize anybody in the
+// registry, through an RPC declared Public in [SelfServiceMethods] and so behind
+// no PermissionCreateClients; a list would page every administered credential in
+// the registry; and [Server.own]'s comparison would match each of them, which is
+// the opposite of what that method's documentation promises.
+//
+// It answers Unauthenticated rather than InvalidArgument because there is
+// nothing in the request to correct. The caller is whoever the consumer's
+// interceptor said they were, and that answer named no person — which is a
+// credential this surface cannot act on, not an argument somebody mistyped.
+func (s *Server) owner(req *request, description string) (string, error) {
+	userID := req.principal.UserID()
+	if userID != "" {
+		return userID, nil
+	}
+
+	return "", grpcerrors.PrepareAndLogGRPCStatus(ErrNoPrincipalUser,
+		req.op.Logger(), req.op.Span(), codes.Unauthenticated, "%s", description)
 }
