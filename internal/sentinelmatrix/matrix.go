@@ -267,13 +267,19 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNoRedirectURIs":     {Err: oauth2clients.ErrNoRedirectURIs, Is: Mapped},
 		"ErrScopeMismatch":      {Err: oauth2clients.ErrScopeMismatch, Is: Mapped},
 
-		// The three refusals on authority, all PermissionDenied. The caller is
-		// who they say they are; the registration is not theirs to act on. Two
-		// of the three are also ClientSafeSentinels, because they are the two a
-		// person meets in a browser and their remedies differ.
+		// The two refusals on authority a person meets in a browser, both
+		// PermissionDenied. The caller is who they say they are; the
+		// registration is not theirs to authorize through. Both are also
+		// ClientSafeSentinels, because their remedies differ and the code cannot
+		// say which applies.
 		"ErrClientOwnerMismatch": {Err: oauth2clients.ErrClientOwnerMismatch, Is: Mapped},
 		"ErrClientScopeMismatch": {Err: oauth2clients.ErrClientScopeMismatch, Is: Mapped},
-		"ErrOwnerMismatch":       {Err: oauth2clients.ErrOwnerMismatch, Is: Mapped},
+
+		// The self-service half's refusal, mapped onto ErrClientNotFound's own
+		// answer rather than a code beside it: a caller who could tell "not
+		// yours" from "not there" could enumerate the registry. It is mapped and
+		// not unhandled — the collapse is a decision, not an omission.
+		"ErrOwnerMismatch": {Err: oauth2clients.ErrOwnerMismatch, Is: Mapped},
 
 		// The wiring failures. Each wraps a platform sentinel that errors/http
 		// and errors/grpc already answer, so this package's mappers say nothing

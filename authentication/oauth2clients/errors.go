@@ -102,6 +102,13 @@ var (
 	// It is what makes the self-service half safe without a permission: the
 	// grant is "you may manage your own", and this is the check that the row in
 	// front of it is one of theirs.
+	//
+	// It maps to the same status and the same words as [ErrClientNotFound],
+	// deliberately, and exists as a separate sentinel for the log rather than
+	// for the wire: a caller who cannot tell "not yours" from "not there" cannot
+	// walk the registry's identifiers, and an operator reading this process's
+	// logs can still tell which of the two happened. See the mappers, and
+	// oauth2clients/grpc's Server.own.
 	ErrOwnerMismatch = platformerrors.New("oauth2 client belongs to somebody else")
 )
 

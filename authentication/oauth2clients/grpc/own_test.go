@@ -2,12 +2,14 @@ package grpc_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	oauth2clientsgrpc "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	"github.com/primandproper/platform-go/v14/filtering"
+	"github.com/primandproper/platform-go/v14/identifiers"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -149,8 +151,11 @@ func TestSelfServiceReachesOnlyTheCallersRows(t *testing.T) {
 			res, err := h.server.GetOwnOAuth2Client(h.ctx(t, testOwner),
 				&oauth2clientspb.GetOwnOAuth2ClientRequest{Oauth2ClientId: theirs.ID})
 			must.Error(t, err)
+
+			// The sentinel is in the chain, which is what this process's own
+			// logs read. What the caller gets is NotFound — see below.
 			test.ErrorIs(t, err, oauth2clients.ErrOwnerMismatch)
-			test.EqOp(t, codes.PermissionDenied, status.Code(err))
+			test.EqOp(t, codes.NotFound, status.Code(err))
 			test.Nil(t, res)
 		})
 	}
@@ -172,6 +177,49 @@ func TestSelfServiceReachesOnlyTheCallersRows(t *testing.T) {
 		must.NoError(t, err)
 		test.EqOp(t, created.GetIssued().GetClient().GetId(), read.GetResult().GetId())
 	})
+}
+
+// TestSelfServiceDoesNotDiscloseWhichRefusalItMade is the anti-enumeration
+// property, asserted on the wire rather than in the wording.
+//
+// A caller who can tell "somebody else's" from "does not exist" can walk the
+// registry's identifiers and learn which ones exist — and an identifier here is
+// an xid, which is a timestamp, a machine, a pid and a counter, so walking them
+// is arithmetic. Matching the two messages does not close that; the status code
+// discloses it on its own. So both arms are asserted to carry the same code and
+// the same words, differing only in the identifier the caller themself sent —
+// which is the strongest form the guarantee can take, and the form a matching
+// message alone does not deliver.
+func TestSelfServiceDoesNotDiscloseWhichRefusalItMade(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	theirs := h.seed(t, otherOwner)
+
+	notMine, err := h.server.GetOwnOAuth2Client(h.ctx(t, testOwner),
+		&oauth2clientspb.GetOwnOAuth2ClientRequest{Oauth2ClientId: theirs.ID})
+	must.Error(t, err)
+	test.Nil(t, notMine)
+
+	mismatch := status.Convert(err)
+
+	// A row identifier that is well-formed and belongs to nobody, which is what
+	// the caller walking identifiers is holding.
+	missing := identifiers.New()
+
+	notThere, err := h.server.GetOwnOAuth2Client(h.ctx(t, testOwner),
+		&oauth2clientspb.GetOwnOAuth2ClientRequest{Oauth2ClientId: missing})
+	must.Error(t, err)
+	test.Nil(t, notThere)
+
+	absent := status.Convert(err)
+
+	test.EqOp(t, absent.Code(), mismatch.Code())
+
+	// Identical up to the identifier the caller themself sent, which is the
+	// strongest form the property can take: the answer is a function of what was
+	// asked, and carries nothing about what was found.
+	test.EqOp(t, strings.ReplaceAll(absent.Message(), missing, theirs.ID), mismatch.Message())
 }
 
 // TestRefusalDoesNotMatchAnUnrelatedSentinel keeps the suite honest about the

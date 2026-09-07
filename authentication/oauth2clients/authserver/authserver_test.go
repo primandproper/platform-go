@@ -175,14 +175,9 @@ func TestGuardedResolver(T *testing.T) {
 		t.Parallel()
 
 		guard, err := authserver.NewGuardedResolver(
-			resolverFunc(func(_ context.Context, _ *http.Request) (*oauth2server.Subject, error) {
-				return &oauth2server.Subject{ID: userA}, nil
-			}),
+			resolving(userA, tenantA),
 			&fakeRegistry{client: registration(tenantA, userA)},
 			newDBClient(t),
-			authserver.WithResolverScopeResolver(func(_ context.Context, _ *http.Request) (tenancy.Scope, error) {
-				return tenantA, nil
-			}),
 		)
 		must.NoError(t, err)
 
@@ -199,14 +194,9 @@ func TestGuardedResolver(T *testing.T) {
 		// first-party application holding a session for somebody in tenant B,
 		// presenting a client registered to tenant A.
 		guard, err := authserver.NewGuardedResolver(
-			resolverFunc(func(_ context.Context, _ *http.Request) (*oauth2server.Subject, error) {
-				return &oauth2server.Subject{ID: userA}, nil
-			}),
+			resolving(userB, tenantB),
 			&fakeRegistry{client: registration(tenantA, "")},
 			newDBClient(t),
-			authserver.WithResolverScopeResolver(func(_ context.Context, _ *http.Request) (tenancy.Scope, error) {
-				return tenantB, nil
-			}),
 		)
 		must.NoError(t, err)
 
@@ -219,18 +209,41 @@ func TestGuardedResolver(T *testing.T) {
 		test.Nil(t, subject)
 	})
 
+	T.Run("the registry is the resolver's, not the request's", func(t *testing.T) {
+		t.Parallel()
+
+		// The reason ScopedSubjectResolver reports a scope rather than this
+		// package reading one off the request. The registration is administered
+		// in tenant A, so it admits *any* subject in tenant A — and a scope
+		// taken from the request would be a scope the caller chooses. Here the
+		// session says tenant B, which is the only fact about the subject that
+		// was ever proven, and the two do not match.
+		guard, err := authserver.NewGuardedResolver(
+			resolving(userB, tenantB),
+			&fakeRegistry{client: registration(tenantA, "")},
+			newDBClient(t),
+		)
+		must.NoError(t, err)
+
+		// The request is free to name tenant A in any way a deployment's own
+		// ScopeResolver might have read — a host, a path, a header. None of it
+		// reaches the check, because there is nowhere for it to enter.
+		req := authorizeRequest(t, "cid-1")
+		req.Host = "tenant-a.example.test"
+		req.Header.Set("X-Tenant", tenantA.String())
+
+		subject, err := guard.ResolveSubject(t.Context(), req)
+		must.NoError(t, err)
+		test.Nil(t, subject)
+	})
+
 	T.Run("declines when the registration belongs to somebody else", func(t *testing.T) {
 		t.Parallel()
 
 		guard, err := authserver.NewGuardedResolver(
-			resolverFunc(func(_ context.Context, _ *http.Request) (*oauth2server.Subject, error) {
-				return &oauth2server.Subject{ID: userB}, nil
-			}),
+			resolving(userB, tenantA),
 			&fakeRegistry{client: registration(tenantA, userA)},
 			newDBClient(t),
-			authserver.WithResolverScopeResolver(func(_ context.Context, _ *http.Request) (tenancy.Scope, error) {
-				return tenantA, nil
-			}),
 		)
 		must.NoError(t, err)
 
@@ -239,14 +252,69 @@ func TestGuardedResolver(T *testing.T) {
 		test.Nil(t, subject)
 	})
 
+	T.Run("refuses a subject whose registry was never decided", func(t *testing.T) {
+		t.Parallel()
+
+		// The zero tenancy.Scope is the absence of a decision, not the global
+		// registry — and the global registry admits anybody, so reading one as
+		// the other would turn a resolver's omission into no check at all.
+		guard, err := authserver.NewGuardedResolver(
+			resolverFunc(func(context.Context, *http.Request) (*oauth2server.Subject, tenancy.Scope, error) {
+				return &oauth2server.Subject{ID: userA}, tenancy.Scope{}, nil
+			}),
+			&fakeRegistry{client: registration(tenantA, "")},
+			newDBClient(t),
+		)
+		must.NoError(t, err)
+
+		_, err = guard.ResolveSubject(t.Context(), authorizeRequest(t, "cid-1"))
+		test.ErrorIs(t, err, authserver.ErrScopelessSubject)
+	})
+
+	T.Run("admits a subject the global registry resolved", func(t *testing.T) {
+		t.Parallel()
+
+		// The other half of the case above: a deployment that means the global
+		// registry says so, and is admitted.
+		guard, err := authserver.NewGuardedResolver(
+			resolving(userA, tenancy.Global()),
+			&fakeRegistry{client: registration(tenancy.Global(), "")},
+			newDBClient(t),
+		)
+		must.NoError(t, err)
+
+		subject, err := guard.ResolveSubject(t.Context(), authorizeRequest(t, "cid-1"))
+		must.NoError(t, err)
+		must.NotNil(t, subject)
+		test.EqOp(t, userA, subject.ID)
+	})
+
+	T.Run("a client this registry never issued is a refusal", func(t *testing.T) {
+		t.Parallel()
+
+		// Unreachable behind a wired authserver.Store, which is the point: it is
+		// reachable only in the deployment that wired the seams and left the
+		// authorization server on another store, where every check here would
+		// otherwise be skipped silently.
+		guard, err := authserver.NewGuardedResolver(
+			resolving(userA, tenantA),
+			&fakeRegistry{err: oauth2clients.ErrClientNotFound},
+			newDBClient(t),
+		)
+		must.NoError(t, err)
+
+		_, err = guard.ResolveSubject(t.Context(), authorizeRequest(t, "cid-1"))
+		test.ErrorIs(t, err, authserver.ErrClientNotRegistered)
+	})
+
 	T.Run("hands back the inner resolver's decline unchanged", func(t *testing.T) {
 		t.Parallel()
 
 		guard, err := authserver.NewGuardedResolver(
-			resolverFunc(func(_ context.Context, _ *http.Request) (*oauth2server.Subject, error) {
-				// The inner resolver declining, which is what this case asserts is
-				// handed back unchanged.
-				return nil, nil
+			resolverFunc(func(context.Context, *http.Request) (*oauth2server.Subject, tenancy.Scope, error) {
+				// The inner resolver declining, which is what this case asserts
+				// is handed back unchanged.
+				return nil, tenancy.Scope{}, nil
 			}),
 			&fakeRegistry{},
 			newDBClient(t),
@@ -264,8 +332,8 @@ func TestGuardedResolver(T *testing.T) {
 		broken := platformerrors.New("the session store is unreachable")
 
 		guard, err := authserver.NewGuardedResolver(
-			resolverFunc(func(_ context.Context, _ *http.Request) (*oauth2server.Subject, error) {
-				return nil, broken
+			resolverFunc(func(context.Context, *http.Request) (*oauth2server.Subject, tenancy.Scope, error) {
+				return nil, tenancy.Scope{}, broken
 			}),
 			&fakeRegistry{},
 			newDBClient(t),
@@ -282,9 +350,7 @@ func TestGuardedResolver(T *testing.T) {
 		broken := platformerrors.New("the registry is unreachable")
 
 		guard, err := authserver.NewGuardedResolver(
-			resolverFunc(func(_ context.Context, _ *http.Request) (*oauth2server.Subject, error) {
-				return &oauth2server.Subject{ID: userA}, nil
-			}),
+			resolving(userA, tenantA),
 			&fakeRegistry{err: broken},
 			newDBClient(t),
 		)
@@ -301,10 +367,11 @@ func TestGuardedResolver(T *testing.T) {
 		_, err := authserver.NewGuardedResolver(nil, &fakeRegistry{}, newDBClient(t))
 		test.Error(t, err)
 
-		_, err = authserver.NewGuardedResolver(
-			resolverFunc(func(_ context.Context, _ *http.Request) (*oauth2server.Subject, error) { return nil, nil }),
-			nil, newDBClient(t))
+		_, err = authserver.NewGuardedResolver(resolving(userA, tenantA), nil, newDBClient(t))
 		test.ErrorIs(t, err, oauth2clients.ErrNilStore)
+
+		_, err = authserver.NewGuardedResolver(resolving(userA, tenantA), &fakeRegistry{}, nil)
+		test.ErrorIs(t, err, oauth2clients.ErrNilDatabaseClient)
 	})
 }
 

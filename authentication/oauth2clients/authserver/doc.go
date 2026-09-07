@@ -10,7 +10,13 @@ authorizes has to be one that registry's row admits.
 	store, _ := authserver.NewStore(base, registry, db)
 	auth, _  := authserver.NewAuthenticator(signIn, registry, db)
 
+	// Only where the deployment has sessions of its own. The inner resolver is
+	// the consumer's, and it reports the registry it authenticated the session
+	// in alongside the subject — see [ScopedSubjectResolver].
+	guard, _ := authserver.NewGuardedResolver(sessions, registry, db)
+
 	srv, _ := oauth2server.NewServer(issuer, store, auth,
+	    oauth2server.WithSubjectResolver(guard),
 	    oauth2server.WithDynamicRegistration(false))
 
 # Why all three, and not just the store
@@ -33,6 +39,32 @@ and short-circuits on a non-nil subject — so a deployment that wires its own
 resolver for already-signed-in users, and relies on the authenticator for the
 check, has a path to an authorization code that never met the check. Wrapping
 the consumer's resolver is what closes it.
+
+Wiring the seams *without* [NewStore] is the third arrangement, and it is the one
+that used to fail silently: the protocol half would resolve its clients from one
+table while the seams looked for them in another, so every lookup here would miss
+and every check would be skipped on every request, behind a login page that
+worked. A miss is [ErrClientNotRegistered] now, which cannot be reached at all
+when the store is wired — the authorization server resolves the same client_id
+through [Store.GetClient] before either seam is asked anything.
+
+# Where each seam's registry comes from
+
+They differ, and the difference is not a style choice.
+
+[Authenticator] resolves a scope off the request through a [ScopeResolver] and
+hands it to signin, which checks the credentials *within* it. The scope that
+reaches oauth2clients.Client.Admits is therefore one the person just proved
+membership of, and a request naming a registry its user is not in fails to sign
+in before the registration is ever read.
+
+[GuardedResolver] has no such step, so it does not take a ScopeResolver at all.
+Its subject comes out of a session the consumer minted, and a scope read off the
+request would be a second fact nothing tied to the first — somebody holding a
+valid session in one registry could name another in the request and be admitted
+to its administered clients, which admit any subject in them. The scope comes
+back from the consumer's resolver instead, beside the subject, which is what
+binds the two. See [ScopedSubjectResolver].
 
 # The asymmetry between the two login seams
 

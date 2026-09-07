@@ -4,6 +4,10 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/primandproper/platform-go/v14/observability"
+	"github.com/primandproper/platform-go/v14/observability/logging"
+	"github.com/primandproper/platform-go/v14/observability/metrics"
+	"github.com/primandproper/platform-go/v14/observability/tracing"
 	"github.com/primandproper/platform-go/v14/tenancy"
 )
 
@@ -18,6 +22,10 @@ import (
 // It is the same shape and the same reasoning authentication/signin/grpc's
 // ScopeResolver has, and a deployment that has answered the question once
 // answers it the same way here.
+//
+// It belongs to [Authenticator] alone. A resolver reports its own scope instead
+// — see [ScopedSubjectResolver] for why the two seams cannot answer this the
+// same way.
 type ScopeResolver func(ctx context.Context, req *http.Request) (tenancy.Scope, error)
 
 // GlobalScope is the default [ScopeResolver]: every authorization request
@@ -30,6 +38,12 @@ type ScopeResolver func(ctx context.Context, req *http.Request) (tenancy.Scope, 
 // deployment whose people hold personal credentials per tenant, and that is the
 // deployment that has a way to tell the tenants apart and should say so with
 // [WithScopeResolver].
+//
+// It is safe as a default only because the scope it returns is handed to
+// signin.Service.LoginForToken before it reaches [oauth2clients.Client.Admits]:
+// a person who cannot sign in to the global registry never reaches the check at
+// all. See [ScopedSubjectResolver] for the seam where that is not true and where
+// there is consequently no default.
 func GlobalScope(context.Context, *http.Request) (tenancy.Scope, error) {
 	return tenancy.Global(), nil
 }
@@ -77,20 +91,74 @@ func WithAdministrativeLogin() AuthenticatorOption {
 	return func(a *Authenticator) { a.administrative = true }
 }
 
+// WithLogger sets the authenticator's logger.
+func WithLogger(logger logging.Logger) AuthenticatorOption {
+	return func(a *Authenticator) { a.opts.logger = logger }
+}
+
+// WithTracerProvider sets the authenticator's tracer provider.
+//
+// A provider rather than a ready-made tracer, so the instrumentation scope is
+// this package's rather than the caller's.
+func WithTracerProvider(provider tracing.Provider) AuthenticatorOption {
+	return func(a *Authenticator) { a.opts.tracerProvider = provider }
+}
+
+// WithMetricsProvider sets the authenticator's metrics provider.
+func WithMetricsProvider(provider metrics.Provider) AuthenticatorOption {
+	return func(a *Authenticator) { a.opts.metricsProvider = provider }
+}
+
+// WithPillars supplies the authenticator's three pillars at once.
+func WithPillars(pillars *observability.Pillars) AuthenticatorOption {
+	return func(a *Authenticator) { a.opts.setPillars(pillars) }
+}
+
 // ResolverOption configures a [GuardedResolver] at construction.
 type ResolverOption func(*GuardedResolver)
 
-// WithResolverScopeResolver sets how the registry of a request the inner
-// resolver answered is decided.
+// WithResolverLogger sets the guarded resolver's logger.
 //
-// It is a separate option from [WithScopeResolver] because the two seams are
-// constructed separately, and a deployment must give both the same answer: a
-// resolver reading one scope and an authenticator reading another would guard
-// two different things.
-func WithResolverScopeResolver(resolve ScopeResolver) ResolverOption {
-	return func(r *GuardedResolver) {
-		if resolve != nil {
-			r.scopes = resolve
-		}
-	}
+// It is worth setting. A resolver's refusal is a decline rather than an error —
+// see [GuardedResolver] — so the log line is the only place it appears.
+func WithResolverLogger(logger logging.Logger) ResolverOption {
+	return func(r *GuardedResolver) { r.opts.logger = logger }
+}
+
+// WithResolverTracerProvider sets the guarded resolver's tracer provider.
+func WithResolverTracerProvider(provider tracing.Provider) ResolverOption {
+	return func(r *GuardedResolver) { r.opts.tracerProvider = provider }
+}
+
+// WithResolverMetricsProvider sets the guarded resolver's metrics provider.
+func WithResolverMetricsProvider(provider metrics.Provider) ResolverOption {
+	return func(r *GuardedResolver) { r.opts.metricsProvider = provider }
+}
+
+// WithResolverPillars supplies the guarded resolver's three pillars at once.
+func WithResolverPillars(pillars *observability.Pillars) ResolverOption {
+	return func(r *GuardedResolver) { r.opts.setPillars(pillars) }
+}
+
+// StoreOption configures a [Store] at construction.
+type StoreOption func(*Store)
+
+// WithStoreLogger sets the store decorator's logger.
+func WithStoreLogger(logger logging.Logger) StoreOption {
+	return func(s *Store) { s.opts.logger = logger }
+}
+
+// WithStoreTracerProvider sets the store decorator's tracer provider.
+func WithStoreTracerProvider(provider tracing.Provider) StoreOption {
+	return func(s *Store) { s.opts.tracerProvider = provider }
+}
+
+// WithStoreMetricsProvider sets the store decorator's metrics provider.
+func WithStoreMetricsProvider(provider metrics.Provider) StoreOption {
+	return func(s *Store) { s.opts.metricsProvider = provider }
+}
+
+// WithStorePillars supplies the store decorator's three pillars at once.
+func WithStorePillars(pillars *observability.Pillars) StoreOption {
+	return func(s *Store) { s.opts.setPillars(pillars) }
 }

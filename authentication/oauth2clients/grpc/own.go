@@ -197,11 +197,21 @@ func (s *Server) ArchiveOwnOAuth2Client(
 // three methods that name a row cannot implement it three ways.
 //
 // A registration the caller does not own answers oauth2clients.ErrOwnerMismatch,
-// which the package's mapper turns into PermissionDenied with the message "no
-// such oauth2 client". That the message matches the not-found one is deliberate:
-// on this half, "somebody else's" and "does not exist" are the same answer,
-// because telling them apart would let anybody enumerate the registry's rows one
-// identifier at a time.
+// which the package's mapper turns into codes.NotFound — the same code, and
+// through the same description, as a registration that is not there.
+//
+// The indistinguishability is the point and it has to hold on the wire, not just
+// in the wording. On this half "somebody else's" and "does not exist" are one
+// answer, because telling them apart lets anybody enumerate the registry's rows
+// one identifier at a time — and a row identifier is identifiers.New, which is
+// an xid: a timestamp, a machine, a pid and a counter, walkable by anybody
+// holding one. A distinct code would disclose it however carefully the two
+// messages were matched, which is why the sentinel is mapped rather than the
+// message alone, and why the fallback code passed below is NotFound as well.
+//
+// What is *not* collapsed is the record: the sentinel travels in the error's
+// chain, so this process's own logs say which of the two happened while a caller
+// cannot tell.
 //
 // An administered registration — one nobody owns — is not the caller's either.
 // Withdrawing the credential an operator minted for the whole deployment is not
@@ -218,13 +228,15 @@ func (s *Server) own(ctx context.Context, req *request, id string) (*oauth2clien
 	client, err := s.store.GetClient(ctx, s.client.Reader(), req.scope, id)
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.Internal, "reading oauth2 client %q", id)
+			req.op.Logger(), req.op.Span(), codes.NotFound, "reading oauth2 client %q", id)
 	}
 
 	if client.BelongsToUser != userID {
+		// The same code and the same description the branch above produces. Both
+		// arms are one answer to a caller and two facts in the log.
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(
 			platformerrors.Wrapf(oauth2clients.ErrOwnerMismatch, "oauth2 client %q", id),
-			req.op.Logger(), req.op.Span(), codes.PermissionDenied, "reading oauth2 client %q", id)
+			req.op.Logger(), req.op.Span(), codes.NotFound, "reading oauth2 client %q", id)
 	}
 
 	return client, nil

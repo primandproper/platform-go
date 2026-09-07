@@ -9,8 +9,13 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/database"
 	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	"github.com/primandproper/platform-go/v14/observability"
+	"github.com/primandproper/platform-go/v14/observability/metrics"
 	"github.com/primandproper/platform-go/v14/tenancy"
 )
+
+// authenticatorName scopes the authenticator's spans, logger and instruments.
+const authenticatorName = "oauth2clients_authserver_authenticator"
 
 // ClaimAccountID is the claim an issued subject carries the signed-in account
 // under.
@@ -54,11 +59,18 @@ var _ oauth2server.SubjectAuthenticator = (*Authenticator)(nil)
 // consumer's Hooks.AfterSignIn records a sign-in that genuinely happened, and
 // the alternative is a public endpoint that reports on the registry.
 type Authenticator struct {
-	signIn   *signin.Service
+	// What the options wrote, kept only until the observer is built from it.
+	opts observabilityOptions
+
 	registry oauth2clients.Store
 	client   database.Client
+	o11y     observability.Observer
+	signIn   *signin.Service
 	scopes   ScopeResolver
-	message  string
+
+	instruments *metrics.OperationSet
+
+	message string
 
 	// administrative sends the sign-in through signin's administrative door,
 	// which requires a service role and a proven second factor whatever the
@@ -114,6 +126,15 @@ func NewAuthenticator(
 		}
 	}
 
+	a.o11y = observability.NewObserver(authenticatorName, a.opts.logger, a.opts.tracerProvider)
+
+	instruments, err := metrics.NewOperationSet(a.opts.metricsProvider, authenticatorName)
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "creating oauth2clients authserver authenticator instruments")
+	}
+
+	a.instruments = instruments
+
 	return a, nil
 }
 
@@ -133,10 +154,20 @@ func (a *Authenticator) AuthenticateSubject(
 	ctx context.Context,
 	req *http.Request,
 ) (*oauth2server.Subject, error) {
+	ctx, op := a.o11y.Begin(ctx)
+	defer op.End()
+
+	a.instruments.Attempt(ctx)
+	op.SpanOnly(adminKey, a.administrative)
+
 	scope, err := a.scopes(ctx, req)
 	if err != nil {
-		return nil, platformerrors.Wrap(err, "resolving the scope of an authorization request")
+		a.instruments.Failed(ctx)
+
+		return nil, op.Error(err, "resolving the scope of an authorization request")
 	}
+
+	op.Set(scopeKey, scope.String())
 
 	credentials := &signin.Credentials{
 		Username: req.FormValue(oauth2server.FieldUsername),
@@ -150,6 +181,13 @@ func (a *Authenticator) AuthenticateSubject(
 	// than deciding anything of its own.
 	completed, err := a.login(ctx, scope, credentials)
 	if err != nil {
+		a.instruments.Failed(ctx)
+
+		// Acknowledged rather than returned through op.Error: what goes back is
+		// a *LoginError carrying a message for a page, and the sentinel
+		// underneath it is what an operator reads.
+		op.Acknowledge(err, "signing in the resource owner of an authorization request")
+
 		if platformerrors.Is(err, signin.ErrInvalidCredentials) {
 			return nil, oauth2server.NewLoginError(oauth2server.DefaultLoginFailureMessage, err)
 		}
@@ -163,7 +201,11 @@ func (a *Authenticator) AuthenticateSubject(
 
 	principal := completed.Principal
 
-	if err = a.admits(ctx, req, scope, principal.User.ID); err != nil {
+	op.Set(subjectKey, principal.User.ID)
+
+	if err = a.admits(ctx, op, req, scope, principal.User.ID); err != nil {
+		a.instruments.Failed(ctx)
+
 		return nil, err
 	}
 
@@ -194,29 +236,36 @@ func (a *Authenticator) login(
 // already refused it, before this seam was reached, and duplicating that
 // refusal here would be a second place deciding what a malformed request is.
 //
-// A client_id that resolves to nothing is also left alone, for the same reason
-// — the server's own lookup runs through [Store.GetClient] and has already
-// answered. What this adds is the one comparison neither of those can make.
+// A client_id this registry has never issued is [ErrClientNotRegistered], and
+// fails the request. It is unreachable in a deployment wired as this package
+// documents — the server's own lookup runs through [Store.GetClient] and has
+// already refused an unknown client before this seam is asked anything — and in
+// one that is not it is the misconfiguration that would otherwise skip this
+// check on every request without saying so. See [ErrClientNotRegistered].
 func (a *Authenticator) admits(
 	ctx context.Context,
+	op observability.Operation,
 	req *http.Request,
 	scope tenancy.Scope,
 	userID string,
 ) error {
-	clientID := req.FormValue("client_id")
+	clientID := req.FormValue(oauth2server.FieldClientID)
 	if clientID == "" {
 		return nil
 	}
 
+	op.Set(clientIDKey, clientID)
+
 	registered, err := a.registry.ResolveClientID(ctx, a.client.Reader(), clientID)
 	if err != nil {
 		if platformerrors.Is(err, oauth2clients.ErrClientNotFound) {
-			return nil
+			return op.Error(platformerrors.Wrapf(ErrClientNotRegistered, "oauth2 client %q", clientID),
+				"resolving oauth2 client %q", clientID)
 		}
 
 		// A broken registry fails the request rather than re-rendering the
 		// form. There is nothing to type that would fix it.
-		return platformerrors.Wrapf(err, "resolving oauth2 client %q", clientID)
+		return op.Error(err, "resolving oauth2 client %q", clientID)
 	}
 
 	if err = registered.Admits(scope, userID); err != nil {
@@ -224,6 +273,13 @@ func (a *Authenticator) admits(
 		// this client has the same thing to do next whether the reason is their
 		// organization or another person's ownership, and telling them which
 		// would say that this client belongs to somebody.
+		//
+		// Which of the two it was is recorded rather than rendered: the page is
+		// written for the person, and the log line is what tells an operator
+		// whether a team is in the wrong registry or looking at somebody else's
+		// personal credential.
+		op.Acknowledge(err, "refusing a subject the registration does not admit")
+
 		return oauth2server.NewLoginError(a.message, err)
 	}
 

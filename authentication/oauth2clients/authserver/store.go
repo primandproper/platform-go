@@ -7,7 +7,12 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2server"
 	"github.com/primandproper/platform-go/v14/database"
 	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	"github.com/primandproper/platform-go/v14/observability"
+	"github.com/primandproper/platform-go/v14/observability/metrics"
 )
+
+// storeName scopes the store decorator's spans, logger and instruments.
+const storeName = "oauth2clients_authserver_store"
 
 var _ oauth2server.Store = (*Store)(nil)
 
@@ -30,6 +35,12 @@ type Store struct {
 
 	registry oauth2clients.Store
 	client   database.Client
+	o11y     observability.Observer
+
+	instruments *metrics.OperationSet
+
+	// What the options wrote, kept only until the observer is built from it.
+	opts observabilityOptions
 }
 
 // NewStore wraps a protocol store so that its clients come from the registry.
@@ -41,6 +52,7 @@ func NewStore(
 	wrapped oauth2server.Store,
 	registry oauth2clients.Store,
 	client database.Client,
+	opts ...StoreOption,
 ) (*Store, error) {
 	if wrapped == nil {
 		return nil, oauth2server.ErrNilStore
@@ -54,7 +66,24 @@ func NewStore(
 		return nil, oauth2clients.ErrNilDatabaseClient
 	}
 
-	return &Store{Store: wrapped, registry: registry, client: client}, nil
+	s := &Store{Store: wrapped, registry: registry, client: client}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(s)
+		}
+	}
+
+	s.o11y = observability.NewObserver(storeName, s.opts.logger, s.opts.tracerProvider)
+
+	instruments, err := metrics.NewOperationSet(s.opts.metricsProvider, storeName)
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "creating oauth2clients authserver store instruments")
+	}
+
+	s.instruments = instruments
+
+	return s, nil
 }
 
 // GetClient resolves a registration out of the registry and renders it as the
@@ -71,26 +100,44 @@ func NewStore(
 // reason can be recorded; what reaches an unauthenticated caller is still the
 // answer that discloses nothing.
 func (s *Store) GetClient(ctx context.Context, clientID string) (*oauth2server.Client, error) {
+	ctx, op := s.o11y.Begin(ctx, observability.WithValue(clientIDKey, clientID))
+	defer op.End()
+
+	s.instruments.Attempt(ctx)
+
 	if clientID == "" {
-		return nil, oauth2server.ErrEmptyIdentifier
+		s.instruments.Failed(ctx)
+
+		return nil, op.Error(oauth2server.ErrEmptyIdentifier, "resolving an oauth2 client")
 	}
 
 	registered, err := s.registry.ResolveClientID(ctx, s.client.Reader(), clientID)
 	if err != nil {
+		s.instruments.Failed(ctx)
+
 		// The registry's sentinel becomes the protocol's, and anything else is
 		// wrapped rather than passed through. Without this a broken database
 		// reaches an unauthenticated caller as the driver's own text — which is
 		// the defect this decorator exists to have already fixed.
 		if platformerrors.Is(err, oauth2clients.ErrClientNotFound) {
-			return nil, platformerrors.Wrapf(oauth2server.ErrNotFound, "oauth2 client %q", clientID)
+			return nil, op.Error(platformerrors.Wrapf(oauth2server.ErrNotFound, "oauth2 client %q", clientID),
+				"resolving oauth2 client %q", clientID)
 		}
 
-		return nil, platformerrors.Wrapf(err, "resolving oauth2 client %q", clientID)
+		return nil, op.Error(err, "resolving oauth2 client %q", clientID)
 	}
 
+	// The registry this client_id resolved to, recorded on the span. It is what
+	// an operator needs to read the refusals the login seams make later in the
+	// same request, and it is a fact no other layer of the authorization server
+	// holds.
+	op.SpanOnly(scopeKey, registered.Scope.String())
+
 	if registered.Archived() {
-		return nil, platformerrors.Wrapf(oauth2server.ErrNotFound,
-			"oauth2 client %q has been withdrawn", clientID)
+		s.instruments.Failed(ctx)
+
+		return nil, op.Error(platformerrors.Wrapf(oauth2server.ErrNotFound,
+			"oauth2 client %q has been withdrawn", clientID), "resolving oauth2 client %q", clientID)
 	}
 
 	return protocolClient(registered), nil
