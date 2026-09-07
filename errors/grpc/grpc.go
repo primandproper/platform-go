@@ -37,8 +37,16 @@ func RegisterGRPCErrorMapper(m GRPCErrorMapper) {
 	domainMappers = append(domainMappers, m)
 }
 
-// PrepareAndLogGRPCStatus derives the gRPC code via MapToGRPC, then logs, traces, and returns
-// a status error. Use defaultCode as the fallback for unknown errors.
+// PrepareAndLogGRPCStatus derives the gRPC code via MapToGRPC, then logs, traces,
+// and returns a status error. defaultCode is the fallback for an error no mapper
+// claims.
+//
+// This is the spelling a handler holding an observability.Operation wants:
+// observability's function of the same name takes the code it is handed and
+// cannot map, because this package imports it and the reverse edge is a cycle.
+// Logger and Span are on Operation so that reaching this one costs nothing:
+//
+//	grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "doing the thing")
 func PrepareAndLogGRPCStatus(err error, logger logging.Logger, span tracing.Span, defaultCode codes.Code, descriptionFmt string, descriptionArgs ...any) error {
 	code := MapToGRPC(err, defaultCode)
 	return observability.PrepareAndLogGRPCStatus(err, logger, span, code, descriptionFmt, descriptionArgs...)

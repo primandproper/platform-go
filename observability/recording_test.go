@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/shoenig/test"
-	"google.golang.org/grpc/codes"
 )
 
 func TestRecordingObserver(T *testing.T) {
@@ -71,7 +70,7 @@ func TestRecordingObserver(T *testing.T) {
 		test.Error(t, err)
 		test.StrContains(t, err.Error(), "doing thing")
 
-		test.Error(t, op.GRPCStatus(errors.New("nope"), codes.Internal, "rpc"))
+		op.Acknowledge(errors.New("nope"), "rpc")
 
 		test.SliceLen(t, 2, o.Operations[0].Errors)
 	})

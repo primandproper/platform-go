@@ -8,7 +8,6 @@ import (
 	"github.com/primandproper/platform-go/v14/observability/tracing"
 
 	"github.com/shoenig/test"
-	"google.golang.org/grpc/codes"
 )
 
 func TestOperation_Set(T *testing.T) {
@@ -159,21 +158,6 @@ func TestOperation_Acknowledge(T *testing.T) {
 		defer op.End()
 
 		op.Acknowledge(errors.New("boom"), "doing thing")
-	})
-}
-
-func TestOperation_GRPCStatus(T *testing.T) {
-	T.Parallel()
-
-	T.Run("returns a gRPC status error", func(t *testing.T) {
-		t.Parallel()
-
-		o := NewObserverForTest("test_observer")
-		_, op := o.Begin(t.Context())
-		defer op.End()
-
-		err := op.GRPCStatus(errors.New("boom"), codes.Internal, "doing thing")
-		test.Error(t, err)
 	})
 }
 

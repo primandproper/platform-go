@@ -75,7 +75,23 @@ func AcknowledgeError(err error, logger logging.Logger, span tracing.Span, descr
 	tracing.AttachErrorToSpan(span, desc, err)
 }
 
-// PrepareAndLogGRPCStatus standardizes our error handling by logging, tracing, and formatting an error consistently.
+// PrepareAndLogGRPCStatus logs and traces err, then returns it as a gRPC status
+// error carrying code.
+//
+// code is used exactly as it was given. This function does not consult the
+// registered error mappers and cannot: errors/grpc imports this package to reach
+// this function, so the import that would let this one call MapToGRPC is a
+// cycle.
+//
+// A caller who wants the registry's answer rather than the one they guessed
+// wants errors/grpc.PrepareAndLogGRPCStatus, which is this signature with code
+// renamed defaultCode: it runs MapToGRPC over the error and calls this with the
+// result. A handler holding an Operation spells it
+//
+//	grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "doing the thing")
+//
+// and that is why Operation carries no GRPCStatus method. It carried one, it
+// delegated here, and so it could not map either.
 func PrepareAndLogGRPCStatus(err error, logger logging.Logger, span tracing.Span, code codes.Code, descriptionFmt string, descriptionArgs ...any) error {
 	if err == nil {
 		return nil

@@ -17,7 +17,6 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc/codes"
 )
 
 var (
@@ -264,7 +263,10 @@ type RecordingOperation struct {
 	Values       map[string]any
 	SpanValues   map[string]any
 	LogValues    map[string]any
-	// Errors holds every error passed to Error, Acknowledge, or GRPCStatus.
+	// Errors holds every error passed to Error or Acknowledge. An error a unit
+	// turns into a gRPC status goes through errors/grpc instead, reaching this
+	// operation's noop logger and nil span rather than this slice, so assert on
+	// the returned status's code for those.
 	Errors []error
 	// Ended reports whether End was called.
 	Ended bool
@@ -360,16 +362,6 @@ func (op *RecordingOperation) Acknowledge(err error, _ string, _ ...any) {
 	if err != nil {
 		op.Errors = append(op.Errors, err)
 	}
-}
-
-// GRPCStatus records err and returns it as a gRPC status error, matching the
-// production Operation's returned-error shape.
-func (op *RecordingOperation) GRPCStatus(err error, code codes.Code, descriptionFmt string, descriptionArgs ...any) error {
-	if err != nil {
-		op.Errors = append(op.Errors, err)
-	}
-
-	return PrepareAndLogGRPCStatus(err, nil, nil, code, descriptionFmt, descriptionArgs...)
 }
 
 // End marks the operation ended.

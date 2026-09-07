@@ -9,7 +9,6 @@ import (
 	"github.com/primandproper/platform-go/v14/observability/tracing"
 
 	"go.opentelemetry.io/otel/metric"
-	"google.golang.org/grpc/codes"
 )
 
 var _ Operation = (*operation)(nil)
@@ -21,6 +20,21 @@ var _ Operation = (*operation)(nil)
 //
 // It is an interface so that a recording Observer can hand back an Operation a
 // test can read values off of (see RecordingOperation).
+//
+// There is deliberately no GRPCStatus method, and the omission is the answer to
+// the question a gRPC handler asks first. There was one, and it could not
+// consult the registered error mappers: it delegated to
+// PrepareAndLogGRPCStatus, which uses the code it is handed, and the import that
+// would let this package reach MapToGRPC runs the other way — errors/grpc
+// imports this one. So the argument named code was a result at one call site and
+// a default at the other, nothing at either said which, and a mapped sentinel
+// reached the client as whatever the handler happened to guess.
+//
+// The spelling that maps is errors/grpc.PrepareAndLogGRPCStatus, and Logger and
+// Span are on this interface so that a handler holding an Operation can reach it
+// with the same two pillars the method used:
+//
+//	grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "doing the thing")
 type Operation interface {
 	Set(key string, value any) Operation
 	SetValues(values map[string]any) Operation
@@ -31,7 +45,6 @@ type Operation interface {
 	Time(ctx context.Context, c clock.Clock, hist metrics.Float64Histogram, opts ...metric.RecordOption) func()
 	Error(err error, descriptionFmt string, descriptionArgs ...any) error
 	Acknowledge(err error, descriptionFmt string, descriptionArgs ...any)
-	GRPCStatus(err error, code codes.Code, descriptionFmt string, descriptionArgs ...any) error
 	End()
 }
 
@@ -99,11 +112,6 @@ func (op *operation) Error(err error, descriptionFmt string, descriptionArgs ...
 // Acknowledge logs and traces err without wrapping or returning it.
 func (op *operation) Acknowledge(err error, descriptionFmt string, descriptionArgs ...any) {
 	AcknowledgeError(err, op.logger, op.span, descriptionFmt, descriptionArgs...)
-}
-
-// GRPCStatus logs and traces err, then returns it as a gRPC status error.
-func (op *operation) GRPCStatus(err error, code codes.Code, descriptionFmt string, descriptionArgs ...any) error {
-	return PrepareAndLogGRPCStatus(err, op.logger, op.span, code, descriptionFmt, descriptionArgs...)
 }
 
 // End ends the active span.
