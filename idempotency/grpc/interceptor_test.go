@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/platform-go/v14/distributedlock"
 	dlmemory "github.com/primandproper/platform-go/v14/distributedlock/memory"
 	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	"github.com/primandproper/platform-go/v14/idempotency"
 	loggingnoop "github.com/primandproper/platform-go/v14/observability/logging/noop"
 	"github.com/primandproper/platform-go/v14/observability/metrics"
@@ -21,6 +22,7 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 	"go.opentelemetry.io/otel/metric"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -503,45 +505,98 @@ func TestInterceptor_ReplayFailure(T *testing.T) {
 	// A record that cannot be rebuilt must not fall back to running the
 	// handler: the work already happened, and re-running it is the duplicate
 	// this package exists to prevent.
-	T.Run("an unrebuildable record is Internal, not a re-run", func(t *testing.T) {
+	//
+	// The payload is corrupt rather than the message type unknown, which is a
+	// deliberate choice and not the arbitrary one it looks like: the subtest
+	// below registers a mapper for ErrUnknownMessageType into a process-global
+	// registry no test can unregister from, so this one has to fail in a way no
+	// mapper claims to keep asserting that codes.Internal is what an unmapped
+	// rebuild failure resolves to.
+	T.Run("a record that cannot be rebuilt is Internal, not a re-run", func(t *testing.T) {
 		t.Parallel()
 
-		store := &cachemock.CacheMock[idempotency.Record[Response]]{
-			GetFunc: func(context.Context, string) (*idempotency.Record[Response], error) {
-				fp, fpErr := fingerprint(testMethod, "", str("req"))
-				must.NoError(t, fpErr)
+		handler, interceptor := replayingInterceptor(t, &Response{
+			MessageName: string(str("").ProtoReflect().Descriptor().FullName()),
+			Payload:     []byte{0xff, 0xff, 0xff},
+		})
 
-				return &idempotency.Record[Response]{
-					Fingerprint: fp,
-					ClaimID:     "seeded",
-					Version:     1,
-					State:       idempotency.StateCompleted,
-					Value:       &Response{MessageName: "not.A.Real.Message"},
-				}, nil
-			},
-			SetFunc: func(context.Context, string, *idempotency.Record[Response], ...cache.WriteOption) error {
-				return nil
-			},
-			DeleteFunc: func(context.Context, string) error { return nil },
-		}
-
-		locker, err := dlmemory.NewLocker()
-		must.NoError(t, err)
-
-		scoped, err := distributedlock.NewScopedLocker(locker)
-		must.NoError(t, err)
-
-		manager, err := NewManager(store, scoped)
-		must.NoError(t, err)
-
-		handler := newCountingHandler(str("ch_1"))
-		interceptor := newInterceptorFor(t, manager)
-
-		_, err = interceptor(keyed(t.Context(), testKey), str("req"), info(), handler.handle)
+		_, err := interceptor(keyed(t.Context(), testKey), str("req"), info(), handler.handle)
 
 		test.EqOp(t, codes.Internal, status.Code(err))
 		test.EqOp(t, int64(0), handler.Calls())
 	})
+
+	// The regression this path was written for. It used to hand codes.Internal
+	// to a helper that could not consult the mappers, so a registered answer for
+	// a rebuild failure was discarded while the handler-failure path two
+	// branches up ran MapToGRPC by hand. Both go through errors/grpc now, and
+	// codes.Internal is the fallback at each rather than the verdict.
+	T.Run("a registered mapper outranks the default code", func(t *testing.T) {
+		t.Parallel()
+
+		grpcerrors.RegisterGRPCErrorMapper(unknownMessageTypeMapper{})
+
+		// A reply whose type this binary cannot find, which is the one sentinel
+		// replay raises and so the only one a mapper can be registered for.
+		handler, interceptor := replayingInterceptor(t, &Response{MessageName: "not.A.Real.Message"})
+
+		_, err := interceptor(keyed(t.Context(), testKey), str("req"), info(), handler.handle)
+
+		test.EqOp(t, codes.FailedPrecondition, status.Code(err), test.Sprint(
+			"the replay path answered with the code it passed as a default, so it never reached MapToGRPC"))
+		test.EqOp(t, int64(0), handler.Calls())
+	})
+}
+
+// unknownMessageTypeMapper answers for the one sentinel replay can raise, and
+// for nothing else. It goes into a registry that lives for the test binary and
+// that nothing can remove it from, so it is deliberately narrow: only a subtest
+// seeding a record that names a type this binary cannot find will ever see it.
+type unknownMessageTypeMapper struct{}
+
+func (unknownMessageTypeMapper) Map(err error) (codes.Code, bool) {
+	if stderrors.Is(err, ErrUnknownMessageType) {
+		return codes.FailedPrecondition, true
+	}
+
+	return codes.Unknown, false
+}
+
+// replayingInterceptor builds an interceptor over a store that always answers
+// with a completed record carrying value, which is how a replay is driven to the
+// rebuild step without running a handler first.
+func replayingInterceptor(tb testing.TB, value *Response) (*countingHandler, grpc.UnaryServerInterceptor) {
+	tb.Helper()
+
+	store := &cachemock.CacheMock[idempotency.Record[Response]]{
+		GetFunc: func(context.Context, string) (*idempotency.Record[Response], error) {
+			fp, fpErr := fingerprint(testMethod, "", str("req"))
+			must.NoError(tb, fpErr)
+
+			return &idempotency.Record[Response]{
+				Fingerprint: fp,
+				ClaimID:     "seeded",
+				Version:     1,
+				State:       idempotency.StateCompleted,
+				Value:       value,
+			}, nil
+		},
+		SetFunc: func(context.Context, string, *idempotency.Record[Response], ...cache.WriteOption) error {
+			return nil
+		},
+		DeleteFunc: func(context.Context, string) error { return nil },
+	}
+
+	locker, err := dlmemory.NewLocker()
+	must.NoError(tb, err)
+
+	scoped, err := distributedlock.NewScopedLocker(locker)
+	must.NoError(tb, err)
+
+	manager, err := NewManager(store, scoped)
+	must.NoError(tb, err)
+
+	return newCountingHandler(str("ch_1")), newInterceptorFor(tb, manager)
 }
 
 func TestInterceptor_Options(T *testing.T) {

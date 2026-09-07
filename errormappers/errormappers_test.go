@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/internal/sentinelmatrix"
 	"github.com/primandproper/platform-go/v14/links"
+	"github.com/primandproper/platform-go/v14/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -110,4 +111,40 @@ func TestRegister_installsTheClientSafeSentinels(T *testing.T) {
 	}
 
 	test.MapLen(T, len(sentinels), seen)
+}
+
+// TestRegister_theOperationSpellingReachesTheRegistry is the acceptance test for
+// the one way a handler holding an observability.Operation turns an error into a
+// status: errors/grpc's PrepareAndLogGRPCStatus, handed the operation's own two
+// pillars.
+//
+// Operation used to carry a GRPCStatus method, and that method could not consult
+// the registry — observability sits below errors/grpc, so the import that would
+// let it is a cycle — which meant it answered with whatever code its caller
+// guessed. It is gone, and this asserts what replaced it against a domain
+// sentinel rather than a platform one on purpose: a platform sentinel resolves
+// through PlatformMapper, which is compiled in, so the same assertion would pass
+// with nothing registered at all and would be testing the cycle rather than the
+// registry.
+func TestRegister_theOperationSpellingReachesTheRegistry(T *testing.T) {
+	T.Parallel()
+
+	o := observability.NewObserverForTest("errormappers_test")
+	_, op := o.Begin(T.Context())
+
+	defer op.End()
+
+	// Wrapped, because that is how one arrives from a handler.
+	err := grpcerrors.PrepareAndLogGRPCStatus(
+		platformerrors.Wrap(identity.ErrUsernameTaken, "registering the user"),
+		op.Logger(),
+		op.Span(),
+		codes.Internal,
+		"registering the user",
+	)
+	must.Error(T, err)
+
+	test.EqOp(T, codes.AlreadyExists, status.Code(err), test.Sprint(
+		"identity.ErrUsernameTaken reached the client as the code the call site passed as a default, "+
+			"so this spelling never reached identity.GRPCMapper"))
 }

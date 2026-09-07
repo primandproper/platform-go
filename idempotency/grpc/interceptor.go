@@ -147,8 +147,10 @@ func (i *interceptor) serve(
 
 		// errors/grpc maps the idempotency sentinels, so ErrInFlight becomes
 		// Aborted and ErrFingerprintMismatch InvalidArgument without this
-		// package restating either.
-		return nil, op.GRPCStatus(err, grpcerrors.MapToGRPC(err, codes.Internal), "running idempotent handler")
+		// package restating either. codes.Internal is what a caller is told when
+		// no mapper claims the error, not a verdict this package reached — which
+		// is why the rebuild failure below is spelled identically.
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "running idempotent handler")
 	}
 
 	if !result.Replayed {
@@ -165,7 +167,7 @@ func (i *interceptor) serve(
 			return nil, err
 		}
 
-		return nil, op.GRPCStatus(err, codes.Internal, "rebuilding recorded reply")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "rebuilding recorded reply")
 	}
 
 	return reply, nil
