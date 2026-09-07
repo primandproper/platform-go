@@ -16,7 +16,7 @@ import (
 // named error rather than the nil pointer read that used to happen at
 // cfg.ProjectID, which is what a deployment naming "cloudtrace" and supplying
 // no cloudtrace block got.
-var ErrNilConfig = errors.New("nil config")
+var ErrNilConfig = errors.New("nil cloudtrace tracer config")
 
 // SetupCloudTrace creates a new trace provider instance and registers it as global trace provider.
 func SetupCloudTrace(ctx context.Context, serviceName string, spanCollectionProbability float64, cfg *Config) (tracing.Provider, error) {

@@ -18,7 +18,7 @@ const serviceName = "algolia_index"
 var (
 	_ textsearch.Index[any] = (*IndexManager[any])(nil)
 
-	ErrNilConfig = platformerrors.New("nil config provided")
+	ErrNilConfig = platformerrors.New("nil algolia config provided")
 )
 
 type (

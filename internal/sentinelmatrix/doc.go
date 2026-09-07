@@ -13,7 +13,7 @@ a client as a 500 or as codes.Unknown while every test in its own package stays
 green.
 
 So the roster is here, and it is a decision per sentinel rather than a list of
-the mapped ones. Every exported Err in those four packages is one of three
+the mapped ones. Every exported Err in those five packages is one of three
 things:
 
 	mapped      the package's own two mappers answer, on both transports
@@ -39,7 +39,7 @@ wrapped, so a row saying "mapped" for a case somebody deleted fails here rather
 than in a consumer's 500.
 
 One thing here is not about the roster at all: errors/ is checked for imports of
-those four packages. A non-test file that had one would be an import cycle and
+those five packages. A non-test file that had one would be an import cycle and
 would not build, so the compiler covers that; an external test package can import
 them freely, and that is how the dependency comes back — a test reaching for a
 domain sentinel to assert something about, and errors/ quietly stops being a
@@ -47,7 +47,7 @@ package that can be lifted out on its own.
 
 The roster is a package-level var rather than a test fixture, because two other
 test binaries need the same expectation. errormappers.Register is the one call
-that installs these four packages' mappers, service.Register is the caller that
+that installs these five packages' mappers, service.Register is the caller that
 makes it for a service built from a service.Config, and each asserts that what
 its registration makes ToAPIError and MapToGRPC say matches what the owning
 package's mapper answers — MappedResolutions is that answer, computed here so

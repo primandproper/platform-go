@@ -22,7 +22,7 @@ const serviceName = "idempotency_grpc"
 
 // ErrNilManager indicates NewUnaryServerInterceptor was called without a
 // manager.
-var ErrNilManager = platformerrors.New("nil idempotency manager")
+var ErrNilManager = platformerrors.New("nil idempotency manager for the gRPC interceptor")
 
 // interceptor holds what every call needs, built once at construction.
 type interceptor struct {

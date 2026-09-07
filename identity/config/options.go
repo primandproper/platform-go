@@ -2,6 +2,7 @@ package identitycfg
 
 import (
 	"github.com/primandproper/platform-go/v14/identity"
+	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/observability"
 	"github.com/primandproper/platform-go/v14/observability/logging"
 	"github.com/primandproper/platform-go/v14/observability/metrics"
@@ -23,7 +24,10 @@ type options struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 
-	store []identity.SQLStoreOption
+	hooks   identity.Hooks
+	store   []identity.SQLStoreOption
+	service []identity.ServiceOption
+	server  []identitygrpc.Option
 }
 
 // newOptions applies opts, ignoring nil entries.
@@ -70,4 +74,33 @@ func WithPillars(p *observability.Pillars) Option {
 // prefix and the clock included.
 func WithStoreOptions(opts ...identity.SQLStoreOption) Option {
 	return func(o *options) { o.store = append(o.store, opts...) }
+}
+
+// WithHooks supplies what commits alongside each of the Service's operations —
+// the audit entry, the outbox row, the search stamp.
+//
+// It is an option rather than a parameter because it is the one dependency a
+// consumer legitimately has none of: identity.NoopHooks is the default, and an
+// application with nothing to commit beside an identity write configures
+// nothing. A nil Hooks is ignored rather than installed, since installing one
+// would panic on the first operation.
+func WithHooks(hooks identity.Hooks) Option {
+	return func(o *options) {
+		if hooks != nil {
+			o.hooks = hooks
+		}
+	}
+}
+
+// WithServiceOptions passes opts to NewService, after the options it derives
+// from configuration.
+func WithServiceOptions(opts ...identity.ServiceOption) Option {
+	return func(o *options) { o.service = append(o.service, opts...) }
+}
+
+// WithServerOptions passes opts to NewServer, after the options it derives from
+// configuration — so a caller overrides the invitation TTL or supplies a token
+// minter of their own here.
+func WithServerOptions(opts ...identitygrpc.Option) Option {
+	return func(o *options) { o.server = append(o.server, opts...) }
 }

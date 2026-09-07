@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	httperrors "github.com/primandproper/platform-go/v14/errors/http"
+	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/links"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
@@ -42,11 +43,12 @@ func (d Disposition) String() string {
 	}
 }
 
-// The four packages that map their own sentinels, spelled once each. Each name
+// The five packages that map their own sentinels, spelled once each. Each name
 // is three things — a key in Matrix, an entry in Packages and a case in Mappers
-// — and a fifth package is added in all three together.
+// — and a sixth package is added in all three together.
 const (
 	dataPrivacyPkg = "dataprivacy"
+	identityPkg    = "identity"
 	linksPkg       = "links"
 	operationsPkg  = "operations"
 	sessionsPkg    = "sessions"
@@ -169,6 +171,51 @@ var Matrix = map[string]map[string]Decision{
 		"ErrUnknownKind":         {Err: operations.ErrUnknownKind, Is: Unhandled},
 		"ErrWatcherClosed":       {Err: operations.ErrWatcherClosed, Is: Unhandled},
 	},
+	identityPkg: {
+		// The four absences and the two collisions: what a client sent that
+		// names nothing, and what a client sent that names something already
+		// taken. These are the answers a registration form and a directory UI
+		// act on, and the reason this package acquired mappers at all.
+		"ErrAccountNotFound":    {Err: identity.ErrAccountNotFound, Is: Mapped},
+		"ErrEmailAddressTaken":  {Err: identity.ErrEmailAddressTaken, Is: Mapped},
+		"ErrInvitationNotFound": {Err: identity.ErrInvitationNotFound, Is: Mapped},
+		"ErrMembershipNotFound": {Err: identity.ErrMembershipNotFound, Is: Mapped},
+		"ErrUserNotFound":       {Err: identity.ErrUserNotFound, Is: Mapped},
+		"ErrUsernameTaken":      {Err: identity.ErrUsernameTaken, Is: Mapped},
+
+		// The three states an act is refused from rather than forbidden. Each is
+		// fixable by the caller in a specific order, and a 500 would tell them to
+		// do nothing. ErrInvitationExpired is the one row in this file whose two
+		// transports differ on purpose — see identity's own mappers.
+		"ErrInvitationExpired": {Err: identity.ErrInvitationExpired, Is: Mapped},
+		"ErrLastAccountOwner":  {Err: identity.ErrLastAccountOwner, Is: Mapped},
+		"ErrNoDefaultAccount":  {Err: identity.ErrNoDefaultAccount, Is: Mapped},
+
+		// A write whose entity names a different tenant than the call did. The
+		// two halves of the request disagreed, which is a bad request rather than
+		// a refusal on authority.
+		"ErrScopeMismatch": {Err: identity.ErrScopeMismatch, Is: Mapped},
+
+		// Wrap errors.ErrNilInputParameter, so the platform mappers answer them.
+		// They are wiring failures rather than anything a client sent.
+		"ErrNilAccount":        {Err: identity.ErrNilAccount, Is: Platform},
+		"ErrNilAccountUpdate":  {Err: identity.ErrNilAccountUpdate, Is: Platform},
+		"ErrNilDatabaseClient": {Err: identity.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: identity.ErrNilExecutor, Is: Platform},
+		"ErrNilInvitation":     {Err: identity.ErrNilInvitation, Is: Platform},
+		"ErrNilMembership":     {Err: identity.ErrNilMembership, Is: Platform},
+		"ErrNilProfileUpdate":  {Err: identity.ErrNilProfileUpdate, Is: Platform},
+		"ErrNilStore":          {Err: identity.ErrNilStore, Is: Platform},
+		"ErrNilUser":           {Err: identity.ErrNilUser, Is: Platform},
+
+		// Wrap errors.ErrUnrecognizedInputValue, which the platform mappers
+		// already answer as a bad request. A case of this package's own would be
+		// a second copy of that decision, free to drift from it.
+		"ErrInvalidEmailAddress":     {Err: identity.ErrInvalidEmailAddress, Is: Platform},
+		"ErrInvalidInvitationStatus": {Err: identity.ErrInvalidInvitationStatus, Is: Platform},
+		"ErrInvalidTimeZone":         {Err: identity.ErrInvalidTimeZone, Is: Platform},
+	},
+
 	sessionsPkg: {
 		// Every unusable session. The two timeouts wrap ErrExpired, which wraps
 		// ErrNotFound, so all four resolve; they are listed because a sentinel that
@@ -195,17 +242,19 @@ var Matrix = map[string]map[string]Decision{
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
-// module root. They are the four that export mappers of their own; a fifth would
+// module root. They are the five that export mappers of their own; a sixth would
 // be added here, in Matrix and in Mappers together.
-var Packages = []string{dataPrivacyPkg, linksPkg, operationsPkg, sessionsPkg}
+var Packages = []string{dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg}
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
-// this package spells the four out; everywhere else they are the strings in
+// this package spells the five out; everywhere else they are the strings in
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
 	case dataPrivacyPkg:
 		return dataprivacy.HTTPMapper, dataprivacy.GRPCMapper
+	case identityPkg:
+		return identity.HTTPMapper, identity.GRPCMapper
 	case linksPkg:
 		return links.HTTPMapper, links.GRPCMapper
 	case operationsPkg:

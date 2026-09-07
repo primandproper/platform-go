@@ -10,7 +10,7 @@ import (
 var (
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil billing database client")
 
 	// ErrNilProduct indicates a nil *Product where one was required.
 	ErrNilProduct = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil product")
@@ -27,7 +27,7 @@ var (
 	// ErrNilExecutor indicates a nil executor. Every method here runs on one the
 	// caller supplies — a database.Tx for a write, an executor for a read — so
 	// there is no method that can fall back to a connection of the store's own.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil billing query executor")
 
 	// ErrEmptyProductName indicates a product with no name. A product nobody
 	// can name is a product nobody can put on an invoice.

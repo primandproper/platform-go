@@ -12,14 +12,14 @@ var (
 	ErrNilPayload = platformerrors.New("nil outbox message payload")
 	// ErrNilExecutor indicates Enqueue was called without a query executor. It
 	// wraps errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil outbox query executor")
 	// ErrInvalidClaimMode indicates a claim mode that is unknown, or unsupported
 	// by the configured dialect.
 	ErrInvalidClaimMode = platformerrors.New("invalid outbox claim mode")
 	// ErrNilDatabaseClient indicates a nil database.Client was passed to
 	// NewRelay. It wraps errors.ErrNilInputParameter, so a caller may check
 	// either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil outbox database client")
 	// ErrNotifyUnsupported indicates a notify channel was configured on a
 	// dialect without LISTEN/NOTIFY. It wraps dialect.ErrUnsupported, so a
 	// caller may check either.
@@ -27,7 +27,7 @@ var (
 	// ErrNilPublisherProvider indicates a nil PublisherProvider was passed to
 	// NewRelay. It wraps errors.ErrNilInputParameter, so a caller may check
 	// either.
-	ErrNilPublisherProvider = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil publisher provider")
+	ErrNilPublisherProvider = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil outbox publisher provider")
 	// ErrUnnamedSideEffect indicates a side effect was registered without a
 	// name. The name is what spans and errors call it by, so an unnamed one is
 	// a derived write nothing can attribute.

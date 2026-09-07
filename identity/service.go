@@ -30,6 +30,11 @@ const (
 	opArchiveUser              = "archive_user"
 	opUpdateUserAccountStatus  = "update_user_account_status"
 	opSetUserServiceRoles      = "set_user_service_roles"
+	opUpdateProfile            = "update_profile"
+	opUpdateAccount            = "update_account"
+	opRecordAgreement          = "record_agreement"
+	opSetMembershipRoles       = "set_membership_roles"
+	opRemoveMembership         = "remove_membership"
 )
 
 // Registration is what a completed registration produced: the user, the account
@@ -92,9 +97,13 @@ type Acceptance struct {
 // Invitation with the caller's expiry and token on it; and nothing here checks
 // that the person calling is allowed to.
 //
-// It ships no transport either. There is no HTTP handler, no gRPC service and
-// no proto here, for the reason the module README states under "Transports":
-// what this module stores is not what a consumer serves.
+// The transport is a package away rather than absent: identity/grpc serves
+// these operations over gRPC and identity.proto is the schema it serves them
+// in. What that package does not have either is the policy — it reads who is
+// calling off an interface the consumer's own interceptor satisfies, and what
+// each method requires is a default a consumer overrides. The line this package
+// draws is between "more than one write" and "a decision", not between a
+// library and a wire.
 //
 // # The transaction, and where a consumer's writes go
 //
@@ -756,4 +765,396 @@ func (s *Service) SetUserServiceRoles(
 	}
 
 	return updated, nil
+}
+
+// ProfileUpdate is what a user may change about themselves, with each field
+// absent unless it is being set.
+//
+// The fields are pointers so that "not sent" and "set to empty" stay apart. It
+// matters for FirstName and LastName, which a person may legitimately clear,
+// and it is what lets one type serve a caller sending a whole form and a caller
+// sending one field.
+type ProfileUpdate struct {
+	_ struct{} `json:"-"`
+
+	Username     *string `json:"username"`
+	EmailAddress *string `json:"emailAddress"`
+	FirstName    *string `json:"firstName"`
+	LastName     *string `json:"lastName"`
+}
+
+// apply writes the update onto a user and reports which fields moved, by name.
+//
+// A field set to the value it already held is not a change. That is what makes
+// "the user saved a form they did not edit" write nothing, rather than bumping
+// LastUpdatedAt and handing a hook an empty change to record.
+func (u *ProfileUpdate) apply(user *User) []string {
+	if u == nil || user == nil {
+		return nil
+	}
+
+	var changed []string
+
+	fields := []struct {
+		set   *string
+		field *string
+		name  string
+	}{
+		{u.Username, &user.Username, "username"},
+		{u.EmailAddress, &user.EmailAddress, "emailAddress"},
+		{u.FirstName, &user.FirstName, "firstName"},
+		{u.LastName, &user.LastName, "lastName"},
+	}
+
+	for i := range fields {
+		f := &fields[i]
+		if f.set != nil && *f.set != *f.field {
+			*f.field = *f.set
+			changed = append(changed, f.name)
+		}
+	}
+
+	return changed
+}
+
+// AccountUpdate is what an account holder may change about an account.
+//
+// Neither the billing state nor the owner is here, for the reason
+// Store.UpdateAccount gives: both are moved by flows that do not hold the rest
+// of the account, and a read-modify-write over them loses whatever a processor
+// webhook or an ownership transfer did in between.
+type AccountUpdate struct {
+	_ struct{} `json:"-"`
+
+	Name           *string         `json:"name"`
+	TimeZone       *string         `json:"timeZone"`
+	BillingAddress *BillingAddress `json:"billingAddress"`
+}
+
+// apply writes the update onto an account and reports which fields moved.
+func (a *AccountUpdate) apply(account *Account) []string {
+	if a == nil || account == nil {
+		return nil
+	}
+
+	var changed []string
+
+	if a.Name != nil && *a.Name != account.Name {
+		account.Name = *a.Name
+		changed = append(changed, "name")
+	}
+
+	if a.TimeZone != nil && *a.TimeZone != account.TimeZone {
+		account.TimeZone = *a.TimeZone
+		changed = append(changed, "timeZone")
+	}
+
+	if a.BillingAddress != nil && *a.BillingAddress != account.BillingAddress {
+		account.BillingAddress = *a.BillingAddress
+		changed = append(changed, "billingAddress")
+	}
+
+	return changed
+}
+
+// UpdateProfile saves the fields a user may change about themselves and reports
+// which ones moved.
+//
+// It is here rather than left to Store.UpdateUser for the reason every other
+// operation is: the companions. A directory change is the thing a consumer's
+// audit trail, its search index and its downstream projections care most about
+// keeping in step, and a profile save that committed without them is the row
+// nobody can explain the provenance of. The hook is how they join.
+//
+// A save that changes nothing writes nothing: the user comes back as they
+// stand, no LastUpdatedAt is bumped and no hook runs. A form submitted
+// unedited is the common case, not an edge one, and recording it as a change
+// makes every audit trail mostly noise.
+//
+// Moving EmailAddress clears whatever verification the old address had, in the
+// store's own statement — the column records that a link was mailed, not which
+// address it went to. Proving the new one is a fresh link afterwards, and that
+// flow is not this package's.
+//
+// The user handed back and passed to the hook is read after the write, on the
+// transaction that made it, and is redacted.
+func (s *Service) UpdateProfile(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+	update *ProfileUpdate,
+) (*User, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+	)
+	defer op.End()
+
+	if update == nil {
+		return nil, op.Error(ErrNilProfileUpdate, "updating identity user profile")
+	}
+
+	var updated *User
+
+	err := s.run(ctx, op, opUpdateProfile, func(tx database.Tx) error {
+		user, err := s.store.GetUser(ctx, tx, scope, userID)
+		if err != nil {
+			return err
+		}
+
+		changed := update.apply(user)
+		if len(changed) == 0 {
+			updated = user.Redacted()
+
+			return nil
+		}
+
+		if err = s.store.UpdateUser(ctx, tx, scope, user); err != nil {
+			return err
+		}
+
+		after, err := s.store.GetUser(ctx, tx, scope, userID)
+		if err != nil {
+			return err
+		}
+
+		updated = after.Redacted()
+
+		return s.hooks.AfterUpdateProfile(ctx, tx, scope, updated, changed)
+	})
+	if err != nil {
+		return nil, op.Error(err, "updating profile of identity user %q", userID)
+	}
+
+	return updated, nil
+}
+
+// UpdateAccount saves the fields an account holder may change and reports which
+// ones moved.
+//
+// The same bargain UpdateProfile makes, for the other noun: a rename is what a
+// consumer's search index and its audit trail both want, and a save that
+// changes nothing writes nothing.
+func (s *Service) UpdateAccount(
+	ctx context.Context,
+	scope tenancy.Scope,
+	accountID string,
+	update *AccountUpdate,
+) (*Account, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(accountIDKey, accountID),
+	)
+	defer op.End()
+
+	if update == nil {
+		return nil, op.Error(ErrNilAccountUpdate, "updating identity account")
+	}
+
+	var updated *Account
+
+	err := s.run(ctx, op, opUpdateAccount, func(tx database.Tx) error {
+		account, err := s.store.GetAccount(ctx, tx, scope, accountID)
+		if err != nil {
+			return err
+		}
+
+		changed := update.apply(account)
+		if len(changed) == 0 {
+			updated = account
+
+			return nil
+		}
+
+		if err = s.store.UpdateAccount(ctx, tx, scope, account); err != nil {
+			return err
+		}
+
+		if updated, err = s.store.GetAccount(ctx, tx, scope, accountID); err != nil {
+			return err
+		}
+
+		return s.hooks.AfterUpdateAccount(ctx, tx, scope, updated, changed)
+	})
+	if err != nil {
+		return nil, op.Error(err, "updating identity account %q", accountID)
+	}
+
+	return updated, nil
+}
+
+// RecordAgreement stamps a user's acceptance of one or more documents.
+//
+// One store write, and here for the reason Invite is: the companion. An
+// acceptance is a compliance fact, and the record of it that a consumer keeps
+// — an audit entry, an outbox row a legal system consumes — is the same fact
+// as the column. Naming several documents stamps them all with one clock read,
+// so accepting two records one moment rather than two a later comparison could
+// order.
+//
+// Naming none is refused with errors.ErrEmptyInputParameter rather than
+// silently succeeding: a call that records nothing is a caller who built an
+// empty list and did not notice.
+//
+// The user handed back and passed to the hook is read after the write, on the
+// transaction that made it, and is redacted.
+func (s *Service) RecordAgreement(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+	agreements ...Agreement,
+) (*User, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+	)
+	defer op.End()
+
+	if len(agreements) == 0 {
+		return nil, op.Error(platformerrors.ErrEmptyInputParameter, "recording identity agreements")
+	}
+
+	var updated *User
+
+	err := s.run(ctx, op, opRecordAgreement, func(tx database.Tx) error {
+		if err := s.store.RecordAgreement(ctx, tx, scope, userID, agreements...); err != nil {
+			return err
+		}
+
+		after, err := s.store.GetUser(ctx, tx, scope, userID)
+		if err != nil {
+			return err
+		}
+
+		updated = after.Redacted()
+
+		return s.hooks.AfterRecordAgreement(ctx, tx, scope, updated, agreements)
+	})
+	if err != nil {
+		return nil, op.Error(err, "recording agreements for identity user %q", userID)
+	}
+
+	return updated, nil
+}
+
+// SetMembershipRoles replaces the roles a user holds in an account and reports
+// the set they held before.
+//
+// This is the authorization-shaped write an account administrator makes about
+// their own roster, and the one whose provenance an investigation asks after
+// first. It replaces rather than merges, as the store's write does — a merging
+// setter cannot revoke — and both sets reach the hook for the reason
+// SetUserServiceRoles gives.
+//
+// A user who is not a live member of the account is ErrMembershipNotFound,
+// found on the read that produces the previous set rather than by the write.
+func (s *Service) SetMembershipRoles(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID, accountID string,
+	roles []string,
+) (*Membership, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+		observability.WithValue(accountIDKey, accountID),
+	)
+	defer op.End()
+
+	var current *Membership
+
+	err := s.run(ctx, op, opSetMembershipRoles, func(tx database.Tx) error {
+		before, err := s.store.GetMembership(ctx, tx, scope, userID, accountID)
+		if err != nil {
+			return err
+		}
+
+		previousRoles := before.Roles
+
+		if err = s.store.SetMembershipRoles(ctx, tx, scope, userID, accountID, roles); err != nil {
+			return err
+		}
+
+		if current, err = s.store.GetMembership(ctx, tx, scope, userID, accountID); err != nil {
+			return err
+		}
+
+		return s.hooks.AfterSetMembershipRoles(ctx, tx, scope, current, previousRoles)
+	})
+	if err != nil {
+		return nil, op.Error(err, "setting roles of identity user %q in account %q", userID, accountID)
+	}
+
+	return current, nil
+}
+
+// RemoveMembership ends a user's membership in an account and hands the hook
+// the membership that ended and wherever their default landed.
+//
+// The membership is read before the write because it cannot be read after: an
+// ended one is returned by no read here, and a consumer keeping a roster, a
+// search document or per-account derived state needs to know which row to
+// strike. This is the last moment anything can produce it, which is the same
+// reason ArchiveUser reads the memberships it is about to end.
+//
+// Removing a user's default account moves the default to another live
+// membership, in the store's own write, and the account it moved to is what
+// reaches the hook. It is empty for every removal that did not move one.
+//
+// Removing the account's owner is refused with ErrLastAccountOwner: an
+// ownerless account fails every permission check that resolves through its
+// owner. Transfer it first.
+func (s *Service) RemoveMembership(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID, accountID string,
+) (*Membership, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+		observability.WithValue(accountIDKey, accountID),
+	)
+	defer op.End()
+
+	var removed *Membership
+
+	err := s.run(ctx, op, opRemoveMembership, func(tx database.Tx) error {
+		membership, err := s.store.GetMembership(ctx, tx, scope, userID, accountID)
+		if err != nil {
+			return err
+		}
+
+		if err = s.store.RemoveMembership(ctx, tx, scope, userID, accountID); err != nil {
+			return err
+		}
+
+		// Only asked when the removal took the user's landing account away.
+		// Every other removal leaves the default where it was, and a read to
+		// confirm that would be a query per removal to learn nothing.
+		var newDefaultAccountID string
+
+		if membership.DefaultAccount {
+			remaining, listErr := s.store.ListMembershipsForUser(ctx, tx, scope, userID)
+			if listErr != nil {
+				return listErr
+			}
+
+			for _, m := range remaining {
+				if m.DefaultAccount {
+					newDefaultAccountID = m.BelongsToAccount
+
+					break
+				}
+			}
+		}
+
+		removed = membership
+
+		return s.hooks.AfterRemoveMembership(ctx, tx, scope, removed, newDefaultAccountID)
+	})
+	if err != nil {
+		return nil, op.Error(err, "removing identity user %q from account %q", userID, accountID)
+	}
+
+	return removed, nil
 }

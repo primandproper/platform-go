@@ -98,7 +98,7 @@ var (
 	// ErrNilExecutor indicates a nil executor. The collector's is supplied at
 	// construction, because billing keeps no connection of its own to fall back
 	// to and Collect has nowhere to take one.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil billing privacy query executor")
 )
 
 // Account is one account a subject's billing may be under: which scope it is in,

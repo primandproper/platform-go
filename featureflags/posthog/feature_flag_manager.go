@@ -23,7 +23,7 @@ const (
 )
 
 var (
-	ErrNilConfig          = platformerrors.New("missing config")
+	ErrNilConfig          = platformerrors.New("missing posthog config")
 	ErrMissingCredentials = platformerrors.New("missing PostHog credentials")
 )
 

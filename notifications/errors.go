@@ -10,14 +10,14 @@ import (
 var (
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil notifications database client")
 
 	// ErrNilExecutor indicates a nil executor. Every method a consumer calls
 	// here runs on one the caller supplies — a database.Tx for a write, a
 	// database.SQLQueryExecutor for a read — so there is no connection of the
 	// store's own for it to fall back to. It wraps errors.ErrNilInputParameter,
 	// so a caller may check either.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil notifications query executor")
 
 	// ErrScopeMismatch indicates a write whose entity names a different scope
 	// than the write does.
@@ -27,7 +27,7 @@ var (
 	// caller holding one tenant's notification and filing it into another, which
 	// is a stale value or a mix-up and is not a thing to guess at. An entity that
 	// names no scope adopts the argument.
-	ErrScopeMismatch = platformerrors.New("entity names a different scope than the write")
+	ErrScopeMismatch = platformerrors.New("notification entity names a different scope than the write")
 
 	// ErrNilNotification indicates a nil *Notification where one was required.
 	ErrNilNotification = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil notification")

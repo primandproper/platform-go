@@ -30,7 +30,7 @@ var (
 	// ErrEmptyPrivateAPIKey indicates an empty API token was provided.
 	ErrEmptyPrivateAPIKey = platformerrors.New("empty Mailgun API token")
 	// ErrNilHTTPClient indicates a nil HTTP client was provided.
-	ErrNilHTTPClient = platformerrors.New("nil HTTP client")
+	ErrNilHTTPClient = platformerrors.New("nil mailgun HTTP client")
 )
 
 type (

@@ -21,7 +21,7 @@ import (
 const serviceName = "ratelimiting_http"
 
 // ErrNilLimiter indicates NewMiddleware was called without a limiter.
-var ErrNilLimiter = platformerrors.New("nil rate limiter")
+var ErrNilLimiter = platformerrors.New("nil rate limiter for the HTTP middleware")
 
 // middleware holds what every request needs, built once at construction.
 type middleware struct {

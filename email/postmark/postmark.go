@@ -28,7 +28,7 @@ var (
 	// ErrEmptyServerToken indicates an empty server token was provided.
 	ErrEmptyServerToken = platformerrors.New("empty Postmark server token")
 	// ErrNilHTTPClient indicates a nil HTTP client was provided.
-	ErrNilHTTPClient = platformerrors.New("nil HTTP client")
+	ErrNilHTTPClient = platformerrors.New("nil postmark HTTP client")
 )
 
 type (

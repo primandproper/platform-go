@@ -4,17 +4,22 @@ set -euo pipefail
 # Generate the Go bindings for the .proto files this module ships.
 # Usage: proto.sh <project_root>
 #
-# Both halves of the toolchain are pinned, because the generated files are
-# checked in and CI fails on a dirty tree. protoc-gen-go stamps its own version
-# and protoc's into every file it writes, so an unpinned either one turns that
+# Every part of the toolchain is pinned, because the generated files are checked
+# in and CI fails on a dirty tree. Both plugins stamp their own version and
+# protoc's into every file they write, so an unpinned any one of them turns that
 # check into a report on which machine ran it.
 #
-#   - protoc-gen-go is pinned by go.mod, via the tool directive, and built from
+#   - protoc-gen-go emits the message types, and protoc-gen-go-grpc the service
+#     stubs. Both are pinned by go.mod, via the tool directive, and built from
 #     the module cache rather than installed. `go tool` cannot be used directly
 #     here: protoc runs its plugins as executables it finds itself.
 #   - protoc is pinned by .protoc-version, and lives in .protoc-version and
 #     nowhere else. A protoc already on PATH is used when it matches; otherwise
 #     the pinned release is downloaded under artifacts/, which is gitignored.
+#
+# protoc-gen-go-grpc writes nothing for a .proto with no service in it, so a
+# schema-only file like filtering's gains no second output by this plugin being
+# on the command line.
 #
 # The generated files are formatted afterwards by `make format` rather than
 # here, so `make proto format` is what a contributor runs and what CI runs.
@@ -67,10 +72,12 @@ else
   protoc_bin="${PROTOC_DIR}/bin/protoc"
 fi
 
-# protoc runs its plugins as executables, so the tool directive has to be built
+# protoc runs its plugins as executables, so each tool directive has to be built
 # out to a file rather than invoked through `go tool`.
-plugin="${TOOL_DIR}/protoc-gen-go"
-(cd "${PROJECT_ROOT}" && go build -o "${plugin}" google.golang.org/protobuf/cmd/protoc-gen-go)
+go_plugin="${TOOL_DIR}/protoc-gen-go"
+grpc_plugin="${TOOL_DIR}/protoc-gen-go-grpc"
+(cd "${PROJECT_ROOT}" && go build -o "${go_plugin}" google.golang.org/protobuf/cmd/protoc-gen-go)
+(cd "${PROJECT_ROOT}" && go build -o "${grpc_plugin}" google.golang.org/grpc/cmd/protoc-gen-go-grpc)
 
 # The module path is derived rather than written down, so a major version bump
 # does not leave this script pointing at the previous one. The go_package
@@ -109,12 +116,21 @@ if [ ${#proto_files[@]} -eq 0 ]; then
   exit 1
 fi
 
-# --go_opt=module strips the module path off each file's go_package and writes
-# what remains, so a file's output path is decided by its own go_package option
-# and not by an argument here.
+# --go_opt=module and --go-grpc_opt=module strip the module path off each file's
+# go_package and write what remains, so a file's output path is decided by its
+# own go_package option and not by an argument here. Both plugins are given the
+# same one, so the messages and the stubs land in the same package.
+#
+# require_unimplemented_servers is left at its default of true: an
+# implementation embeds the generated Unimplemented struct, and an RPC added to
+# a service later is then additive rather than a compile failure in every
+# consumer that had implemented the interface exhaustively.
 (cd "${PROJECT_ROOT}" && "${protoc_bin}" \
   "${path_args[@]}" \
-  --plugin="protoc-gen-go=${plugin}" \
+  --plugin="protoc-gen-go=${go_plugin}" \
+  --plugin="protoc-gen-go-grpc=${grpc_plugin}" \
   --go_out=. \
   --go_opt="module=${module_path}" \
+  --go-grpc_out=. \
+  --go-grpc_opt="module=${module_path}" \
   "${proto_files[@]}")

@@ -169,7 +169,7 @@ var (
 
 	// ErrNilRegistry indicates a nil *metering.Registry. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilRegistry = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil metering registry")
+	ErrNilRegistry = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil metering registry for entitlements")
 
 	// ErrEnforcerRequired indicates a Catalog with at least one quota feature was
 	// used to build a Checker with no metering.Enforcer.

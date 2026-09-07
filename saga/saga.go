@@ -64,11 +64,11 @@ var (
 
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil saga database client")
 
 	// ErrNilExecutor indicates a Store method that runs in the caller's
 	// transaction was called without one.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil saga query executor")
 
 	// ErrNilRegistry indicates a nil *Registry.
 	ErrNilRegistry = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil saga registry")

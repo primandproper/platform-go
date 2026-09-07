@@ -22,8 +22,8 @@ search indexes. Every one of them is a primitive, and that is the whole of the
 list on purpose: this package is a primitive too, so nothing built on those may
 appear in it.
 
-The tier above maps itself. dataprivacy, links, operations and sessions each
-export a GRPCMapper holding the cases for their own sentinels, and the import
+The tier above maps itself. dataprivacy, identity, links, operations and
+sessions each export a GRPCMapper holding the cases for their own sentinels, and the import
 runs from them to here. Anything else with a sentinel a client should act on does
 the same: declare a mapper beside the sentinel, and register it.
 

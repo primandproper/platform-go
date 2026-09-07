@@ -132,6 +132,74 @@ type Hooks interface {
 		user *User,
 		previousRoles []string,
 	) error
+
+	// AfterUpdateProfile is called with the user as they stand after the save
+	// and the fields that actually moved, named rather than valued.
+	//
+	// The names and not the old values, because a profile save is the one write
+	// here whose before-image is a privacy question of its own: an audit trail
+	// that records what somebody's email address used to be is a second copy of
+	// a personal detail, kept somewhere the erasure path does not reach. A
+	// consumer that genuinely needs the old value reads it in the hook, on the
+	// transaction, before this returns.
+	AfterUpdateProfile(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		user *User,
+		changed []string,
+	) error
+
+	// AfterUpdateAccount is called with the account as it stands after the save
+	// and the fields that moved.
+	AfterUpdateAccount(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		account *Account,
+		changed []string,
+	) error
+
+	// AfterRecordAgreement is called with the user and the documents they just
+	// accepted, all stamped with one clock read.
+	AfterRecordAgreement(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		user *User,
+		agreements []Agreement,
+	) error
+
+	// AfterSetMembershipRoles is called with the membership as it stands and
+	// the roles it held before.
+	//
+	// Both sets, for the reason AfterSetUserServiceRoles gives: a record saying
+	// somebody holds a role is not what an investigation wants. The one it
+	// wants says they gained it, and when.
+	AfterSetMembershipRoles(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		membership *Membership,
+		previousRoles []string,
+	) error
+
+	// AfterRemoveMembership is called with the membership that was ended, as it
+	// stood before it was, and the account the user's default moved to.
+	//
+	// The membership is read before the write because it cannot be read after:
+	// an ended membership is returned by no read here, and a consumer keeping a
+	// roster or a per-account projection needs to know which one to strike. The
+	// destination is empty when the removal did not move a default — the
+	// membership was not the user's landing account, or it was and there was
+	// no other live one to land on.
+	AfterRemoveMembership(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		membership *Membership,
+		newDefaultAccountID string,
+	) error
 }
 
 var _ Hooks = NoopHooks{}
@@ -154,7 +222,7 @@ var _ Hooks = NoopHooks{}
 //		return h.audit.Record(ctx, tx, scope, "user.registered", r.User.ID)
 //	}
 //
-// Embedding rather than implementing all ten is what keeps a method added to
+// Embedding rather than implementing all fifteen is what keeps a method added to
 // Hooks later from breaking every consumer — a new operation arrives as a
 // no-op they can then choose to override.
 type NoopHooks struct{}
@@ -215,6 +283,41 @@ func (NoopHooks) AfterUpdateUserAccountStatus(
 // AfterSetUserServiceRoles does nothing.
 func (NoopHooks) AfterSetUserServiceRoles(
 	context.Context, database.Tx, tenancy.Scope, *User, []string,
+) error {
+	return nil
+}
+
+// AfterUpdateProfile does nothing.
+func (NoopHooks) AfterUpdateProfile(
+	context.Context, database.Tx, tenancy.Scope, *User, []string,
+) error {
+	return nil
+}
+
+// AfterUpdateAccount does nothing.
+func (NoopHooks) AfterUpdateAccount(
+	context.Context, database.Tx, tenancy.Scope, *Account, []string,
+) error {
+	return nil
+}
+
+// AfterRecordAgreement does nothing.
+func (NoopHooks) AfterRecordAgreement(
+	context.Context, database.Tx, tenancy.Scope, *User, []Agreement,
+) error {
+	return nil
+}
+
+// AfterSetMembershipRoles does nothing.
+func (NoopHooks) AfterSetMembershipRoles(
+	context.Context, database.Tx, tenancy.Scope, *Membership, []string,
+) error {
+	return nil
+}
+
+// AfterRemoveMembership does nothing.
+func (NoopHooks) AfterRemoveMembership(
+	context.Context, database.Tx, tenancy.Scope, *Membership, string,
 ) error {
 	return nil
 }

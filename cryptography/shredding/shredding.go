@@ -37,7 +37,7 @@ var (
 	ErrNilKeyWrapper = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil shredding key wrapper")
 
 	// ErrNilDatabaseClient indicates a nil database.Client.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil shredding database client")
 
 	// ErrEmptySubjectID indicates a Subject with no ID. A key belongs to
 	// somebody; there is no anonymous one.

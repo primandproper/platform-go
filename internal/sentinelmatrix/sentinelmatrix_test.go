@@ -279,3 +279,75 @@ var moduleRootPath = sync.OnceValue(func() string {
 
 	return root
 })
+
+// TestMappedResolutionsIsEveryMappedRow is the roster's own check on the list it
+// hands the two registration tests. They assert that a registered mapper answers
+// what this says, which asserts nothing at all if a row is missing from it.
+func TestMappedResolutionsIsEveryMappedRow(T *testing.T) {
+	T.Parallel()
+
+	resolutions := sentinelmatrix.MappedResolutions()
+	must.SliceNotEmpty(T, resolutions)
+
+	expected := 0
+
+	for _, pkg := range sentinelmatrix.Packages {
+		for _, row := range sentinelmatrix.Matrix[pkg] {
+			if row.Is == sentinelmatrix.Mapped {
+				expected++
+			}
+		}
+	}
+
+	test.SliceLen(T, expected, resolutions)
+
+	// Every entry carries the answer its own package's mappers give, which is
+	// what the registration tests compare against. A row with no code on either
+	// transport would pass those tests by asserting nothing.
+	for _, resolution := range resolutions {
+		T.Run(resolution.Package+"."+resolution.Name, func(t *testing.T) {
+			t.Parallel()
+
+			test.NotEq(t, httperrors.ErrorCode(""), resolution.HTTPCode)
+			test.NotEq(t, "", resolution.HTTPMsg)
+			test.NotEqOp(t, codes.Unknown, resolution.GRPCCode)
+			test.Error(t, resolution.Err)
+		})
+	}
+
+	// The order is Packages and then name, so a failure names the same row twice
+	// in a row rather than a different one each run.
+	sorted := slices.IsSortedFunc(resolutions, func(a, b sentinelmatrix.Resolution) int {
+		if a.Package != b.Package {
+			return slices.Index(sentinelmatrix.Packages, a.Package) -
+				slices.Index(sentinelmatrix.Packages, b.Package)
+		}
+
+		return strings.Compare(a.Name, b.Name)
+	})
+	test.True(T, sorted, test.Sprint("MappedResolutions is unordered, so a failure names a different row each run"))
+}
+
+// TestEveryDispositionRendersItself: the roster's failure messages are built out
+// of these, and a disposition added later that rendered as "unknown" would make
+// the message that reports it useless at exactly the moment somebody needs it.
+func TestEveryDispositionRendersItself(T *testing.T) {
+	T.Parallel()
+
+	seen := map[string]struct{}{}
+
+	for _, disposition := range []sentinelmatrix.Disposition{
+		sentinelmatrix.Mapped, sentinelmatrix.Platform, sentinelmatrix.Unhandled,
+	} {
+		rendered := disposition.String()
+		test.NotEq(T, "unknown", rendered,
+			test.Sprintf("disposition %d renders as the fallback", int(disposition)))
+		seen[rendered] = struct{}{}
+	}
+
+	test.MapLen(T, 3, seen, test.Sprint("two dispositions render the same, so a message cannot tell them apart"))
+
+	// The fallback itself, for a value no constant names — which is what a
+	// disposition added without a String case would be.
+	test.EqOp(T, "unknown", sentinelmatrix.Disposition(99).String())
+}

@@ -86,12 +86,12 @@ var (
 	// ErrNilScopeResolver indicates a nil ScopeResolver. It is required, and
 	// refusing it here is what stops an export that quietly covers no scope from
 	// being discovered by the subject.
-	ErrNilScopeResolver = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil scope resolver")
+	ErrNilScopeResolver = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil issue reports privacy scope resolver")
 
 	// ErrNilExecutor indicates a nil executor. Both halves run on one somebody
 	// else supplies — the collector's at construction, the eraser's per request —
 	// because issuereports keeps no connection of its own to fall back to.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil issue reports privacy query executor")
 
 	// ErrUnscopedRequest indicates a request that names no scope, handed to
 	// [RequestScope], which has nowhere else to get one.

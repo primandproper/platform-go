@@ -3,15 +3,16 @@ Package errormappers registers this module's domain tier with the two transport
 registries, in one call.
 
 errors/http and errors/grpc are primitives and map primitives. Everything above
-them maps itself: dataprivacy, links, operations and sessions each export an
-HTTPMapper and a GRPCMapper beside their sentinels, and links additionally
-exports the redemption outcomes whose own wording a gRPC status may carry. None
+them maps itself: dataprivacy, identity, links, operations and sessions each
+export an HTTPMapper and a GRPCMapper beside their sentinels, and links
+additionally exports the redemption outcomes whose own wording a gRPC status may
+carry. None
 of them registers itself — a mapper that installs itself into a process-wide
 registry by being linked in is a side effect a consumer cannot opt out of — so
 something above has to, and before this package that something was either
-service.Register or nine calls written out by hand.
+service.Register or eleven calls written out by hand.
 
-Nine calls is a number worth removing because skipping one raises nothing. There
+Eleven calls is a number worth removing because skipping one raises nothing. There
 is no error, no log and no panic: ToAPIError falls through to ErrNothingSpecific
 and "an error occurred", HTTPStatusForCode answers 500 for a code it does not
 recognize, and MapToGRPC returns whatever default the caller passed. A subject
@@ -40,10 +41,10 @@ registering is harmless, which is the fourth section.
 
 # Why it is not in service
 
-Importing service to register four mappers means paying for the whole config
+Importing service to register five packages' mappers means paying for the whole config
 tree — every sub-config, and every package each one wires. A consumer assembling
 three packages by hand should not import seventy to be told what a link that has
-expired means on the wire. This package imports the four domains and the two
+expired means on the wire. This package imports the five domains and the two
 registries and nothing else.
 
 # What it does not do

@@ -30,7 +30,7 @@ import (
 // a sentinel of this package's own: startup code branches on one thing for
 // "the config named a provider nothing implements", whichever package it
 // reached.
-var ErrNilConfig = platformerrors.New("nil config provided")
+var ErrNilConfig = platformerrors.New("nil object storage config provided")
 
 type (
 	// Uploader implements the uploads.UploadManager interface.

@@ -16,9 +16,19 @@ endpoints: a Store interface, a SQL implementation of it, the DDL for three
 dialects, and a mock. Over that it owns [Service], the operations that are more
 than one write — a registration, an invitation answered, an ownership
 transferred — each in one transaction with the consumer's own writes joining it
-through [Hooks]. A consumer keeps its policy, its HTTP handlers, its proto, and
-whatever columns are genuinely its own; it does not keep a users table, and it
-no longer keeps the transaction-shaped code around one.
+through [Hooks]. Over that again, [github.com/primandproper/platform-go/v14/identity/grpc]
+serves it: twenty-eight RPCs, the .proto they are described by, a typed client,
+and the permissions each one wants. A consumer keeps its policy, its
+authentication, and whatever columns are genuinely its own; it does not keep a
+users table, it no longer keeps the transaction-shaped code around one, and it
+no longer writes the service and the converters over that.
+
+That last part reverses a line this module drew on purpose, and the reasons are
+in identity/grpc's own documentation and in the README's "Transports" section.
+The short version is that all three objections — a library versioning your API,
+in types your proto does not have, under a scoping rule it guessed — were
+properties of a module that also held the primitives, and the split answers each
+of them.
 
 # Where the boundary with authentication falls
 

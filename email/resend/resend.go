@@ -27,7 +27,7 @@ var (
 	// ErrEmptyAPIToken indicates an empty API token was provided.
 	ErrEmptyAPIToken = platformerrors.New("empty Resend API token")
 	// ErrNilHTTPClient indicates a nil HTTP client was provided.
-	ErrNilHTTPClient = platformerrors.New("nil HTTP client")
+	ErrNilHTTPClient = platformerrors.New("nil resend HTTP client")
 )
 
 type (

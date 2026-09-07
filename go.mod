@@ -347,6 +347,7 @@ require (
 	google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260630182238-925bb5da69e7 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260720211330-0afa2a65878a
+	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.5.1 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 )
 
@@ -356,5 +357,6 @@ tool (
 	github.com/dkorunic/betteralign/cmd/betteralign
 	github.com/matryer/moq
 	golang.org/x/tools/cmd/goimports
+	google.golang.org/grpc/cmd/protoc-gen-go-grpc
 	google.golang.org/protobuf/cmd/protoc-gen-go
 )

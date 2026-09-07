@@ -29,7 +29,7 @@ var (
 	// ErrEmptyPrivateAPIKey indicates an empty API token was provided.
 	ErrEmptyPrivateAPIKey = platformerrors.New("empty Mailjet API token")
 	// ErrNilHTTPClient indicates a nil HTTP client was provided.
-	ErrNilHTTPClient = platformerrors.New("nil HTTP client")
+	ErrNilHTTPClient = platformerrors.New("nil mailjet HTTP client")
 )
 
 type (

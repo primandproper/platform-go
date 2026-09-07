@@ -5,7 +5,12 @@ import (
 )
 
 // Re-exports from cockroachdb/errors for construction and wrapping.
-// Use std "errors" for Is, As, Unwrap - they work with these types.
+//
+// Use std "errors" for Is, As and Unwrap — they work with these types, and they
+// work on an error that has crossed a gRPC connection too, provided that
+// connection has errors/grpc's UnaryErrorDecodingInterceptor installed and the
+// RPC was unary; a streaming RPC's error is not decoded on the client yet. [Is]
+// below says when you would want cockroachdb's instead.
 var (
 	New    = crdberrors.New
 	Newf   = crdberrors.Newf
@@ -27,6 +32,28 @@ var (
 
 	EncodeError = crdberrors.EncodeError
 	DecodeError = crdberrors.DecodeError
+
+	// Is and As are cockroachdb's rather than the standard library's. They
+	// compare an error's *mark* — the type name and message cockroachdb records
+	// for it — as well as its identity, which is what an error reconstructed by
+	// DecodeError has instead of the identity the sentinel was declared with.
+	//
+	// Reach for them when holding an error whose provenance is genuinely
+	// unknown. They are a superset of the standard library's, but they are not
+	// the default recommendation: most errors here never leave the process, and
+	// there std errors.Is is the same answer with one less import. The superset
+	// is also where they are looser: a mark is a type chain plus a message and
+	// not an identity, so two sentinels declared with the same wording in
+	// different packages match each other under these, which is why the module
+	// keeps sentinel messages unique.
+	//
+	// In particular they are not needed on an error that came back over gRPC.
+	// That was the case they were exported for, and errors/grpc's decoding
+	// interceptor now returns an error implementing Is, so std errors.Is matches
+	// a sentinel across a connection. Making the common path work was better
+	// than documenting a second matcher every call site had to remember.
+	Is = crdberrors.Is
+	As = crdberrors.As
 )
 
 // Common platform sentinels (wire-transmittable via cockroachdb/errors).

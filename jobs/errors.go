@@ -44,7 +44,7 @@ var (
 	// ErrNilPublisherProvider indicates a nil PublisherProvider was passed to
 	// NewTopicDeadLetter. It wraps errors.ErrNilInputParameter, so a caller may
 	// check either.
-	ErrNilPublisherProvider = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil publisher provider")
+	ErrNilPublisherProvider = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil jobs publisher provider")
 )
 
 // PoolGroup sentinels.

@@ -39,7 +39,7 @@ const (
 var (
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil retention database client")
 
 	// ErrNoPolicies indicates a Sweeper built with nothing to sweep.
 	//

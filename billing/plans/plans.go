@@ -80,7 +80,7 @@ var (
 	// ErrNilExecutor indicates a nil executor. The reads run on one somebody
 	// else supplies, because billing keeps no connection of its own to fall
 	// back to.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil billing plans query executor")
 )
 
 // pageSize is how many of an account's current subscriptions Choose is shown.

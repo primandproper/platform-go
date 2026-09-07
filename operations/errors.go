@@ -49,11 +49,11 @@ var (
 	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil operations store")
 
 	// ErrNilDatabaseClient indicates a nil database.Client.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil operations database client")
 
 	// ErrNilExecutor indicates a Store method that runs in the caller's
 	// transaction was called without one.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil operations query executor")
 
 	// ErrNilRegistry indicates a nil *Registry.
 	ErrNilRegistry = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil operations registry")

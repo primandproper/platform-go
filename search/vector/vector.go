@@ -28,7 +28,7 @@ var (
 	// ErrDimensionMismatch indicates an embedding's dimension does not match the index dimension.
 	ErrDimensionMismatch = platformerrors.New("embedding dimension does not match index dimension")
 	// ErrNilDatabaseClient indicates a nil database.Client was passed to a postgres-backed provider.
-	ErrNilDatabaseClient = platformerrors.New("nil database client")
+	ErrNilDatabaseClient = platformerrors.New("nil vector search database client")
 	// ErrInvalidMetric indicates an unsupported DistanceMetric was specified.
 	ErrInvalidMetric = platformerrors.New("invalid distance metric")
 	// ErrInvalidDimension indicates a non-positive dimension was specified.

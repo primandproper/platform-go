@@ -19,15 +19,15 @@ search indexes. Every one of them is a primitive, and that is the whole of the
 list on purpose: this package is a primitive too, so nothing built on those may
 appear in it.
 
-The tier above maps itself. dataprivacy, links, operations and sessions each
-export an HTTPMapper holding the cases for their own sentinels, and the import
+The tier above maps itself. dataprivacy, identity, links, operations and
+sessions each export an HTTPMapper holding the cases for their own sentinels, and the import
 runs from them to here — they need ErrorCode, this package needs nothing of
 theirs. Anything else with a sentinel a client should act on does the same:
 declare a mapper beside the sentinel, and register it.
 
 Registration is what makes a mapper reachable. RegisterHTTPErrorMapper appends
 one; ToAPIError consults PlatformMapper first, then registered mappers in
-registration order. This module's four are one call — errormappers.Register,
+registration order. This module's five are one call — errormappers.Register,
 which service.Register makes for a service built from a service.Config and a
 service assembled by hand makes itself, alongside the mappers it declares for its
 own sentinels. There is deliberately no init doing it: a mapper that installs

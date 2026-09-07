@@ -1,0 +1,772 @@
+// Package primandproper.platform.identity.v1 is the wire schema for the four
+// nouns this module's identity package owns -- users, accounts, memberships and
+// invitations -- and for the operations over them that are more than one write.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directory on protoc's path and imports this file by its
+// canonical name, exactly as filtering.proto already works:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/identity/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/identity/v1/identity.proto=github.com/primandproper/platform-go/v14/identity/identitypb \
+//	    --go_opt=Mprimandproper/platform/filtering/v1/filtering.proto=github.com/primandproper/platform-go/v14/filtering/filteringpb \
+//	    $(CONSUMER_PROTO_FILES)   # both platform files deliberately absent from that list
+//
+// Go links against the bindings this module already generated, in
+// github.com/primandproper/platform-go/v14/identity/identitypb, rather than
+// making a second copy: the server and the typed client here are built against
+// those types, and a consumer generating its own would hold types that look
+// identical and satisfy nothing. Swift, TypeScript and Kotlin have no such
+// bindings to link against and generate this file directly, which is the whole
+// point of shipping the schema rather than a Go package.
+//
+// Field numbers are the compatibility promise, and they are the promise across
+// every language a consumer generates into. Numbers are never reused and never
+// repurposed: a field that goes away is reserved.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere. Every row this schema describes carries a
+// tenancy.Scope, and every read filters on it -- but a scope a client could put
+// in a request is a cross-tenant read hiding behind a request field. The scope
+// comes off the principal the consumer's authentication interceptor resolved,
+// and from nowhere else. See identity/grpc for that seam.
+//
+// No credentials, in either direction. There is no hashed_password,
+// two_factor_secret or email_address_verification_token on User, and no token
+// on Invitation -- an invitation's token appears only as a request field on the
+// two RPCs that answer one, because that is where it arrives from, on a link.
+// A schema with no field for a secret is a stronger guarantee than a converter
+// that remembers to clear one.
+//
+// No credential RPCs either: setting a password, enrolling a second factor and
+// verifying an email address are the sign-in service's, not the directory's,
+// and RegisterRequest carries no password for the same reason. The identity
+// package never hashes -- it stores what an engine produced -- so a plaintext
+// password on this wire would put the choice of hashing engine in the
+// transport. Registration here mints the passwordless user that package already
+// treats as first-class, and a credential is attached afterwards.
+//
+// No avatar. The media registry is this module's, but identity has no avatar
+// column and joining one is a contract between two packages that has not been
+// designed. It is absent rather than guessed at.
+syntax = "proto3";
+
+package primandproper.platform.identity.v1;
+
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/filtering/v1/filtering.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/identity/identitypb;identitypb";
+
+// AccountStatus is where a user stands with the operator: whether they may sign
+// in at all, and if not, why not. It is not a permission -- what a user may do
+// once admitted is resolved from their roles.
+enum AccountStatus {
+  // Unset. A request naming it is refused rather than defaulted: the Go type is
+  // a closed set of four, and guessing which one a caller meant is how a banned
+  // user gets reinstated by a client that forgot to set the field.
+  ACCOUNT_STATUS_UNSPECIFIED = 0;
+
+  // Registered, and has not yet proven whatever registration asked of them.
+  ACCOUNT_STATUS_UNVERIFIED = 1;
+
+  // In good standing. The only status that admits a sign-in.
+  ACCOUNT_STATUS_GOOD = 2;
+
+  // Suspended by an operator, reversibly. The explanation is meant to be shown
+  // to them.
+  ACCOUNT_STATUS_BANNED = 3;
+
+  // Ended permanently. Not erasure -- the row remains, because an account with
+  // a payment history and an audit trail cannot simply vanish.
+  ACCOUNT_STATUS_TERMINATED = 4;
+}
+
+// BillingStatus is where an account stands with the payment processor.
+enum BillingStatus {
+  BILLING_STATUS_UNSPECIFIED = 0;
+  BILLING_STATUS_UNPAID = 1;
+  BILLING_STATUS_TRIAL = 2;
+  BILLING_STATUS_PAID = 3;
+  BILLING_STATUS_SUSPENDED = 4;
+}
+
+// InvitationStatus is how an invitation stands: still open, or the answer it
+// got.
+enum InvitationStatus {
+  INVITATION_STATUS_UNSPECIFIED = 0;
+  INVITATION_STATUS_PENDING = 1;
+  INVITATION_STATUS_ACCEPTED = 2;
+  INVITATION_STATUS_REJECTED = 3;
+  INVITATION_STATUS_CANCELLED = 4;
+}
+
+// Agreement is a document a user can accept.
+enum Agreement {
+  AGREEMENT_UNSPECIFIED = 0;
+  AGREEMENT_TERMS_OF_SERVICE = 1;
+  AGREEMENT_PRIVACY_POLICY = 2;
+}
+
+// User is somebody who can sign in.
+//
+// The credential columns the Go type carries are deliberately absent here; see
+// the file comment. The timestamps *about* those credentials are not secrets
+// and are present, because "two-factor enabled since" and "password last
+// changed" are things a settings page shows.
+message User {
+  string id = 1;
+
+  // username is the handle the user signs in with, unique within the directory.
+  string username = 2;
+
+  string email_address = 3;
+
+  // first_name and last_name are optional: plenty of applications never ask,
+  // and plenty of people do not have a name that splits in two.
+  string first_name = 4;
+
+  string last_name = 5;
+
+  AccountStatus account_status = 6;
+
+  // account_status_explanation is why, in prose meant for the user.
+  string account_status_explanation = 7;
+
+  // service_roles are the roles held outside any account -- operator, support,
+  // service administrator. They are not membership roles: a support engineer's
+  // role does not put them on an account's roster.
+  repeated string service_roles = 8;
+
+  bool requires_password_change = 9;
+
+  google.protobuf.Timestamp created_at = 10;
+
+  google.protobuf.Timestamp last_updated_at = 11;
+
+  google.protobuf.Timestamp archived_at = 12;
+
+  // email_address_verified_at is when the address was proven reachable. Absent
+  // means it has not been.
+  google.protobuf.Timestamp email_address_verified_at = 13;
+
+  google.protobuf.Timestamp password_last_changed_at = 14;
+
+  // two_factor_secret_verified_at is when the user first proved they held the
+  // secret. A secret issued and never proven is not a second factor, so this
+  // being absent is what a sign-in flow checks.
+  google.protobuf.Timestamp two_factor_secret_verified_at = 15;
+
+  // The two agreement timestamps are timestamps rather than booleans because
+  // the question an operator has is "who has not accepted the version published
+  // on the 3rd", which a boolean cannot answer.
+  google.protobuf.Timestamp last_accepted_terms_of_service = 16;
+
+  google.protobuf.Timestamp last_accepted_privacy_policy = 17;
+
+  // 18 is reserved for the avatar the file comment explains is absent.
+  reserved 18;
+}
+
+// BillingAddress is where an account's invoices go.
+message BillingAddress {
+  string line1 = 1;
+  string line2 = 2;
+  string city = 3;
+  string state = 4;
+  string postal_code = 5;
+  string country = 6;
+  string phone = 7;
+}
+
+// Account is a thing users belong to. It is not the tenant -- see the file
+// comment on scope, and identity's own package documentation on why an account
+// is a row here rather than a directory of its own.
+message Account {
+  string id = 1;
+
+  string name = 2;
+
+  // owner_user_id is who owns it. It moves only through
+  // TransferAccountOwnership, never through UpdateAccount.
+  //
+  // The explicit json_name here and on the fields below is not decoration.
+  // protobuf would derive "ownerUserId", and the Go type this renders carries
+  // `json:"ownerUserID"` — so a consumer serving the same account over JSON and
+  // over gRPC-JSON would emit two spellings of one field. Pinning the name
+  // makes the two descriptions of this type agree, which identity/grpc's
+  // conformance test then holds them to.
+  string owner_user_id = 3 [json_name = "ownerUserID"];
+
+  BillingStatus billing_status = 4;
+
+  string payment_processor_customer_id = 5 [json_name = "paymentProcessorCustomerID"];
+
+  // time_zone is an IANA name. An account whose zone the runtime cannot load is
+  // refused rather than defaulted to UTC.
+  string time_zone = 6;
+
+  BillingAddress billing_address = 7;
+
+  // subscription_plan_id is absent for an account on no plan.
+  optional string subscription_plan_id = 8 [json_name = "subscriptionPlanID"];
+
+  google.protobuf.Timestamp created_at = 9;
+
+  google.protobuf.Timestamp last_updated_at = 10;
+
+  google.protobuf.Timestamp archived_at = 11;
+
+  google.protobuf.Timestamp last_payment_provider_synced_at = 12;
+}
+
+// Membership puts a user in an account and says what they may do there.
+message Membership {
+  string id = 1;
+
+  string belongs_to_user = 2;
+
+  string belongs_to_account = 3;
+
+  // roles are this account's roles, resolved to permissions by the consumer's
+  // policy alongside the user's service roles.
+  repeated string roles = 4;
+
+  // default_account marks the one account the user lands in. Exactly one of a
+  // user's live memberships carries it.
+  bool default_account = 5;
+
+  google.protobuf.Timestamp created_at = 6;
+
+  google.protobuf.Timestamp last_updated_at = 7;
+
+  google.protobuf.Timestamp archived_at = 8;
+}
+
+// MembershipWithUser is a roster row: the membership and who holds it, so a
+// member list is one call rather than a list and then N reads.
+message MembershipWithUser {
+  User user = 1;
+
+  Membership membership = 2;
+}
+
+// Invitation is an offer of membership in an account.
+//
+// It carries no token. The token is what a link holds, it is minted server-side
+// and it is cleared from every invitation this service returns; it appears in
+// this schema only as a request field on the two RPCs that answer one.
+message Invitation {
+  string id = 1;
+
+  string belongs_to_account = 2;
+
+  // from_user is who sent it.
+  string from_user = 3;
+
+  // to_user is who answered it, absent while the invitation is still pending or
+  // was answered by somebody with no account here.
+  optional string to_user = 4;
+
+  string to_email = 5;
+
+  string to_name = 6;
+
+  InvitationStatus status = 7;
+
+  // note is the sender's message, and survives the answer untouched.
+  string note = 8;
+
+  // status_note is why the answer went the way it did.
+  string status_note = 9;
+
+  // roles are what the invitation promises. They come from here and never from
+  // an acceptance's parameters: what somebody was invited to is what they get.
+  repeated string roles = 10;
+
+  google.protobuf.Timestamp expires_at = 11;
+
+  google.protobuf.Timestamp created_at = 12;
+
+  google.protobuf.Timestamp last_updated_at = 13;
+
+  google.protobuf.Timestamp archived_at = 14;
+
+  // 15 is reserved for the token, which is deliberately never on a response.
+  reserved 15;
+}
+
+// Principal is a user together with the memberships that say what they may do,
+// and the account this request is against -- everything a client needs to
+// render "who am I and what may I do", in one call.
+message Principal {
+  User user = 1;
+
+  // active_account_id is the account this request is against: the one asked
+  // for, or the user's default when none was. A principal is only ever produced
+  // for an account the user is actually a member of.
+  string active_account_id = 2 [json_name = "activeAccountID"];
+
+  repeated Membership memberships = 3;
+}
+
+// Registration is what a completed registration produced. All three land in one
+// transaction: a user with no account signs in to nothing, and an account whose
+// owner is not on its roster fails every roster-driven permission check.
+message Registration {
+  User user = 1;
+
+  Account account = 2;
+
+  Membership membership = 3;
+}
+
+// Acceptance is what accepting an invitation produced: the answered invitation
+// and the membership it promised.
+message Acceptance {
+  Invitation invitation = 1;
+
+  Membership membership = 2;
+}
+
+// UserRegistrationInput is the directory half of a registration. It carries no
+// credential and no status: a registrant has proven nothing yet, and the status
+// they start in is the store's decision rather than the caller's.
+message UserRegistrationInput {
+  string username = 1;
+
+  string email_address = 2;
+
+  string first_name = 3;
+
+  string last_name = 4;
+}
+
+// AccountCreationInput is the first account a registrant owns. The owner is the
+// registrant and is not a field here.
+message AccountCreationInput {
+  string name = 1;
+
+  string time_zone = 2;
+
+  BillingAddress billing_address = 3;
+}
+
+// ProfileUpdateInput is what a user may change about themselves. Verifying an
+// address is not among them: moving email_address clears whatever verification
+// the old one had, and proving the new one is a fresh link afterwards.
+//
+// Every field is optional, and the distinction is presence rather than value: a
+// field left off the request leaves that column as it was, and a field sent
+// empty clears it. That is what lets a client rename somebody without resending
+// their email address, and what lets a person remove a last name they no longer
+// want shown. A proto3 string with no presence cannot say both, and an update
+// that read absent as "make it empty" would have wiped every field a client
+// did not think to repeat.
+message ProfileUpdateInput {
+  optional string username = 1;
+
+  optional string email_address = 2;
+
+  optional string first_name = 3;
+
+  optional string last_name = 4;
+}
+
+// AccountUpdateInput is what an account holder may change. Neither the billing
+// state nor the owner is here: both are moved by flows that do not hold the
+// rest of the account, and a read-modify-write over them would lose whatever a
+// processor webhook or an ownership transfer did in between.
+//
+// Every field is optional, on the same reading as ProfileUpdateInput: absent is
+// "leave it", present is "make it this", and an empty present value clears the
+// field. A rename that carried only a name would otherwise have reset the time
+// zone to UTC and blanked the billing address, and reported all three as
+// changed.
+message AccountUpdateInput {
+  optional string name = 1;
+
+  optional string time_zone = 2;
+
+  BillingAddress billing_address = 3;
+}
+
+message RegisterRequest {
+  UserRegistrationInput user = 1;
+
+  AccountCreationInput account = 2;
+
+  // owner_roles are the roles the registrant holds in the account they now own.
+  // They are the consumer's role names and are required: a membership with none
+  // is a member who may do nothing.
+  repeated string owner_roles = 3;
+}
+
+message RegisterResponse {
+  Registration registration = 1;
+}
+
+message UpdateProfileRequest {
+  ProfileUpdateInput input = 1;
+}
+
+message UpdateProfileResponse {
+  User user = 1;
+}
+
+message UpdateAccountRequest {
+  string account_id = 1;
+
+  AccountUpdateInput input = 2;
+}
+
+message UpdateAccountResponse {
+  Account account = 1;
+}
+
+message RecordAgreementRequest {
+  // agreements are stamped with one clock read, so accepting two in one call
+  // records one moment rather than two a later comparison could order.
+  repeated Agreement agreements = 1;
+}
+
+message RecordAgreementResponse {
+  User user = 1;
+}
+
+message InviteRequest {
+  string account_id = 1;
+
+  string to_email = 2;
+
+  string to_name = 3;
+
+  // note is the sender's message to the recipient.
+  string note = 4;
+
+  // roles are what the invitation promises.
+  repeated string roles = 5;
+
+  // expires_at is when the link stops working. Absent takes the server's
+  // configured default, which is what a client that has no opinion should send.
+  // A named one has to be later than now and no further ahead than the server's
+  // maximum invitation lifetime, or the request is INVALID_ARGUMENT: the default
+  // is a bound and not a suggestion, and a request naming its own expiry is not
+  // the way around it.
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+message InviteResponse {
+  // invitation is redacted, as everything here is. The token it was minted with
+  // reached the recipient through whatever the consumer's AfterInvite hook
+  // queued, and is not returned to the sender.
+  Invitation invitation = 1;
+}
+
+message AcceptInvitationRequest {
+  string invitation_id = 1;
+
+  // token is what the link carried. It is checked against the invitation the id
+  // names, and an expired one is reported as expired rather than as absent, so
+  // the recipient can be told to ask for another.
+  string token = 2;
+
+  string status_note = 3;
+}
+
+message AcceptInvitationResponse {
+  Acceptance acceptance = 1;
+}
+
+message RejectInvitationRequest {
+  string invitation_id = 1;
+
+  // token is required for the same reason it is on acceptance: a rejection
+  // arrives from whoever followed the link, and the link is the token. A status
+  // write addressed by id alone would let anybody holding an id answer it.
+  string token = 2;
+
+  string status_note = 3;
+}
+
+message RejectInvitationResponse {
+  Invitation invitation = 1;
+}
+
+message CancelInvitationRequest {
+  // No token: the sender never had one. They are looking at what they sent,
+  // addressed by id.
+  string invitation_id = 1;
+
+  string status_note = 2;
+}
+
+message CancelInvitationResponse {
+  Invitation invitation = 1;
+}
+
+message TransferAccountOwnershipRequest {
+  string account_id = 1;
+
+  string new_owner_user_id = 2;
+}
+
+message TransferAccountOwnershipResponse {
+  Account account = 1;
+}
+
+message SetDefaultAccountRequest {
+  // The user is the caller. Setting somebody else's landing account is not a
+  // thing this service does.
+  string account_id = 1;
+}
+
+message SetDefaultAccountResponse {
+  Membership membership = 1;
+}
+
+message SetMembershipRolesRequest {
+  string account_id = 1;
+
+  string user_id = 2;
+
+  // roles replace rather than merge. A caller adding one reads the membership
+  // and sends the union; a merging setter cannot revoke.
+  repeated string roles = 3;
+}
+
+message SetMembershipRolesResponse {
+  Membership membership = 1;
+}
+
+message RemoveMembershipRequest {
+  string account_id = 1;
+
+  string user_id = 2;
+}
+
+message RemoveMembershipResponse {
+  // membership is the one that was ended, as it stood before it was.
+  Membership membership = 1;
+}
+
+message ArchiveUserRequest {
+  string user_id = 1;
+}
+
+message ArchiveUserResponse {
+  User user = 1;
+}
+
+message UpdateUserAccountStatusRequest {
+  string user_id = 1;
+
+  AccountStatus status = 2;
+
+  string explanation = 3;
+}
+
+message UpdateUserAccountStatusResponse {
+  User user = 1;
+}
+
+message SetUserServiceRolesRequest {
+  string user_id = 1;
+
+  // roles replace rather than merge, for the reason SetMembershipRoles gives.
+  // This is the write that grants and withdraws operator access.
+  repeated string roles = 2;
+}
+
+message SetUserServiceRolesResponse {
+  User user = 1;
+}
+
+message GetPrincipalRequest {
+  // active_account_id names which of the caller's accounts this is about.
+  // Absent resolves to their default. An account they hold no live membership
+  // in is refused rather than answered.
+  optional string active_account_id = 1;
+}
+
+message GetPrincipalResponse {
+  Principal principal = 1;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+message ListUsersRequest {
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListUsersResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+
+  repeated User results = 2;
+}
+
+message SearchUsersByUsernameRequest {
+  // prefix matches from the start of a username. It is a prefix rather than a
+  // substring so the read can use the index.
+  string prefix = 1;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message SearchUsersByUsernameResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+
+  repeated User results = 2;
+}
+
+message GetAccountRequest {
+  string account_id = 1;
+}
+
+message GetAccountResponse {
+  Account account = 1;
+}
+
+message ListAccountsRequest {
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListAccountsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+
+  repeated Account results = 2;
+}
+
+message ListAccountsForUserRequest {
+  string user_id = 1;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListAccountsForUserResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+
+  repeated Account results = 2;
+}
+
+message GetMembershipRequest {
+  string user_id = 1;
+
+  string account_id = 2;
+}
+
+message GetMembershipResponse {
+  Membership membership = 1;
+}
+
+message ListMembershipsForUserRequest {
+  string user_id = 1;
+}
+
+message ListMembershipsForUserResponse {
+  // Unpaged, and deliberately: a user's memberships are the set an
+  // authorization check needs whole, and half of them is a wrong answer rather
+  // than a first page.
+  repeated Membership results = 1;
+}
+
+message ListAccountMembersRequest {
+  string account_id = 1;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListAccountMembersResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+
+  repeated MembershipWithUser results = 2;
+}
+
+message GetInvitationRequest {
+  string invitation_id = 1;
+}
+
+message GetInvitationResponse {
+  Invitation invitation = 1;
+}
+
+message ListInvitationsFromUserRequest {
+  // The sender is the caller: this is "what have I sent".
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListInvitationsFromUserResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+
+  repeated Invitation results = 2;
+}
+
+message ListInvitationsForEmailAddressRequest {
+  // The address is the caller's own, read off the principal's user. An address
+  // a client could name is an oracle for which addresses have been invited
+  // where.
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListInvitationsForEmailAddressResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+
+  repeated Invitation results = 2;
+}
+
+// IdentityService is the directory on the wire: the four nouns, their
+// lifecycle, and the reads a client needs to render them.
+//
+// Every write here is one call into identity.Service, which means one
+// transaction with the consumer's own hook inside it -- the audit entry, the
+// outbox row, the search stamp. Nothing on this service writes outside that
+// seam.
+//
+// Nothing here decides who may call it. The permissions each method requires
+// are a default fragment the server package ships and the consumer composes
+// into its own policy, and who is calling is resolved from the context by the
+// consumer's authentication interceptor.
+service IdentityService {
+  // The writes.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+  rpc UpdateAccount(UpdateAccountRequest) returns (UpdateAccountResponse);
+  rpc RecordAgreement(RecordAgreementRequest) returns (RecordAgreementResponse);
+  rpc Invite(InviteRequest) returns (InviteResponse);
+  rpc AcceptInvitation(AcceptInvitationRequest) returns (AcceptInvitationResponse);
+  rpc RejectInvitation(RejectInvitationRequest) returns (RejectInvitationResponse);
+  rpc CancelInvitation(CancelInvitationRequest) returns (CancelInvitationResponse);
+  rpc TransferAccountOwnership(TransferAccountOwnershipRequest) returns (TransferAccountOwnershipResponse);
+  rpc SetDefaultAccount(SetDefaultAccountRequest) returns (SetDefaultAccountResponse);
+  rpc SetMembershipRoles(SetMembershipRolesRequest) returns (SetMembershipRolesResponse);
+  rpc RemoveMembership(RemoveMembershipRequest) returns (RemoveMembershipResponse);
+  rpc ArchiveUser(ArchiveUserRequest) returns (ArchiveUserResponse);
+  rpc UpdateUserAccountStatus(UpdateUserAccountStatusRequest) returns (UpdateUserAccountStatusResponse);
+  rpc SetUserServiceRoles(SetUserServiceRolesRequest) returns (SetUserServiceRolesResponse);
+
+  // The reads.
+  rpc GetPrincipal(GetPrincipalRequest) returns (GetPrincipalResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc SearchUsersByUsername(SearchUsersByUsernameRequest) returns (SearchUsersByUsernameResponse);
+  rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse);
+  rpc ListAccountsForUser(ListAccountsForUserRequest) returns (ListAccountsForUserResponse);
+  rpc GetMembership(GetMembershipRequest) returns (GetMembershipResponse);
+  rpc ListMembershipsForUser(ListMembershipsForUserRequest) returns (ListMembershipsForUserResponse);
+  rpc ListAccountMembers(ListAccountMembersRequest) returns (ListAccountMembersResponse);
+  rpc GetInvitation(GetInvitationRequest) returns (GetInvitationResponse);
+  rpc ListInvitationsFromUser(ListInvitationsFromUserRequest) returns (ListInvitationsFromUserResponse);
+  rpc ListInvitationsForEmailAddress(ListInvitationsForEmailAddressRequest) returns (ListInvitationsForEmailAddressResponse);
+}

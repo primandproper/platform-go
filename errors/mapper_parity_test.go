@@ -33,9 +33,9 @@ import (
 // saying why.
 //
 // It is the platform tier only, and that is the same boundary the two mappers
-// hold: dataprivacy, links, operations and sessions map their own sentinels now,
-// so the same parity is asserted over each of their two mappers in their own
-// package, and over all four at once by internal/sentinelmatrix.
+// hold: dataprivacy, identity, links, operations and sessions map their own
+// sentinels now, so the same parity is asserted over each of their two mappers in
+// their own package, and over all five at once by internal/sentinelmatrix.
 var mappedSentinels = []error{
 	database.ErrUserAlreadyExists,
 	circuitbreaking.ErrCircuitBroken,

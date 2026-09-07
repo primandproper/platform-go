@@ -2,12 +2,14 @@ package errormappers_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/errormappers"
 	platformerrors "github.com/primandproper/platform-go/v14/errors"
 	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	httperrors "github.com/primandproper/platform-go/v14/errors/http"
+	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/internal/sentinelmatrix"
 	"github.com/primandproper/platform-go/v14/links"
 
@@ -73,10 +75,11 @@ func TestRegister_resolvesEveryMappedSentinel(T *testing.T) {
 }
 
 // TestRegister_installsTheClientSafeSentinels covers the other half of what
-// links needs from gRPC. Its redemption outcomes share one code, so the message
-// is the only place the difference between "already used" and "expired"
-// survives, and a gRPC message is the code's name unless a sentinel is
-// registered as safe to quote.
+// links and identity need from gRPC. Their outcomes share codes, so the
+// message is the only place the difference between "already used" and
+// "expired", or between a taken username and a taken email address, survives,
+// and a gRPC message is the code's name unless a sentinel is registered as safe
+// to quote.
 func TestRegister_installsTheClientSafeSentinels(T *testing.T) {
 	T.Parallel()
 
@@ -84,7 +87,9 @@ func TestRegister_installsTheClientSafeSentinels(T *testing.T) {
 
 	seen := map[string]struct{}{}
 
-	for _, sentinel := range links.ClientSafeSentinels {
+	sentinels := slices.Concat(links.ClientSafeSentinels, identity.ClientSafeSentinels)
+
+	for _, sentinel := range sentinels {
 		_, err := interceptor(
 			T.Context(),
 			nil,
@@ -104,5 +109,5 @@ func TestRegister_installsTheClientSafeSentinels(T *testing.T) {
 		seen[st.Message()] = struct{}{}
 	}
 
-	test.MapLen(T, len(links.ClientSafeSentinels), seen)
+	test.MapLen(T, len(sentinels), seen)
 }

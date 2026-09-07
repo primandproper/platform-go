@@ -130,7 +130,7 @@ var (
 	// write, a database.SQLQueryExecutor for a read — so there is no such method
 	// that can fall back to a handle of the store's own. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhooks query executor")
 
 	// ErrNilDelivery indicates Dispatch was called with no Delivery.
 	ErrNilDelivery = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhook delivery")

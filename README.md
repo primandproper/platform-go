@@ -38,7 +38,7 @@ Selecting an implementation is deliberate: an unrecognized provider name returns
 
 **OpenTelemetry throughout.** HTTP, gRPC, database, and messaging layers emit traces and metrics. Observability primitives (logging, tracing, metrics, profiling) live under `observability/`.
 
-**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context. Platform-level sentinel errors live in `errors/`, conventionally imported as `platformerrors`. Transport mappings live in `errors/http` and `errors/grpc`, which map the primitives — `database`, `circuitbreaking`, `ratelimiting`, `idempotency`, `requestsigning`, the search indexes — and import those packages, so nothing in them may import back. Everything built on top maps itself: `dataprivacy`, `links`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper`, and the composition root registers the four in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it is the only surface here that both answers through `errors/http` and belongs to a package on that list. `internal/sentinelmatrix` checks that every exported sentinel in those four has a decision recorded and that it still holds on both transports.
+**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context. Platform-level sentinel errors live in `errors/`, conventionally imported as `platformerrors`. Transport mappings live in `errors/http` and `errors/grpc`, which map the primitives — `database`, `circuitbreaking`, `ratelimiting`, `idempotency`, `requestsigning`, the search indexes — and import those packages, so nothing in them may import back. Everything built on top maps itself: `dataprivacy`, `identity`, `links`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper`, and the composition root registers the five in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it is the only surface here that both answers through `errors/http` and belongs to a package on that list. `internal/sentinelmatrix` checks that every exported sentinel in those five has a decision recorded and that it still holds on both transports.
 
 ## Package Catalog
 
@@ -222,54 +222,63 @@ packages by hand does not import the config tree of seventy to make it.
 ### Transports
 
 A component here that owns data ships a `Store` interface, a SQL implementation
-of it, the DDL for whichever dialects the matrix below grants it, and a mock —
-and stops. The HTTP handlers over that store are not missing; they are yours.
-The routes, the request and response types, the authorization on each one and
-the error envelope a client sees are the application's, and a library that
-shipped them would be versioning your `/api/v1/users` on its own release
-cadence, in types your proto does not have, under a scoping rule it guessed.
+of it, the DDL for whichever dialects the matrix below grants it, and a mock.
+For most of them it stops there: the HTTP handlers over that store are not
+missing, they are yours, and a library that shipped them would be versioning
+your `/api/v1/users` on its own release cadence, in types your proto does not
+have, under a scoping rule it guessed.
 
-All three of those are properties of a module that also holds the primitives —
-the cadence they set, a proto this module does not ship, and a scope that was
-guessed before `tenancy.Scope` existed — so where this line falls for the domain
-tier is a question the split reopens, one domain at a time. What follows is
-where it falls today.
+All three of those were properties of a module that also held the primitives,
+and the split answers each. The **cadence** becomes the domain tier's own, since
+nothing else rides on a release it is in. The **types** are shipped: this module
+already ships `filtering.proto` inside the published module, and a domain's
+`.proto` travels the same way — generated into Go here, and into a consumer's
+Swift, TypeScript and Kotlin from the same file. The **scope** is not guessed,
+because `tenancy.Scope` exists and a domain transport binds it off the caller
+rather than off a request field.
 
-So `identity`, `webhooks` endpoint management, `billing`, `settings`,
-`notifications`, `metering`, `audit`, `dataprivacy`, `saga`, `timers` and
-`workqueue` ship a store and no handlers. `identity` states the bargain plainly:
-a consumer keeps its policy, its HTTP handlers, its proto and whatever columns
-are genuinely its own — it does not keep a users table. It also ships
-`identity.Service`, the operations that are more than one write, and that is on
-this side of the line rather than across it: a registration is a transaction,
-not a request, and its shape is decided by the rows it has to commit together.
+So the line moves, one domain at a time, and `identity` is the first across it.
+`identity/grpc` serves the directory: twenty-eight RPCs, the `.proto` they are
+described by, a typed client, and the permissions each one wants. What it still
+does not ship is the policy — who is calling is an interface the consumer's own
+authentication interceptor satisfies, and what each method requires is a default
+map a consumer composes into its own. That is the same bargain `identity` always
+stated, one layer further out: a consumer keeps its policy and whatever columns
+are genuinely its own, and does not keep a users table, the transaction-shaped
+code around one, or the service and converters over that.
 
-The line is not "no transports". It is this:
+`webhooks` endpoint management, `billing`, `settings`, `notifications`,
+`metering`, `audit`, `dataprivacy`, `saga`, `timers` and `workqueue` still ship
+a store and no handlers. Each is to follow `identity`, which is the
+pattern-setting one and the reason the rest waited; none has been filed yet.
 
-> **This module ships a transport only where the shape of the request is decided
-> by something other than the consumer's domain** — a probe, a protocol, a
-> middleware contract, or a third party's payload. Where the shape is the
-> consumer's, it ships the store and the consumer ships the handler.
+For the primitives the original line is unchanged, and it is this:
+
+> **This module ships a transport for a primitive only where the shape of the
+> request is decided by something other than the consumer's domain** — a probe,
+> a protocol, a middleware contract, or a third party's payload. A domain ships
+> its own transport, and keeps the policy out of it.
 
 Everything below is on the far side of that line, and it is the whole list.
 
 <!-- readmegen:transports -->
-| Transport                          | Kind             | Whose shape it is                                          |
-|------------------------------------|------------------|------------------------------------------------------------|
-| `server/http`                      | server           | the process: bind, serve, drain, and its own probes        |
-| `server/grpc`                      | server           | the same, for gRPC                                         |
-| `errors/http`                      | mapping          | a sentinel to a status code, and back                      |
-| `errors/grpc`                      | mapping          | a sentinel to a gRPC code, and back                        |
-| `filtering/grpc`                   | wire conversion  | `QueryFilter` and `Pagination` to their generated messages |
-| `authorization/http`               | middleware       | a route's declared requirement, checked before it runs     |
-| `authorization/grpc`               | middleware       | the same, as interceptors                                  |
-| `cryptography/requestsigning/http` | middleware       | a signature verified before the handler runs               |
-| `idempotency/http`                 | middleware       | the `Idempotency-Key` header, both sides of the wire       |
-| `idempotency/grpc`                 | middleware       | the same, over metadata                                    |
-| `ratelimiting/http`                | middleware       | a token per request, 429 when there is none                |
-| `ratelimiting/grpc`                | middleware       | the same, as interceptors                                  |
-| `sessions/http`                    | binding          | a signed cookie, whose security properties are ours        |
-| `operations/http`                  | resource surface | poll, list, cancel, subscribe — over `Operation`           |
+| Transport                          | Kind             | Whose shape it is                                                                 |
+|------------------------------------|------------------|-----------------------------------------------------------------------------------|
+| `server/http`                      | server           | the process: bind, serve, drain, and its own probes                               |
+| `server/grpc`                      | server           | the same, for gRPC                                                                |
+| `errors/http`                      | mapping          | a sentinel to a status code, and back                                             |
+| `errors/grpc`                      | mapping          | a sentinel to a gRPC code, and back                                               |
+| `filtering/grpc`                   | wire conversion  | `QueryFilter` and `Pagination` to their generated messages                        |
+| `authorization/http`               | middleware       | a route's declared requirement, checked before it runs                            |
+| `authorization/grpc`               | middleware       | the same, as interceptors                                                         |
+| `cryptography/requestsigning/http` | middleware       | a signature verified before the handler runs                                      |
+| `idempotency/http`                 | middleware       | the `Idempotency-Key` header, both sides of the wire                              |
+| `idempotency/grpc`                 | middleware       | the same, over metadata                                                           |
+| `ratelimiting/http`                | middleware       | a token per request, 429 when there is none                                       |
+| `ratelimiting/grpc`                | middleware       | the same, as interceptors                                                         |
+| `sessions/http`                    | binding          | a signed cookie, whose security properties are ours                               |
+| `identity/grpc`                    | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store` |
+| `operations/http`                  | resource surface | poll, list, cancel, subscribe — over `Operation`                                  |
 <!-- /readmegen:transports -->
 
 The middleware rows carry nothing domain-shaped: they read a header or a claim
@@ -278,11 +287,14 @@ yours. `sessions/http` binds a store to a cookie, and a cookie's signing,
 encryption, `HttpOnly`, `Secure` and `SameSite` are security decisions this
 module already made — there is no resource of yours in it.
 
-`operations/http` is the one row that is a resource surface, and it earns it by
-being entirely this module's own resource: an `Operation`, its two-tier progress
-and its state machine are types you did not define, and polling one or
-subscribing to its server-sent events is the pattern's protocol rather than your
-API. *Starting* an operation is yours, and is deliberately not there.
+Two rows are resource surfaces, and they get there by different routes.
+`operations/http` is entirely this module's own resource: an `Operation`, its
+two-tier progress and its state machine are types you did not define, and
+polling one or subscribing to its server-sent events is the pattern's protocol
+rather than your API. *Starting* an operation is yours, and is deliberately not
+there. `identity/grpc` is the other kind — a domain's own transport, shipped
+under the rule above rather than as an exception to it, and the first of the ten
+listed above that will follow it.
 
 One transport sits outside the table because it is not an `http` subpackage:
 `webhooks/inbound` ships a `Receiver` that is an `http.Handler`, for the same

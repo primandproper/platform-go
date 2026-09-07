@@ -15,7 +15,7 @@ import (
 )
 
 // ErrNilKeyFunc indicates the interceptor was built without a key function.
-var ErrNilKeyFunc = platformerrors.New("nil rate limit key function")
+var ErrNilKeyFunc = platformerrors.New("nil rate limit key function for the gRPC interceptor")
 
 // KeyFunc extracts the key an RPC is counted against. It is given the server
 // info as well as the context, so a service can limit one expensive method
