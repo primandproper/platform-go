@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
 	"google.golang.org/grpc/codes"
@@ -35,14 +36,14 @@ func (s *Server) LoginForToken(
 
 	credentials := credentialsFromProto(request.GetCredentials())
 	if credentials == nil {
-		err = fail(req.op, ErrNilCredentials, codes.InvalidArgument, "signing in")
+		err = grpcerrors.PrepareAndLogGRPCStatus(ErrNilCredentials, req.op.Logger(), req.op.Span(), codes.InvalidArgument, "signing in")
 
 		return nil, err
 	}
 
 	signedIn, err := s.svc.LoginForToken(ctx, req.scope, credentials)
 	if err != nil {
-		return nil, fail(req.op, err, codes.Unauthenticated, "signing in")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Unauthenticated, "signing in")
 	}
 
 	return &signinpb.LoginForTokenResponse{Token: IssuedTokenToProto(signedIn)}, nil
@@ -69,14 +70,14 @@ func (s *Server) AdminLoginForToken(
 
 	credentials := credentialsFromProto(request.GetCredentials())
 	if credentials == nil {
-		err = fail(req.op, ErrNilCredentials, codes.InvalidArgument, "signing in as an administrator")
+		err = grpcerrors.PrepareAndLogGRPCStatus(ErrNilCredentials, req.op.Logger(), req.op.Span(), codes.InvalidArgument, "signing in as an administrator")
 
 		return nil, err
 	}
 
 	signedIn, err := s.svc.AdminLoginForToken(ctx, req.scope, credentials)
 	if err != nil {
-		return nil, fail(req.op, err, codes.Unauthenticated, "signing in as an administrator")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Unauthenticated, "signing in as an administrator")
 	}
 
 	return &signinpb.AdminLoginForTokenResponse{Token: IssuedTokenToProto(signedIn)}, nil
@@ -114,7 +115,7 @@ func (s *Server) GetAuthStatus(
 
 	status, err := s.svc.GetAuthStatus(ctx, req.scope, req.principal.UserID(), req.principal.ActiveAccountID())
 	if err != nil {
-		return nil, fail(req.op, err, codes.Internal, "reading an authentication status")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "reading an authentication status")
 	}
 
 	return &signinpb.GetAuthStatusResponse{
@@ -141,7 +142,7 @@ func (s *Server) GetSelf(
 
 	user, err := s.svc.GetSelf(ctx, req.scope, req.principal.UserID())
 	if err != nil {
-		return nil, fail(req.op, err, codes.Internal, "reading the calling user")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "reading the calling user")
 	}
 
 	return &signinpb.GetSelfResponse{User: identitygrpc.UserToProto(user)}, nil
@@ -173,7 +174,7 @@ func (s *Server) UpdatePassword(
 	}
 
 	if err = s.svc.UpdatePassword(ctx, req.scope, req.principal.UserID(), update); err != nil {
-		return nil, fail(req.op, err, codes.Internal, "updating a password")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "updating a password")
 	}
 
 	return &signinpb.UpdatePasswordResponse{}, nil
@@ -204,7 +205,7 @@ func (s *Server) RefreshTOTPSecret(
 
 	enrollment, err := s.svc.RefreshTOTPSecret(ctx, req.scope, req.principal.UserID(), refresh)
 	if err != nil {
-		return nil, fail(req.op, err, codes.Internal, "refreshing a second-factor secret")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "refreshing a second-factor secret")
 	}
 
 	return &signinpb.RefreshTOTPSecretResponse{
@@ -227,7 +228,7 @@ func (s *Server) VerifyTOTPSecret(
 	defer func() { done(err) }()
 
 	if err = s.svc.VerifyTOTPSecret(ctx, req.scope, req.principal.UserID(), request.GetTotpCode()); err != nil {
-		return nil, fail(req.op, err, codes.Internal, "verifying a second-factor secret")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "verifying a second-factor secret")
 	}
 
 	return &signinpb.VerifyTOTPSecretResponse{}, nil

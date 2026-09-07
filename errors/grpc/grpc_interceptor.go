@@ -73,14 +73,24 @@ func encodeErrorToDetails(ctx context.Context, err error) *anypb.Any {
 // verbatim. Putting arbitrary internal text on that same channel contradicted
 // the stance the package states about itself.
 //
+// description is the one thing that may stand in for the code's name: the short
+// account of what the handler was doing, which the handler wrote for this
+// reader. The interceptors have none — they are looking at an error somebody
+// else returned bare — and pass "". PrepareAndLogGRPCStatus has one, and passes
+// it. Neither outranks a registered client-safe sentinel's own words.
+//
 // The full error still crosses the wire in the status *details*, encoded, which
 // is what DecodeErrorFromStatus reads to keep errors.Is working between
 // services. That detail is for trusted service-to-service callers; do not expose
 // an interceptor-wrapped server directly to untrusted clients without stripping
 // it at the edge.
-func clientMessage(code codes.Code, err error) string {
+func clientMessage(code codes.Code, err error, description string) string {
 	if msg, ok := ClientSafeMessage(err); ok {
 		return msg
+	}
+
+	if description != "" {
+		return description
 	}
 
 	return code.String()
@@ -99,15 +109,18 @@ func clientMessage(code codes.Code, err error) string {
 // platform sentinel inside it. A bare platform sentinel, or a registered
 // sentinel built with New, is unaffected — there is only one node to match.
 //
-// The interceptors consult it for an error a handler returned bare. It is
-// exported for the handler that shapes its own status — carrying a code the
-// mappers would not pick, or a description of what it was doing — and so
-// takes the message decision away from the interceptor. Such a handler still
-// wants a registered sentinel's own words to win over its description, since
-// the sentinel is more specific and was registered precisely to be quoted;
-// identity/grpc is the worked example. Without this a handler either
-// re-implements the two lists or its clients read "FailedPrecondition" where a
-// sentinel had something better to say.
+// The interceptors consult it through clientMessage, for an error a handler
+// returned bare, and so does PrepareAndLogGRPCStatus for the description a
+// handler passed it — which is how identity/grpc and authentication/signin/grpc
+// get this behavior without asking for it, and why neither has to say the word.
+//
+// It stays exported for the handler that builds its own status by hand, carrying
+// a code the mappers would not pick or a message this package cannot guess. Such
+// a handler still wants a registered sentinel's own words to win over its own
+// description, since the sentinel is more specific and was registered precisely
+// to be quoted. Without this it either re-implements the two lists or its
+// clients read "FailedPrecondition" where a sentinel had something better to
+// say.
 func ClientSafeMessage(err error) (string, bool) {
 	if err == nil {
 		return "", false
@@ -272,7 +285,7 @@ func UnaryErrorEncodingInterceptor() grpc.UnaryServerInterceptor {
 
 		// An error the handler already shaped as a status carries a message the
 		// handler chose to expose; anything else gets a code-derived one.
-		msg := clientMessage(code, err)
+		msg := clientMessage(code, err, "")
 		if st, ok := handlerStatus(err); ok {
 			code = MapToGRPC(err, st.Code())
 			msg = st.Message()
@@ -306,7 +319,7 @@ func StreamErrorEncodingInterceptor() grpc.StreamServerInterceptor {
 
 		// An error the handler already shaped as a status carries a message the
 		// handler chose to expose; anything else gets a code-derived one.
-		msg := clientMessage(code, err)
+		msg := clientMessage(code, err, "")
 		if st, ok := handlerStatus(err); ok {
 			code = MapToGRPC(err, st.Code())
 			msg = st.Message()

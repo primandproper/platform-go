@@ -38,14 +38,32 @@ own sentinels. There is deliberately no init doing it: a mapper that installs
 itself into a process-wide registry by being linked in is a side effect a
 consumer cannot opt out of.
 
+# What a handler returns
+
+PrepareAndLogGRPCStatus is the spelling a handler wants. It logs, traces, maps
+the code and hands back an error that is still the error it was given: the
+sentinel chain intact, with the status alongside it rather than rendered into it.
+
+That last part is the whole point. UnaryErrorEncodingInterceptor can only encode
+the chain it is handed, so a handler that returned status.Errorf(code, "%v", err)
+— which is what this function itself used to do — hands it a leaf whose only
+content is a message, and the sentinel is not merely unmatched on the far side
+but gone. See observability.GRPCStatusError, which is the error type underneath
+and where the reasoning is written down.
+
 # What reaches the client, and what that assumes
 
 The status message is derived from the code rather than from the error's text,
 which is the whole wrapped chain and can name tables, connection strings, and the
-permission that was missing. The exception is a list of platform sentinels
-documented as client-safe, whose own wording tells a caller what to do
-differently without describing the policy behind the refusal, plus whatever a
-domain has added to it with RegisterClientSafeSentinels.
+permission that was missing. Two things stand in for the code's name. The first
+is a list of platform sentinels documented as client-safe, whose own wording
+tells a caller what to do differently without describing the policy behind the
+refusal, plus whatever a domain has added to it with RegisterClientSafeSentinels.
+The second is the description a handler passed PrepareAndLogGRPCStatus — a short
+account of what it was doing, written for this reader by the code that knew — and
+a client-safe sentinel outranks it, since the sentinel is the more specific of
+the two. The interceptors have no description to offer for an error a handler
+returned bare, and fall back to the code.
 
 The full error does still cross the wire, encoded in the status details, and that
 is what makes the error reconstructable on the far side. It is meant for trusted

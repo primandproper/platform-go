@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
@@ -18,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // serverName scopes this package's spans, logger and instruments.
@@ -202,7 +200,7 @@ func (s *Server) anonymous(ctx context.Context, method string) (
 
 	scope, err := s.scopes(ctx)
 	if err != nil {
-		err = fail(op, err, codes.InvalidArgument, "resolving the directory %s is against", method)
+		err = grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.InvalidArgument, "resolving the directory %s is against", method)
 
 		// The RPC returns before it has deferred done, so this failure closes
 		// what it opened itself — otherwise every unplaceable request is a span
@@ -231,7 +229,7 @@ func (s *Server) caller(ctx context.Context, method string) (
 
 	principal, ok := s.principals(ctx)
 	if !ok || principal == nil {
-		err = fail(req.op, ErrNoPrincipal, codes.Unauthenticated, "resolving the caller of %s", method)
+		err = grpcerrors.PrepareAndLogGRPCStatus(ErrNoPrincipal, req.op.Logger(), req.op.Span(), codes.Unauthenticated, "resolving the caller of %s", method)
 
 		done(err)
 
@@ -242,78 +240,6 @@ func (s *Server) caller(ctx context.Context, method string) (
 	req.op.Set(userIDKey, principal.UserID())
 
 	return ctx, req, done, nil
-}
-
-// rpcError is a handler failure that answers to both idioms: the sentinel chain
-// for errors.Is, and a gRPC status for status.Code.
-//
-// It has to be both, and neither of the two functions named
-// PrepareAndLogGRPCStatus produces both. observability's takes the code it is
-// handed and flattens the chain into a status message — it cannot consult the
-// mappers, since observability sits below errors/grpc and importing it back
-// would be a cycle. errors/grpc's maps the code correctly and then calls
-// observability's, so it flattens the chain too.
-//
-// Flattening is what breaks the wire. UnaryErrorEncodingInterceptor's job is to
-// put the sentinel chain into the status details so a client's errors.Is
-// matches, and it can only encode the chain it is given — a handler that already
-// turned ErrInvalidCredentials into a string hands it a string.
-//
-// identity/grpc carries the same three-method type for the same reason, and this
-// is the second copy. Promoting it into errors/grpc would delete both and fix
-// every other caller of the recommended spelling at once; that is a change to
-// errors/grpc rather than one to make from here, and it is why this type is
-// unexported in both places.
-type rpcError struct {
-	err  error
-	msg  string
-	code codes.Code
-}
-
-func (e *rpcError) Error() string { return e.err.Error() }
-
-func (e *rpcError) Unwrap() error { return e.err }
-
-func (e *rpcError) GRPCStatus() *status.Status { return status.New(e.code, e.msg) }
-
-// fail is how every RPC here returns an error: it logs and traces, then hands
-// back an error that is still the sentinel it was.
-//
-// The code is a default rather than an answer. UnaryErrorEncodingInterceptor
-// re-runs MapToGRPC over the chain this preserves, so a registered mapper wins
-// over what a call site guessed; the code here is what a client is told when no
-// mapper claims the error. That is why every method below passes
-// codes.Internal for the service's own failures and does not switch on
-// sentinels — deciding that a wrong password is Unauthenticated is
-// signin.GRPCMapper's job, in one place.
-//
-// The message is the same shape. The description is what a client is told when
-// nothing better is registered, and a client-safe sentinel's own words are
-// better — which matters more here than anywhere else in the module, because
-// four of this service's refusals share PermissionDenied and three share
-// FailedPrecondition, and a client in a language that cannot read the encoded
-// details has only the message to tell them apart.
-func fail(
-	op observability.Operation,
-	err error,
-	defaultCode codes.Code,
-	descriptionFmt string,
-	descriptionArgs ...any,
-) error {
-	description := fmt.Sprintf(descriptionFmt, descriptionArgs...)
-
-	op.Acknowledge(err, "%s", description)
-
-	msg := description
-	if safe, ok := grpcerrors.ClientSafeMessage(err); ok {
-		msg = safe
-	}
-
-	return &rpcError{
-		err:  platformerrors.Wrap(err, description),
-		msg:  msg,
-		code: grpcerrors.MapToGRPC(err, defaultCode),
-	}
 }
 
 // operationAttr labels an instrument with the RPC it was recorded in. It is the

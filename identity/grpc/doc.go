@@ -65,6 +65,28 @@ address it will not take from the request. No method here orchestrates
 anything: it converts, calls one thing, and converts back. Anything that had to
 happen atomically happened a layer down, where the transaction is.
 
+# How a method fails
+
+Every failure here is one call:
+
+	grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "reading user %q", id)
+
+which logs, traces, maps the code and returns an error that is still the sentinel
+identity gave it — the chain intact for the encoding interceptor, the status
+alongside it. There is deliberately no local helper wrapping that call: the two
+things it used to add, the mapped code and the client-safe message, are what the
+function itself does now, and a private name for a shared behavior is how the
+two drift.
+
+The code passed is a default, not an answer. The interceptor re-runs MapToGRPC
+over the preserved chain, so identity.GRPCMapper wins over whatever a method
+guessed, and that is why every read here passes codes.Internal and none switches
+on a sentinel. The message is the description, unless a registered client-safe
+sentinel has better words — which matters most where the codes collide, since a
+taken username and a taken email address are both codes.AlreadyExists and a
+client that cannot read the encoded details has only the message to tell them
+apart.
+
 # Mounting it
 
 	srv, err := identitycfg.NewServer(ctx, cfg, client, svc, store, principalFromContext,

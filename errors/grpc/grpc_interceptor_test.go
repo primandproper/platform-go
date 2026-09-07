@@ -308,7 +308,7 @@ func TestClientMessage_registeredSentinels(T *testing.T) {
 		t.Parallel()
 
 		// Wrapped, because that is how one arrives from a handler.
-		msg := clientMessage(codes.FailedPrecondition, platformerrors.Wrap(safe, "redeeming action link"))
+		msg := clientMessage(codes.FailedPrecondition, platformerrors.Wrap(safe, "redeeming action link"), "")
 
 		test.EqOp(t, safe.Error(), msg)
 		test.NotEqOp(t, codes.FailedPrecondition.String(), msg)
@@ -317,7 +317,21 @@ func TestClientMessage_registeredSentinels(T *testing.T) {
 	T.Run("an unregistered one gets the code's name", func(t *testing.T) {
 		t.Parallel()
 
-		test.EqOp(t, codes.Internal.String(), clientMessage(codes.Internal, unsafe))
+		test.EqOp(t, codes.Internal.String(), clientMessage(codes.Internal, unsafe, ""))
+	})
+
+	T.Run("a handler's description stands in for the code's name", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, "redeeming action link", clientMessage(codes.Internal, unsafe, "redeeming action link"))
+	})
+
+	T.Run("a registered sentinel outranks the description", func(t *testing.T) {
+		t.Parallel()
+
+		msg := clientMessage(codes.FailedPrecondition, platformerrors.Wrap(safe, "redeeming action link"), "redeeming action link")
+
+		test.EqOp(t, safe.Error(), msg)
 	})
 
 	T.Run("the exported lookup says which it was", func(t *testing.T) {

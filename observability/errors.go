@@ -98,18 +98,69 @@ func PrepareAndLogGRPCStatus(err error, logger logging.Logger, span tracing.Span
 	}
 
 	desc := fmt.Sprintf(descriptionFmt, descriptionArgs...)
-	if span != nil {
-		tracing.AttachErrorToSpan(span, desc, err)
+
+	// The wrapping, the log line and the span event are PrepareAndLogError's,
+	// spelled once there; what this adds is the status the chain travels under.
+	return GRPCStatusError(PrepareAndLogError(err, logger, span, "%s", desc), code, desc)
+}
+
+// grpcStatusError is a handler failure that answers to both idioms: the sentinel
+// chain for errors.Is, and a gRPC status for status.Code.
+//
+// It has to be both, and a *status.Error is only ever the second. Building one
+// with status.Errorf(code, "%v", err) — which is what PrepareAndLogGRPCStatus
+// used to return — renders the chain into the message and drops it. The sentinel
+// is not merely unmatched afterwards, it is gone: nothing downstream can put
+// back what it was handed as a string.
+//
+// Something downstream is meant to carry it.
+// grpcerrors.UnaryErrorEncodingInterceptor exists to put the chain into the
+// status details so a client's errors.Is matches across the wire, and it can
+// only encode the chain it is given. A handler that flattened first hands it a
+// leaf whose only content is a message, which is encoding that carries nothing.
+//
+// The message is the description the handler chose rather than the chain. The
+// chain still crosses the wire, encoded in the details, for a client that
+// decodes it — that detail is for trusted service-to-service callers, as
+// grpcerrors documents. The message is what a client that reads nothing else
+// sees, and keeping the chain out of it is why a table name a store put in its
+// error does not reach that reader.
+type grpcStatusError struct {
+	err  error
+	msg  string
+	code codes.Code
+}
+
+func (e *grpcStatusError) Error() string { return e.err.Error() }
+
+func (e *grpcStatusError) Unwrap() error { return e.err }
+
+func (e *grpcStatusError) GRPCStatus() *status.Status { return status.New(e.code, e.msg) }
+
+// GRPCStatusError pairs err with the status a client should be told about it,
+// keeping err itself — sentinels, wrapping and all — reachable underneath.
+//
+// message is what the status says, and an empty one falls back to the code's own
+// name, since a status with no message tells a client nothing at all.
+//
+// A handler with sentinels of its own wants grpcerrors.PrepareAndLogGRPCStatus
+// instead: it maps the code through the registered mappers, which this package
+// cannot reach, and lets a registered client-safe sentinel's own words outrank
+// the description. This is the constructor underneath it, for a caller that has
+// already decided both.
+//
+// The concrete type stays unexported deliberately. Each of its three methods is
+// reached through the chain — errors.Is and errors.As for the first two,
+// status.FromError for the third — so exporting the struct would add a name a
+// caller could spell and none would need.
+func GRPCStatusError(err error, code codes.Code, message string) error {
+	if err == nil {
+		return nil
 	}
 
-	if logger != nil {
-		logger.Error(desc, err)
+	if message == "" {
+		message = code.String()
 	}
 
-	// Wrap with platform/errors so the chain is wire-transmittable.
-	wrapped := err
-	if desc != "" {
-		wrapped = errors.Wrap(err, desc)
-	}
-	return status.Errorf(code, "%v", wrapped)
+	return &grpcStatusError{err: err, msg: message, code: code}
 }
