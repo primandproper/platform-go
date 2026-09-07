@@ -1,0 +1,294 @@
+// Package primandproper.platform.signin.v1 is the wire schema for proving
+// somebody is who they say they are: the password door, the administrative
+// door, the two credential writes a signed-in person makes about themselves,
+// and the two reads a client makes on load.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/authentication/signin/proto \
+//	    --proto_path $(PLATFORM_PROTO)/identity/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/signin/v1/signin.proto=github.com/primandproper/platform-go/v14/authentication/signin/signinpb \
+//	    --go_opt=Mprimandproper/platform/identity/v1/identity.proto=github.com/primandproper/platform-go/v14/identity/identitypb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Go links against the bindings this module already generated, in
+// github.com/primandproper/platform-go/v14/authentication/signin/signinpb.
+// Swift, TypeScript and Kotlin have no such bindings to link against and
+// generate this file directly, which is the whole point of shipping the schema.
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # The user, and why it is identity's
+//
+// This file imports identity.proto and answers with its User rather than
+// defining one of its own. There is one directory and one user, and a sign-in
+// service that shipped a second message for the same row would be a second
+// message a client has to convert between -- for the sole benefit of not having
+// to put two files on protoc's path. What this file adds beside that user is
+// [AuthStatus], which carries the three facts a redacted user cannot: whether
+// they hold a password at all, whether their second factor has actually been
+// proven, whether their address has been. All three are computed from columns no
+// response ever carries.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere, for the reason identity.proto gives at greater
+// length: a scope a client could name is a cross-tenant read hiding behind a
+// request field. Sign-in is the one place in the module where the scope cannot
+// come off a principal, because the caller has not proved they are one yet, so
+// it comes off the connection instead -- a resolver the consumer supplies, from
+// a host, a header, or nothing at all in a single-tenant deployment. See
+// authentication/signin/grpc.
+//
+// No hashed password and no stored second-factor secret, in either direction.
+// The two secrets that do cross are the ones that have to: a plaintext password
+// on the way in, which is the only thing a password can be proved with, and a
+// freshly minted TOTP secret on the way out, which is the whole content of an
+// enrollment. Both make this service's transport security a requirement rather
+// than a recommendation -- see [RefreshTOTPSecretResponse] for what the second
+// one costs.
+//
+// No refresh token, and no session. This service issues one token with one
+// lifetime. Refreshing it is signing in again; keeping it in a cookie is
+// github.com/primandproper/platform-go/v14/sessions; turning it back into a
+// caller is the consumer's interceptor. None of the three is a decision a
+// schema should be making for everybody.
+//
+// No passkeys, no password reset, no email verification and no session
+// management. Each is a flow of its own over an engine this module already
+// ships, and each is its own file rather than a branch in this one.
+
+syntax = "proto3";
+
+package primandproper.platform.signin.v1;
+
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/identity/v1/identity.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/authentication/signin/signinpb;signinpb";
+
+// Credentials is what a sign-in form submits.
+//
+// Exactly one of username and email_address names the user. Both is refused and
+// neither is refused: a client sending both has a bug, and picking one for them
+// makes it a bug that signs somebody in.
+message Credentials {
+  // username is the handle the user signs in with.
+  string username = 1;
+
+  // email_address is the address they signed up with, as an alternative handle.
+  string email_address = 2;
+
+  // password is the plaintext password. It is compared against a stored hash
+  // and is never stored, logged or traced. It is the reason this RPC requires
+  // transport security.
+  string password = 3;
+
+  // totp_code is the second-factor code. It is required from a user who holds a
+  // proven second factor and ignored for everybody else, so a client that always
+  // sends it when it has it is always correct.
+  string totp_code = 4;
+
+  // active_account_id is the account the token should be issued for. Empty means
+  // the user's default account. An account the user is not a live member of is
+  // refused rather than honoured, which is the check that stops a client
+  // choosing whose data its token reaches.
+  string active_account_id = 5;
+}
+
+// IssuedToken is a token and what it is good for.
+//
+// It carries no user and no permissions, deliberately. A client that needs
+// either calls GetAuthStatus, which reads them fresh -- the alternative is a
+// permission set frozen at sign-in, where revoking a role has no effect until
+// the token expires.
+message IssuedToken {
+  // token is the credential itself.
+  string token = 1;
+
+  // token_id is the issuer's "jti": the handle a revocation list names, and the
+  // one part of this message safe to record.
+  string token_id = 2;
+
+  // expires_at is when the token stops being accepted, as the service asked for
+  // it.
+  google.protobuf.Timestamp expires_at = 3;
+
+  // active_account_id is the account the token was issued for -- the one the
+  // request named, or the user's default. It is here as well as in the token's
+  // own claims so that a client which cannot parse the token still knows which
+  // account it is holding one for.
+  string active_account_id = 4;
+
+  // administrative reports whether this token came through the administrative
+  // door, which typically means a shorter lifetime.
+  bool administrative = 5;
+}
+
+// AuthStatus is where a signed-in caller stands: who they are, which account
+// they are in, and what a client has to make them do before anything else.
+message AuthStatus {
+  // user is the caller, redacted, exactly as identity returns them.
+  primandproper.platform.identity.v1.User user = 1;
+
+  // active_account_id is the account this caller's requests are against.
+  string active_account_id = 2;
+
+  // account_ids is every account they are a live member of, default first.
+  repeated string account_ids = 3;
+
+  // has_password reports whether they hold a password credential at all. A
+  // passwordless user -- registered with a passkey, or federated -- reports
+  // false, and a client offering them a change-password form is offering them a
+  // form that cannot work.
+  bool has_password = 4;
+
+  // two_factor_enrolled reports whether they hold a second factor they have
+  // actually proven. A secret issued and never verified is not one.
+  bool two_factor_enrolled = 5;
+
+  // requires_password_change reports whether an operator has forced a password
+  // change. The service still signs such a user in -- the alternative is a user
+  // who cannot reach the form -- so sending them to it is the client's job, and
+  // this is how the client is told.
+  bool requires_password_change = 6;
+
+  // email_address_verified reports whether their address has been proven
+  // reachable.
+  bool email_address_verified = 7;
+}
+
+message LoginForTokenRequest {
+  Credentials credentials = 1;
+}
+
+message LoginForTokenResponse {
+  IssuedToken token = 1;
+}
+
+// AdminLoginForTokenRequest is the administrative door. It carries the same
+// credentials and is a message of its own so that the two doors can diverge
+// without either becoming a field on the other.
+message AdminLoginForTokenRequest {
+  Credentials credentials = 1;
+}
+
+message AdminLoginForTokenResponse {
+  IssuedToken token = 1;
+}
+
+// GetAuthStatusRequest names nobody. The subject is whoever is calling, and a
+// field naming somebody else would be a directory read wearing a whoami's
+// clothes.
+message GetAuthStatusRequest {}
+
+message GetAuthStatusResponse {
+  // authenticated reports whether the request arrived with a caller on it. It is
+  // the one RPC in this service that answers an anonymous request rather than
+  // refusing it, because "am I signed in" is a question whose answer can be no.
+  bool authenticated = 1;
+
+  // status is absent when authenticated is false, and present otherwise.
+  AuthStatus status = 2;
+}
+
+message GetSelfRequest {}
+
+message GetSelfResponse {
+  primandproper.platform.identity.v1.User user = 1;
+}
+
+// UpdatePasswordRequest changes the calling user's own password. There is no
+// field naming a user: an operator resetting somebody else's credential is a
+// different act with a different permission, and it is not this one.
+message UpdatePasswordRequest {
+  // current_password is required and is checked. A token proves somebody had the
+  // password once; asking again is the whole point, and the laptop left unlocked
+  // in between is the reason.
+  string current_password = 1;
+
+  // new_password is what replaces it. Whether it is long enough, unusual enough
+  // or unlike the last four is the consumer's rule, applied in front of this
+  // call.
+  string new_password = 2;
+
+  // totp_code is required from a user who holds a proven second factor.
+  string totp_code = 3;
+}
+
+// UpdatePasswordResponse is empty and is a message rather than
+// google.protobuf.Empty so that it can gain a field without becoming a
+// breaking change.
+message UpdatePasswordResponse {}
+
+// RefreshTOTPSecretRequest asks for a new second-factor secret for the calling
+// user, replacing whatever they hold.
+message RefreshTOTPSecretRequest {
+  // current_password is required. Issuing a new second-factor secret to whoever
+  // is holding an unlocked laptop is how a second factor stops being one.
+  string current_password = 1;
+
+  // totp_code is a code from the secret being replaced, required from a user who
+  // holds a proven one. Somebody enrolling for the first time has none and sends
+  // none -- which means losing a phone is not a way to replace the factor that
+  // phone held, and recovering from that is the consumer's, through an operator.
+  string totp_code = 2;
+}
+
+// RefreshTOTPSecretResponse carries a live second-factor secret, which makes it
+// the one response in this module that must not be logged, cached, retried into
+// a shared store, or rendered anywhere it will be read twice.
+//
+// It is unavoidable: a secret nobody can see is a secret nobody can enroll. The
+// secret is unproven until VerifyTOTPSecret succeeds, so between this response
+// and that call the user holds no second factor at all.
+message RefreshTOTPSecretResponse {
+  // secret is the base32 shared secret, for somebody typing it in.
+  string secret = 1;
+
+  // provisioning_uri is the otpauth:// URI that same secret encodes to, for a
+  // client rendering a QR code.
+  string provisioning_uri = 2;
+}
+
+message VerifyTOTPSecretRequest {
+  // totp_code is a code from the secret the user was just issued. Producing one
+  // is what proves possession, which is what turns the secret into a second
+  // factor.
+  string totp_code = 1;
+}
+
+// VerifyTOTPSecretResponse is empty -- see UpdatePasswordResponse.
+message VerifyTOTPSecretResponse {}
+
+// SignInService is sign-in.
+//
+// Three of its RPCs are anonymous by definition and four require a caller. What
+// none of them requires is a permission: there is no grant that would make
+// "sign in" safer, and the four authenticated ones take their subject from the
+// caller and have no field that could name anybody else. See
+// authentication/signin/grpc's Require for how that is declared to an
+// authorization policy, which is not the same thing as being left out of one.
+service SignInService {
+  // The two doors.
+  rpc LoginForToken(LoginForTokenRequest) returns (LoginForTokenResponse);
+  rpc AdminLoginForToken(AdminLoginForTokenRequest) returns (AdminLoginForTokenResponse);
+
+  // The two reads a client makes on load.
+  rpc GetAuthStatus(GetAuthStatusRequest) returns (GetAuthStatusResponse);
+  rpc GetSelf(GetSelfRequest) returns (GetSelfResponse);
+
+  // The three writes a signed-in person makes about their own credentials.
+  rpc UpdatePassword(UpdatePasswordRequest) returns (UpdatePasswordResponse);
+  rpc RefreshTOTPSecret(RefreshTOTPSecretRequest) returns (RefreshTOTPSecretResponse);
+  rpc VerifyTOTPSecret(VerifyTOTPSecretRequest) returns (VerifyTOTPSecretResponse);
+}

@@ -141,4 +141,21 @@ const (
 	// narrower query. It is emphatically not a 200 with an empty page, which
 	// would tell the client it had seen everything.
 	ErrSearchWindowExceeded ErrorCode = "E122"
+	// ErrAuthenticationFailed is returned when a caller did not prove they are
+	// who they say they are: a handle nobody holds, a password that does not
+	// match, a second-factor code that does not validate, or a second-factor code
+	// that was required and not sent.
+	//
+	// One code for the whole set, because telling them apart is the disclosure a
+	// sign-in exists to avoid — "no such user" enumerates a directory and "wrong
+	// code" confirms a password to whoever is guessing them. The one distinction
+	// a client genuinely needs is whether to ask for a second-factor code, and
+	// that is in the message rather than in a second code, so a client rendering
+	// the message is right either way and one branching on the code cannot build
+	// an oracle out of it.
+	//
+	// It is not ErrFetchingSessionContextData, which is the other 401 here: that
+	// one is a session this service could not read, and this one is a caller who
+	// has no session yet and did not earn one.
+	ErrAuthenticationFailed ErrorCode = "E123"
 )

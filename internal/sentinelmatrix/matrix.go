@@ -3,6 +3,7 @@ package sentinelmatrix
 import (
 	"slices"
 
+	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	httperrors "github.com/primandproper/platform-go/v14/errors/http"
@@ -43,15 +44,19 @@ func (d Disposition) String() string {
 	}
 }
 
-// The five packages that map their own sentinels, spelled once each. Each name
+// The six packages that map their own sentinels, spelled once each. Each name
 // is three things — a key in Matrix, an entry in Packages and a case in Mappers
-// — and a sixth package is added in all three together.
+// — and a seventh package is added in all three together.
+//
+// Each is a path relative to the module root rather than a package name,
+// because that is what the roster's own test reads the rows out of.
 const (
 	dataPrivacyPkg = "dataprivacy"
 	identityPkg    = "identity"
 	linksPkg       = "links"
 	operationsPkg  = "operations"
 	sessionsPkg    = "sessions"
+	signInPkg      = "authentication/signin"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -60,7 +65,7 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the four
+// Matrix is the decision made about every exported sentinel in the six
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
@@ -239,15 +244,62 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNoTimeout":               {Err: sessions.ErrNoTimeout, Is: Unhandled},
 		"ErrTouchExceedsIdleTimeout": {Err: sessions.ErrTouchExceedsIdleTimeout, Is: Unhandled},
 	},
+
+	signInPkg: {
+		// The two refusals a caller gets before they hold anything. Both are
+		// Unauthenticated and both are 401, and they differ only in the message,
+		// which is the one distinction a client needs and the only one that is
+		// not an oracle.
+		"ErrInvalidCredentials":   {Err: signin.ErrInvalidCredentials, Is: Mapped},
+		"ErrSecondFactorRequired": {Err: signin.ErrSecondFactorRequired, Is: Mapped},
+
+		// Proven, and refused anyway. The four PermissionDenials: two statuses
+		// an operator set, and the two halves of the administrative door.
+		"ErrAdminLoginDisabled": {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
+		"ErrNotAnAdministrator": {Err: signin.ErrNotAnAdministrator, Is: Mapped},
+		"ErrUserBanned":         {Err: signin.ErrUserBanned, Is: Mapped},
+		"ErrUserTerminated":     {Err: signin.ErrUserTerminated, Is: Mapped},
+
+		// The three states an act is refused from rather than forbidden. Each is
+		// fixable in a specific order, and these are the rows where the two
+		// transports read differently on purpose — FailedPrecondition on one
+		// side, a conflict with a specific message on the other.
+		"ErrNoPasswordCredential":    {Err: signin.ErrNoPasswordCredential, Is: Mapped},
+		"ErrSecondFactorNotEnrolled": {Err: signin.ErrSecondFactorNotEnrolled, Is: Mapped},
+		"ErrUserUnverified":          {Err: signin.ErrUserUnverified, Is: Mapped},
+
+		// Wrap errors.ErrNilInputParameter and errors.ErrEmptyInputParameter, so
+		// the platform mappers answer them. Four are wiring failures and four are
+		// a request that arrived incomplete.
+		"ErrEmptyHandle":       {Err: signin.ErrEmptyHandle, Is: Platform},
+		"ErrEmptyPassword":     {Err: signin.ErrEmptyPassword, Is: Platform},
+		"ErrEmptyUserID":       {Err: signin.ErrEmptyUserID, Is: Platform},
+		"ErrNilAuthenticator":  {Err: signin.ErrNilAuthenticator, Is: Platform},
+		"ErrNilCredentials":    {Err: signin.ErrNilCredentials, Is: Platform},
+		"ErrNilDatabaseClient": {Err: signin.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilDirectory":      {Err: signin.ErrNilDirectory, Is: Platform},
+		"ErrNilPasswordUpdate": {Err: signin.ErrNilPasswordUpdate, Is: Platform},
+		"ErrNilSecretRefresh":  {Err: signin.ErrNilSecretRefresh, Is: Platform},
+		"ErrNilTokenIssuer":    {Err: signin.ErrNilTokenIssuer, Is: Platform},
+
+		// Wraps errors.ErrUnrecognizedInputValue, which the platform mappers
+		// already answer as a bad request.
+		"ErrAmbiguousHandle": {Err: signin.ErrAmbiguousHandle, Is: Platform},
+
+		// A consumer who never named the label an authenticator app shows. It is
+		// wiring rather than anything a caller sent, so a 500 is the honest
+		// answer and no mapper claims it.
+		"ErrTOTPIssuerNotConfigured": {Err: signin.ErrTOTPIssuerNotConfigured, Is: Unhandled},
+	},
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
-// module root. They are the five that export mappers of their own; a sixth would
-// be added here, in Matrix and in Mappers together.
-var Packages = []string{dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg}
+// module root. They are the six that export mappers of their own; a seventh
+// would be added here, in Matrix and in Mappers together.
+var Packages = []string{dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg}
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
-// this package spells the five out; everywhere else they are the strings in
+// this package spells the six out; everywhere else they are the strings in
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
@@ -261,6 +313,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return operations.HTTPMapper, operations.GRPCMapper
 	case sessionsPkg:
 		return sessions.HTTPMapper, sessions.GRPCMapper
+	case signInPkg:
+		return signin.HTTPMapper, signin.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}

@@ -21,6 +21,7 @@ var codeToStatus = map[ErrorCode]int{
 	ErrResourceConflict:           http.StatusConflict,            // E115
 	ErrTooManyRequests:            http.StatusTooManyRequests,     // E116
 	ErrInvalidRequestSignature:    http.StatusUnauthorized,        // E117
+	ErrAuthenticationFailed:       http.StatusUnauthorized,        // E123
 	// Both entitlement denials are 402. The status is unfashionable and it is
 	// also the only one that says what is actually true: the request is
 	// well-formed, the caller is authenticated and authorized, and the thing
