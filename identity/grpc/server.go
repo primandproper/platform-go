@@ -154,6 +154,7 @@ type Server struct {
 	svc             *identity.Service
 	principals      PrincipalExtractor
 	mintToken       TokenMinter
+	targets         TargetAuthorizer
 
 	instruments *metrics.OperationSet
 
@@ -214,6 +215,22 @@ func NewServer(
 		if opt != nil {
 			opt(s)
 		}
+	}
+
+	// The row check, defaulted rather than left nil. A nil TargetAuthorizer
+	// would be a server whose request-named RPCs are gated by the method-level
+	// permission alone, which is the state this seam exists to end — so the
+	// absence of an option is answered with the closed rule and not with none.
+	if s.targets == nil {
+		// Built into a variable and only then assigned to the interface field:
+		// a constructor returning a concrete pointer into an interface on its
+		// error path hands back a non-nil interface holding a nil pointer.
+		authorizer, authorizerErr := NewMembershipAuthorizer(client, store)
+		if authorizerErr != nil {
+			return nil, authorizerErr
+		}
+
+		s.targets = authorizer
 	}
 
 	if s.invitationTTL > s.maxInvitationTTL {

@@ -46,14 +46,13 @@ const (
 
 	// PermissionReadAccounts covers reading an account and its roster, by id.
 	//
-	// By id and not by membership: the grant is on the method, and a holder of
-	// it may read any account in the directory whose id they know. Narrowing it
-	// to "the accounts this caller is a member of" is a check on the row, which
-	// the enforcer this module ships does not make — its interceptor sees the
-	// method and the grants and not the request — so a consumer who wants the
-	// narrower reading makes it in an interceptor of their own, ahead of the
-	// handler, with Principal.ActiveAccountID or the caller's memberships as
-	// the thing to compare.
+	// The grant is on the method and says the caller may perform this kind of
+	// read; which account they may perform it against is [TargetAuthorizer]'s,
+	// asked inside the handler where the store is. Both have to say yes. That
+	// split is the whole of the arrangement in this file: an interceptor sees
+	// the method and the grants and has no handle to read a row with, so a
+	// permission that tried to mean "the accounts this caller is a member of"
+	// would be a sentence nothing could evaluate.
 	PermissionReadAccounts authorization.Permission = "identity.accounts.read"
 
 	// PermissionListAllAccounts covers paging every account in the directory.
@@ -79,14 +78,18 @@ const (
 	//
 	// Cancelling shares this permission rather than having one of its own
 	// because both are the sender's side of the same act. Like every grant here
-	// it is on the method: a holder may invite into any account in the
-	// directory and cancel any pending invitation in it, and whether *this*
-	// caller is the sender of *that* invitation is a check on the row that
-	// nothing in this module makes — see CancelInvitation for what a consumer
-	// compares if they want it.
+	// it is on the method, and like every request-named method the row is
+	// checked too: Invite asks [TargetAuthorizer] about the account, and
+	// CancelInvitation about the invitation, whose default rule names the sender
+	// and the account's members. A holder of this permission is therefore an
+	// account's inviter rather than the directory's.
 	PermissionInviteMembers authorization.Permission = "identity.invitations.send"
 
 	// PermissionReadInvitations covers reading one invitation by id.
+	//
+	// It is the one id-addressed grant with no row check behind it, because the
+	// reader it exists for includes the recipient — who is neither the sender nor
+	// a member of the account yet. GetInvitation says the same at more length.
 	PermissionReadInvitations authorization.Permission = "identity.invitations.read"
 )
 
@@ -97,6 +100,12 @@ const (
 // every member, or Register behind two permissions rather than one, overrides
 // the entry — the map is theirs once they have it, and authorization/grpc's
 // builder takes whatever they hand it.
+//
+// It is also only half of what gates this service. Eleven of these methods take
+// their target from the request body, and a grant on the method cannot say which
+// account, user or invitation the caller may name — that is [TargetAuthorizer],
+// asked inside the handler, and it is not overridable through this map. See
+// [MembershipAuthorizer] for the default rules.
 //
 // The keys are the generated full method names, which is the form
 // grpc.UnaryServerInfo.FullMethod carries and the form RequirementsBuilder

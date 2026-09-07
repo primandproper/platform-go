@@ -15,6 +15,11 @@ import (
 // Neither the billing state nor the owner moves through here — the first is the
 // payment processor's to report and the second is TransferAccountOwnership —
 // and the input message has no field for either.
+//
+// The account has to be one the caller may act on. [TargetAuthorizer] is asked
+// before the write, and by default that means an account the caller holds a live
+// membership in: the fragment's identity.accounts.update says this caller may
+// rename an account, and this says which one.
 func (s *Server) UpdateAccount(
 	ctx context.Context,
 	request *identitypb.UpdateAccountRequest,
@@ -35,6 +40,10 @@ func (s *Server) UpdateAccount(
 		return nil, err
 	}
 
+	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+		return nil, err
+	}
+
 	account, err := s.svc.UpdateAccount(ctx, scopeOf(principal), request.GetAccountId(), update)
 	if err != nil {
 		return nil, fail(op, err, codes.Internal, "updating account %q", request.GetAccountId())
@@ -48,6 +57,13 @@ func (s *Server) UpdateAccount(
 // Transferring to the owner an account already has is a no-op that still runs
 // the consumer's hook, naming the same user on both sides — the honest report of
 // what was asked for.
+//
+// Two rows are named and both are checked. The account has to be one the caller
+// may act on, and so does the new owner — by default a user the caller shares a
+// live account with, so an account is handed to somebody the caller can already
+// see rather than to any id in the directory. Handing one to a user who belongs
+// to nothing is invitation first and transfer second, which is the order that
+// makes them a member before it makes them responsible.
 func (s *Server) TransferAccountOwnership(
 	ctx context.Context,
 	request *identitypb.TransferAccountOwnershipRequest,
@@ -62,6 +78,14 @@ func (s *Server) TransferAccountOwnership(
 
 	op.Set(accountIDKey, request.GetAccountId()).Set(userIDKey, request.GetNewOwnerUserId())
 
+	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+		return nil, err
+	}
+
+	if err = s.authorizeUser(ctx, op, principal, request.GetNewOwnerUserId()); err != nil {
+		return nil, err
+	}
+
 	account, err := s.svc.TransferAccountOwnership(
 		ctx, scopeOf(principal), request.GetAccountId(), request.GetNewOwnerUserId())
 	if err != nil {
@@ -72,6 +96,13 @@ func (s *Server) TransferAccountOwnership(
 }
 
 // GetAccount reads one account.
+//
+// The account has to be one the caller may act on, checked before the read.
+// identity.accounts.read is a grant on the method, so without this a holder
+// could read any account in the directory whose id they knew. An account in
+// another directory and an account in this one the caller is not in both answer
+// codes.PermissionDenied — one answer rather than two, which is what leaves a
+// caller enumerating ids with nothing to tell them apart.
 func (s *Server) GetAccount(
 	ctx context.Context,
 	request *identitypb.GetAccountRequest,
@@ -84,6 +115,10 @@ func (s *Server) GetAccount(
 	defer func() { done(err) }()
 
 	op.Set(accountIDKey, request.GetAccountId())
+
+	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+		return nil, err
+	}
 
 	account, err := s.store.GetAccount(ctx, s.client.Reader(), scopeOf(principal), request.GetAccountId())
 	if err != nil {
@@ -123,6 +158,12 @@ func (s *Server) ListAccounts(
 }
 
 // ListAccountsForUser pages the accounts one user belongs to.
+//
+// The user has to be one the caller may act on: by default themselves, or
+// anybody they share a live account with. The page is still every account the
+// named user belongs to, the ones the caller is not in included — the rule
+// decides whether the read happens rather than what it returns, and a consumer
+// for whom that disclosure matters replaces [TargetAuthorizer].
 func (s *Server) ListAccountsForUser(
 	ctx context.Context,
 	request *identitypb.ListAccountsForUserRequest,
@@ -139,6 +180,10 @@ func (s *Server) ListAccountsForUser(
 
 	filter, err := s.filterFromProto(op, request.GetFilter())
 	if err != nil {
+		return nil, err
+	}
+
+	if err = s.authorizeUser(ctx, op, principal, request.GetUserId()); err != nil {
 		return nil, err
 	}
 

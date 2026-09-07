@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/identity"
+	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
 	"github.com/shoenig/test"
@@ -21,18 +22,21 @@ func TestGetAccountIsScopedToTheCallersDirectory(T *testing.T) {
 	mine := h.seedAccount(T, testScope, "mine")
 	theirs := h.seedAccount(T, otherScope, "theirs")
 
-	found, err := h.client.GetAccount(h.ctx(), &identitypb.GetAccountRequest{AccountId: mine.Account.ID})
+	ctx := h.as(&testPrincipal{userID: mine.User.ID, scope: testScope})
+
+	found, err := h.client.GetAccount(ctx, &identitypb.GetAccountRequest{AccountId: mine.Account.ID})
 	must.NoError(T, err)
 	test.EqOp(T, mine.Account.Name, found.GetAccount().GetName())
 	test.EqOp(T, mine.User.ID, found.GetAccount().GetOwnerUserId())
 
-	// The neighbor's account reads as absent, for the reason a neighbor's user
-	// does: from this directory it is not there, and any other answer tells the
-	// caller an account they may not read exists.
-	_, err = h.client.GetAccount(h.ctx(), &identitypb.GetAccountRequest{AccountId: theirs.Account.ID})
+	// The neighbor's account is refused, and by the same answer an account in
+	// this directory the caller is not a member of gets: the row check runs
+	// before the scoped read, so the caller cannot tell "elsewhere" from "not
+	// yours" and neither answer says whether the id names anything.
+	_, err = h.client.GetAccount(ctx, &identitypb.GetAccountRequest{AccountId: theirs.Account.ID})
 	must.Error(T, err)
-	test.EqOp(T, codes.NotFound, status.Code(err))
-	test.True(T, errors.Is(err, identity.ErrAccountNotFound))
+	test.EqOp(T, codes.PermissionDenied, status.Code(err))
+	test.True(T, errors.Is(err, identitygrpc.ErrTargetNotPermitted))
 }
 
 func TestListAccountsPagesTheCallersDirectoryOnly(T *testing.T) {
@@ -62,7 +66,9 @@ func TestListAccountsForUserAnswersTheAccountsTheyBelongTo(T *testing.T) {
 	mine := h.seedAccount(T, testScope, "mine")
 	somebodyElse := h.seedAccount(T, testScope, "somebodyelse")
 
-	page, err := h.client.ListAccountsForUser(h.ctx(),
+	ctx := h.as(&testPrincipal{userID: mine.User.ID, scope: testScope})
+
+	page, err := h.client.ListAccountsForUser(ctx,
 		&identitypb.ListAccountsForUserRequest{UserId: mine.User.ID})
 	must.NoError(T, err)
 
@@ -77,21 +83,29 @@ func TestTransferAccountOwnershipMovesTheAccount(T *testing.T) {
 
 	h := newHarness(T)
 
+	// The successor is a colleague rather than a stranger: they own an account
+	// of their own that the transferring owner is also a member of, which is
+	// what makes them somebody the caller may name. They are not a member of the
+	// account being handed over, which is what leaves the roster assertion below
+	// with something to prove.
 	owner := h.seedAccount(T, testScope, "owner")
-	successor := h.seedUser(T, testScope, "successor")
+	successor := h.seedAccount(T, testScope, "successor")
+	h.seedMembership(T, testScope, owner.User.ID, successor.Account.ID, "member")
 
-	response, err := h.client.TransferAccountOwnership(h.ctx(),
+	ctx := h.as(&testPrincipal{userID: owner.User.ID, scope: testScope})
+
+	response, err := h.client.TransferAccountOwnership(ctx,
 		&identitypb.TransferAccountOwnershipRequest{
 			AccountId:      owner.Account.ID,
-			NewOwnerUserId: successor.ID,
+			NewOwnerUserId: successor.User.ID,
 		})
 	must.NoError(T, err)
-	test.EqOp(T, successor.ID, response.GetAccount().GetOwnerUserId())
+	test.EqOp(T, successor.User.ID, response.GetAccount().GetOwnerUserId())
 
 	// And the new owner is on the roster, because an owner who is not a member
 	// is an account whose every roster-driven check refuses the person
 	// responsible for it.
-	members, err := h.client.ListAccountMembers(h.ctx(),
+	members, err := h.client.ListAccountMembers(ctx,
 		&identitypb.ListAccountMembersRequest{AccountId: owner.Account.ID})
 	must.NoError(T, err)
 
@@ -100,13 +114,18 @@ func TestTransferAccountOwnershipMovesTheAccount(T *testing.T) {
 		holders = append(holders, m.GetMembership().GetBelongsToUser())
 	}
 
-	test.SliceContains(T, holders, successor.ID)
+	test.SliceContains(T, holders, successor.User.ID)
 }
 
-// TestTransferAccountOwnershipRefusesAStrangerToTheDirectory pins the refusal
-// the store's scoped read of the new owner exists for: owner_user_id carries no
-// scope and no foreign key, so nothing below that read would decline to store a
-// neighbor's user id.
+// TestTransferAccountOwnershipRefusesAStrangerToTheDirectory pins both refusals
+// a neighbor's user id now meets, in the order they run.
+//
+// The transport's is first: a user the caller shares no live account with is not
+// one they may hand an account to, and a neighbor's is the extreme case of that.
+// The store's is behind it and is the one that matters if a consumer replaces
+// the seam — owner_user_id carries no scope and no foreign key, so nothing below
+// that read would decline to store a neighbor's user id. The second half of this
+// test asks with the row check disabled, which is the only way to reach it.
 func TestTransferAccountOwnershipRefusesAStrangerToTheDirectory(T *testing.T) {
 	T.Parallel()
 
@@ -115,10 +134,27 @@ func TestTransferAccountOwnershipRefusesAStrangerToTheDirectory(T *testing.T) {
 	owner := h.seedAccount(T, testScope, "owner")
 	stranger := h.seedUser(T, otherScope, "stranger")
 
-	_, err := h.client.TransferAccountOwnership(h.ctx(),
+	ctx := h.as(&testPrincipal{userID: owner.User.ID, scope: testScope})
+
+	_, err := h.client.TransferAccountOwnership(ctx,
 		&identitypb.TransferAccountOwnershipRequest{
 			AccountId:      owner.Account.ID,
 			NewOwnerUserId: stranger.ID,
+		})
+	must.Error(T, err)
+	test.EqOp(T, codes.PermissionDenied, status.Code(err))
+	test.True(T, errors.Is(err, identitygrpc.ErrTargetNotPermitted))
+
+	open := newHarness(T, identitygrpc.WithTargetAuthorizer(permitEverything{}))
+
+	openOwner := open.seedAccount(T, testScope, "owner")
+	openStranger := open.seedUser(T, otherScope, "stranger")
+
+	_, err = open.client.TransferAccountOwnership(
+		open.as(&testPrincipal{userID: openOwner.User.ID, scope: testScope}),
+		&identitypb.TransferAccountOwnershipRequest{
+			AccountId:      openOwner.Account.ID,
+			NewOwnerUserId: openStranger.ID,
 		})
 	must.Error(T, err)
 	test.EqOp(T, codes.NotFound, status.Code(err))

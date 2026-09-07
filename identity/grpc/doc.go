@@ -25,9 +25,31 @@ request field.
 
 What stays the consumer's is what was always genuinely theirs, and each is a
 seam here rather than a decision: who is calling ([Principal]), what each method
-requires ([Permissions], declared in one call by [Require]), what else happens on
-a write (identity.Hooks, inside the transaction), and whatever columns are their
-own.
+requires ([Permissions], declared in one call by [Require]), which rows a caller
+may name ([TargetAuthorizer], which unlike the other three has a real default),
+what else happens on a write (identity.Hooks, inside the transaction), and
+whatever columns are their own.
+
+# Authorization has two halves
+
+[Permissions] is the first: a grant on the method, evaluated by
+authorization/grpc's interceptor from the full method name and the caller's
+grants, before the request body has been looked at. It answers whether this
+caller may perform this kind of call at all.
+
+[TargetAuthorizer] is the second, and it is here because it cannot be there.
+Eleven RPCs take their target from the request — an account_id, a user_id, an
+invitation_id — and asking whether the caller has any standing in that row means
+reading it, which an interceptor holding the request and the grants has no handle
+to do. So it is asked inside the handler, where the store already is, after the
+request has been found well formed and before anything reads or writes.
+
+The default, [MembershipAuthorizer], permits an account the caller holds a live
+membership in, a user they share one with, and an invitation they sent or whose
+account they are in. A consumer with a different rule supplies it with
+[WithTargetAuthorizer]; a consumer who says nothing gets a directory that is
+closed on other people's accounts rather than one where a grant is
+directory-wide.
 
 [github.com/primandproper/platform-go/v14/identity/config] assembles all three
 layers from environment configuration and registers them with an injector, which
