@@ -1,6 +1,7 @@
 package errormappers
 
 import (
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
@@ -50,6 +51,9 @@ func Register() {
 	httperrors.RegisterHTTPErrorMapper(sessions.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(sessions.GRPCMapper)
 
+	httperrors.RegisterHTTPErrorMapper(oauth2clients.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(oauth2clients.GRPCMapper)
+
 	httperrors.RegisterHTTPErrorMapper(signin.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(signin.GRPCMapper)
 
@@ -58,4 +62,9 @@ func Register() {
 	// PermissionDenied and three are FailedPrecondition, each with a different
 	// remedy. See signin.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(signin.ClientSafeSentinels...)
+
+	// The two refusals an authorization request meets. Both are PermissionDenied
+	// and so are indistinguishable by code, and each names a different remedy for
+	// somebody staring at a browser. See oauth2clients.ClientSafeSentinels.
+	grpcerrors.RegisterClientSafeSentinels(oauth2clients.ClientSafeSentinels...)
 }

@@ -47,6 +47,7 @@ func (c *column) qualified() string { return c.table + "." + c.name }
 // internal/sqltier's rulings, none of them carries a reason.
 var tenancyColumns = map[string][]string{
 	"audit":                        {"audit_log_chains.scope", "audit_log_entries.scope"},
+	"authentication/oauth2clients": {"oauth2_registered_clients.scope"},
 	"authentication/passwordreset": {"password_reset_tokens.scope"},
 	"dataprivacy":                  {"dataprivacy_requests.subject_scope"},
 	"identity": {

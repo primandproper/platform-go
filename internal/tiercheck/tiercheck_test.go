@@ -140,6 +140,7 @@ var roster = map[string]entry{
 	// nested inside a domain, or a domain flow nested under the engines it
 	// orchestrates. Each overrides the answer its parent gave, and the README's
 	// "Primitives and Domains" section says why each one splits where it does.
+	"authentication/oauth2clients":         {tier: domain, why: "the administered client registry's table, under a protocol implementation that is a primitive"},
 	"authentication/oauth2server/database": {tier: domain, why: "the client and token tables, under a protocol implementation that is a primitive"},
 	"authentication/passwordreset":         {tier: domain, why: "a table of reset tokens, under engines that hash and issue"},
 	"authentication/signin":                {tier: domain, why: "the order the engines and the directory are used in, owning no table of its own"},

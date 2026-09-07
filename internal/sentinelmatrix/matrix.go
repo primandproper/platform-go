@@ -3,6 +3,7 @@ package sentinelmatrix
 import (
 	"slices"
 
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
@@ -51,12 +52,13 @@ func (d Disposition) String() string {
 // Each is a path relative to the module root rather than a package name,
 // because that is what the roster's own test reads the rows out of.
 const (
-	dataPrivacyPkg = "dataprivacy"
-	identityPkg    = "identity"
-	linksPkg       = "links"
-	operationsPkg  = "operations"
-	sessionsPkg    = "sessions"
-	signInPkg      = "authentication/signin"
+	dataPrivacyPkg   = "dataprivacy"
+	identityPkg      = "identity"
+	linksPkg         = "links"
+	operationsPkg    = "operations"
+	sessionsPkg      = "sessions"
+	signInPkg        = "authentication/signin"
+	oauth2ClientsPkg = "authentication/oauth2clients"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -245,6 +247,54 @@ var Matrix = map[string]map[string]Decision{
 		"ErrTouchExceedsIdleTimeout": {Err: sessions.ErrTouchExceedsIdleTimeout, Is: Unhandled},
 	},
 
+	oauth2ClientsPkg: {
+		// The read's one answer. Absent, archived and in another registry are
+		// deliberately the same 404, which is what keeps the read from being an
+		// enumeration oracle over other tenants' registrations.
+		"ErrClientNotFound": {Err: oauth2clients.ErrClientNotFound, Is: Mapped},
+
+		// The one refusal that means "try again". The identifier was minted
+		// from crypto/rand and the caller never chose it, so a 409 naming the
+		// remedy is the only useful thing to say.
+		"ErrClientIDTaken": {Err: oauth2clients.ErrClientIDTaken, Is: Mapped},
+
+		// The four a caller can correct, each naming its field. ErrScopeMismatch
+		// is among them because a registration whose own scope disagrees with
+		// the call's is refused rather than corrected, and the caller is the one
+		// holding both halves.
+		"ErrEmptyName":          {Err: oauth2clients.ErrEmptyName, Is: Mapped},
+		"ErrInvalidRedirectURI": {Err: oauth2clients.ErrInvalidRedirectURI, Is: Mapped},
+		"ErrNoRedirectURIs":     {Err: oauth2clients.ErrNoRedirectURIs, Is: Mapped},
+		"ErrScopeMismatch":      {Err: oauth2clients.ErrScopeMismatch, Is: Mapped},
+
+		// The three refusals on authority, all PermissionDenied. The caller is
+		// who they say they are; the registration is not theirs to act on. Two
+		// of the three are also ClientSafeSentinels, because they are the two a
+		// person meets in a browser and their remedies differ.
+		"ErrClientOwnerMismatch": {Err: oauth2clients.ErrClientOwnerMismatch, Is: Mapped},
+		"ErrClientScopeMismatch": {Err: oauth2clients.ErrClientScopeMismatch, Is: Mapped},
+		"ErrOwnerMismatch":       {Err: oauth2clients.ErrOwnerMismatch, Is: Mapped},
+
+		// The wiring failures. Each wraps a platform sentinel that errors/http
+		// and errors/grpc already answer, so this package's mappers say nothing
+		// about them.
+		"ErrEmptyClientID":     {Err: oauth2clients.ErrEmptyClientID, Is: Platform},
+		"ErrEmptyID":           {Err: oauth2clients.ErrEmptyID, Is: Platform},
+		"ErrEmptyUserID":       {Err: oauth2clients.ErrEmptyUserID, Is: Platform},
+		"ErrNilClient":         {Err: oauth2clients.ErrNilClient, Is: Platform},
+		"ErrNilDatabaseClient": {Err: oauth2clients.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: oauth2clients.ErrNilExecutor, Is: Platform},
+		"ErrNilInput":          {Err: oauth2clients.ErrNilInput, Is: Platform},
+		"ErrNilService":        {Err: oauth2clients.ErrNilService, Is: Platform},
+		"ErrNilStore":          {Err: oauth2clients.ErrNilStore, Is: Platform},
+		"ErrNilTransaction":    {Err: oauth2clients.ErrNilTransaction, Is: Platform},
+
+		// This process's own randomness failing. There is nothing the caller did
+		// and nothing they can change, so a 500 is the honest answer and the
+		// useful signal is in this process's logs.
+		"ErrSecretGeneration": {Err: oauth2clients.ErrSecretGeneration, Is: Unhandled},
+	},
+
 	signInPkg: {
 		// The two refusals a caller gets before they hold anything. Both are
 		// Unauthenticated and both are 401, and they differ only in the message,
@@ -296,7 +346,10 @@ var Matrix = map[string]map[string]Decision{
 // Packages are the directories Matrix's rows are read out of, relative to the
 // module root. They are the six that export mappers of their own; a seventh
 // would be added here, in Matrix and in Mappers together.
-var Packages = []string{dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg}
+var Packages = []string{
+	dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg,
+	oauth2ClientsPkg,
+}
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
 // this package spells the six out; everywhere else they are the strings in
@@ -315,6 +368,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return sessions.HTTPMapper, sessions.GRPCMapper
 	case signInPkg:
 		return signin.HTTPMapper, signin.GRPCMapper
+	case oauth2ClientsPkg:
+		return oauth2clients.HTTPMapper, oauth2clients.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}

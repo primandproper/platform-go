@@ -1,0 +1,224 @@
+// Package primandproper.platform.oauth2clients.v1 is the wire schema for an
+// administered registry of OAuth2 clients: the registrations an operator or a
+// person creates on purpose, listed, revised and withdrawn.
+//
+// It is not RFC 7591 dynamic client registration. That is an anonymous POST to
+// /authorize's sibling endpoint, it is served by
+// github.com/primandproper/platform-go/v14/authentication/oauth2server, and a
+// deployment using this registry turns it off. What is here is the API a
+// console and a CLI drive.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/authentication/oauth2clients/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/oauth2clients/v1/oauth2clients.proto=github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # Why there are ten RPCs and not five
+//
+// Every operation appears twice: once administered, once self-service. They are
+// separate methods rather than one method with an "ownership" field, and the
+// reason is this module's authorization story rather than taste.
+//
+// A consumer's interceptor gates an RPC by its full method name, and it runs
+// before the request body is parsed -- see
+// github.com/primandproper/platform-go/v14/authorization/grpc. A single
+// CreateOAuth2Client whose required permission depended on a field would be one
+// the enforcer could not gate: it would have to be declared public and gate
+// itself, which is the arrangement that puts an authorization decision somewhere
+// nobody auditing the permission map can see it.
+//
+// Mirrored, the decision is back on the method name. Creating a client that
+// belongs to nobody is CreateOAuth2Client and needs a grant; creating one of
+// your own is CreateOwnOAuth2Client and needs none, because owning it is the
+// authorization.
+//
+// The other shape considered and rejected was one set of RPCs that silently
+// narrows to the caller's own rows when they hold no grant. That is the
+// antipattern oauth2server names about scopes: silently narrowing hands back an
+// answer that looks like the one that was asked for and is not.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere. A scope a client could name is a cross-tenant read
+// hiding behind a request field; it comes off the principal the consumer's
+// interceptor put on the context. See identity.proto, which says this at
+// greater length.
+//
+// No belongs_to_user in any request, for the same reason one level in. An owner
+// a client could name is a credential minted in somebody else's name. It is
+// output-only: a response carries it so a console can show who owns a row.
+//
+// No client_secret on OAuth2Client. The plaintext exists on exactly one message
+// -- [IssuedOAuth2Client], returned by the two creation RPCs -- because a field
+// that is populated once and empty on every other read is the field that ends up
+// in a log. It is not recoverable: what the row holds is a digest, and losing a
+// secret means archiving the registration and minting another.
+//
+// No update to the owner, the client_id or the secret. The first two are
+// immutable facts about a row, and the third is a call that hands back a new
+// credential rather than an UPDATE nobody sees.
+
+syntax = "proto3";
+
+package primandproper.platform.oauth2clients.v1;
+
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/filtering/v1/filtering.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb;oauth2clientspb";
+
+// OAuth2Client is one registration, as a client sees it.
+message OAuth2Client {
+  // created_at is when the registration was accepted, assigned by the database.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when it was last revised, unset for one nobody has
+  // touched since it was created.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // archived_at is when it was withdrawn, unset while it is live. Withdrawn
+  // rather than deleted: a client_id names tokens that may still be live.
+  google.protobuf.Timestamp archived_at = 3;
+
+  // id is the row. It is what every other RPC here names a registration by, and
+  // it is not what the client sends -- see client_id.
+  string id = 4;
+
+  // client_id is the identifier the client sends at /authorize and /token. It
+  // is not a secret: it travels in every authorization URL and is meant to.
+  string client_id = 5;
+
+  // name is shown on the consent form, and description is for whoever
+  // administers the registry. Both are text somebody typed -- render them,
+  // never trust them.
+  string name = 6;
+  string description = 7;
+
+  // redirect_uris are the exact addresses this client may receive an
+  // authorization code at, compared byte for byte by the authorization server.
+  // A client registers what it will actually send as redirect_uri, ports and
+  // trailing slashes included.
+  repeated string redirect_uris = 8;
+
+  // scopes are the scopes this client may request. A request for anything
+  // outside this set is rejected rather than silently narrowed.
+  repeated string scopes = 9;
+
+  // belongs_to_user is who owns this registration, empty for one the deployment
+  // administers on behalf of nobody. Output only: no request carries it.
+  string belongs_to_user = 10;
+}
+
+// IssuedOAuth2Client is the one message in this schema that carries a
+// credential, returned by exactly the two creation RPCs.
+message IssuedOAuth2Client {
+  OAuth2Client client = 1;
+
+  // client_secret is the plaintext, sent once. It is not stored and not
+  // recoverable, which is why this RPC requires transport security and why a
+  // client that does not keep it has to register again.
+  string client_secret = 2;
+}
+
+// OAuth2ClientCreationInput is what a caller supplies to register a client.
+// Everything else about the row -- both identifiers, the secret, the timestamps,
+// the registry and the owner -- is decided by the service.
+message OAuth2ClientCreationInput {
+  string name = 1;
+  string description = 2;
+
+  // At least one redirect URI is required. The authorization server matches
+  // redirect_uri byte for byte against this list, so a client registered
+  // without one can authenticate at the token endpoint and still never complete
+  // an authorization request.
+  repeated string redirect_uris = 3;
+  repeated string scopes = 4;
+}
+
+// OAuth2ClientUpdateInput is what a caller may revise: the four descriptive
+// fields, and nothing else.
+message OAuth2ClientUpdateInput {
+  string name = 1;
+  string description = 2;
+  repeated string redirect_uris = 3;
+  repeated string scopes = 4;
+}
+
+message CreateOAuth2ClientRequest { OAuth2ClientCreationInput input = 1; }
+message CreateOAuth2ClientResponse { IssuedOAuth2Client issued = 1; }
+
+message GetOAuth2ClientRequest { string oauth2_client_id = 1; }
+message GetOAuth2ClientResponse { OAuth2Client result = 1; }
+
+message ListOAuth2ClientsRequest { primandproper.platform.filtering.v1.QueryFilter filter = 1; }
+message ListOAuth2ClientsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated OAuth2Client results = 2;
+}
+
+message UpdateOAuth2ClientRequest {
+  string oauth2_client_id = 1;
+  OAuth2ClientUpdateInput input = 2;
+}
+message UpdateOAuth2ClientResponse { OAuth2Client result = 1; }
+
+message ArchiveOAuth2ClientRequest { string oauth2_client_id = 1; }
+message ArchiveOAuth2ClientResponse {}
+
+message CreateOwnOAuth2ClientRequest { OAuth2ClientCreationInput input = 1; }
+message CreateOwnOAuth2ClientResponse { IssuedOAuth2Client issued = 1; }
+
+message GetOwnOAuth2ClientRequest { string oauth2_client_id = 1; }
+message GetOwnOAuth2ClientResponse { OAuth2Client result = 1; }
+
+message ListOwnOAuth2ClientsRequest { primandproper.platform.filtering.v1.QueryFilter filter = 1; }
+message ListOwnOAuth2ClientsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated OAuth2Client results = 2;
+}
+
+message UpdateOwnOAuth2ClientRequest {
+  string oauth2_client_id = 1;
+  OAuth2ClientUpdateInput input = 2;
+}
+message UpdateOwnOAuth2ClientResponse { OAuth2Client result = 1; }
+
+message ArchiveOwnOAuth2ClientRequest { string oauth2_client_id = 1; }
+message ArchiveOwnOAuth2ClientResponse {}
+
+// OAuth2ClientsService administers the registry.
+//
+// The first five methods act on any registration in the caller's registry and
+// each requires a grant. The last five act only on registrations the caller
+// owns, and require none -- ownership is the authorization. See the file
+// comment for why they are ten methods and not five.
+service OAuth2ClientsService {
+  // The administered half. The registry comes off the caller's principal; the
+  // registration belongs to no person.
+  rpc CreateOAuth2Client(CreateOAuth2ClientRequest) returns (CreateOAuth2ClientResponse);
+  rpc GetOAuth2Client(GetOAuth2ClientRequest) returns (GetOAuth2ClientResponse);
+  rpc ListOAuth2Clients(ListOAuth2ClientsRequest) returns (ListOAuth2ClientsResponse);
+  rpc UpdateOAuth2Client(UpdateOAuth2ClientRequest) returns (UpdateOAuth2ClientResponse);
+  rpc ArchiveOAuth2Client(ArchiveOAuth2ClientRequest) returns (ArchiveOAuth2ClientResponse);
+
+  // The self-service half. Both the registry and the owner come off the
+  // caller's principal, so there is nothing in any of these requests that could
+  // name somebody else's row.
+  rpc CreateOwnOAuth2Client(CreateOwnOAuth2ClientRequest) returns (CreateOwnOAuth2ClientResponse);
+  rpc GetOwnOAuth2Client(GetOwnOAuth2ClientRequest) returns (GetOwnOAuth2ClientResponse);
+  rpc ListOwnOAuth2Clients(ListOwnOAuth2ClientsRequest) returns (ListOwnOAuth2ClientsResponse);
+  rpc UpdateOwnOAuth2Client(UpdateOwnOAuth2ClientRequest) returns (UpdateOwnOAuth2ClientResponse);
+  rpc ArchiveOwnOAuth2Client(ArchiveOwnOAuth2ClientRequest) returns (ArchiveOwnOAuth2ClientResponse);
+}

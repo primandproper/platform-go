@@ -61,6 +61,7 @@ type ruling struct {
 var rulings = map[string]ruling{
 	// The tier itself. Each of these is what sqlc-gen-unison emitted from its
 	// package's corpus, which is what every port below is a port onto.
+	"authentication/oauth2clients/internal/oauth2clientsdb":        {tier: unison},
 	"authentication/oauth2server/database/internal/oauth2serverdb": {tier: unison},
 	"dataprivacy/internal/dataprivacydb":                           {tier: unison},
 	"identity/internal/identitydb":                                 {tier: unison},
