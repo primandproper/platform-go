@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	filteringgrpc "github.com/primandproper/platform-go/v14/filtering/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
@@ -33,7 +34,7 @@ func (s *Server) SetDefaultAccount(
 	membership, err := s.svc.SetDefaultAccount(
 		ctx, scopeOf(principal), principal.UserID(), request.GetAccountId())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "setting default account to %q", request.GetAccountId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "setting default account to %q", request.GetAccountId())
 	}
 
 	return &identitypb.SetDefaultAccountResponse{Membership: MembershipToProto(membership)}, nil
@@ -71,7 +72,7 @@ func (s *Server) SetMembershipRoles(
 	membership, err := s.svc.SetMembershipRoles(
 		ctx, scopeOf(principal), request.GetUserId(), request.GetAccountId(), request.GetRoles())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal,
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal,
 			"setting roles of user %q in account %q", request.GetUserId(), request.GetAccountId())
 	}
 
@@ -106,7 +107,7 @@ func (s *Server) RemoveMembership(
 	membership, err := s.svc.RemoveMembership(
 		ctx, scopeOf(principal), request.GetUserId(), request.GetAccountId())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal,
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal,
 			"removing user %q from account %q", request.GetUserId(), request.GetAccountId())
 	}
 
@@ -138,7 +139,7 @@ func (s *Server) GetMembership(
 	membership, err := s.store.GetMembership(
 		ctx, s.client.Reader(), scopeOf(principal), request.GetUserId(), request.GetAccountId())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal,
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal,
 			"reading membership of user %q in account %q", request.GetUserId(), request.GetAccountId())
 	}
 
@@ -176,7 +177,7 @@ func (s *Server) ListMembershipsForUser(
 	memberships, err := s.store.ListMembershipsForUser(
 		ctx, s.client.Reader(), scopeOf(principal), request.GetUserId())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "listing memberships for user %q", request.GetUserId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "listing memberships for user %q", request.GetUserId())
 	}
 
 	return &identitypb.ListMembershipsForUserResponse{Results: MembershipsToProto(memberships)}, nil
@@ -213,7 +214,7 @@ func (s *Server) ListAccountMembers(
 	page, err := s.store.ListAccountMembers(
 		ctx, s.client.Reader(), scopeOf(principal), request.GetAccountId(), filter)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "listing members of account %q", request.GetAccountId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "listing members of account %q", request.GetAccountId())
 	}
 
 	return &identitypb.ListAccountMembersResponse{

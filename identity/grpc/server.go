@@ -294,7 +294,7 @@ func (s *Server) caller(ctx context.Context, method string) (
 
 	principal, ok := s.principals(ctx)
 	if !ok || principal == nil {
-		err := fail(op, ErrNoPrincipal, codes.Unauthenticated, "resolving the caller of %s", method)
+		err := grpcerrors.PrepareAndLogGRPCStatus(ErrNoPrincipal, op.Logger(), op.Span(), codes.Unauthenticated, "resolving the caller of %s", method)
 
 		// The RPC returns before it has deferred done, so this failure has to
 		// close what it opened itself: otherwise every unauthenticated call is
@@ -308,39 +308,6 @@ func (s *Server) caller(ctx context.Context, method string) (
 	op.Set(scopeKey, principal.Scope().String()).Set(userIDKey, principal.UserID())
 
 	return ctx, op, principal, done, nil
-}
-
-// fail is how every RPC here returns an error: it logs and traces, then hands
-// back an error that is still the sentinel it was.
-//
-// The code is a default rather than an answer. UnaryErrorEncodingInterceptor
-// re-runs MapToGRPC over the chain this preserves, so a registered mapper wins
-// over what a call site guessed; the code here is what a client is told when no
-// mapper claims the error. That is also why every read below passes
-// codes.Internal and does not switch on sentinels — deciding that a missing user
-// is a 404 is identity.GRPCMapper's job, in one place.
-//
-// The status message is the same shape. The description is what a client is
-// told when nothing better is registered, and a client-safe sentinel's own
-// words are better: the interceptor would have quoted them for a bare error,
-// and returning a shaped status must not cost a client that. It matters most
-// where the codes collide — a taken username and a taken email address are
-// both AlreadyExists — and for a client in a language that cannot read the
-// encoded details, where the message is all it has.
-//
-// Both of those are grpcerrors.PrepareAndLogGRPCStatus's behavior now, and the
-// three-method error type this package used to carry for them is
-// observability.GRPCStatusError. What survives here is the shape of the call —
-// an Operation rather than a logger and a span, and a description that is
-// formatted for every RPC in one place.
-func fail(
-	op observability.Operation,
-	err error,
-	defaultCode codes.Code,
-	descriptionFmt string,
-	descriptionArgs ...any,
-) error {
-	return grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), defaultCode, descriptionFmt, descriptionArgs...)
 }
 
 // scopeOf is the one place a scope is produced, and it comes off the principal.

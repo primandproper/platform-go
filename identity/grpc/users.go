@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	"github.com/primandproper/platform-go/v14/filtering"
 	"github.com/primandproper/platform-go/v14/filtering/filteringpb"
 	filteringgrpc "github.com/primandproper/platform-go/v14/filtering/grpc"
@@ -36,21 +37,21 @@ func (s *Server) Register(
 
 	user := userFromRegistrationInput(request.GetUser())
 	if user == nil {
-		err = fail(op, identity.ErrNilUser, codes.InvalidArgument, "registering a user")
+		err = grpcerrors.PrepareAndLogGRPCStatus(identity.ErrNilUser, op.Logger(), op.Span(), codes.InvalidArgument, "registering a user")
 
 		return nil, err
 	}
 
 	account := accountFromCreationInput(request.GetAccount())
 	if account == nil {
-		err = fail(op, identity.ErrNilAccount, codes.InvalidArgument, "registering a user")
+		err = grpcerrors.PrepareAndLogGRPCStatus(identity.ErrNilAccount, op.Logger(), op.Span(), codes.InvalidArgument, "registering a user")
 
 		return nil, err
 	}
 
 	registration, err := s.svc.Register(ctx, scopeOf(principal), user, account, request.GetOwnerRoles())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "registering a user")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "registering a user")
 	}
 
 	op.Set(userIDKey, registration.User.ID).Set(accountIDKey, registration.Account.ID)
@@ -78,14 +79,14 @@ func (s *Server) UpdateProfile(
 
 	update := profileUpdateFromProto(request.GetInput())
 	if update == nil {
-		err = fail(op, identity.ErrNilProfileUpdate, codes.InvalidArgument, "updating a profile")
+		err = grpcerrors.PrepareAndLogGRPCStatus(identity.ErrNilProfileUpdate, op.Logger(), op.Span(), codes.InvalidArgument, "updating a profile")
 
 		return nil, err
 	}
 
 	user, err := s.svc.UpdateProfile(ctx, scopeOf(principal), principal.UserID(), update)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "updating a profile")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "updating a profile")
 	}
 
 	return &identitypb.UpdateProfileResponse{User: UserToProto(user)}, nil
@@ -105,12 +106,12 @@ func (s *Server) RecordAgreement(
 
 	agreements, err := agreementsFromProto(request.GetAgreements())
 	if err != nil {
-		return nil, fail(op, err, codes.InvalidArgument, "recording agreements")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.InvalidArgument, "recording agreements")
 	}
 
 	user, err := s.svc.RecordAgreement(ctx, scopeOf(principal), principal.UserID(), agreements...)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "recording agreements")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "recording agreements")
 	}
 
 	return &identitypb.RecordAgreementResponse{User: UserToProto(user)}, nil
@@ -132,7 +133,7 @@ func (s *Server) ArchiveUser(
 
 	user, err := s.svc.ArchiveUser(ctx, scopeOf(principal), request.GetUserId())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "archiving user %q", request.GetUserId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "archiving user %q", request.GetUserId())
 	}
 
 	return &identitypb.ArchiveUserResponse{User: UserToProto(user)}, nil
@@ -156,13 +157,13 @@ func (s *Server) UpdateUserAccountStatus(
 
 	status, err := AccountStatusFromProto(request.GetStatus())
 	if err != nil {
-		return nil, fail(op, err, codes.InvalidArgument, "updating account status")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.InvalidArgument, "updating account status")
 	}
 
 	user, err := s.svc.UpdateUserAccountStatus(
 		ctx, scopeOf(principal), request.GetUserId(), status, request.GetExplanation())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "updating account status of user %q", request.GetUserId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "updating account status of user %q", request.GetUserId())
 	}
 
 	return &identitypb.UpdateUserAccountStatusResponse{User: UserToProto(user)}, nil
@@ -188,7 +189,7 @@ func (s *Server) SetUserServiceRoles(
 
 	user, err := s.svc.SetUserServiceRoles(ctx, scopeOf(principal), request.GetUserId(), request.GetRoles())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "setting service roles of user %q", request.GetUserId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "setting service roles of user %q", request.GetUserId())
 	}
 
 	return &identitypb.SetUserServiceRolesResponse{User: UserToProto(user)}, nil
@@ -227,7 +228,7 @@ func (s *Server) GetPrincipal(
 	resolved, err := s.store.GetPrincipal(
 		ctx, s.client.Reader(), scopeOf(principal), principal.UserID(), activeAccountID)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "reading the calling principal")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "reading the calling principal")
 	}
 
 	return &identitypb.GetPrincipalResponse{Principal: PrincipalToProto(resolved)}, nil
@@ -249,7 +250,7 @@ func (s *Server) GetUser(
 
 	user, err := s.store.GetUser(ctx, s.client.Reader(), scopeOf(principal), request.GetUserId())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "reading user %q", request.GetUserId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "reading user %q", request.GetUserId())
 	}
 
 	return &identitypb.GetUserResponse{User: UserToProto(user.Redacted())}, nil
@@ -274,7 +275,7 @@ func (s *Server) ListUsers(
 
 	page, err := s.store.ListUsers(ctx, s.client.Reader(), scopeOf(principal), filter)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "listing users")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "listing users")
 	}
 
 	return &identitypb.ListUsersResponse{
@@ -304,7 +305,7 @@ func (s *Server) SearchUsersByUsername(
 	page, err := s.store.SearchUsersByUsername(
 		ctx, s.client.Reader(), scopeOf(principal), request.GetPrefix(), filter)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "searching users")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "searching users")
 	}
 
 	return &identitypb.SearchUsersByUsernameResponse{
@@ -325,7 +326,7 @@ func (s *Server) filterFromProto(
 ) (*filtering.QueryFilter, error) {
 	filter, err := filteringgrpc.FromProto(in)
 	if err != nil {
-		return nil, fail(op, err, codes.InvalidArgument, "reading the query filter")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.InvalidArgument, "reading the query filter")
 	}
 
 	return filter, nil

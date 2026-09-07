@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	filteringgrpc "github.com/primandproper/platform-go/v14/filtering/grpc"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
@@ -35,7 +36,7 @@ func (s *Server) UpdateAccount(
 
 	update := accountUpdateFromProto(request.GetInput())
 	if update == nil {
-		err = fail(op, identity.ErrNilAccountUpdate, codes.InvalidArgument, "updating an account")
+		err = grpcerrors.PrepareAndLogGRPCStatus(identity.ErrNilAccountUpdate, op.Logger(), op.Span(), codes.InvalidArgument, "updating an account")
 
 		return nil, err
 	}
@@ -46,7 +47,7 @@ func (s *Server) UpdateAccount(
 
 	account, err := s.svc.UpdateAccount(ctx, scopeOf(principal), request.GetAccountId(), update)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "updating account %q", request.GetAccountId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "updating account %q", request.GetAccountId())
 	}
 
 	return &identitypb.UpdateAccountResponse{Account: AccountToProto(account)}, nil
@@ -89,7 +90,7 @@ func (s *Server) TransferAccountOwnership(
 	account, err := s.svc.TransferAccountOwnership(
 		ctx, scopeOf(principal), request.GetAccountId(), request.GetNewOwnerUserId())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "transferring ownership of account %q", request.GetAccountId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "transferring ownership of account %q", request.GetAccountId())
 	}
 
 	return &identitypb.TransferAccountOwnershipResponse{Account: AccountToProto(account)}, nil
@@ -122,7 +123,7 @@ func (s *Server) GetAccount(
 
 	account, err := s.store.GetAccount(ctx, s.client.Reader(), scopeOf(principal), request.GetAccountId())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "reading account %q", request.GetAccountId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "reading account %q", request.GetAccountId())
 	}
 
 	return &identitypb.GetAccountResponse{Account: AccountToProto(account)}, nil
@@ -148,7 +149,7 @@ func (s *Server) ListAccounts(
 
 	page, err := s.store.ListAccounts(ctx, s.client.Reader(), scopeOf(principal), filter)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "listing accounts")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "listing accounts")
 	}
 
 	return &identitypb.ListAccountsResponse{
@@ -190,7 +191,7 @@ func (s *Server) ListAccountsForUser(
 	page, err := s.store.ListAccountsForUser(
 		ctx, s.client.Reader(), scopeOf(principal), request.GetUserId(), filter)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "listing accounts for user %q", request.GetUserId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "listing accounts for user %q", request.GetUserId())
 	}
 
 	return &identitypb.ListAccountsForUserResponse{

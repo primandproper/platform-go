@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/database"
 	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/observability"
 
@@ -299,7 +300,7 @@ func authorizeOutcome(
 		code = codes.PermissionDenied
 	}
 
-	return fail(op, err, code, descriptionFmt, descriptionArgs...)
+	return grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), code, descriptionFmt, descriptionArgs...)
 }
 
 func (s *Server) authorizeAccount(

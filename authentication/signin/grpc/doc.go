@@ -33,6 +33,19 @@ switch on sentinels. What a refused sign-in means on the wire is decided once,
 by signin.GRPCMapper, and a switch here would be a second copy of that decision
 free to drift from it.
 
+Every failure is one call, and there is deliberately no local helper wrapping it:
+
+	grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "updating a password")
+
+It logs, traces, maps the code and hands back an error that is still the sentinel
+the service returned, so the encoding interceptor has a chain to encode. The code
+passed is the default for an error no mapper claims, and the message is the
+description unless a registered client-safe sentinel has better words — which
+this service needs more than most, since four of its refusals share
+codes.PermissionDenied and three share codes.FailedPrecondition, and a client in
+a language that cannot read the encoded details has only the message to tell
+them apart.
+
 That mapper reaches a client only once it is registered, which is
 errormappers.Register — one call, made by service.Register for a service built
 from a service.Config and by a hand-assembled service itself. This constructor

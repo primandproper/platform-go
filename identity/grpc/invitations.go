@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	filteringgrpc "github.com/primandproper/platform-go/v14/filtering/grpc"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
@@ -55,7 +56,7 @@ func (s *Server) Invite(
 
 	token, err := s.mintToken(ctx)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "minting an invitation token")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "minting an invitation token")
 	}
 
 	// The client's clock, not one of this package's: it is the seam the module
@@ -70,12 +71,12 @@ func (s *Server) Invite(
 	case expiresAt.IsZero():
 		expiresAt = now.Add(s.invitationTTL)
 	case !expiresAt.After(now):
-		err = fail(op, ErrInvitationExpiryInPast, codes.InvalidArgument,
+		err = grpcerrors.PrepareAndLogGRPCStatus(ErrInvitationExpiryInPast, op.Logger(), op.Span(), codes.InvalidArgument,
 			"invitation expiry %s is not after %s", expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
 
 		return nil, err
 	case expiresAt.After(now.Add(s.maxInvitationTTL)):
-		err = fail(op, ErrInvitationExpiryTooFar, codes.InvalidArgument,
+		err = grpcerrors.PrepareAndLogGRPCStatus(ErrInvitationExpiryTooFar, op.Logger(), op.Span(), codes.InvalidArgument,
 			"invitation expiry %s is more than %s ahead", expiresAt.Format(time.RFC3339), s.maxInvitationTTL)
 
 		return nil, err
@@ -93,7 +94,7 @@ func (s *Server) Invite(
 	}
 
 	if err = s.svc.Invite(ctx, scopeOf(principal), invitation); err != nil {
-		return nil, fail(op, err, codes.Internal, "issuing an invitation")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "issuing an invitation")
 	}
 
 	op.Set(invitationIDKey, invitation.ID)
@@ -128,7 +129,7 @@ func (s *Server) AcceptInvitation(
 		request.GetStatusNote(),
 	)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "accepting invitation %q", request.GetInvitationId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "accepting invitation %q", request.GetInvitationId())
 	}
 
 	return &identitypb.AcceptInvitationResponse{Acceptance: AcceptanceToProto(acceptance)}, nil
@@ -154,7 +155,7 @@ func (s *Server) RejectInvitation(
 	invitation, err := s.svc.RejectInvitation(
 		ctx, scopeOf(principal), request.GetInvitationId(), request.GetToken(), request.GetStatusNote())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "rejecting invitation %q", request.GetInvitationId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "rejecting invitation %q", request.GetInvitationId())
 	}
 
 	return &identitypb.RejectInvitationResponse{Invitation: InvitationToProto(invitation)}, nil
@@ -196,7 +197,7 @@ func (s *Server) CancelInvitation(
 	invitation, err := s.svc.CancelInvitation(
 		ctx, scopeOf(principal), request.GetInvitationId(), request.GetStatusNote())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "cancelling invitation %q", request.GetInvitationId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "cancelling invitation %q", request.GetInvitationId())
 	}
 
 	return &identitypb.CancelInvitationResponse{Invitation: InvitationToProto(invitation)}, nil
@@ -228,7 +229,7 @@ func (s *Server) GetInvitation(
 	invitation, err := s.store.GetInvitation(
 		ctx, s.client.Reader(), scopeOf(principal), request.GetInvitationId())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "reading invitation %q", request.GetInvitationId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "reading invitation %q", request.GetInvitationId())
 	}
 
 	return &identitypb.GetInvitationResponse{Invitation: InvitationToProto(invitation.Redacted())}, nil
@@ -255,7 +256,7 @@ func (s *Server) ListInvitationsFromUser(
 	page, err := s.store.ListInvitationsFromUser(
 		ctx, s.client.Reader(), scopeOf(principal), principal.UserID(), filter)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "listing sent invitations")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "listing sent invitations")
 	}
 
 	return &identitypb.ListInvitationsFromUserResponse{
@@ -301,11 +302,11 @@ func (s *Server) ListInvitationsForEmailAddress(
 
 	caller, err := s.store.GetUser(ctx, s.client.Reader(), scope, principal.UserID())
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "reading the calling user")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "reading the calling user")
 	}
 
 	if !caller.EmailAddressVerified() {
-		err = fail(op, ErrEmailAddressUnverified, codes.FailedPrecondition,
+		err = grpcerrors.PrepareAndLogGRPCStatus(ErrEmailAddressUnverified, op.Logger(), op.Span(), codes.FailedPrecondition,
 			"listing invitations for an address the caller has not verified")
 
 		return nil, err
@@ -314,7 +315,7 @@ func (s *Server) ListInvitationsForEmailAddress(
 	page, err := s.store.ListInvitationsForEmailAddress(
 		ctx, s.client.Reader(), scope, caller.EmailAddress, filter)
 	if err != nil {
-		return nil, fail(op, err, codes.Internal, "listing received invitations")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "listing received invitations")
 	}
 
 	return &identitypb.ListInvitationsForEmailAddressResponse{
