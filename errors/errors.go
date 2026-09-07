@@ -7,8 +7,10 @@ import (
 // Re-exports from cockroachdb/errors for construction and wrapping.
 //
 // Use std "errors" for Is, As and Unwrap — they work with these types, and they
-// work on an error that has crossed a gRPC connection too. [Is] below says when
-// you would want cockroachdb's instead.
+// work on an error that has crossed a gRPC connection too, provided that
+// connection has errors/grpc's UnaryErrorDecodingInterceptor installed and the
+// RPC was unary; a streaming RPC's error is not decoded on the client yet. [Is]
+// below says when you would want cockroachdb's instead.
 var (
 	New    = crdberrors.New
 	Newf   = crdberrors.Newf
@@ -37,10 +39,13 @@ var (
 	// DecodeError has instead of the identity the sentinel was declared with.
 	//
 	// Reach for them when holding an error whose provenance is genuinely
-	// unknown. They are a superset of the standard library's and safe anywhere,
-	// but they are not the default recommendation: most errors here never leave
-	// the process, and there std errors.Is is the same answer with one less
-	// import.
+	// unknown. They are a superset of the standard library's, but they are not
+	// the default recommendation: most errors here never leave the process, and
+	// there std errors.Is is the same answer with one less import. The superset
+	// is also where they are looser: a mark is a type chain plus a message and
+	// not an identity, so two sentinels declared with the same wording in
+	// different packages match each other under these, which is why the module
+	// keeps sentinel messages unique.
 	//
 	// In particular they are not needed on an error that came back over gRPC.
 	// That was the case they were exported for, and errors/grpc's decoding

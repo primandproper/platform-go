@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 
 	platformerrors "github.com/primandproper/platform-go/v14/errors"
@@ -152,6 +153,27 @@ func TestUnaryErrorEncodingInterceptor(T *testing.T) {
 		test.EqOp(t, "custom message", st.Message())
 	})
 
+	T.Run("a wrapped status keeps the handler's message, not the chain", func(t *testing.T) {
+		t.Parallel()
+
+		// A consumer interceptor between the handler and this one that wraps
+		// with %w is the realistic case. status.FromError on that wrapper
+		// rebuilds the status with err.Error() as the message, which would put
+		// "outer: rpc error: code = ..." on the wire; the handler chose "chosen".
+		interceptor := UnaryErrorEncodingInterceptor()
+		handler := func(ctx context.Context, req any) (any, error) {
+			return nil, fmt.Errorf("outer: %w", status.Error(codes.FailedPrecondition, "chosen"))
+		}
+
+		_, err := interceptor(context.Background(), "req", &grpc.UnaryServerInfo{}, handler)
+		must.Error(t, err)
+
+		st, ok := status.FromError(err)
+		must.True(t, ok)
+		test.EqOp(t, codes.FailedPrecondition, st.Code())
+		test.EqOp(t, "chosen", st.Message())
+	})
+
 	T.Run("unknown error uses codes.Unknown", func(t *testing.T) {
 		t.Parallel()
 
@@ -248,6 +270,24 @@ func TestStreamErrorEncodingInterceptor(T *testing.T) {
 		must.True(t, ok)
 		test.EqOp(t, "not authed", st.Message())
 	})
+
+	T.Run("a wrapped status keeps the handler's message, not the chain", func(t *testing.T) {
+		t.Parallel()
+
+		interceptor := StreamErrorEncodingInterceptor()
+		handler := func(srv any, stream grpc.ServerStream) error {
+			return fmt.Errorf("outer: %w", status.Error(codes.FailedPrecondition, "chosen"))
+		}
+
+		ss := &mockServerStream{ctx: context.Background()}
+		err := interceptor(nil, ss, &grpc.StreamServerInfo{}, handler)
+		must.Error(t, err)
+
+		st, ok := status.FromError(err)
+		must.True(t, ok)
+		test.EqOp(t, codes.FailedPrecondition, st.Code())
+		test.EqOp(t, "chosen", st.Message())
+	})
 }
 
 func TestClientMessage_registeredSentinels(T *testing.T) {
@@ -295,6 +335,57 @@ func TestClientMessage_registeredSentinels(T *testing.T) {
 
 		_, ok = ClientSafeMessage(nil)
 		test.False(t, ok)
+	})
+}
+
+// TestClientSafeMessage_outermostNodeWins pins the ordering rule ClientSafeMessage
+// documents: the chain decides, not the lists. A domain sentinel declared by
+// wrapping a platform sentinel is more specific than what it wraps, and a client
+// is owed the specific words; a lookup that scanned the platform list first
+// would answer with the platform sentinel's text every time and the
+// registration would be dead.
+func TestClientSafeMessage_outermostNodeWins(T *testing.T) {
+	T.Parallel()
+
+	wrapper := platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "bad thing")
+	RegisterClientSafeSentinels(wrapper)
+
+	T.Run("a registered wrapper outranks the platform sentinel inside it", func(t *testing.T) {
+		t.Parallel()
+
+		msg, ok := ClientSafeMessage(platformerrors.Wrap(wrapper, "ctx"))
+		must.True(t, ok)
+		test.EqOp(t, wrapper.Error(), msg)
+		test.NotEqOp(t, platformerrors.ErrUnrecognizedInputValue.Error(), msg)
+
+		// And std errors.Is still sees both, so nothing about matching moved.
+		test.ErrorIs(t, platformerrors.Wrap(wrapper, "ctx"), platformerrors.ErrUnrecognizedInputValue)
+	})
+
+	T.Run("a bare platform sentinel is unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		msg, ok := ClientSafeMessage(platformerrors.ErrUnrecognizedInputValue)
+		must.True(t, ok)
+		test.EqOp(t, platformerrors.ErrUnrecognizedInputValue.Error(), msg)
+
+		msg, ok = ClientSafeMessage(platformerrors.Wrap(platformerrors.ErrPermissionDenied, "listing users"))
+		must.True(t, ok)
+		test.EqOp(t, platformerrors.ErrPermissionDenied.Error(), msg)
+	})
+
+	T.Run("a join is walked depth-first in join order", func(t *testing.T) {
+		t.Parallel()
+
+		// The first branch has no client-safe node at any depth, so the walk
+		// has to come back up and take the second one.
+		joined := platformerrors.Join(
+			platformerrors.Wrap(errors.New("update users set x = 1"), "unsafe branch"),
+			platformerrors.Wrap(wrapper, "safe branch"),
+		)
+		msg, ok := ClientSafeMessage(joined)
+		must.True(t, ok)
+		test.EqOp(t, wrapper.Error(), msg)
 	})
 }
 

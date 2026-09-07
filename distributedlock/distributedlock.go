@@ -26,7 +26,7 @@ var (
 	ErrEmptyKey = platformerrors.New("empty lock key")
 	// ErrNilDatabaseClient indicates a nil database.Client was passed to a postgres-
 	// backed provider.
-	ErrNilDatabaseClient = platformerrors.New("nil database client")
+	ErrNilDatabaseClient = platformerrors.New("nil distributed lock database client")
 )
 
 type (

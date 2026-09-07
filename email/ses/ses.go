@@ -30,7 +30,7 @@ var (
 	// ErrEmptyRegion indicates an empty AWS region was provided.
 	ErrEmptyRegion = platformerrors.New("empty AWS region")
 	// ErrNilHTTPClient indicates a nil HTTP client was provided.
-	ErrNilHTTPClient = platformerrors.New("nil HTTP client")
+	ErrNilHTTPClient = platformerrors.New("nil SES HTTP client")
 )
 
 // SendEmailAPI abstracts the SES v2 SendEmail call for testability.

@@ -28,7 +28,7 @@ var (
 	// ErrEmptyAPIToken indicates an empty API token was provided.
 	ErrEmptyAPIToken = platformerrors.New("empty Sendgrid API token")
 	// ErrNilHTTPClient indicates a nil HTTP client was provided.
-	ErrNilHTTPClient = platformerrors.New("nil HTTP client")
+	ErrNilHTTPClient = platformerrors.New("nil sendgrid HTTP client")
 )
 
 type (

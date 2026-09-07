@@ -1921,6 +1921,10 @@ type InviteRequest struct {
 	Roles []string `protobuf:"bytes,5,rep,name=roles,proto3" json:"roles,omitempty"`
 	// expires_at is when the link stops working. Absent takes the server's
 	// configured default, which is what a client that has no opinion should send.
+	// A named one has to be later than now and no further ahead than the server's
+	// maximum invitation lifetime, or the request is INVALID_ARGUMENT: the default
+	// is a bound and not a suggestion, and a request naming its own expiry is not
+	// the way around it.
 	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

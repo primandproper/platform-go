@@ -24,7 +24,7 @@ import (
 const serviceName = "idempotency_http"
 
 // ErrNilManager indicates NewMiddleware was called without a manager.
-var ErrNilManager = platformerrors.New("nil idempotency manager")
+var ErrNilManager = platformerrors.New("nil idempotency manager for the HTTP middleware")
 
 // middleware holds what every request needs, built once at construction.
 type middleware struct {

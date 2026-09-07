@@ -21,6 +21,18 @@ import (
 // the one answer that is wrong for everybody.
 const DefaultInvitationTTL = 7 * 24 * time.Hour
 
+// DefaultMaxInvitationTTL is the furthest ahead an invitation may be set to
+// expire, whoever names the expiry.
+//
+// The default above only answers a request that named nothing. A request that
+// names an expiry of its own would otherwise be the way around it: a client
+// sending a timestamp in the year 9999 gets the forever-link the default exists
+// to prevent, and a client sending one in the past gets a link the consumer's
+// hook mails out already dead. So a named expiry has to fall between now and
+// this ceiling, and the ceiling is a consumer's to lower or raise with
+// WithMaxInvitationTTL — thirty days is a default, not a policy.
+const DefaultMaxInvitationTTL = 30 * 24 * time.Hour
+
 // defaultInvitationTokenBytes is the entropy behind an invitation link. Thirty-two
 // bytes is what the rest of this module mints single-use tokens with.
 const defaultInvitationTokenBytes = 32
@@ -68,10 +80,25 @@ func WithPillars(p *observability.Pillars) Option {
 
 // WithInvitationTTL sets how long an invitation lives when the request names no
 // expiry. A non-positive duration is ignored, leaving DefaultInvitationTTL.
+//
+// It must not exceed the ceiling WithMaxInvitationTTL sets; NewServer refuses
+// the pair with ErrInvitationTTLExceedsMaximum rather than issuing invitations
+// the server would itself have rejected a client for asking for.
 func WithInvitationTTL(ttl time.Duration) Option {
 	return func(s *Server) {
 		if ttl > 0 {
 			s.invitationTTL = ttl
+		}
+	}
+}
+
+// WithMaxInvitationTTL sets the furthest ahead any invitation may expire, the
+// default included. A non-positive duration is ignored, leaving
+// DefaultMaxInvitationTTL.
+func WithMaxInvitationTTL(ttl time.Duration) Option {
+	return func(s *Server) {
+		if ttl > 0 {
+			s.maxInvitationTTL = ttl
 		}
 	}
 }

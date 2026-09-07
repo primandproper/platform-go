@@ -379,6 +379,9 @@ func TestListInvitationsForEmailAddressReadsTheCallersOwnRow(T *testing.T) {
 	invitee := h.seedUser(T, testScope, "invitee")
 	bystander := h.seedUser(T, testScope, "bystander")
 
+	h.verifyEmail(T, testScope, invitee.ID)
+	h.verifyEmail(T, testScope, bystander.ID)
+
 	invite(T, h, sender, invitee.EmailAddress, "support")
 
 	received, err := h.client.ListInvitationsForEmailAddress(
@@ -420,4 +423,108 @@ func invitationAddresses(invitations []*identitypb.Invitation) []string {
 	}
 
 	return out
+}
+
+// TestListInvitationsForEmailAddressRefusesAnUnverifiedCaller is the other half
+// of the oracle the method's doc closes. UpdateProfile is self-service and takes
+// an email address, so a caller who could list invitations by an unverified
+// address could list anybody's by typing it in first. The refusal is a status
+// of its own rather than an empty page, because an empty page says "nobody has
+// invited you" and that is not what the server knows.
+func TestListInvitationsForEmailAddressRefusesAnUnverifiedCaller(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T, identitygrpc.WithTokenMinter(fixedMinter(testInvitationToken)))
+
+	sender := h.seedAccount(T, testScope, "sender")
+	victim := h.seedUser(T, testScope, "victim")
+	h.verifyEmail(T, testScope, victim.ID)
+
+	invite(T, h, sender, victim.EmailAddress, "support")
+
+	// The attacker registers, then claims the victim's address through the
+	// self-service update. The service accepts the claim and clears its
+	// verification, which is exactly what the read below has to notice.
+	attacker := h.seedAccount(T, testScope, "attacker")
+	attackerCtx := h.as(&testPrincipal{userID: attacker.User.ID, scope: testScope})
+
+	_, err := h.client.UpdateProfile(attackerCtx, &identitypb.UpdateProfileRequest{
+		Input: &identitypb.ProfileUpdateInput{EmailAddress: new("victim2@example.com")},
+	})
+	must.NoError(T, err)
+
+	_, err = h.client.ListInvitationsForEmailAddress(attackerCtx,
+		&identitypb.ListInvitationsForEmailAddressRequest{})
+	must.Error(T, err)
+	test.EqOp(T, codes.FailedPrecondition, status.Code(err))
+	test.True(T, errors.Is(err, identitygrpc.ErrEmailAddressUnverified))
+
+	// The victim, verified, still reads their own inbox.
+	received, err := h.client.ListInvitationsForEmailAddress(
+		h.as(&testPrincipal{userID: victim.ID, scope: testScope}),
+		&identitypb.ListInvitationsForEmailAddressRequest{})
+	must.NoError(T, err)
+	test.SliceContains(T, invitationAddresses(received.GetResults()), victim.EmailAddress)
+}
+
+// TestInviteRefusesAnExpiryInThePast: a request may name its own expiry, and
+// one no later than now is a link the consumer's hook would mail out already
+// dead.
+func TestInviteRefusesAnExpiryInThePast(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T, identitygrpc.WithTokenMinter(fixedMinter(testInvitationToken)))
+
+	sender := h.seedAccount(T, testScope, "sender")
+	ctx := h.as(&testPrincipal{userID: sender.User.ID, scope: testScope})
+
+	_, err := h.client.Invite(ctx, &identitypb.InviteRequest{
+		AccountId: sender.Account.ID,
+		ToEmail:   "invitee@example.com",
+		Roles:     []string{"support"},
+		ExpiresAt: timestamppb.New(time.Now().UTC().Add(-time.Minute)),
+	})
+	must.Error(T, err)
+	test.EqOp(T, codes.InvalidArgument, status.Code(err))
+	test.True(T, errors.Is(err, identitygrpc.ErrInvitationExpiryInPast))
+}
+
+// TestInviteRefusesAnExpiryBeyondTheMaximum is what makes the default a bound
+// rather than a suggestion: a request naming the year 9999 would otherwise be
+// the forever-link the default exists to prevent.
+func TestInviteRefusesAnExpiryBeyondTheMaximum(T *testing.T) {
+	T.Parallel()
+
+	const maxTTL = 2 * time.Hour
+
+	h := newHarness(T,
+		identitygrpc.WithTokenMinter(fixedMinter(testInvitationToken)),
+		identitygrpc.WithInvitationTTL(time.Hour),
+		identitygrpc.WithMaxInvitationTTL(maxTTL),
+	)
+
+	sender := h.seedAccount(T, testScope, "sender")
+	ctx := h.as(&testPrincipal{userID: sender.User.ID, scope: testScope})
+
+	_, err := h.client.Invite(ctx, &identitypb.InviteRequest{
+		AccountId: sender.Account.ID,
+		ToEmail:   "invitee@example.com",
+		Roles:     []string{"support"},
+		ExpiresAt: timestamppb.New(time.Now().UTC().Add(maxTTL + time.Hour)),
+	})
+	must.Error(T, err)
+	test.EqOp(T, codes.InvalidArgument, status.Code(err))
+	test.True(T, errors.Is(err, identitygrpc.ErrInvitationExpiryTooFar))
+
+	// Inside the ceiling is still the client's call.
+	asked := time.Now().UTC().Add(maxTTL - time.Minute).Truncate(time.Second)
+
+	response, err := h.client.Invite(ctx, &identitypb.InviteRequest{
+		AccountId: sender.Account.ID,
+		ToEmail:   "invitee@example.com",
+		Roles:     []string{"support"},
+		ExpiresAt: timestamppb.New(asked),
+	})
+	must.NoError(T, err)
+	test.EqOp(T, asked, response.GetInvitation().GetExpiresAt().AsTime())
 }

@@ -218,8 +218,8 @@ code around one, or the service and converters over that.
 
 `webhooks` endpoint management, `billing`, `settings`, `notifications`,
 `metering`, `audit`, `dataprivacy`, `saga`, `timers` and `workqueue` still ship
-a store and no handlers. Each is filed to follow `identity`, which is the
-pattern-setting one and the reason the rest waited.
+a store and no handlers. Each is to follow `identity`, which is the
+pattern-setting one and the reason the rest waited; none has been filed yet.
 
 For the primitives the original line is unchanged, and it is this:
 
@@ -262,8 +262,8 @@ two-tier progress and its state machine are types you did not define, and
 polling one or subscribing to its server-sent events is the pattern's protocol
 rather than your API. *Starting* an operation is yours, and is deliberately not
 there. `identity/grpc` is the other kind — a domain's own transport, shipped
-under the rule above rather than as an exception to it, and the first of a dozen
-that will follow it.
+under the rule above rather than as an exception to it, and the first of the ten
+listed above that will follow it.
 
 One transport sits outside the table because it is not an `http` subpackage:
 `webhooks/inbound` ships a `Receiver` that is an `http.Handler`, for the same

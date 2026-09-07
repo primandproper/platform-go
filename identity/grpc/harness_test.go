@@ -355,3 +355,21 @@ func (c *testClientConfig) GetPingWaitPeriod() time.Duration  { return time.Mill
 func (c *testClientConfig) GetMaxIdleConns() int              { return 2 }
 func (c *testClientConfig) GetMaxOpenConns() int              { return 1 }
 func (c *testClientConfig) GetConnMaxLifetime() time.Duration { return time.Minute }
+
+// verifyEmail proves a seeded user's address the way the sign-in flow would:
+// a verification token is set and then redeemed, through the store. The reads
+// keyed by an address refuse a caller whose address is unverified, so a test
+// exercising one of those has to do this first.
+func (h *harness) verifyEmail(t *testing.T, scope tenancy.Scope, userID string) {
+	t.Helper()
+
+	const token = "verification-token-" + "for-the-harness"
+
+	must.NoError(t, h.db.WithTransaction(t.Context(), func(tx database.Tx) error {
+		if err := h.store.SetUserEmailAddressVerificationToken(t.Context(), tx, scope, userID, token); err != nil {
+			return err
+		}
+
+		return h.store.MarkUserEmailAddressVerified(t.Context(), tx, scope, userID, token)
+	}))
+}

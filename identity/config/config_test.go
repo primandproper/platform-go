@@ -300,3 +300,29 @@ func TestNewServer(T *testing.T) {
 		test.NotNil(t, srv)
 	})
 }
+
+func TestConfig_EnsureDefaultsFillsTheMaximumInvitationLifetime(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{}
+	cfg.EnsureDefaults()
+	test.EqOp(t, identitygrpc.DefaultMaxInvitationTTL, cfg.MaxInvitationTTL)
+
+	set := &Config{MaxInvitationTTL: time.Hour}
+	set.EnsureDefaults()
+	test.EqOp(t, time.Hour, set.MaxInvitationTTL)
+}
+
+// TestConfig_ValidateRefusesADefaultBeyondTheMaximum: a default lifetime longer
+// than the ceiling is a server that would issue, on a request naming nothing,
+// an invitation it would have refused the request for naming. It is reported
+// here as the configuration mistake it is rather than only by the constructor.
+func TestConfig_ValidateRefusesADefaultBeyondTheMaximum(t *testing.T) {
+	t.Parallel()
+
+	err := (&Config{InvitationTTL: 2 * time.Hour, MaxInvitationTTL: time.Hour}).ValidateWithContext(t.Context())
+	test.ErrorIs(t, err, identitygrpc.ErrInvitationTTLExceedsMaximum)
+
+	must.Error(t, (&Config{MaxInvitationTTL: -time.Hour}).ValidateWithContext(t.Context()))
+	must.NoError(t, (&Config{InvitationTTL: time.Hour, MaxInvitationTTL: time.Hour}).ValidateWithContext(t.Context()))
+}

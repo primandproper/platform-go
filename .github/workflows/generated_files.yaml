@@ -68,10 +68,11 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      # Both halves of the toolchain are pinned — protoc by .protoc-version,
-      # protoc-gen-go by go.mod's tool directive — because protoc-gen-go stamps
-      # both versions into every file it writes. Unpinned, this job would report
-      # which runner image it drew rather than whether the tree is current.
+      # All three parts of the toolchain are pinned — protoc by .protoc-version,
+      # protoc-gen-go and protoc-gen-go-grpc by go.mod's tool directive — because
+      # each generator stamps its own version and protoc's into every file it
+      # writes. Unpinned, this job would report which runner image it drew
+      # rather than whether the tree is current.
       - name: Regenerate
         run: make proto format
 

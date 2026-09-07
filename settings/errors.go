@@ -10,7 +10,7 @@ import (
 var (
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil settings database client")
 
 	// ErrNilDefinition indicates a nil *Definition where one was required.
 	ErrNilDefinition = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil setting definition")
@@ -18,7 +18,7 @@ var (
 	// ErrNilExecutor indicates a nil executor. Every method here runs on one the
 	// caller supplies — a database.Tx for a write, an executor for a read — so
 	// there is no method that can fall back to a connection of the store's own.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil settings query executor")
 
 	// ErrEmptyDefinitionName indicates a definition with no name. The name is
 	// the only handle a value-side call takes, so a definition without one is
@@ -26,10 +26,10 @@ var (
 	ErrEmptyDefinitionName = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty setting name")
 
 	// ErrEmptySubjectType indicates a Subject with no type.
-	ErrEmptySubjectType = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty subject type")
+	ErrEmptySubjectType = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty settings subject type")
 
 	// ErrEmptySubjectID indicates a Subject with no id.
-	ErrEmptySubjectID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty subject id")
+	ErrEmptySubjectID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty settings subject id")
 
 	// ErrEmptyEnumerationValue indicates an enumeration carrying the empty
 	// string. It is refused rather than stored because an enumerated setting

@@ -27,7 +27,7 @@ const (
 
 var (
 	ErrMissingHTTPClient = platformerrors.New("missing HTTP client")
-	ErrNilConfig         = platformerrors.New("missing config")
+	ErrNilConfig         = platformerrors.New("missing launchdarkly config")
 	ErrMissingSDKKey     = platformerrors.New("missing SDK key")
 )
 

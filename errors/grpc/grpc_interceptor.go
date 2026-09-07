@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	stderrors "errors"
+	"reflect"
 	"sync"
 
 	"github.com/primandproper/platform-go/v14/cryptography/requestsigning"
@@ -88,6 +89,16 @@ func clientMessage(code codes.Code, err error) string {
 // ClientSafeMessage reports the words a client may be told for err: the text of
 // the first client-safe sentinel in its chain, and false when there is none.
 //
+// "First" is a position in the chain, not in the lists. The chain is walked
+// outermost-first — depth-first through a Join, in the order it was joined —
+// and each node is compared against the client-safe sentinels, registered and
+// platform alike; the first node that is one of them supplies the message. So a
+// more specific wrapper outranks what it wraps: a domain sentinel declared as
+// Wrap(platformerrors.ErrUnrecognizedInputValue, "...") and registered speaks
+// with its own words, because the walk reaches it before it reaches the
+// platform sentinel inside it. A bare platform sentinel, or a registered
+// sentinel built with New, is unaffected — there is only one node to match.
+//
 // The interceptors consult it for an error a handler returned bare. It is
 // exported for the handler that shapes its own status — carrying a code the
 // mappers would not pick, or a description of what it was doing — and so
@@ -102,25 +113,62 @@ func ClientSafeMessage(err error) (string, bool) {
 		return "", false
 	}
 
-	// Platform sentinels are written to be client-safe, so their own text is
-	// better than a generic string — it tells the caller what to do differently.
-	for _, sentinel := range clientSafeSentinels {
-		if stderrors.Is(err, sentinel) {
-			return sentinel.Error(), true
-		}
-	}
-
 	registeredClientSafeMu.RLock()
 	registered := registeredClientSafe
 	registeredClientSafeMu.RUnlock()
 
-	for _, sentinel := range registered {
-		if stderrors.Is(err, sentinel) {
-			return sentinel.Error(), true
+	return firstClientSafeNode(err, registered, clientSafeSentinels)
+}
+
+// firstClientSafeNode walks err outermost-first and returns the message of the
+// first node that is one of the sentinels in lists. The lists are consulted in
+// the order given at every node, so at a single node that answers for more
+// than one sentinel — a decoded error's Is matches by mark anywhere in what it
+// carries — the earlier list wins, which is why the registered (domain) list is
+// passed before the platform one.
+func firstClientSafeNode(err error, lists ...[]error) (string, bool) {
+	for _, list := range lists {
+		for _, sentinel := range list {
+			if nodeIs(err, sentinel) {
+				return sentinel.Error(), true
+			}
+		}
+	}
+
+	// The walk is the unwrapping errors.As would do, done by hand so that each
+	// node is inspected before what it wraps; asserting on the node itself is
+	// the point, not an oversight.
+	switch u := err.(type) { //nolint:errorlint // this is the unwrap step of a chain walk, not a match
+	case interface{ Unwrap() error }:
+		if next := u.Unwrap(); next != nil {
+			return firstClientSafeNode(next, lists...)
+		}
+	case interface{ Unwrap() []error }:
+		for _, next := range u.Unwrap() {
+			if next == nil {
+				continue
+			}
+			if msg, ok := firstClientSafeNode(next, lists...); ok {
+				return msg, true
+			}
 		}
 	}
 
 	return "", false
+}
+
+// nodeIs is std errors.Is for a single node — identity, or the node's own Is
+// method — with no unwrapping, so the caller decides the walk order. The
+// comparability guard is the standard library's: comparing two interface
+// values of one uncomparable dynamic type panics.
+func nodeIs(node, sentinel error) bool {
+	if reflect.TypeOf(sentinel).Comparable() && node == sentinel { //nolint:errorlint // one node, no unwrapping, by design
+		return true
+	}
+	if x, ok := node.(interface{ Is(error) bool }); ok && x.Is(sentinel) {
+		return true
+	}
+	return false
 }
 
 // clientSafeSentinels are the platform errors whose messages are documented as
@@ -181,6 +229,29 @@ func RegisterClientSafeSentinels(sentinels ...error) {
 	registeredClientSafe = append(registeredClientSafe, sentinels...)
 }
 
+// handlerStatus reports the status a handler shaped its error as, and false for
+// an error nobody shaped.
+//
+// It finds the GRPCStatus implementer in the chain and asks it directly rather
+// than calling status.FromError on err. FromError on a *wrapped* status rebuilds
+// the status with err.Error() as its message, so one consumer interceptor doing
+// fmt.Errorf("...: %w", err) between the handler and this one would put the
+// whole internal chain on the wire as the message — the very text clientMessage
+// exists to keep off it. The implementer's own status carries the message the
+// handler chose, however many times it has been wrapped since. A nil status
+// from the implementer is treated as not shaped, as FromError treats it.
+func handlerStatus(err error) (*status.Status, bool) {
+	var shaped interface{ GRPCStatus() *status.Status }
+	if !stderrors.As(err, &shaped) {
+		return nil, false
+	}
+	st := shaped.GRPCStatus()
+	if st == nil {
+		return nil, false
+	}
+	return st, true
+}
+
 // UnaryErrorEncodingInterceptor returns a unary interceptor that encodes handler
 // errors into gRPC status details for wire transmission.
 // Handlers should return errors (optionally wrapped); the interceptor will
@@ -202,7 +273,7 @@ func UnaryErrorEncodingInterceptor() grpc.UnaryServerInterceptor {
 		// An error the handler already shaped as a status carries a message the
 		// handler chose to expose; anything else gets a code-derived one.
 		msg := clientMessage(code, err)
-		if st, ok := status.FromError(err); ok {
+		if st, ok := handlerStatus(err); ok {
 			code = MapToGRPC(err, st.Code())
 			msg = st.Message()
 		}
@@ -236,7 +307,7 @@ func StreamErrorEncodingInterceptor() grpc.StreamServerInterceptor {
 		// An error the handler already shaped as a status carries a message the
 		// handler chose to expose; anything else gets a code-derived one.
 		msg := clientMessage(code, err)
-		if st, ok := status.FromError(err); ok {
+		if st, ok := handlerStatus(err); ok {
 			code = MapToGRPC(err, st.Code())
 			msg = st.Message()
 		}
@@ -296,6 +367,13 @@ func (e *decodedError) GRPCStatus() *status.Status { return e.status }
 // on a collision the server named precisely. Telling callers to reach for a
 // different matcher was the alternative, and a rule that has to be remembered at
 // every call site is not a rule.
+//
+// The limitation, stated plainly: a mark is a type chain plus a message, not an
+// identity. Two sentinels declared with identical wording in different packages
+// carry the same mark, are indistinguishable after a round trip, and errors.Is
+// on what came back answers true for both of them. The module therefore keeps
+// its sentinel messages unique across packages, and internal/sentinelmatrix
+// enforces that rather than leaving it to review.
 func (e *decodedError) Is(target error) bool { return markers.Is(e.decoded, target) }
 
 // UnaryErrorDecodingInterceptor is DecodeErrorFromStatus as a client
@@ -317,8 +395,11 @@ func (e *decodedError) Is(target error) bool { return markers.Is(e.decoded, targ
 // Std errors.Is works on what it returns, which is not free — see decodedError's
 // Is method for why it takes one, and what the alternative silently cost.
 //
-// Unary only, matching the encoding side's coverage of what this module's
-// services actually expose.
+// Unary only, and that is narrower than the encoding side: the server has
+// StreamErrorEncodingInterceptor, so a streaming RPC's error does cross the
+// wire encoded, but nothing on the client decodes it yet. A client of a
+// streaming RPC therefore gets a *status.Error that std errors.Is does not
+// match, and DecodeErrorFromStatus is what such a client calls by hand today.
 func UnaryErrorDecodingInterceptor() grpc.UnaryClientInterceptor {
 	return func(
 		ctx context.Context,

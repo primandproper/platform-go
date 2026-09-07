@@ -76,7 +76,7 @@ var schema = ddl.Schema{
 
 // ErrInvalidPrefix indicates a prefix that is not a plain SQL identifier
 // fragment.
-var ErrInvalidPrefix = platformerrors.New("invalid audit table prefix")
+var ErrInvalidPrefix = platformerrors.New("invalid audit migration table prefix")
 
 // Statements renders the DDL for the dialect against the given table prefix and
 // splits it into individually executable statements, in dependency order.

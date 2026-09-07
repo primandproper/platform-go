@@ -18,7 +18,7 @@ import (
 // error rather than the nil pointer read that used to happen at
 // c.CollectorEndpoint, which is what a deployment naming "otelgrpc" and
 // supplying no otelgrpc block got. The metrics twin has always reported this.
-var ErrNilConfig = errors.New("nil config")
+var ErrNilConfig = errors.New("nil oteltrace tracer config")
 
 // SetupOtelGRPC creates a new trace provider instance and registers it as global trace provider.
 func SetupOtelGRPC(ctx context.Context, serviceName string, collectionProbability float64, c *Config) (tracing.Provider, error) {

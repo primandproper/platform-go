@@ -41,14 +41,14 @@ const (
 var (
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client for the identity gRPC server")
 
 	// ErrNilService indicates a nil *identity.Service. Every write here goes
 	// through it, so there is no server that can be built without one.
 	ErrNilService = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil identity service")
 
 	// ErrNilStore indicates a nil identity.Store.
-	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil identity store")
+	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil identity store for the gRPC server")
 
 	// ErrNilPrincipalExtractor indicates a nil PrincipalExtractor.
 	//
@@ -68,6 +68,33 @@ var (
 	// own absence directly. Every RPC here answers it with
 	// codes.Unauthenticated at the call site, so it needs no mapper.
 	ErrNoPrincipal = platformerrors.New("no principal on the request context")
+
+	// ErrInvitationTTLExceedsMaximum indicates a server whose default invitation
+	// lifetime is longer than the ceiling it holds clients to. It is refused at
+	// construction, since the alternative is a server that issues, on a request
+	// naming nothing, an invitation it would have refused the request for
+	// naming.
+	ErrInvitationTTLExceedsMaximum = platformerrors.New("default invitation lifetime exceeds the maximum")
+
+	// ErrInvitationExpiryInPast indicates a request that named an expiry no
+	// later than the server's clock. Answered with codes.InvalidArgument at the
+	// call site: an invitation that has expired before it is sent is a link the
+	// consumer's hook mails out already dead.
+	ErrInvitationExpiryInPast = platformerrors.New("invitation expiry is not in the future")
+
+	// ErrInvitationExpiryTooFar indicates a request that named an expiry beyond
+	// the server's maximum invitation lifetime. Answered with
+	// codes.InvalidArgument at the call site. See DefaultMaxInvitationTTL for
+	// why a named expiry is bounded at all.
+	ErrInvitationExpiryTooFar = platformerrors.New("invitation expiry is beyond the maximum lifetime")
+
+	// ErrEmailAddressUnverified indicates a caller whose stored email address has
+	// not been proven reachable, on the one read that is keyed by it. Answered
+	// with codes.FailedPrecondition at the call site: the address is the
+	// caller's to change through UpdateProfile, so until it is verified it is a
+	// claim rather than a fact, and a read keyed by a claim is a read keyed by
+	// whatever the caller chose to claim.
+	ErrEmailAddressUnverified = platformerrors.New("the calling user's email address is not verified")
 )
 
 // Server is IdentityService over identity.Service and identity.Store.
@@ -130,7 +157,8 @@ type Server struct {
 
 	instruments *metrics.OperationSet
 
-	invitationTTL time.Duration
+	invitationTTL    time.Duration
+	maxInvitationTTL time.Duration
 }
 
 var _ identitypb.IdentityServiceServer = (*Server)(nil)
@@ -173,18 +201,24 @@ func NewServer(
 	}
 
 	s := &Server{
-		client:        client,
-		svc:           svc,
-		store:         store,
-		principals:    principals,
-		mintToken:     defaultTokenMinter,
-		invitationTTL: DefaultInvitationTTL,
+		client:           client,
+		svc:              svc,
+		store:            store,
+		principals:       principals,
+		mintToken:        defaultTokenMinter,
+		invitationTTL:    DefaultInvitationTTL,
+		maxInvitationTTL: DefaultMaxInvitationTTL,
 	}
 
 	for _, opt := range opts {
 		if opt != nil {
 			opt(s)
 		}
+	}
+
+	if s.invitationTTL > s.maxInvitationTTL {
+		return nil, platformerrors.Wrapf(ErrInvitationTTLExceedsMaximum,
+			"default %s exceeds maximum %s", s.invitationTTL, s.maxInvitationTTL)
 	}
 
 	s.o11y = observability.NewObserver(serverName, s.logger, s.tracerProvider)
@@ -278,10 +312,17 @@ func (s *Server) caller(ctx context.Context, method string) (
 // chain intact all the way to the interceptor and carries the code alongside.
 //
 // The message is the description the handler chose, not the chain: that is what
-// the encoding interceptor means by "a message the handler chose to expose", and
-// the chain contains table names and identifiers a client has no business
-// seeing. The one thing that outranks the description is a registered
-// client-safe sentinel's own words — see fail.
+// the encoding interceptor means by "a message the handler chose to expose". The
+// one thing that outranks the description is a registered client-safe
+// sentinel's own words — see fail.
+//
+// What this does not do is keep the chain off the wire. The encoding interceptor
+// puts the whole encoded chain into the status details for the client's
+// errors.Is to work on, and a client that decodes it can print it, this
+// package's descriptions and the store's context included. The message is the
+// part a client that reads nothing else sees, and it is kept short for that
+// reader; it is not a redaction, and nothing in this package's chains is written
+// as if it were one.
 type rpcError struct {
 	err  error
 	msg  string
@@ -336,11 +377,13 @@ func fail(
 
 // scopeOf is the one place a scope is produced, and it comes off the principal.
 // See Principal.Scope for why there is no other source.
+//
+// It has no nil branch on purpose. caller refuses a request with no principal
+// before any handler reaches this, so a nil here is a handler that skipped
+// caller — and the only thing a nil branch could return is tenancy.Global,
+// which would turn that mistake into a read of the global directory. A panic is
+// the louder and the correct answer.
 func scopeOf(p Principal) tenancy.Scope {
-	if p == nil {
-		return tenancy.Global()
-	}
-
 	return p.Scope()
 }
 

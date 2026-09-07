@@ -10,6 +10,7 @@ import (
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // serviceMethods is every RPC the generated service descriptor declares, as the
@@ -115,25 +116,40 @@ func TestTheFragmentComposes(T *testing.T) {
 //
 // It is asserted against the request messages rather than against prose, so an
 // RPC that grows a target_user_id and stays on the self-service list fails here.
+// The walk descends into nested messages, because UpdateProfileRequest is one
+// field wrapping a ProfileUpdateInput and a user_id added to the input would
+// otherwise be one level too deep for the check to see.
+//
+// email_address and username are subject fields on a request and not on the
+// update input: the input's are the caller's own new values, which is the
+// self-service act itself, and the depth the descriptor is at tells the two
+// apart.
 func TestSelfServiceMethodsTakeNoSubject(T *testing.T) {
 	T.Parallel()
 
 	// The fields a request would use to name a subject other than the caller.
 	subjectFields := []string{"user_id", "email_address", "username"}
 
+	// The fields that name the caller's own new values rather than a subject,
+	// by the message that carries them.
+	ownValues := map[protoreflect.FullName][]string{
+		(&identitypb.ProfileUpdateInput{}).ProtoReflect().Descriptor().FullName(): {"email_address", "username"},
+	}
+
 	for _, method := range identitygrpc.SelfServiceMethods() {
 		T.Run(method, func(t *testing.T) {
 			t.Parallel()
 
-			desc := requestDescriptorFor(t, method)
-			fields := desc.Fields()
+			walkFields(requestDescriptorFor(t, method), func(md protoreflect.MessageDescriptor, fd protoreflect.FieldDescriptor) {
+				name := string(fd.Name())
+				if slices.Contains(ownValues[md.FullName()], name) {
+					return
+				}
 
-			for i := range fields.Len() {
-				name := string(fields.Get(i).Name())
 				test.False(t, slices.Contains(subjectFields, name), test.Sprintf(
-					"%s is self-service and its request carries %q, which names somebody other than the caller",
-					method, name))
-			}
+					"%s is self-service and its request carries %s.%s, which names somebody other than the caller",
+					method, md.FullName(), name))
+			})
 		})
 	}
 }

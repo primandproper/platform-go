@@ -454,6 +454,10 @@ message InviteRequest {
 
   // expires_at is when the link stops working. Absent takes the server's
   // configured default, which is what a client that has no opinion should send.
+  // A named one has to be later than now and no further ahead than the server's
+  // maximum invitation lifetime, or the request is INVALID_ARGUMENT: the default
+  // is a bound and not a suggestion, and a request naming its own expiry is not
+  // the way around it.
   google.protobuf.Timestamp expires_at = 6;
 }
 

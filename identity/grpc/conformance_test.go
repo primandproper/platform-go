@@ -173,3 +173,28 @@ func TestSchemaConformance(T *testing.T) {
 	// different fields, and matching them on JSON names would be asserting that
 	// protobuf grew a feature it has not.
 }
+
+// TestUpdateInputsConform holds the two update inputs to the same field list as
+// the nouns above. They are the messages presence lives on, so a field added to
+// identity.ProfileUpdate and not to the schema is a field no client can change,
+// and one added to the schema and not to the struct is one the converter drops
+// on the floor — both the silence this file exists to end.
+func TestUpdateInputsConform(T *testing.T) {
+	T.Parallel()
+
+	T.Run("ProfileUpdate", func(t *testing.T) {
+		t.Parallel()
+
+		assertConformance(t, "ProfileUpdate",
+			reflect.TypeFor[identity.ProfileUpdate](),
+			(&identitypb.ProfileUpdateInput{}).ProtoReflect().Descriptor())
+	})
+
+	T.Run("AccountUpdate", func(t *testing.T) {
+		t.Parallel()
+
+		assertConformance(t, "AccountUpdate",
+			reflect.TypeFor[identity.AccountUpdate](),
+			(&identitypb.AccountUpdateInput{}).ProtoReflect().Descriptor())
+	})
+}

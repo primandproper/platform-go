@@ -46,14 +46,14 @@ const (
 var (
 	// ErrNilExecutor indicates Record was called without a query executor. It
 	// wraps errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil audit query executor")
 
 	// ErrNilEntry indicates a nil *Entry was passed to Record.
 	ErrNilEntry = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil audit entry")
 
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil audit database client")
 
 	// ErrEmptyResourceType indicates an Entry that does not say what it is about.
 	ErrEmptyResourceType = platformerrors.New("empty audit resource type")

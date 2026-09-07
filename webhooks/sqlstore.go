@@ -148,7 +148,7 @@ func webhooksdbDialect(d dialect.Dialect) (webhooksdb.Dialect, error) {
 
 // ErrNilDatabaseClient indicates a nil database.Client. It wraps
 // errors.ErrNilInputParameter, so a caller may check either.
-var ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+var ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhooks database client")
 
 // SaveEndpoint upserts the endpoint and reconciles its subscription set, both
 // through the caller's transaction.

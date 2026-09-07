@@ -10,7 +10,7 @@ import (
 var (
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil waitlist database client")
 
 	// ErrNilExecutor indicates a nil executor. Every method here runs on one the
 	// caller supplies — a database.Tx for a write, a database.SQLQueryExecutor
@@ -20,7 +20,7 @@ var (
 	// It is refused rather than substituted: a write that quietly ran outside
 	// the transaction its caller believes it is in is the failure the signature
 	// exists to prevent.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil waitlist query executor")
 
 	// ErrScopeMismatch indicates a write whose List or Signup names a different
 	// tenant than the scope the call named.
@@ -54,10 +54,10 @@ var (
 	ErrEmptyContact = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty waitlist signup contact")
 
 	// ErrEmptySubjectType indicates a Subject naming an id and no type.
-	ErrEmptySubjectType = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty subject type")
+	ErrEmptySubjectType = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty waitlist subject type")
 
 	// ErrEmptySubjectID indicates a Subject naming a type and no id.
-	ErrEmptySubjectID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty subject id")
+	ErrEmptySubjectID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty waitlist subject id")
 
 	// ErrListNotFound indicates no live list by that id in this scope. Every
 	// signup-side call can return it, because a signup is only meaningful

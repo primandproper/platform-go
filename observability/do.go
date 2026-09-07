@@ -1,8 +1,6 @@
 package observability
 
 import (
-	stderrors "errors"
-
 	"github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/internal/injection"
 	"github.com/primandproper/platform-go/v14/observability/logging"
@@ -29,12 +27,15 @@ import (
 // A service that *is* registered but fails to build is a different matter, and
 // is returned as an error rather than quietly treated as absent: a metrics
 // provider whose exporter cannot reach its collector should surface, not
-// degrade to a noop that looks configured.
+// degrade to a noop that looks configured. That includes a provider that fails
+// because something *it* invoked was never registered — do reports that with
+// the same not-found sentinel as an absent *Pillars, which is why every lookup
+// here goes through injection.InvokeOptional rather than reading the sentinel.
 func InvokePillars(i do.Injector) (*Pillars, error) {
-	if p, err := do.Invoke[*Pillars](i); err == nil {
-		return p, nil
-	} else if !stderrors.Is(err, do.ErrServiceNotFound) {
+	if p, err := injection.InvokeOptional[*Pillars](i); err != nil {
 		return nil, errors.Wrap(err, "invoking observability pillars")
+	} else if p != nil {
+		return p, nil
 	}
 
 	p := &Pillars{}

@@ -37,3 +37,33 @@ func requestDescriptorFor(t *testing.T, fullMethod string) protoreflect.MessageD
 
 	return method.Input()
 }
+
+// walkFields visits every field of a message and, depth-first, of every message
+// it nests, calling fn with the message the field is declared on. A message
+// type reached twice is visited once, which is what keeps a recursive schema
+// from being an infinite walk.
+func walkFields(md protoreflect.MessageDescriptor, fn func(protoreflect.MessageDescriptor, protoreflect.FieldDescriptor)) {
+	seen := map[protoreflect.FullName]bool{}
+
+	var walk func(protoreflect.MessageDescriptor)
+
+	walk = func(md protoreflect.MessageDescriptor) {
+		if seen[md.FullName()] {
+			return
+		}
+
+		seen[md.FullName()] = true
+
+		fields := md.Fields()
+		for i := range fields.Len() {
+			fd := fields.Get(i)
+			fn(md, fd)
+
+			if fd.Message() != nil {
+				walk(fd.Message())
+			}
+		}
+	}
+
+	walk(md)
+}

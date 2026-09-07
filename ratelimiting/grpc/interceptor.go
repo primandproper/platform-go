@@ -24,7 +24,7 @@ import (
 const serviceName = "ratelimiting_grpc"
 
 // ErrNilLimiter indicates the interceptor was built without a limiter.
-var ErrNilLimiter = platformerrors.New("nil rate limiter")
+var ErrNilLimiter = platformerrors.New("nil rate limiter for the gRPC interceptor")
 
 // limitedError is the single refusal value this package returns.
 //

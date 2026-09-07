@@ -10,7 +10,7 @@ import (
 var (
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil comments database client")
 
 	// ErrNilComment indicates a nil *Comment where one was required.
 	ErrNilComment = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil comment")
@@ -18,7 +18,7 @@ var (
 	// ErrNilExecutor indicates a nil executor. Every method here runs on one the
 	// caller supplies — a database.Tx for a write, an executor for a read — so
 	// there is no method that can fall back to a connection of the store's own.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil comments query executor")
 
 	// ErrScopeMismatch indicates a write whose Comment.Scope names a different
 	// tenant than the scope the call named.

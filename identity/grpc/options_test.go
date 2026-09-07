@@ -121,3 +121,32 @@ func TestTheDefaultMinterIsUnguessable(T *testing.T) {
 	test.NotEqOp(T, tokens[0], tokens[1],
 		test.Sprint("two invitations were minted the same token"))
 }
+
+// TestNewServerRefusesADefaultTTLBeyondTheMaximum: a server whose default
+// lifetime is longer than the ceiling it holds clients to would issue, on a
+// request naming nothing, an invitation it would have refused the request for
+// naming. It is refused at construction whichever order the two options came.
+func TestNewServerRefusesADefaultTTLBeyondTheMaximum(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T)
+
+	_, err := identitygrpc.NewServer(h.db, h.svc, h.store, extractPrincipal,
+		identitygrpc.WithMaxInvitationTTL(time.Hour),
+		identitygrpc.WithInvitationTTL(2*time.Hour),
+	)
+	test.ErrorIs(T, err, identitygrpc.ErrInvitationTTLExceedsMaximum)
+
+	_, err = identitygrpc.NewServer(h.db, h.svc, h.store, extractPrincipal,
+		identitygrpc.WithInvitationTTL(2*time.Hour),
+		identitygrpc.WithMaxInvitationTTL(time.Hour),
+	)
+	test.ErrorIs(T, err, identitygrpc.ErrInvitationTTLExceedsMaximum)
+
+	// A non-positive maximum is ignored the way a non-positive default is.
+	srv, err := identitygrpc.NewServer(h.db, h.svc, h.store, extractPrincipal,
+		identitygrpc.WithMaxInvitationTTL(-time.Hour),
+	)
+	must.NoError(T, err)
+	test.NotNil(T, srv)
+}

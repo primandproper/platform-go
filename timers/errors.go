@@ -7,7 +7,7 @@ import (
 var (
 	// ErrNilDatabaseClient indicates a nil database.Client was passed to New. It
 	// wraps errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil timers database client")
 
 	// ErrNilConfig indicates a nil Config was passed to New. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.

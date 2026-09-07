@@ -2,12 +2,12 @@ package identitycfg
 
 import (
 	"context"
-	stderrors "errors"
 
 	"github.com/primandproper/platform-go/v14/database"
 	platformerrors "github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/internal/injection"
 	"github.com/primandproper/platform-go/v14/observability"
 
 	"github.com/samber/do/v2"
@@ -41,12 +41,16 @@ func RegisterStore(i do.Injector) {
 // identity.Hooks is resolved if something registered one and defaulted to
 // identity.NoopHooks otherwise, which is the same reading the constructor takes:
 // an application with nothing to commit beside an identity write registers
-// nothing. That is the only error the lookup absorbs. A Hooks that is
-// registered but fails to build is returned, on the same distinction
-// observability.InvokePillars draws: "nobody registered one" is a
-// configuration, "the one registered could not be built" is a failure, and a
-// Service that quietly ran the noop in its place would commit every identity
-// write with none of the companions the consumer registered hooks to get.
+// nothing. Absence is the only thing the lookup absorbs, and it is decided by
+// whether a Hooks is registered, not by the error the invocation returns. A
+// Hooks that is registered but fails to build is returned — including one whose
+// own provider asked the container for something nobody registered, which do
+// reports with the very sentinel a missing Hooks would carry. The distinction
+// is the one observability.InvokePillars draws, through the same
+// injection.InvokeOptional: "nobody registered one" is a configuration, "the
+// one registered could not be built" is a failure, and a Service that quietly
+// ran the noop in its place would commit every identity write with none of the
+// companions the consumer registered hooks to get.
 func RegisterService(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*identity.Service, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -56,12 +60,13 @@ func RegisterService(i do.Injector) {
 
 		opts := []Option{WithPillars(pillars)}
 
-		hooks, hooksErr := do.Invoke[identity.Hooks](i)
-		switch {
-		case hooksErr == nil:
+		hooks, err := injection.InvokeOptional[identity.Hooks](i)
+		if err != nil {
+			return nil, platformerrors.Wrap(err, "invoking identity hooks")
+		}
+
+		if hooks != nil {
 			opts = append(opts, WithHooks(hooks))
-		case !stderrors.Is(hooksErr, do.ErrServiceNotFound):
-			return nil, platformerrors.Wrap(hooksErr, "invoking identity hooks")
 		}
 
 		return NewService(

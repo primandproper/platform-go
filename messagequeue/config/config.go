@@ -50,7 +50,7 @@ var providers = []string{
 }
 
 var (
-	ErrNilConfig = errors.New("nil config provided")
+	ErrNilConfig = errors.New("nil message queue config provided")
 )
 
 type (

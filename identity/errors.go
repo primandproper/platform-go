@@ -10,7 +10,7 @@ import (
 var (
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil database client")
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil identity database client")
 
 	// ErrNilStore indicates a nil Store where one was required. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
@@ -20,7 +20,7 @@ var (
 	// caller supplies — a database.Tx for a write, a database.SQLQueryExecutor
 	// for a read — so there is no method that can fall back to a connection of
 	// the store's own.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil identity query executor")
 
 	// ErrNilUser indicates a nil *User where one was required.
 	ErrNilUser = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil user")
@@ -49,7 +49,7 @@ var (
 	// naming no scope adopts the argument; only a disagreement is refused. It is
 	// the reading comments.ErrScopeMismatch settled for every store in this
 	// module.
-	ErrScopeMismatch = platformerrors.New("entity names a different scope than the write")
+	ErrScopeMismatch = platformerrors.New("identity entity names a different scope than the write")
 
 	// ErrUsernameTaken indicates a username already registered in this scope.
 	//

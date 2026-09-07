@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"time"
 
 	filteringgrpc "github.com/primandproper/platform-go/v14/filtering/grpc"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -23,9 +24,12 @@ import (
 // the response carries the redacted invitation, and the token reaches only the
 // address it was minted for.
 //
-// The expiry is the request's when it names one and DefaultInvitationTTL when it
-// does not. A transport cannot decline to pick, because an invitation with no
-// expiry is a link that works forever.
+// The expiry is the request's when it names one and the configured lifetime
+// when it does not. A transport cannot decline to pick, because an invitation
+// with no expiry is a link that works forever. A named expiry is held to the
+// same bound the default is: it has to be later than now, or the hook mails a
+// dead link, and no further ahead than the maximum lifetime, or the request is
+// the way around the default. Either is codes.InvalidArgument.
 func (s *Server) Invite(
 	ctx context.Context,
 	request *identitypb.InviteRequest,
@@ -48,9 +52,23 @@ func (s *Server) Invite(
 	// names for a component that stamps a row, and it is what a test that
 	// controls time already controls. UTC, like every other timestamp this
 	// module writes.
+	now := s.client.CurrentTime().UTC()
+
 	expiresAt := timeFromProto(request.GetExpiresAt())
-	if expiresAt.IsZero() {
-		expiresAt = s.client.CurrentTime().UTC().Add(s.invitationTTL)
+
+	switch {
+	case expiresAt.IsZero():
+		expiresAt = now.Add(s.invitationTTL)
+	case !expiresAt.After(now):
+		err = fail(op, ErrInvitationExpiryInPast, codes.InvalidArgument,
+			"invitation expiry %s is not after %s", expiresAt.Format(time.RFC3339), now.Format(time.RFC3339))
+
+		return nil, err
+	case expiresAt.After(now.Add(s.maxInvitationTTL)):
+		err = fail(op, ErrInvitationExpiryTooFar, codes.InvalidArgument,
+			"invitation expiry %s is more than %s ahead", expiresAt.Format(time.RFC3339), s.maxInvitationTTL)
+
+		return nil, err
 	}
 
 	invitation := &identity.Invitation{
@@ -135,9 +153,13 @@ func (s *Server) RejectInvitation(
 // CancelInvitation withdraws an invitation on the sender's behalf.
 //
 // No token, because the sender never had one: they are looking at what they
-// sent, addressed by id. Whether this caller is that sender is a check the
-// consumer's policy makes — Invitation.FromUser is what it resolves against —
-// for the same reason nothing else here decides who may act.
+// sent, addressed by id. Nothing here checks that this caller is that sender.
+// The permission the fragment asks for, PermissionInviteMembers, is a grant on
+// the method and not on the row, so a holder of it may cancel any pending
+// invitation in the directory, and Invitation.FromUser is the field a consumer
+// who wants the narrower rule compares — though the enforcer this module ships
+// hands its interceptor no row to compare it against, so today that check is
+// the consumer's own interceptor's to make, ahead of this handler.
 //
 // An invitation that has already been answered reads as absent: the status write
 // matches only a pending row, which is what makes a cancellation that raced an
@@ -223,6 +245,16 @@ func (s *Server) ListInvitationsFromUser(
 // request. An address a client could name would answer "has this person been
 // invited anywhere" to anybody who can guess an email address, which is a
 // membership-graph oracle wearing an inbox's clothes.
+//
+// The row's address has to be verified, and that is the same oracle closed from
+// the other side. UpdateProfile is self-service and takes an email address, and
+// the service clears the address's verification when it moves, leaving proving
+// it to the sign-in flow — so an unverified address on the caller's row is one
+// the caller typed a moment ago, and reading invitations by it would answer the
+// same question for the price of two RPCs instead of one. An unverified caller
+// is refused with ErrEmailAddressUnverified rather than shown an empty page,
+// because an empty page reads as "nobody has invited you", which is not what
+// the server knows.
 func (s *Server) ListInvitationsForEmailAddress(
 	ctx context.Context,
 	request *identitypb.ListInvitationsForEmailAddressRequest,
@@ -245,6 +277,13 @@ func (s *Server) ListInvitationsForEmailAddress(
 	caller, err := s.store.GetUser(ctx, s.client.Reader(), scope, principal.UserID())
 	if err != nil {
 		return nil, fail(op, err, codes.Internal, "reading the calling user")
+	}
+
+	if !caller.EmailAddressVerified() {
+		err = fail(op, ErrEmailAddressUnverified, codes.FailedPrecondition,
+			"listing invitations for an address the caller has not verified")
+
+		return nil, err
 	}
 
 	page, err := s.store.ListInvitationsForEmailAddress(

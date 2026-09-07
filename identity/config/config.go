@@ -52,6 +52,14 @@ type Config struct {
 	// disagree — and it is here rather than left to the client because a link
 	// that never expires is the answer a client gets by omitting a field.
 	InvitationTTL time.Duration `env:"INVITATION_TTL" json:"invitationTTL,omitempty" yaml:"invitationTTL,omitempty"`
+
+	// MaxInvitationTTL is the furthest ahead any invitation may expire, whether
+	// the client named the expiry or the default above supplied it. Defaults to
+	// identitygrpc.DefaultMaxInvitationTTL, and InvitationTTL may not exceed it.
+	//
+	// Without a ceiling the field above is only a default, and a client that
+	// names its own expiry is the way around it.
+	MaxInvitationTTL time.Duration `env:"MAX_INVITATION_TTL" json:"maxInvitationTTL,omitempty" yaml:"maxInvitationTTL,omitempty"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)
@@ -64,6 +72,10 @@ func (cfg *Config) EnsureDefaults() {
 
 	if cfg.InvitationTTL == 0 {
 		cfg.InvitationTTL = identitygrpc.DefaultInvitationTTL
+	}
+
+	if cfg.MaxInvitationTTL == 0 {
+		cfg.MaxInvitationTTL = identitygrpc.DefaultMaxInvitationTTL
 	}
 }
 
@@ -78,8 +90,17 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 		// it is sent is a configuration mistake, and defaulting it would hide
 		// the mistake behind links that quietly work.
 		validation.Field(&cfg.InvitationTTL, validation.Min(time.Duration(0))),
+		validation.Field(&cfg.MaxInvitationTTL, validation.Min(time.Duration(0))),
 	); err != nil {
 		return err
+	}
+
+	// A default longer than the ceiling is refused here for the reason
+	// identitygrpc.ErrInvitationTTLExceedsMaximum gives, and here rather than
+	// only there so the mistake is reported as the configuration it is.
+	if cfg.MaxInvitationTTL > 0 && cfg.InvitationTTL > cfg.MaxInvitationTTL {
+		return errors.Wrapf(identitygrpc.ErrInvitationTTLExceedsMaximum,
+			"invitationTTL %s exceeds maxInvitationTTL %s", cfg.InvitationTTL, cfg.MaxInvitationTTL)
 	}
 
 	return migrations.ValidatePrefix(cfg.TablePrefix)
@@ -218,6 +239,7 @@ func NewServer(
 		identitygrpc.WithTracerProvider(options.tracerProvider),
 		identitygrpc.WithMetricsProvider(options.metricsProvider),
 		identitygrpc.WithInvitationTTL(cfg.InvitationTTL),
+		identitygrpc.WithMaxInvitationTTL(cfg.MaxInvitationTTL),
 	}
 
 	return identitygrpc.NewServer(client, svc, store, principals, append(base, options.server...)...)

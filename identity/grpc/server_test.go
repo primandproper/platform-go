@@ -600,3 +600,31 @@ func TestEveryPagedReadRefusesAMalformedFilter(T *testing.T) {
 		})
 	}
 }
+
+// TestUpdateProfileClearsWhatTheRequestNamesEmpty is the profile side of the
+// presence reading UpdateAccount already pins: absent leaves a field alone, and
+// present-but-empty clears it. Both halves have to hold on both inputs, since
+// the converter and the update's apply are where a later edit could collapse
+// the two into one.
+func TestUpdateProfileClearsWhatTheRequestNamesEmpty(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T)
+
+	registration := h.seedAccount(T, testScope, "somebody")
+	ctx := h.as(&testPrincipal{userID: registration.User.ID, scope: testScope})
+
+	named, err := h.client.UpdateProfile(ctx, &identitypb.UpdateProfileRequest{
+		Input: &identitypb.ProfileUpdateInput{FirstName: new("Some"), LastName: new("Body")},
+	})
+	must.NoError(T, err)
+	test.EqOp(T, "Some", named.GetUser().GetFirstName())
+	test.EqOp(T, "Body", named.GetUser().GetLastName())
+
+	cleared, err := h.client.UpdateProfile(ctx, &identitypb.UpdateProfileRequest{
+		Input: &identitypb.ProfileUpdateInput{LastName: new("")},
+	})
+	must.NoError(T, err)
+	test.EqOp(T, "Some", cleared.GetUser().GetFirstName(), test.Sprint("a field the request did not name moved"))
+	test.EqOp(T, "", cleared.GetUser().GetLastName(), test.Sprint("a field the request named empty was not cleared"))
+}

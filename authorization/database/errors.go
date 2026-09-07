@@ -11,7 +11,7 @@ var (
 	ErrInvalidTablePrefix = platformerrors.New("invalid authorization table prefix")
 	// ErrNilExecutor indicates a query executor was required and not supplied.
 	// It wraps errors.ErrNilInputParameter, so a caller may check either.
-	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
+	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil authorization database query executor")
 	// ErrWrittenNameMissing indicates a role or permission that was written by
 	// name inside the caller's transaction and then could not be read back in
 	// that same transaction. Every dialect this package runs against shows a

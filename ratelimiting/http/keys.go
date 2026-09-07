@@ -11,7 +11,7 @@ import (
 )
 
 // ErrNilKeyFunc indicates NewMiddleware was called without a key function.
-var ErrNilKeyFunc = platformerrors.New("nil rate limit key function")
+var ErrNilKeyFunc = platformerrors.New("nil rate limit key function for the HTTP middleware")
 
 // KeyFunc extracts the key a request is counted against — the answer to "N per
 // second per what". It is pluggable because the platform has no notion of a

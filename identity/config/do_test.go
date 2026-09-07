@@ -166,7 +166,41 @@ func TestRegisterService(T *testing.T) {
 		test.Nil(t, svc)
 		test.ErrorIs(t, err, boom)
 	})
+
+	T.Run("a hooks provider that needs an unregistered dependency fails the service", func(t *testing.T) {
+		t.Parallel()
+
+		// The same failure by a different route, and the one that used to slip
+		// through. A consumer's hooks provider invokes the audit recorder it
+		// was built to write to; when nothing registered one, do reports the
+		// miss with the same not-found sentinel an absent Hooks carries, and a
+		// lookup that read the sentinel as "nobody registered hooks" handed
+		// the Service the noop — the outcome this registration exists to
+		// refuse.
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue(i, &Config{})
+		do.Provide(i, func(i do.Injector) (identity.Hooks, error) {
+			if _, err := do.Invoke[*unregisteredRecorder](i); err != nil {
+				return nil, err
+			}
+
+			return identity.NoopHooks{}, nil
+		})
+
+		RegisterStore(i)
+		RegisterService(i)
+
+		svc, err := do.Invoke[*identity.Service](i)
+		test.Nil(t, svc)
+		test.ErrorIs(t, err, do.ErrServiceNotFound)
+	})
 }
+
+// unregisteredRecorder stands in for a dependency a consumer's hooks provider
+// asks the container for and nothing registered.
+type unregisteredRecorder struct{}
 
 func TestRegisterServer(T *testing.T) {
 	T.Parallel()

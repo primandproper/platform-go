@@ -44,15 +44,23 @@ const (
 	// the first imply the second.
 	PermissionUpdateUserServiceRoles authorization.Permission = "identity.users.update_service_roles"
 
-	// PermissionReadAccounts covers reading an account and its roster.
+	// PermissionReadAccounts covers reading an account and its roster, by id.
+	//
+	// By id and not by membership: the grant is on the method, and a holder of
+	// it may read any account in the directory whose id they know. Narrowing it
+	// to "the accounts this caller is a member of" is a check on the row, which
+	// the enforcer this module ships does not make — its interceptor sees the
+	// method and the grants and not the request — so a consumer who wants the
+	// narrower reading makes it in an interceptor of their own, ahead of the
+	// handler, with Principal.ActiveAccountID or the caller's memberships as
+	// the thing to compare.
 	PermissionReadAccounts authorization.Permission = "identity.accounts.read"
 
 	// PermissionListAllAccounts covers paging every account in the directory.
 	//
 	// Separate from PermissionReadAccounts because they answer different
-	// questions: "may this member see the account they are in" and "may this
-	// person enumerate the customer list" are not the same grant, and a roster
-	// screen needs only the first.
+	// questions: reading an account somebody named and enumerating the customer
+	// list are not the same grant, and a roster screen needs only the first.
 	PermissionListAllAccounts authorization.Permission = "identity.accounts.list_all"
 
 	// PermissionUpdateAccounts covers renaming an account and changing its
@@ -70,9 +78,12 @@ const (
 	// PermissionInviteMembers covers sending an invitation and cancelling one.
 	//
 	// Cancelling shares this permission rather than having one of its own
-	// because both are the sender's side of the same act, and whether *this*
-	// caller is the sender of *that* invitation is a check on the row rather
-	// than on the method — see CancelInvitation.
+	// because both are the sender's side of the same act. Like every grant here
+	// it is on the method: a holder may invite into any account in the
+	// directory and cancel any pending invitation in it, and whether *this*
+	// caller is the sender of *that* invitation is a check on the row that
+	// nothing in this module makes — see CancelInvitation for what a consumer
+	// compares if they want it.
 	PermissionInviteMembers authorization.Permission = "identity.invitations.send"
 
 	// PermissionReadInvitations covers reading one invitation by id.

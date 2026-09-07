@@ -47,7 +47,7 @@ import (
 )
 
 var (
-	ErrNilConfig = errors.New("nil config")
+	ErrNilConfig = errors.New("nil otelgrpc metrics config")
 )
 
 type Config struct {
