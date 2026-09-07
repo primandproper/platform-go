@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/database"
@@ -20,7 +19,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // serverName scopes this package's spans, logger and instruments.
@@ -312,46 +310,6 @@ func (s *Server) caller(ctx context.Context, method string) (
 	return ctx, op, principal, done, nil
 }
 
-// rpcError is a handler failure that answers to both idioms: the sentinel chain
-// for errors.Is, and a gRPC status for status.Code.
-//
-// It has to be both, and neither of the two functions named
-// PrepareAndLogGRPCStatus produces both. observability's takes the code it is
-// handed and flattens the chain into a status message — it cannot consult the
-// mappers, since observability sits below errors/grpc and importing it back
-// would be a cycle. errors/grpc's maps the code correctly and then calls
-// observability's, so it flattens the chain too.
-//
-// Flattening is what breaks the wire. UnaryErrorEncodingInterceptor's job is to
-// put the sentinel chain into the status details so a client's errors.Is
-// matches, and it can only encode the chain it is given — a handler that already
-// turned ErrUsernameTaken into a string hands it a string. So this keeps the
-// chain intact all the way to the interceptor and carries the code alongside.
-//
-// The message is the description the handler chose, not the chain: that is what
-// the encoding interceptor means by "a message the handler chose to expose". The
-// one thing that outranks the description is a registered client-safe
-// sentinel's own words — see fail.
-//
-// What this does not do is keep the chain off the wire. The encoding interceptor
-// puts the whole encoded chain into the status details for the client's
-// errors.Is to work on, and a client that decodes it can print it, this
-// package's descriptions and the store's context included. The message is the
-// part a client that reads nothing else sees, and it is kept short for that
-// reader; it is not a redaction, and nothing in this package's chains is written
-// as if it were one.
-type rpcError struct {
-	err  error
-	msg  string
-	code codes.Code
-}
-
-func (e *rpcError) Error() string { return e.err.Error() }
-
-func (e *rpcError) Unwrap() error { return e.err }
-
-func (e *rpcError) GRPCStatus() *status.Status { return status.New(e.code, e.msg) }
-
 // fail is how every RPC here returns an error: it logs and traces, then hands
 // back an error that is still the sentinel it was.
 //
@@ -369,6 +327,12 @@ func (e *rpcError) GRPCStatus() *status.Status { return status.New(e.code, e.msg
 // where the codes collide — a taken username and a taken email address are
 // both AlreadyExists — and for a client in a language that cannot read the
 // encoded details, where the message is all it has.
+//
+// Both of those are grpcerrors.PrepareAndLogGRPCStatus's behavior now, and the
+// three-method error type this package used to carry for them is
+// observability.GRPCStatusError. What survives here is the shape of the call —
+// an Operation rather than a logger and a span, and a description that is
+// formatted for every RPC in one place.
 func fail(
 	op observability.Operation,
 	err error,
@@ -376,20 +340,7 @@ func fail(
 	descriptionFmt string,
 	descriptionArgs ...any,
 ) error {
-	description := fmt.Sprintf(descriptionFmt, descriptionArgs...)
-
-	op.Acknowledge(err, "%s", description)
-
-	msg := description
-	if safe, ok := grpcerrors.ClientSafeMessage(err); ok {
-		msg = safe
-	}
-
-	return &rpcError{
-		err:  platformerrors.Wrap(err, description),
-		msg:  msg,
-		code: grpcerrors.MapToGRPC(err, defaultCode),
-	}
+	return grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), defaultCode, descriptionFmt, descriptionArgs...)
 }
 
 // scopeOf is the one place a scope is produced, and it comes off the principal.

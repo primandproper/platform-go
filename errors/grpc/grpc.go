@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/primandproper/platform-go/v14/observability"
@@ -47,9 +48,31 @@ func RegisterGRPCErrorMapper(m GRPCErrorMapper) {
 // Logger and Span are on Operation so that reaching this one costs nothing:
 //
 //	grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "doing the thing")
+//
+// What comes back is still the error that went in. The chain is intact under a
+// status, not rendered into one, so UnaryErrorEncodingInterceptor has a chain to
+// encode and a client's errors.Is matches the sentinel a handler returned. See
+// observability.GRPCStatusError for what that costs and why the message is the
+// description rather than the chain.
+//
+// The code is a default in a second sense too: the interceptor re-runs MapToGRPC
+// over the chain this preserves, so a mapper registered after a handler guessed
+// still wins. The message follows ClientSafeMessage — a registered client-safe
+// sentinel's own words outrank the description, since the sentinel is more
+// specific and was registered precisely to be quoted.
 func PrepareAndLogGRPCStatus(err error, logger logging.Logger, span tracing.Span, defaultCode codes.Code, descriptionFmt string, descriptionArgs ...any) error {
+	if err == nil {
+		return nil
+	}
+
 	code := MapToGRPC(err, defaultCode)
-	return observability.PrepareAndLogGRPCStatus(err, logger, span, code, descriptionFmt, descriptionArgs...)
+	description := fmt.Sprintf(descriptionFmt, descriptionArgs...)
+
+	return observability.GRPCStatusError(
+		observability.PrepareAndLogError(err, logger, span, "%s", description),
+		code,
+		clientMessage(code, err, description),
+	)
 }
 
 // MapToGRPC returns the appropriate gRPC code for known sentinel errors.
