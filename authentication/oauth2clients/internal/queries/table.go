@@ -12,12 +12,20 @@ import (
 // is also the order this package's row conversions are written in. The rest is
 // what a column list cannot say — see the package comment.
 //
-// It is deliberately the same shape comments/internal/queries declares. This
-// table is keyed on more than the scope for its writes, on the scope alone for
-// its listing reads, and on neither for the authorization server's lookup, so it
-// takes no standard set and there is no Omitted to declare; what a statement
-// keys on is written at the statement instead, which is what querygen.Match is
-// for.
+// The type is deliberately the same shape comments/internal/queries declares,
+// and not for the same reason. comments takes no standard set at all; this table
+// takes one, minus two members. The existence check is omitted because nothing
+// here asks whether a registration exists without also wanting to read it, and
+// the create because a unique index on client_id makes the insert an
+// insert-ignore rather than the raising one the standard set emits — see
+// [options], which is where both omissions are declared.
+//
+// What that set has no way to express is the other three reads, and those are
+// written at the statement instead with querygen.Match: the create's read-back
+// of the creation time the database assigned it, the self-service page keyed on
+// the scope and the owner both, and the authorization server's lookup keyed on
+// client_id and no scope at all. [Render] is where the generated set and the
+// authored statements are appended to each other.
 type Table struct {
 	// Name is the canonical, unprefixed table name.
 	Name string
