@@ -52,13 +52,13 @@ func TestAdministeredCreateMintsARegistrationBelongingToNobody(t *testing.T) {
 	test.EqOp(t, "", read.GetResult().GetBelongsToUser())
 }
 
-// TestAdministeredHalfReachesEveryRowInTheRegistry is the difference between
-// this half and the self-service one, asserted rather than described.
+// TestAdministeredHalfReachesEveryRowInTheRegistry asserts the reach these RPCs
+// are behind a permission for, rather than describing it.
 //
-// The five RPCs here are behind a permission precisely because they are not
-// keyed on the caller: an administrator reads, revises and withdraws another
-// person's registration and the deployment's own. The self-service suite asserts
-// the opposite of the same three rows, which is what makes the pair meaningful.
+// They are not keyed on the caller: an administrator reads and withdraws another
+// person's registration and the deployment's own. That is the whole of what the
+// grant buys, and the only thing that narrows it is the registry — see
+// TestAdministeredHalfIsScopedToTheCallersRegistry.
 func TestAdministeredHalfReachesEveryRowInTheRegistry(T *testing.T) {
 	T.Parallel()
 
@@ -80,13 +80,6 @@ func TestAdministeredHalfReachesEveryRowInTheRegistry(T *testing.T) {
 				&oauth2clientspb.GetOAuth2ClientRequest{Oauth2ClientId: theirs.ID})
 			must.NoError(t, err)
 			test.EqOp(t, theirs.ID, read.GetResult().GetId())
-
-			revised, err := h.server.UpdateOAuth2Client(ctx, &oauth2clientspb.UpdateOAuth2ClientRequest{
-				Oauth2ClientId: theirs.ID,
-				Input:          updateInput("renamed"),
-			})
-			must.NoError(t, err)
-			test.EqOp(t, "renamed", revised.GetResult().GetName())
 
 			_, err = h.server.ArchiveOAuth2Client(ctx,
 				&oauth2clientspb.ArchiveOAuth2ClientRequest{Oauth2ClientId: theirs.ID})
@@ -214,24 +207,6 @@ func TestAdministeredHalfRefusesAnAnonymousCaller(T *testing.T) {
 		test.Nil(t, res)
 	})
 
-	T.Run("update", func(t *testing.T) {
-		t.Parallel()
-
-		h := anonymous(t)
-		seeded := h.seed(t, "")
-
-		res, err := h.server.UpdateOAuth2Client(t.Context(), &oauth2clientspb.UpdateOAuth2ClientRequest{
-			Oauth2ClientId: seeded.ID,
-			Input:          updateInput("renamed"),
-		})
-		refused(t, err)
-		test.Nil(t, res)
-
-		after, readErr := h.store.GetClient(t.Context(), h.db.Reader(), testScope, seeded.ID)
-		must.NoError(t, readErr)
-		test.EqOp(t, seeded.Name, after.Name)
-	})
-
 	T.Run("archive", func(t *testing.T) {
 		t.Parallel()
 
@@ -249,7 +224,7 @@ func TestAdministeredHalfRefusesAnAnonymousCaller(T *testing.T) {
 	})
 }
 
-// TestAdministeredWritesRefuseARequestWithNoInput pins the distinction the
+// TestAdministeredCreateRefusesARequestWithNoInput pins the distinction the
 // converters make: a nil input message is a malformed request rather than a
 // registration with no name.
 //
@@ -257,35 +232,20 @@ func TestAdministeredHalfRefusesAnAnonymousCaller(T *testing.T) {
 // InvalidArgument naming the input; letting it through would reach the store and
 // come back as a message about the name field, for a request that carried no
 // fields at all.
-func TestAdministeredWritesRefuseARequestWithNoInput(T *testing.T) {
-	T.Parallel()
+//
+// Create is the only write on this surface that carries an input message, so it
+// is the only one that can be sent without one.
+func TestAdministeredCreateRefusesARequestWithNoInput(t *testing.T) {
+	t.Parallel()
 
-	T.Run("create", func(t *testing.T) {
-		t.Parallel()
+	h := newHarness(t)
 
-		h := newHarness(t)
-
-		res, err := h.server.CreateOAuth2Client(h.ctx(t, testOwner),
-			&oauth2clientspb.CreateOAuth2ClientRequest{})
-		must.Error(t, err)
-		test.Nil(t, res)
-		test.ErrorIs(t, err, oauth2clients.ErrNilInput)
-		test.EqOp(t, codes.InvalidArgument, status.Code(err))
-	})
-
-	T.Run("update", func(t *testing.T) {
-		t.Parallel()
-
-		h := newHarness(t)
-		seeded := h.seed(t, "")
-
-		res, err := h.server.UpdateOAuth2Client(h.ctx(t, testOwner),
-			&oauth2clientspb.UpdateOAuth2ClientRequest{Oauth2ClientId: seeded.ID})
-		must.Error(t, err)
-		test.Nil(t, res)
-		test.ErrorIs(t, err, oauth2clients.ErrNilInput)
-		test.EqOp(t, codes.InvalidArgument, status.Code(err))
-	})
+	res, err := h.server.CreateOAuth2Client(h.ctx(t, testOwner),
+		&oauth2clientspb.CreateOAuth2ClientRequest{})
+	must.Error(t, err)
+	test.Nil(t, res)
+	test.ErrorIs(t, err, oauth2clients.ErrNilInput)
+	test.EqOp(t, codes.InvalidArgument, status.Code(err))
 }
 
 // TestAdministeredListRefusesAFilterItCannotRead is the other InvalidArgument on

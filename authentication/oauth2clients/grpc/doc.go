@@ -10,24 +10,30 @@ composes into their own.
 	srv, _ := oauth2clientsgrpc.NewServer(svc, store, db, extractPrincipal)
 	// []grpcserver.RegistrationFunc{srv.RegisterOn}
 
-# Ten RPCs, two halves
+# Four RPCs, all of them permissioned
 
-Five administered methods act on any registration in the caller's registry, each
-behind a permission. Five self-service methods act only on registrations the
-caller owns, and require none — owning the row is the authorization.
+Create, get, list and archive, each acting on any registration in the caller's
+registry and each behind a grant. There is no method here a caller reaches
+without one, which is the property [Permissions] and [Require] are shaped around:
+every method this service declares is in that map.
 
-They are mirrored methods rather than one set with an ownership field because a
-consumer's interceptor gates an RPC by its full method name, before the request
-body is parsed. A method whose required grant depended on a field would be one
-the enforcer could not gate: it would have to be declared public and gate itself,
-which puts an authorization decision somewhere nobody auditing the permission map
-can see it. The .proto carries the long form.
+An earlier revision served ten. The other six — a revision method, and a
+self-service mirror of all five operations reachable behind no permission at all
+— answered no caller in any consumer, and the permissionless five were the
+surface in this package with the sharpest threat model. They were removed before
+anything consumed the package. The .proto carries the finding and, if a
+self-service half is ever wanted, the shape it has to take.
+
+What survives the removal is the arrangement rather than the transport: a
+registration still carries an owner, [oauth2clients.Client.Admits] still refuses
+one person's credential to another, and oauth2clients.Store still lists by owner.
+A deployment that wants those over gRPC writes that surface itself.
 
 # What comes off the principal, and what a request may say
 
-The registry, always, and on the self-service half the owner too. Neither is ever
-read off a request field: a scope a client could name is a cross-tenant read
-hiding behind one, and an owner a client could name is a credential minted in
+The registry, always, and it is never read off a request field: a scope a client
+could name is a cross-tenant read hiding behind one. Nor is an owner, which no
+request here carries at all — one a client could name is a credential minted in
 somebody else's name. So the requests here name a row id and nothing about whose
 it is, and there is no ScopeResolver on this surface — unlike
 authentication/signin/grpc, where the caller has not become a principal yet.
@@ -47,4 +53,4 @@ which is why no handler on this surface switches on a sentinel.
 */
 package grpc
 
-//platform:transport resource surface: an administered OAuth2 client registry and its self-service mirror — over `oauth2clients.Service` and `oauth2clients.Store`
+//platform:transport resource surface: an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store`

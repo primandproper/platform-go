@@ -11,6 +11,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	oauth2clientsgrpc "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 	"github.com/primandproper/platform-go/v14/database"
 	"github.com/primandproper/platform-go/v14/database/dialect"
 	"github.com/primandproper/platform-go/v14/database/sqlite"
@@ -63,8 +64,16 @@ const (
 )
 
 // testRedirect is a redirect URI oauth2server.ValidateRedirectURI accepts, so
-// that a test about ownership is not also a test about URI validation.
+// that a test about authorization is not also a test about URI validation.
 const testRedirect = "https://example.test/callback"
+
+// creationInput is the smallest registration the store accepts.
+func creationInput() *oauth2clientspb.OAuth2ClientCreationInput {
+	return &oauth2clientspb.OAuth2ClientCreationInput{
+		Name:         "test client",
+		RedirectUris: []string{testRedirect},
+	}
+}
 
 // testClientConfig is the minimal database.ClientConfig these tests dial with.
 type testClientConfig struct {

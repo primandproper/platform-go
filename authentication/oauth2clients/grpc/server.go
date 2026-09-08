@@ -59,14 +59,6 @@ var (
 	// there was nobody there, which is what an unauthenticated request looks
 	// like once a consumer's interceptor has run.
 	ErrNoPrincipal = platformerrors.New("no principal on the oauth2 client registry's request context")
-
-	// ErrNoPrincipalUser is a request whose caller names no person.
-	//
-	// It is separate from ErrNoPrincipal because it is a different failure: the
-	// extractor returned somebody, and that somebody has no identifier. Only the
-	// self-service half refuses it, and [Server.owner] is where — see there for
-	// why an empty owner is a value on this surface rather than a missing one.
-	ErrNoPrincipalUser = platformerrors.New("the caller of the oauth2 client registry names no user")
 )
 
 var _ oauth2clientspb.OAuth2ClientsServiceServer = (*Server)(nil)
@@ -161,12 +153,17 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 }
 
 // request is what every RPC here resolves before it does anything: the
-// operation to record on, who is calling, and which registry that puts the
+// operation to record on, and which registry the caller's principal puts the
 // request in.
+//
+// The principal itself is not carried. Every method on this surface acts on any
+// registration in the registry, so the scope is the only thing any of them reads
+// off the caller — a handler holding the principal could reach the person's
+// identifier, and nothing here has a use for one that would not be a decision
+// made outside the permission map.
 type request struct {
-	op        observability.Operation
-	principal Principal
-	scope     tenancy.Scope
+	op    observability.Operation
+	scope tenancy.Scope
 }
 
 // caller resolves the principal, the scope and an operation, in the one place
@@ -220,7 +217,7 @@ func (s *Server) caller(ctx context.Context, method string) (
 	op.Set(scopeKey, scope.String())
 	op.Set(userIDKey, principal.UserID())
 
-	return ctx, &request{op: op, principal: principal, scope: scope}, done, nil
+	return ctx, &request{op: op, scope: scope}, done, nil
 }
 
 // operationAttr labels an instrument with the RPC it was recorded in. It is the

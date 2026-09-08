@@ -295,25 +295,25 @@ For the primitives the original line is unchanged, and it is this:
 Everything below is on the far side of that line, and it is the whole list.
 
 <!-- readmegen:transports -->
-| Transport                           | Kind             | Whose shape it is                                                                                                           |
-|-------------------------------------|------------------|-----------------------------------------------------------------------------------------------------------------------------|
-| `server/http`                       | server           | the process: bind, serve, drain, and its own probes                                                                         |
-| `server/grpc`                       | server           | the same, for gRPC                                                                                                          |
-| `errors/http`                       | mapping          | a sentinel to a status code, and back                                                                                       |
-| `errors/grpc`                       | mapping          | a sentinel to a gRPC code, and back                                                                                         |
-| `filtering/grpc`                    | wire conversion  | `QueryFilter` and `Pagination` to their generated messages                                                                  |
-| `authorization/http`                | middleware       | a route's declared requirement, checked before it runs                                                                      |
-| `authorization/grpc`                | middleware       | the same, as interceptors                                                                                                   |
-| `cryptography/requestsigning/http`  | middleware       | a signature verified before the handler runs                                                                                |
-| `idempotency/http`                  | middleware       | the `Idempotency-Key` header, both sides of the wire                                                                        |
-| `idempotency/grpc`                  | middleware       | the same, over metadata                                                                                                     |
-| `ratelimiting/http`                 | middleware       | a token per request, 429 when there is none                                                                                 |
-| `ratelimiting/grpc`                 | middleware       | the same, as interceptors                                                                                                   |
-| `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                                         |
-| `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry and its self-service mirror — over `oauth2clients.Service` and `oauth2clients.Store` |
-| `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`                                       |
-| `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`                                           |
-| `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                                            |
+| Transport                           | Kind             | Whose shape it is                                                                               |
+|-------------------------------------|------------------|-------------------------------------------------------------------------------------------------|
+| `server/http`                       | server           | the process: bind, serve, drain, and its own probes                                             |
+| `server/grpc`                       | server           | the same, for gRPC                                                                              |
+| `errors/http`                       | mapping          | a sentinel to a status code, and back                                                           |
+| `errors/grpc`                       | mapping          | a sentinel to a gRPC code, and back                                                             |
+| `filtering/grpc`                    | wire conversion  | `QueryFilter` and `Pagination` to their generated messages                                      |
+| `authorization/http`                | middleware       | a route's declared requirement, checked before it runs                                          |
+| `authorization/grpc`                | middleware       | the same, as interceptors                                                                       |
+| `cryptography/requestsigning/http`  | middleware       | a signature verified before the handler runs                                                    |
+| `idempotency/http`                  | middleware       | the `Idempotency-Key` header, both sides of the wire                                            |
+| `idempotency/grpc`                  | middleware       | the same, over metadata                                                                         |
+| `ratelimiting/http`                 | middleware       | a token per request, 429 when there is none                                                     |
+| `ratelimiting/grpc`                 | middleware       | the same, as interceptors                                                                       |
+| `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                             |
+| `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store` |
+| `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`           |
+| `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`               |
+| `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                |
 <!-- /readmegen:transports -->
 
 The middleware rows carry nothing domain-shaped: they read a header or a claim

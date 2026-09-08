@@ -92,18 +92,3 @@ func creationInputFromProto(in *oauth2clientspb.OAuth2ClientCreationInput) *oaut
 		Scopes:       in.GetScopes(),
 	}
 }
-
-// updateInputFromProto reads a revision request. Nil is nil, for the reason
-// creationInputFromProto gives.
-func updateInputFromProto(in *oauth2clientspb.OAuth2ClientUpdateInput) *oauth2clients.UpdateInput {
-	if in == nil {
-		return nil
-	}
-
-	return &oauth2clients.UpdateInput{
-		Name:         in.GetName(),
-		Description:  in.GetDescription(),
-		RedirectURIs: in.GetRedirectUris(),
-		Scopes:       in.GetScopes(),
-	}
-}

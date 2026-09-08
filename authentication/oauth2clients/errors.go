@@ -95,21 +95,6 @@ var (
 	// somewhere else is exactly the derivation the column rule exists to rule
 	// out. A registration naming no scope adopts the argument's.
 	ErrScopeMismatch = platformerrors.New("oauth2 client scope does not match the scope named")
-
-	// ErrOwnerMismatch is a self-service call against a registration the caller
-	// does not own.
-	//
-	// It is what makes the self-service half safe without a permission: the
-	// grant is "you may manage your own", and this is the check that the row in
-	// front of it is one of theirs.
-	//
-	// It maps to the same status and the same words as [ErrClientNotFound],
-	// deliberately, and exists as a separate sentinel for the log rather than
-	// for the wire: a caller who cannot tell "not yours" from "not there" cannot
-	// walk the registry's identifiers, and an operator reading this process's
-	// logs can still tell which of the two happened. See the mappers, and
-	// oauth2clients/grpc's Server.own.
-	ErrOwnerMismatch = platformerrors.New("oauth2 client belongs to somebody else")
 )
 
 // The two refusals an authorization request meets, and the only two sentinels
@@ -131,6 +116,11 @@ var (
 	// A personal API credential that could sign another person in is an account
 	// takeover with a client_id in front of it, so the owner is checked at the
 	// same point and in the same method as the registry.
+	//
+	// It is the module's only answer to "is this registration this person's".
+	// There was briefly a second, raised by a copy of the comparison in the gRPC
+	// transport's self-service half; that half is gone and [Client.Admits] is
+	// where the question is asked.
 	ErrClientOwnerMismatch = platformerrors.New("this application belongs to another user")
 )
 
