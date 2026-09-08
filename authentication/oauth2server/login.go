@@ -18,6 +18,17 @@ const (
 	FieldTOTPCode = "totp_code"
 )
 
+// FieldClientID is the client_id parameter of an authorization request, under
+// the name a seam reads it off the parsed form with.
+//
+// It is here rather than only in this package's internal parameter list because
+// a SubjectAuthenticator or SubjectResolver that has to know which client the
+// request named — authentication/oauth2clients/authserver is the one in this
+// module — otherwise spells the literal itself, which is the second spelling
+// the three above exist to avoid. It is an alias for that internal name rather
+// than a second constant, so the two cannot disagree.
+const FieldClientID = paramClientID
+
 // DefaultLoginRenderer is the login page this package ships.
 //
 // It exists because the alternative is a package that implements the whole of

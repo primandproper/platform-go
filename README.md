@@ -169,7 +169,7 @@ from today. The rule is what a new package is measured against either way.
 | `primitives-go` | a transport whose shape is not the consumer's             | `compression`, `cookies`, `encoding`, `healthcheck`, `httpclient`, `idempotency`, `routing`, `server`, `webhooks/inbound` |
 | `primitives-go` | the database and schema tooling stores are built with     | `database`, `filtering` |
 | `primitives-go` | the cross-cutting values and utilities both tiers build on | `batching`, `bitmask`, `charset`, `circuitbreaking`, `clock`, `config`, `errors`, `fake`, `files`, `identifiers`, `jobs`, `numbers`, `observability`, `panicking`, `pointer`, `qrcodes`, `random`, `reflection`, `retry`, `tenancy`, `testutils`, `version` |
-| `platform-go`   | a noun with a table, and what it owes                     | `audit`, `authentication/oauth2server/database`, `authentication/passwordreset`, `authentication/webauthn/database`, `authorization/database`, `billing`, `comments`, `cryptography/shredding`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `metering`, `notifications`, `operations`, `outbox`, `retention`, `saga`, `search/sync`, `sessions`, `settings`, `timers`, `uploads/registry`, `waitlists`, `webhooks`, `workqueue` |
+| `platform-go`   | a noun with a table, and what it owes                     | `audit`, `authentication/oauth2clients`, `authentication/oauth2server/database`, `authentication/passwordreset`, `authentication/webauthn/database`, `authorization/database`, `billing`, `comments`, `cryptography/shredding`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `metering`, `notifications`, `operations`, `outbox`, `retention`, `saga`, `search/sync`, `sessions`, `settings`, `timers`, `uploads/registry`, `waitlists`, `webhooks`, `workqueue` |
 | `platform-go`   | a domain flow over another domain's tables                 | `authentication/signin` |
 | `platform-go`   | the composition root that registers both tiers            | `errormappers`, `service` |
 
@@ -295,24 +295,25 @@ For the primitives the original line is unchanged, and it is this:
 Everything below is on the far side of that line, and it is the whole list.
 
 <!-- readmegen:transports -->
-| Transport                          | Kind             | Whose shape it is                                                                     |
-|------------------------------------|------------------|---------------------------------------------------------------------------------------|
-| `server/http`                      | server           | the process: bind, serve, drain, and its own probes                                   |
-| `server/grpc`                      | server           | the same, for gRPC                                                                    |
-| `errors/http`                      | mapping          | a sentinel to a status code, and back                                                 |
-| `errors/grpc`                      | mapping          | a sentinel to a gRPC code, and back                                                   |
-| `filtering/grpc`                   | wire conversion  | `QueryFilter` and `Pagination` to their generated messages                            |
-| `authorization/http`               | middleware       | a route's declared requirement, checked before it runs                                |
-| `authorization/grpc`               | middleware       | the same, as interceptors                                                             |
-| `cryptography/requestsigning/http` | middleware       | a signature verified before the handler runs                                          |
-| `idempotency/http`                 | middleware       | the `Idempotency-Key` header, both sides of the wire                                  |
-| `idempotency/grpc`                 | middleware       | the same, over metadata                                                               |
-| `ratelimiting/http`                | middleware       | a token per request, 429 when there is none                                           |
-| `ratelimiting/grpc`                | middleware       | the same, as interceptors                                                             |
-| `sessions/http`                    | binding          | a signed cookie, whose security properties are ours                                   |
-| `authentication/signin/grpc`       | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service` |
-| `identity/grpc`                    | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`     |
-| `operations/http`                  | resource surface | poll, list, cancel, subscribe — over `Operation`                                      |
+| Transport                           | Kind             | Whose shape it is                                                                                                           |
+|-------------------------------------|------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| `server/http`                       | server           | the process: bind, serve, drain, and its own probes                                                                         |
+| `server/grpc`                       | server           | the same, for gRPC                                                                                                          |
+| `errors/http`                       | mapping          | a sentinel to a status code, and back                                                                                       |
+| `errors/grpc`                       | mapping          | a sentinel to a gRPC code, and back                                                                                         |
+| `filtering/grpc`                    | wire conversion  | `QueryFilter` and `Pagination` to their generated messages                                                                  |
+| `authorization/http`                | middleware       | a route's declared requirement, checked before it runs                                                                      |
+| `authorization/grpc`                | middleware       | the same, as interceptors                                                                                                   |
+| `cryptography/requestsigning/http`  | middleware       | a signature verified before the handler runs                                                                                |
+| `idempotency/http`                  | middleware       | the `Idempotency-Key` header, both sides of the wire                                                                        |
+| `idempotency/grpc`                  | middleware       | the same, over metadata                                                                                                     |
+| `ratelimiting/http`                 | middleware       | a token per request, 429 when there is none                                                                                 |
+| `ratelimiting/grpc`                 | middleware       | the same, as interceptors                                                                                                   |
+| `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                                         |
+| `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry and its self-service mirror — over `oauth2clients.Service` and `oauth2clients.Store` |
+| `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`                                       |
+| `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`                                           |
+| `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                                            |
 <!-- /readmegen:transports -->
 
 The middleware rows carry nothing domain-shaped: they read a header or a claim
@@ -359,6 +360,7 @@ construction, never a partial store or a migration that creates nothing.
 | Package                                | Postgres | MySQL | SQLite |
 |----------------------------------------|----------|-------|--------|
 | `audit`                                | ✓        | ✓     | ✓      |
+| `authentication/oauth2clients`         | ✓        | ✓     | ✓      |
 | `authentication/oauth2server/database` | ✓        | ✓     | ✓      |
 | `authentication/passwordreset`         | ✓        | ✓     | ✓      |
 | `authentication/webauthn/database`     | ✓        | ✓     | ✓      |
