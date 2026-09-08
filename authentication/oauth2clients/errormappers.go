@@ -51,13 +51,7 @@ var (
 // you are, the other says it is not yours. Without this a person is told
 // "PermissionDenied" for both and their administrator has to guess which.
 //
-// ErrOwnerMismatch shares their code and is deliberately not here. It is the
-// answer to an API call somebody made against a registration they do not own,
-// where the caller is a program rather than a person, and its wording names an
-// arrangement — that clients belong to people — which is not something a
-// refused API caller has earned being told.
-//
-// None of these names a registry, a person, or another client.
+// Neither names a registry, a person, or another client.
 var ClientSafeSentinels = []error{
 	ErrClientScopeMismatch,
 	ErrClientOwnerMismatch,
@@ -95,16 +89,6 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrScopeMismatch):
 		return httperrors.ErrValidatingRequestInput, "the client does not belong to that scope", true
 
-	// The self-service half's refusal, and it is deliberately the *same answer*
-	// as ErrClientNotFound above rather than a 403 beside it — the same code and
-	// the same words. A distinct code is an enumeration oracle no matching
-	// message closes: a caller walking identifiers learns which ones exist and
-	// belong to somebody else from the status line alone, and row identifiers
-	// are xid, which is sequential. Which of the two it was is in this process's
-	// logs, where [Server.own]'s wrapped sentinel records it.
-	case errors.Is(err, ErrOwnerMismatch):
-		return httperrors.ErrDataNotFound, "no such oauth2 client", true
-
 	// The two refusals on authority that a person meets in a browser. Both are
 	// 403: the caller is who they say they are and this registration is not
 	// theirs to authorize through.
@@ -123,11 +107,9 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	}
 
 	switch {
-	// ErrOwnerMismatch answers alongside ErrClientNotFound rather than with a
-	// code of its own, for the reason the HTTP mapper gives: telling "not yours"
-	// from "does not exist" is the enumeration this half refuses to be, and the
-	// code discloses it whatever the message says.
-	case errors.Is(err, ErrClientNotFound), errors.Is(err, ErrOwnerMismatch):
+	// One answer for absent, archived and in another registry, for the reason
+	// the HTTP mapper gives above.
+	case errors.Is(err, ErrClientNotFound):
 		return codes.NotFound, true
 
 	// AlreadyExists rather than Aborted, because the collision is on a unique
@@ -145,8 +127,8 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	// would send a give-up path down the retry-with-credentials branch.
 	//
 	// Disclosing that the registration exists is the point here, unlike the
-	// self-service read above: these two are what a person is told after they
-	// have signed in, about a client whose name they are looking at.
+	// read above: these two are what a person is told after they have signed
+	// in, about a client whose name they are looking at.
 	case errors.Is(err, ErrClientScopeMismatch), errors.Is(err, ErrClientOwnerMismatch):
 		return codes.PermissionDenied, true
 	default:

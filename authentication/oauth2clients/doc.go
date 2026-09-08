@@ -40,9 +40,32 @@ So an infrastructural client is Global with no owner; a personal one is a scope
 and an owner; a tenant's own service integration is a scope and no owner. Each
 field that is filled in adds a predicate to [Client.Admits] and none of them
 removes one, which is the property a boolean would have lost: there is no
-setting here whose effect is to switch a check off. Which arrangement a caller
-may *write* is a permission, decided in the transport, and not a field on the
-request — see authentication/oauth2clients/grpc.
+setting here whose effect is to switch a check off.
+
+# Only one of the two has a transport here
+
+Both arrangements are this package's. Only the first has a shipped gRPC surface.
+
+[Service.CreateClient] takes an owner and [Store.ListClientsForOwner] pages by
+one, so a personal credential is minted, read and withdrawn through the Go API
+exactly as an infrastructural one is. What authentication/oauth2clients/grpc
+serves is the administered four — create, get, list, archive — every one of them
+behind a grant.
+
+That is a decision about consumers rather than about the model. The transport
+briefly carried a self-service mirror of five operations, reachable behind no
+permission at all on the theory that owning the row is the authorization; a diff
+against the consumer the package was drawn from found it answered nobody. Five
+permissionless RPCs are the surface with the most ways to be wrong, and the ones
+here were being maintained and audited for no caller, so they went before
+anything consumed the package. Nothing in the schema went with them — the column,
+its index and the owner-keyed read are all still here — so the mirror is
+re-addable without a migration, and the .proto records the shape it would have to
+take.
+
+A deployment that wants a personal-credential surface today writes it over
+[Service] and [Store], and decides for itself whether "you may manage your own"
+is a grant its policy names.
 
 # Two tables, deliberately
 

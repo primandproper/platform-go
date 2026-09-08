@@ -62,12 +62,6 @@ func TestMappers(T *testing.T) {
 			httpMsg:  "the client does not belong to that scope",
 			grpcCode: codes.InvalidArgument,
 		},
-		"owner mismatch": {
-			err:      oauth2clients.ErrOwnerMismatch,
-			httpCode: httperrors.ErrDataNotFound,
-			httpMsg:  "no such oauth2 client",
-			grpcCode: codes.NotFound,
-		},
 		"the client is not registered where the person is": {
 			err:      oauth2clients.ErrClientScopeMismatch,
 			httpCode: httperrors.ErrUserIsNotAuthorized,
@@ -124,7 +118,6 @@ func TestTheTwoMappersCoverTheSameSentinels(T *testing.T) {
 		oauth2clients.ErrNoRedirectURIs,
 		oauth2clients.ErrInvalidRedirectURI,
 		oauth2clients.ErrScopeMismatch,
-		oauth2clients.ErrOwnerMismatch,
 		oauth2clients.ErrClientScopeMismatch,
 		oauth2clients.ErrClientOwnerMismatch,
 	} {
@@ -134,34 +127,6 @@ func TestTheTwoMappersCoverTheSameSentinels(T *testing.T) {
 		test.EqOp(T, claimedByHTTP, claimedByGRPC,
 			test.Sprintf("%v is claimed by one mapper and not the other", err))
 	}
-}
-
-// TestTheSelfServiceRefusalIsIndistinguishableFromAbsence is the anti-
-// enumeration property, at the layer that decides it.
-//
-// A caller who can tell "somebody else's" from "does not exist" can walk the
-// registry's identifiers and learn which ones exist — and a row identifier here
-// is an xid, which is sequential enough to walk. Matching the two messages does
-// not close that on its own; the status has to match too, on both transports.
-func TestTheSelfServiceRefusalIsIndistinguishableFromAbsence(T *testing.T) {
-	T.Parallel()
-
-	absentCode, absentMsg, ok := oauth2clients.HTTPMapper.Map(oauth2clients.ErrClientNotFound)
-	must.True(T, ok)
-
-	mismatchCode, mismatchMsg, ok := oauth2clients.HTTPMapper.Map(oauth2clients.ErrOwnerMismatch)
-	must.True(T, ok)
-
-	test.EqOp(T, absentCode, mismatchCode)
-	test.EqOp(T, absentMsg, mismatchMsg)
-
-	absentGRPC, ok := oauth2clients.GRPCMapper.Map(oauth2clients.ErrClientNotFound)
-	must.True(T, ok)
-
-	mismatchGRPC, ok := oauth2clients.GRPCMapper.Map(oauth2clients.ErrOwnerMismatch)
-	must.True(T, ok)
-
-	test.EqOp(T, absentGRPC, mismatchGRPC)
 }
 
 func TestMappersDeclineWhatIsNotTheirs(T *testing.T) {
@@ -219,8 +184,7 @@ func TestMappersDeclineWhatIsNotTheirs(T *testing.T) {
 // They are the two an authorization request meets, and only those two: both are
 // PermissionDenied and so indistinguishable by code, both are written in the
 // second person for somebody staring at a browser, and each has a different
-// remedy. ErrOwnerMismatch shares their code and is deliberately absent — its
-// wording names an arrangement a refused API caller has not earned being told.
+// remedy.
 func TestClientSafeSentinels(T *testing.T) {
 	T.Parallel()
 
@@ -238,8 +202,6 @@ func TestClientSafeSentinels(T *testing.T) {
 	// Compared by identity rather than by errors.Is: the question is which
 	// sentinels a server sends verbatim, and a wrapper of a listed one is not a
 	// listed one.
-	test.False(T, slices.Contains(oauth2clients.ClientSafeSentinels, oauth2clients.ErrOwnerMismatch),
-		test.Sprint("ErrOwnerMismatch names the ownership arrangement and is not for a refused caller"))
 	test.False(T, slices.Contains(oauth2clients.ClientSafeSentinels, oauth2clients.ErrClientNotFound),
 		test.Sprint("ErrClientNotFound would confirm which identifiers exist"))
 }

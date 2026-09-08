@@ -23,20 +23,6 @@ import (
 // database's: not a sentinel, so no mapper claims it.
 var broken = platformerrors.New("the registry is unreachable")
 
-// callerRow is what a read answers with when a case needs the ownership check to
-// pass before the write it is actually about.
-func callerRow(id string) *oauth2clients.Client {
-	return &oauth2clients.Client{
-		Scope:         testScope,
-		BelongsToUser: testOwner,
-		ID:            id,
-		ClientID:      "cid_" + id,
-		SecretHash:    "digest",
-		Name:          "test client",
-		RedirectURIs:  []string{testRedirect},
-	}
-}
-
 // faultyServer is the surface over a store that fails the way the mock is
 // configured to, and over a real transaction so the writes reach it.
 func faultyServer(tb testing.TB, store *oauth2clientsmock.StoreMock) *oauth2clientsgrpc.Server {
@@ -67,36 +53,13 @@ func everythingFails() *oauth2clientsmock.StoreMock {
 		) (*filtering.QueryFilteredResult[oauth2clients.Client], error) {
 			return nil, broken
 		},
-		ListClientsForOwnerFunc: func(
-			context.Context, database.SQLQueryExecutor, tenancy.Scope, string, *filtering.QueryFilter,
-		) (*filtering.QueryFilteredResult[oauth2clients.Client], error) {
-			return nil, broken
-		},
 		CreateClientFunc: func(context.Context, database.Tx, tenancy.Scope, *oauth2clients.Client) error {
-			return broken
-		},
-		UpdateClientFunc: func(
-			context.Context, database.Tx, tenancy.Scope, string, *oauth2clients.UpdateInput,
-		) error {
 			return broken
 		},
 		ArchiveClientFunc: func(context.Context, database.Tx, tenancy.Scope, string) error {
 			return broken
 		},
 	}
-}
-
-// onlyTheWritesFail reads back the caller's own row, so the three methods that
-// check ownership before writing get past that check and fail at the write.
-func onlyTheWritesFail() *oauth2clientsmock.StoreMock {
-	store := everythingFails()
-	store.GetClientFunc = func(
-		_ context.Context, _ database.SQLQueryExecutor, _ tenancy.Scope, id string,
-	) (*oauth2clients.Client, error) {
-		return callerRow(id), nil
-	}
-
-	return store
 }
 
 // TestABrokenRegistryFailsEveryRPC is the failure with no considered answer, and
@@ -128,48 +91,9 @@ func TestABrokenRegistryFailsEveryRPC(T *testing.T) {
 
 			return err
 		},
-		"update": func(ctx context.Context, s *oauth2clientsgrpc.Server) error {
-			_, err := s.UpdateOAuth2Client(ctx, &oauth2clientspb.UpdateOAuth2ClientRequest{
-				Oauth2ClientId: "row_1",
-				Input:          updateInput("renamed"),
-			})
-
-			return err
-		},
 		"archive": func(ctx context.Context, s *oauth2clientsgrpc.Server) error {
 			_, err := s.ArchiveOAuth2Client(ctx,
 				&oauth2clientspb.ArchiveOAuth2ClientRequest{Oauth2ClientId: "row_1"})
-
-			return err
-		},
-		"create own": func(ctx context.Context, s *oauth2clientsgrpc.Server) error {
-			_, err := s.CreateOwnOAuth2Client(ctx,
-				&oauth2clientspb.CreateOwnOAuth2ClientRequest{Input: creationInput()})
-
-			return err
-		},
-		"get own": func(ctx context.Context, s *oauth2clientsgrpc.Server) error {
-			_, err := s.GetOwnOAuth2Client(ctx,
-				&oauth2clientspb.GetOwnOAuth2ClientRequest{Oauth2ClientId: "row_1"})
-
-			return err
-		},
-		"list own": func(ctx context.Context, s *oauth2clientsgrpc.Server) error {
-			_, err := s.ListOwnOAuth2Clients(ctx, &oauth2clientspb.ListOwnOAuth2ClientsRequest{})
-
-			return err
-		},
-		"update own": func(ctx context.Context, s *oauth2clientsgrpc.Server) error {
-			_, err := s.UpdateOwnOAuth2Client(ctx, &oauth2clientspb.UpdateOwnOAuth2ClientRequest{
-				Oauth2ClientId: "row_1",
-				Input:          updateInput("renamed"),
-			})
-
-			return err
-		},
-		"archive own": func(ctx context.Context, s *oauth2clientsgrpc.Server) error {
-			_, err := s.ArchiveOwnOAuth2Client(ctx,
-				&oauth2clientspb.ArchiveOwnOAuth2ClientRequest{Oauth2ClientId: "row_1"})
 
 			return err
 		},
@@ -190,48 +114,6 @@ func TestABrokenRegistryFailsEveryRPC(T *testing.T) {
 			test.EqOp(t, codes.Internal, status.Code(err))
 		})
 	}
-}
-
-// TestTheSelfServiceWritesFailAtTheWriteRatherThanAtTheCheck is the branch the
-// case above cannot reach.
-//
-// Both of these read the row and compare its owner before they write, so a store
-// that fails the read never gets to the write — and the write's own failure
-// would go unexercised, in the two methods where a swallowed error means a
-// caller told their registration was revised when it was not.
-func TestTheSelfServiceWritesFailAtTheWriteRatherThanAtTheCheck(T *testing.T) {
-	T.Parallel()
-
-	T.Run("update own", func(t *testing.T) {
-		t.Parallel()
-
-		srv := faultyServer(t, onlyTheWritesFail())
-
-		res, err := srv.UpdateOwnOAuth2Client(
-			withPrincipal(t.Context(), &testPrincipal{userID: testOwner, scope: testScope}),
-			&oauth2clientspb.UpdateOwnOAuth2ClientRequest{
-				Oauth2ClientId: "row_1",
-				Input:          updateInput("renamed"),
-			})
-		must.Error(t, err)
-		test.Nil(t, res)
-		test.ErrorIs(t, err, broken)
-		test.EqOp(t, codes.Internal, status.Code(err))
-	})
-
-	T.Run("archive own", func(t *testing.T) {
-		t.Parallel()
-
-		srv := faultyServer(t, onlyTheWritesFail())
-
-		res, err := srv.ArchiveOwnOAuth2Client(
-			withPrincipal(t.Context(), &testPrincipal{userID: testOwner, scope: testScope}),
-			&oauth2clientspb.ArchiveOwnOAuth2ClientRequest{Oauth2ClientId: "row_1"})
-		must.Error(t, err)
-		test.Nil(t, res)
-		test.ErrorIs(t, err, broken)
-		test.EqOp(t, codes.Internal, status.Code(err))
-	})
 }
 
 // TestASentinelFromTheStoreOutranksTheHandlersDefault is the other half of the

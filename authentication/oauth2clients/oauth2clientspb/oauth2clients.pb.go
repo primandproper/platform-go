@@ -1,6 +1,6 @@
 // Package primandproper.platform.oauth2clients.v1 is the wire schema for an
-// administered registry of OAuth2 clients: the registrations an operator or a
-// person creates on purpose, listed, revised and withdrawn.
+// administered registry of OAuth2 clients: the registrations an operator
+// creates on purpose, listed, read and withdrawn.
 //
 // It is not RFC 7591 dynamic client registration. That is an anonymous POST to
 // /authorize's sibling endpoint, it is served by
@@ -25,29 +25,41 @@
 // generates into. Numbers are never reused and never repurposed: a field that
 // goes away is reserved.
 //
-// # Why there are ten RPCs and not five
+// # Why there are four RPCs
 //
-// Every operation appears twice: once administered, once self-service. They are
-// separate methods rather than one method with an "ownership" field, and the
-// reason is this module's authorization story rather than taste.
+// Because four is what a consumer asked for. This service was drawn from
+// dinnerdonebetter's proto/oauth, which declares create, get, list and archive
+// and nothing else; the file was diffed against it rather than remembered, and
+// six further methods that had shipped here -- an update, and a self-service
+// mirror of all five operations -- turned out to answer no caller in that
+// repository or any other. They were removed before anything consumed this
+// package.
+//
+// The self-service half is the one worth recording, because it was not merely
+// unused. Its five methods were reachable behind no permission at all, on the
+// theory that owning the row is the authorization, which made them the surface
+// in this package with the most ways to be wrong and the fewest readers checking.
+// Surface nobody asked for is not free, and permissionless surface nobody asked
+// for is the expensive kind.
+//
+// # If a self-service half is ever wanted
+//
+// The Go API still models the arrangement -- a registration carries an owner,
+// and oauth2clients.Store lists by one -- so what is missing is a transport, and
+// there is a right and a wrong shape for it. The right one is mirrored methods:
+// CreateOAuth2Client and a separate CreateOwnOAuth2Client, so the decision is on
+// the method name.
 //
 // A consumer's interceptor gates an RPC by its full method name, and it runs
 // before the request body is parsed -- see
 // github.com/primandproper/platform-go/v14/authorization/grpc. A single
-// CreateOAuth2Client whose required permission depended on a field would be one
-// the enforcer could not gate: it would have to be declared public and gate
-// itself, which is the arrangement that puts an authorization decision somewhere
-// nobody auditing the permission map can see it.
-//
-// Mirrored, the decision is back on the method name. Creating a client that
-// belongs to nobody is CreateOAuth2Client and needs a grant; creating one of
-// your own is CreateOwnOAuth2Client and needs none, because owning it is the
-// authorization.
-//
-// The other shape considered and rejected was one set of RPCs that silently
-// narrows to the caller's own rows when they hold no grant. That is the
-// antipattern oauth2server names about scopes: silently narrowing hands back an
-// answer that looks like the one that was asked for and is not.
+// CreateOAuth2Client whose required permission depended on an "ownership" field
+// would be one the enforcer could not gate: it would have to be declared public
+// and gate itself, which is the arrangement that puts an authorization decision
+// somewhere nobody auditing the permission map can see it. The other shape, one
+// set of RPCs that silently narrows to the caller's own rows when they hold no
+// grant, is the antipattern oauth2server names about scopes: silently narrowing
+// hands back an answer that looks like the one that was asked for and is not.
 //
 // # What is not here, and why
 //
@@ -61,14 +73,16 @@
 // output-only: a response carries it so a console can show who owns a row.
 //
 // No client_secret on OAuth2Client. The plaintext exists on exactly one message
-// -- [IssuedOAuth2Client], returned by the two creation RPCs -- because a field
-// that is populated once and empty on every other read is the field that ends up
-// in a log. It is not recoverable: what the row holds is a digest, and losing a
+// -- [IssuedOAuth2Client], returned by the creation RPC -- because a field that
+// is populated once and empty on every other read is the field that ends up in a
+// log. It is not recoverable: what the row holds is a digest, and losing a
 // secret means archiving the registration and minting another.
 //
-// No update to the owner, the client_id or the secret. The first two are
-// immutable facts about a row, and the third is a call that hands back a new
-// credential rather than an UPDATE nobody sees.
+// No update of any kind. A registration's descriptive fields are revisable
+// through the Go API and no consumer has asked to revise them over the wire; the
+// owner, the client_id and the secret are not revisable at all, the first two
+// because they are immutable facts about a row and the third because rotating it
+// is a call that hands back a new credential rather than an UPDATE nobody sees.
 
 // Code generated by protoc-gen-go. DO NOT EDIT.
 // versions:
@@ -103,7 +117,8 @@ type OAuth2Client struct {
 	// created_at is when the registration was accepted, assigned by the database.
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// last_updated_at is when it was last revised, unset for one nobody has
-	// touched since it was created.
+	// touched since it was created. No RPC here revises one; a deployment that
+	// does so through the Go API is what fills this in.
 	LastUpdatedAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=last_updated_at,json=lastUpdatedAt,proto3" json:"last_updated_at,omitempty"`
 	// archived_at is when it was withdrawn, unset while it is live. Withdrawn
 	// rather than deleted: a client_id names tokens that may still be live.
@@ -128,7 +143,8 @@ type OAuth2Client struct {
 	// outside this set is rejected rather than silently narrowed.
 	Scopes []string `protobuf:"bytes,9,rep,name=scopes,proto3" json:"scopes,omitempty"`
 	// belongs_to_user is who owns this registration, empty for one the deployment
-	// administers on behalf of nobody. Output only: no request carries it.
+	// administers on behalf of nobody. Output only: no request carries it, and no
+	// RPC here mints one that is anybody's.
 	BelongsToUser string `protobuf:"bytes,10,opt,name=belongs_to_user,json=belongsToUser,proto3" json:"belongs_to_user,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -235,7 +251,7 @@ func (x *OAuth2Client) GetBelongsToUser() string {
 }
 
 // IssuedOAuth2Client is the one message in this schema that carries a
-// credential, returned by exactly the two creation RPCs.
+// credential, returned by exactly the creation RPC.
 type IssuedOAuth2Client struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Client *OAuth2Client          `protobuf:"bytes,1,opt,name=client,proto3" json:"client,omitempty"`
@@ -366,76 +382,6 @@ func (x *OAuth2ClientCreationInput) GetScopes() []string {
 	return nil
 }
 
-// OAuth2ClientUpdateInput is what a caller may revise: the four descriptive
-// fields, and nothing else.
-type OAuth2ClientUpdateInput struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
-	RedirectUris  []string               `protobuf:"bytes,3,rep,name=redirect_uris,json=redirectUris,proto3" json:"redirect_uris,omitempty"`
-	Scopes        []string               `protobuf:"bytes,4,rep,name=scopes,proto3" json:"scopes,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *OAuth2ClientUpdateInput) Reset() {
-	*x = OAuth2ClientUpdateInput{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[3]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *OAuth2ClientUpdateInput) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*OAuth2ClientUpdateInput) ProtoMessage() {}
-
-func (x *OAuth2ClientUpdateInput) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[3]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use OAuth2ClientUpdateInput.ProtoReflect.Descriptor instead.
-func (*OAuth2ClientUpdateInput) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{3}
-}
-
-func (x *OAuth2ClientUpdateInput) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *OAuth2ClientUpdateInput) GetDescription() string {
-	if x != nil {
-		return x.Description
-	}
-	return ""
-}
-
-func (x *OAuth2ClientUpdateInput) GetRedirectUris() []string {
-	if x != nil {
-		return x.RedirectUris
-	}
-	return nil
-}
-
-func (x *OAuth2ClientUpdateInput) GetScopes() []string {
-	if x != nil {
-		return x.Scopes
-	}
-	return nil
-}
-
 type CreateOAuth2ClientRequest struct {
 	state         protoimpl.MessageState     `protogen:"open.v1"`
 	Input         *OAuth2ClientCreationInput `protobuf:"bytes,1,opt,name=input,proto3" json:"input,omitempty"`
@@ -445,7 +391,7 @@ type CreateOAuth2ClientRequest struct {
 
 func (x *CreateOAuth2ClientRequest) Reset() {
 	*x = CreateOAuth2ClientRequest{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[4]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -457,7 +403,7 @@ func (x *CreateOAuth2ClientRequest) String() string {
 func (*CreateOAuth2ClientRequest) ProtoMessage() {}
 
 func (x *CreateOAuth2ClientRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[4]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -470,7 +416,7 @@ func (x *CreateOAuth2ClientRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOAuth2ClientRequest.ProtoReflect.Descriptor instead.
 func (*CreateOAuth2ClientRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{4}
+	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *CreateOAuth2ClientRequest) GetInput() *OAuth2ClientCreationInput {
@@ -489,7 +435,7 @@ type CreateOAuth2ClientResponse struct {
 
 func (x *CreateOAuth2ClientResponse) Reset() {
 	*x = CreateOAuth2ClientResponse{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[5]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -501,7 +447,7 @@ func (x *CreateOAuth2ClientResponse) String() string {
 func (*CreateOAuth2ClientResponse) ProtoMessage() {}
 
 func (x *CreateOAuth2ClientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[5]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -514,7 +460,7 @@ func (x *CreateOAuth2ClientResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateOAuth2ClientResponse.ProtoReflect.Descriptor instead.
 func (*CreateOAuth2ClientResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{5}
+	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *CreateOAuth2ClientResponse) GetIssued() *IssuedOAuth2Client {
@@ -533,7 +479,7 @@ type GetOAuth2ClientRequest struct {
 
 func (x *GetOAuth2ClientRequest) Reset() {
 	*x = GetOAuth2ClientRequest{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[6]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -545,7 +491,7 @@ func (x *GetOAuth2ClientRequest) String() string {
 func (*GetOAuth2ClientRequest) ProtoMessage() {}
 
 func (x *GetOAuth2ClientRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[6]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -558,7 +504,7 @@ func (x *GetOAuth2ClientRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOAuth2ClientRequest.ProtoReflect.Descriptor instead.
 func (*GetOAuth2ClientRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{6}
+	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetOAuth2ClientRequest) GetOauth2ClientId() string {
@@ -577,7 +523,7 @@ type GetOAuth2ClientResponse struct {
 
 func (x *GetOAuth2ClientResponse) Reset() {
 	*x = GetOAuth2ClientResponse{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[7]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -589,7 +535,7 @@ func (x *GetOAuth2ClientResponse) String() string {
 func (*GetOAuth2ClientResponse) ProtoMessage() {}
 
 func (x *GetOAuth2ClientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[7]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -602,7 +548,7 @@ func (x *GetOAuth2ClientResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOAuth2ClientResponse.ProtoReflect.Descriptor instead.
 func (*GetOAuth2ClientResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{7}
+	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetOAuth2ClientResponse) GetResult() *OAuth2Client {
@@ -621,7 +567,7 @@ type ListOAuth2ClientsRequest struct {
 
 func (x *ListOAuth2ClientsRequest) Reset() {
 	*x = ListOAuth2ClientsRequest{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[8]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -633,7 +579,7 @@ func (x *ListOAuth2ClientsRequest) String() string {
 func (*ListOAuth2ClientsRequest) ProtoMessage() {}
 
 func (x *ListOAuth2ClientsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[8]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -646,7 +592,7 @@ func (x *ListOAuth2ClientsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOAuth2ClientsRequest.ProtoReflect.Descriptor instead.
 func (*ListOAuth2ClientsRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{8}
+	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListOAuth2ClientsRequest) GetFilter() *filteringpb.QueryFilter {
@@ -666,7 +612,7 @@ type ListOAuth2ClientsResponse struct {
 
 func (x *ListOAuth2ClientsResponse) Reset() {
 	*x = ListOAuth2ClientsResponse{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[9]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -678,7 +624,7 @@ func (x *ListOAuth2ClientsResponse) String() string {
 func (*ListOAuth2ClientsResponse) ProtoMessage() {}
 
 func (x *ListOAuth2ClientsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[9]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -691,7 +637,7 @@ func (x *ListOAuth2ClientsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOAuth2ClientsResponse.ProtoReflect.Descriptor instead.
 func (*ListOAuth2ClientsResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{9}
+	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListOAuth2ClientsResponse) GetPagination() *filteringpb.Pagination {
@@ -708,102 +654,6 @@ func (x *ListOAuth2ClientsResponse) GetResults() []*OAuth2Client {
 	return nil
 }
 
-type UpdateOAuth2ClientRequest struct {
-	state          protoimpl.MessageState   `protogen:"open.v1"`
-	Oauth2ClientId string                   `protobuf:"bytes,1,opt,name=oauth2_client_id,json=oauth2ClientId,proto3" json:"oauth2_client_id,omitempty"`
-	Input          *OAuth2ClientUpdateInput `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *UpdateOAuth2ClientRequest) Reset() {
-	*x = UpdateOAuth2ClientRequest{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *UpdateOAuth2ClientRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*UpdateOAuth2ClientRequest) ProtoMessage() {}
-
-func (x *UpdateOAuth2ClientRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use UpdateOAuth2ClientRequest.ProtoReflect.Descriptor instead.
-func (*UpdateOAuth2ClientRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *UpdateOAuth2ClientRequest) GetOauth2ClientId() string {
-	if x != nil {
-		return x.Oauth2ClientId
-	}
-	return ""
-}
-
-func (x *UpdateOAuth2ClientRequest) GetInput() *OAuth2ClientUpdateInput {
-	if x != nil {
-		return x.Input
-	}
-	return nil
-}
-
-type UpdateOAuth2ClientResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Result        *OAuth2Client          `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *UpdateOAuth2ClientResponse) Reset() {
-	*x = UpdateOAuth2ClientResponse{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *UpdateOAuth2ClientResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*UpdateOAuth2ClientResponse) ProtoMessage() {}
-
-func (x *UpdateOAuth2ClientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use UpdateOAuth2ClientResponse.ProtoReflect.Descriptor instead.
-func (*UpdateOAuth2ClientResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *UpdateOAuth2ClientResponse) GetResult() *OAuth2Client {
-	if x != nil {
-		return x.Result
-	}
-	return nil
-}
-
 type ArchiveOAuth2ClientRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	Oauth2ClientId string                 `protobuf:"bytes,1,opt,name=oauth2_client_id,json=oauth2ClientId,proto3" json:"oauth2_client_id,omitempty"`
@@ -813,7 +663,7 @@ type ArchiveOAuth2ClientRequest struct {
 
 func (x *ArchiveOAuth2ClientRequest) Reset() {
 	*x = ArchiveOAuth2ClientRequest{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[12]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -825,7 +675,7 @@ func (x *ArchiveOAuth2ClientRequest) String() string {
 func (*ArchiveOAuth2ClientRequest) ProtoMessage() {}
 
 func (x *ArchiveOAuth2ClientRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[12]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -838,7 +688,7 @@ func (x *ArchiveOAuth2ClientRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveOAuth2ClientRequest.ProtoReflect.Descriptor instead.
 func (*ArchiveOAuth2ClientRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{12}
+	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ArchiveOAuth2ClientRequest) GetOauth2ClientId() string {
@@ -856,7 +706,7 @@ type ArchiveOAuth2ClientResponse struct {
 
 func (x *ArchiveOAuth2ClientResponse) Reset() {
 	*x = ArchiveOAuth2ClientResponse{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[13]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -868,7 +718,7 @@ func (x *ArchiveOAuth2ClientResponse) String() string {
 func (*ArchiveOAuth2ClientResponse) ProtoMessage() {}
 
 func (x *ArchiveOAuth2ClientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[13]
+	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -881,455 +731,7 @@ func (x *ArchiveOAuth2ClientResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveOAuth2ClientResponse.ProtoReflect.Descriptor instead.
 func (*ArchiveOAuth2ClientResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{13}
-}
-
-type CreateOwnOAuth2ClientRequest struct {
-	state         protoimpl.MessageState     `protogen:"open.v1"`
-	Input         *OAuth2ClientCreationInput `protobuf:"bytes,1,opt,name=input,proto3" json:"input,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CreateOwnOAuth2ClientRequest) Reset() {
-	*x = CreateOwnOAuth2ClientRequest{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[14]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CreateOwnOAuth2ClientRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CreateOwnOAuth2ClientRequest) ProtoMessage() {}
-
-func (x *CreateOwnOAuth2ClientRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[14]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CreateOwnOAuth2ClientRequest.ProtoReflect.Descriptor instead.
-func (*CreateOwnOAuth2ClientRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{14}
-}
-
-func (x *CreateOwnOAuth2ClientRequest) GetInput() *OAuth2ClientCreationInput {
-	if x != nil {
-		return x.Input
-	}
-	return nil
-}
-
-type CreateOwnOAuth2ClientResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Issued        *IssuedOAuth2Client    `protobuf:"bytes,1,opt,name=issued,proto3" json:"issued,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *CreateOwnOAuth2ClientResponse) Reset() {
-	*x = CreateOwnOAuth2ClientResponse{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[15]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *CreateOwnOAuth2ClientResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*CreateOwnOAuth2ClientResponse) ProtoMessage() {}
-
-func (x *CreateOwnOAuth2ClientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[15]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use CreateOwnOAuth2ClientResponse.ProtoReflect.Descriptor instead.
-func (*CreateOwnOAuth2ClientResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{15}
-}
-
-func (x *CreateOwnOAuth2ClientResponse) GetIssued() *IssuedOAuth2Client {
-	if x != nil {
-		return x.Issued
-	}
-	return nil
-}
-
-type GetOwnOAuth2ClientRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Oauth2ClientId string                 `protobuf:"bytes,1,opt,name=oauth2_client_id,json=oauth2ClientId,proto3" json:"oauth2_client_id,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *GetOwnOAuth2ClientRequest) Reset() {
-	*x = GetOwnOAuth2ClientRequest{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[16]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetOwnOAuth2ClientRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetOwnOAuth2ClientRequest) ProtoMessage() {}
-
-func (x *GetOwnOAuth2ClientRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[16]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetOwnOAuth2ClientRequest.ProtoReflect.Descriptor instead.
-func (*GetOwnOAuth2ClientRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{16}
-}
-
-func (x *GetOwnOAuth2ClientRequest) GetOauth2ClientId() string {
-	if x != nil {
-		return x.Oauth2ClientId
-	}
-	return ""
-}
-
-type GetOwnOAuth2ClientResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Result        *OAuth2Client          `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *GetOwnOAuth2ClientResponse) Reset() {
-	*x = GetOwnOAuth2ClientResponse{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[17]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *GetOwnOAuth2ClientResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*GetOwnOAuth2ClientResponse) ProtoMessage() {}
-
-func (x *GetOwnOAuth2ClientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[17]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use GetOwnOAuth2ClientResponse.ProtoReflect.Descriptor instead.
-func (*GetOwnOAuth2ClientResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{17}
-}
-
-func (x *GetOwnOAuth2ClientResponse) GetResult() *OAuth2Client {
-	if x != nil {
-		return x.Result
-	}
-	return nil
-}
-
-type ListOwnOAuth2ClientsRequest struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	Filter        *filteringpb.QueryFilter `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListOwnOAuth2ClientsRequest) Reset() {
-	*x = ListOwnOAuth2ClientsRequest{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[18]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListOwnOAuth2ClientsRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListOwnOAuth2ClientsRequest) ProtoMessage() {}
-
-func (x *ListOwnOAuth2ClientsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[18]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListOwnOAuth2ClientsRequest.ProtoReflect.Descriptor instead.
-func (*ListOwnOAuth2ClientsRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{18}
-}
-
-func (x *ListOwnOAuth2ClientsRequest) GetFilter() *filteringpb.QueryFilter {
-	if x != nil {
-		return x.Filter
-	}
-	return nil
-}
-
-type ListOwnOAuth2ClientsResponse struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Pagination    *filteringpb.Pagination `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
-	Results       []*OAuth2Client         `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListOwnOAuth2ClientsResponse) Reset() {
-	*x = ListOwnOAuth2ClientsResponse{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[19]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListOwnOAuth2ClientsResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListOwnOAuth2ClientsResponse) ProtoMessage() {}
-
-func (x *ListOwnOAuth2ClientsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[19]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListOwnOAuth2ClientsResponse.ProtoReflect.Descriptor instead.
-func (*ListOwnOAuth2ClientsResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{19}
-}
-
-func (x *ListOwnOAuth2ClientsResponse) GetPagination() *filteringpb.Pagination {
-	if x != nil {
-		return x.Pagination
-	}
-	return nil
-}
-
-func (x *ListOwnOAuth2ClientsResponse) GetResults() []*OAuth2Client {
-	if x != nil {
-		return x.Results
-	}
-	return nil
-}
-
-type UpdateOwnOAuth2ClientRequest struct {
-	state          protoimpl.MessageState   `protogen:"open.v1"`
-	Oauth2ClientId string                   `protobuf:"bytes,1,opt,name=oauth2_client_id,json=oauth2ClientId,proto3" json:"oauth2_client_id,omitempty"`
-	Input          *OAuth2ClientUpdateInput `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *UpdateOwnOAuth2ClientRequest) Reset() {
-	*x = UpdateOwnOAuth2ClientRequest{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[20]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *UpdateOwnOAuth2ClientRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*UpdateOwnOAuth2ClientRequest) ProtoMessage() {}
-
-func (x *UpdateOwnOAuth2ClientRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[20]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use UpdateOwnOAuth2ClientRequest.ProtoReflect.Descriptor instead.
-func (*UpdateOwnOAuth2ClientRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{20}
-}
-
-func (x *UpdateOwnOAuth2ClientRequest) GetOauth2ClientId() string {
-	if x != nil {
-		return x.Oauth2ClientId
-	}
-	return ""
-}
-
-func (x *UpdateOwnOAuth2ClientRequest) GetInput() *OAuth2ClientUpdateInput {
-	if x != nil {
-		return x.Input
-	}
-	return nil
-}
-
-type UpdateOwnOAuth2ClientResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Result        *OAuth2Client          `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *UpdateOwnOAuth2ClientResponse) Reset() {
-	*x = UpdateOwnOAuth2ClientResponse{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[21]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *UpdateOwnOAuth2ClientResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*UpdateOwnOAuth2ClientResponse) ProtoMessage() {}
-
-func (x *UpdateOwnOAuth2ClientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[21]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use UpdateOwnOAuth2ClientResponse.ProtoReflect.Descriptor instead.
-func (*UpdateOwnOAuth2ClientResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{21}
-}
-
-func (x *UpdateOwnOAuth2ClientResponse) GetResult() *OAuth2Client {
-	if x != nil {
-		return x.Result
-	}
-	return nil
-}
-
-type ArchiveOwnOAuth2ClientRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Oauth2ClientId string                 `protobuf:"bytes,1,opt,name=oauth2_client_id,json=oauth2ClientId,proto3" json:"oauth2_client_id,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
-func (x *ArchiveOwnOAuth2ClientRequest) Reset() {
-	*x = ArchiveOwnOAuth2ClientRequest{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[22]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ArchiveOwnOAuth2ClientRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ArchiveOwnOAuth2ClientRequest) ProtoMessage() {}
-
-func (x *ArchiveOwnOAuth2ClientRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[22]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ArchiveOwnOAuth2ClientRequest.ProtoReflect.Descriptor instead.
-func (*ArchiveOwnOAuth2ClientRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{22}
-}
-
-func (x *ArchiveOwnOAuth2ClientRequest) GetOauth2ClientId() string {
-	if x != nil {
-		return x.Oauth2ClientId
-	}
-	return ""
-}
-
-type ArchiveOwnOAuth2ClientResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ArchiveOwnOAuth2ClientResponse) Reset() {
-	*x = ArchiveOwnOAuth2ClientResponse{}
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[23]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ArchiveOwnOAuth2ClientResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ArchiveOwnOAuth2ClientResponse) ProtoMessage() {}
-
-func (x *ArchiveOwnOAuth2ClientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes[23]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ArchiveOwnOAuth2ClientResponse.ProtoReflect.Descriptor instead.
-func (*ArchiveOwnOAuth2ClientResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{23}
+	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZIP(), []int{10}
 }
 
 var File_primandproper_platform_oauth2clients_v1_oauth2clients_proto protoreflect.FileDescriptor
@@ -1358,11 +760,6 @@ const file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDesc =
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12#\n" +
 	"\rredirect_uris\x18\x03 \x03(\tR\fredirectUris\x12\x16\n" +
-	"\x06scopes\x18\x04 \x03(\tR\x06scopes\"\x8c\x01\n" +
-	"\x17OAuth2ClientUpdateInput\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
-	"\vdescription\x18\x02 \x01(\tR\vdescription\x12#\n" +
-	"\rredirect_uris\x18\x03 \x03(\tR\fredirectUris\x12\x16\n" +
 	"\x06scopes\x18\x04 \x03(\tR\x06scopes\"u\n" +
 	"\x19CreateOAuth2ClientRequest\x12X\n" +
 	"\x05input\x18\x01 \x01(\v2B.primandproper.platform.oauth2clients.v1.OAuth2ClientCreationInputR\x05input\"q\n" +
@@ -1378,49 +775,15 @@ const file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDesc =
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12O\n" +
-	"\aresults\x18\x02 \x03(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\aresults\"\x9d\x01\n" +
-	"\x19UpdateOAuth2ClientRequest\x12(\n" +
-	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientId\x12V\n" +
-	"\x05input\x18\x02 \x01(\v2@.primandproper.platform.oauth2clients.v1.OAuth2ClientUpdateInputR\x05input\"k\n" +
-	"\x1aUpdateOAuth2ClientResponse\x12M\n" +
-	"\x06result\x18\x01 \x01(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\x06result\"F\n" +
+	"\aresults\x18\x02 \x03(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\aresults\"F\n" +
 	"\x1aArchiveOAuth2ClientRequest\x12(\n" +
 	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientId\"\x1d\n" +
-	"\x1bArchiveOAuth2ClientResponse\"x\n" +
-	"\x1cCreateOwnOAuth2ClientRequest\x12X\n" +
-	"\x05input\x18\x01 \x01(\v2B.primandproper.platform.oauth2clients.v1.OAuth2ClientCreationInputR\x05input\"t\n" +
-	"\x1dCreateOwnOAuth2ClientResponse\x12S\n" +
-	"\x06issued\x18\x01 \x01(\v2;.primandproper.platform.oauth2clients.v1.IssuedOAuth2ClientR\x06issued\"E\n" +
-	"\x19GetOwnOAuth2ClientRequest\x12(\n" +
-	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientId\"k\n" +
-	"\x1aGetOwnOAuth2ClientResponse\x12M\n" +
-	"\x06result\x18\x01 \x01(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\x06result\"g\n" +
-	"\x1bListOwnOAuth2ClientsRequest\x12H\n" +
-	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filter\"\xc0\x01\n" +
-	"\x1cListOwnOAuth2ClientsResponse\x12O\n" +
-	"\n" +
-	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
-	"pagination\x12O\n" +
-	"\aresults\x18\x02 \x03(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\aresults\"\xa0\x01\n" +
-	"\x1cUpdateOwnOAuth2ClientRequest\x12(\n" +
-	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientId\x12V\n" +
-	"\x05input\x18\x02 \x01(\v2@.primandproper.platform.oauth2clients.v1.OAuth2ClientUpdateInputR\x05input\"n\n" +
-	"\x1dUpdateOwnOAuth2ClientResponse\x12M\n" +
-	"\x06result\x18\x01 \x01(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\x06result\"I\n" +
-	"\x1dArchiveOwnOAuth2ClientRequest\x12(\n" +
-	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientId\" \n" +
-	"\x1eArchiveOwnOAuth2ClientResponse2\xf1\f\n" +
+	"\x1bArchiveOAuth2ClientResponse2\x8d\x05\n" +
 	"\x14OAuth2ClientsService\x12\x9d\x01\n" +
 	"\x12CreateOAuth2Client\x12B.primandproper.platform.oauth2clients.v1.CreateOAuth2ClientRequest\x1aC.primandproper.platform.oauth2clients.v1.CreateOAuth2ClientResponse\x12\x94\x01\n" +
 	"\x0fGetOAuth2Client\x12?.primandproper.platform.oauth2clients.v1.GetOAuth2ClientRequest\x1a@.primandproper.platform.oauth2clients.v1.GetOAuth2ClientResponse\x12\x9a\x01\n" +
-	"\x11ListOAuth2Clients\x12A.primandproper.platform.oauth2clients.v1.ListOAuth2ClientsRequest\x1aB.primandproper.platform.oauth2clients.v1.ListOAuth2ClientsResponse\x12\x9d\x01\n" +
-	"\x12UpdateOAuth2Client\x12B.primandproper.platform.oauth2clients.v1.UpdateOAuth2ClientRequest\x1aC.primandproper.platform.oauth2clients.v1.UpdateOAuth2ClientResponse\x12\xa0\x01\n" +
-	"\x13ArchiveOAuth2Client\x12C.primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientRequest\x1aD.primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientResponse\x12\xa6\x01\n" +
-	"\x15CreateOwnOAuth2Client\x12E.primandproper.platform.oauth2clients.v1.CreateOwnOAuth2ClientRequest\x1aF.primandproper.platform.oauth2clients.v1.CreateOwnOAuth2ClientResponse\x12\x9d\x01\n" +
-	"\x12GetOwnOAuth2Client\x12B.primandproper.platform.oauth2clients.v1.GetOwnOAuth2ClientRequest\x1aC.primandproper.platform.oauth2clients.v1.GetOwnOAuth2ClientResponse\x12\xa3\x01\n" +
-	"\x14ListOwnOAuth2Clients\x12D.primandproper.platform.oauth2clients.v1.ListOwnOAuth2ClientsRequest\x1aE.primandproper.platform.oauth2clients.v1.ListOwnOAuth2ClientsResponse\x12\xa6\x01\n" +
-	"\x15UpdateOwnOAuth2Client\x12E.primandproper.platform.oauth2clients.v1.UpdateOwnOAuth2ClientRequest\x1aF.primandproper.platform.oauth2clients.v1.UpdateOwnOAuth2ClientResponse\x12\xa9\x01\n" +
-	"\x16ArchiveOwnOAuth2Client\x12F.primandproper.platform.oauth2clients.v1.ArchiveOwnOAuth2ClientRequest\x1aG.primandproper.platform.oauth2clients.v1.ArchiveOwnOAuth2ClientResponseBgZegithub.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb;oauth2clientspbb\x06proto3"
+	"\x11ListOAuth2Clients\x12A.primandproper.platform.oauth2clients.v1.ListOAuth2ClientsRequest\x1aB.primandproper.platform.oauth2clients.v1.ListOAuth2ClientsResponse\x12\xa0\x01\n" +
+	"\x13ArchiveOAuth2Client\x12C.primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientRequest\x1aD.primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientResponseBgZegithub.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb;oauth2clientspbb\x06proto3"
 
 var (
 	file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescOnce sync.Once
@@ -1434,82 +797,47 @@ func file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescGZI
 	return file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDescData
 }
 
-var file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_goTypes = []any{
-	(*OAuth2Client)(nil),                   // 0: primandproper.platform.oauth2clients.v1.OAuth2Client
-	(*IssuedOAuth2Client)(nil),             // 1: primandproper.platform.oauth2clients.v1.IssuedOAuth2Client
-	(*OAuth2ClientCreationInput)(nil),      // 2: primandproper.platform.oauth2clients.v1.OAuth2ClientCreationInput
-	(*OAuth2ClientUpdateInput)(nil),        // 3: primandproper.platform.oauth2clients.v1.OAuth2ClientUpdateInput
-	(*CreateOAuth2ClientRequest)(nil),      // 4: primandproper.platform.oauth2clients.v1.CreateOAuth2ClientRequest
-	(*CreateOAuth2ClientResponse)(nil),     // 5: primandproper.platform.oauth2clients.v1.CreateOAuth2ClientResponse
-	(*GetOAuth2ClientRequest)(nil),         // 6: primandproper.platform.oauth2clients.v1.GetOAuth2ClientRequest
-	(*GetOAuth2ClientResponse)(nil),        // 7: primandproper.platform.oauth2clients.v1.GetOAuth2ClientResponse
-	(*ListOAuth2ClientsRequest)(nil),       // 8: primandproper.platform.oauth2clients.v1.ListOAuth2ClientsRequest
-	(*ListOAuth2ClientsResponse)(nil),      // 9: primandproper.platform.oauth2clients.v1.ListOAuth2ClientsResponse
-	(*UpdateOAuth2ClientRequest)(nil),      // 10: primandproper.platform.oauth2clients.v1.UpdateOAuth2ClientRequest
-	(*UpdateOAuth2ClientResponse)(nil),     // 11: primandproper.platform.oauth2clients.v1.UpdateOAuth2ClientResponse
-	(*ArchiveOAuth2ClientRequest)(nil),     // 12: primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientRequest
-	(*ArchiveOAuth2ClientResponse)(nil),    // 13: primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientResponse
-	(*CreateOwnOAuth2ClientRequest)(nil),   // 14: primandproper.platform.oauth2clients.v1.CreateOwnOAuth2ClientRequest
-	(*CreateOwnOAuth2ClientResponse)(nil),  // 15: primandproper.platform.oauth2clients.v1.CreateOwnOAuth2ClientResponse
-	(*GetOwnOAuth2ClientRequest)(nil),      // 16: primandproper.platform.oauth2clients.v1.GetOwnOAuth2ClientRequest
-	(*GetOwnOAuth2ClientResponse)(nil),     // 17: primandproper.platform.oauth2clients.v1.GetOwnOAuth2ClientResponse
-	(*ListOwnOAuth2ClientsRequest)(nil),    // 18: primandproper.platform.oauth2clients.v1.ListOwnOAuth2ClientsRequest
-	(*ListOwnOAuth2ClientsResponse)(nil),   // 19: primandproper.platform.oauth2clients.v1.ListOwnOAuth2ClientsResponse
-	(*UpdateOwnOAuth2ClientRequest)(nil),   // 20: primandproper.platform.oauth2clients.v1.UpdateOwnOAuth2ClientRequest
-	(*UpdateOwnOAuth2ClientResponse)(nil),  // 21: primandproper.platform.oauth2clients.v1.UpdateOwnOAuth2ClientResponse
-	(*ArchiveOwnOAuth2ClientRequest)(nil),  // 22: primandproper.platform.oauth2clients.v1.ArchiveOwnOAuth2ClientRequest
-	(*ArchiveOwnOAuth2ClientResponse)(nil), // 23: primandproper.platform.oauth2clients.v1.ArchiveOwnOAuth2ClientResponse
-	(*timestamppb.Timestamp)(nil),          // 24: google.protobuf.Timestamp
-	(*filteringpb.QueryFilter)(nil),        // 25: primandproper.platform.filtering.v1.QueryFilter
-	(*filteringpb.Pagination)(nil),         // 26: primandproper.platform.filtering.v1.Pagination
+	(*OAuth2Client)(nil),                // 0: primandproper.platform.oauth2clients.v1.OAuth2Client
+	(*IssuedOAuth2Client)(nil),          // 1: primandproper.platform.oauth2clients.v1.IssuedOAuth2Client
+	(*OAuth2ClientCreationInput)(nil),   // 2: primandproper.platform.oauth2clients.v1.OAuth2ClientCreationInput
+	(*CreateOAuth2ClientRequest)(nil),   // 3: primandproper.platform.oauth2clients.v1.CreateOAuth2ClientRequest
+	(*CreateOAuth2ClientResponse)(nil),  // 4: primandproper.platform.oauth2clients.v1.CreateOAuth2ClientResponse
+	(*GetOAuth2ClientRequest)(nil),      // 5: primandproper.platform.oauth2clients.v1.GetOAuth2ClientRequest
+	(*GetOAuth2ClientResponse)(nil),     // 6: primandproper.platform.oauth2clients.v1.GetOAuth2ClientResponse
+	(*ListOAuth2ClientsRequest)(nil),    // 7: primandproper.platform.oauth2clients.v1.ListOAuth2ClientsRequest
+	(*ListOAuth2ClientsResponse)(nil),   // 8: primandproper.platform.oauth2clients.v1.ListOAuth2ClientsResponse
+	(*ArchiveOAuth2ClientRequest)(nil),  // 9: primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientRequest
+	(*ArchiveOAuth2ClientResponse)(nil), // 10: primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientResponse
+	(*timestamppb.Timestamp)(nil),       // 11: google.protobuf.Timestamp
+	(*filteringpb.QueryFilter)(nil),     // 12: primandproper.platform.filtering.v1.QueryFilter
+	(*filteringpb.Pagination)(nil),      // 13: primandproper.platform.filtering.v1.Pagination
 }
 var file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_depIdxs = []int32{
-	24, // 0: primandproper.platform.oauth2clients.v1.OAuth2Client.created_at:type_name -> google.protobuf.Timestamp
-	24, // 1: primandproper.platform.oauth2clients.v1.OAuth2Client.last_updated_at:type_name -> google.protobuf.Timestamp
-	24, // 2: primandproper.platform.oauth2clients.v1.OAuth2Client.archived_at:type_name -> google.protobuf.Timestamp
+	11, // 0: primandproper.platform.oauth2clients.v1.OAuth2Client.created_at:type_name -> google.protobuf.Timestamp
+	11, // 1: primandproper.platform.oauth2clients.v1.OAuth2Client.last_updated_at:type_name -> google.protobuf.Timestamp
+	11, // 2: primandproper.platform.oauth2clients.v1.OAuth2Client.archived_at:type_name -> google.protobuf.Timestamp
 	0,  // 3: primandproper.platform.oauth2clients.v1.IssuedOAuth2Client.client:type_name -> primandproper.platform.oauth2clients.v1.OAuth2Client
 	2,  // 4: primandproper.platform.oauth2clients.v1.CreateOAuth2ClientRequest.input:type_name -> primandproper.platform.oauth2clients.v1.OAuth2ClientCreationInput
 	1,  // 5: primandproper.platform.oauth2clients.v1.CreateOAuth2ClientResponse.issued:type_name -> primandproper.platform.oauth2clients.v1.IssuedOAuth2Client
 	0,  // 6: primandproper.platform.oauth2clients.v1.GetOAuth2ClientResponse.result:type_name -> primandproper.platform.oauth2clients.v1.OAuth2Client
-	25, // 7: primandproper.platform.oauth2clients.v1.ListOAuth2ClientsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	26, // 8: primandproper.platform.oauth2clients.v1.ListOAuth2ClientsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	12, // 7: primandproper.platform.oauth2clients.v1.ListOAuth2ClientsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	13, // 8: primandproper.platform.oauth2clients.v1.ListOAuth2ClientsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	0,  // 9: primandproper.platform.oauth2clients.v1.ListOAuth2ClientsResponse.results:type_name -> primandproper.platform.oauth2clients.v1.OAuth2Client
-	3,  // 10: primandproper.platform.oauth2clients.v1.UpdateOAuth2ClientRequest.input:type_name -> primandproper.platform.oauth2clients.v1.OAuth2ClientUpdateInput
-	0,  // 11: primandproper.platform.oauth2clients.v1.UpdateOAuth2ClientResponse.result:type_name -> primandproper.platform.oauth2clients.v1.OAuth2Client
-	2,  // 12: primandproper.platform.oauth2clients.v1.CreateOwnOAuth2ClientRequest.input:type_name -> primandproper.platform.oauth2clients.v1.OAuth2ClientCreationInput
-	1,  // 13: primandproper.platform.oauth2clients.v1.CreateOwnOAuth2ClientResponse.issued:type_name -> primandproper.platform.oauth2clients.v1.IssuedOAuth2Client
-	0,  // 14: primandproper.platform.oauth2clients.v1.GetOwnOAuth2ClientResponse.result:type_name -> primandproper.platform.oauth2clients.v1.OAuth2Client
-	25, // 15: primandproper.platform.oauth2clients.v1.ListOwnOAuth2ClientsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	26, // 16: primandproper.platform.oauth2clients.v1.ListOwnOAuth2ClientsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	0,  // 17: primandproper.platform.oauth2clients.v1.ListOwnOAuth2ClientsResponse.results:type_name -> primandproper.platform.oauth2clients.v1.OAuth2Client
-	3,  // 18: primandproper.platform.oauth2clients.v1.UpdateOwnOAuth2ClientRequest.input:type_name -> primandproper.platform.oauth2clients.v1.OAuth2ClientUpdateInput
-	0,  // 19: primandproper.platform.oauth2clients.v1.UpdateOwnOAuth2ClientResponse.result:type_name -> primandproper.platform.oauth2clients.v1.OAuth2Client
-	4,  // 20: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.CreateOAuth2Client:input_type -> primandproper.platform.oauth2clients.v1.CreateOAuth2ClientRequest
-	6,  // 21: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.GetOAuth2Client:input_type -> primandproper.platform.oauth2clients.v1.GetOAuth2ClientRequest
-	8,  // 22: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ListOAuth2Clients:input_type -> primandproper.platform.oauth2clients.v1.ListOAuth2ClientsRequest
-	10, // 23: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.UpdateOAuth2Client:input_type -> primandproper.platform.oauth2clients.v1.UpdateOAuth2ClientRequest
-	12, // 24: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ArchiveOAuth2Client:input_type -> primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientRequest
-	14, // 25: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.CreateOwnOAuth2Client:input_type -> primandproper.platform.oauth2clients.v1.CreateOwnOAuth2ClientRequest
-	16, // 26: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.GetOwnOAuth2Client:input_type -> primandproper.platform.oauth2clients.v1.GetOwnOAuth2ClientRequest
-	18, // 27: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ListOwnOAuth2Clients:input_type -> primandproper.platform.oauth2clients.v1.ListOwnOAuth2ClientsRequest
-	20, // 28: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.UpdateOwnOAuth2Client:input_type -> primandproper.platform.oauth2clients.v1.UpdateOwnOAuth2ClientRequest
-	22, // 29: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ArchiveOwnOAuth2Client:input_type -> primandproper.platform.oauth2clients.v1.ArchiveOwnOAuth2ClientRequest
-	5,  // 30: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.CreateOAuth2Client:output_type -> primandproper.platform.oauth2clients.v1.CreateOAuth2ClientResponse
-	7,  // 31: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.GetOAuth2Client:output_type -> primandproper.platform.oauth2clients.v1.GetOAuth2ClientResponse
-	9,  // 32: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ListOAuth2Clients:output_type -> primandproper.platform.oauth2clients.v1.ListOAuth2ClientsResponse
-	11, // 33: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.UpdateOAuth2Client:output_type -> primandproper.platform.oauth2clients.v1.UpdateOAuth2ClientResponse
-	13, // 34: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ArchiveOAuth2Client:output_type -> primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientResponse
-	15, // 35: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.CreateOwnOAuth2Client:output_type -> primandproper.platform.oauth2clients.v1.CreateOwnOAuth2ClientResponse
-	17, // 36: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.GetOwnOAuth2Client:output_type -> primandproper.platform.oauth2clients.v1.GetOwnOAuth2ClientResponse
-	19, // 37: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ListOwnOAuth2Clients:output_type -> primandproper.platform.oauth2clients.v1.ListOwnOAuth2ClientsResponse
-	21, // 38: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.UpdateOwnOAuth2Client:output_type -> primandproper.platform.oauth2clients.v1.UpdateOwnOAuth2ClientResponse
-	23, // 39: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ArchiveOwnOAuth2Client:output_type -> primandproper.platform.oauth2clients.v1.ArchiveOwnOAuth2ClientResponse
-	30, // [30:40] is the sub-list for method output_type
-	20, // [20:30] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	3,  // 10: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.CreateOAuth2Client:input_type -> primandproper.platform.oauth2clients.v1.CreateOAuth2ClientRequest
+	5,  // 11: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.GetOAuth2Client:input_type -> primandproper.platform.oauth2clients.v1.GetOAuth2ClientRequest
+	7,  // 12: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ListOAuth2Clients:input_type -> primandproper.platform.oauth2clients.v1.ListOAuth2ClientsRequest
+	9,  // 13: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ArchiveOAuth2Client:input_type -> primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientRequest
+	4,  // 14: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.CreateOAuth2Client:output_type -> primandproper.platform.oauth2clients.v1.CreateOAuth2ClientResponse
+	6,  // 15: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.GetOAuth2Client:output_type -> primandproper.platform.oauth2clients.v1.GetOAuth2ClientResponse
+	8,  // 16: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ListOAuth2Clients:output_type -> primandproper.platform.oauth2clients.v1.ListOAuth2ClientsResponse
+	10, // 17: primandproper.platform.oauth2clients.v1.OAuth2ClientsService.ArchiveOAuth2Client:output_type -> primandproper.platform.oauth2clients.v1.ArchiveOAuth2ClientResponse
+	14, // [14:18] is the sub-list for method output_type
+	10, // [10:14] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_init() }
@@ -1523,7 +851,7 @@ func file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDesc), len(file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   24,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

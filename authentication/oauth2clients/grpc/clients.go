@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The administered half of the surface: five RPCs over any registration in the
-// caller's registry, each behind a permission.
+// The whole of the surface: four RPCs over any registration in the caller's
+// registry, each behind a permission.
 //
 // Every one of them takes the registry off the caller's principal, and none of
 // them takes an owner at all — an administered registration belongs to nobody,
@@ -118,40 +118,6 @@ func (s *Server) ListOAuth2Clients(
 		Pagination: filteringgrpc.PaginationToProto(page.Pagination),
 		Results:    ClientsToProto(page.Data),
 	}, nil
-}
-
-// UpdateOAuth2Client revises any live registration in the caller's registry.
-func (s *Server) UpdateOAuth2Client(
-	ctx context.Context,
-	request *oauth2clientspb.UpdateOAuth2ClientRequest,
-) (*oauth2clientspb.UpdateOAuth2ClientResponse, error) {
-	ctx, req, done, err := s.caller(ctx, oauth2clientspb.OAuth2ClientsService_UpdateOAuth2Client_FullMethodName)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { done(err) }()
-
-	id := request.GetOauth2ClientId()
-	req.op.Set(clientKey, id)
-
-	input := updateInputFromProto(request.GetInput())
-	if input == nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(oauth2clients.ErrNilInput,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "updating oauth2 client %q", id)
-
-		return nil, err
-	}
-
-	client, err := s.svc.UpdateClient(ctx, req.scope, id, input)
-	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.Internal, "updating oauth2 client %q", id)
-
-		return nil, err
-	}
-
-	return &oauth2clientspb.UpdateOAuth2ClientResponse{Result: ClientToProto(client)}, nil
 }
 
 // ArchiveOAuth2Client withdraws any live registration in the caller's registry.
