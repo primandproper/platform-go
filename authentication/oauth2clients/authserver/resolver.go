@@ -113,10 +113,14 @@ var _ oauth2server.SubjectResolver = (*GuardedResolver)(nil)
 // read. A broken registry is still an error — that is not a refused credential,
 // and there is no form that fixes it.
 type GuardedResolver struct {
-	inner    ScopedSubjectResolver
-	registry oauth2clients.Store
-	client   database.Client
-	o11y     observability.Observer
+	// The registry lookup this seam shares with [Authenticator]. See [guard]:
+	// the two paths to a code run the same procedure up to Admits, and a copy of
+	// it that drifted would leave the other path unguarded — this one, silently,
+	// because a decline here is (nil, nil).
+	guard
+
+	inner ScopedSubjectResolver
+	o11y  observability.Observer
 
 	instruments *metrics.OperationSet
 
@@ -149,7 +153,7 @@ func NewGuardedResolver(
 		return nil, oauth2clients.ErrNilDatabaseClient
 	}
 
-	r := &GuardedResolver{inner: inner, registry: registry, client: client}
+	r := &GuardedResolver{registry: registry, client: client, inner: inner}
 
 	for _, opt := range opts {
 		if opt != nil {
@@ -200,28 +204,20 @@ func (r *GuardedResolver) ResolveSubject(
 			"resolving the registry of an authorization request")
 	}
 
-	clientID := req.FormValue(oauth2server.FieldClientID)
-	if clientID == "" {
-		// No client named. The authorization server has already refused the
-		// request; duplicating that refusal here would be a second place
-		// deciding what a malformed request is.
-		return subject, nil
-	}
-
-	op.Set(clientIDKey, clientID)
-
-	registered, err := r.registry.ResolveClientID(ctx, r.client.Reader(), clientID)
+	// The lookup both paths to a code share, up to but not including Admits. A
+	// broken registry and a client_id this registry never issued are errors on
+	// both paths, and neither is a decline: see [guard.registrationFor].
+	registered, err := r.registrationFor(ctx, op, req)
 	if err != nil {
 		r.instruments.Failed(ctx)
 
-		if platformerrors.Is(err, oauth2clients.ErrClientNotFound) {
-			// Unreachable in a deployment wired as this package documents, and a
-			// bypass in one that is not. See [ErrClientNotRegistered].
-			return nil, op.Error(platformerrors.Wrapf(ErrClientNotRegistered, "oauth2 client %q", clientID),
-				"resolving oauth2 client %q", clientID)
-		}
+		return nil, err
+	}
 
-		return nil, op.Error(err, "resolving oauth2 client %q", clientID)
+	if registered == nil {
+		// No client named, so there is nothing to check the subject against and
+		// the inner resolver's answer stands.
+		return subject, nil
 	}
 
 	if err = registered.Admits(scope, subject.ID); err != nil {

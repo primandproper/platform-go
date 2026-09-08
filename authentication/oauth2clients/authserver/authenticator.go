@@ -62,11 +62,14 @@ type Authenticator struct {
 	// What the options wrote, kept only until the observer is built from it.
 	opts observabilityOptions
 
-	registry oauth2clients.Store
-	client   database.Client
-	o11y     observability.Observer
-	signIn   *signin.Service
-	scopes   ScopeResolver
+	// The registry lookup this seam shares with [GuardedResolver]. See [guard]:
+	// the two paths to a code run the same procedure up to Admits, and a copy of
+	// it that drifted would leave the other path unguarded.
+	guard
+
+	o11y   observability.Observer
+	signIn *signin.Service
+	scopes ScopeResolver
 
 	instruments *metrics.OperationSet
 
@@ -113,9 +116,9 @@ func NewAuthenticator(
 	}
 
 	a := &Authenticator{
-		signIn:   signIn,
 		registry: registry,
 		client:   client,
+		signIn:   signIn,
 		scopes:   GlobalScope,
 		message:  DefaultMismatchMessage,
 	}
@@ -232,16 +235,11 @@ func (a *Authenticator) login(
 // admits checks the registration the request named against the person who just
 // signed in.
 //
-// A request naming no client is left alone: the authorization server has
-// already refused it, before this seam was reached, and duplicating that
-// refusal here would be a second place deciding what a malformed request is.
-//
-// A client_id this registry has never issued is [ErrClientNotRegistered], and
-// fails the request. It is unreachable in a deployment wired as this package
-// documents — the server's own lookup runs through [Store.GetClient] and has
-// already refused an unknown client before this seam is asked anything — and in
-// one that is not it is the misconfiguration that would otherwise skip this
-// check on every request without saying so. See [ErrClientNotRegistered].
+// The lookup is [guard.registrationFor], which both paths to a code share; what
+// is here is the half that is this seam's alone. A nil registration is the check
+// not applying — the request named no client — and every error the lookup makes
+// fails the request, because there is nothing to type that fixes a registry that
+// is down or an authorization server resolving its clients from another table.
 func (a *Authenticator) admits(
 	ctx context.Context,
 	op observability.Operation,
@@ -249,26 +247,21 @@ func (a *Authenticator) admits(
 	scope tenancy.Scope,
 	userID string,
 ) error {
-	clientID := req.FormValue(oauth2server.FieldClientID)
-	if clientID == "" {
+	registered, err := a.registrationFor(ctx, op, req)
+	if err != nil {
+		return err
+	}
+
+	if registered == nil {
 		return nil
 	}
 
-	op.Set(clientIDKey, clientID)
-
-	registered, err := a.registry.ResolveClientID(ctx, a.client.Reader(), clientID)
-	if err != nil {
-		if platformerrors.Is(err, oauth2clients.ErrClientNotFound) {
-			return op.Error(platformerrors.Wrapf(ErrClientNotRegistered, "oauth2 client %q", clientID),
-				"resolving oauth2 client %q", clientID)
-		}
-
-		// A broken registry fails the request rather than re-rendering the
-		// form. There is nothing to type that would fix it.
-		return op.Error(err, "resolving oauth2 client %q", clientID)
-	}
-
 	if err = registered.Admits(scope, userID); err != nil {
+		// The one step the two seams do not share, and the reason they are two
+		// types. A refusal here re-renders the form: the person is still present
+		// and can be told something, which is what [GuardedResolver] declines in
+		// order to reach.
+		//
 		// One message for both refusals, deliberately. A person who may not use
 		// this client has the same thing to do next whether the reason is their
 		// organization or another person's ownership, and telling them which

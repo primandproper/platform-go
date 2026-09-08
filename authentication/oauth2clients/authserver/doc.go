@@ -83,6 +83,15 @@ mismatch would replace an actionable page with an opaque failure. Falling
 through means the person meets the form, signs in, and gets the written answer
 from the authenticator instead.
 
+That last step is the *only* thing the two seams do differently. Everything
+leading up to it — reading the client_id an authorization request names,
+resolving it in the registry, and telling "no client named" apart from "a client
+this registry never issued" — is one procedure, written once, because a second
+copy of it is the one duplication here where drift is a security hole rather than
+an inconsistency: a change made to one copy leaves the other path unguarded, and
+on the resolver's path that is invisible, since a decline and an absent check are
+both (nil, nil). See the unexported guard type in guard.go.
+
 # What this package does not decide
 
 Who may register a client, and in which arrangement — that is
