@@ -381,12 +381,12 @@ func TestService_LoginForToken(T *testing.T) {
 		test.ErrorIs(t, err, hookErr)
 	})
 
-	T.Run("a failing sign-in hook withholds the token", func(t *testing.T) {
+	T.Run("a failing token hook withholds the token", func(t *testing.T) {
 		t.Parallel()
 
 		e := newEnv(t)
 		hookErr := errors.New("the audit log is unwell")
-		e.hooks.signInErr = hookErr
+		e.hooks.issueErr = hookErr
 
 		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
 
@@ -394,6 +394,40 @@ func TestService_LoginForToken(T *testing.T) {
 		// record a sign-in does not issue one.
 		test.Nil(t, signedIn)
 		test.ErrorIs(t, err, hookErr)
+	})
+
+	T.Run("both hooks run, the authentication first", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		// The order is part of the contract: a consumer whose token row
+		// references its authentication row writes both in this transaction.
+		test.Eq(t, []string{"authenticate", "issue"}, e.hooks.calls)
+
+		must.SliceLen(t, 1, e.hooks.authentications)
+		test.EqOp(t, signedIn.Principal, e.hooks.authentications[0].Principal)
+		test.False(t, e.hooks.authentications[0].Administrative)
+	})
+
+	T.Run("a failing authenticate hook withholds the token", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		hookErr := errors.New("the access log is unwell")
+		e.hooks.authErr = hookErr
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+
+		test.Nil(t, signedIn)
+		test.ErrorIs(t, err, hookErr)
+
+		// Both hooks are in one transaction, so the first one failing means the
+		// second never ran and neither row survives.
+		test.SliceEmpty(t, e.hooks.signIns)
 	})
 
 	T.Run("an issuer that fails fails the sign-in", func(t *testing.T) {
@@ -534,5 +568,235 @@ func TestService_AdminLoginForToken(T *testing.T) {
 		// it gets no administrative door, not an open one.
 		_, err := e.svc.AdminLoginForToken(t.Context(), testScope, e.credentials())
 		test.ErrorIs(t, err, signin.ErrAdminLoginDisabled)
+	})
+}
+
+func TestService_Authenticate(T *testing.T) {
+	T.Parallel()
+
+	T.Run("standard", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		principal, err := e.svc.Authenticate(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+		must.NotNil(t, principal)
+
+		test.EqOp(t, e.user.ID, principal.User.ID)
+		test.EqOp(t, e.accountID, principal.ActiveAccountID)
+
+		// The whole point: the credentials were proven and nothing was minted.
+		test.EqOp(t, 0, e.issuer.calls)
+
+		must.SliceLen(t, 1, e.hooks.authentications)
+		test.EqOp(t, principal, e.hooks.authentications[0].Principal)
+		test.False(t, e.hooks.authentications[0].Administrative)
+		test.SliceEmpty(t, e.hooks.signIns)
+		test.SliceEmpty(t, e.hooks.failures)
+	})
+
+	T.Run("by email address", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		principal, err := e.svc.Authenticate(t.Context(), testScope,
+			&signin.Credentials{EmailAddress: "jane@example.com", Password: e.password})
+		must.NoError(t, err)
+		test.EqOp(t, e.user.ID, principal.User.ID)
+	})
+
+	T.Run("no token is minted, so a failing issuer is not consulted", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		e.issuer.err = errors.New("the signing key is unreadable")
+
+		// The sharpest statement of the property. An issuer that cannot issue
+		// fails LoginForToken and is irrelevant here, because this door never
+		// reaches it.
+		principal, err := e.svc.Authenticate(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+		must.NotNil(t, principal)
+		test.EqOp(t, 0, e.issuer.calls)
+	})
+
+	T.Run("a claims builder that fails is not consulted", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t, signin.WithClaimsBuilder(
+			func(context.Context, *identity.Principal) (map[string]any, error) {
+				return nil, errors.New("the claims builder is unwell")
+			}))
+
+		// ClaimsBuilder runs inside mintToken, so it is off this path too.
+		_, err := e.svc.Authenticate(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+	})
+
+	T.Run("an access log sees both doors", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		_, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		_, err = e.svc.Authenticate(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		// Two sign-ins happened and the hook that records one ran twice. A
+		// consumer cannot tell the two doors apart by whether an entry
+		// appeared, which is the property the hook was split to get.
+		must.SliceLen(t, 2, e.hooks.authentications)
+		must.SliceLen(t, 1, e.hooks.signIns)
+	})
+
+	T.Run("the four collapsed refusals answer identically", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		secret := e.enrollTOTP(t)
+
+		cases := map[string]*signin.Credentials{
+			"unknown handle": {Username: "nobody", Password: e.password},
+			"wrong password": {Username: "jane", Password: "not it", TOTPCode: code(t, secret)},
+			"wrong code":     {Username: "jane", Password: e.password, TOTPCode: "000000"},
+		}
+
+		for name, credentials := range cases {
+			principal, err := e.svc.Authenticate(t.Context(), testScope, credentials)
+
+			test.Nil(t, principal, test.Sprintf("%s returned a principal", name))
+			test.ErrorIs(t, err, signin.ErrInvalidCredentials, test.Sprintf("%s", name))
+		}
+	})
+
+	T.Run("an unknown handle still costs a hash", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		stub := &stubAuthenticator{}
+
+		svc, err := signin.NewService(e.client, e.store, stub, e.issuer)
+		must.NoError(t, err)
+
+		_, err = svc.Authenticate(t.Context(), testScope,
+			&signin.Credentials{Username: "nobody", Password: "whatever"})
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+		// The timing defense reaches this door too, because it is the same
+		// code: a handle that names nobody must not be cheaper than one that
+		// does, whichever door was knocked on.
+		test.EqOp(t, 1, stub.hashes)
+		test.EqOp(t, 0, stub.matches)
+	})
+
+	T.Run("a refused attempt reaches the failure hook", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		_, err := e.svc.Authenticate(t.Context(), testScope,
+			&signin.Credentials{Username: "jane", Password: "not it"})
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+		// The same record the token door writes. A refused authentication is a
+		// refused sign-in.
+		must.SliceLen(t, 1, e.hooks.failures)
+		test.EqOp(t, "jane", e.hooks.failures[0].Handle)
+		test.EqOp(t, e.user.ID, e.hooks.failures[0].UserID)
+		test.False(t, e.hooks.failures[0].Administrative)
+		test.SliceEmpty(t, e.hooks.authentications)
+	})
+
+	T.Run("a failing authenticate hook refuses the caller", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		hookErr := errors.New("the access log is unwell")
+		e.hooks.authErr = hookErr
+
+		principal, err := e.svc.Authenticate(t.Context(), testScope, e.credentials())
+
+		// The same direction the token door takes: a service that cannot record
+		// an authentication does not report one.
+		test.Nil(t, principal)
+		test.ErrorIs(t, err, hookErr)
+	})
+
+	T.Run("the principal names the account the credentials asked for", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		credentials := e.credentials()
+		credentials.ActiveAccountID = e.accountID
+
+		principal, err := e.svc.Authenticate(t.Context(), testScope, credentials)
+		must.NoError(t, err)
+		test.EqOp(t, e.accountID, principal.ActiveAccountID)
+	})
+}
+
+func TestService_AdminAuthenticate(T *testing.T) {
+	T.Parallel()
+
+	T.Run("standard", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t, signin.WithAdminServiceRoles("service_admin"))
+		e.setServiceRoles(t, "service_admin")
+		secret := e.enrollTOTP(t)
+
+		credentials := e.credentials()
+		credentials.TOTPCode = code(t, secret)
+
+		principal, err := e.svc.AdminAuthenticate(t.Context(), testScope, credentials)
+		must.NoError(t, err)
+		test.EqOp(t, e.user.ID, principal.User.ID)
+
+		test.EqOp(t, 0, e.issuer.calls)
+
+		must.SliceLen(t, 1, e.hooks.authentications)
+		test.True(t, e.hooks.authentications[0].Administrative)
+		test.SliceEmpty(t, e.hooks.signIns)
+	})
+
+	T.Run("no administrative roles named means no administrative door", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		e.enrollTOTP(t)
+
+		_, err := e.svc.AdminAuthenticate(t.Context(), testScope, e.credentials())
+		test.ErrorIs(t, err, signin.ErrAdminLoginDisabled)
+	})
+
+	T.Run("an administrator without a second factor is refused whatever the policy", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t, signin.WithAdminServiceRoles("service_admin"),
+			signin.WithSecondFactorPolicy(signin.SecondFactorWhenEnrolled))
+		e.setServiceRoles(t, "service_admin")
+
+		// The administrative door's second factor is not configurable, and this
+		// is the policy that would have turned it off if it were.
+		_, err := e.svc.AdminAuthenticate(t.Context(), testScope, e.credentials())
+		test.ErrorIs(t, err, signin.ErrSecondFactorNotEnrolled)
+	})
+
+	T.Run("the role is checked after the password", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t, signin.WithAdminServiceRoles("service_admin"))
+
+		_, err := e.svc.AdminAuthenticate(t.Context(), testScope,
+			&signin.Credentials{Username: "jane", Password: "not it"})
+
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+		test.False(t, errors.Is(err, signin.ErrNotAnAdministrator))
 	})
 }

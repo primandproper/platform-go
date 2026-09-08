@@ -37,10 +37,25 @@ rather than buried here.
 Verifying a password is expensive by design — that is what argon2 is for — and
 none of it happens inside a transaction. A sign-in reads the user on the
 client's reader, compares, resolves the principal, and mints the token; only
-then does it open a transaction, and the only thing in that transaction is
-[Hooks.AfterSignIn]. A consumer's record of a sign-in and the sign-in are the
-same fact, so a hook that cannot commit refuses the sign-in and no token is
-returned.
+then does it open a transaction, and all that transaction holds is
+[Hooks.AfterAuthenticate] and, where a token was minted, [Hooks.AfterIssueToken]
+after it. A consumer's record of a sign-in and the sign-in are the same fact, so
+a hook that cannot commit refuses the sign-in and no token is returned.
+
+# Two events, and the doors that stop between them
+
+Proving a password and issuing a credential are two things, and this package
+used to have one way through both: whoever wanted to know who somebody was had
+to take a token as well and drop it. A token nobody holds is not a disclosure,
+but it is a row in whatever the consumer indexes tokens by that can only age
+out, and work done on every request for a credential with no recipient.
+
+So there are four doors and they stop in two places. [Service.Authenticate] and
+[Service.AdminAuthenticate] stop at the principal. [Service.LoginForToken] and
+[Service.AdminLoginForToken] go on and mint. All four run the same proof in the
+same order and all four run [Hooks.AfterAuthenticate], so an access log cannot
+tell them apart by whether an entry appeared — only the second pair adds
+[Hooks.AfterIssueToken].
 
 The three credential writes are the same shape in reverse: read, verify and
 hash outside, and a transaction that holds the write and the hook together.

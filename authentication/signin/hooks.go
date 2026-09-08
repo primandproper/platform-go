@@ -43,6 +43,38 @@ type FailedSignIn struct {
 	Administrative bool `json:"administrative"`
 }
 
+// Authentication is a proven credential and nothing more: who proved it, and
+// which door they came through.
+//
+// It is the event all four doors share. [Service.Authenticate] produces one and
+// stops; [Service.LoginForToken] produces one and then mints a token for it. So
+// this carries no token, no "jti" and no expiry — those belong to the second
+// event, and they are on [SignIn].
+//
+// Administrative is a field rather than something a hook infers from the
+// principal, for the reason FailedSignIn.Administrative already gives: an
+// administrative authentication is a different event from an ordinary one and
+// usually wants a different alert. Nothing on a Principal says which door it
+// came through.
+//
+// It is a struct rather than two arguments so that a fact added here later is
+// additive for an implementer, which a parameter would not be.
+type Authentication struct {
+	_ struct{} `json:"-"`
+
+	// Principal is who authenticated — the user, redacted, their memberships,
+	// and the account this was resolved against.
+	//
+	// It is the same value SignIn.Principal carries, and it is here for the same
+	// reason: a consumer recording who signed in should not have to read them
+	// again.
+	Principal *identity.Principal `json:"principal"`
+
+	// Administrative reports whether this came through the administrative door —
+	// AdminAuthenticate or AdminLoginForToken — rather than the ordinary one.
+	Administrative bool `json:"administrative"`
+}
+
 // Hooks is what a consumer commits alongside a sign-in, inside the transaction
 // the operation opens.
 //
@@ -53,12 +85,27 @@ type FailedSignIn struct {
 // token is returned — which is the correct direction, because a service that
 // cannot record a sign-in should not be issuing one.
 //
+// # The two events, and the one transaction
+//
+// Proving a password and issuing a credential are two events, and this
+// interface used to have one hook for both. AfterAuthenticate is the first and
+// runs for all four doors; AfterIssueToken is the second and runs only where a
+// token was actually minted.
+//
+// A door that mints runs both, in that order, in one transaction — so a
+// consumer's two rows are one commit and the second may reference the first.
+// Two transactions would be worse than untidy: the first could commit while the
+// second rolled back, leaving an authentication with no token recorded against
+// it, which is exactly what the token-less door legitimately writes. Telling
+// those two apart is the whole reason the hook was split, so the split must not
+// be what makes them indistinguishable.
+//
 // What that costs is worth stating: a hook runs with a write transaction held
 // open, on the path a person is waiting on. Work that is slow, that talks to a
 // network, or that can fail for reasons the sign-in should survive belongs
 // behind an outbox row the hook writes. Sending the "new sign-in from a new
-// device" email from AfterSignIn makes sign-in fail when the mail provider is
-// down.
+// device" email from AfterAuthenticate makes sign-in fail when the mail
+// provider is down.
 //
 // Nothing expensive happens inside that transaction otherwise. The password
 // hash comparison, the second-factor check and the token minting are all done
@@ -74,15 +121,36 @@ type FailedSignIn struct {
 // consumer's audit layer is one type. Embed NoopHooks and override what
 // matters; a method added here later then does not break the embedder.
 type Hooks interface {
-	// AfterSignIn is called with the completed sign-in, its token already
-	// minted, inside the transaction the sign-in opened.
+	// AfterAuthenticate is called with a proven credential, inside the
+	// transaction the operation opened.
+	//
+	// It runs for every door — Authenticate, AdminAuthenticate, LoginForToken
+	// and AdminLoginForToken — which is what makes it the hook an access log
+	// hangs off. "Somebody proved a password" is the event that happened; "a
+	// token came out" is a second one, and a log that recorded only the second
+	// would not show the authorization server's login step at all.
+	//
+	// It sees no credential, which is what makes it the safe one to record from.
+	//
+	// An error rolls back whichever operation called it: an Authenticate caller
+	// is refused, and a LoginForToken caller is given no token.
+	AfterAuthenticate(ctx context.Context, tx database.Tx, scope tenancy.Scope, auth *Authentication) error
+
+	// AfterIssueToken is called with the completed sign-in, its token already
+	// minted, in the same transaction as the AfterAuthenticate that ran just
+	// before it.
 	//
 	// The SignIn is the value the caller is about to receive, token included —
 	// this is the one hook in the module that sees a live credential, because
 	// recording that a token with a given ID was issued is exactly what a
 	// consumer revoking one later needs. Record SignIn.TokenID, not
 	// SignIn.Token.
-	AfterSignIn(ctx context.Context, tx database.Tx, scope tenancy.Scope, signIn *SignIn) error
+	//
+	// It does not run for Authenticate, and that is not an omission: there is no
+	// token there. A revocation list, a session table or a "jti" index that
+	// gained a row for a credential nobody holds would gain a row that can only
+	// age out.
+	AfterIssueToken(ctx context.Context, tx database.Tx, scope tenancy.Scope, signIn *SignIn) error
 
 	// AfterFailedSignIn is called with an attempt that proved nothing, inside a
 	// transaction of its own.
@@ -137,8 +205,15 @@ type NoopHooks struct{}
 
 var _ Hooks = NoopHooks{}
 
-// AfterSignIn does nothing.
-func (NoopHooks) AfterSignIn(context.Context, database.Tx, tenancy.Scope, *SignIn) error { return nil }
+// AfterAuthenticate does nothing.
+func (NoopHooks) AfterAuthenticate(context.Context, database.Tx, tenancy.Scope, *Authentication) error {
+	return nil
+}
+
+// AfterIssueToken does nothing.
+func (NoopHooks) AfterIssueToken(context.Context, database.Tx, tenancy.Scope, *SignIn) error {
+	return nil
+}
 
 // AfterFailedSignIn does nothing.
 func (NoopHooks) AfterFailedSignIn(context.Context, database.Tx, tenancy.Scope, *FailedSignIn) error {

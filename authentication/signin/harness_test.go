@@ -251,23 +251,44 @@ func (f *fakeIssuer) IssueToken(
 }
 
 // recordingHooks records every call, and can be made to fail one of them.
+//
+// calls is the order the hooks ran in, which is the only way to see that a
+// token door runs the authentication hook first — the two slices below record
+// that both ran, and nothing in them records which was first.
 type recordingHooks struct {
-	signin.NoopHooks
-
-	signInErr error
+	authErr   error
+	issueErr  error
 	failedErr error
 
-	signIns  []*signin.SignIn
-	failures []*signin.FailedSignIn
+	calls           []string
+	authentications []*signin.Authentication
+	signIns         []*signin.SignIn
+	failures        []*signin.FailedSignIn
+
+	signin.NoopHooks
+
 	passwords,
 	refreshes,
 	verifications int
 }
 
-func (h *recordingHooks) AfterSignIn(_ context.Context, _ database.Tx, _ tenancy.Scope, s *signin.SignIn) error {
+func (h *recordingHooks) AfterAuthenticate(
+	_ context.Context,
+	_ database.Tx,
+	_ tenancy.Scope,
+	a *signin.Authentication,
+) error {
+	h.calls = append(h.calls, "authenticate")
+	h.authentications = append(h.authentications, a)
+
+	return h.authErr
+}
+
+func (h *recordingHooks) AfterIssueToken(_ context.Context, _ database.Tx, _ tenancy.Scope, s *signin.SignIn) error {
+	h.calls = append(h.calls, "issue")
 	h.signIns = append(h.signIns, s)
 
-	return h.signInErr
+	return h.issueErr
 }
 
 func (h *recordingHooks) AfterFailedSignIn(

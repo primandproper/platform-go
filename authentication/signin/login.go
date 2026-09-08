@@ -11,6 +11,52 @@ import (
 	"github.com/primandproper/platform-go/v14/tenancy"
 )
 
+// Authenticate proves a password — and a second-factor code from a user who
+// holds one — and answers with the principal it proved, minting nothing.
+//
+// It is [Service.LoginForToken] stopped one step short. The same reads in the
+// same order, the same decoy hash on a handle that names nobody, the same four
+// collapsed refusals: it is the same code rather than a second copy of it, so
+// the two doors cannot drift on the parts that matter most. See LoginForToken
+// for why the order is that order.
+//
+// It exists for a caller that needs to know who somebody is and holds nothing
+// afterwards. [github.com/primandproper/platform-go/v14/authentication/oauth2clients/authserver]'s
+// login-form step is the case it was added for: it compares a registration
+// against the person who just proved a password, and a token it would throw
+// away is a row in whatever the consumer indexes tokens by that nobody will
+// ever present.
+//
+// Nothing about issuing is consulted here — not [WithTokenTTL], not
+// [ClaimsBuilder], not the consumer's [TokenIssuer]. [Hooks.AfterAuthenticate]
+// still runs, so this door is not invisible to an access log; it is the same
+// hook the token doors run, in a transaction of the same shape.
+func (s *Service) Authenticate(
+	ctx context.Context,
+	scope tenancy.Scope,
+	credentials *Credentials,
+) (*identity.Principal, error) {
+	return s.authenticate(ctx, scope, credentials, false)
+}
+
+// AdminAuthenticate is Authenticate through the administrative door, and stands
+// to it exactly as [Service.AdminLoginForToken] stands to
+// [Service.LoginForToken]: the caller must hold one of the service roles
+// [WithAdminServiceRoles] named, and must hold a proven second factor whatever
+// the service's policy says.
+//
+// A service that named no administrative roles has no administrative door here
+// either, and every call is [ErrAdminLoginDisabled]. See AdminLoginForToken for
+// why the second factor is not configurable and why the role is checked after
+// the password.
+func (s *Service) AdminAuthenticate(
+	ctx context.Context,
+	scope tenancy.Scope,
+	credentials *Credentials,
+) (*identity.Principal, error) {
+	return s.authenticate(ctx, scope, credentials, true)
+}
+
 // LoginForToken proves a password — and a second-factor code from a user who
 // holds one — and issues a token for the account the caller named.
 //
@@ -29,10 +75,14 @@ import (
 //
 // # What is in a transaction
 //
-// Nothing until the end. Hooks.AfterSignIn runs in a transaction opened after
-// the token exists, and a hook that fails rolls the sign-in back — no token is
-// returned. Everything before it, the password hash included, runs outside any
-// transaction.
+// Nothing until the end. One transaction is opened after the token exists, and
+// it holds [Hooks.AfterAuthenticate] and then [Hooks.AfterIssueToken] — the two
+// events a sign-in is, in the order they happened. A failure in either rolls
+// both back and no token is returned. Everything before it, the password hash
+// included, runs outside any transaction.
+//
+// A caller who wants the first of those two events and not the second wants
+// [Service.Authenticate].
 //
 // # Policy
 //
@@ -76,10 +126,43 @@ func (s *Service) AdminLoginForToken(
 	return s.login(ctx, scope, credentials, true)
 }
 
-// login is both doors. The two differ in four places — the role check, the
-// second-factor requirement, the token lifetime and the flag on what comes back
-// — and are otherwise one flow, so they are one function rather than two copies
-// that could drift on the parts that matter most.
+// authenticate is both doors that stop at the principal.
+func (s *Service) authenticate(
+	ctx context.Context,
+	scope tenancy.Scope,
+	credentials *Credentials,
+	administrative bool,
+) (principal *identity.Principal, err error) {
+	name := opAuthenticate
+	if administrative {
+		name = opAdminAuthenticate
+	}
+
+	ctx, op, done := s.begin(ctx, name,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(adminKey, administrative),
+	)
+	defer func() { done(err) }()
+
+	if principal, err = s.prove(ctx, op, scope, credentials, administrative); err != nil {
+		return nil, err
+	}
+
+	auth := &Authentication{Principal: principal, Administrative: administrative}
+
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		return s.hooks.AfterAuthenticate(ctx, tx, scope, auth)
+	}); err != nil {
+		return nil, op.Error(err, "recording an authentication")
+	}
+
+	return principal, nil
+}
+
+// login is both doors that mint. The two differ in four places — the role
+// check, the second-factor requirement, the token lifetime and the flag on what
+// comes back — and are otherwise one flow, so they are one function rather than
+// two copies that could drift on the parts that matter most.
 func (s *Service) login(
 	ctx context.Context,
 	scope tenancy.Scope,
@@ -97,6 +180,52 @@ func (s *Service) login(
 	)
 	defer func() { done(err) }()
 
+	principal, err := s.prove(ctx, op, scope, credentials, administrative)
+	if err != nil {
+		return nil, err
+	}
+
+	if signIn, err = s.mintToken(ctx, principal, administrative); err != nil {
+		return nil, op.Error(err, "issuing a token")
+	}
+
+	auth := &Authentication{Principal: principal, Administrative: administrative}
+
+	// One transaction for both hooks, in the order the two events happened, so
+	// a consumer's token row may reference its authentication row and neither
+	// outlives the other. See Hooks.
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		if hookErr := s.hooks.AfterAuthenticate(ctx, tx, scope, auth); hookErr != nil {
+			return hookErr
+		}
+
+		return s.hooks.AfterIssueToken(ctx, tx, scope, signIn)
+	}); err != nil {
+		return nil, op.Error(err, "recording a sign-in")
+	}
+
+	return signIn, nil
+}
+
+// prove is every door's one flow: it reads the handle, proves the credentials
+// against it and resolves who they belong to. What the four doors do with the
+// principal it returns is what makes them four rather than one.
+//
+// It takes the operation rather than beginning one, because the caller's
+// deferred done(err) has to see the error the operation actually returns — a
+// hook failure after this returns included — and an operation ended here would
+// have closed before that existed.
+//
+// Everything it returns has already been through op.Error or s.refuse, so its
+// callers return it bare. A second op.Error would put two entries on one span
+// for one refusal.
+func (s *Service) prove(
+	ctx context.Context,
+	op observability.Operation,
+	scope tenancy.Scope,
+	credentials *Credentials,
+	administrative bool,
+) (*identity.Principal, error) {
 	handle, err := credentials.handle()
 	if err != nil {
 		// Refused before anything was looked up, so it is not an attempt at
@@ -145,17 +274,7 @@ func (s *Service) login(
 
 	op.Set(accountIDKey, principal.ActiveAccountID)
 
-	if signIn, err = s.mintToken(ctx, principal, administrative); err != nil {
-		return nil, op.Error(err, "issuing a token")
-	}
-
-	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.hooks.AfterSignIn(ctx, tx, scope, signIn)
-	}); err != nil {
-		return nil, op.Error(err, "recording a sign-in")
-	}
-
-	return signIn, nil
+	return principal, nil
 }
 
 // handle returns the one handle a set of credentials names, refusing both and
