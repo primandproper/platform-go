@@ -361,8 +361,12 @@ func TestAuthenticator(T *testing.T) {
 
 		h := newSignInHarness(t, tenantA)
 
+		// The sign-in service is not the registry's, so its refusal is this
+		// package's own and names the argument that was missing.
 		_, err := authserver.NewAuthenticator(nil, &fakeRegistry{}, h.db)
-		test.ErrorIs(t, err, oauth2clients.ErrNilService)
+		test.ErrorIs(t, err, authserver.ErrNilSignInService)
+		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
+		test.False(t, platformerrors.Is(err, oauth2clients.ErrNilService))
 
 		_, err = authserver.NewAuthenticator(h.svc, nil, h.db)
 		test.ErrorIs(t, err, oauth2clients.ErrNilStore)

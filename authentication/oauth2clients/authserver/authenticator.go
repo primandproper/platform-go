@@ -105,6 +105,19 @@ type Authenticator struct {
 // become a principal yet, so there is nobody to read a scope off, and it has to
 // come off the connection, the host, or a path the deployment chose. See
 // [WithScopeResolver].
+//
+// Observability is optional and defaults to nothing: an unconfigured
+// authenticator logs to a noop logger, traces to a noop provider and counts
+// through a noop metrics provider. It is worth wiring anyway, because what the
+// person sees is deliberately less than what happened: a refused sign-in and a
+// registration that will not admit them are one sentence on one page, and which
+// of them it was lives only in what this seam records.
+//
+// Every [Authenticator.AuthenticateSubject] is one attempt, and an
+// unresolvable scope, a refused sign-in and a refused registration are three
+// failures. The sign-in's own refusals are not counted twice — signin has
+// already counted them, and this seam counts the authorization request it could
+// not complete.
 func NewAuthenticator(
 	signIn *signin.Service,
 	registry oauth2clients.Store,
@@ -112,7 +125,7 @@ func NewAuthenticator(
 	opts ...AuthenticatorOption,
 ) (*Authenticator, error) {
 	if signIn == nil {
-		return nil, oauth2clients.ErrNilService
+		return nil, ErrNilSignInService
 	}
 
 	if registry == nil {
