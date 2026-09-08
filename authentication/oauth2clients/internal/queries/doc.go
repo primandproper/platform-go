@@ -23,10 +23,18 @@ run is keyed on columns the standard set has no place for.
 
 This table is the other case. A registration is a resource in exactly the sense
 that set assumes — it has its own id, it is soft-deleted, and one ownership
-column scopes every statement — so the create, the get, the page, the update and
-the archive are the generated ones, and only three statements are written out
-beside them: the create's read-back of its own creation time, the self-service
-page, and the authorization server's lookup.
+column scopes every statement — so the get, the page, the update and the archive
+are the generated ones.
+
+Two members of the set are omitted and four statements are written out beside
+what remains. The existence check is omitted outright, because nothing here asks
+whether a registration exists without also wanting to read it. The create is
+omitted and replaced: client_id carries a unique index, and the standard insert
+would raise on a collision, which is every backing store parsing a dialect's
+constraint text to tell a duplicate from a broken database. The other three
+authored statements are the ones the standard set has no way to express — the
+create's read-back of its own creation time, the self-service page keyed on the
+scope and the owner both, and the authorization server's lookup.
 
 # The one statement with no scope in it
 

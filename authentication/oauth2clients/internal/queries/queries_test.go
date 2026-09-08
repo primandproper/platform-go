@@ -1,6 +1,7 @@
 package queries
 
 import (
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -323,6 +324,53 @@ func TestRender_OmitsTheStandardExistenceCheckAndCreate(T *testing.T) {
 			create, ok := rendered["CreateRegisteredClient"]
 			must.True(t, ok)
 			test.StrNotContains(t, create, "RETURNING")
+		})
+	}
+}
+
+// TestRender_EmitsTheGeneratedSetAndTheAuthoredStatements is the whole corpus,
+// named, and it is what keeps this package's two descriptions of itself from
+// drifting apart again.
+//
+// The failure it exists for is not a missing statement — TestRender_MatchesTheCommittedFiles
+// and the store's own compilation would both catch that. It is an extra one. A
+// reader who concluded this table authors everything at the statement would
+// hand-write a get, a page or an archive the standard set already emits, and
+// nothing else here would object: an authored statement compiles, renders and
+// regenerates, and the symptom is a second read path answering with different
+// scoping than the first.
+func TestRender_EmitsTheGeneratedSetAndTheAuthoredStatements(T *testing.T) {
+	T.Parallel()
+
+	// What StandardCRUD emits: the standard set less the existence check and
+	// the create that options() omits, and less nothing else.
+	generated := []string{
+		"ArchiveRegisteredClient",
+		"GetRegisteredClient",
+		"ListRegisteredClients",
+		"ListRegisteredClientsDescending",
+		"UpdateRegisteredClient",
+	}
+
+	// What is written out beside it: the insert-ignore that replaces the
+	// standard create, that create's read-back of its own creation time, the
+	// authorization server's lookup, and the self-service page in both
+	// directions.
+	authored := []string{
+		"CreateRegisteredClient",
+		"GetRegisteredClientByClientID",
+		"GetRegisteredClientCreatedAt",
+		"ListRegisteredClientsForOwner",
+		"ListRegisteredClientsForOwnerDescending",
+	}
+
+	expected := slices.Sorted(slices.Values(slices.Concat(generated, authored)))
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			test.Eq(t, expected, slices.Sorted(maps.Keys(statements(t, d))))
 		})
 	}
 }
