@@ -1,9 +1,10 @@
 /*
 Package identity stores the thing being authenticated.
 
-This module ships every engine an application needs to authenticate somebody —
-argon2 hashing, TOTP, WebAuthn, OAuth2, session management, token issuance,
-authorization policy, tenancy — and until now shipped nothing to authenticate.
+The platform ships every engine an application needs to authenticate somebody —
+argon2 hashing, TOTP, WebAuthn, OAuth2 and token issuance in primitives-go,
+session management and authorization tables here — and until this package
+shipped nothing to authenticate.
 Every consumer supplied the User themselves, which meant every consumer wrote
 the schema, the repository, the paging, the soft delete, the scoping, the
 mocks, and the fakes. Measured in one of them that came to roughly eight
@@ -38,9 +39,9 @@ That is the load-bearing decision in this package and it is worth being
 explicit about, because the obvious alternative — identity holds who somebody
 is, authentication holds how they prove it — reads cleaner and is wrong for the
 shape this module already has. The authentication subpackages are engines:
-[github.com/primandproper/platform-go/v14/authentication/argon2] hashes and
-compares, [github.com/primandproper/platform-go/v14/authentication/totp]
-generates and validates, [github.com/primandproper/platform-go/v14/authentication/webauthn]
+[github.com/primandproper/primitives-go/authentication/argon2] hashes and
+compares, [github.com/primandproper/primitives-go/authentication/totp]
+generates and validates, [github.com/primandproper/primitives-go/authentication/webauthn]
 attests. None of them stores anything, none of them wants to, and giving one of
 them a table would mean an application that hashes passwords in a different
 package still ends up with a credential store it did not choose.
@@ -79,7 +80,7 @@ than by whoever called it.
 
 A user with no password is a supported user, not an unfinished one.
 
-This module ships a WebAuthn engine and an OAuth2 one, and a registration
+primitives-go ships a WebAuthn engine and an OAuth2 one, and a registration
 through either produces somebody there is no hash to store for. So
 HashedPassword is not required by [User.ValidateWithContext] and never was
 load-bearing: the check it was written for — catching the caller who forgot to
@@ -93,7 +94,7 @@ The empty string means the user holds no password credential. What it must
 never be read as is "any password will do". This package stores what an engine
 produced and never compares, so that obligation lands on the sign-in flow: ask
 [User.HasPassword] before reaching for
-[github.com/primandproper/platform-go/v14/authentication/argon2], rather than
+[github.com/primandproper/primitives-go/authentication/argon2], rather than
 handing the engine an empty hash and trusting it to error. A user who has no
 password should be refused a password sign-in and sent to the credential they
 do have — which is a different answer from "wrong password", and only the flow
@@ -111,7 +112,7 @@ having an opinion, rather than acquiring the opposite one.
 
 # Scope is not the account
 
-Every row here carries a [github.com/primandproper/platform-go/v14/tenancy.Scope],
+Every row here carries a [github.com/primandproper/primitives-go/tenancy.Scope],
 and every read filters on it — the module's rule, not an exception to it. The
 scope is *not* the account. Accounts are rows in this schema; the scope is
 whoever owns the directory those accounts and users live in.
@@ -200,8 +201,8 @@ forks the first time their answer differs.
 # The transaction is the caller's
 
 Every write in this package takes a
-[github.com/primandproper/platform-go/v14/database.Tx] and every read takes the
-wider [github.com/primandproper/platform-go/v14/database.SQLQueryExecutor]. That
+[github.com/primandproper/primitives-go/database.Tx] and every read takes the
+wider [github.com/primandproper/primitives-go/database.SQLQueryExecutor]. That
 is the module's store convention rather than this package's invention, and
 [Store] carries the argument for it.
 

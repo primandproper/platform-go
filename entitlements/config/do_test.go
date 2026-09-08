@@ -4,13 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/cache"
-	"github.com/primandproper/platform-go/v14/cache/memory"
 	"github.com/primandproper/platform-go/v14/entitlements"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/featureflags"
-	featureflagsnoop "github.com/primandproper/platform-go/v14/featureflags/noop"
 	"github.com/primandproper/platform-go/v14/metering"
+
+	"github.com/primandproper/primitives-go/cache"
+	"github.com/primandproper/primitives-go/cache/memory"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/featureflags"
+	featureflagsnoop "github.com/primandproper/primitives-go/featureflags/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

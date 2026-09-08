@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/clock"
+	"github.com/primandproper/primitives-go/clock"
 
 	"github.com/shoenig/test/must"
 )

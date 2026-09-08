@@ -3,13 +3,13 @@ package shredding
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/encoding"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/messagequeue"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/observability/logging"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	"github.com/primandproper/platform-go/v14/observability/tracing"
+	"github.com/primandproper/primitives-go/encoding"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/messagequeue"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/observability/logging"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/observability/tracing"
 )
 
 // DefaultInvalidationTopic is the topic a shred is announced on when a

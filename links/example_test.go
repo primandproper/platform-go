@@ -8,12 +8,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
 	"github.com/primandproper/platform-go/v14/links"
 	linksdatabase "github.com/primandproper/platform-go/v14/links/database"
 	"github.com/primandproper/platform-go/v14/links/database/migrations"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/sqlite"
 )
 
 // newExampleMinter wires a Minter over a throwaway SQLite database. A real

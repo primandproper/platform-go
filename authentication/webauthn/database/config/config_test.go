@@ -5,14 +5,15 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/webauthn"
-	webauthncache "github.com/primandproper/platform-go/v14/authentication/webauthn/cache"
-	webauthncfg "github.com/primandproper/platform-go/v14/authentication/webauthn/config"
 	webauthndatabase "github.com/primandproper/platform-go/v14/authentication/webauthn/database"
-	cachecfg "github.com/primandproper/platform-go/v14/cache/config"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/pointer"
+
+	"github.com/primandproper/primitives-go/authentication/webauthn"
+	webauthncache "github.com/primandproper/primitives-go/authentication/webauthn/cache"
+	webauthncfg "github.com/primandproper/primitives-go/authentication/webauthn/config"
+	cachecfg "github.com/primandproper/primitives-go/cache/config"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/pointer"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

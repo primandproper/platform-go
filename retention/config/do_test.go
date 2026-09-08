@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/audit"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
 	"github.com/primandproper/platform-go/v14/retention"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

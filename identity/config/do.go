@@ -3,12 +3,13 @@ package identitycfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/database"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
-	"github.com/primandproper/platform-go/v14/internal/injection"
-	"github.com/primandproper/platform-go/v14/observability"
+
+	"github.com/primandproper/primitives-go/config/injection"
+	"github.com/primandproper/primitives-go/database"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/observability"
 
 	"github.com/samber/do/v2"
 )

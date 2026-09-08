@@ -6,12 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/cache"
-	"github.com/primandproper/platform-go/v14/cache/memory"
-	cachemock "github.com/primandproper/platform-go/v14/cache/mock"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/sessions"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/cache"
+	"github.com/primandproper/primitives-go/cache/memory"
+	cachemock "github.com/primandproper/primitives-go/cache/mock"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

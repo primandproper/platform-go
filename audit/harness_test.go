@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/audit/migrations"
-	"github.com/primandproper/platform-go/v14/clock"
-	clockmock "github.com/primandproper/platform-go/v14/clock/mock"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
+
+	"github.com/primandproper/primitives-go/clock"
+	clockmock "github.com/primandproper/primitives-go/clock/mock"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/sqlite"
 
 	"github.com/shoenig/test/must"
 )

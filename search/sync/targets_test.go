@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	textsearchmock "github.com/primandproper/platform-go/v14/search/text/mock"
-	vectorsearch "github.com/primandproper/platform-go/v14/search/vector"
-	vectorsearchmock "github.com/primandproper/platform-go/v14/search/vector/mock"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	textsearchmock "github.com/primandproper/primitives-go/search/text/mock"
+	vectorsearch "github.com/primandproper/primitives-go/search/vector"
+	vectorsearchmock "github.com/primandproper/primitives-go/search/vector/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

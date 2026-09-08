@@ -38,12 +38,15 @@ And the decision is checked against what the mappers actually do, bare and
 wrapped, so a row saying "mapped" for a case somebody deleted fails here rather
 than in a consumer's 500.
 
-One thing here is not about the roster at all: errors/ is checked for imports of
-those five packages. A non-test file that had one would be an import cycle and
-would not build, so the compiler covers that; an external test package can import
-them freely, and that is how the dependency comes back — a test reaching for a
-domain sentinel to assert something about, and errors/ quietly stops being a
-package that can be lifted out on its own.
+One check used to live here that no longer can: errors/ was walked for imports
+of the packages above, because an external test package under it could import a
+domain package freely and that is how the dependency comes back — a test
+reaching for a domain sentinel to assert something about, and errors/ quietly
+stops being a package that can be lifted out on its own. errors/ has been lifted
+out, so the walk moved with it and widened: primitives-go's internal/tierguard
+fails on an import of platform-go from anywhere in that module, test files and
+go.mod included, and it needs no roster because the answer is the same for every
+package there.
 
 The roster is a package-level var rather than a test fixture, because two other
 test binaries need the same expectation. errormappers.Register is the one call

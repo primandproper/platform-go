@@ -3,13 +3,13 @@ package registry
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	databasemock "github.com/primandproper/platform-go/v14/database/mock"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/filtering"
-	"github.com/primandproper/platform-go/v14/identifiers"
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	databasemock "github.com/primandproper/primitives-go/database/mock"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/identifiers"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

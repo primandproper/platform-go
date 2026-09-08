@@ -7,8 +7,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/primandproper/platform-go/v14/authorization"
 	"github.com/primandproper/platform-go/v14/entitlements"
+
+	"github.com/primandproper/primitives-go/authorization"
 )
 
 // Ensure, that CheckerMock does implement entitlements.Checker.

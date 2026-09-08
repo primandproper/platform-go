@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
-	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
-	filteringgrpc "github.com/primandproper/platform-go/v14/filtering/grpc"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
+
+	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
+	filteringgrpc "github.com/primandproper/primitives-go/filtering/grpc"
 
 	"google.golang.org/grpc/codes"
 )

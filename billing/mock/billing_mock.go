@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/billing"
-	"github.com/primandproper/platform-go/v14/capitalism"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/filtering"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/capitalism"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Ensure, that StoreMock does implement billing.Store.

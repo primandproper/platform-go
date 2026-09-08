@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/filtering"
+	"github.com/primandproper/primitives-go/database"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/filtering"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.

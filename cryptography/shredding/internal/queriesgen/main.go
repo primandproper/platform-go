@@ -8,7 +8,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/cryptography/shredding/internal/queries"
 	"github.com/primandproper/platform-go/v14/cryptography/shredding/migrations"
-	"github.com/primandproper/platform-go/v14/database/dialect"
+
+	"github.com/primandproper/primitives-go/database/dialect"
 )
 
 // header marks the output as generated in the form `go generate` consumers,

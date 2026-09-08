@@ -34,7 +34,7 @@ options:
     - {column: "*.include_archived", go_type: bool}
     # Scope binds as the type, not a string derived from it, so an unset scope
     # is a driver error instead of a wider result set.
-    - {column: "*.scope", go_type: github.com/primandproper/platform-go/v14/tenancy.Scope}
+    - {column: "*.scope", go_type: github.com/primandproper/primitives-go/tenancy.Scope}
     # Money, in the currency's minor unit. The three engines disagree about the
     # width of an integer column — SQLite has one integer type and resolves it
     # loosely — and a price that came back as int32 on one of them would be a

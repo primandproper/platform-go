@@ -6,10 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/observability"
 	"github.com/primandproper/platform-go/v14/timers/internal/timersdb"
+
+	"github.com/primandproper/primitives-go/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/observability"
 )
 
 // encodedTimer is one scheduled timer reduced to what the statement binds, with

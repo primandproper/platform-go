@@ -9,12 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/postgres"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/testutils/containers/pgtest"
 	"github.com/primandproper/platform-go/v14/timers/migrations"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/postgres"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/testutils/containers/pgtest"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

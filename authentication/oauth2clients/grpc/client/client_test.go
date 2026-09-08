@@ -5,7 +5,8 @@ import (
 
 	oauth2clientsclient "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc/client"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

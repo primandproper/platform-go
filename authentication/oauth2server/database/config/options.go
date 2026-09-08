@@ -1,12 +1,13 @@
 package oauth2dbcfg
 
 import (
-	oauth2servercfg "github.com/primandproper/platform-go/v14/authentication/oauth2server/config"
 	oauth2database "github.com/primandproper/platform-go/v14/authentication/oauth2server/database"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/observability/logging"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	"github.com/primandproper/platform-go/v14/observability/tracing"
+
+	oauth2servercfg "github.com/primandproper/primitives-go/authentication/oauth2server/config"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/observability/logging"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/observability/tracing"
 )
 
 // Option configures how NewStore and NewServer assemble their pieces.

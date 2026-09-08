@@ -1,52 +1,58 @@
 /*
-Package tiercheck is where every package in this module is named with the tier it
-belongs to, and it holds nothing else.
+Package tiercheck is where every package in this module is named with the tier
+it belongs to, and it holds nothing else.
 
-The module sorts into two tiers, and the README's "Primitives and Domains"
-section states the rule that sorts them and the reason the sort exists: the
-primitives are leaving for primitives-go, and primitives-go will import nothing
-from platform-go. So an import from a primitives-tier package into a
-domain-tier one is not a style preference. It is a package that cannot travel,
-and it is invisible until the module is split, at which point it is a build
-failure in a repository that does not exist yet.
+The module used to hold two tiers and this package existed to keep them
+separable: the primitives were leaving for primitives-go, primitives-go would
+import nothing from platform-go, and an import from a primitives-tier package
+into a domain-tier one was a package that could not travel — invisible until the
+split, at which point it was a build failure in a repository that did not exist
+yet. Until this package there was nothing checking it. Two separate audits of
+the crossings were published as complete and neither was: the first missed four
+config subpackages, and the second — the one that found those four — missed a
+roster test that imported fourteen domain packages from a primitive's own test
+files. Both were people reading a tree by hand, which is a survey with a shelf
+life of one branch.
 
-Until this package there was nothing checking it. The rule lived in the README
-and in CLAUDE.md, and `grep -rn "primitives-go" --include="*.go"` over the whole
-module returned nothing. Two separate audits of the crossings were published as
-complete and neither was: the first missed four config subpackages, and the
-second — the one that found those four — missed a roster test that imported
-fourteen domain packages from a primitive's own test files. Both were people
-reading a tree by hand, which is a survey with a shelf life of one branch.
+The split has landed, and what this package checks has inverted with it. There
+is no primitives tier here to constrain; every package in this module is the
+domain tier or the composition root, and the direction is now primitives-go's to
+enforce from its own side, which its internal/tierguard does with no roster at
+all — the answer is the same for every package in that module. What is left here
+is the half that does not move: the enumeration, so that a package nobody ruled
+on is a failing test rather than a silence, and so that the README's table and
+the tree cannot drift apart.
 
-What lives here is the enumeration, in the one form that cannot quietly fall out
-of date: a roster of every package, and a test that walks the module's imports
-and fails on a crossing. Three answers:
+Three answers, and one of them is a refusal:
 
-	primitive  goes to primitives-go — a provider behind an interface, a
-	           transport whose shape is not the consumer's, the database and
-	           schema tooling, or a cross-cutting value both tiers agree on.
-	           It owns no table, and it may import only other primitives.
 	domain     stays in platform-go — a noun with a table, its lifecycle, its
-	           transport, its permissions and its privacy obligations. It may
-	           import anything, primitives included, because that direction is
-	           the one the split permits.
-	root       neither tier: the composition root that registers both, and the
-	           convention tests whose subject is the whole tree. Treated as
-	           domain for the purpose of the check, and named separately so
-	           that "why is this not a primitive" has an answer other than
-	           somebody's omission.
+	           transport, its permissions and its privacy obligations.
+	root       neither tier: the composition root that registers both modules'
+	           mappers and configs, and the convention tests whose subject is
+	           the whole tree. Named separately so that "why is this not a
+	           domain" has an answer other than somebody's omission.
+	primitive  belongs in primitives-go and therefore not in this repository.
+	           No package answers it and the roster refuses one that tries. It
+	           is kept because the rule it names is still the rule a new
+	           package is measured against — the README's "Primitives and
+	           Domains" section states it — and the measurement now decides
+	           which repository the package is written for rather than which
+	           import path it gets. A contributor who reaches for this answer
+	           has found the ticket they meant to open, against primitives-go.
 
 The roster is keyed by directory prefix, longest match wins, which is how the
-README's own table is written: `authorization` is a primitive and
-`authorization/database` is a domain, and everything under each inherits its
+README's own table is written: everything under `identity` inherits `identity`'s
 answer. That is what makes a new subpackage classified by construction —
-`authorization/database/config` is a domain because the store it configures is
+`links/database/internal/linksdb` is a domain because the store it belongs to is
 one, without anybody having to add a row for it.
 
-Test files count. A primitives-go test file is compiled by primitives-go, so a
-test that reaches into the domain tier is exactly as much of a blocker as
-production code that does. That is the rule that catches the roster test the
-second audit missed, and it is why internal/configroster exists.
+Nine entries name a path whose parent is not in this module at all.
+`authentication/passwordreset` is one: `authentication` hashes passwords and
+issues tokens in primitives-go, and the table of reset tokens under it is a
+product's. Those are the straddles the split left standing, and each says why,
+because a directory here under a primitives-go path is the one shape a reader
+will not predict. A top-level package's tier is the README's to explain, so an
+entry that agrees with its path carries no reason.
 
 Two directions are checked, as sqltier checks its own roster in both: a package
 nobody classified fails, and a roster entry naming a directory that no longer

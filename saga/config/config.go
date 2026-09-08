@@ -21,11 +21,12 @@ package sagacfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/distributedlock"
-	"github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/idempotency"
 	"github.com/primandproper/platform-go/v14/saga"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/distributedlock"
+	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/idempotency"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

@@ -8,7 +8,7 @@ package notificationsdb
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // ArchiveNotificationParams are the arguments to ArchiveNotification.

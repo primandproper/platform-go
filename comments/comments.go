@@ -3,7 +3,7 @@ package comments
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // The keys this package attaches to spans and log lines. Declared once so a

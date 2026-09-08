@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Ensure, that StoreMock does implement passwordreset.Store.

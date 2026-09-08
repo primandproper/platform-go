@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/dataprivacy/internal/dataprivacydb"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/filtering"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/filtering"
 )
 
 // The typed seam between the generated package and this package's own types.

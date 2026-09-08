@@ -3,8 +3,9 @@ package client_test
 import (
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
 	identityclient "github.com/primandproper/platform-go/v14/identity/grpc/client"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

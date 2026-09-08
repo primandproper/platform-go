@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,10 +11,11 @@ import (
 	"sync"
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
-	httperrors "github.com/primandproper/platform-go/v14/errors/http"
 	"github.com/primandproper/platform-go/v14/internal/sentinelmatrix"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
+	httperrors "github.com/primandproper/primitives-go/errors/http"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -204,53 +204,6 @@ func sentinelsIn(file *ast.File) []string {
 	}
 
 	return names
-}
-
-// TestErrorsDoesNotImportTheTierAboveIt is the invariant the mappings were moved
-// to establish, and the one thing here the compiler does not already enforce.
-//
-// A non-test file under errors/ that imported one of these four would be an
-// import cycle and would not build, so it needs no test. An external test
-// package — errors' own mapper_parity_test.go is one — can import them freely,
-// which is how the dependency would come back: a test reaching for a domain
-// sentinel to assert something about, and errors/ quietly stops being a package
-// that can be lifted out on its own.
-func TestErrorsDoesNotImportTheTierAboveIt(T *testing.T) {
-	T.Parallel()
-
-	root := filepath.Join(moduleRootPath(), "errors")
-
-	var checked int
-
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil || entry.IsDir() || !strings.HasSuffix(path, ".go") {
-			return walkErr
-		}
-
-		file, parseErr := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
-		if parseErr != nil {
-			return parseErr
-		}
-
-		checked++
-
-		rel, relErr := filepath.Rel(moduleRootPath(), path)
-		if relErr != nil {
-			return relErr
-		}
-
-		for _, imported := range file.Imports {
-			for _, pkg := range sentinelmatrix.Packages {
-				test.False(T, strings.HasSuffix(strings.Trim(imported.Path.Value, `"`), "/"+pkg), test.Sprintf(
-					"%s imports %s, which imports errors/http and errors/grpc — the mappings were moved out of errors/ so that it depends on nothing above it", rel, pkg))
-			}
-		}
-
-		return nil
-	})
-	must.NoError(T, err)
-
-	test.Greater(T, 0, checked, test.Sprint("no files parsed under errors/, so this test asserted nothing"))
 }
 
 // TestModuleRootIsThisModule keeps the walk above honest. A test binary run from

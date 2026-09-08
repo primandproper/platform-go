@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 const archiveDefinitionSQLite = `UPDATE {{prefix}}settings_definitions SET

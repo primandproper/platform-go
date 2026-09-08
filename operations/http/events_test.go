@@ -7,12 +7,13 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/encoding"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/eventstream"
-	"github.com/primandproper/platform-go/v14/observability"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
+
+	"github.com/primandproper/primitives-go/encoding"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/eventstream"
+	"github.com/primandproper/primitives-go/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

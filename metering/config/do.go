@@ -3,13 +3,14 @@ package meteringcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/analytics"
-	"github.com/primandproper/platform-go/v14/cache"
-	"github.com/primandproper/platform-go/v14/capitalism"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/internal/injection"
 	"github.com/primandproper/platform-go/v14/metering"
-	"github.com/primandproper/platform-go/v14/observability"
+
+	"github.com/primandproper/primitives-go/analytics"
+	"github.com/primandproper/primitives-go/cache"
+	"github.com/primandproper/primitives-go/capitalism"
+	"github.com/primandproper/primitives-go/config/injection"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/observability"
 
 	"github.com/samber/do/v2"
 )

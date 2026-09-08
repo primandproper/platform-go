@@ -3,9 +3,9 @@ package comments
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/filtering"
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Store is the persistence seam for comments.

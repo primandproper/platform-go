@@ -3,13 +3,13 @@ package identity
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/database"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/observability/logging"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	"github.com/primandproper/platform-go/v14/observability/tracing"
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/database"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/observability/logging"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/observability/tracing"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // serviceLayerName scopes the service's spans, logger, and instruments.

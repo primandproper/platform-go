@@ -5,10 +5,11 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit/internal/auditdb"
 	"github.com/primandproper/platform-go/v14/audit/internal/queries"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/ddl"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/ddl"
+	"github.com/primandproper/primitives-go/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 )
 
 // Erasure is the audit log expressed as an erasure target: the two writes and

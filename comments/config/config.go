@@ -32,8 +32,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/comments/migrations"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/errors"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/errors"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

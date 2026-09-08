@@ -8,7 +8,7 @@ package issuereportsdb
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // ArchiveReportParams are the arguments to ArchiveReport.

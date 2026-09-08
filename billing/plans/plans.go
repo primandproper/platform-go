@@ -60,12 +60,13 @@ import (
 	"context"
 
 	"github.com/primandproper/platform-go/v14/billing"
-	"github.com/primandproper/platform-go/v14/capitalism"
-	"github.com/primandproper/platform-go/v14/database"
 	"github.com/primandproper/platform-go/v14/entitlements"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/filtering"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/capitalism"
+	"github.com/primandproper/primitives-go/database"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // The sentinels this package returns.

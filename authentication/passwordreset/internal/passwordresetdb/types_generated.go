@@ -8,7 +8,7 @@ package passwordresetdb
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // GetTokenByDigestParams are the arguments to GetTokenByDigest.

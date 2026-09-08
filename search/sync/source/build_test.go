@@ -4,14 +4,15 @@ import (
 	"context"
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	nooplogging "github.com/primandproper/platform-go/v14/observability/logging/noop"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	metricsmock "github.com/primandproper/platform-go/v14/observability/metrics/mock"
-	noopmetrics "github.com/primandproper/platform-go/v14/observability/metrics/noop"
-	nooptracing "github.com/primandproper/platform-go/v14/observability/tracing/noop"
 	searchsync "github.com/primandproper/platform-go/v14/search/sync"
-	textsearchmock "github.com/primandproper/platform-go/v14/search/text/mock"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	nooplogging "github.com/primandproper/primitives-go/observability/logging/noop"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	metricsmock "github.com/primandproper/primitives-go/observability/metrics/mock"
+	noopmetrics "github.com/primandproper/primitives-go/observability/metrics/noop"
+	nooptracing "github.com/primandproper/primitives-go/observability/tracing/noop"
+	textsearchmock "github.com/primandproper/primitives-go/search/text/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

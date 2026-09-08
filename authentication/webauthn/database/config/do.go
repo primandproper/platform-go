@@ -3,10 +3,10 @@ package webauthndbcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/authentication/webauthn"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/internal/injection"
-	"github.com/primandproper/platform-go/v14/observability"
+	"github.com/primandproper/primitives-go/authentication/webauthn"
+	"github.com/primandproper/primitives-go/config/injection"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/observability"
 
 	"github.com/samber/do/v2"
 )

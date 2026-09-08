@@ -9,14 +9,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
-	"github.com/primandproper/platform-go/v14/tenancy"
-	"github.com/primandproper/platform-go/v14/uploads"
-	"github.com/primandproper/platform-go/v14/uploads/objectstorage"
 	"github.com/primandproper/platform-go/v14/uploads/registry"
 	"github.com/primandproper/platform-go/v14/uploads/registry/migrations"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/uploads"
+	"github.com/primandproper/primitives-go/uploads/objectstorage"
 )
 
 // Example shows the flow the package exists for: bytes into storage, a row

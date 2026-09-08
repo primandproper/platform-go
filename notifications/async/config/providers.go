@@ -3,8 +3,9 @@ package asynccfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/notifications/async"
+
+	"github.com/primandproper/primitives-go/errors"
 )
 
 // NewAsyncNotifier provides an AsyncNotifier from a config.

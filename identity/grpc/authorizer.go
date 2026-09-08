@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 
-	"github.com/primandproper/platform-go/v14/database"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	"github.com/primandproper/platform-go/v14/identity"
-	"github.com/primandproper/platform-go/v14/observability"
+
+	"github.com/primandproper/primitives-go/database"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
+	"github.com/primandproper/primitives-go/observability"
 
 	"google.golang.org/grpc/codes"
 )

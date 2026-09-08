@@ -1,7 +1,7 @@
 package settings
 
 import (
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 )
 
 // The sentinels this package returns. They live together because a caller

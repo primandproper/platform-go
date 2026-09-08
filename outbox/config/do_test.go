@@ -5,10 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/database"
-	databasecfg "github.com/primandproper/platform-go/v14/database/config"
-	messagequeuecfg "github.com/primandproper/platform-go/v14/messagequeue/config"
 	"github.com/primandproper/platform-go/v14/outbox"
+
+	"github.com/primandproper/primitives-go/database"
+	databasecfg "github.com/primandproper/primitives-go/database/config"
+	messagequeuecfg "github.com/primandproper/primitives-go/messagequeue/config"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

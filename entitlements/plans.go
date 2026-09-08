@@ -3,7 +3,7 @@ package entitlements
 import (
 	"context"
 
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 )
 
 // PlanSource answers which plan an account is on.

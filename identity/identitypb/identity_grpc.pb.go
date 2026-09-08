@@ -13,7 +13,7 @@
 //	    --proto_path $(PLATFORM_PROTO)/identity/proto \
 //	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
 //	    --go_opt=Mprimandproper/platform/identity/v1/identity.proto=github.com/primandproper/platform-go/v14/identity/identitypb \
-//	    --go_opt=Mprimandproper/platform/filtering/v1/filtering.proto=github.com/primandproper/platform-go/v14/filtering/filteringpb \
+//	    --go_opt=Mprimandproper/platform/filtering/v1/filtering.proto=github.com/primandproper/primitives-go/filtering/filteringpb \
 //	    $(CONSUMER_PROTO_FILES)   # both platform files deliberately absent from that list
 //
 // Go links against the bindings this module already generated, in

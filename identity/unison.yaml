@@ -38,5 +38,5 @@ options:
     # share most of their column names — and it is the same column, so it takes
     # the same type; without this entry the member's scope would come back as a
     # string that only tenancy.Scope's own Scan can tell apart from Global.
-    - {column: "*.scope", go_type: github.com/primandproper/platform-go/v14/tenancy.Scope}
-    - {column: "*.user_scope", go_type: github.com/primandproper/platform-go/v14/tenancy.Scope}
+    - {column: "*.scope", go_type: github.com/primandproper/primitives-go/tenancy.Scope}
+    - {column: "*.user_scope", go_type: github.com/primandproper/primitives-go/tenancy.Scope}

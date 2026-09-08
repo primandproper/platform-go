@@ -6,12 +6,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/filtering"
-	"github.com/primandproper/platform-go/v14/observability/logging"
-	loggingnoop "github.com/primandproper/platform-go/v14/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v14/observability/tracing/noop"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
+
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/observability/logging"
+	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
+	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

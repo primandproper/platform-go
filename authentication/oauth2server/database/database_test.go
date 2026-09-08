@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2server"
-	"github.com/primandproper/platform-go/v14/authentication/oauth2server/oauth2servertest"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	"github.com/primandproper/primitives-go/authentication/oauth2server"
+	"github.com/primandproper/primitives-go/authentication/oauth2server/oauth2servertest"
+	"github.com/primandproper/primitives-go/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

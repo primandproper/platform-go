@@ -3,13 +3,14 @@ package oauth2dbcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2server"
-	oauth2servercfg "github.com/primandproper/platform-go/v14/authentication/oauth2server/config"
 	oauth2database "github.com/primandproper/platform-go/v14/authentication/oauth2server/database"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/internal/cfgnorm"
-	"github.com/primandproper/platform-go/v14/pointer"
+
+	"github.com/primandproper/primitives-go/authentication/oauth2server"
+	oauth2servercfg "github.com/primandproper/primitives-go/authentication/oauth2server/config"
+	"github.com/primandproper/primitives-go/config/cfgnorm"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/pointer"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

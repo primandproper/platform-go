@@ -27,11 +27,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/errors"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

@@ -1,12 +1,13 @@
 package authzdbcfg
 
 import (
-	authorizationcfg "github.com/primandproper/platform-go/v14/authorization/config"
 	authzdb "github.com/primandproper/platform-go/v14/authorization/database"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/observability/logging"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	"github.com/primandproper/platform-go/v14/observability/tracing"
+
+	authorizationcfg "github.com/primandproper/primitives-go/authorization/config"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/observability/logging"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/observability/tracing"
 )
 
 // Option configures how NewPolicyResolver assembles its resolver.

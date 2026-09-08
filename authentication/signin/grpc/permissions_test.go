@@ -7,8 +7,9 @@ import (
 
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	"github.com/primandproper/platform-go/v14/authorization"
-	authzgrpc "github.com/primandproper/platform-go/v14/authorization/grpc"
+
+	"github.com/primandproper/primitives-go/authorization"
+	authzgrpc "github.com/primandproper/primitives-go/authorization/grpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

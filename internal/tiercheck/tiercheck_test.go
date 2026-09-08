@@ -2,25 +2,18 @@ package tiercheck_test
 
 import (
 	"fmt"
-	"go/parser"
-	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
-
-// modulePath is this module's import path, and the prefix that tells one of its
-// own imports from a dependency's.
-const modulePath = "github.com/primandproper/platform-go/v14/"
 
 // tier is the answer this file requires of every package. The package doc says
 // what each one means.
@@ -47,73 +40,13 @@ func (t tier) String() string {
 
 // roster names every package in this module, by directory prefix relative to
 // the module root. The longest matching prefix wins, so a nested package
-// inherits its parent's answer unless it overrides it — which is how the
-// README's own table is written, and what makes a new subpackage classified by
-// construction.
+// inherits its parent's answer — which is how the README's own table is
+// written, and what makes a new subpackage classified by construction.
 //
-// A reason is required of an entry that overrides its parent and of every
-// internal one, and of nothing else. The tier of a top-level package is the
-// README's to explain; what needs saying here is why a path departs from the
-// answer its parent already gave.
+// A reason is required of a nested entry and of nothing else. A top-level
+// package's tier is the README's to explain; what needs saying here is why a
+// directory sits under a path that belongs to primitives-go.
 var roster = map[string]entry{
-	// Primitives: a provider behind an interface.
-	"analytics":       {tier: primitive},
-	"authentication":  {tier: primitive},
-	"authorization":   {tier: primitive},
-	"cache":           {tier: primitive},
-	"capitalism":      {tier: primitive},
-	"cryptography":    {tier: primitive},
-	"distributedlock": {tier: primitive},
-	"email":           {tier: primitive},
-	"embeddings":      {tier: primitive},
-	"eventcapture":    {tier: primitive},
-	"eventstream":     {tier: primitive},
-	"featureflags":    {tier: primitive},
-	"llm":             {tier: primitive},
-	"messagequeue":    {tier: primitive},
-	"ratelimiting":    {tier: primitive},
-	"search":          {tier: primitive},
-	"secrets":         {tier: primitive},
-	"uploads":         {tier: primitive},
-
-	// Primitives: a transport whose shape is not the consumer's.
-	"compression": {tier: primitive},
-	"cookies":     {tier: primitive},
-	"encoding":    {tier: primitive},
-	"healthcheck": {tier: primitive},
-	"httpclient":  {tier: primitive},
-	"idempotency": {tier: primitive},
-	"routing":     {tier: primitive},
-	"server":      {tier: primitive},
-
-	// Primitives: the database and schema tooling stores are built with.
-	"database":  {tier: primitive},
-	"filtering": {tier: primitive},
-
-	// Primitives: the cross-cutting values and utilities both tiers build on.
-	"batching":        {tier: primitive},
-	"bitmask":         {tier: primitive},
-	"charset":         {tier: primitive},
-	"circuitbreaking": {tier: primitive},
-	"clock":           {tier: primitive},
-	"config":          {tier: primitive},
-	"errors":          {tier: primitive},
-	"fake":            {tier: primitive},
-	"files":           {tier: primitive},
-	"identifiers":     {tier: primitive},
-	"jobs":            {tier: primitive},
-	"numbers":         {tier: primitive},
-	"observability":   {tier: primitive},
-	"panicking":       {tier: primitive},
-	"pointer":         {tier: primitive},
-	"qrcodes":         {tier: primitive},
-	"random":          {tier: primitive},
-	"reflection":      {tier: primitive},
-	"retry":           {tier: primitive},
-	"tenancy":         {tier: primitive},
-	"testutils":       {tier: primitive},
-	"version":         {tier: primitive},
-
 	// Domains: a noun with a table, and what it owes.
 	"audit":         {tier: domain},
 	"billing":       {tier: domain},
@@ -136,10 +69,12 @@ var roster = map[string]entry{
 	"webhooks":      {tier: domain},
 	"workqueue":     {tier: domain},
 
-	// The packages that straddle: a store nested inside a primitive, a primitive
-	// nested inside a domain, or a domain flow nested under the engines it
-	// orchestrates. Each overrides the answer its parent gave, and the README's
-	// "Primitives and Domains" section says why each one splits where it does.
+	// The straddles: a domain package under a path whose parent is a
+	// primitives-go package. Go is content with a parent directory holding no
+	// .go files, and these nine are what that buys — the store stays under the
+	// engine it belongs to instead of taking a name at the root that would hide
+	// the relationship. The README's "Primitives and Domains" section says why
+	// each one splits where it does.
 	"authentication/oauth2clients":         {tier: domain, why: "the administered client registry's table, under a protocol implementation that is a primitive"},
 	"authentication/oauth2server/database": {tier: domain, why: "the client and token tables, under a protocol implementation that is a primitive"},
 	"authentication/passwordreset":         {tier: domain, why: "a table of reset tokens, under engines that hash and issue"},
@@ -147,29 +82,18 @@ var roster = map[string]entry{
 	"authentication/webauthn/database":     {tier: domain, why: "the ceremony table, under a protocol engine that is a primitive"},
 	"authorization/database":               {tier: domain, why: "the roles and permissions tables, under a policy interface that is a primitive"},
 	"cryptography/shredding":               {tier: domain, why: "the per-subject key table, under primitives that encrypt and sign"},
-	"uploads/registry":                     {tier: domain, why: "the object metadata rows, under an object store behind an interface"},
-	"notifications/mobile":                 {tier: primitive, why: "a push provider behind an interface, under the package that owns the device and inbox tables"},
 	"search/sync":                          {tier: domain, why: "a reindexing worker driven by the outbox, under two search indexes that are primitives"},
-	"webhooks/inbound":                     {tier: primitive, why: "a receiver whose payload shape Stripe or GitHub decides, under the endpoint store"},
+	"uploads/registry":                     {tier: domain, why: "the object metadata rows, under an object store behind an interface"},
 
 	// The composition root.
 	"errormappers": {tier: root},
 	"service":      {tier: root},
 
 	// internal/ is not in the README's table, because a consumer cannot import
-	// any of it. It is classified here anyway: five of these become exported
-	// packages in primitives-go, so a domain import from one of them is the
-	// same blocker as any other, and the two that are only reachable from one
-	// tier should say which.
-	"internal/cbormode":         {tier: primitive, why: "one CBOR encode mode, shared by cache and encoding"},
-	"internal/cfgnorm":          {tier: primitive, why: "config normalizations over struct tags; exported in primitives-go"},
-	"internal/injection":        {tier: primitive, why: "optional resolution from a do.Injector; exported in primitives-go"},
-	"internal/pgretry":          {tier: primitive, why: "the Postgres write-retry loop; exported in primitives-go"},
-	"internal/plainname":        {tier: primitive, why: "an identifier's plain form; exported in primitives-go"},
-	"internal/redisclient":      {tier: primitive, why: "one redis client build, shared by the four redis providers"},
-	"internal/sqlguard":         {tier: primitive, why: "the guarded write; exported in primitives-go"},
+	// any of it. It is classified here anyway, so that the completeness check
+	// covers the whole tree rather than the part of it a consumer can see.
 	"internal/cmd":              {tier: root, why: "generators run by make, over the whole tree"},
-	"internal/configroster":     {tier: root, why: "the roster of every config subpackage in the module, both tiers"},
+	"internal/configroster":     {tier: root, why: "the roster of every config subpackage a service wires, both modules'"},
 	"internal/schemaconvention": {tier: root, why: "a convention test over every package that ships DDL"},
 	"internal/scopeddl":         {tier: root, why: "a convention test over every scoped table in the module"},
 	"internal/sentinelmatrix":   {tier: root, why: "the roster of every domain sentinel and the mappers that answer for it"},
@@ -182,33 +106,25 @@ type entry struct {
 	tier tier
 }
 
-// TestNoPrimitiveImportsADomain is the check the rest of this file exists to
-// make possible.
+// TestNoPackageIsAPrimitive is what the crossing check became when the split
+// landed. It used to walk every import in the module and fail on a
+// primitives-tier package that named a domain one; primitives-go now enforces
+// that from its own side, over its whole tree and with no roster to keep, so
+// the walk moved there and this is what is left of the rule on this side.
 //
-// Test files are included deliberately. A primitives-go test file is compiled by
-// primitives-go, so a test that reaches into the domain tier blocks the split
-// exactly as much as production code that does.
-func TestNoPrimitiveImportsADomain(t *testing.T) {
+// A package ruled a primitive belongs in primitives-go and therefore not in
+// this repository. Nothing can catch a primitive somebody rostered as a domain
+// — that judgment is the README's rule applied by a person — but the answer is
+// kept spellable so that reaching for it is a failing test with somewhere to
+// send you, rather than a value the roster no longer has a word for.
+func TestNoPackageIsAPrimitive(t *testing.T) {
 	t.Parallel()
 
-	moduleDir := moduleRoot(t)
-
-	for _, edge := range edges(t, moduleDir) {
-		from, ok := classify(edge.from)
-		if !ok {
-			continue // TestEveryPackageIsClassified is where that fails.
-		}
-
-		to, ok := classify(edge.to)
-		if !ok {
-			continue
-		}
-
-		if from.tier == primitive && to.tier == domain {
-			t.Errorf("%s (%s) imports %s (%s), from %s\n\t"+
-				"primitives-go will not be able to import platform-go; see the README's "+
-				"\"Primitives and Domains\" section, and internal/tiercheck's doc",
-				edge.from, from.tier, edge.to, to.tier, edge.file)
+	for path, e := range roster {
+		if e.tier == primitive {
+			t.Errorf("%s is rostered as a primitive, which is a package this repository does not hold\n\t"+
+				"a primitive goes to primitives-go; see the README's \"Primitives and Domains\" section for the "+
+				"rule, and internal/tiercheck's doc for why the answer is still spellable here", path)
 		}
 	}
 }
@@ -245,23 +161,24 @@ func TestNoRosterEntryOutlivesItsDirectory(t *testing.T) {
 	}
 }
 
-// TestOverridesAndInternalsAreReasoned requires a why where one is load-bearing:
-// an entry that departs from the answer its parent gave, and every internal
-// package. A top-level package's tier is the README's to explain.
-func TestOverridesAndInternalsAreReasoned(t *testing.T) {
+// TestNestedEntriesAreReasoned requires a why where one is load-bearing: an
+// entry naming a directory below the module root. Every one of those is either
+// a straddle — a domain package under a path that belongs to primitives-go — or
+// an internal package the README's table cannot name, and in both cases the
+// enumeration is the only place the reason can live. A top-level package's tier
+// is the README's to explain, so an entry that agrees with its path carries no
+// reason and is failed for carrying one.
+func TestNestedEntriesAreReasoned(t *testing.T) {
 	t.Parallel()
 
 	for path, e := range roster {
-		internal := strings.HasPrefix(path, "internal/")
-
-		parent, hasParent := classify(filepath.ToSlash(filepath.Dir(path)))
-		override := hasParent && parent.tier != e.tier
+		nested := strings.Contains(path, "/")
 
 		switch {
-		case (internal || override) && e.why == "":
-			t.Errorf("%s needs a reason: it is %s where its parent or its path does not say so", path, e.tier)
-		case !internal && !override && e.why != "":
-			t.Errorf("%s carries a reason but agrees with its parent; the README's table is where a "+
+		case nested && e.why == "":
+			t.Errorf("%s needs a reason: it is %s under a path this module does not own the root of", path, e.tier)
+		case !nested && e.why != "":
+			t.Errorf("%s carries a reason but is a top-level package; the README's table is where a "+
 				"top-level package's tier is explained", path)
 		}
 	}
@@ -386,89 +303,29 @@ func packageDirs(t *testing.T, moduleDir string) []string {
 	return dirs
 }
 
-// edge is one import of this module's own, from the directory that wrote it to
-// the directory it names.
-type edge struct {
-	from string
-	to   string
-	file string
-}
-
-// edges reads every Go file in the module, test files included, and returns the
-// imports that name this module.
-func edges(t *testing.T, moduleDir string) []edge {
-	t.Helper()
-
-	var found []edge
-
-	must.NoError(t, filepath.WalkDir(moduleDir, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-
-		if d.IsDir() {
-			if skipDir(moduleDir, path, d.Name()) {
-				return filepath.SkipDir
-			}
-
-			return nil
-		}
-
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-
-		file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
-		if err != nil {
-			return err
-		}
-
-		rel, err := filepath.Rel(moduleDir, filepath.Dir(path))
-		if err != nil {
-			return err
-		}
-
-		from := filepath.ToSlash(rel)
-
-		for _, spec := range file.Imports {
-			imported, unquoteErr := strconv.Unquote(spec.Path.Value)
-			if unquoteErr != nil || !strings.HasPrefix(imported, modulePath) {
-				continue
-			}
-
-			found = append(found, edge{
-				from: from,
-				to:   strings.TrimPrefix(imported, modulePath),
-				file: filepath.ToSlash(mustRel(moduleDir, path)),
-			})
-		}
-
-		return nil
-	}))
-
-	return found
-}
-
-func mustRel(moduleDir, path string) string {
-	rel, err := filepath.Rel(moduleDir, path)
-	if err != nil {
-		return path
-	}
-
-	return rel
-}
-
-// readmeRow matches one row of the "Primitives and Domains" table: a tier in the
-// first cell, and a list of backticked package paths in the last.
+// readmeRow matches one row of the "Primitives and Domains" table, and
+// backticked pulls the package paths out of its last cell. The header and the
+// separator match too and contribute nothing, because neither holds a
+// backticked path.
 var (
-	readmeRow  = regexp.MustCompile(`(?m)^\|\s*` + "`" + `(primitives-go|platform-go)` + "`" + `\s*\|[^|]*\|(.*)\|\s*$`)
+	readmeRow  = regexp.MustCompile(`(?m)^\|(.+)\|\s*$`)
 	backticked = regexp.MustCompile("`([^`]+)`")
 )
+
+// nextHeading ends the section at the next heading of any level, searched from
+// the line after the section's own. "## " alone would run past "### Transports"
+// and read that table's rows as package rulings, which is one heading away from
+// being right and reports as forty packages the roster has never heard of.
+var nextHeading = regexp.MustCompile(`(?m)^#{1,6} `)
 
 // readmeTiers reads the README's table into the same shape as the roster. It
 // parses the rendered table rather than a machine-readable sidecar because the
 // table is the artifact a reader is pointed at, so it is the one that has to be
 // right.
+//
+// Every package the table names is a domain, because every package this module
+// holds is one — the composition-root row is the exception, and it is named by
+// its two members rather than by its wording, which is prose and free to change.
 func readmeTiers(t *testing.T, moduleDir string) map[string]tier {
 	t.Helper()
 
@@ -480,23 +337,19 @@ func readmeTiers(t *testing.T, moduleDir string) map[string]tier {
 	must.NotEq(t, -1, start, must.Sprint("the README has no \"Primitives and Domains\" section"))
 	section = section[start:]
 
-	if end := strings.Index(section[1:], "\n## "); end != -1 {
-		section = section[:end+1]
+	if body := strings.IndexByte(section, '\n'); body != -1 {
+		if end := nextHeading.FindStringIndex(section[body:]); end != nil {
+			section = section[:body+end[0]]
+		}
 	}
 
 	tiers := map[string]tier{}
 
 	for _, row := range readmeRow.FindAllStringSubmatch(section, -1) {
-		// The composition-root row is the one place the table's tier column and
-		// this file's answer deliberately differ: "platform-go" is where those
-		// two packages live, and root is what they are.
-		want := domain
-		if row[1] == "primitives-go" {
-			want = primitive
-		}
-
-		for _, cell := range backticked.FindAllStringSubmatch(row[2], -1) {
+		for _, cell := range backticked.FindAllStringSubmatch(row[1], -1) {
 			path := cell[1]
+
+			want := domain
 			if slices.Contains([]string{"errormappers", "service"}, path) {
 				want = root
 			}

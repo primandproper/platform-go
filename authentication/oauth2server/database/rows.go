@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/oauth2server"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2server/database/internal/oauth2serverdb"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+
+	"github.com/primandproper/primitives-go/authentication/oauth2server"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 )
 
 // The typed seam between the generated package and the record types.

@@ -7,13 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/cache"
-	"github.com/primandproper/platform-go/v14/cache/memory"
-	"github.com/primandproper/platform-go/v14/featureflags"
-	featureflagsmock "github.com/primandproper/platform-go/v14/featureflags/mock"
 	"github.com/primandproper/platform-go/v14/metering"
 	meteringmock "github.com/primandproper/platform-go/v14/metering/mock"
-	loggingnoop "github.com/primandproper/platform-go/v14/observability/logging/noop"
+
+	"github.com/primandproper/primitives-go/cache"
+	"github.com/primandproper/primitives-go/cache/memory"
+	"github.com/primandproper/primitives-go/featureflags"
+	featureflagsmock "github.com/primandproper/primitives-go/featureflags/mock"
+	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
 
 	"github.com/shoenig/test/must"
 )

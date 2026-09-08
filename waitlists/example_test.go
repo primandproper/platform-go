@@ -8,12 +8,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
-	"github.com/primandproper/platform-go/v14/tenancy"
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/waitlists/migrations"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Example shows the flow this package exists for: a list is opened, somebody

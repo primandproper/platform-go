@@ -4,9 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/filtering"
 	"github.com/primandproper/platform-go/v14/operations"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/filtering"
 )
 
 // stubStore satisfies operations.Store and does nothing.

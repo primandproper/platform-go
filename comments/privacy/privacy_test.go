@@ -11,12 +11,13 @@ import (
 	"github.com/primandproper/platform-go/v14/comments"
 	commentsmock "github.com/primandproper/platform-go/v14/comments/mock"
 	"github.com/primandproper/platform-go/v14/comments/privacy"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/filtering"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

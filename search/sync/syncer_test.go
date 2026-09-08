@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/encoding"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/retry"
+	"github.com/primandproper/primitives-go/encoding"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/retry"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

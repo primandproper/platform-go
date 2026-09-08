@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	databasemock "github.com/primandproper/platform-go/v14/database/mock"
-	"github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
-	"github.com/primandproper/platform-go/v14/observability"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	databasemock "github.com/primandproper/primitives-go/database/mock"
+	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

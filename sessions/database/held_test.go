@@ -5,7 +5,8 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/sessions"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

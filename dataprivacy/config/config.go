@@ -22,15 +22,16 @@ import (
 	"context"
 
 	"github.com/primandproper/platform-go/v14/audit"
-	"github.com/primandproper/platform-go/v14/compression"
-	"github.com/primandproper/platform-go/v14/cryptography/encryption"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/dataprivacy/auditerasure"
-	"github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/operations"
-	"github.com/primandproper/platform-go/v14/uploads"
+
+	"github.com/primandproper/primitives-go/compression"
+	"github.com/primandproper/primitives-go/cryptography/encryption"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/uploads"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

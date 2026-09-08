@@ -46,9 +46,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/primandproper/platform-go/v14/database/ddl"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	"github.com/primandproper/primitives-go/database/ddl"
+	"github.com/primandproper/primitives-go/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 )
 
 //go:embed postgres.sql

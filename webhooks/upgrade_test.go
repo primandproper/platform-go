@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/ddl"
-	"github.com/primandproper/platform-go/v14/database/dialect"
 	"github.com/primandproper/platform-go/v14/webhooks/migrations"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/ddl"
+	"github.com/primandproper/primitives-go/database/dialect"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

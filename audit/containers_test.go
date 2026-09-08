@@ -10,14 +10,15 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/audit/migrations"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/migrate"
-	"github.com/primandproper/platform-go/v14/database/mysql"
-	"github.com/primandproper/platform-go/v14/database/postgres"
-	loggingnoop "github.com/primandproper/platform-go/v14/observability/logging/noop"
-	"github.com/primandproper/platform-go/v14/testutils/containers/mysqltest"
-	"github.com/primandproper/platform-go/v14/testutils/containers/pgtest"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/migrate"
+	"github.com/primandproper/primitives-go/database/mysql"
+	"github.com/primandproper/primitives-go/database/postgres"
+	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
+	"github.com/primandproper/primitives-go/testutils/containers/mysqltest"
+	"github.com/primandproper/primitives-go/testutils/containers/pgtest"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

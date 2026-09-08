@@ -106,13 +106,13 @@ linters:
             - pkg: github.com/stretchr/testify/mock
               desc: >-
                 Use matryer/moq for mocks. See any existing <pkg>/mock/doc.go
-                for the go:generate pattern (e.g. authentication/tokens/mock).
+                for the go:generate pattern (e.g. comments/mock).
                 testify/mock is banned; do not reintroduce it.
             - pkg: github.com/stretchr/testify/assert
               desc: >-
                 Use github.com/shoenig/test (package name `test`) for
                 non-fatal assertions. See existing tests (e.g.
-                database/errors_test.go) for examples. testify/assert is
+                comments/store_test.go) for examples. testify/assert is
                 banned; do not reintroduce it.
             - pkg: github.com/stretchr/testify/require
               desc: >-

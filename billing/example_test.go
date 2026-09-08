@@ -10,11 +10,12 @@ import (
 
 	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/billing/migrations"
-	"github.com/primandproper/platform-go/v14/capitalism"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/capitalism"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Example shows the flow this package exists for: a catalog is stocked, a

@@ -3,9 +3,9 @@ package notifications
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/filtering"
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Two seams rather than one, and the split is the difference in lifecycle.

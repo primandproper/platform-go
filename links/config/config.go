@@ -20,12 +20,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/internal/cfgnorm"
 	"github.com/primandproper/platform-go/v14/links"
 	linksdatabase "github.com/primandproper/platform-go/v14/links/database"
-	"github.com/primandproper/platform-go/v14/pointer"
+
+	"github.com/primandproper/primitives-go/config/cfgnorm"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/pointer"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

@@ -3,9 +3,10 @@ package identity
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/filtering"
 	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // The typed seam between the generated package and the domain types.

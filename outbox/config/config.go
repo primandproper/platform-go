@@ -13,10 +13,11 @@ package outboxcfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/errors"
-	messagequeuecfg "github.com/primandproper/platform-go/v14/messagequeue/config"
 	"github.com/primandproper/platform-go/v14/outbox"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/errors"
+	messagequeuecfg "github.com/primandproper/primitives-go/messagequeue/config"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

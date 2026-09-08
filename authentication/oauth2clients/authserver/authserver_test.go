@@ -10,11 +10,12 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/authserver"
-	"github.com/primandproper/platform-go/v14/authentication/oauth2server"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/authentication/oauth2server"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

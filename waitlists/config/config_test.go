@@ -3,14 +3,15 @@ package waitlistscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/clock"
-	"github.com/primandproper/platform-go/v14/cryptography/hashing/sha512"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	databasemock "github.com/primandproper/platform-go/v14/database/mock"
-	"github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/observability"
 	"github.com/primandproper/platform-go/v14/waitlists"
+
+	"github.com/primandproper/primitives-go/clock"
+	"github.com/primandproper/primitives-go/cryptography/hashing/sha512"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	databasemock "github.com/primandproper/primitives-go/database/mock"
+	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

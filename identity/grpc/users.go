@@ -3,13 +3,14 @@ package grpc
 import (
 	"context"
 
-	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
-	"github.com/primandproper/platform-go/v14/filtering"
-	"github.com/primandproper/platform-go/v14/filtering/filteringpb"
-	filteringgrpc "github.com/primandproper/platform-go/v14/filtering/grpc"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
-	"github.com/primandproper/platform-go/v14/observability"
+
+	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/filtering/filteringpb"
+	filteringgrpc "github.com/primandproper/primitives-go/filtering/grpc"
+	"github.com/primandproper/primitives-go/observability"
 
 	"google.golang.org/grpc/codes"
 )

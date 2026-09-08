@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database/postgres"
-	"github.com/primandproper/platform-go/v14/database/postgres/pgnotify"
-	"github.com/primandproper/platform-go/v14/testutils/containers/pgtest"
+	"github.com/primandproper/primitives-go/database/postgres"
+	"github.com/primandproper/primitives-go/database/postgres/pgnotify"
+	"github.com/primandproper/primitives-go/testutils/containers/pgtest"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

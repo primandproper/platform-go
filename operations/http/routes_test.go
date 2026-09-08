@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/encoding"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/filtering"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
-	"github.com/primandproper/platform-go/v14/routing"
-	"github.com/primandproper/platform-go/v14/routing/backends/chi"
+
+	"github.com/primandproper/primitives-go/encoding"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/routing"
+	"github.com/primandproper/primitives-go/routing/backends/chi"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

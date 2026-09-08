@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
-	"github.com/primandproper/platform-go/v14/identifiers"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/identifiers"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test/must"
 )

@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/notifications/async"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/observability/keys"
-	metricsnoop "github.com/primandproper/platform-go/v14/observability/metrics/noop"
+
+	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/observability/keys"
+	metricsnoop "github.com/primandproper/primitives-go/observability/metrics/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

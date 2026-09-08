@@ -9,16 +9,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
 	"github.com/primandproper/platform-go/v14/errormappers"
-	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	identityclient "github.com/primandproper/platform-go/v14/identity/grpc/client"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc"

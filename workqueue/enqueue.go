@@ -6,11 +6,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/batching"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/observability"
 	"github.com/primandproper/platform-go/v14/workqueue/internal/workqueuedb"
+
+	"github.com/primandproper/primitives-go/batching"
+	"github.com/primandproper/primitives-go/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/observability"
 )
 
 // encodedEntry is one row's worth of bound parameters, with the key already

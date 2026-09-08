@@ -21,10 +21,11 @@ package registrycfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/uploads/registry"
 	"github.com/primandproper/platform-go/v14/uploads/registry/migrations"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/errors"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

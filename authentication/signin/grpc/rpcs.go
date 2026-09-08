@@ -5,8 +5,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+
+	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
 
 	"google.golang.org/grpc/codes"
 )

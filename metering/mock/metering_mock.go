@@ -8,8 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
 	"github.com/primandproper/platform-go/v14/metering"
+
+	"github.com/primandproper/primitives-go/database"
 )
 
 // Ensure, that StoreMock does implement metering.Store.

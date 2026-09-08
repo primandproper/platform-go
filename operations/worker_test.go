@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	"github.com/primandproper/platform-go/v14/panicking"
 	"github.com/primandproper/platform-go/v14/workqueue"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/panicking"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

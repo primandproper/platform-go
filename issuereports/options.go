@@ -1,11 +1,11 @@
 package issuereports
 
 import (
-	"github.com/primandproper/platform-go/v14/clock"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/observability/logging"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	"github.com/primandproper/platform-go/v14/observability/tracing"
+	"github.com/primandproper/primitives-go/clock"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/observability/logging"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/observability/tracing"
 )
 
 // SQLStoreOption configures a SQLStore.

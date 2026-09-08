@@ -60,7 +60,7 @@ func TestSentinelMessagesAreUniqueAcrossTheModule(t *testing.T) {
 	t.Parallel()
 
 	root := moduleRootPath()
-	platformErrorsPath := modulePath(t, root) + "/errors"
+	platformErrorsPath := primitivesPath(t, root) + "/errors"
 
 	declared := map[string][]sentinelDeclaration{}
 	files := 0
@@ -169,12 +169,10 @@ var wrapping = map[string]bool{
 }
 
 // sentinelDeclarationsIn reads one file's package-level Err vars that are built
-// by calling New, Newf, Wrap or Wrapf on this module's errors package or on
-// cockroachdb's, through whatever name the file imported them under. Inside the
-// errors package itself the constructors are also reachable bare.
+// by calling New, Newf, Wrap or Wrapf on the platform errors package or on
+// cockroachdb's, through whatever name the file imported them under.
 func sentinelDeclarationsIn(fset *token.FileSet, file *ast.File, rel, platformErrorsPath string) []sentinelDeclaration {
 	aliases := errorsAliases(file, platformErrorsPath)
-	bare := file.Name.Name == "errors"
 
 	var found []sentinelDeclaration
 
@@ -200,7 +198,7 @@ func sentinelDeclarationsIn(fset *token.FileSet, file *ast.File, rel, platformEr
 					continue
 				}
 
-				constructor, isConstructor := constructorName(call.Fun, aliases, bare)
+				constructor, isConstructor := constructorName(call.Fun, aliases)
 				if !isConstructor {
 					continue
 				}
@@ -224,8 +222,8 @@ func sentinelDeclarationsIn(fset *token.FileSet, file *ast.File, rel, platformEr
 	return found
 }
 
-// errorsAliases is the set of local names under which file imports this
-// module's errors package or cockroachdb's.
+// errorsAliases is the set of local names under which file imports the platform
+// errors package or cockroachdb's.
 func errorsAliases(file *ast.File, platformErrorsPath string) map[string]bool {
 	aliases := map[string]bool{}
 
@@ -247,26 +245,21 @@ func errorsAliases(file *ast.File, platformErrorsPath string) map[string]bool {
 }
 
 // constructorName reports which constructor a call's function names, if it is
-// one: a selector on an errors alias, or a bare identifier when the file is the
-// errors package.
-func constructorName(fun ast.Expr, aliases map[string]bool, bare bool) (string, bool) {
-	switch f := fun.(type) {
-	case *ast.SelectorExpr:
-		pkg, isIdent := f.X.(*ast.Ident)
-		if !isIdent || !aliases[pkg.Name] || !constructors[f.Sel.Name] {
-			return "", false
-		}
-
-		return f.Sel.Name, true
-	case *ast.Ident:
-		if !bare || !constructors[f.Name] {
-			return "", false
-		}
-
-		return f.Name, true
-	default:
+// one: a selector on an errors alias. There is no bare form to admit — the
+// errors package is in primitives-go, so every declaration this walk can reach
+// names its constructor through an import.
+func constructorName(fun ast.Expr, aliases map[string]bool) (string, bool) {
+	selector, isSelector := fun.(*ast.SelectorExpr)
+	if !isSelector {
 		return "", false
 	}
+
+	pkg, isIdent := selector.X.(*ast.Ident)
+	if !isIdent || !aliases[pkg.Name] || !constructors[selector.Sel.Name] {
+		return "", false
+	}
+
+	return selector.Sel.Name, true
 }
 
 // sentinelKey derives the key a declaration collides on. It is the literal
@@ -313,10 +306,12 @@ func isSourceFile(path string) bool {
 		!strings.HasSuffix(path, ".pb.go")
 }
 
-// modulePath reads the module line out of root's go.mod, so that this module's
-// errors import path is derived rather than spelled here with a major version
-// that a bump would have to remember to change.
-func modulePath(t *testing.T, root string) string {
+// primitivesPath reads the primitives-go requirement out of root's go.mod, so
+// that the errors import path is derived rather than spelled here with a major
+// version that a bump would have to remember to change. It is the same reason
+// the path used to be read off the module line: primitives-go is on v1 and
+// carries no suffix today, and the day it carries one this reads it.
+func primitivesPath(t *testing.T, root string) string {
 	t.Helper()
 
 	f, err := os.Open(filepath.Join(root, "go.mod"))
@@ -326,13 +321,18 @@ func modulePath(t *testing.T, root string) string {
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		if path, ok := strings.CutPrefix(strings.TrimSpace(scanner.Text()), "module "); ok {
-			return strings.TrimSpace(path)
+		fields := strings.Fields(scanner.Text())
+		if len(fields) >= 2 && strings.HasPrefix(fields[0], primitivesModule) {
+			return fields[0]
 		}
 	}
 
 	must.NoError(t, scanner.Err())
-	t.Fatal("go.mod names no module")
+	t.Fatalf("go.mod requires no module under %s", primitivesModule)
 
 	return ""
 }
+
+// primitivesModule is the primitives module without a major-version suffix,
+// which is the prefix every major of it shares.
+const primitivesModule = "github.com/primandproper/primitives-go"
