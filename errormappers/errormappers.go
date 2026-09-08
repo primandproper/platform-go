@@ -17,7 +17,7 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all six unconditionally, including for a service that has no
+// It registers all seven unconditionally, including for a service that has no
 // privacy requests, runs no operations and has nobody signing in. An unused mapper costs one comparison
 // against a sentinel the process cannot produce, and that is the cheap direction
 // to be wrong in — the expensive one is an action link answering 500 because

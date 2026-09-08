@@ -45,9 +45,10 @@ func (d Disposition) String() string {
 	}
 }
 
-// The six packages that map their own sentinels, spelled once each. Each name
-// is three things — a key in Matrix, an entry in Packages and a case in Mappers
-// — and a seventh package is added in all three together.
+// The packages that map their own sentinels, spelled once each; there are seven
+// today. Each name is three things — a key in Matrix, an entry in Packages and a
+// case in Mappers — and a package that declares a pair later is added in all
+// three together.
 //
 // Each is a path relative to the module root rather than a package name,
 // because that is what the roster's own test reads the rows out of.
@@ -67,7 +68,7 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the six
+// Matrix is the decision made about every exported sentinel in the seven
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
@@ -350,15 +351,15 @@ var Matrix = map[string]map[string]Decision{
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
-// module root. They are the six that export mappers of their own; a seventh
-// would be added here, in Matrix and in Mappers together.
+// module root. They are the seven that export mappers of their own; a package
+// that declares a pair later is added here, in Matrix and in Mappers together.
 var Packages = []string{
 	dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg,
 	oauth2ClientsPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
-// this package spells the six out; everywhere else they are the strings in
+// this package spells the seven out; everywhere else they are the strings in
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
