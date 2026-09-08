@@ -101,11 +101,18 @@ module_path="$(cd "${PROJECT_ROOT}" && go list -m)"
 #   - It is absolute, unlike the roots found below. That is the module cache's
 #     to decide, and the hidden-directory exclusion that makes the local roots
 #     relative does not reach it, because it is never passed through find.
+# The module has to be extracted before it has a directory to name. `go list -m`
+# reports an empty Dir for one that is only in the build list, and a caller
+# reaches here with a cache warmed for whatever it happened to build — in CI,
+# the two plugins above and nothing else. Downloading it here is the same
+# bargain the pinned protoc above makes: this script fetches what it needs
+# rather than requiring the tree to have been prepared for it.
 primitives_module="github.com/primandproper/primitives-go"
+(cd "${PROJECT_ROOT}" && go mod download "${primitives_module}")
 primitives_dir="$(cd "${PROJECT_ROOT}" && go list -m -f '{{.Dir}}' "${primitives_module}")"
 
 if [ -z "${primitives_dir}" ]; then
-  echo "proto.sh: ${primitives_module} is not in the module graph; run 'go mod download'" >&2
+  echo "proto.sh: ${primitives_module} has no directory after download; it is required by go.mod and something is wrong with the module cache" >&2
   exit 1
 fi
 
