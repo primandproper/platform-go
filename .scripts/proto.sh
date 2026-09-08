@@ -18,8 +18,8 @@ set -euo pipefail
 #     the pinned release is downloaded under artifacts/, which is gitignored.
 #
 # protoc-gen-go-grpc writes nothing for a .proto with no service in it, so a
-# schema-only file like filtering's gains no second output by this plugin being
-# on the command line.
+# schema-only file gains no second output by this plugin being on the command
+# line.
 #
 # The generated files are formatted afterwards by `make format` rather than
 # here, so `make proto format` is what a contributor runs and what CI runs.
@@ -84,6 +84,40 @@ grpc_plugin="${TOOL_DIR}/protoc-gen-go-grpc"
 # options in the .proto files still carry it, and still have to be updated.
 module_path="$(cd "${PROJECT_ROOT}" && go list -m)"
 
+# One .proto tree these files import is not in this repository. primitives-go
+# ships filtering.proto, and identity's and oauth2clients' list requests carry
+# its QueryFilter and Pagination, so protoc needs its directory on the path or
+# every import of it is "File not found".
+#
+# It is resolved through the module cache rather than vendored or copied, which
+# is the recipe filtering.proto's own doc block gives a consumer — platform-go is
+# now one. Two things follow from it being a dependency rather than ours:
+#
+#   - It is added to the paths and deliberately not to the file list. Its Go
+#     bindings ship in primitives-go/filtering/filteringpb and its go_package
+#     option says so, so generating them here would write a second copy of a
+#     package this module does not own. --go_opt=module below strips *this*
+#     module's path off each go_package, and has nothing to strip off that one.
+#   - It is absolute, unlike the roots found below. That is the module cache's
+#     to decide, and the hidden-directory exclusion that makes the local roots
+#     relative does not reach it, because it is never passed through find.
+primitives_module="github.com/primandproper/primitives-go"
+primitives_dir="$(cd "${PROJECT_ROOT}" && go list -m -f '{{.Dir}}' "${primitives_module}")"
+
+if [ -z "${primitives_dir}" ]; then
+  echo "proto.sh: ${primitives_module} is not in the module graph; run 'go mod download'" >&2
+  exit 1
+fi
+
+dependency_proto_roots=("${primitives_dir}/filtering/proto")
+
+for root in "${dependency_proto_roots[@]}"; do
+  if [ ! -d "${root}" ]; then
+    echo "proto.sh: ${root} is not a directory; ${primitives_module} no longer ships that .proto tree where this script expects it" >&2
+    exit 1
+  fi
+done
+
 # One proto_path per directory a .proto tree is rooted at, so files are
 # addressed by the canonical import path a consumer would use rather than by
 # where they happen to sit in this repository.
@@ -109,6 +143,11 @@ for root in "${proto_roots[@]}"; do
   while IFS= read -r -d '' file; do
     proto_files+=("${file}")
   done < <(cd "${PROJECT_ROOT}" && find "${root}" -type f -name '*.proto' -print0 | sort -z)
+done
+
+# Paths only: nothing under a dependency's tree is generated here.
+for root in "${dependency_proto_roots[@]}"; do
+  path_args+=("--proto_path=${root}")
 done
 
 if [ ${#proto_files[@]} -eq 0 ]; then
