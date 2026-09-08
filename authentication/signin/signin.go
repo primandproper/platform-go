@@ -44,12 +44,19 @@ const (
 // are constants rather than literals at the call sites because a misspelled one
 // is a second time series nobody notices until a dashboard is missing half its
 // traffic.
+//
+// Authenticating and logging in are separate series deliberately, even though
+// they share every step but the last. A dashboard that could not separate the
+// door that mints a token from the door that does not would hide exactly the
+// traffic the second door was added for.
 const (
-	opLogin          = "login_for_token"
-	opAdminLogin     = "admin_login_for_token"
-	opGetAuthStatus  = "get_auth_status"
-	opGetSelf        = "get_self"
-	opUpdatePassword = "update_password"
+	opLogin             = "login_for_token"
+	opAdminLogin        = "admin_login_for_token"
+	opAuthenticate      = "authenticate"
+	opAdminAuthenticate = "admin_authenticate"
+	opGetAuthStatus     = "get_auth_status"
+	opGetSelf           = "get_self"
+	opUpdatePassword    = "update_password"
 	//nolint:gosec // G101: these are instrument labels naming two operations, not credentials.
 	opRefreshTOTPSecret = "refresh_totp_secret"
 	//nolint:gosec // G101: as above.

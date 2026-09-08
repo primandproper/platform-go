@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/database"
 	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/observability"
 	"github.com/primandproper/platform-go/v14/observability/metrics"
 	"github.com/primandproper/platform-go/v14/tenancy"
@@ -55,9 +56,16 @@ var _ oauth2server.SubjectAuthenticator = (*Authenticator)(nil)
 // construct a URL. After a proven password it discloses nothing the person did
 // not already have, and it is the only answer that helps them.
 //
-// It costs one sign-in that will not issue a code. That is the right trade: the
-// consumer's Hooks.AfterSignIn records a sign-in that genuinely happened, and
-// the alternative is a public endpoint that reports on the registry.
+// It costs one authentication that will not issue a code — a password proven
+// for a request that may go no further. That is the right trade, and the
+// alternative is a public endpoint that reports on the registry.
+//
+// It costs no token. This seam wants a subject, not a credential, so it takes
+// signin.Service.Authenticate rather than its LoginForToken: a token minted
+// here would be handed to nobody and would sit in whatever the consumer indexes
+// tokens by until it aged out. The consumer's signin.Hooks.AfterAuthenticate
+// still records that somebody genuinely signed in, which is the half of the
+// trade that mattered.
 type Authenticator struct {
 	// What the options wrote, kept only until the observer is built from it.
 	opts observabilityOptions
@@ -179,7 +187,7 @@ func (a *Authenticator) AuthenticateSubject(
 	// unknown handle from a wrong password tells an attacker which half of the
 	// guess was right — so this hands its message straight to the form rather
 	// than deciding anything of its own.
-	completed, err := a.login(ctx, scope, credentials)
+	principal, err := a.authenticate(ctx, scope, credentials)
 	if err != nil {
 		a.instruments.Failed(ctx)
 
@@ -199,8 +207,6 @@ func (a *Authenticator) AuthenticateSubject(
 		return nil, oauth2server.NewLoginError(err.Error(), err)
 	}
 
-	principal := completed.Principal
-
 	op.Set(subjectKey, principal.User.ID)
 
 	if err = a.admits(ctx, op, req, scope, principal.User.ID); err != nil {
@@ -215,18 +221,22 @@ func (a *Authenticator) AuthenticateSubject(
 	}, nil
 }
 
-// login sends the credentials through whichever of signin's two doors this
-// authenticator was built for.
-func (a *Authenticator) login(
+// authenticate sends the credentials through whichever of signin's two
+// token-less doors this authenticator was built for.
+//
+// Token-less because this seam has no use for one: what it needs is the person,
+// so that the registration can be compared against them, and a credential
+// minted here would be discarded on the next line.
+func (a *Authenticator) authenticate(
 	ctx context.Context,
 	scope tenancy.Scope,
 	credentials *signin.Credentials,
-) (*signin.SignIn, error) {
+) (*identity.Principal, error) {
 	if a.administrative {
-		return a.signIn.AdminLoginForToken(ctx, scope, credentials)
+		return a.signIn.AdminAuthenticate(ctx, scope, credentials)
 	}
 
-	return a.signIn.LoginForToken(ctx, scope, credentials)
+	return a.signIn.Authenticate(ctx, scope, credentials)
 }
 
 // admits checks the registration the request named against the person who just

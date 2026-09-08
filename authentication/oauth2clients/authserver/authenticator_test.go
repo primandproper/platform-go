@@ -88,6 +88,33 @@ func TestAuthenticator(T *testing.T) {
 		// It is a contract between two halves a consumer wires separately, so an
 		// empty one here is a token that authorizes somebody for no account.
 		test.NotEqOp(t, "", subject.Claims[authserver.ClaimAccountID])
+
+		test.EqOp(t, 0, h.issuer.calls)
+	})
+
+	T.Run("issues a subject without minting a token", func(t *testing.T) {
+		t.Parallel()
+
+		// This seam wants a subject and not a credential, so it takes signin's
+		// token-less doors. A token minted here would be handed to nobody and
+		// would sit in whatever the consumer indexes tokens by until it aged
+		// out.
+		h := newSignInHarness(t, tenantA)
+		auth := newAuthenticator(t, h, &fakeRegistry{client: registration(tenantA, h.user.ID)}, tenantA)
+
+		subject, err := auth.AuthenticateSubject(t.Context(),
+			loginRequest(t, "cid-1", h.user.Username, h.password))
+		must.NoError(t, err)
+		must.NotNil(t, subject)
+
+		test.EqOp(t, 0, h.issuer.calls)
+		test.SliceEmpty(t, h.hooks.signIns)
+
+		// And the sign-in is still recorded, so a consumer's access log shows
+		// the authorization server's login step like any other door.
+		must.SliceLen(t, 1, h.hooks.authentications)
+		test.EqOp(t, h.user.ID, h.hooks.authentications[0].Principal.User.ID)
+		test.False(t, h.hooks.authentications[0].Administrative)
 	})
 
 	T.Run("admits through an administered registration", func(t *testing.T) {
@@ -103,6 +130,8 @@ func TestAuthenticator(T *testing.T) {
 		must.NoError(t, err)
 		must.NotNil(t, subject)
 		test.EqOp(t, h.user.ID, subject.ID)
+
+		test.EqOp(t, 0, h.issuer.calls)
 	})
 
 	T.Run("re-renders the form when the registration is in another registry", func(t *testing.T) {

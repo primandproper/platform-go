@@ -136,6 +136,8 @@ type signInHarness struct {
 	db       database.Client
 	svc      *signin.Service
 	user     *identity.User
+	issuer   *fakeIssuer
+	hooks    *recordingHooks
 	password string
 }
 
@@ -158,11 +160,22 @@ func newSignInHarness(t *testing.T, scope tenancy.Scope, opts ...signin.ServiceO
 
 	authenticator := argon2.NewArgon2Authenticator()
 
-	svc, err := signin.NewService(db, store, authenticator, &fakeIssuer{},
-		append([]signin.ServiceOption{signin.WithTOTPIssuer("Example")}, opts...)...)
+	issuer, hooks := &fakeIssuer{}, &recordingHooks{}
+
+	svc, err := signin.NewService(db, store, authenticator, issuer,
+		append([]signin.ServiceOption{
+			signin.WithTOTPIssuer("Example"),
+			signin.WithHooks(hooks),
+		}, opts...)...)
 	must.NoError(t, err)
 
-	h := &signInHarness{db: db, svc: svc, password: "correct horse battery staple"}
+	h := &signInHarness{
+		db:       db,
+		svc:      svc,
+		issuer:   issuer,
+		hooks:    hooks,
+		password: "correct horse battery staple",
+	}
 
 	hashed, err := authenticator.HashPassword(t.Context(), h.password)
 	must.NoError(t, err)
@@ -188,18 +201,55 @@ func newSignInHarness(t *testing.T, scope tenancy.Scope, opts ...signin.ServiceO
 	return h
 }
 
-// fakeIssuer stands in for whatever mints a consumer's own session token. The
-// authorization server never sees one — it wants a subject, not a token — so
-// what it returns only has to be an answer rather than a refusal.
-type fakeIssuer struct{}
+// fakeIssuer stands in for whatever mints a consumer's own session token.
+//
+// The authorization server never sees one — it wants a subject, not a token —
+// and calls is how the tests say so: this seam takes signin's token-less doors,
+// so a non-zero count is the wart that signin.Service.Authenticate exists to
+// remove growing back.
+type fakeIssuer struct {
+	calls int
+}
 
-func (*fakeIssuer) IssueToken(
+func (f *fakeIssuer) IssueToken(
 	_ context.Context,
 	subject string,
 	_ time.Duration,
 	_ map[string]any,
 ) (token, jti string, err error) {
+	f.calls++
+
 	return "token-for-" + subject, "jti-" + subject, nil
+}
+
+// recordingHooks records which of signin's two sign-in hooks ran.
+type recordingHooks struct {
+	signin.NoopHooks
+
+	authentications []*signin.Authentication
+	signIns         []*signin.SignIn
+}
+
+func (h *recordingHooks) AfterAuthenticate(
+	_ context.Context,
+	_ database.Tx,
+	_ tenancy.Scope,
+	a *signin.Authentication,
+) error {
+	h.authentications = append(h.authentications, a)
+
+	return nil
+}
+
+func (h *recordingHooks) AfterIssueToken(
+	_ context.Context,
+	_ database.Tx,
+	_ tenancy.Scope,
+	s *signin.SignIn,
+) error {
+	h.signIns = append(h.signIns, s)
+
+	return nil
 }
 
 // registration builds a fixture in one registry, optionally owned.
