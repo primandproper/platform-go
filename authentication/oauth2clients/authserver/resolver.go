@@ -131,6 +131,21 @@ type GuardedResolver struct {
 // interface for one. What it adds is the one comparison the authorization
 // server cannot make for itself, against the registry the consumer's own
 // resolver says the subject's credential belongs to.
+//
+// Observability is optional and defaults to nothing: an unconfigured resolver
+// logs to a noop logger, traces to a noop provider and counts through a noop
+// metrics provider. This is the seam where leaving it unconfigured costs the
+// most. A refusal here is a decline rather than an error — see [GuardedResolver]
+// — so the person is sent to a login form and the request succeeds; nothing on
+// the wire, in a status code or in an error rate says the check ran and said no,
+// and the report that reaches an operator is "it keeps asking me to sign in".
+//
+// Every [GuardedResolver.ResolveSubject] is one attempt. A subject the
+// registration would not admit is deliberately *not* counted as a failure: the
+// request carries on to the form, so counting it would put a refused
+// registration in the same number as a broken one. It is recorded on the span
+// and the log line instead, beside the client_id and the registry, which is the
+// only place it appears at all.
 func NewGuardedResolver(
 	inner ScopedSubjectResolver,
 	registry oauth2clients.Store,

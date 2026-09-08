@@ -51,3 +51,26 @@ var ErrClientNotRegistered = platformerrors.New("oauth2 client is not in this re
 // A resolver that means the global registry says so — tenancy.Global() — and is
 // admitted.
 var ErrScopelessSubject = platformerrors.New("subject resolver named no registry for the subject it resolved")
+
+// ErrNilSignInService is [NewAuthenticator] built over no signin.Service.
+//
+// It exists because the borrowed sentinel pointed at the wrong argument. The
+// other two nil checks in that constructor are oauth2clients' own — the
+// registry store and the database client genuinely are the registry's, and a
+// deployment told "nil oauth2 client store" has something in the argument list
+// to go looking for. The sign-in service is not the registry's and there is no
+// oauth2 client service in the constructor at all, so borrowing
+// oauth2clients.ErrNilService sent whoever read it looking for a thing that was
+// never asked for.
+//
+// The wording names the login form rather than stopping at "sign-in service",
+// because authentication/signin/grpc has a sentinel for the same missing
+// argument in front of a different door. Two sentinels worded identically carry
+// the same cockroachdb mark and errors/grpc matches a decoded error by mark, so
+// the seam each one guards has to be in the sentence.
+//
+// It is not mapped to a transport, for the reason [ErrClientNotRegistered]
+// gives and one more: this is a wiring failure at construction, so nobody is
+// holding a request when it happens.
+var ErrNilSignInService = platformerrors.Wrap(platformerrors.ErrNilInputParameter,
+	"nil sign-in service behind the authorization server's login form")

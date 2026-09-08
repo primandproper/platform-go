@@ -48,6 +48,18 @@ type Store struct {
 // The database client is taken for Reader(), which is what the lookup runs on:
 // resolving a client_id happens outside any transaction of the consumer's,
 // because /authorize is not inside one.
+//
+// Observability is optional and defaults to nothing: an unconfigured store logs
+// to a noop logger, traces to a noop provider and counts through a noop metrics
+// provider. What it records is the lookup and nothing else — the credential half
+// is the wrapped store's and is delegated uninstrumented, because a decorator
+// that timed somebody else's methods would report them twice.
+//
+// Every [Store.GetClient] is one attempt. An empty client_id, a registration
+// this registry never issued, one that has been withdrawn, and a registry that
+// is down are four failures, counted the same and told apart in the span and
+// the log line — which is the point of deciding them here, since all four reach
+// an unauthenticated caller as the one answer that discloses nothing.
 func NewStore(
 	wrapped oauth2server.Store,
 	registry oauth2clients.Store,
