@@ -207,11 +207,23 @@ func (s *Server) ArchiveOwnOAuth2Client(
 // an xid: a timestamp, a machine, a pid and a counter, walkable by anybody
 // holding one. A distinct code would disclose it however carefully the two
 // messages were matched, which is why the sentinel is mapped rather than the
-// message alone, and why the fallback code passed below is NotFound as well.
+// message alone.
 //
 // What is *not* collapsed is the record: the sentinel travels in the error's
 // chain, so this process's own logs say which of the two happened while a caller
 // cannot tell.
+//
+// # What a store that is down is told apart from
+//
+// The read below falls back to Internal, and only the not-found sentinel falls
+// back to NotFound. That is not a hole in the paragraph above: the collapsing is
+// done by the sentinels, both of which map to NotFound, so the two arms answer
+// alike whether or not a consumer has called errormappers.Register.
+//
+// What a fallback decides is the case neither sentinel describes. A registry
+// that is unreachable is not an answer about the row, so reporting it as
+// NotFound discloses nothing and costs the caller the truth — they are told the
+// registration is gone, which is something they may act on by minting another.
 //
 // An administered registration — one nobody owns — is not the caller's either.
 // Withdrawing the credential an operator minted for the whole deployment is not
@@ -227,8 +239,17 @@ func (s *Server) own(ctx context.Context, req *request, id string) (*oauth2clien
 
 	client, err := s.store.GetClient(ctx, s.client.Reader(), req.scope, id)
 	if err != nil {
+		// NotFound for the absence and Internal for everything else. The
+		// registered mapper answers both sentinels before this fallback is
+		// consulted; what it decides is a store that failed, which is not a
+		// fact about the row and must not be reported as one.
+		fallback := codes.Internal
+		if platformerrors.Is(err, oauth2clients.ErrClientNotFound) {
+			fallback = codes.NotFound
+		}
+
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.NotFound, "reading oauth2 client %q", id)
+			req.op.Logger(), req.op.Span(), fallback, "reading oauth2 client %q", id)
 	}
 
 	if client.BelongsToUser != userID {

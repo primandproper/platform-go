@@ -14,6 +14,7 @@ import (
 	"github.com/primandproper/platform-go/v14/database"
 	"github.com/primandproper/platform-go/v14/database/dialect"
 	"github.com/primandproper/platform-go/v14/database/sqlite"
+	"github.com/primandproper/platform-go/v14/errormappers"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/tenancy"
 
@@ -30,8 +31,31 @@ import (
 // the refusals here are about which rows a caller reaches, and a mocked store
 // answers that question itself.
 
-// The registry these tests work in, and the two people in it.
-var testScope = tenancy.Of("acct_1")
+// TestMain registers the domain tier's error mappers once for the binary.
+//
+// Without it this suite would assert the codes each handler passes as its
+// *default* rather than the ones a client reads. The administered half hands
+// PrepareAndLogGRPCStatus codes.Internal for every store failure on purpose —
+// the registered mapper is what turns a refused registration into NotFound or
+// AlreadyExists over the preserved chain — so a suite that skipped the
+// registration would pin Internal as the answer to "no such client" and pass.
+//
+// It is also exactly the call a consumer owes at their composition root, which
+// is the other reason it belongs here rather than inside a test.
+func TestMain(m *testing.M) {
+	errormappers.Register()
+	m.Run()
+}
+
+// The registries these tests work in, and the two people in the first.
+//
+// The second exists because the scope on this surface comes off the principal
+// rather than off the request, so the only way to show that a read is keyed on
+// it is to ask for the same row from a caller the extractor puts somewhere else.
+var (
+	testScope  = tenancy.Of("acct_1")
+	otherScope = tenancy.Of("acct_2")
+)
 
 const (
 	testOwner  = "user_1"

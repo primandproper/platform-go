@@ -8,6 +8,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/argon2"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/authserver"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2server"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/database"
@@ -107,20 +108,14 @@ type fakeProtocolStore struct {
 	oauth2server.Store
 }
 
-// resolverFunc adapts a function to authserver.ScopedSubjectResolver, so a test
-// can state the inner resolver's answer — and the registry it answered in —
-// inline.
-type resolverFunc func(
-	ctx context.Context,
-	req *http.Request,
-) (*oauth2server.Subject, tenancy.Scope, error)
-
-func (f resolverFunc) ResolveScopedSubject(
-	ctx context.Context,
-	req *http.Request,
-) (*oauth2server.Subject, tenancy.Scope, error) {
-	return f(ctx, req)
-}
+// resolverFunc is the adapter the package already exports, under a shorter name
+// for the call sites below.
+//
+// An alias rather than a second declaration of the same shape: a suite that
+// redeclared it would be exercising its own adapter and leaving the one
+// consumers reach for untested, which is the whole failure mode of writing a
+// convenience twice.
+type resolverFunc = authserver.ScopedSubjectResolverFunc
 
 // resolving is the common inner resolver: this subject, in this registry.
 func resolving(userID string, scope tenancy.Scope) resolverFunc {
