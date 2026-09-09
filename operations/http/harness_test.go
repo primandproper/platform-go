@@ -6,10 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/filtering"
 	"github.com/primandproper/platform-go/v14/operations"
+
+	"github.com/primandproper/primitives-go/database"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/filtering"
 )
 
 // stubStore satisfies operations.Store and does nothing. It is what the tests

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 const answerInvitationMySQL = `UPDATE {{prefix}}identity_invitations SET

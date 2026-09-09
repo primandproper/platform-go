@@ -3,9 +3,10 @@ package operationscfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/observability/logging"
 	"github.com/primandproper/platform-go/v14/operations"
+
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/observability/logging"
 
 	"github.com/shoenig/test"
 )

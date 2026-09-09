@@ -5,13 +5,14 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/observability/logging"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	"github.com/primandproper/platform-go/v14/observability/tracing"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/observability/logging"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/observability/tracing"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"

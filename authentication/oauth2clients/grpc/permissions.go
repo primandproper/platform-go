@@ -2,8 +2,9 @@ package grpc
 
 import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
-	"github.com/primandproper/platform-go/v14/authorization"
-	authzgrpc "github.com/primandproper/platform-go/v14/authorization/grpc"
+
+	"github.com/primandproper/primitives-go/authorization"
+	authzgrpc "github.com/primandproper/primitives-go/authorization/grpc"
 )
 
 // The permissions this service's administered methods require, in

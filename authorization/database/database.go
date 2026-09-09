@@ -6,19 +6,20 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/primandproper/platform-go/v14/authorization"
 	"github.com/primandproper/platform-go/v14/authorization/database/internal/authorizationdb"
 	"github.com/primandproper/platform-go/v14/authorization/database/migrations"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/ddl"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/identifiers"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/observability/keys"
-	"github.com/primandproper/platform-go/v14/observability/logging"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	"github.com/primandproper/platform-go/v14/observability/tracing"
+
+	"github.com/primandproper/primitives-go/authorization"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/ddl"
+	"github.com/primandproper/primitives-go/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/identifiers"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/observability/keys"
+	"github.com/primandproper/primitives-go/observability/logging"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/observability/tracing"
 )
 
 // serviceName names the Resolver's logger, spans, and metrics.

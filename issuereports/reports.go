@@ -4,13 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/filtering"
-	"github.com/primandproper/platform-go/v14/identifiers"
 	"github.com/primandproper/platform-go/v14/issuereports/internal/issuereportsdb"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/database"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/identifiers"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // CreateReport files one report through the caller's transaction and reads back

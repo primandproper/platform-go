@@ -6,17 +6,18 @@ import (
 	stderrors "errors"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication/webauthn"
 	"github.com/primandproper/platform-go/v14/authentication/webauthn/database/internal/webauthndb"
 	"github.com/primandproper/platform-go/v14/authentication/webauthn/database/migrations"
-	"github.com/primandproper/platform-go/v14/clock"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/ddl"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/encoding"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
+
+	"github.com/primandproper/primitives-go/authentication/webauthn"
+	"github.com/primandproper/primitives-go/clock"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/ddl"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/encoding"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/observability/metrics"
 )
 
 // serviceName names the loggers and spans this store emits.

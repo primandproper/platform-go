@@ -39,8 +39,9 @@ package workqueuecfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/database"
 	"github.com/primandproper/platform-go/v14/workqueue"
+
+	"github.com/primandproper/primitives-go/database"
 )
 
 // NewQueue builds a Queue from configuration.

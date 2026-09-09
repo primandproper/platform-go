@@ -4,11 +4,12 @@ import (
 	"context"
 	"testing"
 
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
-	httperrors "github.com/primandproper/platform-go/v14/errors/http"
 	"github.com/primandproper/platform-go/v14/internal/sentinelmatrix"
 	"github.com/primandproper/platform-go/v14/links"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
+	httperrors "github.com/primandproper/primitives-go/errors/http"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

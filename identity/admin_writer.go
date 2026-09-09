@@ -6,11 +6,12 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/primandproper/platform-go/v14/database"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/database"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // The SQLStore's AdminWriter: the operator's half, whose exposure through an

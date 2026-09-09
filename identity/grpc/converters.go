@@ -3,9 +3,10 @@ package grpc
 import (
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

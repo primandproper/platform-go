@@ -4,13 +4,14 @@ import (
 	"context"
 	"crypto/subtle"
 
-	"github.com/primandproper/platform-go/v14/database"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/filtering"
 	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
 	"github.com/primandproper/platform-go/v14/identity/internal/queries"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/database"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // The SQLStore's InvitationStore: an invitation issued, looked up, and

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/filtering"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/filtering"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.

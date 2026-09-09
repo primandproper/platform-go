@@ -8,7 +8,7 @@ package settingsdb
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // ArchiveDefinitionParams are the arguments to ArchiveDefinition.

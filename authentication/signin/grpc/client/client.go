@@ -44,8 +44,9 @@ package client
 
 import (
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
 
 	"google.golang.org/grpc"
 )

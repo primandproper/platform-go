@@ -9,11 +9,12 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit"
 	auditmigrations "github.com/primandproper/platform-go/v14/audit/migrations"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

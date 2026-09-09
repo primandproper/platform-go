@@ -3,8 +3,8 @@ package oauth2clients
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Hooks is what a consumer runs inside each operation's transaction.

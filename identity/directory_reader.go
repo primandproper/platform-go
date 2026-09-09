@@ -3,12 +3,13 @@ package identity
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/querygen"
-	"github.com/primandproper/platform-go/v14/filtering"
 	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
-	"github.com/primandproper/platform-go/v14/observability"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/querygen"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // The SQLStore's DirectoryReader: users, accounts, and the memberships between

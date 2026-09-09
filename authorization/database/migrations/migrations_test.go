@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/database/ddl"
-	"github.com/primandproper/platform-go/v14/database/dialect"
+	"github.com/primandproper/primitives-go/database/ddl"
+	"github.com/primandproper/primitives-go/database/dialect"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

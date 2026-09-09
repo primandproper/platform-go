@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/filtering"
 	"github.com/primandproper/platform-go/v14/operations/internal/operationsdb"
+
+	"github.com/primandproper/primitives-go/filtering"
 )
 
 // The typed seam between the generated package and this package's own types.

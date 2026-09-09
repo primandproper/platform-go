@@ -3,8 +3,8 @@ package sse
 import (
 	"testing"
 
-	loggingnoop "github.com/primandproper/platform-go/v14/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v14/observability/tracing/noop"
+	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
+	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

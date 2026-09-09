@@ -12,13 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/cryptography/requestsigning"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
-	"github.com/primandproper/platform-go/v14/tenancy"
 	"github.com/primandproper/platform-go/v14/webhooks"
 	"github.com/primandproper/platform-go/v14/webhooks/migrations"
+
+	"github.com/primandproper/primitives-go/cryptography/requestsigning"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // An application's event types, declared as webhooks.EventType constants. That

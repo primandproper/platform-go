@@ -3,7 +3,7 @@ package queries
 import (
 	"slices"
 
-	"github.com/primandproper/platform-go/v14/database/querygen"
+	"github.com/primandproper/primitives-go/database/querygen"
 )
 
 // Table is one identity table's shape.

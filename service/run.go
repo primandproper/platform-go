@@ -8,7 +8,7 @@ import (
 	"sync"
 	"syscall"
 
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 )
 
 // Run starts what New built, blocks until the process is asked to stop, and

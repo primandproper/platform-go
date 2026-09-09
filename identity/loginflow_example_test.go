@@ -8,24 +8,25 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authentication"
-	"github.com/primandproper/platform-go/v14/authentication/argon2"
-	"github.com/primandproper/platform-go/v14/authentication/totp"
-	"github.com/primandproper/platform-go/v14/cache/memory"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 	"github.com/primandproper/platform-go/v14/sessions"
 	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/authentication"
+	"github.com/primandproper/primitives-go/authentication/argon2"
+	"github.com/primandproper/primitives-go/authentication/totp"
+	"github.com/primandproper/primitives-go/cache/memory"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	otp "github.com/pquerna/otp/totp"
 )
 
 // Example_loginFlow is the sign-in this module declines to ship, written the way
-// [github.com/primandproper/platform-go/v14/authentication]'s package
+// [github.com/primandproper/primitives-go/authentication]'s package
 // documentation says to write it.
 //
 // Everything it calls is a package beside this one. What is written here — the

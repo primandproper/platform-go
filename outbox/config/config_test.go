@@ -3,12 +3,13 @@ package outboxcfg
 import (
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	databasemock "github.com/primandproper/platform-go/v14/database/mock"
-	messagequeuecfg "github.com/primandproper/platform-go/v14/messagequeue/config"
-	"github.com/primandproper/platform-go/v14/messagequeue/pubsub"
 	"github.com/primandproper/platform-go/v14/outbox"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	databasemock "github.com/primandproper/primitives-go/database/mock"
+	messagequeuecfg "github.com/primandproper/primitives-go/messagequeue/config"
+	"github.com/primandproper/primitives-go/messagequeue/pubsub"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

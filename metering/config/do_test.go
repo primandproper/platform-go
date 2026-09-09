@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/analytics"
-	analyticsnoop "github.com/primandproper/platform-go/v14/analytics/noop"
-	"github.com/primandproper/platform-go/v14/capitalism"
-	capitalismnoop "github.com/primandproper/platform-go/v14/capitalism/noop"
-	"github.com/primandproper/platform-go/v14/database"
-	databasecfg "github.com/primandproper/platform-go/v14/database/config"
 	"github.com/primandproper/platform-go/v14/metering"
+
+	"github.com/primandproper/primitives-go/analytics"
+	analyticsnoop "github.com/primandproper/primitives-go/analytics/noop"
+	"github.com/primandproper/primitives-go/capitalism"
+	capitalismnoop "github.com/primandproper/primitives-go/capitalism/noop"
+	"github.com/primandproper/primitives-go/database"
+	databasecfg "github.com/primandproper/primitives-go/database/config"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

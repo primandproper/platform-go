@@ -7,13 +7,14 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/filtering/filteringpb"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	metricsmock "github.com/primandproper/platform-go/v14/observability/metrics/mock"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/filtering/filteringpb"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	metricsmock "github.com/primandproper/primitives-go/observability/metrics/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

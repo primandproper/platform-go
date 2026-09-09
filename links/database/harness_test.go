@@ -7,15 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/clock"
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
 	"github.com/primandproper/platform-go/v14/links"
 	"github.com/primandproper/platform-go/v14/links/database/migrations"
-	"github.com/primandproper/platform-go/v14/observability/logging"
-	loggingnoop "github.com/primandproper/platform-go/v14/observability/logging/noop"
-	tracingnoop "github.com/primandproper/platform-go/v14/observability/tracing/noop"
+
+	"github.com/primandproper/primitives-go/clock"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/observability/logging"
+	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
+	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
 
 	"github.com/shoenig/test/must"
 	"go.opentelemetry.io/otel/trace"

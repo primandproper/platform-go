@@ -4,9 +4,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/capitalism"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/capitalism"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 const (

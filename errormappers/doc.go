@@ -2,8 +2,9 @@
 Package errormappers registers this module's domain tier with the two transport
 registries, in one call.
 
-errors/http and errors/grpc are primitives and map primitives. Everything above
-them maps itself: dataprivacy, identity, links, operations and sessions each
+primitives-go's errors/http and errors/grpc are primitives and map primitives,
+and cannot import this module to reach any further. Everything above them maps
+itself: dataprivacy, identity, links, operations and sessions each
 export an HTTPMapper and a GRPCMapper beside their sentinels, and links
 additionally exports the redemption outcomes whose own wording a gRPC status may
 carry. None
@@ -42,9 +43,9 @@ registering is harmless, which is the fourth section.
 # Why it is not in service
 
 Importing service to register five packages' mappers means paying for the whole config
-tree — every sub-config, and every package each one wires. A consumer assembling
-three packages by hand should not import seventy to be told what a link that has
-expired means on the wire. This package imports the five domains and the two
+tree — every sub-config, and every package each one wires, in both modules. A
+consumer assembling three packages by hand should not import all of that to be
+told what a link that has expired means on the wire. This package imports the five domains and the two
 registries and nothing else.
 
 # What it does not do

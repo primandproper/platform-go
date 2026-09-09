@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 const archiveCommentMySQL = `UPDATE {{prefix}}comments SET

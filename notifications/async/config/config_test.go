@@ -4,14 +4,15 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/notifications/async/ably"
 	"github.com/primandproper/platform-go/v14/notifications/async/pusher"
 	asyncsse "github.com/primandproper/platform-go/v14/notifications/async/sse"
 	asyncws "github.com/primandproper/platform-go/v14/notifications/async/websocket"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	"github.com/primandproper/platform-go/v14/observability/metrics/metricstest"
-	metricsmock "github.com/primandproper/platform-go/v14/observability/metrics/mock"
+
+	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/observability/metrics/metricstest"
+	metricsmock "github.com/primandproper/primitives-go/observability/metrics/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

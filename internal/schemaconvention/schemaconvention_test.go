@@ -12,8 +12,6 @@ import (
 	authzmigrations "github.com/primandproper/platform-go/v14/authorization/database/migrations"
 	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
 	shreddingmigrations "github.com/primandproper/platform-go/v14/cryptography/shredding/migrations"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/querygen"
 	dataprivacymigrations "github.com/primandproper/platform-go/v14/dataprivacy/migrations"
 	identitymigrations "github.com/primandproper/platform-go/v14/identity/migrations"
 	issuereportsmigrations "github.com/primandproper/platform-go/v14/issuereports/migrations"
@@ -27,6 +25,9 @@ import (
 	uploadsregistrymigrations "github.com/primandproper/platform-go/v14/uploads/registry/migrations"
 	webhooksmigrations "github.com/primandproper/platform-go/v14/webhooks/migrations"
 	workqueuemigrations "github.com/primandproper/platform-go/v14/workqueue/migrations"
+
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/querygen"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

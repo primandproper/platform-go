@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/cryptography/hashing"
-	"github.com/primandproper/platform-go/v14/cryptography/hashing/sha256"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	"github.com/primandproper/primitives-go/cryptography/hashing"
+	"github.com/primandproper/primitives-go/cryptography/hashing/sha256"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

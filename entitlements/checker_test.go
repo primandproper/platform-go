@@ -6,14 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/authorization"
-	"github.com/primandproper/platform-go/v14/cache"
-	cachemock "github.com/primandproper/platform-go/v14/cache/mock"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	"github.com/primandproper/platform-go/v14/featureflags"
 	"github.com/primandproper/platform-go/v14/metering"
 	meteringmock "github.com/primandproper/platform-go/v14/metering/mock"
-	loggingnoop "github.com/primandproper/platform-go/v14/observability/logging/noop"
+
+	"github.com/primandproper/primitives-go/authorization"
+	"github.com/primandproper/primitives-go/cache"
+	cachemock "github.com/primandproper/primitives-go/cache/mock"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/featureflags"
+	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

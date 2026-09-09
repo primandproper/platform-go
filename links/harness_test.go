@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/clock"
-	clockmock "github.com/primandproper/platform-go/v14/clock/mock"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	"github.com/primandproper/primitives-go/clock"
+	clockmock "github.com/primandproper/primitives-go/clock/mock"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 
 	"github.com/shoenig/test/must"
 )

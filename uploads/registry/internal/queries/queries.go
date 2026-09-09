@@ -1,8 +1,8 @@
 package queries
 
 import (
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/querygen"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/querygen"
 )
 
 // ObjectsTable is the one table this package owns, at its canonical spelling —

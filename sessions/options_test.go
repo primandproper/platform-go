@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/clock"
-	"github.com/primandproper/platform-go/v14/observability/logging"
-	loggingnoop "github.com/primandproper/platform-go/v14/observability/logging/noop"
-	metricsnoop "github.com/primandproper/platform-go/v14/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/platform-go/v14/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/clock"
+	"github.com/primandproper/primitives-go/observability/logging"
+	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
+	metricsnoop "github.com/primandproper/primitives-go/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

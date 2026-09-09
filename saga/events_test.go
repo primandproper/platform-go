@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/outbox"
 	outboxmigrations "github.com/primandproper/platform-go/v14/outbox/migrations"
-	"github.com/primandproper/platform-go/v14/retry"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/retry"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

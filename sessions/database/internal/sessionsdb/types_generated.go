@@ -8,7 +8,7 @@ package sessionsdb
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // CreateSessionParams are the arguments to CreateSession.

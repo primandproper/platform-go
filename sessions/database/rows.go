@@ -4,9 +4,10 @@ import (
 	"context"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/sessions"
 	"github.com/primandproper/platform-go/v14/sessions/database/internal/sessionsdb"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
 )
 
 // row is one record's worth of bound parameters, with the payload already

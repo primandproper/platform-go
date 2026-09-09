@@ -3,9 +3,10 @@ package linkscfg
 import (
 	"context"
 
-	"github.com/primandproper/platform-go/v14/database"
 	"github.com/primandproper/platform-go/v14/links"
-	"github.com/primandproper/platform-go/v14/observability"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/observability"
 
 	"github.com/samber/do/v2"
 )

@@ -6,11 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/database"
-	databasecfg "github.com/primandproper/platform-go/v14/database/config"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
-	"github.com/primandproper/platform-go/v14/observability"
+
+	"github.com/primandproper/primitives-go/database"
+	databasecfg "github.com/primandproper/primitives-go/database/config"
+	"github.com/primandproper/primitives-go/observability"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

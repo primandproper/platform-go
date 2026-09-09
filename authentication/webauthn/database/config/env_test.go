@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	cachecfg "github.com/primandproper/platform-go/v14/cache/config"
+	cachecfg "github.com/primandproper/primitives-go/cache/config"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/shoenig/test"

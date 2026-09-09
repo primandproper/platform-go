@@ -38,10 +38,11 @@ off for a caller assembling their own chain.
 package client
 
 import (
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
-	grpcerrors "github.com/primandproper/platform-go/v14/errors/grpc"
-	idempotencygrpc "github.com/primandproper/platform-go/v14/idempotency/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
+	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
+	idempotencygrpc "github.com/primandproper/primitives-go/idempotency/grpc"
 
 	"google.golang.org/grpc"
 )

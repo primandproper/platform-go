@@ -4,9 +4,10 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/billing/internal/billingdb"
-	"github.com/primandproper/platform-go/v14/capitalism"
-	"github.com/primandproper/platform-go/v14/filtering"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/capitalism"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // The typed seam between the generated package and the domain types.

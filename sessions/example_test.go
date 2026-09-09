@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/cache/memory"
 	"github.com/primandproper/platform-go/v14/sessions"
 	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
+
+	"github.com/primandproper/primitives-go/cache/memory"
 )
 
 // Principal is what a session carries: whatever the application needs to know

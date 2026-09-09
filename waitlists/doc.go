@@ -205,7 +205,7 @@ row to a caller holding another list's id.
 
 It does not send anything. [SignupStore.Invite] records that somebody was let in;
 what reaches them is
-[github.com/primandproper/platform-go/v14/email]'s to deliver, off the
+[github.com/primandproper/primitives-go/email]'s to deliver, off the
 [Signup.StatusChangedAt] this stamps.
 
 It does not number the queue. "You are 4,102nd in line" is a count that changes
@@ -214,7 +214,7 @@ and the paged reads here already carry the counts a caller needs to render a
 position they are willing to stand behind.
 
 It does not decide who may administer a list.
-[github.com/primandproper/platform-go/v14/authorization] is where that lives, and
+[github.com/primandproper/primitives-go/authorization] is where that lives, and
 a store that pretended to know who was calling would be an authorization check in
 the wrong layer.
 

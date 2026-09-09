@@ -3,8 +3,8 @@ package dataprivacy
 import (
 	"slices"
 
-	"github.com/primandproper/platform-go/v14/charset"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	"github.com/primandproper/primitives-go/charset"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 )
 
 // validKey is a registration key: a lowercase identifier fragment, optionally

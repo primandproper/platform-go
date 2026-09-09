@@ -7,11 +7,12 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit"
 	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
-	"github.com/primandproper/platform-go/v14/clock"
-	"github.com/primandproper/platform-go/v14/compression"
-	loggingnoop "github.com/primandproper/platform-go/v14/observability/logging/noop"
-	"github.com/primandproper/platform-go/v14/observability/metrics"
-	tracingnoop "github.com/primandproper/platform-go/v14/observability/tracing/noop"
+
+	"github.com/primandproper/primitives-go/clock"
+	"github.com/primandproper/primitives-go/compression"
+	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
+	"github.com/primandproper/primitives-go/observability/metrics"
+	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/sqlite"
-	"github.com/primandproper/platform-go/v14/distributedlock"
-	lockmemory "github.com/primandproper/platform-go/v14/distributedlock/memory"
 	"github.com/primandproper/platform-go/v14/saga"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/distributedlock"
+	lockmemory "github.com/primandproper/primitives-go/distributedlock/memory"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

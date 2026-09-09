@@ -8,9 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/filtering"
 	"github.com/primandproper/platform-go/v14/saga"
+
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/filtering"
 )
 
 // Ensure, that StoreMock does implement saga.Store.

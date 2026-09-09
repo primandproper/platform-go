@@ -6,13 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/database"
-	databasecfg "github.com/primandproper/platform-go/v14/database/config"
-	"github.com/primandproper/platform-go/v14/database/dialect"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/operations"
-	"github.com/primandproper/platform-go/v14/uploads"
-	uploadsnoop "github.com/primandproper/platform-go/v14/uploads/noop"
+
+	"github.com/primandproper/primitives-go/database"
+	databasecfg "github.com/primandproper/primitives-go/database/config"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/uploads"
+	uploadsnoop "github.com/primandproper/primitives-go/uploads/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

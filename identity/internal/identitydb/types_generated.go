@@ -8,7 +8,7 @@ package identitydb
 import (
 	"time"
 
-	"github.com/primandproper/platform-go/v14/tenancy"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // AnswerInvitationParams are the arguments to AnswerInvitation.

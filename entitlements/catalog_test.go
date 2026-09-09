@@ -4,8 +4,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/primandproper/platform-go/v14/authorization"
 	"github.com/primandproper/platform-go/v14/metering"
+
+	"github.com/primandproper/primitives-go/authorization"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

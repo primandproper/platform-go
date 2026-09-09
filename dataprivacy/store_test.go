@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database"
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/filtering"
-	"github.com/primandproper/platform-go/v14/identifiers"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/identifiers"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -668,7 +668,7 @@ func suiteList(t *testing.T, env *storeEnv) {
 // bogusDialectClient reports a dialect this package cannot emit SQL for.
 //
 // The unsupported-dialect branch is otherwise unreachable: the dialect comes
-// from the client rather than the caller, and every client this module ships
+// from the client rather than the caller, and every client primitives-go ships
 // reports one of the three supported dialects. Only Dialect is consulted before
 // the constructor gives up, so the embedded Client is never called.
 type bogusDialectClient struct {

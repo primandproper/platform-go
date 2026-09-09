@@ -4,8 +4,9 @@ import (
 	"context"
 	"time"
 
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
 	"github.com/primandproper/platform-go/v14/outbox"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
 )
 
 // serviceName names this package's loggers, spans, and metrics.

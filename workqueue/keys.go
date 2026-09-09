@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/primandproper/platform-go/v14/encoding"
-	platformerrors "github.com/primandproper/platform-go/v14/errors"
+	"github.com/primandproper/primitives-go/encoding"
+	platformerrors "github.com/primandproper/primitives-go/errors"
 )
 
 // MaxKeyLength bounds an encoded key.

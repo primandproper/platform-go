@@ -4,12 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/database/dialect"
-	"github.com/primandproper/platform-go/v14/database/querygen"
-	"github.com/primandproper/platform-go/v14/filtering"
 	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
-	"github.com/primandproper/platform-go/v14/pointer"
-	"github.com/primandproper/platform-go/v14/tenancy"
+
+	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/database/querygen"
+	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/pointer"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
