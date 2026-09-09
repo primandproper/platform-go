@@ -4,6 +4,7 @@ import (
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -22,13 +23,14 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all eleven unconditionally, including for a service that has no
-// privacy requests, runs no operations, reads no audit log, tells nobody
-// anything, delivers no webhooks and has nobody signing in. An unused mapper
-// costs one comparison against a sentinel the process cannot produce, and
-// that is the cheap direction to be wrong in — the expensive one is an action
-// link answering 500 because nobody registered anything. Conditioning on
-// presence would also mean this package taking an argument describing which
+// It registers all twelve unconditionally, including for a service that has
+// no privacy requests, runs no operations, reads no audit log, tells nobody
+// anything, delivers no webhooks, sells nothing and has nobody signing in. An
+// unused mapper costs one comparison against a sentinel the process cannot
+// produce, and that is the cheap direction to be wrong in — the expensive one
+// is an action link answering 500 because nobody registered anything.
+// Conditioning on presence would also mean this package taking an argument
+// describing which
 // subsystems a service has, which is the config tree it exists to avoid
 // importing.
 //
@@ -109,4 +111,14 @@ func Register() {
 	// wording would add. The one whose wording is deliberately *narrower* than
 	// the sentinel's is ErrEndpointOutOfScope, which must not tell a caller that
 	// another tenant is holding the identifier they chose.
+
+	httperrors.RegisterHTTPErrorMapper(billing.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(billing.GRPCMapper)
+
+	// The worst collisions in the module: seven of billing's refusals are
+	// InvalidArgument, five are AlreadyExists and two are FailedPrecondition,
+	// and inside each family the remedies differ — acknowledge the redelivery,
+	// fix the field, or fix the code that chose the id. See
+	// billing.ClientSafeSentinels.
+	grpcerrors.RegisterClientSafeSentinels(billing.ClientSafeSentinels...)
 }

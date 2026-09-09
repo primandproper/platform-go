@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -50,7 +51,7 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are eleven
+// The packages that map their own sentinels, spelled once each; there are twelve
 // today. Each name is three things — a key in Matrix, an entry in Packages and a
 // case in Mappers — and a package that declares a pair later is added in all
 // three together.
@@ -69,6 +70,7 @@ const (
 	notificationsPkg = "notifications"
 	commentsPkg      = "comments"
 	webhooksPkg      = "webhooks"
+	billingPkg       = "billing"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -77,7 +79,7 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the eleven
+// Matrix is the decision made about every exported sentinel in the twelve
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
@@ -119,6 +121,68 @@ var Matrix = map[string]map[string]Decision{
 		// response. It reaches a transport only through a consumer who chose to
 		// escalate it, at which point what it means is theirs to decide.
 		"ErrChainBroken": {Err: audit.ErrChainBroken, Is: Unhandled},
+	},
+
+	billingPkg: {
+		// The four absences, one per table. Each is what a client naming a row
+		// that is gone, archived, or in another scope is told, and the three
+		// cases are one answer so that a read cannot be used to enumerate
+		// another tenant's catalog or ledger.
+		"ErrProductNotFound":      {Err: billing.ErrProductNotFound, Is: Mapped},
+		"ErrPurchaseNotFound":     {Err: billing.ErrPurchaseNotFound, Is: Mapped},
+		"ErrSubscriptionNotFound": {Err: billing.ErrSubscriptionNotFound, Is: Mapped},
+		"ErrTransactionNotFound":  {Err: billing.ErrTransactionNotFound, Is: Mapped},
+
+		// The five collisions on a unique key. Four are a payment provider's
+		// identifier arriving twice, which is the ordinary redelivery this
+		// schema is shaped around, and ErrIDTaken is an application handing out
+		// an id it has already used. All five are a conflict rather than a
+		// server fault, which is what lets a webhook receiver acknowledge the
+		// delivery instead of retrying it forever.
+		"ErrIDTaken":            {Err: billing.ErrIDTaken, Is: Mapped},
+		"ErrProductExists":      {Err: billing.ErrProductExists, Is: Mapped},
+		"ErrPurchaseExists":     {Err: billing.ErrPurchaseExists, Is: Mapped},
+		"ErrSubscriptionExists": {Err: billing.ErrSubscriptionExists, Is: Mapped},
+		"ErrTransactionExists":  {Err: billing.ErrTransactionExists, Is: Mapped},
+
+		// The two answers a guarded write gives a replay: the status was
+		// already where the event would have put it, and the money had already
+		// arrived. Neither is a failure, and a 500 would tell a caller to retry
+		// work that has been done.
+		"ErrAlreadyCompleted": {Err: billing.ErrAlreadyCompleted, Is: Mapped},
+		"ErrStatusUnchanged":  {Err: billing.ErrStatusUnchanged, Is: Mapped},
+
+		// The seven a caller can correct, each naming a field rather than the
+		// call. They are mapped rather than left to the platform because none of
+		// them wraps a platform sentinel: they are judgements about a value that
+		// was supplied, not about one that was missing.
+		"ErrAmbiguousTransaction":      {Err: billing.ErrAmbiguousTransaction, Is: Mapped},
+		"ErrBackwardsPeriod":           {Err: billing.ErrBackwardsPeriod, Is: Mapped},
+		"ErrInvalidCurrency":           {Err: billing.ErrInvalidCurrency, Is: Mapped},
+		"ErrInvalidKind":               {Err: billing.ErrInvalidKind, Is: Mapped},
+		"ErrInvalidStatus":             {Err: billing.ErrInvalidStatus, Is: Mapped},
+		"ErrNegativeAmount":            {Err: billing.ErrNegativeAmount, Is: Mapped},
+		"ErrUnexpectedBillingInterval": {Err: billing.ErrUnexpectedBillingInterval, Is: Mapped},
+
+		// Wrap errors.ErrNilInputParameter, so the platform mappers answer them.
+		// Every one is a caller that passed no executor or no entity, which is a
+		// wiring failure rather than anything a client sent.
+		"ErrNilDatabaseClient": {Err: billing.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: billing.ErrNilExecutor, Is: Platform},
+		"ErrNilProduct":        {Err: billing.ErrNilProduct, Is: Platform},
+		"ErrNilPurchase":       {Err: billing.ErrNilPurchase, Is: Platform},
+		"ErrNilSubscription":   {Err: billing.ErrNilSubscription, Is: Platform},
+		"ErrNilTransaction":    {Err: billing.ErrNilTransaction, Is: Platform},
+
+		// Wrap errors.ErrEmptyInputParameter, which the platform mappers already
+		// answer as a bad request. A case of this package's own would be a
+		// second copy of that decision, free to drift from it.
+		"ErrEmptyAccount":         {Err: billing.ErrEmptyAccount, Is: Platform},
+		"ErrEmptyBillingInterval": {Err: billing.ErrEmptyBillingInterval, Is: Platform},
+		"ErrEmptyExternalID":      {Err: billing.ErrEmptyExternalID, Is: Platform},
+		"ErrEmptyPeriod":          {Err: billing.ErrEmptyPeriod, Is: Platform},
+		"ErrEmptyProduct":         {Err: billing.ErrEmptyProduct, Is: Platform},
+		"ErrEmptyProductName":     {Err: billing.ErrEmptyProductName, Is: Platform},
 	},
 	dataPrivacyPkg: {
 		// A subject asking after their own export or erasure is a client. These five
@@ -532,7 +596,7 @@ var Matrix = map[string]map[string]Decision{
 var Packages = []string{
 	auditPkg, dataPrivacyPkg, identityPkg, linksPkg, operationsPkg,
 	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
-	webhooksPkg,
+	webhooksPkg, billingPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
@@ -562,6 +626,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return comments.HTTPMapper, comments.GRPCMapper
 	case webhooksPkg:
 		return webhooks.HTTPMapper, webhooks.GRPCMapper
+	case billingPkg:
+		return billing.HTTPMapper, billing.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}
