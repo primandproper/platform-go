@@ -421,7 +421,7 @@ worker on a timer, or by your own code inside your own transaction, which is the
 same test the carve-outs above are made by. Owning a store is not what puts a
 package on the list; having a caller who is somebody else is.
 
-One of the nine is not the house default, and it has a stated reason.
+One of the ten is not the house default, and it has a stated reason.
 `dataprivacy` is on HTTP because its flow already is. Progress is answered by
 `operations/http` against `Request.OperationID` and the same event stream every
 other long-running thing here uses, `Confirm` is reached by somebody clicking a

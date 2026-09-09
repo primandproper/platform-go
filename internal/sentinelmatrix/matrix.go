@@ -723,7 +723,7 @@ var Matrix = map[string]map[string]Decision{
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
-// module root. They are the eight that export mappers of their own; a package
+// module root. They are the fifteen that export mappers of their own; a package
 // that declares a pair later is added here, in Matrix and in Mappers together.
 var Packages = []string{
 	auditPkg, dataPrivacyPkg, identityPkg, linksPkg, operationsPkg,
@@ -732,7 +732,7 @@ var Packages = []string{
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
-// this package spells the eight out; everywhere else they are the strings in
+// this package spells the fifteen out; everywhere else they are the strings in
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
