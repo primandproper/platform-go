@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/platform-go/v14/links"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
+	"github.com/primandproper/platform-go/v14/waitlists"
 
 	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
 	httperrors "github.com/primandproper/primitives-go/errors/http"
@@ -46,7 +47,7 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are seven
+// The packages that map their own sentinels, spelled once each; there are eight
 // today. Each name is three things — a key in Matrix, an entry in Packages and a
 // case in Mappers — and a package that declares a pair later is added in all
 // three together.
@@ -61,6 +62,7 @@ const (
 	sessionsPkg      = "sessions"
 	signInPkg        = "authentication/signin"
 	oauth2ClientsPkg = "authentication/oauth2clients"
+	waitlistsPkg     = "waitlists"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -69,7 +71,7 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the seven
+// Matrix is the decision made about every exported sentinel in the eight
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
@@ -297,6 +299,48 @@ var Matrix = map[string]map[string]Decision{
 		"ErrSecretGeneration": {Err: oauth2clients.ErrSecretGeneration, Is: Unhandled},
 	},
 
+	waitlistsPkg: {
+		// The two absences. Archived and in another tenant's scope read the
+		// same way, which is what keeps a keyed read from being an enumeration
+		// oracle over other tenants' rows.
+		"ErrListNotFound":   {Err: waitlists.ErrListNotFound, Is: Mapped},
+		"ErrSignupNotFound": {Err: waitlists.ErrSignupNotFound, Is: Mapped},
+
+		// The five refusals a person on a signup page meets, and the only rows
+		// in this file whose reader has not signed in. Each is also a
+		// ClientSafeSentinel: four of the five are FailedPrecondition, so the
+		// code cannot say which of them applies and each has a different
+		// remedy. ErrAlreadySignedUp is AlreadyExists rather than a fifth
+		// FailedPrecondition, because its collision is on a unique key.
+		"ErrAlreadySignedUp":  {Err: waitlists.ErrAlreadySignedUp, Is: Mapped},
+		"ErrAlreadyWithdrawn": {Err: waitlists.ErrAlreadyWithdrawn, Is: Mapped},
+		"ErrContactWithdrawn": {Err: waitlists.ErrContactWithdrawn, Is: Mapped},
+		"ErrListClosed":       {Err: waitlists.ErrListClosed, Is: Mapped},
+		"ErrWrongStatus":      {Err: waitlists.ErrWrongStatus, Is: Mapped},
+
+		// A write whose list or signup names a different tenant than the call
+		// did. The two halves of the request disagreed, which is a bad request
+		// rather than a refusal on authority.
+		"ErrScopeMismatch": {Err: waitlists.ErrScopeMismatch, Is: Mapped},
+
+		// Wrap errors.ErrNilInputParameter, so the platform mappers answer
+		// them. They are wiring failures rather than anything a client sent.
+		"ErrNilDatabaseClient": {Err: waitlists.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: waitlists.ErrNilExecutor, Is: Platform},
+		"ErrNilList":           {Err: waitlists.ErrNilList, Is: Platform},
+		"ErrNilSignup":         {Err: waitlists.ErrNilSignup, Is: Platform},
+
+		// Wrap errors.ErrEmptyInputParameter, which the platform mappers
+		// already answer as a bad request. A case of this package's own would
+		// be a second copy of that decision, free to drift from it — which is
+		// the reading identity takes of its own missing-field sentinels.
+		"ErrEmptyClosesAt":    {Err: waitlists.ErrEmptyClosesAt, Is: Platform},
+		"ErrEmptyContact":     {Err: waitlists.ErrEmptyContact, Is: Platform},
+		"ErrEmptyListName":    {Err: waitlists.ErrEmptyListName, Is: Platform},
+		"ErrEmptySubjectID":   {Err: waitlists.ErrEmptySubjectID, Is: Platform},
+		"ErrEmptySubjectType": {Err: waitlists.ErrEmptySubjectType, Is: Platform},
+	},
+
 	signInPkg: {
 		// The two refusals a caller gets before they hold anything. Both are
 		// Unauthenticated and both are 401, and they differ only in the message,
@@ -346,15 +390,15 @@ var Matrix = map[string]map[string]Decision{
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
-// module root. They are the seven that export mappers of their own; a package
+// module root. They are the eight that export mappers of their own; a package
 // that declares a pair later is added here, in Matrix and in Mappers together.
 var Packages = []string{
 	dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg,
-	oauth2ClientsPkg,
+	oauth2ClientsPkg, waitlistsPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
-// this package spells the seven out; everywhere else they are the strings in
+// this package spells the eight out; everywhere else they are the strings in
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
@@ -372,6 +416,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return signin.HTTPMapper, signin.GRPCMapper
 	case oauth2ClientsPkg:
 		return oauth2clients.HTTPMapper, oauth2clients.GRPCMapper
+	case waitlistsPkg:
+		return waitlists.HTTPMapper, waitlists.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}

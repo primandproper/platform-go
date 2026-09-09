@@ -103,7 +103,7 @@ func Register(i do.Injector, cfg *Config) {
 // registered that domain's mapper. errormappers.Register is that somebody for a
 // service built from a Config, and the same one call a service assembled by hand
 // makes: the list of which packages declare mappers lives there, in a package
-// importing the four domains and the two registries, so it is not written out a
+// importing those domains and the two registries, so it is not written out a
 // second time here where it could drift.
 //
 // Unconditional, including for a service whose Config names no DataPrivacy and

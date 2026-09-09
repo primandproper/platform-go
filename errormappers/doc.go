@@ -42,10 +42,10 @@ registering is harmless, which is the fourth section.
 
 # Why it is not in service
 
-Importing service to register five packages' mappers means paying for the whole config
+Importing service to register those packages' mappers means paying for the whole config
 tree — every sub-config, and every package each one wires, in both modules. A
 consumer assembling three packages by hand should not import all of that to be
-told what a link that has expired means on the wire. This package imports the five domains and the two
+told what a link that has expired means on the wire. This package imports those domains and the two
 registries and nothing else.
 
 # What it does not do
