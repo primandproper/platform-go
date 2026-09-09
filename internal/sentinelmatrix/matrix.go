@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/links"
+	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
 
@@ -46,7 +47,7 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are seven
+// The packages that map their own sentinels, spelled once each; there are eight
 // today. Each name is three things — a key in Matrix, an entry in Packages and a
 // case in Mappers — and a package that declares a pair later is added in all
 // three together.
@@ -61,6 +62,7 @@ const (
 	sessionsPkg      = "sessions"
 	signInPkg        = "authentication/signin"
 	oauth2ClientsPkg = "authentication/oauth2clients"
+	notificationsPkg = "notifications"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -69,7 +71,7 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the seven
+// Matrix is the decision made about every exported sentinel in the eight
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
@@ -343,18 +345,49 @@ var Matrix = map[string]map[string]Decision{
 		// answer and no mapper claims it.
 		"ErrTOTPIssuerNotConfigured": {Err: signin.ErrTOTPIssuerNotConfigured, Is: Unhandled},
 	},
+	notificationsPkg: {
+		// The two reads' one answer. Absent, archived, and belonging to somebody
+		// else are deliberately the same 404 on both seams, which is what keeps a
+		// read by id from telling a caller what other people have been told and
+		// which handsets they hold.
+		"ErrNotificationNotFound": {Err: notifications.ErrNotificationNotFound, Is: Mapped},
+		"ErrDeviceNotFound":       {Err: notifications.ErrDeviceNotFound, Is: Mapped},
+
+		// The four a caller can correct, each naming its field. Three of them are
+		// reachable from notifications/grpc — a registration with no token, one
+		// naming no platform, one naming a platform this module does not serve —
+		// and ErrEmptyTopic is reachable from an HTTP handler a consumer writes
+		// over CreateNotification, which is the write that has no RPC.
+		"ErrEmptyPrincipal":  {Err: notifications.ErrEmptyPrincipal, Is: Mapped},
+		"ErrEmptyTopic":      {Err: notifications.ErrEmptyTopic, Is: Mapped},
+		"ErrEmptyToken":      {Err: notifications.ErrEmptyToken, Is: Mapped},
+		"ErrUnknownPlatform": {Err: notifications.ErrUnknownPlatform, Is: Mapped},
+
+		// A write whose entity names a different scope than the write does,
+		// refused rather than corrected. It is the same row oauth2clients carries
+		// and for the same reason: the caller holds both halves.
+		"ErrScopeMismatch": {Err: notifications.ErrScopeMismatch, Is: Mapped},
+
+		// The wiring failures. Each wraps a platform sentinel that errors/http
+		// and errors/grpc already answer, so this package's mappers say nothing
+		// about them.
+		"ErrNilDatabaseClient": {Err: notifications.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilDevice":         {Err: notifications.ErrNilDevice, Is: Platform},
+		"ErrNilExecutor":       {Err: notifications.ErrNilExecutor, Is: Platform},
+		"ErrNilNotification":   {Err: notifications.ErrNilNotification, Is: Platform},
+	},
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
-// module root. They are the seven that export mappers of their own; a package
+// module root. They are the eight that export mappers of their own; a package
 // that declares a pair later is added here, in Matrix and in Mappers together.
 var Packages = []string{
 	dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg,
-	oauth2ClientsPkg,
+	oauth2ClientsPkg, notificationsPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
-// this package spells the seven out; everywhere else they are the strings in
+// this package spells the eight out; everywhere else they are the strings in
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
@@ -372,6 +405,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return signin.HTTPMapper, signin.GRPCMapper
 	case oauth2ClientsPkg:
 		return oauth2clients.HTTPMapper, oauth2clients.GRPCMapper
+	case notificationsPkg:
+		return notifications.HTTPMapper, notifications.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}

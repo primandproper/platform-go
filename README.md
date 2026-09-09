@@ -40,7 +40,7 @@ Because breaking changes ride the major-version import path, upgrading across ma
 
 **OpenTelemetry throughout.** Every store, transport and worker here instruments through primitives-go's `observability`, whose logging, tracing, metrics and profiling pillars a consumer supplies once and threads everywhere.
 
-**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `authentication/oauth2clients`, `authentication/signin`, `dataprivacy`, `identity`, `links`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all seven in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it is the only surface here that both answers through `errors/http` and belongs to a package on that list. `internal/sentinelmatrix` checks that every exported sentinel in those seven has a decision recorded and that it still holds on both transports.
+**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `authentication/oauth2clients`, `authentication/signin`, `dataprivacy`, `identity`, `links`, `notifications`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all eight in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it is the only surface here that both answers through `errors/http` and belongs to a package on that list. `internal/sentinelmatrix` checks that every exported sentinel in those eight has a decision recorded and that it still holds on both transports.
 
 ## Package Catalog
 
@@ -98,7 +98,7 @@ reasons behind the three exceptions.
 | `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres (+ http)       |
 | `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite |
 | `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite |
-| `notifications` | User notifications                                                                  | postgres, mysql, sqlite (+ async) |
+| `notifications` | User notifications                                                                  | postgres, mysql, sqlite (+ async, grpc) |
 | `search/sync`   | Reindexing worker driven by the outbox                                              | —                       |
 
 ### The composition root
@@ -251,7 +251,33 @@ options with four defaults. `authentication/signin/grpc` serves it, and is the
 one surface in the module that reads its tenant off the connection rather than
 off a caller — because a caller signing in has not become one yet.
 
-Ten more still ship a store and no handlers, and each is to follow `identity`.
+`notifications` is the third across, and it is the first where the two halves of
+a package cross for two different reasons. The inbox half is the bell icon —
+list, list unread, get, mark one read, mark them all read, archive — which is
+the screen every consumer's application has and the code every consumer
+otherwise writes. The registry half is the strongest RPC case anywhere in the
+ten, because the caller is literally a remote device: a handset re-registers on
+every app launch and every token rotation, and the registration converges on
+(platform, token) rather than inserting, so a handset that changes hands has one
+owner.
+
+Three of its twelve store methods stay behind, and they are three different
+shapes of machinery rather than three instances of one — which is why this is
+the package the distinction is worth reading in. `CreateNotification` is the
+transactional companion: it files a notification in the caller's transaction so
+that it commits with the thing the notification is about, and an RPC would give
+you a refused order that has already told somebody it shipped.
+`ListDevicesByPrincipals` is the internal fan-out, one query for the tokens an
+announcement has to reach. `InvalidateDeviceToken` is the provider callback
+hook, and it is the one absence that is a security property rather than a shape:
+it removes a token whoever it belongs to, on the word of APNs or FCM, and
+published as an RPC it would delete any handset's registration in any tenant on
+the say-so of a caller claiming a provider said so. Nor does any response carry
+a device token: it travels in on one message, in one direction, so listing
+devices cannot become the call that harvests every push address an account
+holds.
+
+Nine more still ship a store and no handlers, and each is to follow `identity`.
 The transport is not uniform and neither is the subset of a store that crosses:
 
 | package | verdict | transport | carved out, and why |
@@ -260,7 +286,6 @@ The transport is not uniform and neither is the subset of a store that crosses:
 | `comments` | wire surface, full | gRPC | the two bulk deletes — erasure machinery |
 | `issuereports` | wire surface, full | gRPC | `DeleteReportsByReporter` — erasure machinery |
 | `settings` | wire surface, full | gRPC | `DeleteValuesForSubject` — erasure machinery |
-| `notifications` | wire surface, both halves | gRPC | `CreateNotification`, `ListDevicesByPrincipals`, `InvalidateDeviceToken` |
 | `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the seven its store documents |
 | `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
 | `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, and `Query.Scope` itself |
@@ -304,13 +329,14 @@ to hold to it. What is left here is the second half of that sentence, and it is
 the whole list.
 
 <!-- readmegen:transports -->
-| Transport                           | Kind             | Whose shape it is                                                                               |
-|-------------------------------------|------------------|-------------------------------------------------------------------------------------------------|
-| `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                             |
-| `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store` |
-| `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`           |
-| `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`               |
-| `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                |
+| Transport                           | Kind             | Whose shape it is                                                                                  |
+|-------------------------------------|------------------|----------------------------------------------------------------------------------------------------|
+| `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                |
+| `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store`    |
+| `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`              |
+| `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`                  |
+| `notifications/grpc`                | resource surface | the in-app inbox and the device registry — over `notifications.Inbox` and `notifications.Registry` |
+| `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                   |
 <!-- /readmegen:transports -->
 
 One row is a binding rather than a surface. `sessions/http` binds a store to a
