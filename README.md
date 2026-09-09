@@ -251,6 +251,21 @@ options with four defaults. `authentication/signin/grpc` serves it, and is the
 one surface in the module that reads its tenant off the connection rather than
 off a caller — because a caller signing in has not become one yet.
 
+`audit` crosses too, and it is the one that ships **strictly narrower than its
+own interface**. `audit/grpc` serves the `Reader` and nothing else:
+read one entry, page them, verify a scope's hash chain. `Record` is not there
+and cannot be — an audit entry that can commit while the change it describes
+rolls back, or the reverse, is not a record of what happened, which is the
+sharpest instance of the rule that a write already inside your transaction is
+not an RPC. `Query.Scope` is not there either: in the Go type it is a `*string`
+in which nil means every tenant's events, so the scope binds off the connection
+and the schema *reserves* the field name, which makes the absence something
+`protoc` enforces rather than something a reviewer has to notice. What makes the
+crossing worth it is `Verify` — establishing that nobody edited, removed or
+reordered an entry is the capability a hand-written log reader never gets around
+to, and the one most worth calling remotely and on a schedule, which is why it
+is its own grant rather than a second use of the read one.
+
 `notifications` is the third across, and it is the first where the two halves of
 a package cross for two different reasons. The inbox half is the bell icon —
 list, list unread, get, mark one read, mark them all read, archive — which is
