@@ -30,15 +30,19 @@ which mappers the process answers with — service.Register calls Register for a
 service built from a service.Config, and a service assembled by hand calls it
 itself, next to its own mappers.
 
-operations/http.New is the one exception in this module, and it is the only one
-that can be. It is the only surface here that both answers through errors/http
-and belongs to a package in the list, so constructing it is already the statement
-that this process serves operation errors on the wire. The other three have
-nowhere to make that statement: dataprivacy and links ship no transport at all,
-and sessions/http ships one that never writes an error response — its middleware
-logs a load failure and serves the request anonymously, so the 401 is written by
-the consumer's handler through the consumer's own ToAPIResponse call. Both paths
-registering is harmless, which is the fourth section.
+operations/http.New is the one exception in this module, and it stays the only
+one. It was made when that package was the only surface here that both answered
+through errors/http and belonged to a package in the list, so constructing it is
+already the statement that this process serves operation errors on the wire.
+dataprivacy/http is a second such surface now and registers nothing: the
+exception did not travel with the shape, because a mapper set assembled from
+whichever handlers a binary happens to have constructed is not one a consumer can
+read off a single call. The other two have nowhere to make the statement at all:
+links ships no transport, and sessions/http ships one that never writes an error
+response — its middleware logs a load failure and serves the request
+anonymously, so the 401 is written by the consumer's handler through the
+consumer's own ToAPIResponse call. Both paths registering is harmless, which is
+the fourth section.
 
 # Why it is not in service
 
