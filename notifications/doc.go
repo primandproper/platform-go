@@ -105,10 +105,21 @@ the tables are created by your own migration run.
 
 # Where this package stops
 
-At the store and the senders. The inbox endpoints a client polls — list mine,
-mark one read, mark them all read — are an application's routes over an
-application's types, and this package ships none of them. The module README's
-"Transports" section is where that line is drawn for the module as a whole.
+Nine of the twelve methods on the two seams are served over gRPC by
+notifications/grpc: the six inbox calls a bell icon makes, and the three a
+handset makes about itself. That surface reads both the directory and the
+recipient off the caller the consumer's interceptor resolved, so no request on
+it names either, and it opens its own transaction for each write — the "caller
+with nothing to join" the section above describes, written once there instead of
+once per consumer.
+
+The three that stay behind are the three shapes of machinery, and each says so
+on its own Store method: [Inbox.CreateNotification] is the transactional
+companion, [Registry.ListDevicesByPrincipals] is the internal fan-out, and
+[Registry.InvalidateDeviceToken] is the provider callback hook. What is still an
+application's own is the policy — who is calling, and what each method requires
+— and the module README's "Transports" section is where that line is drawn for
+the module as a whole.
 */
 package notifications
 

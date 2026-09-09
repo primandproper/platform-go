@@ -1,14 +1,18 @@
 package errormappers
 
 import (
+	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/billing"
+	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/links"
+	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
+	"github.com/primandproper/platform-go/v14/webhooks"
 
 	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
 	httperrors "github.com/primandproper/primitives-go/errors/http"
@@ -19,12 +23,14 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all eight unconditionally, including for a service that has no
-// privacy requests, runs no operations, sells nothing and has nobody signing in.
-// An unused mapper costs one comparison against a sentinel the process cannot
-// produce, and that is the cheap direction to be wrong in — the expensive one is
-// an action link answering 500 because nobody registered anything. Conditioning
-// on presence would also mean this package taking an argument describing which
+// It registers all twelve unconditionally, including for a service that has
+// no privacy requests, runs no operations, reads no audit log, tells nobody
+// anything, delivers no webhooks, sells nothing and has nobody signing in. An
+// unused mapper costs one comparison against a sentinel the process cannot
+// produce, and that is the cheap direction to be wrong in — the expensive one
+// is an action link answering 500 because nobody registered anything.
+// Conditioning on presence would also mean this package taking an argument
+// describing which
 // subsystems a service has, which is the config tree it exists to avoid
 // importing.
 //
@@ -70,6 +76,41 @@ func Register() {
 	// and so are indistinguishable by code, and each names a different remedy for
 	// somebody staring at a browser. See oauth2clients.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(oauth2clients.ClientSafeSentinels...)
+
+	// The audit log, whose pair claims one sentinel: an entry that is not there,
+	// which is also what an entry in another tenant's log reads as. It has no
+	// client-safe list because one mapped sentinel collides with nothing — see
+	// audit's own errormappers.go.
+	httperrors.RegisterHTTPErrorMapper(audit.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(audit.GRPCMapper)
+
+	httperrors.RegisterHTTPErrorMapper(notifications.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(notifications.GRPCMapper)
+
+	// No client-safe sentinels for notifications. Half of its mapped refusals
+	// name a field a client is about to re-send and the mapper's own message says
+	// which; the other half are the two not-founds, whose whole property is that
+	// somebody else's notification and somebody else's handset read as absent.
+	// See the comment beside notifications.HTTPMapper.
+
+	httperrors.RegisterHTTPErrorMapper(comments.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(comments.GRPCMapper)
+
+	// The fourth, and the one whose refusals are most obviously written for a
+	// person: four of the six are InvalidArgument and two are NotFound, and each
+	// says which of a form's fields to go back to. See
+	// comments.ClientSafeSentinels.
+	grpcerrors.RegisterClientSafeSentinels(comments.ClientSafeSentinels...)
+
+	httperrors.RegisterHTTPErrorMapper(webhooks.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(webhooks.GRPCMapper)
+
+	// No client-safe sentinels for webhooks. Its refusals name a field a console
+	// is about to re-render — a URL, a header, an event type — and the message
+	// the mapper writes says which one, so there is nothing the sentinel's own
+	// wording would add. The one whose wording is deliberately *narrower* than
+	// the sentinel's is ErrEndpointOutOfScope, which must not tell a caller that
+	// another tenant is holding the identifier they chose.
 
 	httperrors.RegisterHTTPErrorMapper(billing.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(billing.GRPCMapper)

@@ -1,0 +1,340 @@
+// Package primandproper.platform.comments.v1 is the wire schema for the
+// discussion half of a product: what somebody said, about something the
+// application owns, possibly in reply to something else somebody said.
+//
+// Eight of the ten methods on comments.Store are here. The two that are not are
+// bulk erasure — DeleteCommentsForTarget and DeleteCommentsByAuthor — and the
+// service comment at the bottom of this file says why neither has an RPC.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/comments/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/comments/v1/comments.proto=github.com/primandproper/platform-go/v14/comments/commentspb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # target type is a string, and will not become an enum
+//
+// [CommentTarget.type] is an opaque string everywhere it appears. The set of
+// values is the consumer's catalog -- comments.Targets, supplied through
+// WithTargets because "which kinds of thing can be commented on" is an
+// application fact and this library has none -- and a generated enum would put
+// that vocabulary on this module's release cadence. Adding a "meal_plan" target
+// would become a platform-go release.
+//
+// It is the same ruling issuereports.Kind and webhooks' event types are under,
+// and comments' own documentation calls its catalog "the webhooks event
+// catalog's idea applied to a second problem," so the three agree by
+// construction. What a client gets instead of compile-time checking is a
+// refusal: a target type outside the catalog is rejected at the write with
+// comments.ErrUnknownTargetType rather than accepted into a comment that no
+// view will ever list.
+//
+// The existence check does not cross the wire either, and could not. A target
+// definition optionally carries a Go func the consumer registers, which reads
+// the consumer's own table on the consumer's own connection; the RPC calls the
+// store, the store runs the check, and comments.ErrTargetNotFound is what comes
+// back. There is nothing about it for a schema to describe.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere, and the name is reserved so there cannot be one. A
+// scope a client could name is a cross-tenant read hiding behind a request
+// field -- on this surface, a read of what another tenant's users have been
+// saying to each other. It comes off the principal the consumer's interceptor
+// put on the context, and every statement behind these RPCs binds it, so a
+// comment in another tenant's scope reads as one that does not exist.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern and is
+// the half that holds: `reserved "scope";` is a schema protoc refuses to accept
+// a scope field into, in this repository and in a consumer's fork of the file
+// alike, whereas a comment is a request to the next author. It is reserved on
+// every message in this file, responses included -- every row a response
+// returns belongs to the scope the connection resolved, so the field would be
+// telling a client something it supplied.
+//
+// See identity.proto, which says the underlying rule at greater length.
+//
+// No author on any input. [CommentInput] and [UpdateCommentRequest] reserve the
+// name for the same reason [CommentInput] reserves scope: authorship a caller
+// could name is authorship that says whatever the caller wanted it to, and the
+// one thing a comment is is a sentence attributed to somebody. It is filled
+// from the principal the consumer's interceptor resolved, on the way in, and it
+// is read back on [Comment] like any other stored fact.
+//
+// No id on [CommentInput]. comments.Store assigns one where the caller left it
+// empty, and a client-chosen identifier on this surface would be a client able
+// to collide with a row it cannot see -- which is a unique-key violation
+// answered 500, not a refusal that says anything useful.
+//
+// No target on an update. The store's own write assigns the body and nothing
+// else, because the target is what the comment is about, the parent is which
+// conversation it is in, and the author is who said it. A message that carried
+// them would describe an edit this schema's server cannot perform.
+
+syntax = "proto3";
+
+package primandproper.platform.comments.v1;
+
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/filtering/v1/filtering.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/comments/commentspb;commentspb";
+
+// CommentTarget is what a comment is about: a kind of thing, and one of them.
+//
+// It is two fields rather than one composite key, which is the same decision
+// comments.Target makes in Go and for the same reason: "everything anybody has
+// said about recipes" is a question two columns answer and a "recipe:1234"
+// string does not.
+message CommentTarget {
+  reserved "scope";
+
+  // type is the kind of thing, as the consumer's catalog spells it. An opaque
+  // string; see the file comment for why it is not an enum.
+  string type = 1;
+
+  // id is which one, as the application spells it. The empty id is refused
+  // rather than treated as a wildcard: a comment holding it would be about
+  // every recipe and no recipe at once.
+  string id = 2;
+}
+
+// Comment is something somebody said, as a client sees it.
+//
+// It carries no scope: see the file comment.
+message Comment {
+  reserved "scope";
+
+  // created_at is when the comment was written, assigned by the database.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when the body was last edited, unset for a comment
+  // nobody has revised. It is what a client renders an "edited" marker from,
+  // and that reading holds because the edit is the only write that revises a
+  // live comment.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // archived_at is when the comment was removed from the discussion, unset
+  // while it is still in it.
+  //
+  // No read on this service returns an archived comment, so a client will not
+  // see this set; it is here because the field is on the row and a response
+  // that omitted it would be a message that could not describe one.
+  google.protobuf.Timestamp archived_at = 3;
+
+  // id is the row, and is what GetComment, UpdateComment and ArchiveComment
+  // name one by.
+  string id = 4;
+
+  // parent_id is the comment this one replies to, and empty is a comment that
+  // replies to nothing. Replies are one level deep: a reply to a reply is
+  // refused, because assembling a deeper tree is a recursive walk and a
+  // recursive walk is not one statement on the three engines this module
+  // serves.
+  string parent_id = 5;
+
+  // author is who wrote it, as the consumer's directory identifies people. It
+  // is output only, filled from the caller's principal at creation; see the
+  // file comment.
+  string author = 6;
+
+  // body is what the person actually said. Text somebody typed, so render it
+  // and never trust it.
+  string body = 7;
+
+  // target is what the comment is about.
+  //
+  // A comment can outlive the thing it is about, and no read here filters those
+  // out: the row lives in a table this module has never seen, so there is
+  // nothing to join against. A client rendering a discussion should expect a
+  // target that no longer resolves.
+  CommentTarget target = 8;
+}
+
+// CommentInput is what a caller supplies to write a comment.
+message CommentInput {
+  reserved "scope", "author", "id";
+
+  // parent_id is the comment being replied to, empty for a comment that replies
+  // to nothing.
+  //
+  // The parent must be a live comment in the caller's scope and must itself be
+  // a root. A reply to a reply is refused rather than flattened, because
+  // flattening it would file somebody's answer against the wrong question.
+  string parent_id = 1;
+
+  // target is what the comment is about. A reply may leave it unset and adopt
+  // its parent's; one that names a different target than its parent is refused,
+  // because a reply belongs to its parent's discussion.
+  CommentTarget target = 2;
+
+  // body is what is being said. Required: a comment with nothing in it records
+  // that somebody pressed a button.
+  string body = 3;
+}
+
+message CreateCommentRequest {
+  reserved "scope";
+
+  CommentInput comment = 1;
+}
+message CreateCommentResponse {
+  reserved "scope";
+
+  Comment result = 1;
+}
+
+message GetCommentRequest {
+  reserved "scope";
+
+  string comment_id = 1;
+}
+message GetCommentResponse {
+  reserved "scope";
+
+  Comment result = 1;
+}
+
+message ListRootCommentsRequest {
+  reserved "scope";
+
+  CommentTarget target = 1;
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+message ListRootCommentsResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Comment results = 2;
+}
+
+message ListRepliesRequest {
+  reserved "scope";
+
+  // target is the discussion the parent is in. It is named as well as the
+  // parent because a reply carries both and the statement keys on both, so
+  // naming it costs a caller nothing and buys the read the index it was written
+  // for.
+  CommentTarget target = 1;
+
+  // parent_id is the root whose replies are wanted. Required: the empty parent
+  // is what a root stores, so answering it with the roots would be the wrong
+  // half of the discussion with nothing about the rows saying so.
+  string parent_id = 2;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 3;
+}
+message ListRepliesResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Comment results = 2;
+}
+
+message ListCommentsByTargetTypeRequest {
+  reserved "scope";
+
+  // target_type is the kind of thing whose whole discussion is wanted -- roots
+  // and replies alike, across every target of that type.
+  //
+  // It is deliberately not checked against the consumer's catalog. This is the
+  // read an operator runs before withdrawing a target type, to see what
+  // withdrawing it would strand, and a type that has been withdrawn is exactly
+  // the one whose rows they still need to reach.
+  string target_type = 1;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+message ListCommentsByTargetTypeResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Comment results = 2;
+}
+
+message ListCommentsByAuthorRequest {
+  reserved "scope";
+
+  // author is whose comments are wanted, and empty means the caller's own --
+  // which is what a "your comments" view sends, and the only value a caller can
+  // send without the server asking whether they may read somebody else's.
+  string author = 1;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+message ListCommentsByAuthorResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Comment results = 2;
+}
+
+message UpdateCommentRequest {
+  reserved "scope", "author", "target", "parent_id";
+
+  string comment_id = 1;
+
+  // body is the revised text. Required: an edit that empties a comment is a
+  // deletion spelled as an edit, and archiving is what this service offers for
+  // that.
+  string body = 2;
+}
+message UpdateCommentResponse {
+  reserved "scope";
+
+  Comment result = 1;
+}
+
+message ArchiveCommentRequest {
+  reserved "scope";
+
+  string comment_id = 1;
+}
+message ArchiveCommentResponse { reserved "scope"; }
+
+// CommentsService is one noun and its whole lifecycle: write a comment, read
+// one, page a discussion, page a person's or a target type's, edit a body,
+// archive a row.
+//
+// Eight RPCs over comments.Store's ten methods, each behind a grant and each
+// acting only within the tenant the caller's principal names.
+//
+// The two absences are the bulk erasures, and they are one case rather than
+// two. DeleteCommentsForTarget is called from the transaction that removes the
+// thing being discussed -- that is the whole of what the store's Tx parameter
+// is for, and the package's dangling-target ruling names this method as the
+// consumer's only fix. DeleteCommentsByAuthor is the right-to-be-forgotten
+// path, called by comments/privacy's dataprivacy.Eraser inside the transaction
+// that destroys the rest of a subject's footprint. Both are hard deletes of
+// everything matching, archived rows included, and both exist to commit with
+// somebody else's write; an RPC moves them into a transaction of their own, at
+// a moment the caller does not choose, so the target is gone and its comments
+// are not, or a subject is erased everywhere but here. It is the same fact
+// audit.Recorder states about an audit entry: a record that can commit while
+// the change it describes rolls back is not a record of what happened, and no
+// amount of retrying fixes it after the fact.
+//
+// A moderator removing one comment is not that case and has ArchiveComment.
+service CommentsService {
+  rpc CreateComment(CreateCommentRequest) returns (CreateCommentResponse);
+  rpc GetComment(GetCommentRequest) returns (GetCommentResponse);
+
+  rpc ListRootComments(ListRootCommentsRequest) returns (ListRootCommentsResponse);
+  rpc ListReplies(ListRepliesRequest) returns (ListRepliesResponse);
+  rpc ListCommentsByTargetType(ListCommentsByTargetTypeRequest) returns (ListCommentsByTargetTypeResponse);
+  rpc ListCommentsByAuthor(ListCommentsByAuthorRequest) returns (ListCommentsByAuthorResponse);
+
+  rpc UpdateComment(UpdateCommentRequest) returns (UpdateCommentResponse);
+  rpc ArchiveComment(ArchiveCommentRequest) returns (ArchiveCommentResponse);
+}

@@ -337,14 +337,43 @@ is not traced: a root span every poll interval is noise.
 
 # Where this package stops
 
-Endpoint management is a store and no handlers: the routes a subscriber uses to
-register a URL, rotate its secret or retire it are an application's, over an
-application's types and its own authorization. Receiving somebody else's
-callbacks is the other case entirely, and webhooks/inbound does ship an
-http.Handler for it — the shape of a Stripe or GitHub payload is Stripe's or
-GitHub's, and no application has a say in it. The module README's "Stores and
-Transports" section is where that distinction is drawn for the module as a
-whole.
+Nine of the eighteen store methods are served over gRPC by webhooks/grpc: the
+endpoint CRUD, the subscription CRUD and the delivery log. That is the half of
+this package that is a resource rather than a protocol — an operator adds a URL,
+picks the event types it wants, rotates its keys and then asks whether a
+delivery got through and what came back — and it is the only half a person ever
+touches.
+
+Rotation is not a call of its own. Keys travel toward the store on exactly one
+message and are required on every [Store.SaveEndpoint], so rotating is saving
+the endpoint with a new keyring and a save is always a full re-registration.
+They do not travel back: the proto's endpoint message has no field to put them
+in, which is what makes "an API that hands out signing keys" unrepresentable
+rather than merely unwritten. [Secret] is why that is affordable — the pair is
+what lets one subscriber move without the rest of them breaking.
+
+The nine that stay behind each say so on themselves. Seven are the delivery
+machinery [Store] groups under "The delivery machinery takes neither" —
+[Store.Claim], [Store.MarkDelivered], [Store.RecordFailure],
+[Store.RecordAttempt], [Store.Requeue], [Store.Backlog] and [Store.Reap] —
+whose correctness is that a claim commits before the request goes out, so a
+caller choosing when that commit happens is the one thing they cannot allow.
+[Store.EndpointsForEvent] is the internal fan-out, the dispatcher asking itself
+who is subscribed. [Store.Enqueue] is the one worth arguing about, and it is
+absent for the reason its own documentation gives: it writes a delivery and its
+dispatches in the caller's transaction so they commit with whatever else that
+transaction did, and over a wire that becomes a delivery for a row that rolled
+back, or a committed row nobody was told about. A consumer publishing an event
+from another process is describing an RPC of their own, with
+[Dispatcher.Dispatch] called inside its transaction.
+
+What is still an application's own is the policy — who is calling, and what each
+method requires — and webhooks/grpc's own documentation is where the surface's
+rulings are recorded. Receiving somebody else's callbacks is the other case
+entirely, and webhooks/inbound does ship an http.Handler for it — the shape of a
+Stripe or GitHub payload is Stripe's or GitHub's, and no application has a say in
+it. The module README's "Stores and Transports" section is where that
+distinction is drawn for the module as a whole.
 */
 package webhooks
 
