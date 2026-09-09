@@ -28,11 +28,12 @@ import (
 //
 // operations/http.New registers the HTTP one a second time, and is the only
 // place in this module that registers anything for itself. It can be because it
-// is the only surface here that answers a request through errors/http and
-// belongs to a package in that list, so constructing it is already the statement
-// that this process serves operation errors on the wire. The registries are
-// append-only and stop at the first match, so the second copy answers
-// identically and is never reached.
+// was the only surface here that answered a request through errors/http and
+// belonged to a package in that list, so constructing it is already the
+// statement that this process serves operation errors on the wire.
+// dataprivacy/http is a second such surface now and registers nothing — one door
+// stays one door. The registries are append-only and stop at the first match, so
+// the second copy answers identically and is never reached.
 var (
 	// HTTPMapper maps this package's sentinels onto HTTP error codes.
 	HTTPMapper httperrors.HTTPErrorMapper = httpMapper{}
