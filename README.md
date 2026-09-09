@@ -40,7 +40,7 @@ Because breaking changes ride the major-version import path, upgrading across ma
 
 **OpenTelemetry throughout.** Every store, transport and worker here instruments through primitives-go's `observability`, whose logging, tracing, metrics and profiling pillars a consumer supplies once and threads everywhere.
 
-**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/signin`, `dataprivacy`, `identity`, `links`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all eight in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it is the only surface here that both answers through `errors/http` and belongs to a package on that list. `internal/sentinelmatrix` checks that every exported sentinel in those eight has a decision recorded and that it still holds on both transports.
+**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/signin`, `dataprivacy`, `identity`, `links`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all eight in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those eight has a decision recorded and that it still holds on both transports.
 
 ## Package Catalog
 
@@ -266,8 +266,8 @@ reordered an entry is the capability a hand-written log reader never gets around
 to, and the one most worth calling remotely and on a schedule, which is why it
 is its own grant rather than a second use of the read one.
 
-Nine more still ship a store and no handlers, and each is to follow `identity`.
-The transport is not uniform and neither is the subset of a store that crosses:
+Ten more were ruled on together, and each is to follow `identity`. The transport
+is not uniform and neither is the subset of a store that crosses:
 
 | package | verdict | transport | carved out, and why |
 |---|---|---|---|
@@ -279,7 +279,6 @@ The transport is not uniform and neither is the subset of a store that crosses:
 | `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the seven its store documents |
 | `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
 | `dataprivacy` | wire surface over the existing `Service` | HTTP | — |
-| `uploads/registry` | binding, not a resource surface | HTTP | all seven store methods; what ships is the guarded serve |
 
 Seven get nothing, and saying so is the point of this section rather than
 leaving them unmentioned: `metering`, `saga`, `timers`, `workqueue`, `outbox`,
@@ -288,14 +287,7 @@ worker on a timer, or by your own code inside your own transaction, which is the
 same test the carve-outs above are made by. Owning a store is not what puts a
 package on the list; having a caller who is somebody else is.
 
-Two of the verdicts are not the house default, and each has a stated reason.
-`uploads/registry` is a binding rather than a resource surface. Its own
-documentation heads a section *"Why the row is the access control"* — whether
-this caller may read this object is answered from the owner and the scope on the
-row, not from the bucket — and then declines to act on it, because nothing in
-that package opens, reads or removes an object. A metadata surface would ship
-seven flat methods and leave you the guarded serve, which is the half that gets
-written wrong: an unguessable key as the only protection a private document has.
+One of the nine is not the house default, and it has a stated reason.
 `dataprivacy` is on HTTP because its flow already is. Progress is answered by
 `operations/http` against `Request.OperationID` and the same event stream every
 other long-running thing here uses, `Confirm` is reached by somebody clicking a
@@ -321,17 +313,33 @@ the whole list.
 | Transport                           | Kind             | Whose shape it is                                                                               |
 |-------------------------------------|------------------|-------------------------------------------------------------------------------------------------|
 | `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                             |
+| `uploads/registry/http`             | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                       |
 | `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                             |
 | `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store` |
 | `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`           |
+| `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request — over `dataprivacy.Service`                 |
 | `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`               |
 | `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                |
 <!-- /readmegen:transports -->
 
-One row is a binding rather than a surface. `sessions/http` binds a store to a
+Two rows are bindings rather than surfaces. `sessions/http` binds a store to a
 cookie, and a cookie's signing, encryption, `HttpOnly`, `Secure` and `SameSite`
 are security decisions this module already made — there is no resource of yours
 in it.
+
+`uploads/registry/http` makes the same claim about an object's bytes. Its store's
+documentation heads a section *"Why the row is the access control"* — whether
+this caller may read this object is answered from the owner and the scope on the
+row, not from the bucket — and then declines to act on it, because nothing in
+that package opens, reads or removes an object. A metadata surface would have
+shipped seven flat methods and left you the guarded serve, which is the half that
+gets written wrong: an unguessable key as the only protection a private document
+has, and a key is not a secret. What crosses instead is one route and the guard
+in front of it, and the decisions that come with it are security properties
+rather than API design — the row is read before the bucket is opened, a refusal
+is indistinguishable from an absence, a content type a browser executes is never
+served inline, and nothing is cached by a shared proxy. There is no resource of
+yours in that either: what is on the wire is bytes and a content type.
 
 The other five are resource surfaces, and they get there by two routes.
 `operations/http` is entirely this module's own resource: an `Operation`, its
@@ -339,10 +347,11 @@ two-tier progress and its state machine are types you did not define, and
 polling one or subscribing to its server-sent events is the pattern's protocol
 rather than your API. *Starting* an operation is yours, and is deliberately not
 there. `identity/grpc`, `authentication/signin/grpc`,
-`authentication/oauth2clients/grpc` and `audit/grpc` are the other kind — a
+`authentication/oauth2clients/grpc`, `dataprivacy/http` and `audit/grpc` are the other kind — a
 domain's own transport, shipped under the rule above rather than as an exception
-to it. `audit/grpc` is the one that ships less than the interface beneath it,
-and the paragraph above says which two halves it leaves behind.
+to it, and five of the thirteen have crossed this way. Four of those five are gRPC
+and the fifth is not, for the reason given above: `dataprivacy`'s flow was on
+HTTP before there was a handler in it.
 
 The table is not written by hand either. `internal/cmd/readmegen` emits it on
 `make generate` from the `http` and `grpc` directories the tree ships, and
