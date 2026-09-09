@@ -1,0 +1,520 @@
+// Package primandproper.platform.comments.v1 is the wire schema for the
+// discussion half of a product: what somebody said, about something the
+// application owns, possibly in reply to something else somebody said.
+//
+// Eight of the ten methods on comments.Store are here. The two that are not are
+// bulk erasure — DeleteCommentsForTarget and DeleteCommentsByAuthor — and the
+// service comment at the bottom of this file says why neither has an RPC.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/comments/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/comments/v1/comments.proto=github.com/primandproper/platform-go/v14/comments/commentspb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # target type is a string, and will not become an enum
+//
+// [CommentTarget.type] is an opaque string everywhere it appears. The set of
+// values is the consumer's catalog -- comments.Targets, supplied through
+// WithTargets because "which kinds of thing can be commented on" is an
+// application fact and this library has none -- and a generated enum would put
+// that vocabulary on this module's release cadence. Adding a "meal_plan" target
+// would become a platform-go release.
+//
+// It is the same ruling issuereports.Kind and webhooks' event types are under,
+// and comments' own documentation calls its catalog "the webhooks event
+// catalog's idea applied to a second problem," so the three agree by
+// construction. What a client gets instead of compile-time checking is a
+// refusal: a target type outside the catalog is rejected at the write with
+// comments.ErrUnknownTargetType rather than accepted into a comment that no
+// view will ever list.
+//
+// The existence check does not cross the wire either, and could not. A target
+// definition optionally carries a Go func the consumer registers, which reads
+// the consumer's own table on the consumer's own connection; the RPC calls the
+// store, the store runs the check, and comments.ErrTargetNotFound is what comes
+// back. There is nothing about it for a schema to describe.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere, and the name is reserved so there cannot be one. A
+// scope a client could name is a cross-tenant read hiding behind a request
+// field -- on this surface, a read of what another tenant's users have been
+// saying to each other. It comes off the principal the consumer's interceptor
+// put on the context, and every statement behind these RPCs binds it, so a
+// comment in another tenant's scope reads as one that does not exist.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern and is
+// the half that holds: `reserved "scope";` is a schema protoc refuses to accept
+// a scope field into, in this repository and in a consumer's fork of the file
+// alike, whereas a comment is a request to the next author. It is reserved on
+// every message in this file, responses included -- every row a response
+// returns belongs to the scope the connection resolved, so the field would be
+// telling a client something it supplied.
+//
+// See identity.proto, which says the underlying rule at greater length.
+//
+// No author on any input. [CommentInput] and [UpdateCommentRequest] reserve the
+// name for the same reason [CommentInput] reserves scope: authorship a caller
+// could name is authorship that says whatever the caller wanted it to, and the
+// one thing a comment is is a sentence attributed to somebody. It is filled
+// from the principal the consumer's interceptor resolved, on the way in, and it
+// is read back on [Comment] like any other stored fact.
+//
+// No id on [CommentInput]. comments.Store assigns one where the caller left it
+// empty, and a client-chosen identifier on this surface would be a client able
+// to collide with a row it cannot see -- which is a unique-key violation
+// answered 500, not a refusal that says anything useful.
+//
+// No target on an update. The store's own write assigns the body and nothing
+// else, because the target is what the comment is about, the parent is which
+// conversation it is in, and the author is who said it. A message that carried
+// them would describe an edit this schema's server cannot perform.
+
+// Code generated by protoc-gen-go-grpc. DO NOT EDIT.
+// versions:
+// - protoc-gen-go-grpc v1.5.1
+// - protoc             v6.33.1
+// source: primandproper/platform/comments/v1/comments.proto
+
+package commentspb
+
+import (
+	context "context"
+
+	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
+)
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+// Requires gRPC-Go v1.64.0 or later.
+const _ = grpc.SupportPackageIsVersion9
+
+const (
+	CommentsService_CreateComment_FullMethodName            = "/primandproper.platform.comments.v1.CommentsService/CreateComment"
+	CommentsService_GetComment_FullMethodName               = "/primandproper.platform.comments.v1.CommentsService/GetComment"
+	CommentsService_ListRootComments_FullMethodName         = "/primandproper.platform.comments.v1.CommentsService/ListRootComments"
+	CommentsService_ListReplies_FullMethodName              = "/primandproper.platform.comments.v1.CommentsService/ListReplies"
+	CommentsService_ListCommentsByTargetType_FullMethodName = "/primandproper.platform.comments.v1.CommentsService/ListCommentsByTargetType"
+	CommentsService_ListCommentsByAuthor_FullMethodName     = "/primandproper.platform.comments.v1.CommentsService/ListCommentsByAuthor"
+	CommentsService_UpdateComment_FullMethodName            = "/primandproper.platform.comments.v1.CommentsService/UpdateComment"
+	CommentsService_ArchiveComment_FullMethodName           = "/primandproper.platform.comments.v1.CommentsService/ArchiveComment"
+)
+
+// CommentsServiceClient is the client API for CommentsService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// CommentsService is one noun and its whole lifecycle: write a comment, read
+// one, page a discussion, page a person's or a target type's, edit a body,
+// archive a row.
+//
+// Eight RPCs over comments.Store's ten methods, each behind a grant and each
+// acting only within the tenant the caller's principal names.
+//
+// The two absences are the bulk erasures, and they are one case rather than
+// two. DeleteCommentsForTarget is called from the transaction that removes the
+// thing being discussed -- that is the whole of what the store's Tx parameter
+// is for, and the package's dangling-target ruling names this method as the
+// consumer's only fix. DeleteCommentsByAuthor is the right-to-be-forgotten
+// path, called by comments/privacy's dataprivacy.Eraser inside the transaction
+// that destroys the rest of a subject's footprint. Both are hard deletes of
+// everything matching, archived rows included, and both exist to commit with
+// somebody else's write; an RPC moves them into a transaction of their own, at
+// a moment the caller does not choose, so the target is gone and its comments
+// are not, or a subject is erased everywhere but here. It is the same fact
+// audit.Recorder states about an audit entry: a record that can commit while
+// the change it describes rolls back is not a record of what happened, and no
+// amount of retrying fixes it after the fact.
+//
+// A moderator removing one comment is not that case and has ArchiveComment.
+type CommentsServiceClient interface {
+	CreateComment(ctx context.Context, in *CreateCommentRequest, opts ...grpc.CallOption) (*CreateCommentResponse, error)
+	GetComment(ctx context.Context, in *GetCommentRequest, opts ...grpc.CallOption) (*GetCommentResponse, error)
+	ListRootComments(ctx context.Context, in *ListRootCommentsRequest, opts ...grpc.CallOption) (*ListRootCommentsResponse, error)
+	ListReplies(ctx context.Context, in *ListRepliesRequest, opts ...grpc.CallOption) (*ListRepliesResponse, error)
+	ListCommentsByTargetType(ctx context.Context, in *ListCommentsByTargetTypeRequest, opts ...grpc.CallOption) (*ListCommentsByTargetTypeResponse, error)
+	ListCommentsByAuthor(ctx context.Context, in *ListCommentsByAuthorRequest, opts ...grpc.CallOption) (*ListCommentsByAuthorResponse, error)
+	UpdateComment(ctx context.Context, in *UpdateCommentRequest, opts ...grpc.CallOption) (*UpdateCommentResponse, error)
+	ArchiveComment(ctx context.Context, in *ArchiveCommentRequest, opts ...grpc.CallOption) (*ArchiveCommentResponse, error)
+}
+
+type commentsServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewCommentsServiceClient(cc grpc.ClientConnInterface) CommentsServiceClient {
+	return &commentsServiceClient{cc}
+}
+
+func (c *commentsServiceClient) CreateComment(ctx context.Context, in *CreateCommentRequest, opts ...grpc.CallOption) (*CreateCommentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateCommentResponse)
+	err := c.cc.Invoke(ctx, CommentsService_CreateComment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *commentsServiceClient) GetComment(ctx context.Context, in *GetCommentRequest, opts ...grpc.CallOption) (*GetCommentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetCommentResponse)
+	err := c.cc.Invoke(ctx, CommentsService_GetComment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *commentsServiceClient) ListRootComments(ctx context.Context, in *ListRootCommentsRequest, opts ...grpc.CallOption) (*ListRootCommentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRootCommentsResponse)
+	err := c.cc.Invoke(ctx, CommentsService_ListRootComments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *commentsServiceClient) ListReplies(ctx context.Context, in *ListRepliesRequest, opts ...grpc.CallOption) (*ListRepliesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRepliesResponse)
+	err := c.cc.Invoke(ctx, CommentsService_ListReplies_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *commentsServiceClient) ListCommentsByTargetType(ctx context.Context, in *ListCommentsByTargetTypeRequest, opts ...grpc.CallOption) (*ListCommentsByTargetTypeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCommentsByTargetTypeResponse)
+	err := c.cc.Invoke(ctx, CommentsService_ListCommentsByTargetType_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *commentsServiceClient) ListCommentsByAuthor(ctx context.Context, in *ListCommentsByAuthorRequest, opts ...grpc.CallOption) (*ListCommentsByAuthorResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCommentsByAuthorResponse)
+	err := c.cc.Invoke(ctx, CommentsService_ListCommentsByAuthor_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *commentsServiceClient) UpdateComment(ctx context.Context, in *UpdateCommentRequest, opts ...grpc.CallOption) (*UpdateCommentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateCommentResponse)
+	err := c.cc.Invoke(ctx, CommentsService_UpdateComment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *commentsServiceClient) ArchiveComment(ctx context.Context, in *ArchiveCommentRequest, opts ...grpc.CallOption) (*ArchiveCommentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ArchiveCommentResponse)
+	err := c.cc.Invoke(ctx, CommentsService_ArchiveComment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// CommentsServiceServer is the server API for CommentsService service.
+// All implementations must embed UnimplementedCommentsServiceServer
+// for forward compatibility.
+//
+// CommentsService is one noun and its whole lifecycle: write a comment, read
+// one, page a discussion, page a person's or a target type's, edit a body,
+// archive a row.
+//
+// Eight RPCs over comments.Store's ten methods, each behind a grant and each
+// acting only within the tenant the caller's principal names.
+//
+// The two absences are the bulk erasures, and they are one case rather than
+// two. DeleteCommentsForTarget is called from the transaction that removes the
+// thing being discussed -- that is the whole of what the store's Tx parameter
+// is for, and the package's dangling-target ruling names this method as the
+// consumer's only fix. DeleteCommentsByAuthor is the right-to-be-forgotten
+// path, called by comments/privacy's dataprivacy.Eraser inside the transaction
+// that destroys the rest of a subject's footprint. Both are hard deletes of
+// everything matching, archived rows included, and both exist to commit with
+// somebody else's write; an RPC moves them into a transaction of their own, at
+// a moment the caller does not choose, so the target is gone and its comments
+// are not, or a subject is erased everywhere but here. It is the same fact
+// audit.Recorder states about an audit entry: a record that can commit while
+// the change it describes rolls back is not a record of what happened, and no
+// amount of retrying fixes it after the fact.
+//
+// A moderator removing one comment is not that case and has ArchiveComment.
+type CommentsServiceServer interface {
+	CreateComment(context.Context, *CreateCommentRequest) (*CreateCommentResponse, error)
+	GetComment(context.Context, *GetCommentRequest) (*GetCommentResponse, error)
+	ListRootComments(context.Context, *ListRootCommentsRequest) (*ListRootCommentsResponse, error)
+	ListReplies(context.Context, *ListRepliesRequest) (*ListRepliesResponse, error)
+	ListCommentsByTargetType(context.Context, *ListCommentsByTargetTypeRequest) (*ListCommentsByTargetTypeResponse, error)
+	ListCommentsByAuthor(context.Context, *ListCommentsByAuthorRequest) (*ListCommentsByAuthorResponse, error)
+	UpdateComment(context.Context, *UpdateCommentRequest) (*UpdateCommentResponse, error)
+	ArchiveComment(context.Context, *ArchiveCommentRequest) (*ArchiveCommentResponse, error)
+	mustEmbedUnimplementedCommentsServiceServer()
+}
+
+// UnimplementedCommentsServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedCommentsServiceServer struct{}
+
+func (UnimplementedCommentsServiceServer) CreateComment(context.Context, *CreateCommentRequest) (*CreateCommentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateComment not implemented")
+}
+func (UnimplementedCommentsServiceServer) GetComment(context.Context, *GetCommentRequest) (*GetCommentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetComment not implemented")
+}
+func (UnimplementedCommentsServiceServer) ListRootComments(context.Context, *ListRootCommentsRequest) (*ListRootCommentsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListRootComments not implemented")
+}
+func (UnimplementedCommentsServiceServer) ListReplies(context.Context, *ListRepliesRequest) (*ListRepliesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListReplies not implemented")
+}
+func (UnimplementedCommentsServiceServer) ListCommentsByTargetType(context.Context, *ListCommentsByTargetTypeRequest) (*ListCommentsByTargetTypeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListCommentsByTargetType not implemented")
+}
+func (UnimplementedCommentsServiceServer) ListCommentsByAuthor(context.Context, *ListCommentsByAuthorRequest) (*ListCommentsByAuthorResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListCommentsByAuthor not implemented")
+}
+func (UnimplementedCommentsServiceServer) UpdateComment(context.Context, *UpdateCommentRequest) (*UpdateCommentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateComment not implemented")
+}
+func (UnimplementedCommentsServiceServer) ArchiveComment(context.Context, *ArchiveCommentRequest) (*ArchiveCommentResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ArchiveComment not implemented")
+}
+func (UnimplementedCommentsServiceServer) mustEmbedUnimplementedCommentsServiceServer() {}
+func (UnimplementedCommentsServiceServer) testEmbeddedByValue()                         {}
+
+// UnsafeCommentsServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to CommentsServiceServer will
+// result in compilation errors.
+type UnsafeCommentsServiceServer interface {
+	mustEmbedUnimplementedCommentsServiceServer()
+}
+
+func RegisterCommentsServiceServer(s grpc.ServiceRegistrar, srv CommentsServiceServer) {
+	// If the following call pancis, it indicates UnimplementedCommentsServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&CommentsService_ServiceDesc, srv)
+}
+
+func _CommentsService_CreateComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateCommentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommentsServiceServer).CreateComment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommentsService_CreateComment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommentsServiceServer).CreateComment(ctx, req.(*CreateCommentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommentsService_GetComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCommentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommentsServiceServer).GetComment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommentsService_GetComment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommentsServiceServer).GetComment(ctx, req.(*GetCommentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommentsService_ListRootComments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRootCommentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommentsServiceServer).ListRootComments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommentsService_ListRootComments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommentsServiceServer).ListRootComments(ctx, req.(*ListRootCommentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommentsService_ListReplies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRepliesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommentsServiceServer).ListReplies(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommentsService_ListReplies_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommentsServiceServer).ListReplies(ctx, req.(*ListRepliesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommentsService_ListCommentsByTargetType_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListCommentsByTargetTypeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommentsServiceServer).ListCommentsByTargetType(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommentsService_ListCommentsByTargetType_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommentsServiceServer).ListCommentsByTargetType(ctx, req.(*ListCommentsByTargetTypeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommentsService_ListCommentsByAuthor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListCommentsByAuthorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommentsServiceServer).ListCommentsByAuthor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommentsService_ListCommentsByAuthor_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommentsServiceServer).ListCommentsByAuthor(ctx, req.(*ListCommentsByAuthorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommentsService_UpdateComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateCommentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommentsServiceServer).UpdateComment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommentsService_UpdateComment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommentsServiceServer).UpdateComment(ctx, req.(*UpdateCommentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CommentsService_ArchiveComment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ArchiveCommentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CommentsServiceServer).ArchiveComment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CommentsService_ArchiveComment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CommentsServiceServer).ArchiveComment(ctx, req.(*ArchiveCommentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// CommentsService_ServiceDesc is the grpc.ServiceDesc for CommentsService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var CommentsService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "primandproper.platform.comments.v1.CommentsService",
+	HandlerType: (*CommentsServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CreateComment",
+			Handler:    _CommentsService_CreateComment_Handler,
+		},
+		{
+			MethodName: "GetComment",
+			Handler:    _CommentsService_GetComment_Handler,
+		},
+		{
+			MethodName: "ListRootComments",
+			Handler:    _CommentsService_ListRootComments_Handler,
+		},
+		{
+			MethodName: "ListReplies",
+			Handler:    _CommentsService_ListReplies_Handler,
+		},
+		{
+			MethodName: "ListCommentsByTargetType",
+			Handler:    _CommentsService_ListCommentsByTargetType_Handler,
+		},
+		{
+			MethodName: "ListCommentsByAuthor",
+			Handler:    _CommentsService_ListCommentsByAuthor_Handler,
+		},
+		{
+			MethodName: "UpdateComment",
+			Handler:    _CommentsService_UpdateComment_Handler,
+		},
+		{
+			MethodName: "ArchiveComment",
+			Handler:    _CommentsService_ArchiveComment_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "primandproper/platform/comments/v1/comments.proto",
+}

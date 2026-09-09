@@ -187,6 +187,11 @@ type SubscriptionStore interface {
 	// the attribution read on the losing path, so a redelivery arriving in the
 	// same transaction as the row it collides with is named rather than
 	// mis-blamed.
+	//
+	// It is not an RPC. billing/grpc serves no write that opens an agreement:
+	// the caller is a processor callback or the checkout flow, already inside
+	// the transaction this method's own documentation is about, and a network
+	// hop in the middle of it is the one thing that transaction cannot have.
 	CreateSubscription(
 		ctx context.Context,
 		tx database.Tx,
@@ -266,6 +271,10 @@ type SubscriptionStore interface {
 	//
 	// The collision check against the provider-side id runs on tx, for the reason
 	// UpdateProduct's does.
+	//
+	// It is not an RPC, for the reason CreateSubscription is not: a sync write
+	// is the provider's event restated, and its caller is the receiver holding
+	// that event.
 	UpdateSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *Subscription) error
 
 	// SetSubscriptionStatus moves the standing and nothing else, through the
@@ -281,6 +290,14 @@ type SubscriptionStore interface {
 	// from ErrSubscriptionNotFound — so a status write against a subscription
 	// this transaction opened is answered by the row it wrote rather than by a
 	// snapshot that predates it.
+	//
+	// It is not an RPC, and of the four callback writes this is the sharpest
+	// case. The caller is a callback, arriving at a Stripe or RevenueCat
+	// receiver the consumer owns, and the guard above is what makes a
+	// redelivery safe:
+	// the answer to a replayed event comes back to the handler that has to
+	// decide whether to acknowledge the delivery. billing/grpc puts nothing
+	// between those two.
 	SetSubscriptionStatus(
 		ctx context.Context,
 		tx database.Tx,
@@ -312,6 +329,10 @@ type PurchaseStore interface {
 	//
 	// The same two reads run on tx as for CreateSubscription: the product check
 	// the create is gated on, and the attribution read on the losing path.
+	//
+	// It is not an RPC. Its caller is the checkout handler that created the
+	// payment intent through capitalism, writing this row in the same
+	// transaction so the intent has something of ours to point at.
 	CreatePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *Purchase) (*Purchase, error)
 
 	// GetPurchase reads one live purchase by id, on the caller's executor.
@@ -365,6 +386,11 @@ type PurchaseStore interface {
 	// ErrAlreadyCompleted from ErrPurchaseNotFound run on tx, so a sale created
 	// and settled in one transaction — a comped order, a migration — is answered
 	// by the row that transaction wrote.
+	//
+	// It is not an RPC. A client does not decide that money arrived; a
+	// processor's callback reports it, carrying the settlement time this method
+	// takes and the delivery it may repeat, and it writes here inside its own
+	// transaction. See billing/grpc.
 	CompletePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) error
 
 	// ArchivePurchase retires a purchase administratively, through the caller's
@@ -403,6 +429,12 @@ type TransactionStore interface {
 	// observe somebody else's commit, and leaving this path uncounted would
 	// remove the instrument entirely. A rolled back transaction therefore leaves
 	// a count with no row behind it.
+	//
+	// It is not an RPC. This is the write billing/grpc's absence is most about:
+	// a charge arrives as a webhook, and the ledger row, the audit entry naming
+	// who was billed and the outbox event somebody fans out are one fact. A
+	// ledger row that committed ahead of its companions is a charge nothing
+	// downstream heard about, and an RPC is exactly that separation.
 	RecordTransaction(
 		ctx context.Context,
 		tx database.Tx,
@@ -460,6 +492,10 @@ type TransactionStore interface {
 	//
 	// The counter is incremented on the write rather than on the caller's commit,
 	// for the reason RecordTransaction gives.
+	//
+	// It is not an RPC, for the reason SetSubscriptionStatus is not: the guard
+	// answers a redelivery, and the caller who acts on that answer is the
+	// receiver that took the delivery.
 	SetTransactionStatus(
 		ctx context.Context,
 		tx database.Tx,

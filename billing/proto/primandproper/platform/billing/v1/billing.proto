@@ -1,0 +1,654 @@
+// Package primandproper.platform.billing.v1 is the wire schema for what a
+// deployment sells and what its customers paid: the catalog, the recurring
+// agreements, the one-time sales, and the ledger of attempts.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/billing/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/billing/v1/billing.proto=github.com/primandproper/platform-go/v14/billing/billingpb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # The one thing this schema will not carry
+//
+// There is no is_active, entitled, in_good_standing or account standing of any
+// kind, on any message here, and there never will be. billing stores facts a
+// payment provider owns and interprets none of them; a computed standing is the
+// interpretation, it differs between two deployments selling the same thing, and
+// putting it on the wire would put every consumer's policy on this module's
+// release cadence.
+//
+// What ships instead is [Subscription.status], which is the fact. A consumer
+// reads it and decides. The seam that decision belongs in already exists --
+// billing/plans fills entitlements' PlanSource with this store's
+// current-subscription read plus a function the consumer writes -- so a
+// GetAccountStanding RPC here would be a second home for a policy that already
+// has one.
+//
+// # Why status is a string and the other two are enums
+//
+// [Product.kind] and [Transaction.status] are enums. Both are closed sets
+// billing defines itself and validates every write against, so a value outside
+// the enum is a row the store would have refused; the generated constant is
+// exactly as complete as the column.
+//
+// [Subscription.status] is a string, and it is the one borrowed vocabulary in
+// this file. The set is capitalism.SubscriptionStatus -- the closed, documented
+// set every payment adapter maps its provider's words onto -- and it is defined
+// in a different module. An enum here would put that vocabulary on this module's
+// release cadence, which is the objection identity/grpc's pattern section raises
+// against a generated enum for a catalog somebody else owns; worse, a status
+// primitives-go added and billing stored would render as UNSPECIFIED until this
+// file caught up, which is a real row reaching a client as "we don't know".
+// The wire value is the documented string -- "active", "past_due",
+// "incomplete_expired" -- and it is never empty on a stored row, because the
+// empty string is capitalism's unknown and billing refuses to store it.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere. A scope a client could name is a cross-tenant read
+// hiding behind a request field; it comes off the principal the consumer's
+// interceptor put on the context. See identity.proto, which says this at
+// greater length.
+//
+// No write that a payment processor's callback makes. Seven of billing's thirty
+// store methods are absent from this service: CreateSubscription,
+// UpdateSubscription, SetSubscriptionStatus, CreatePurchase, CompletePurchase,
+// RecordTransaction and SetTransactionStatus. Their caller is not a client. It
+// is a Stripe or RevenueCat receiver the consumer owns, or the checkout handler
+// that created the payment intent, and both are already inside a transaction
+// that is writing an audit entry and an outbox event beside the billing row. An
+// RPC moves that write out of the transaction that was the entire point of it.
+// billing/grpc/doc.go carries the ruling and billing.Store documents it on each
+// method.
+//
+// No lookup by a payment provider's identifier. billing.Store has four --
+// GetProductByExternalID and its three siblings -- and none is an RPC. The
+// caller holding a provider's identifier is the callback that was handed one,
+// and it already holds the store; a client that could ask "whose subscription is
+// sub_1234" would be reading the provider's namespace rather than its own rows,
+// against an id space it did not mint. A response about a row you may already
+// read still carries the provider's id for it, which is the opposite direction
+// and is how a console links out to the processor.
+//
+// No amount on any write. The only thing that legitimately changes about a
+// ledger row is its status and the only thing that changes about a purchase is
+// whether the money arrived, so there is no statement able to assign either --
+// see billing's own documentation on why a price is a fact about a moment.
+
+syntax = "proto3";
+
+package primandproper.platform.billing.v1;
+
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/filtering/v1/filtering.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/billing/billingpb;billingpb";
+
+// ProductKind says how a product is sold. It is billing's own closed set, and
+// it decides which other fields have to be there: a recurring product without a
+// billing interval is a subscription nothing knows when to renew.
+enum ProductKind {
+  // PRODUCT_KIND_UNSPECIFIED is a request that named no kind. It is not a
+  // stored value -- the store refuses a product whose kind is neither of the
+  // two below.
+  PRODUCT_KIND_UNSPECIFIED = 0;
+
+  // PRODUCT_KIND_RECURRING is sold as a subscription, billed every
+  // billing_interval_months months.
+  PRODUCT_KIND_RECURRING = 1;
+
+  // PRODUCT_KIND_ONE_TIME is sold once and owned afterwards. It carries no
+  // billing interval, and one that does is refused.
+  PRODUCT_KIND_ONE_TIME = 2;
+}
+
+// TransactionStatus is what became of one attempt to move money. It is
+// billing's own closed set rather than a payment provider's: where an agreement
+// stands is a different question from whether one charge succeeded, and
+// Subscription.status is the other one.
+enum TransactionStatus {
+  // TRANSACTION_STATUS_UNSPECIFIED is not a stored value. Every ledger row
+  // carries one of the four below.
+  TRANSACTION_STATUS_UNSPECIFIED = 0;
+
+  // TRANSACTION_STATUS_PENDING is an attempt the processor has accepted and
+  // not yet settled.
+  TRANSACTION_STATUS_PENDING = 1;
+
+  // TRANSACTION_STATUS_SUCCEEDED is an attempt that moved the money.
+  TRANSACTION_STATUS_SUCCEEDED = 2;
+
+  // TRANSACTION_STATUS_FAILED is an attempt that did not, and will not be
+  // retried under this id. A retry is a new attempt and a new row.
+  TRANSACTION_STATUS_FAILED = 3;
+
+  // TRANSACTION_STATUS_REFUNDED is an attempt whose money was given back. A
+  // partial refund is its own row carrying the amount returned, which is why
+  // an amount here is not the price of anything.
+  TRANSACTION_STATUS_REFUNDED = 4;
+}
+
+// Product is something a deployment sells, as a client sees it.
+//
+// The catalog is scope-wide and carries no account: a product is a thing on
+// offer, and who bought it is a [Subscription] or a [Purchase].
+message Product {
+  // No scope field, on this message or on any other in this file, and the
+  // reservation is what makes that a schema protoc enforces rather than a
+  // comment somebody can add a field beneath. The scope comes off the principal
+  // the consumer's interceptor put on the context; one a client could name is a
+  // cross-tenant read hiding behind a request field.
+  reserved "scope";
+
+  // created_at is when the product was added to the catalog, assigned by the
+  // database.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when it was last revised, unset for one nobody has
+  // edited.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // archived_at is when it was withdrawn from sale, unset while it is on the
+  // shelf. Withdrawn rather than deleted: the subscriptions already on it keep
+  // renewing and the purchases already made stay readable.
+  google.protobuf.Timestamp archived_at = 3;
+
+  // id is the row, and what every other RPC here names a product by.
+  string id = 4;
+
+  // name is what the product is called, and description is prose about what is
+  // being sold. Both are text somebody typed -- render them, never trust them.
+  string name = 5;
+  string description = 6;
+
+  // kind says how it is sold.
+  ProductKind kind = 7;
+
+  // currency is the ISO 4217 alphabetic code amount_cents is denominated in,
+  // upper case. Only its length is checked on write: the code list is a
+  // registry that changes, and a library shipping a copy of it would eventually
+  // refuse a currency somebody can genuinely charge in.
+  string currency = 8;
+
+  // external_product_id is the payment provider's identifier for the same
+  // product, empty for one that was never mirrored to a provider -- a free
+  // tier, or a plan that only exists to be comped.
+  string external_product_id = 9;
+
+  // amount_cents is the price in the currency's minor unit: cents for USD,
+  // whole yen for JPY. It is 64-bit because a signed 32-bit count of cents runs
+  // out at about twenty-one million dollars.
+  int64 amount_cents = 10;
+
+  // billing_interval_months is how often a recurring product is billed, and 0
+  // for a one-time one. Required to be positive when kind is
+  // PRODUCT_KIND_RECURRING and required to be zero otherwise.
+  int64 billing_interval_months = 11;
+}
+
+// Subscription is a recurring agreement: one account, one product, for as long
+// as it is paid.
+//
+// Most of what it holds is a restatement of a fact the payment provider owns.
+// That is the point: deciding whether an account is entitled has to be a read of
+// one row rather than a call to the provider on a request path.
+message Subscription {
+  reserved "scope";
+
+  // created_at is when this row was written, which is not when the agreement
+  // began at the provider -- that is current_period_start of its first period.
+  google.protobuf.Timestamp created_at = 1;
+
+  // current_period_start and current_period_end are the window the provider
+  // says is currently paid for. The end is exclusive: a subscription whose
+  // period ends exactly now is over, which is the reading that leaves no
+  // instant at which one is neither current nor lapsed.
+  google.protobuf.Timestamp current_period_start = 2;
+  google.protobuf.Timestamp current_period_end = 3;
+
+  // last_updated_at is when the row last changed, unset for one nothing has
+  // synced since it was written.
+  google.protobuf.Timestamp last_updated_at = 4;
+
+  // archived_at is when the subscription was retired administratively. It is
+  // not a cancellation -- a cancelled subscription is one whose status says so.
+  google.protobuf.Timestamp archived_at = 5;
+
+  // id is the row.
+  string id = 6;
+
+  // belongs_to_account is whose subscription this is. No request here carries it
+  // as a way of writing one, and the account-keyed reads name an account the
+  // caller has to be permitted against.
+  string belongs_to_account = 7;
+
+  // product_id is what was subscribed to. It is mutable at the store, because
+  // an upgrade is the same agreement pointed at a different product.
+  string product_id = 8;
+
+  // external_subscription_id is the provider's identifier for the same
+  // agreement, empty for one granted by hand -- which is what grandfathering
+  // somebody looks like.
+  string external_subscription_id = 9;
+
+  // status is where the agreement stands with the processor, in capitalism's
+  // vocabulary rather than a provider's words: "incomplete",
+  // "incomplete_expired", "trialing", "active", "past_due", "canceled",
+  // "unpaid", "paused".
+  //
+  // It is a string rather than a generated enum, and it is never empty on a
+  // stored row. See this file's opening comment for both.
+  //
+  // What it means -- which of these leaves an account entitled -- is
+  // deliberately not decided here, and there is no field on this message that
+  // decides it. That is policy, it differs between deployments selling the same
+  // thing, and this field is the fact the policy reads.
+  string status = 10;
+}
+
+// Purchase is a one-time sale: bought once, owned afterwards.
+message Purchase {
+  reserved "scope";
+
+  // created_at is when the sale was started, which is before the money moved.
+  google.protobuf.Timestamp created_at = 1;
+
+  // completed_at is when the payment behind the purchase succeeded, unset for
+  // one still outstanding. It is the whole lifecycle this message has.
+  google.protobuf.Timestamp completed_at = 2;
+
+  // last_updated_at is when the row last changed, unset for one nothing has
+  // touched.
+  google.protobuf.Timestamp last_updated_at = 3;
+
+  // archived_at is when the purchase was retired administratively. It is not a
+  // refund -- a refund is a transaction of its own.
+  google.protobuf.Timestamp archived_at = 4;
+
+  // id is the row.
+  string id = 5;
+
+  // belongs_to_account is who bought it, and product_id is what they bought.
+  string belongs_to_account = 6;
+  string product_id = 7;
+
+  // external_transaction_id is the provider's identifier for the payment, empty
+  // for a purchase granted without one.
+  string external_transaction_id = 8;
+
+  // currency is the ISO 4217 code amount_cents is in, upper case.
+  string currency = 9;
+
+  // amount_cents is what was actually charged, in the currency's minor unit. It
+  // is restated on the sale rather than read through the product because a
+  // price is a fact about the moment: repricing a product must not rewrite what
+  // somebody already paid.
+  int64 amount_cents = 10;
+}
+
+// Transaction is what one attempt to move money left behind.
+message Transaction {
+  reserved "scope";
+
+  // created_at is when the attempt was recorded, which is also the order the
+  // ledger walks in.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when the row last changed, which for this table means
+  // when its status last moved.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // archived_at is when the row was retired administratively -- for the row
+  // written in error, and not for a refund.
+  google.protobuf.Timestamp archived_at = 3;
+
+  // id is the row.
+  string id = 4;
+
+  // belongs_to_account is whose money moved.
+  string belongs_to_account = 5;
+
+  // subscription_id is the agreement this attempt renewed, and purchase_id the
+  // sale it paid for. At most one of them is set: an attempt settles one or the
+  // other, and a row claiming both is one a reconciliation would count twice.
+  // Both empty is legal and means neither is still here, which is what a refund
+  // of something since removed looks like.
+  string subscription_id = 6;
+  string purchase_id = 7;
+
+  // external_transaction_id is the provider's identifier for the attempt, empty
+  // for a row with no provider behind it. It is the column that makes the
+  // ledger safe to write from a webhook: providers redeliver, and the unique
+  // index over it turns a second delivery into a refusal instead of a second
+  // row.
+  string external_transaction_id = 8;
+
+  // status is what became of the attempt.
+  TransactionStatus status = 9;
+
+  // currency is the ISO 4217 code amount_cents is in, upper case.
+  string currency = 10;
+
+  // amount_cents is the amount this attempt moved, in the currency's minor unit
+  // -- which for a partial refund is not the price of anything.
+  int64 amount_cents = 11;
+}
+
+// ProductCreationInput is what a caller supplies to stock the catalog.
+// Everything else about the row -- the id, the timestamps and the scope -- is
+// decided by the service.
+message ProductCreationInput {
+  reserved "scope";
+
+  string name = 1;
+  string description = 2;
+  ProductKind kind = 3;
+  string currency = 4;
+  string external_product_id = 5;
+  int64 amount_cents = 6;
+  int64 billing_interval_months = 7;
+}
+
+// ProductUpdateInput restates every revisable fact about a product.
+//
+// It is a full statement rather than a patch, and it is a separate message from
+// [ProductCreationInput] though it carries the same seven fields, because the
+// store's update assigns all seven together: a revision able to write half of a
+// product would leave a catalog entry whose price and recurrence disagree, and
+// nothing would report it. A caller revising one field sends the other six back
+// as they read them.
+message ProductUpdateInput {
+  reserved "scope";
+
+  string name = 1;
+  string description = 2;
+  ProductKind kind = 3;
+  string currency = 4;
+  string external_product_id = 5;
+  int64 amount_cents = 6;
+  int64 billing_interval_months = 7;
+}
+
+message CreateProductRequest {
+  reserved "scope";
+
+  ProductCreationInput input = 1;
+}
+
+message CreateProductResponse {
+  reserved "scope";
+
+  Product result = 1;
+}
+
+message GetProductRequest {
+  reserved "scope";
+
+  string product_id = 1;
+}
+
+message GetProductResponse {
+  reserved "scope";
+
+  Product result = 1;
+}
+
+message ListProductsRequest {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListProductsResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Product results = 2;
+}
+
+message UpdateProductRequest {
+  reserved "scope";
+
+  string product_id = 1;
+  ProductUpdateInput input = 2;
+}
+
+message UpdateProductResponse {
+  reserved "scope";
+
+  Product result = 1;
+}
+
+message ArchiveProductRequest {
+  reserved "scope";
+
+  string product_id = 1;
+}
+
+message ArchiveProductResponse {
+  reserved "scope";
+}
+
+message GetSubscriptionRequest {
+  reserved "scope";
+
+  string subscription_id = 1;
+}
+
+message GetSubscriptionResponse {
+  reserved "scope";
+
+  Subscription result = 1;
+}
+
+message ListSubscriptionsRequest {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListSubscriptionsResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Subscription results = 2;
+}
+
+message ListSubscriptionsForAccountRequest {
+  reserved "scope";
+
+  string account_id = 1;
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListSubscriptionsForAccountResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Subscription results = 2;
+}
+
+message ListCurrentSubscriptionsRequest {
+  reserved "scope";
+
+  string account_id = 1;
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListCurrentSubscriptionsResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Subscription results = 2;
+}
+
+message ArchiveSubscriptionRequest {
+  reserved "scope";
+
+  string subscription_id = 1;
+}
+
+message ArchiveSubscriptionResponse {
+  reserved "scope";
+}
+
+message GetPurchaseRequest {
+  reserved "scope";
+
+  string purchase_id = 1;
+}
+
+message GetPurchaseResponse {
+  reserved "scope";
+
+  Purchase result = 1;
+}
+
+message ListPurchasesRequest {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListPurchasesResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Purchase results = 2;
+}
+
+message ListPurchasesForAccountRequest {
+  reserved "scope";
+
+  string account_id = 1;
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListPurchasesForAccountResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Purchase results = 2;
+}
+
+message ArchivePurchaseRequest {
+  reserved "scope";
+
+  string purchase_id = 1;
+}
+
+message ArchivePurchaseResponse {
+  reserved "scope";
+}
+
+message GetTransactionRequest {
+  reserved "scope";
+
+  string transaction_id = 1;
+}
+
+message GetTransactionResponse {
+  reserved "scope";
+
+  Transaction result = 1;
+}
+
+message ListTransactionsRequest {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListTransactionsResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Transaction results = 2;
+}
+
+message ListTransactionsForAccountRequest {
+  reserved "scope";
+
+  string account_id = 1;
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListTransactionsForAccountResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Transaction results = 2;
+}
+
+message ArchiveTransactionRequest {
+  reserved "scope";
+
+  string transaction_id = 1;
+}
+
+message ArchiveTransactionResponse {
+  reserved "scope";
+}
+
+// BillingService serves the record of what a deployment sells and what its
+// customers paid.
+//
+// Eighteen RPCs over thirty store methods, and the shape of the subset is the
+// decision worth reading before the list. Twelve of the eighteen are reads,
+// because the writes on this table have a caller who is not a client: seven of
+// them are made by a processor callback or a checkout handler already inside the
+// consumer's own transaction, and they are named in this file's opening comment
+// along with why an RPC would break them. What is left on the write side is
+// administrative -- stocking and revising the catalog, and withdrawing a row
+// from each of the four tables.
+//
+// Reads come in three kinds and each is a different grant. The catalog is
+// scope-wide and belongs to everybody in the scope. The account-keyed reads are
+// somebody's own, and they name an account the caller has to be permitted
+// against -- see billing/grpc's AccountAuthorizer, which is the half of
+// authorization a grant on the method cannot reach. The three unqualified list
+// reads are an operator's: they page every row in the scope and carry a
+// permission of their own, so that a consumer can hand out "read my invoices"
+// without handing out the customer ledger.
+service BillingService {
+  // The catalog: two reads any member of the scope may make, and three
+  // administrative writes.
+  rpc CreateProduct(CreateProductRequest) returns (CreateProductResponse);
+  rpc GetProduct(GetProductRequest) returns (GetProductResponse);
+  rpc ListProducts(ListProductsRequest) returns (ListProductsResponse);
+  rpc UpdateProduct(UpdateProductRequest) returns (UpdateProductResponse);
+  rpc ArchiveProduct(ArchiveProductRequest) returns (ArchiveProductResponse);
+
+  // The recurring half. ListCurrentSubscriptions is the one an entitlement
+  // screen reads: it pages the agreements whose paid period covers now, and
+  // deliberately does not filter on status, because which status leaves an
+  // account entitled is the consumer's ruling.
+  rpc GetSubscription(GetSubscriptionRequest) returns (GetSubscriptionResponse);
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse);
+  rpc ListSubscriptionsForAccount(ListSubscriptionsForAccountRequest) returns (ListSubscriptionsForAccountResponse);
+  rpc ListCurrentSubscriptions(ListCurrentSubscriptionsRequest) returns (ListCurrentSubscriptionsResponse);
+  rpc ArchiveSubscription(ArchiveSubscriptionRequest) returns (ArchiveSubscriptionResponse);
+
+  // The one-time half.
+  rpc GetPurchase(GetPurchaseRequest) returns (GetPurchaseResponse);
+  rpc ListPurchases(ListPurchasesRequest) returns (ListPurchasesResponse);
+  rpc ListPurchasesForAccount(ListPurchasesForAccountRequest) returns (ListPurchasesForAccountResponse);
+  rpc ArchivePurchase(ArchivePurchaseRequest) returns (ArchivePurchaseResponse);
+
+  // The ledger.
+  rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
+  rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
+  rpc ListTransactionsForAccount(ListTransactionsForAccountRequest) returns (ListTransactionsForAccountResponse);
+  rpc ArchiveTransaction(ArchiveTransactionRequest) returns (ArchiveTransactionResponse);
+}

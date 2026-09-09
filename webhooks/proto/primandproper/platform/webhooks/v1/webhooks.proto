@@ -1,0 +1,422 @@
+// Package primandproper.platform.webhooks.v1 is the wire schema for webhook
+// endpoint management: the settings screen half of webhooks, where an
+// operator registers a URL, picks the events it wants, rotates its signing
+// keys, and reads back what was actually delivered.
+//
+// It is not the delivery pipeline. Nine of the eighteen methods on
+// webhooks.Store are here and nine deliberately are not; the service comment
+// at the bottom of this file names all nine absences and why each one stays
+// off the wire.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/webhooks/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/webhooks/v1/webhooks.proto=github.com/primandproper/platform-go/v14/webhooks/webhookspb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # event_type is a string, and will not become an enum
+//
+// Every event type in this schema is an opaque string. The set of them is the
+// consumer's catalog -- webhooks.Catalog, supplied at construction because what
+// an event means is an application opinion and this library has none -- and a
+// generated enum would put that vocabulary on this module's release cadence,
+// which is the first of the three objections the README's Transports section
+// says the module split answered. Adding "order.refunded" would become a
+// platform-go release.
+//
+// It is the same ruling issuereports.Kind and comments.TargetType are under,
+// and comments' own documentation calls its catalog "the webhooks event
+// catalog's idea applied to a second problem," so the two agree by
+// construction. What a client gets instead of compile-time checking is a
+// refusal: an event type outside the catalog is rejected at subscription with
+// webhooks.ErrUnknownEventType rather than accepted into an endpoint that never
+// fires.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere, and the name is reserved so there cannot be one. A
+// scope a client could name is a cross-tenant read hiding behind a request
+// field -- on this surface, a read of where another tenant's events are being
+// sent. It comes off the principal the consumer's interceptor put on the
+// context, and every statement behind these RPCs binds it, so an endpoint in
+// another tenant's scope reads as one that does not exist.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern and is
+// the half that holds: `reserved "scope";` is a schema protoc refuses to accept
+// a scope field into, in this repository and in a consumer's fork of the file
+// alike, whereas a comment is a request to the next author. It is reserved on
+// every request message and on the three messages a response is built from --
+// those carry no scope either, because every row a response returns belongs to
+// the scope the connection resolved, so the field would be telling a client
+// something it supplied.
+//
+// See identity.proto, which says the underlying rule at greater length.
+//
+// No signing key on any response. [WebhookSigningKeys] appears on exactly one
+// message in this schema -- [SaveEndpointRequest] -- and it travels in one
+// direction only. webhooks.Store.GetEndpoint reads an endpoint "secrets
+// included" and [WebhookEndpoint] has nowhere to put them, which is the
+// property rather than an oversight: a subscriber authenticates a delivery by
+// its HMAC, so a key readable back over an administrative API is a key
+// anybody who can read that API can forge deliveries with.
+//
+// The consequence is that a save is a full re-registration, keys included,
+// because there is no read that hands the current ones back. That is deliberate
+// and is not a silent hazard: an endpoint saved without keys is refused rather
+// than saved with none, so the failure is an error at the console and never a
+// subscriber whose signature checks quietly stopped matching.
+//
+// No created_by in any request. It is output-only, filled from the principal
+// the consumer's interceptor resolved, because provenance a caller could name
+// is provenance that says whatever the caller wanted it to.
+//
+// No payload, no delivery, no dispatch and no replay. Those belong to the
+// pipeline, and the service comment below says which of them were considered
+// and refused.
+
+syntax = "proto3";
+
+package primandproper.platform.webhooks.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/filtering/v1/filtering.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/webhooks/webhookspb;webhookspb";
+
+// WebhookEndpoint is one subscriber, as a client sees it: where deliveries go,
+// what they carry, and which events reach it.
+//
+// It carries no signing keys and no scope. See the file comment for both.
+message WebhookEndpoint {
+  reserved "scope";
+
+  // created_at is when the endpoint was registered, assigned by the database.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when it was last re-registered, unset for one nobody has
+  // saved since.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // archived_at is when it was retired, unset while it is live. Retired rather
+  // than deleted: the attempts log outlives the endpoint, because "what did we
+  // send them" is asked most often after somebody has been removed.
+  google.protobuf.Timestamp archived_at = 3;
+
+  // id is the row, and is what every other endpoint RPC names one by.
+  string id = 4;
+
+  // name is the label a management UI shows. Free-form, never read by the
+  // delivery pipeline, and not unique -- text somebody typed, so render it and
+  // never trust it.
+  string name = 5;
+
+  // url is the absolute https:// address deliveries are POSTed to. Plaintext is
+  // refused, and so is a host that resolves into loopback, link-local or
+  // private address space: a URL a user supplies that the server then makes
+  // authenticated requests to is the textbook shape of a server-side request
+  // forgery.
+  string url = 6;
+
+  // content_type is the request's Content-Type, defaulting to application/json.
+  string content_type = 7;
+
+  // headers are static headers added to every request to this endpoint, for
+  // subscribers that need a routing token or a tenant hint. The signature,
+  // timestamp, content type and event headers this module sets are reserved and
+  // a save naming one of them is refused -- a subscriber able to overwrite its
+  // own signature header would be authenticating deliveries against a value it
+  // chose.
+  map<string, string> headers = 8;
+
+  // disabled stops delivery without deleting the endpoint or its history, which
+  // is what an operator wants while a subscriber is misbehaving. It is how an
+  // endpoint is parked; an endpoint subscribing to nothing is refused rather
+  // than accepted as a parked one.
+  bool disabled = 9;
+
+  // subscriptions are the endpoint's live subscriptions, one identified row per
+  // event type it wants.
+  //
+  // They are rows rather than a flat list of event types because retiring one
+  // is something a management API is asked to do, and against a flat list the
+  // only available answer is to rewrite the whole set -- which cannot say when
+  // a subscription ended and has no identifier for the request to name.
+  repeated WebhookSubscription subscriptions = 10;
+
+  // created_by names whoever registered the endpoint. Output only: it is filled
+  // from the caller's principal at registration and is not part of what a
+  // re-registration updates, because an endpoint does not change hands and
+  // neither does its provenance. Empty where the deployment tracks no person
+  // behind the call.
+  string created_by = 11;
+}
+
+// WebhookSubscription is one endpoint's interest in one event type, as a row of
+// its own: identified, timestamped, and archivable without touching the rest.
+message WebhookSubscription {
+  reserved "scope";
+
+  // created_at is when the subscription was made.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when a write last named it, unset for one made once and
+  // left alone.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // archived_at is when it was retired, unset while it is live. Archived
+  // subscriptions are excluded from fan-out and kept so that "when did they
+  // stop receiving this" has an answer.
+  google.protobuf.Timestamp archived_at = 3;
+
+  // id is the row, and is what ArchiveSubscription names.
+  string id = 4;
+
+  // endpoint_id is the endpoint that subscribed.
+  string endpoint_id = 5;
+
+  // event_type is the catalog event type subscribed to, as an opaque string.
+  // See the file comment for why it is not an enum.
+  string event_type = 6;
+}
+
+// WebhookAttempt is one recorded HTTP attempt against one endpoint. Attempts
+// are append-only and are the delivery log: what was tried, when, and what came
+// back.
+message WebhookAttempt {
+  reserved "scope";
+
+  // created_at is when the request was issued, which is the instant the log
+  // line was written.
+  google.protobuf.Timestamp created_at = 1;
+
+  // duration is how long the request took.
+  google.protobuf.Duration duration = 2;
+
+  // id is the row.
+  string id = 3;
+
+  // delivery_id is the delivery this attempted, and is what ListAttempts names.
+  string delivery_id = 4;
+
+  // endpoint_id is the endpoint it was sent to.
+  string endpoint_id = 5;
+
+  // error is the transport or status error, rendered, and empty on success. It
+  // is a string because it is stored and read by a human rather than re-wrapped
+  // by a client.
+  string error = 6;
+
+  // status_code is the response status, or 0 if no response was received. Only
+  // 2xx counts as delivered: a 3xx is the subscriber asking for the request to
+  // be re-issued somewhere else, and following that would deliver a signed
+  // payload to a host the operator never registered.
+  int32 status_code = 7;
+
+  // attempt_count is which attempt this was, 1-indexed.
+  int32 attempt_count = 8;
+}
+
+// WebhookSigningKeys is the HMAC keyring an endpoint's deliveries are signed
+// under. It is the one message in this schema that carries a credential, it
+// appears on exactly one request, and it appears on no response at all.
+//
+// It is a pair rather than a single value so that rotation is not an outage.
+// Every delivery is signed under current and, while previous is set, again
+// under previous, with both signatures in the same header -- so a subscriber
+// accepts deliveries throughout the window in which it is switching keys, and
+// the operator clears previous once every subscriber has moved.
+message WebhookSigningKeys {
+  // current is the key new signatures are minted under. Required: unsigned
+  // delivery is not an option this module offers, because a subscriber that
+  // cannot authenticate a payload cannot safely act on it.
+  bytes current = 1;
+
+  // previous is an outgoing key still emitted alongside current during a
+  // rotation window. Empty outside one.
+  bytes previous = 2;
+}
+
+// WebhookEndpointInput is what a caller supplies to register an endpoint.
+//
+// It names event types rather than subscriptions, because a registration has no
+// subscription IDs yet. The stored rows are reconciled against the set named
+// here: one the endpoint already has is kept, with its identity and its
+// creation time; one named for the first time is created; one no longer named
+// is archived rather than deleted, so a subscription the endpoint has ended is
+// still something the delivery log can be read against.
+message WebhookEndpointInput {
+  reserved "scope";
+
+  // id is the endpoint to save, empty to mint a new one. A save naming an id
+  // registered in another tenant's scope is refused rather than accepted --
+  // an endpoint does not change hands, and accepting it would rewrite another
+  // subscriber's URL and keys.
+  string id = 1;
+
+  string name = 2;
+  string url = 3;
+
+  // content_type defaults to application/json when empty.
+  string content_type = 4;
+
+  map<string, string> headers = 5;
+  bool disabled = 6;
+
+  // event_types is the set of catalog event types this endpoint subscribes to.
+  // At least one is required: an endpoint subscribing to nothing is a
+  // subscriber that will never receive anything, which is a mistake rather than
+  // a way to park one. Set disabled to park it.
+  repeated string event_types = 7;
+}
+
+// SaveEndpointRequest registers or replaces an endpoint.
+message SaveEndpointRequest {
+  reserved "scope";
+
+  WebhookEndpointInput endpoint = 1;
+
+  // signing_keys are the HMAC keys deliveries to this endpoint are signed
+  // under. Required on every save, including one that changes only a name,
+  // because no RPC here reads the stored keys back and a save writes what it is
+  // given. Sending different keys is a rotation and sending the same ones is
+  // not; there is no third option in which a save leaves them alone.
+  WebhookSigningKeys signing_keys = 2;
+}
+
+message SaveEndpointResponse { WebhookEndpoint result = 1; }
+
+message GetEndpointRequest {
+  reserved "scope";
+
+  string endpoint_id = 1;
+}
+message GetEndpointResponse { WebhookEndpoint result = 1; }
+
+message ListEndpointsRequest {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+message ListEndpointsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated WebhookEndpoint results = 2;
+}
+
+message ArchiveEndpointRequest {
+  reserved "scope";
+
+  string endpoint_id = 1;
+}
+message ArchiveEndpointResponse {}
+
+message AddSubscriptionRequest {
+  reserved "scope";
+
+  string endpoint_id = 1;
+
+  // event_type must be in the consumer's catalog. It is idempotent on the
+  // (endpoint, event type) pair: subscribing to something the endpoint already
+  // subscribes to returns the existing row, and re-subscribing to something it
+  // archived revives that row rather than minting a second one for the pair.
+  string event_type = 2;
+}
+message AddSubscriptionResponse { WebhookSubscription result = 1; }
+
+message GetSubscriptionRequest {
+  reserved "scope";
+
+  string subscription_id = 1;
+}
+message GetSubscriptionResponse { WebhookSubscription result = 1; }
+
+message ListSubscriptionsRequest {
+  reserved "scope";
+
+  string endpoint_id = 1;
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+message ListSubscriptionsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated WebhookSubscription results = 2;
+}
+
+message ArchiveSubscriptionRequest {
+  reserved "scope";
+
+  string subscription_id = 1;
+}
+message ArchiveSubscriptionResponse {}
+
+message ListAttemptsRequest {
+  reserved "scope";
+
+  string delivery_id = 1;
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+message ListAttemptsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated WebhookAttempt results = 2;
+}
+
+// WebhooksService is endpoint management and delivery history: the half of
+// webhooks that is a resource rather than a protocol, and the only half a
+// person ever touches.
+//
+// Nine RPCs over webhooks.Store's eighteen methods, each behind a grant and
+// each acting only within the tenant the caller's principal names. The other
+// nine are absent on purpose, in three groups.
+//
+// Seven are the delivery machinery, which webhooks.Store already documents
+// under "The delivery machinery takes neither": Claim, MarkDelivered,
+// RecordFailure, RecordAttempt, Requeue, Backlog and Reap take no executor at
+// all and run on the handle the store was built with. They are a worker
+// draining a queue on a timer, servicing itself; the queue protocol's
+// correctness is that a claim commits before the request goes out, and a caller
+// supplying a transaction -- which is what an RPC is -- would be choosing when
+// that commit happens.
+//
+// EndpointsForEvent is the eighth, and it is the internal fan-out: the
+// dispatcher asking itself who is subscribed on the way to its own work. Its
+// own documentation calls it "the query whose missing filter delivers one
+// account's event to every other account's subscribers," which is a sentence
+// about a query nobody outside the component should be issuing.
+//
+// Enqueue is the ninth and is the sharpest of them, because it is the one that
+// looks like it belongs here. It is consumer-facing: an application calls it to
+// fan an event out. But it "writes a delivery and one dispatch per endpoint, in
+// the caller's transaction, so both commit with whatever else that transaction
+// did" -- and that is the whole reason it exists. An RPC moves the write out of
+// the caller's transaction, so you get a delivery for a row that rolled back,
+// or a committed row nobody was ever told about. It is the same fact
+// audit.Recorder states about an audit entry: a record that can commit while
+// the change it describes rolls back is not a record of what happened, and no
+// amount of retrying fixes it after the fact.
+//
+// A consumer who wants an event dispatched from another process sends that
+// process's own RPC -- the one whose handler owns the transaction the write
+// belongs in -- and calls webhooks.Dispatcher.Dispatch inside it.
+service WebhooksService {
+  rpc SaveEndpoint(SaveEndpointRequest) returns (SaveEndpointResponse);
+  rpc GetEndpoint(GetEndpointRequest) returns (GetEndpointResponse);
+  rpc ListEndpoints(ListEndpointsRequest) returns (ListEndpointsResponse);
+  rpc ArchiveEndpoint(ArchiveEndpointRequest) returns (ArchiveEndpointResponse);
+
+  rpc AddSubscription(AddSubscriptionRequest) returns (AddSubscriptionResponse);
+  rpc GetSubscription(GetSubscriptionRequest) returns (GetSubscriptionResponse);
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse);
+  rpc ArchiveSubscription(ArchiveSubscriptionRequest) returns (ArchiveSubscriptionResponse);
+
+  rpc ListAttempts(ListAttemptsRequest) returns (ListAttemptsResponse);
+}

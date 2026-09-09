@@ -123,9 +123,9 @@ language actually reads.
 
 This package, authentication/signin/grpc and authentication/oauth2clients/grpc
 are three worked examples and were, for a while, the only statement of what a
-domain transport here looks like. The ten domains still to cross should not have
-to recover it by reading all three, so what the three have in common is written
-down here and cited from there.
+domain transport here looks like. The domains still to cross should not have to
+recover it by reading all three, so what the three have in common is written
+down here and cited from there — audit/grpc is the first to have done so.
 
 A write whose caller is already inside the process's own transaction is not an
 RPC. billing's four status moves, settings.DeleteValuesForSubject,
@@ -160,16 +160,21 @@ answered. A closed set the package itself defines is the opposite case and is an
 enum: settings.Kind is one.
 
 Scope binds off the connection and never off a request field.
-authentication/signin/grpc is the precedent, and audit is the sharp case: its
+authentication/signin/grpc is the precedent, and audit was the sharp case: its
 Query.Scope is a *string in which nil means every tenant's events, and the
 field's own comment says getting it backwards is a cross-tenant disclosure
 rather than a wrong answer. Held in process that is a capability an operator
-built deliberately; put in a request field it is one any caller has.
+built deliberately; put in a request field it is one any caller has. audit/grpc
+has since crossed, and it took the rule one step further than a convention: its
+schema reserves the name "scope" in every request message, so the field is one
+protoc refuses rather than one a reviewer has to notice. A surface whose Go type
+has a selector this dangerous should do the same.
 
 A surface owes a mapper pair beside its sentinels, an entry in
 errormappers.Register, and rows in internal/sentinelmatrix, which reds until
 every exported Err in the package is recorded as mapped, platform or unhandled.
-Of the ten still to cross, only dataprivacy has the pair today. Refusals whose
+Of the ten, dataprivacy had the pair before the lane opened and audit grew one
+crossing; the eight still to cross owe theirs. Refusals whose
 wording is meant for the person reading them go to
 grpcerrors.RegisterClientSafeSentinels as well, or gRPC sends the code's name in
 place of the sentence.

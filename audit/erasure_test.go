@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -126,7 +127,7 @@ func TestErasure_DeleteScopes(T *testing.T) {
 
 		eraseScopes(t, client, newTestErasure(t), []string{"user_1"})
 
-		result, err := reader.Verify(t.Context(), "acct_9", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_9"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact(), test.Sprintf("break: %+v", result.FirstBreak))
 		test.EqOp(t, 3, result.Checked)

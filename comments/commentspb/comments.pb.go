@@ -1,0 +1,1368 @@
+// Package primandproper.platform.comments.v1 is the wire schema for the
+// discussion half of a product: what somebody said, about something the
+// application owns, possibly in reply to something else somebody said.
+//
+// Eight of the ten methods on comments.Store are here. The two that are not are
+// bulk erasure — DeleteCommentsForTarget and DeleteCommentsByAuthor — and the
+// service comment at the bottom of this file says why neither has an RPC.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/comments/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/comments/v1/comments.proto=github.com/primandproper/platform-go/v14/comments/commentspb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # target type is a string, and will not become an enum
+//
+// [CommentTarget.type] is an opaque string everywhere it appears. The set of
+// values is the consumer's catalog -- comments.Targets, supplied through
+// WithTargets because "which kinds of thing can be commented on" is an
+// application fact and this library has none -- and a generated enum would put
+// that vocabulary on this module's release cadence. Adding a "meal_plan" target
+// would become a platform-go release.
+//
+// It is the same ruling issuereports.Kind and webhooks' event types are under,
+// and comments' own documentation calls its catalog "the webhooks event
+// catalog's idea applied to a second problem," so the three agree by
+// construction. What a client gets instead of compile-time checking is a
+// refusal: a target type outside the catalog is rejected at the write with
+// comments.ErrUnknownTargetType rather than accepted into a comment that no
+// view will ever list.
+//
+// The existence check does not cross the wire either, and could not. A target
+// definition optionally carries a Go func the consumer registers, which reads
+// the consumer's own table on the consumer's own connection; the RPC calls the
+// store, the store runs the check, and comments.ErrTargetNotFound is what comes
+// back. There is nothing about it for a schema to describe.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere, and the name is reserved so there cannot be one. A
+// scope a client could name is a cross-tenant read hiding behind a request
+// field -- on this surface, a read of what another tenant's users have been
+// saying to each other. It comes off the principal the consumer's interceptor
+// put on the context, and every statement behind these RPCs binds it, so a
+// comment in another tenant's scope reads as one that does not exist.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern and is
+// the half that holds: `reserved "scope";` is a schema protoc refuses to accept
+// a scope field into, in this repository and in a consumer's fork of the file
+// alike, whereas a comment is a request to the next author. It is reserved on
+// every message in this file, responses included -- every row a response
+// returns belongs to the scope the connection resolved, so the field would be
+// telling a client something it supplied.
+//
+// See identity.proto, which says the underlying rule at greater length.
+//
+// No author on any input. [CommentInput] and [UpdateCommentRequest] reserve the
+// name for the same reason [CommentInput] reserves scope: authorship a caller
+// could name is authorship that says whatever the caller wanted it to, and the
+// one thing a comment is is a sentence attributed to somebody. It is filled
+// from the principal the consumer's interceptor resolved, on the way in, and it
+// is read back on [Comment] like any other stored fact.
+//
+// No id on [CommentInput]. comments.Store assigns one where the caller left it
+// empty, and a client-chosen identifier on this surface would be a client able
+// to collide with a row it cannot see -- which is a unique-key violation
+// answered 500, not a refusal that says anything useful.
+//
+// No target on an update. The store's own write assigns the body and nothing
+// else, because the target is what the comment is about, the parent is which
+// conversation it is in, and the author is who said it. A message that carried
+// them would describe an edit this schema's server cannot perform.
+
+// Code generated by protoc-gen-go. DO NOT EDIT.
+// versions:
+// 	protoc-gen-go v1.36.11
+// 	protoc        v6.33.1
+// source: primandproper/platform/comments/v1/comments.proto
+
+package commentspb
+
+import (
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
+
+	filteringpb "github.com/primandproper/primitives-go/filtering/filteringpb"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
+)
+
+const (
+	// Verify that this generated code is sufficiently up-to-date.
+	_ = protoimpl.EnforceVersion(20 - protoimpl.MinVersion)
+	// Verify that runtime/protoimpl is sufficiently up-to-date.
+	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
+)
+
+// CommentTarget is what a comment is about: a kind of thing, and one of them.
+//
+// It is two fields rather than one composite key, which is the same decision
+// comments.Target makes in Go and for the same reason: "everything anybody has
+// said about recipes" is a question two columns answer and a "recipe:1234"
+// string does not.
+type CommentTarget struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// type is the kind of thing, as the consumer's catalog spells it. An opaque
+	// string; see the file comment for why it is not an enum.
+	Type string `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	// id is which one, as the application spells it. The empty id is refused
+	// rather than treated as a wildcard: a comment holding it would be about
+	// every recipe and no recipe at once.
+	Id            string `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommentTarget) Reset() {
+	*x = CommentTarget{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommentTarget) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommentTarget) ProtoMessage() {}
+
+func (x *CommentTarget) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommentTarget.ProtoReflect.Descriptor instead.
+func (*CommentTarget) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *CommentTarget) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *CommentTarget) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+// Comment is something somebody said, as a client sees it.
+//
+// It carries no scope: see the file comment.
+type Comment struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// created_at is when the comment was written, assigned by the database.
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// last_updated_at is when the body was last edited, unset for a comment
+	// nobody has revised. It is what a client renders an "edited" marker from,
+	// and that reading holds because the edit is the only write that revises a
+	// live comment.
+	LastUpdatedAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=last_updated_at,json=lastUpdatedAt,proto3" json:"last_updated_at,omitempty"`
+	// archived_at is when the comment was removed from the discussion, unset
+	// while it is still in it.
+	//
+	// No read on this service returns an archived comment, so a client will not
+	// see this set; it is here because the field is on the row and a response
+	// that omitted it would be a message that could not describe one.
+	ArchivedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=archived_at,json=archivedAt,proto3" json:"archived_at,omitempty"`
+	// id is the row, and is what GetComment, UpdateComment and ArchiveComment
+	// name one by.
+	Id string `protobuf:"bytes,4,opt,name=id,proto3" json:"id,omitempty"`
+	// parent_id is the comment this one replies to, and empty is a comment that
+	// replies to nothing. Replies are one level deep: a reply to a reply is
+	// refused, because assembling a deeper tree is a recursive walk and a
+	// recursive walk is not one statement on the three engines this module
+	// serves.
+	ParentId string `protobuf:"bytes,5,opt,name=parent_id,json=parentId,proto3" json:"parent_id,omitempty"`
+	// author is who wrote it, as the consumer's directory identifies people. It
+	// is output only, filled from the caller's principal at creation; see the
+	// file comment.
+	Author string `protobuf:"bytes,6,opt,name=author,proto3" json:"author,omitempty"`
+	// body is what the person actually said. Text somebody typed, so render it
+	// and never trust it.
+	Body string `protobuf:"bytes,7,opt,name=body,proto3" json:"body,omitempty"`
+	// target is what the comment is about.
+	//
+	// A comment can outlive the thing it is about, and no read here filters those
+	// out: the row lives in a table this module has never seen, so there is
+	// nothing to join against. A client rendering a discussion should expect a
+	// target that no longer resolves.
+	Target        *CommentTarget `protobuf:"bytes,8,opt,name=target,proto3" json:"target,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Comment) Reset() {
+	*x = Comment{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Comment) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Comment) ProtoMessage() {}
+
+func (x *Comment) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Comment.ProtoReflect.Descriptor instead.
+func (*Comment) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Comment) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *Comment) GetLastUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastUpdatedAt
+	}
+	return nil
+}
+
+func (x *Comment) GetArchivedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ArchivedAt
+	}
+	return nil
+}
+
+func (x *Comment) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Comment) GetParentId() string {
+	if x != nil {
+		return x.ParentId
+	}
+	return ""
+}
+
+func (x *Comment) GetAuthor() string {
+	if x != nil {
+		return x.Author
+	}
+	return ""
+}
+
+func (x *Comment) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+func (x *Comment) GetTarget() *CommentTarget {
+	if x != nil {
+		return x.Target
+	}
+	return nil
+}
+
+// CommentInput is what a caller supplies to write a comment.
+type CommentInput struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// parent_id is the comment being replied to, empty for a comment that replies
+	// to nothing.
+	//
+	// The parent must be a live comment in the caller's scope and must itself be
+	// a root. A reply to a reply is refused rather than flattened, because
+	// flattening it would file somebody's answer against the wrong question.
+	ParentId string `protobuf:"bytes,1,opt,name=parent_id,json=parentId,proto3" json:"parent_id,omitempty"`
+	// target is what the comment is about. A reply may leave it unset and adopt
+	// its parent's; one that names a different target than its parent is refused,
+	// because a reply belongs to its parent's discussion.
+	Target *CommentTarget `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
+	// body is what is being said. Required: a comment with nothing in it records
+	// that somebody pressed a button.
+	Body          string `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CommentInput) Reset() {
+	*x = CommentInput{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CommentInput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommentInput) ProtoMessage() {}
+
+func (x *CommentInput) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommentInput.ProtoReflect.Descriptor instead.
+func (*CommentInput) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *CommentInput) GetParentId() string {
+	if x != nil {
+		return x.ParentId
+	}
+	return ""
+}
+
+func (x *CommentInput) GetTarget() *CommentTarget {
+	if x != nil {
+		return x.Target
+	}
+	return nil
+}
+
+func (x *CommentInput) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+type CreateCommentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Comment       *CommentInput          `protobuf:"bytes,1,opt,name=comment,proto3" json:"comment,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateCommentRequest) Reset() {
+	*x = CreateCommentRequest{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateCommentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateCommentRequest) ProtoMessage() {}
+
+func (x *CreateCommentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateCommentRequest.ProtoReflect.Descriptor instead.
+func (*CreateCommentRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *CreateCommentRequest) GetComment() *CommentInput {
+	if x != nil {
+		return x.Comment
+	}
+	return nil
+}
+
+type CreateCommentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Result        *Comment               `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateCommentResponse) Reset() {
+	*x = CreateCommentResponse{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateCommentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateCommentResponse) ProtoMessage() {}
+
+func (x *CreateCommentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateCommentResponse.ProtoReflect.Descriptor instead.
+func (*CreateCommentResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *CreateCommentResponse) GetResult() *Comment {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+type GetCommentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CommentId     string                 `protobuf:"bytes,1,opt,name=comment_id,json=commentId,proto3" json:"comment_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCommentRequest) Reset() {
+	*x = GetCommentRequest{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCommentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCommentRequest) ProtoMessage() {}
+
+func (x *GetCommentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCommentRequest.ProtoReflect.Descriptor instead.
+func (*GetCommentRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *GetCommentRequest) GetCommentId() string {
+	if x != nil {
+		return x.CommentId
+	}
+	return ""
+}
+
+type GetCommentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Result        *Comment               `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCommentResponse) Reset() {
+	*x = GetCommentResponse{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCommentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCommentResponse) ProtoMessage() {}
+
+func (x *GetCommentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCommentResponse.ProtoReflect.Descriptor instead.
+func (*GetCommentResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *GetCommentResponse) GetResult() *Comment {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+type ListRootCommentsRequest struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Target        *CommentTarget           `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRootCommentsRequest) Reset() {
+	*x = ListRootCommentsRequest{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRootCommentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRootCommentsRequest) ProtoMessage() {}
+
+func (x *ListRootCommentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRootCommentsRequest.ProtoReflect.Descriptor instead.
+func (*ListRootCommentsRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ListRootCommentsRequest) GetTarget() *CommentTarget {
+	if x != nil {
+		return x.Target
+	}
+	return nil
+}
+
+func (x *ListRootCommentsRequest) GetFilter() *filteringpb.QueryFilter {
+	if x != nil {
+		return x.Filter
+	}
+	return nil
+}
+
+type ListRootCommentsResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Pagination    *filteringpb.Pagination `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	Results       []*Comment              `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRootCommentsResponse) Reset() {
+	*x = ListRootCommentsResponse{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRootCommentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRootCommentsResponse) ProtoMessage() {}
+
+func (x *ListRootCommentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRootCommentsResponse.ProtoReflect.Descriptor instead.
+func (*ListRootCommentsResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ListRootCommentsResponse) GetPagination() *filteringpb.Pagination {
+	if x != nil {
+		return x.Pagination
+	}
+	return nil
+}
+
+func (x *ListRootCommentsResponse) GetResults() []*Comment {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+type ListRepliesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// target is the discussion the parent is in. It is named as well as the
+	// parent because a reply carries both and the statement keys on both, so
+	// naming it costs a caller nothing and buys the read the index it was written
+	// for.
+	Target *CommentTarget `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	// parent_id is the root whose replies are wanted. Required: the empty parent
+	// is what a root stores, so answering it with the roots would be the wrong
+	// half of the discussion with nothing about the rows saying so.
+	ParentId      string                   `protobuf:"bytes,2,opt,name=parent_id,json=parentId,proto3" json:"parent_id,omitempty"`
+	Filter        *filteringpb.QueryFilter `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRepliesRequest) Reset() {
+	*x = ListRepliesRequest{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRepliesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRepliesRequest) ProtoMessage() {}
+
+func (x *ListRepliesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRepliesRequest.ProtoReflect.Descriptor instead.
+func (*ListRepliesRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ListRepliesRequest) GetTarget() *CommentTarget {
+	if x != nil {
+		return x.Target
+	}
+	return nil
+}
+
+func (x *ListRepliesRequest) GetParentId() string {
+	if x != nil {
+		return x.ParentId
+	}
+	return ""
+}
+
+func (x *ListRepliesRequest) GetFilter() *filteringpb.QueryFilter {
+	if x != nil {
+		return x.Filter
+	}
+	return nil
+}
+
+type ListRepliesResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Pagination    *filteringpb.Pagination `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	Results       []*Comment              `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRepliesResponse) Reset() {
+	*x = ListRepliesResponse{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRepliesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRepliesResponse) ProtoMessage() {}
+
+func (x *ListRepliesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRepliesResponse.ProtoReflect.Descriptor instead.
+func (*ListRepliesResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ListRepliesResponse) GetPagination() *filteringpb.Pagination {
+	if x != nil {
+		return x.Pagination
+	}
+	return nil
+}
+
+func (x *ListRepliesResponse) GetResults() []*Comment {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+type ListCommentsByTargetTypeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// target_type is the kind of thing whose whole discussion is wanted -- roots
+	// and replies alike, across every target of that type.
+	//
+	// It is deliberately not checked against the consumer's catalog. This is the
+	// read an operator runs before withdrawing a target type, to see what
+	// withdrawing it would strand, and a type that has been withdrawn is exactly
+	// the one whose rows they still need to reach.
+	TargetType    string                   `protobuf:"bytes,1,opt,name=target_type,json=targetType,proto3" json:"target_type,omitempty"`
+	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCommentsByTargetTypeRequest) Reset() {
+	*x = ListCommentsByTargetTypeRequest{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCommentsByTargetTypeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCommentsByTargetTypeRequest) ProtoMessage() {}
+
+func (x *ListCommentsByTargetTypeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCommentsByTargetTypeRequest.ProtoReflect.Descriptor instead.
+func (*ListCommentsByTargetTypeRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListCommentsByTargetTypeRequest) GetTargetType() string {
+	if x != nil {
+		return x.TargetType
+	}
+	return ""
+}
+
+func (x *ListCommentsByTargetTypeRequest) GetFilter() *filteringpb.QueryFilter {
+	if x != nil {
+		return x.Filter
+	}
+	return nil
+}
+
+type ListCommentsByTargetTypeResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Pagination    *filteringpb.Pagination `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	Results       []*Comment              `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCommentsByTargetTypeResponse) Reset() {
+	*x = ListCommentsByTargetTypeResponse{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCommentsByTargetTypeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCommentsByTargetTypeResponse) ProtoMessage() {}
+
+func (x *ListCommentsByTargetTypeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCommentsByTargetTypeResponse.ProtoReflect.Descriptor instead.
+func (*ListCommentsByTargetTypeResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListCommentsByTargetTypeResponse) GetPagination() *filteringpb.Pagination {
+	if x != nil {
+		return x.Pagination
+	}
+	return nil
+}
+
+func (x *ListCommentsByTargetTypeResponse) GetResults() []*Comment {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+type ListCommentsByAuthorRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// author is whose comments are wanted, and empty means the caller's own --
+	// which is what a "your comments" view sends, and the only value a caller can
+	// send without the server asking whether they may read somebody else's.
+	Author        string                   `protobuf:"bytes,1,opt,name=author,proto3" json:"author,omitempty"`
+	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCommentsByAuthorRequest) Reset() {
+	*x = ListCommentsByAuthorRequest{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCommentsByAuthorRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCommentsByAuthorRequest) ProtoMessage() {}
+
+func (x *ListCommentsByAuthorRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCommentsByAuthorRequest.ProtoReflect.Descriptor instead.
+func (*ListCommentsByAuthorRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ListCommentsByAuthorRequest) GetAuthor() string {
+	if x != nil {
+		return x.Author
+	}
+	return ""
+}
+
+func (x *ListCommentsByAuthorRequest) GetFilter() *filteringpb.QueryFilter {
+	if x != nil {
+		return x.Filter
+	}
+	return nil
+}
+
+type ListCommentsByAuthorResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Pagination    *filteringpb.Pagination `protobuf:"bytes,1,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	Results       []*Comment              `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListCommentsByAuthorResponse) Reset() {
+	*x = ListCommentsByAuthorResponse{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListCommentsByAuthorResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListCommentsByAuthorResponse) ProtoMessage() {}
+
+func (x *ListCommentsByAuthorResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListCommentsByAuthorResponse.ProtoReflect.Descriptor instead.
+func (*ListCommentsByAuthorResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListCommentsByAuthorResponse) GetPagination() *filteringpb.Pagination {
+	if x != nil {
+		return x.Pagination
+	}
+	return nil
+}
+
+func (x *ListCommentsByAuthorResponse) GetResults() []*Comment {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+type UpdateCommentRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	CommentId string                 `protobuf:"bytes,1,opt,name=comment_id,json=commentId,proto3" json:"comment_id,omitempty"`
+	// body is the revised text. Required: an edit that empties a comment is a
+	// deletion spelled as an edit, and archiving is what this service offers for
+	// that.
+	Body          string `protobuf:"bytes,2,opt,name=body,proto3" json:"body,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateCommentRequest) Reset() {
+	*x = UpdateCommentRequest{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateCommentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateCommentRequest) ProtoMessage() {}
+
+func (x *UpdateCommentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateCommentRequest.ProtoReflect.Descriptor instead.
+func (*UpdateCommentRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *UpdateCommentRequest) GetCommentId() string {
+	if x != nil {
+		return x.CommentId
+	}
+	return ""
+}
+
+func (x *UpdateCommentRequest) GetBody() string {
+	if x != nil {
+		return x.Body
+	}
+	return ""
+}
+
+type UpdateCommentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Result        *Comment               `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateCommentResponse) Reset() {
+	*x = UpdateCommentResponse{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateCommentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateCommentResponse) ProtoMessage() {}
+
+func (x *UpdateCommentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateCommentResponse.ProtoReflect.Descriptor instead.
+func (*UpdateCommentResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *UpdateCommentResponse) GetResult() *Comment {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+type ArchiveCommentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CommentId     string                 `protobuf:"bytes,1,opt,name=comment_id,json=commentId,proto3" json:"comment_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ArchiveCommentRequest) Reset() {
+	*x = ArchiveCommentRequest{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArchiveCommentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArchiveCommentRequest) ProtoMessage() {}
+
+func (x *ArchiveCommentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArchiveCommentRequest.ProtoReflect.Descriptor instead.
+func (*ArchiveCommentRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *ArchiveCommentRequest) GetCommentId() string {
+	if x != nil {
+		return x.CommentId
+	}
+	return ""
+}
+
+type ArchiveCommentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ArchiveCommentResponse) Reset() {
+	*x = ArchiveCommentResponse{}
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArchiveCommentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArchiveCommentResponse) ProtoMessage() {}
+
+func (x *ArchiveCommentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_comments_v1_comments_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArchiveCommentResponse.ProtoReflect.Descriptor instead.
+func (*ArchiveCommentResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP(), []int{18}
+}
+
+var File_primandproper_platform_comments_v1_comments_proto protoreflect.FileDescriptor
+
+const file_primandproper_platform_comments_v1_comments_proto_rawDesc = "" +
+	"\n" +
+	"1primandproper/platform/comments/v1/comments.proto\x12\"primandproper.platform.comments.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\":\n" +
+	"\rCommentTarget\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\tR\x02idR\x05scope\"\xf0\x02\n" +
+	"\aComment\x129\n" +
+	"\n" +
+	"created_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12B\n" +
+	"\x0flast_updated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\rlastUpdatedAt\x12;\n" +
+	"\varchived_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"archivedAt\x12\x0e\n" +
+	"\x02id\x18\x04 \x01(\tR\x02id\x12\x1b\n" +
+	"\tparent_id\x18\x05 \x01(\tR\bparentId\x12\x16\n" +
+	"\x06author\x18\x06 \x01(\tR\x06author\x12\x12\n" +
+	"\x04body\x18\a \x01(\tR\x04body\x12I\n" +
+	"\x06target\x18\b \x01(\v21.primandproper.platform.comments.v1.CommentTargetR\x06targetR\x05scope\"\x9d\x01\n" +
+	"\fCommentInput\x12\x1b\n" +
+	"\tparent_id\x18\x01 \x01(\tR\bparentId\x12I\n" +
+	"\x06target\x18\x02 \x01(\v21.primandproper.platform.comments.v1.CommentTargetR\x06target\x12\x12\n" +
+	"\x04body\x18\x03 \x01(\tR\x04bodyR\x05scopeR\x06authorR\x02id\"i\n" +
+	"\x14CreateCommentRequest\x12J\n" +
+	"\acomment\x18\x01 \x01(\v20.primandproper.platform.comments.v1.CommentInputR\acommentR\x05scope\"c\n" +
+	"\x15CreateCommentResponse\x12C\n" +
+	"\x06result\x18\x01 \x01(\v2+.primandproper.platform.comments.v1.CommentR\x06resultR\x05scope\"9\n" +
+	"\x11GetCommentRequest\x12\x1d\n" +
+	"\n" +
+	"comment_id\x18\x01 \x01(\tR\tcommentIdR\x05scope\"`\n" +
+	"\x12GetCommentResponse\x12C\n" +
+	"\x06result\x18\x01 \x01(\v2+.primandproper.platform.comments.v1.CommentR\x06resultR\x05scope\"\xb5\x01\n" +
+	"\x17ListRootCommentsRequest\x12I\n" +
+	"\x06target\x18\x01 \x01(\v21.primandproper.platform.comments.v1.CommentTargetR\x06target\x12H\n" +
+	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xb9\x01\n" +
+	"\x18ListRootCommentsResponse\x12O\n" +
+	"\n" +
+	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
+	"pagination\x12E\n" +
+	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.comments.v1.CommentR\aresultsR\x05scope\"\xcd\x01\n" +
+	"\x12ListRepliesRequest\x12I\n" +
+	"\x06target\x18\x01 \x01(\v21.primandproper.platform.comments.v1.CommentTargetR\x06target\x12\x1b\n" +
+	"\tparent_id\x18\x02 \x01(\tR\bparentId\x12H\n" +
+	"\x06filter\x18\x03 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xb4\x01\n" +
+	"\x13ListRepliesResponse\x12O\n" +
+	"\n" +
+	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
+	"pagination\x12E\n" +
+	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.comments.v1.CommentR\aresultsR\x05scope\"\x93\x01\n" +
+	"\x1fListCommentsByTargetTypeRequest\x12\x1f\n" +
+	"\vtarget_type\x18\x01 \x01(\tR\n" +
+	"targetType\x12H\n" +
+	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xc1\x01\n" +
+	" ListCommentsByTargetTypeResponse\x12O\n" +
+	"\n" +
+	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
+	"pagination\x12E\n" +
+	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.comments.v1.CommentR\aresultsR\x05scope\"\x86\x01\n" +
+	"\x1bListCommentsByAuthorRequest\x12\x16\n" +
+	"\x06author\x18\x01 \x01(\tR\x06author\x12H\n" +
+	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xbd\x01\n" +
+	"\x1cListCommentsByAuthorResponse\x12O\n" +
+	"\n" +
+	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
+	"pagination\x12E\n" +
+	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.comments.v1.CommentR\aresultsR\x05scope\"k\n" +
+	"\x14UpdateCommentRequest\x12\x1d\n" +
+	"\n" +
+	"comment_id\x18\x01 \x01(\tR\tcommentId\x12\x12\n" +
+	"\x04body\x18\x02 \x01(\tR\x04bodyR\x05scopeR\x06authorR\x06targetR\tparent_id\"c\n" +
+	"\x15UpdateCommentResponse\x12C\n" +
+	"\x06result\x18\x01 \x01(\v2+.primandproper.platform.comments.v1.CommentR\x06resultR\x05scope\"=\n" +
+	"\x15ArchiveCommentRequest\x12\x1d\n" +
+	"\n" +
+	"comment_id\x18\x01 \x01(\tR\tcommentIdR\x05scope\"\x1f\n" +
+	"\x16ArchiveCommentResponseR\x05scope2\xfa\b\n" +
+	"\x0fCommentsService\x12\x84\x01\n" +
+	"\rCreateComment\x128.primandproper.platform.comments.v1.CreateCommentRequest\x1a9.primandproper.platform.comments.v1.CreateCommentResponse\x12{\n" +
+	"\n" +
+	"GetComment\x125.primandproper.platform.comments.v1.GetCommentRequest\x1a6.primandproper.platform.comments.v1.GetCommentResponse\x12\x8d\x01\n" +
+	"\x10ListRootComments\x12;.primandproper.platform.comments.v1.ListRootCommentsRequest\x1a<.primandproper.platform.comments.v1.ListRootCommentsResponse\x12~\n" +
+	"\vListReplies\x126.primandproper.platform.comments.v1.ListRepliesRequest\x1a7.primandproper.platform.comments.v1.ListRepliesResponse\x12\xa5\x01\n" +
+	"\x18ListCommentsByTargetType\x12C.primandproper.platform.comments.v1.ListCommentsByTargetTypeRequest\x1aD.primandproper.platform.comments.v1.ListCommentsByTargetTypeResponse\x12\x99\x01\n" +
+	"\x14ListCommentsByAuthor\x12?.primandproper.platform.comments.v1.ListCommentsByAuthorRequest\x1a@.primandproper.platform.comments.v1.ListCommentsByAuthorResponse\x12\x84\x01\n" +
+	"\rUpdateComment\x128.primandproper.platform.comments.v1.UpdateCommentRequest\x1a9.primandproper.platform.comments.v1.UpdateCommentResponse\x12\x87\x01\n" +
+	"\x0eArchiveComment\x129.primandproper.platform.comments.v1.ArchiveCommentRequest\x1a:.primandproper.platform.comments.v1.ArchiveCommentResponseBIZGgithub.com/primandproper/platform-go/v14/comments/commentspb;commentspbb\x06proto3"
+
+var (
+	file_primandproper_platform_comments_v1_comments_proto_rawDescOnce sync.Once
+	file_primandproper_platform_comments_v1_comments_proto_rawDescData []byte
+)
+
+func file_primandproper_platform_comments_v1_comments_proto_rawDescGZIP() []byte {
+	file_primandproper_platform_comments_v1_comments_proto_rawDescOnce.Do(func() {
+		file_primandproper_platform_comments_v1_comments_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_primandproper_platform_comments_v1_comments_proto_rawDesc), len(file_primandproper_platform_comments_v1_comments_proto_rawDesc)))
+	})
+	return file_primandproper_platform_comments_v1_comments_proto_rawDescData
+}
+
+var file_primandproper_platform_comments_v1_comments_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_primandproper_platform_comments_v1_comments_proto_goTypes = []any{
+	(*CommentTarget)(nil),                    // 0: primandproper.platform.comments.v1.CommentTarget
+	(*Comment)(nil),                          // 1: primandproper.platform.comments.v1.Comment
+	(*CommentInput)(nil),                     // 2: primandproper.platform.comments.v1.CommentInput
+	(*CreateCommentRequest)(nil),             // 3: primandproper.platform.comments.v1.CreateCommentRequest
+	(*CreateCommentResponse)(nil),            // 4: primandproper.platform.comments.v1.CreateCommentResponse
+	(*GetCommentRequest)(nil),                // 5: primandproper.platform.comments.v1.GetCommentRequest
+	(*GetCommentResponse)(nil),               // 6: primandproper.platform.comments.v1.GetCommentResponse
+	(*ListRootCommentsRequest)(nil),          // 7: primandproper.platform.comments.v1.ListRootCommentsRequest
+	(*ListRootCommentsResponse)(nil),         // 8: primandproper.platform.comments.v1.ListRootCommentsResponse
+	(*ListRepliesRequest)(nil),               // 9: primandproper.platform.comments.v1.ListRepliesRequest
+	(*ListRepliesResponse)(nil),              // 10: primandproper.platform.comments.v1.ListRepliesResponse
+	(*ListCommentsByTargetTypeRequest)(nil),  // 11: primandproper.platform.comments.v1.ListCommentsByTargetTypeRequest
+	(*ListCommentsByTargetTypeResponse)(nil), // 12: primandproper.platform.comments.v1.ListCommentsByTargetTypeResponse
+	(*ListCommentsByAuthorRequest)(nil),      // 13: primandproper.platform.comments.v1.ListCommentsByAuthorRequest
+	(*ListCommentsByAuthorResponse)(nil),     // 14: primandproper.platform.comments.v1.ListCommentsByAuthorResponse
+	(*UpdateCommentRequest)(nil),             // 15: primandproper.platform.comments.v1.UpdateCommentRequest
+	(*UpdateCommentResponse)(nil),            // 16: primandproper.platform.comments.v1.UpdateCommentResponse
+	(*ArchiveCommentRequest)(nil),            // 17: primandproper.platform.comments.v1.ArchiveCommentRequest
+	(*ArchiveCommentResponse)(nil),           // 18: primandproper.platform.comments.v1.ArchiveCommentResponse
+	(*timestamppb.Timestamp)(nil),            // 19: google.protobuf.Timestamp
+	(*filteringpb.QueryFilter)(nil),          // 20: primandproper.platform.filtering.v1.QueryFilter
+	(*filteringpb.Pagination)(nil),           // 21: primandproper.platform.filtering.v1.Pagination
+}
+var file_primandproper_platform_comments_v1_comments_proto_depIdxs = []int32{
+	19, // 0: primandproper.platform.comments.v1.Comment.created_at:type_name -> google.protobuf.Timestamp
+	19, // 1: primandproper.platform.comments.v1.Comment.last_updated_at:type_name -> google.protobuf.Timestamp
+	19, // 2: primandproper.platform.comments.v1.Comment.archived_at:type_name -> google.protobuf.Timestamp
+	0,  // 3: primandproper.platform.comments.v1.Comment.target:type_name -> primandproper.platform.comments.v1.CommentTarget
+	0,  // 4: primandproper.platform.comments.v1.CommentInput.target:type_name -> primandproper.platform.comments.v1.CommentTarget
+	2,  // 5: primandproper.platform.comments.v1.CreateCommentRequest.comment:type_name -> primandproper.platform.comments.v1.CommentInput
+	1,  // 6: primandproper.platform.comments.v1.CreateCommentResponse.result:type_name -> primandproper.platform.comments.v1.Comment
+	1,  // 7: primandproper.platform.comments.v1.GetCommentResponse.result:type_name -> primandproper.platform.comments.v1.Comment
+	0,  // 8: primandproper.platform.comments.v1.ListRootCommentsRequest.target:type_name -> primandproper.platform.comments.v1.CommentTarget
+	20, // 9: primandproper.platform.comments.v1.ListRootCommentsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	21, // 10: primandproper.platform.comments.v1.ListRootCommentsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	1,  // 11: primandproper.platform.comments.v1.ListRootCommentsResponse.results:type_name -> primandproper.platform.comments.v1.Comment
+	0,  // 12: primandproper.platform.comments.v1.ListRepliesRequest.target:type_name -> primandproper.platform.comments.v1.CommentTarget
+	20, // 13: primandproper.platform.comments.v1.ListRepliesRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	21, // 14: primandproper.platform.comments.v1.ListRepliesResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	1,  // 15: primandproper.platform.comments.v1.ListRepliesResponse.results:type_name -> primandproper.platform.comments.v1.Comment
+	20, // 16: primandproper.platform.comments.v1.ListCommentsByTargetTypeRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	21, // 17: primandproper.platform.comments.v1.ListCommentsByTargetTypeResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	1,  // 18: primandproper.platform.comments.v1.ListCommentsByTargetTypeResponse.results:type_name -> primandproper.platform.comments.v1.Comment
+	20, // 19: primandproper.platform.comments.v1.ListCommentsByAuthorRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	21, // 20: primandproper.platform.comments.v1.ListCommentsByAuthorResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	1,  // 21: primandproper.platform.comments.v1.ListCommentsByAuthorResponse.results:type_name -> primandproper.platform.comments.v1.Comment
+	1,  // 22: primandproper.platform.comments.v1.UpdateCommentResponse.result:type_name -> primandproper.platform.comments.v1.Comment
+	3,  // 23: primandproper.platform.comments.v1.CommentsService.CreateComment:input_type -> primandproper.platform.comments.v1.CreateCommentRequest
+	5,  // 24: primandproper.platform.comments.v1.CommentsService.GetComment:input_type -> primandproper.platform.comments.v1.GetCommentRequest
+	7,  // 25: primandproper.platform.comments.v1.CommentsService.ListRootComments:input_type -> primandproper.platform.comments.v1.ListRootCommentsRequest
+	9,  // 26: primandproper.platform.comments.v1.CommentsService.ListReplies:input_type -> primandproper.platform.comments.v1.ListRepliesRequest
+	11, // 27: primandproper.platform.comments.v1.CommentsService.ListCommentsByTargetType:input_type -> primandproper.platform.comments.v1.ListCommentsByTargetTypeRequest
+	13, // 28: primandproper.platform.comments.v1.CommentsService.ListCommentsByAuthor:input_type -> primandproper.platform.comments.v1.ListCommentsByAuthorRequest
+	15, // 29: primandproper.platform.comments.v1.CommentsService.UpdateComment:input_type -> primandproper.platform.comments.v1.UpdateCommentRequest
+	17, // 30: primandproper.platform.comments.v1.CommentsService.ArchiveComment:input_type -> primandproper.platform.comments.v1.ArchiveCommentRequest
+	4,  // 31: primandproper.platform.comments.v1.CommentsService.CreateComment:output_type -> primandproper.platform.comments.v1.CreateCommentResponse
+	6,  // 32: primandproper.platform.comments.v1.CommentsService.GetComment:output_type -> primandproper.platform.comments.v1.GetCommentResponse
+	8,  // 33: primandproper.platform.comments.v1.CommentsService.ListRootComments:output_type -> primandproper.platform.comments.v1.ListRootCommentsResponse
+	10, // 34: primandproper.platform.comments.v1.CommentsService.ListReplies:output_type -> primandproper.platform.comments.v1.ListRepliesResponse
+	12, // 35: primandproper.platform.comments.v1.CommentsService.ListCommentsByTargetType:output_type -> primandproper.platform.comments.v1.ListCommentsByTargetTypeResponse
+	14, // 36: primandproper.platform.comments.v1.CommentsService.ListCommentsByAuthor:output_type -> primandproper.platform.comments.v1.ListCommentsByAuthorResponse
+	16, // 37: primandproper.platform.comments.v1.CommentsService.UpdateComment:output_type -> primandproper.platform.comments.v1.UpdateCommentResponse
+	18, // 38: primandproper.platform.comments.v1.CommentsService.ArchiveComment:output_type -> primandproper.platform.comments.v1.ArchiveCommentResponse
+	31, // [31:39] is the sub-list for method output_type
+	23, // [23:31] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
+}
+
+func init() { file_primandproper_platform_comments_v1_comments_proto_init() }
+func file_primandproper_platform_comments_v1_comments_proto_init() {
+	if File_primandproper_platform_comments_v1_comments_proto != nil {
+		return
+	}
+	type x struct{}
+	out := protoimpl.TypeBuilder{
+		File: protoimpl.DescBuilder{
+			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_primandproper_platform_comments_v1_comments_proto_rawDesc), len(file_primandproper_platform_comments_v1_comments_proto_rawDesc)),
+			NumEnums:      0,
+			NumMessages:   19,
+			NumExtensions: 0,
+			NumServices:   1,
+		},
+		GoTypes:           file_primandproper_platform_comments_v1_comments_proto_goTypes,
+		DependencyIndexes: file_primandproper_platform_comments_v1_comments_proto_depIdxs,
+		MessageInfos:      file_primandproper_platform_comments_v1_comments_proto_msgTypes,
+	}.Build()
+	File_primandproper_platform_comments_v1_comments_proto = out.File
+	file_primandproper_platform_comments_v1_comments_proto_goTypes = nil
+	file_primandproper_platform_comments_v1_comments_proto_depIdxs = nil
+}

@@ -17,6 +17,7 @@ import (
 	"github.com/primandproper/primitives-go/observability/logging"
 	"github.com/primandproper/primitives-go/observability/metrics"
 	"github.com/primandproper/primitives-go/observability/tracing"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Query selects which entries a List returns.
@@ -141,7 +142,7 @@ type VerificationResult struct {
 	// it was tampered with.
 	FirstBreak *Break
 	// Scope is the chain that was walked.
-	Scope string
+	Scope tenancy.Scope
 	// Checked is how many entries were walked.
 	Checked int
 }
@@ -166,7 +167,11 @@ type Reader interface {
 	List(ctx context.Context, q *Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Entry], error)
 	// Verify walks one scope's hash chain over a time range and reports the
 	// first break, or that there was none.
-	Verify(ctx context.Context, scope string, from, to time.Time) (*VerificationResult, error)
+	//
+	// The scope is a tenancy.Scope rather than the string it names, so a call
+	// that lost its scope fails to compile rather than walking the global
+	// chain. See the method on SQLReader for what an unset one does.
+	Verify(ctx context.Context, scope tenancy.Scope, from, to time.Time) (*VerificationResult, error)
 }
 
 var _ Reader = (*SQLReader)(nil)
@@ -380,12 +385,36 @@ func pageFilter(filter *filtering.QueryFilter) *filtering.QueryFilter {
 // two ask the same question of the same column and an entry that a Verify
 // covered but a List over the same window did not would be a hole nobody could
 // account for.
-func (r *SQLReader) Verify(ctx context.Context, scope string, from, to time.Time) (*VerificationResult, error) {
-	ctx, op := r.o11y.Begin(ctx, observability.WithValue(scopeKey, scope))
+//
+// # The scope, and why it is not a string
+//
+// It is a tenancy.Scope, so a caller who lost track of which chain they are
+// walking fails to compile rather than walking the global one. That is the
+// module's rule for a scope anywhere, and this method was the exception until
+// v14: it took the owner identifier as a plain string, in which the empty
+// string is simultaneously the platform chain and a caller who had nothing to
+// pass — and a verification that silently walked the wrong chain reports a
+// clean result for a log nobody checked.
+//
+// An unset scope is tenancy.ErrNoScope, refused here rather than at the driver.
+// The statement binds the owner identifier and not the Scope itself, because
+// the column is written by Record off Entry.Scope and the generated parameter
+// is that column's type; validating first is what the binding would otherwise
+// have bought, made explicit and made the first thing this method does.
+// tenancy.Global is a scope like any other here and walks the platform chain,
+// which is what the empty Entry.Scope records into.
+func (r *SQLReader) Verify(ctx context.Context, scope tenancy.Scope, from, to time.Time) (*VerificationResult, error) {
+	ctx, op := r.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
+	if err := scope.Validate(); err != nil {
+		return nil, op.Error(err, "verifying an audit chain")
+	}
+
+	owner := scope.Owner()
+
 	rows, err := r.q.ListAuditChainEntries(ctx, r.client.Reader(), auditdb.ListAuditChainEntriesParams{
-		Scope:          scope,
+		Scope:          owner,
 		RecordedAfter:  boundOrNil(from),
 		RecordedBefore: boundOrNil(to),
 	})
@@ -409,7 +438,7 @@ func (r *SQLReader) Verify(ctx context.Context, scope string, from, to time.Time
 
 	if len(stored) > 0 {
 		var anchor *anchorState
-		if anchor, err = r.anchorFor(ctx, scope, stored[0].entry.Seq); err != nil {
+		if anchor, err = r.anchorFor(ctx, owner, stored[0].entry.Seq); err != nil {
 			return nil, op.Error(err, "anchoring audit chain for scope %q", scope)
 		}
 

@@ -9,6 +9,7 @@ import (
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/filtering"
 	"github.com/primandproper/primitives-go/pointer"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -320,7 +321,7 @@ func TestReader_Verify(T *testing.T) {
 			entryFor("acct_1", "recipe_3"),
 		)
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 3, result.Checked)
@@ -332,7 +333,7 @@ func TestReader_Verify(T *testing.T) {
 
 		reader := newTestReader(t, newTestClient(t))
 
-		result, err := reader.Verify(t.Context(), "acct_nobody", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_nobody"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 0, result.Checked)
@@ -353,7 +354,7 @@ func TestReader_Verify(T *testing.T) {
 		exec(t, client,
 			"UPDATE audit_log_entries SET actor_id = 'somebody_else' WHERE id = ?", second.ID)
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		must.False(t, result.Intact())
 		test.EqOp(t, BreakContentAltered, result.FirstBreak.Reason)
@@ -374,7 +375,7 @@ func TestReader_Verify(T *testing.T) {
 		exec(t, client,
 			"UPDATE audit_log_entries SET prev_hash = '00' WHERE id = ?", second.ID)
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		must.False(t, result.Intact())
 		test.EqOp(t, BreakLinkMismatch, result.FirstBreak.Reason)
@@ -394,7 +395,7 @@ func TestReader_Verify(T *testing.T) {
 
 		exec(t, client, "DELETE FROM audit_log_entries WHERE id = ?", second.ID)
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		must.False(t, result.Intact())
 		test.EqOp(t, BreakMissingEntry, result.FirstBreak.Reason)
@@ -415,7 +416,7 @@ func TestReader_Verify(T *testing.T) {
 		// explain the gap — which is what distinguishes this from retention.
 		exec(t, client, "DELETE FROM audit_log_entries WHERE id = ?", first.ID)
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		must.False(t, result.Intact())
 		test.EqOp(t, BreakMissingEntry, result.FirstBreak.Reason)
@@ -443,7 +444,7 @@ func TestReader_Verify(T *testing.T) {
 		// anchor the second — and still verifies cleanly. The lower bound is
 		// exclusive, like the filter window a List takes, so it is set just
 		// short of the entry it means to admit.
-		result, err := reader.Verify(t.Context(), "acct_1", middle.RecordedAt.Add(-time.Second), time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), middle.RecordedAt.Add(-time.Second), time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 2, result.Checked)
@@ -464,9 +465,46 @@ func TestReader_Verify(T *testing.T) {
 		// table.
 		exec(t, client, "DELETE FROM audit_log_chains WHERE scope = 'acct_1'")
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
+	})
+
+	T.Run("refuses an unset scope", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client)
+
+		record(t, client, recorder, entryFor("acct_1", "recipe_1"))
+
+		// The zero Scope is the caller who lost theirs, and it is refused
+		// rather than resolved to the global chain — which is what the string
+		// this parameter used to be would have done, silently, and reported a
+		// clean result for a log nobody had checked.
+		result, err := reader.Verify(t.Context(), tenancy.Scope{}, time.Time{}, time.Time{})
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+		test.Nil(t, result)
+	})
+
+	T.Run("walks the platform chain for the global scope", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client)
+
+		// An entry belonging to no tenant, which is the empty Scope column and
+		// therefore tenancy.Global. It is a scope like any other here: it
+		// matches only itself, so the tenant's entry below is not in it.
+		record(t, client, recorder, entryFor("", "platform_1"), entryFor("acct_1", "recipe_1"))
+
+		result, err := reader.Verify(t.Context(), tenancy.Global(), time.Time{}, time.Time{})
+		must.NoError(t, err)
+		test.True(t, result.Intact())
+		test.EqOp(t, 1, result.Checked)
+		test.True(t, result.Scope.IsGlobal())
 	})
 
 	T.Run("verifies each scope independently", func(t *testing.T) {
@@ -482,11 +520,11 @@ func TestReader_Verify(T *testing.T) {
 		exec(t, client,
 			"UPDATE audit_log_entries SET resource_id = 'tampered' WHERE id = ?", theirs.ID)
 
-		mineResult, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		mineResult, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, mineResult.Intact())
 
-		theirsResult, err := reader.Verify(t.Context(), "acct_2", time.Time{}, time.Time{})
+		theirsResult, err := reader.Verify(t.Context(), tenancy.Of("acct_2"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.False(t, theirsResult.Intact())
 	})

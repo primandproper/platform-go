@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -114,7 +115,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 		reader, err := audit.NewReader(client)
 		must.NoError(t, err)
 
-		verification, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		verification, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, verification.Intact())
 		test.EqOp(t, 1, verification.Checked)
