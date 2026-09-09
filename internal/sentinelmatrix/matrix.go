@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/links"
@@ -46,7 +47,7 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are seven
+// The packages that map their own sentinels, spelled once each; there are eight
 // today. Each name is three things — a key in Matrix, an entry in Packages and a
 // case in Mappers — and a package that declares a pair later is added in all
 // three together.
@@ -61,6 +62,7 @@ const (
 	sessionsPkg      = "sessions"
 	signInPkg        = "authentication/signin"
 	oauth2ClientsPkg = "authentication/oauth2clients"
+	commentsPkg      = "comments"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -69,7 +71,7 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the seven
+// Matrix is the decision made about every exported sentinel in the eight
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
@@ -343,18 +345,62 @@ var Matrix = map[string]map[string]Decision{
 		// answer and no mapper claims it.
 		"ErrTOTPIssuerNotConfigured": {Err: signin.ErrTOTPIssuerNotConfigured, Is: Unhandled},
 	},
+
+	commentsPkg: {
+		// The twelve a person writing or moderating a comment can act on. Nine
+		// are something about the request they just sent — a target type outside
+		// the consumer's catalog, a reply to a reply, a reply filed under a
+		// different discussion than its parent, an empty body, a read of replies
+		// that named no parent, a target missing one of its two halves, a comment
+		// attributed to nobody, and a comment written into a scope it does not
+		// name — and three are a row they named and cannot reach.
+		//
+		// The three not-found answers are three different absences and stay
+		// separate on purpose: the comment they named, the comment they were
+		// replying to, and the thing being discussed. A client shown the second
+		// has a discussion that moved under them; one shown the third has a stale
+		// list.
+		//
+		// ErrCommentNotFound is one answer for absent, archived and in another
+		// tenant's scope, which is what keeps a read from being an enumeration
+		// oracle over other tenants' discussions — and is why it is the one
+		// not-found here that is not client-safe.
+		"ErrCommentNotFound":   {Err: comments.ErrCommentNotFound, Is: Mapped},
+		"ErrEmptyAuthor":       {Err: comments.ErrEmptyAuthor, Is: Mapped},
+		"ErrEmptyBody":         {Err: comments.ErrEmptyBody, Is: Mapped},
+		"ErrEmptyParent":       {Err: comments.ErrEmptyParent, Is: Mapped},
+		"ErrEmptyTargetID":     {Err: comments.ErrEmptyTargetID, Is: Mapped},
+		"ErrEmptyTargetType":   {Err: comments.ErrEmptyTargetType, Is: Mapped},
+		"ErrNestedReply":       {Err: comments.ErrNestedReply, Is: Mapped},
+		"ErrParentNotFound":    {Err: comments.ErrParentNotFound, Is: Mapped},
+		"ErrScopeMismatch":     {Err: comments.ErrScopeMismatch, Is: Mapped},
+		"ErrTargetMismatch":    {Err: comments.ErrTargetMismatch, Is: Mapped},
+		"ErrTargetNotFound":    {Err: comments.ErrTargetNotFound, Is: Mapped},
+		"ErrUnknownTargetType": {Err: comments.ErrUnknownTargetType, Is: Mapped},
+
+		// The three that are somebody else's sentinel, answered by the platform
+		// mappers because that is the tier those sentinels belong to. All three
+		// wrap errors.ErrNilInputParameter, and all three are a nil argument
+		// inside the process rather than anything a request can express: no
+		// executor, no comment, no client. comments/grpc refuses a request whose
+		// comment field was never set with a sentinel of its own instead, where
+		// the answer is about that request rather than about the argument.
+		"ErrNilComment":        {Err: comments.ErrNilComment, Is: Platform},
+		"ErrNilDatabaseClient": {Err: comments.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: comments.ErrNilExecutor, Is: Platform},
+	},
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
-// module root. They are the seven that export mappers of their own; a package
+// module root. They are the eight that export mappers of their own; a package
 // that declares a pair later is added here, in Matrix and in Mappers together.
 var Packages = []string{
 	dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg,
-	oauth2ClientsPkg,
+	oauth2ClientsPkg, commentsPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
-// this package spells the seven out; everywhere else they are the strings in
+// this package spells the eight out; everywhere else they are the strings in
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
@@ -372,6 +418,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return signin.HTTPMapper, signin.GRPCMapper
 	case oauth2ClientsPkg:
 		return oauth2clients.HTTPMapper, oauth2clients.GRPCMapper
+	case commentsPkg:
+		return comments.HTTPMapper, comments.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}
