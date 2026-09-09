@@ -5,6 +5,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v14/issuereports"
 	"github.com/primandproper/platform-go/v14/links"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
@@ -18,8 +19,9 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all seven unconditionally, including for a service that has no
-// privacy requests, runs no operations and has nobody signing in. An unused mapper costs one comparison
+// It registers all eight unconditionally, including for a service that has no
+// privacy requests, runs no operations, hears no complaints and has nobody
+// signing in. An unused mapper costs one comparison
 // against a sentinel the process cannot produce, and that is the cheap direction
 // to be wrong in — the expensive one is an action link answering 500 because
 // nobody registered anything. Conditioning on presence would also mean this
@@ -68,4 +70,14 @@ func Register() {
 	// and so are indistinguishable by code, and each names a different remedy for
 	// somebody staring at a browser. See oauth2clients.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(oauth2clients.ClientSafeSentinels...)
+
+	httperrors.RegisterHTTPErrorMapper(issuereports.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(issuereports.GRPCMapper)
+
+	// The report queue's four lifecycle refusals. Two of them are
+	// codes.InvalidArgument and differ in what the caller does next, and the
+	// other two say "re-read, it moved" and "there is no such report" — one
+	// instruction each, and the code carries neither. See
+	// issuereports.ClientSafeSentinels.
+	grpcerrors.RegisterClientSafeSentinels(issuereports.ClientSafeSentinels...)
 }

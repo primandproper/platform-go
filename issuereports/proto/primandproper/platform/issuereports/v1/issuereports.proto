@@ -1,0 +1,421 @@
+// Package primandproper.platform.issuereports.v1 is the wire schema for what
+// your users told you was wrong: the report they filed, and where it stands.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/issuereports/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/issuereports/v1/issuereports.proto=github.com/primandproper/platform-go/v14/issuereports/issuereportspb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # The lifecycle, and why a move carries two statuses
+//
+// A report is open, acknowledged, resolved or declined. It is born open, it can
+// be picked up, it stops in one of the two terminal states, and it reopens to
+// open rather than to acknowledged -- because reopening is what happens when the
+// resolution turned out not to hold, so nobody has dealt with it.
+//
+// [TransitionReportRequest] carries both the status the caller believed the
+// report held and the one it should move to, and the statement requires the row
+// to still hold the first. That is the difference between a queue two people can
+// work and one they cannot: without the guard, two triagers resolving the same
+// report both succeed, the second note overwrites the first, and nothing
+// anywhere says so. With it, one of them is refused and re-reads.
+//
+// The guard is worth more over a wire than it is in process, not less. The
+// window between the read a triager decided from and the write they sent is a
+// screen and a person wide, so the conflict this refuses is the ordinary case
+// rather than the rare one.
+//
+// # Why status is an enum and kind is not
+//
+// [Status] is a closed set this module owns and validates every write against,
+// so a value outside the enum is a row the store would have refused; the
+// generated constant is exactly as complete as the column, in every language.
+//
+// [IssueReport.kind] and [IssueReport.subject_type] are strings, and they are
+// the borrowed vocabulary in this file. What a report is *about*, and what
+// categories a product sorts its reports into, are the application's -- bug,
+// billing, abuse; recipe, household, meal plan -- and the Go package says so:
+// what varies is the catalog of categories and what a report can be about, and
+// both of those are opaque to this package. An enum here would put a consumer's
+// vocabulary on this module's release cadence, and a category they added would
+// render as UNSPECIFIED until this file caught up. A string cannot be behind.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere, and the reservation is what makes that a schema
+// protoc enforces rather than a comment somebody can add a field beneath. A
+// scope a client could name is a cross-tenant read hiding behind a request
+// field; it comes off the principal the consumer's interceptor put on the
+// context. See identity.proto, which says this at greater length.
+//
+// No reporter on any write. A report is filed by whoever is calling, and the
+// name is taken off the principal for the same reason the scope is: a reporter a
+// client could name is a report filed in somebody else's words. It is output
+// only, and the one request that carries a reporter is
+// [ListReportsByReporterRequest], which names whose reports to page rather than
+// whose report to write -- and which is gated on the row question as well as on
+// the method, since a person reading their own reports and a triager reading
+// everybody's are not the same grant.
+//
+// No status on a create. A report is born open; a value arriving resolved is a
+// transition spelled as a create, which is the one move that would skip the
+// guard the rest of the lifecycle rests on.
+//
+// No erasure. issuereports.Store.DeleteReportsByReporter destroys every report
+// one person filed, and it is absent from this service deliberately: it runs
+// inside the caller's transaction so that a subject's reports and the rest of
+// their footprint commit or roll back together, which is a property an RPC
+// cannot have. It is reached through dataprivacy's eraser, from the consumer's
+// own erasure run, and issuereports/grpc/doc.go carries the ruling.
+
+syntax = "proto3";
+
+package primandproper.platform.issuereports.v1;
+
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/filtering/v1/filtering.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/issuereports/issuereportspb;issuereportspb";
+
+// Status is where a report stands. It is this module's own closed set: four
+// states, and a table of which moves between them are admitted.
+enum Status {
+  // STATUS_UNSPECIFIED is a request that named no status. It is not a stored
+  // value -- every report carries one of the four below -- and a call that
+  // leaves it here is refused rather than defaulted, because every default is a
+  // queue somebody did not mean to name.
+  STATUS_UNSPECIFIED = 0;
+
+  // STATUS_OPEN is a report nobody has picked up. Every report is born here, and
+  // a reopened one returns here.
+  STATUS_OPEN = 1;
+
+  // STATUS_ACKNOWLEDGED is a report somebody has picked up and not yet finished
+  // with. It cannot go back to open: somebody has seen it, and a status that
+  // could un-see it would not be a fact anybody can act on.
+  STATUS_ACKNOWLEDGED = 2;
+
+  // STATUS_RESOLVED is a report that has been dealt with.
+  STATUS_RESOLVED = 3;
+
+  // STATUS_DECLINED is a report that will not be dealt with: a duplicate, a
+  // misunderstanding, working as intended. It is distinct from resolved because
+  // the difference is what a reporter is told and what a product learns.
+  STATUS_DECLINED = 4;
+}
+
+// IssueReport is one thing somebody told you about your product, and where that
+// report stands.
+message IssueReport {
+  // No scope field, on this message or on any other in this file, and the
+  // reservation is what makes that a schema protoc enforces rather than a
+  // comment somebody can add a field beneath. The scope comes off the principal
+  // the consumer's interceptor put on the context; one a client could name is a
+  // cross-tenant read hiding behind a request field.
+  reserved "scope";
+
+  // created_at is when the report was filed, assigned by the database.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when the row last changed -- a revision, or a move
+  // through the lifecycle -- unset for one nobody has touched since it was
+  // filed.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // archived_at is when the report was removed from the queue, unset while it is
+  // still there. It is not "closed": a resolved report is still a report, and
+  // archiving is what happens to one that should stop being listed at all.
+  google.protobuf.Timestamp archived_at = 3;
+
+  // closed_at is when the report reached a terminal status, unset while it is
+  // open or acknowledged. A reopen clears it.
+  //
+  // A timestamp rather than a boolean beside status, because "when" answers
+  // "whether" and a boolean does not answer "when" -- which is what a
+  // time-to-resolution number is entirely about.
+  google.protobuf.Timestamp closed_at = 4;
+
+  // id is the row, and what every other RPC here names a report by.
+  string id = 5;
+
+  // reporter is who filed it. Output only: no write here carries one, because a
+  // reporter a client could name is a report filed in somebody else's words.
+  string reporter = 6;
+
+  // kind is the application's own category -- bug, billing, abuse -- and a
+  // triage queue groups and routes by it. Nothing in this module validates it;
+  // see the file comment for why it is not an enum.
+  string kind = 7;
+
+  // details is what the person actually said. It is text somebody typed --
+  // render it, never trust it.
+  string details = 8;
+
+  // subject_type is what the report is about, as the application names it: a
+  // table, an entity kind. Empty is a report about the product in general.
+  string subject_type = 9;
+
+  // subject_id is which one. Empty is a report about a kind of thing rather than
+  // about one of them.
+  string subject_id = 10;
+
+  // status is where the report stands.
+  Status status = 11;
+
+  // resolution is why the report is in the terminal status it is in -- the note
+  // a triager left when they resolved or declined it. A reopen clears it, since
+  // a reason that no longer holds is worse than none.
+  string resolution = 12;
+}
+
+// IssueReportCreationInput is what a caller supplies to file a report.
+// Everything else about the row -- the identifier, the timestamps, the tenant,
+// the reporter and the status -- is decided by the service.
+message IssueReportCreationInput {
+  reserved "scope";
+
+  // No reporter and no status. The first comes off the principal and the second
+  // is always open; both are reserved rather than merely ignored, so a field
+  // added later is a schema change somebody argues for rather than one protoc
+  // accepts quietly. See the file comment.
+  reserved "reporter";
+  reserved "status";
+
+  // kind is required: a report nobody has decided who should look at is one
+  // nobody looks at.
+  string kind = 1;
+
+  // details is required: the details are the report, and a row without them
+  // records that somebody was unhappy and nothing anyone can act on.
+  string details = 2;
+
+  // subject_type and subject_id are optional, and either both or neither is the
+  // useful shape. A type with no id is every report about that kind of thing; a
+  // report about the product in general names neither.
+  string subject_type = 3;
+  string subject_id = 4;
+}
+
+// IssueReportUpdateInput revises what the reporter said.
+//
+// It does not carry a status, and it cannot: the lifecycle has one door and it
+// is TransitionReport, which names the status it believed the row was in. A
+// whole-row write that also assigned the status would be a revision that
+// silently reopened a report somebody had just resolved.
+message IssueReportUpdateInput {
+  reserved "scope";
+  reserved "reporter";
+  reserved "status";
+  reserved "resolution";
+
+  string kind = 1;
+  string details = 2;
+  string subject_type = 3;
+  string subject_id = 4;
+}
+
+message CreateReportRequest {
+  reserved "scope";
+  reserved "reporter";
+
+  IssueReportCreationInput input = 1;
+}
+
+message CreateReportResponse {
+  reserved "scope";
+
+  // result is the report as stored, with the identifier and the creation time
+  // the database assigned.
+  IssueReport result = 1;
+}
+
+message GetReportRequest {
+  reserved "scope";
+
+  string report_id = 1;
+}
+
+message GetReportResponse {
+  reserved "scope";
+
+  IssueReport result = 1;
+}
+
+message ListReportsRequest {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListReportsResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated IssueReport results = 2;
+}
+
+message ListReportsByStatusRequest {
+  reserved "scope";
+
+  // status is the queue to page. STATUS_UNSPECIFIED is refused rather than
+  // treated as "any": an empty page is what a queue that has been quietly
+  // misspelled looks like.
+  Status status = 1;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListReportsByStatusResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated IssueReport results = 2;
+}
+
+message ListReportsByReporterRequest {
+  reserved "scope";
+
+  // reporter is whose reports to page, and it is the one field in this schema
+  // that names a person. It is a request field rather than the caller's own
+  // identifier because the two audiences differ: somebody reading what they
+  // filed, and a triager reading what one person filed. Which of the two this
+  // caller is, is the question issuereports/grpc's ReportAuthorizer answers --
+  // the grant on the method does not.
+  string reporter = 1;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListReportsByReporterResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated IssueReport results = 2;
+}
+
+message ListReportsBySubjectTypeRequest {
+  reserved "scope";
+
+  // subject_type is the kind of thing to page reports about -- everything
+  // anybody has said about recipes.
+  string subject_type = 1;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListReportsBySubjectTypeResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated IssueReport results = 2;
+}
+
+message ListReportsForSubjectRequest {
+  reserved "scope";
+
+  // subject_type and subject_id together name one particular thing.
+  string subject_type = 1;
+  string subject_id = 2;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 3;
+}
+
+message ListReportsForSubjectResponse {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated IssueReport results = 2;
+}
+
+message UpdateReportRequest {
+  reserved "scope";
+  reserved "reporter";
+
+  string report_id = 1;
+  IssueReportUpdateInput input = 2;
+}
+
+message UpdateReportResponse {
+  reserved "scope";
+
+  // result is the report as stored after the revision, so a console renders the
+  // row it wrote rather than the one it sent.
+  IssueReport result = 1;
+}
+
+// TransitionReportRequest is the compare-and-set: the status the caller believed
+// the report held, the status it should move to, and why.
+message TransitionReportRequest {
+  reserved "scope";
+
+  string report_id = 1;
+
+  // expected_status is what the caller believed the row held, and it is required.
+  // The statement requires the row to still hold it, so a report that moved
+  // between the read this decision was made from and this call is refused rather
+  // than overwritten -- see the file comment.
+  Status expected_status = 2;
+
+  // target_status is where it should go. A move the lifecycle does not admit is
+  // refused before anything is written.
+  Status target_status = 3;
+
+  // resolution is the note a triager leaves. A move into a terminal status
+  // stores it and stamps closed_at; a move out of one clears both, because a
+  // reason that no longer holds is worse than none.
+  string resolution = 4;
+}
+
+message TransitionReportResponse {
+  reserved "scope";
+
+  // result is the report as stored after the move, carrying the stamp and the
+  // note this call assigned -- which is what the caller records beside it.
+  IssueReport result = 1;
+}
+
+message ArchiveReportRequest {
+  reserved "scope";
+
+  string report_id = 1;
+}
+
+message ArchiveReportResponse {}
+
+// IssueReportsService is the report queue: what your users filed, and the
+// lifecycle a triager works it through.
+//
+// Ten methods, over the two audiences this table has. A reporter files, reads
+// what they filed, and reads their own list; a triager pages the queue by
+// status, by what a report is about, or whole, and moves, revises and archives.
+// Every method requires a grant -- see issuereports/grpc's Permissions -- and
+// the two whose target is a person or somebody's row ask a second question of
+// the consumer's own rule.
+//
+// The tenant is not among the ten's arguments, on any of them. It comes off the
+// principal the consumer's interceptor resolved, so there is no listing across
+// tenants here and no way to ask for one.
+service IssueReportsService {
+  rpc CreateReport(CreateReportRequest) returns (CreateReportResponse);
+  rpc GetReport(GetReportRequest) returns (GetReportResponse);
+  rpc ListReports(ListReportsRequest) returns (ListReportsResponse);
+  rpc ListReportsByStatus(ListReportsByStatusRequest) returns (ListReportsByStatusResponse);
+  rpc ListReportsByReporter(ListReportsByReporterRequest) returns (ListReportsByReporterResponse);
+  rpc ListReportsBySubjectType(ListReportsBySubjectTypeRequest) returns (ListReportsBySubjectTypeResponse);
+  rpc ListReportsForSubject(ListReportsForSubjectRequest) returns (ListReportsForSubjectResponse);
+  rpc UpdateReport(UpdateReportRequest) returns (UpdateReportResponse);
+  rpc TransitionReport(TransitionReportRequest) returns (TransitionReportResponse);
+  rpc ArchiveReport(ArchiveReportRequest) returns (ArchiveReportResponse);
+}
