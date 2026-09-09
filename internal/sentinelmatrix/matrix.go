@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v14/issuereports"
 	"github.com/primandproper/platform-go/v14/links"
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
@@ -51,7 +52,7 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are twelve
+// The packages that map their own sentinels, spelled once each; there are thirteen
 // today. Each name is three things — a key in Matrix, an entry in Packages and a
 // case in Mappers — and a package that declares a pair later is added in all
 // three together.
@@ -71,6 +72,7 @@ const (
 	commentsPkg      = "comments"
 	webhooksPkg      = "webhooks"
 	billingPkg       = "billing"
+	issueReportsPkg  = "issuereports"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -79,7 +81,7 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the twelve
+// Matrix is the decision made about every exported sentinel in the thirteen
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
@@ -588,6 +590,37 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNoSigningSecret":  {Err: webhooks.ErrNoSigningSecret, Is: Unhandled},
 		"ErrNonSuccessStatus": {Err: webhooks.ErrNonSuccessStatus, Is: Unhandled},
 	},
+
+	issueReportsPkg: {
+		// The eight a caller working a report queue can act on. Four are the
+		// lifecycle's: a report that is not in the scope that asked, a guard that
+		// matched nothing because somebody else moved the row first, a move the
+		// lifecycle does not admit, and a status this package does not serve. Three
+		// are the fields a report is unreachable without — filed by nobody, under
+		// no category, saying nothing — and the eighth is a write whose entity
+		// names a different tenant than the call did.
+		//
+		// ErrReportNotFound is one answer for absent, archived and in another
+		// tenant's scope, which is what keeps a read from being an oracle for what
+		// other tenants have been told.
+		"ErrEmptyDetails":            {Err: issuereports.ErrEmptyDetails, Is: Mapped},
+		"ErrEmptyKind":               {Err: issuereports.ErrEmptyKind, Is: Mapped},
+		"ErrEmptyReporter":           {Err: issuereports.ErrEmptyReporter, Is: Mapped},
+		"ErrInvalidStatusTransition": {Err: issuereports.ErrInvalidStatusTransition, Is: Mapped},
+		"ErrReportNotFound":          {Err: issuereports.ErrReportNotFound, Is: Mapped},
+		"ErrScopeMismatch":           {Err: issuereports.ErrScopeMismatch, Is: Mapped},
+		"ErrStatusConflict":          {Err: issuereports.ErrStatusConflict, Is: Mapped},
+		"ErrUnknownStatus":           {Err: issuereports.ErrUnknownStatus, Is: Mapped},
+
+		// The three nil-argument sentinels, which wrap errors.ErrNilInputParameter
+		// and are answered by the platform mapper for that reason. Two of them
+		// cannot reach a client through this module's own surface at all: every
+		// write there is handed a transaction the handler opened, and every read an
+		// executor it holds.
+		"ErrNilDatabaseClient": {Err: issuereports.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: issuereports.ErrNilExecutor, Is: Platform},
+		"ErrNilReport":         {Err: issuereports.ErrNilReport, Is: Platform},
+	},
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
@@ -596,7 +629,7 @@ var Matrix = map[string]map[string]Decision{
 var Packages = []string{
 	auditPkg, dataPrivacyPkg, identityPkg, linksPkg, operationsPkg,
 	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
-	webhooksPkg, billingPkg,
+	webhooksPkg, billingPkg, issueReportsPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
@@ -628,6 +661,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return webhooks.HTTPMapper, webhooks.GRPCMapper
 	case billingPkg:
 		return billing.HTTPMapper, billing.GRPCMapper
+	case issueReportsPkg:
+		return issuereports.HTTPMapper, issuereports.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}

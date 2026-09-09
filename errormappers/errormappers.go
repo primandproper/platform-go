@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
+	"github.com/primandproper/platform-go/v14/issuereports"
 	"github.com/primandproper/platform-go/v14/links"
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
@@ -23,16 +24,15 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all twelve unconditionally, including for a service that has
+// It registers all thirteen unconditionally, including for a service that has
 // no privacy requests, runs no operations, reads no audit log, tells nobody
-// anything, delivers no webhooks, sells nothing and has nobody signing in. An
-// unused mapper costs one comparison against a sentinel the process cannot
-// produce, and that is the cheap direction to be wrong in — the expensive one
-// is an action link answering 500 because nobody registered anything.
-// Conditioning on presence would also mean this package taking an argument
-// describing which
-// subsystems a service has, which is the config tree it exists to avoid
-// importing.
+// anything, delivers no webhooks, sells nothing, hears no complaints and has
+// nobody signing in. An unused mapper costs one comparison against a sentinel
+// the process cannot produce, and that is the cheap direction to be wrong in
+// — the expensive one is an action link answering 500 because nobody
+// registered anything. Conditioning on presence would also mean this package
+// taking an argument describing which subsystems a service has, which is the
+// config tree it exists to avoid importing.
 //
 // Registration is additive and safe to call from more than one goroutine.
 func Register() {
@@ -121,4 +121,14 @@ func Register() {
 	// fix the field, or fix the code that chose the id. See
 	// billing.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(billing.ClientSafeSentinels...)
+
+	httperrors.RegisterHTTPErrorMapper(issuereports.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(issuereports.GRPCMapper)
+
+	// The report queue's four lifecycle refusals. Two of them are
+	// codes.InvalidArgument and differ in what the caller does next, and the
+	// other two say "re-read, it moved" and "there is no such report" — one
+	// instruction each, and the code carries neither. See
+	// issuereports.ClientSafeSentinels.
+	grpcerrors.RegisterClientSafeSentinels(issuereports.ClientSafeSentinels...)
 }

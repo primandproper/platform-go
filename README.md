@@ -40,7 +40,7 @@ Because breaking changes ride the major-version import path, upgrading across ma
 
 **OpenTelemetry throughout.** Every store, transport and worker here instruments through primitives-go's `observability`, whose logging, tracing, metrics and profiling pillars a consumer supplies once and threads everywhere.
 
-**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/signin`, `billing`, `comments`, `dataprivacy`, `identity`, `links`, `notifications`, `operations`, `sessions` and `webhooks` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all twelve in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those twelve has a decision recorded and that it still holds on both transports.
+**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/signin`, `billing`, `comments`, `dataprivacy`, `identity`, `issuereports`, `links`, `notifications`, `operations`, `sessions` and `webhooks` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all thirteen in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those thirteen has a decision recorded and that it still holds on both transports.
 
 ## Package Catalog
 
@@ -338,6 +338,27 @@ a reading: there is no `GetAccountStanding` and no `is_active` field
 anywhere in `billing.proto`, because which reported status leaves an account
 entitled is your policy and `billing/plans` is where it already lives.
 
+`issuereports` is the next across, and it is the first whose interesting half
+is a single method. Ten of its store's eleven are on the wire — the filing, the
+reads, the four queue listings, the revision, the archive and the move — and the
+move is why the surface is worth having. `TransitionReport` is a compare-and-set:
+it carries the status the caller believed the report held as well as the one it
+should move to, and the statement requires the row to still hold the first.
+Without that guard, two triagers resolving the same report both succeed, the
+second note overwrites the first, and nothing anywhere says so. A wire widens the
+window between the read a decision was made from and the write that records it
+from microseconds to a screen and a person, so the conflict is the ordinary case
+there rather than the rare one, and `ErrStatusConflict` is a refusal a client
+acts on: re-read, and decide about the status it is in now.
+
+The eleventh is `DeleteReportsByReporter`, which destroys every report one person
+filed. It runs inside the caller's transaction so that a subject's reports and
+the rest of their footprint commit or roll back together, and an RPC is exactly a
+caller choosing when that commit happens. It is reached through
+`issuereports/privacy`, from your own erasure run. The other thing the surface
+does not carry is a reporter on any write: a report is filed by whoever is
+calling, and one a client could name is a report filed in somebody else's words.
+
 Ten more were ruled on together, and each is to follow `identity`. The transport
 is not uniform and neither is the subset of a store that crosses:
 
@@ -345,6 +366,8 @@ is not uniform and neither is the subset of a store that crosses:
 |---|---|---|---|
 | `waitlists` | wire surface, full | gRPC | — |
 | `issuereports` | wire surface, full | gRPC | `DeleteReportsByReporter` — erasure machinery |
+
+| `comments` | wire surface, full | gRPC | the two bulk deletes — erasure machinery |
 | `settings` | wire surface, full | gRPC | `DeleteValuesForSubject` — erasure machinery |
 | `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the seven its store documents |
 
@@ -395,6 +418,7 @@ the whole list.
 | `comments/grpc`                     | resource surface | one noun and its whole lifecycle — over `comments.Store`                                                  |
 | `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request — over `dataprivacy.Service`                           |
 | `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`                         |
+| `issuereports/grpc`                 | resource surface | the report queue and its guarded lifecycle — over `issuereports.Store`                                    |
 | `notifications/grpc`                | resource surface | the in-app inbox and the device registry — over `notifications.Inbox` and `notifications.Registry`        |
 | `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                          |
 | `webhooks/grpc`                     | resource surface | endpoint management, subscriptions and the delivery log — over `webhooks.Dispatcher` and `webhooks.Store` |
@@ -419,19 +443,25 @@ is indistinguishable from an absence, a content type a browser executes is never
 served inline, and nothing is cached by a shared proxy. There is no resource of
 yours in that either: what is on the wire is bytes and a content type.
 
-The other ten are resource surfaces, and they get there by two routes. The
-other ten are resource surfaces, and they get there by two routes.
+The other eleven are resource surfaces, and they get there by two routes. The
+other eleven are resource surfaces, and they get there by two routes. The other
+eleven are resource surfaces, and they get there by two routes.
 `operations/http` is entirely this module's own resource: an `Operation`, its
 two-tier progress and its state machine are types you did not define, and
 polling one or subscribing to its server-sent events is the pattern's protocol
 rather than your API. *Starting* an operation is yours, and is deliberately not
 there. `identity/grpc`, `authentication/signin/grpc`,
 `authentication/oauth2clients/grpc`, `dataprivacy/http`, `audit/grpc`,
-`notifications/grpc`, `comments/grpc`, `webhooks/grpc` and `billing/grpc` are
-the other kind — a domain's own transport, shipped under the rule above rather
-than as an exception to it, and nine of the thirteen have crossed this way.
-Eight of those nine are gRPC and the ninth is not, for the reason given above:
-`dataprivacy`'s flow was on HTTP before there was a handler in it.
+`notifications/grpc`, `comments/grpc`, `webhooks/grpc`, `billing/grpc` and
+`issuereports/grpc` are the other kind — a domain's own transport, shipped
+under the rule above rather than as an exception to it, and ten of the thirteen
+have crossed this way. Nine of those ten are gRPC and the tenth is not, for the
+reason given above: `dataprivacy`'s flow was on HTTP before there was a handler
+in it.
+
+`authentication/oauth2clients/grpc` and `issuereports/grpc` are the other kind —
+a domain's own transport, shipped under the rule above rather than as an
+exception to it, and the first four of the thirteen to cross.
 
 The table is not written by hand either. `internal/cmd/readmegen` emits it on
 `make generate` from the `http` and `grpc` directories the tree ships, and
