@@ -4,6 +4,7 @@ import (
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/links"
@@ -20,7 +21,7 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all nine unconditionally, including for a service that has no
+// It registers all ten unconditionally, including for a service that has no
 // privacy requests, runs no operations, reads no audit log, tells nobody
 // anything and has nobody signing in. An unused mapper costs one comparison
 // against a sentinel the process cannot produce, and that is the cheap
@@ -87,4 +88,13 @@ func Register() {
 	// which; the other half are the two not-founds, whose whole property is that
 	// somebody else's notification and somebody else's handset read as absent.
 	// See the comment beside notifications.HTTPMapper.
+
+	httperrors.RegisterHTTPErrorMapper(comments.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(comments.GRPCMapper)
+
+	// The fourth, and the one whose refusals are most obviously written for a
+	// person: four of the six are InvalidArgument and two are NotFound, and each
+	// says which of a form's fields to go back to. See
+	// comments.ClientSafeSentinels.
+	grpcerrors.RegisterClientSafeSentinels(comments.ClientSafeSentinels...)
 }
