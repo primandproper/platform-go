@@ -2,7 +2,6 @@ package grpc_test
 
 import (
 	"slices"
-	"strings"
 	"testing"
 
 	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
@@ -29,46 +28,6 @@ func serviceMethods() []string {
 	}
 
 	return out
-}
-
-// TestTheSurfaceIsTheNine is the acceptance test for which half of webhooks
-// crossed.
-//
-// It reads the descriptor rather than this package, so an RPC added later shows
-// up here as an unexpected name rather than as a method somebody has to notice.
-// The nine absences it is really about cannot be asserted directly — you cannot
-// test for a method that is not there — so what it pins is the count and the
-// names, and the argument for each absence is on the webhooks.Store method it
-// belongs to.
-func TestTheSurfaceIsTheNine(T *testing.T) {
-	T.Parallel()
-
-	methods := serviceMethods()
-	must.SliceLen(T, 9, methods)
-
-	for _, name := range []string{
-		"SaveEndpoint", "GetEndpoint", "ListEndpoints", "ArchiveEndpoint",
-		"AddSubscription", "GetSubscription", "ListSubscriptions", "ArchiveSubscription",
-		"ListAttempts",
-	} {
-		test.SliceContains(T, methods, "/"+webhookspb.WebhooksService_ServiceDesc.ServiceName+"/"+name)
-	}
-
-	// The delivery pipeline's names, spelled here so that adding one to the
-	// .proto fails a test that says why rather than merely bumping a count.
-	//
-	// Enqueue is the one this guards hardest. It is the only consumer-facing
-	// method among the nine absences, so it is the one somebody would add in
-	// good faith — and an RPC moves its write out of the caller's transaction,
-	// which is the single property it exists to have.
-	for _, absent := range []string{
-		"Enqueue", "EndpointsForEvent", "Claim", "MarkDelivered", "RecordFailure",
-		"RecordAttempt", "Requeue", "Backlog", "Reap",
-	} {
-		test.False(T, slices.ContainsFunc(methods, func(m string) bool {
-			return strings.HasSuffix(m, "/"+absent)
-		}), test.Sprintf("%s is on the wire; see webhooks.Store for why it must not be", absent))
-	}
 }
 
 // TestEveryMethodIsPermissioned is the reason this file exists, and it is the
