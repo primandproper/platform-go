@@ -265,7 +265,6 @@ is not uniform and neither is the subset of a store that crosses:
 | `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
 | `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, and `Query.Scope` itself |
 | `dataprivacy` | wire surface over the existing `Service` | HTTP | — |
-| `uploads/registry` | binding, not a resource surface | HTTP | all seven store methods; what ships is the guarded serve |
 
 Seven get nothing, and saying so is the point of this section rather than
 leaving them unmentioned: `metering`, `saga`, `timers`, `workqueue`, `outbox`,
@@ -274,14 +273,7 @@ worker on a timer, or by your own code inside your own transaction, which is the
 same test the carve-outs above are made by. Owning a store is not what puts a
 package on the list; having a caller who is somebody else is.
 
-Two of the verdicts are not the house default, and each has a stated reason.
-`uploads/registry` is a binding rather than a resource surface. Its own
-documentation heads a section *"Why the row is the access control"* — whether
-this caller may read this object is answered from the owner and the scope on the
-row, not from the bucket — and then declines to act on it, because nothing in
-that package opens, reads or removes an object. A metadata surface would ship
-seven flat methods and leave you the guarded serve, which is the half that gets
-written wrong: an unguessable key as the only protection a private document has.
+One of the nine is not the house default, and it has a stated reason.
 `dataprivacy` is on HTTP because its flow already is. Progress is answered by
 `operations/http` against `Request.OperationID` and the same event stream every
 other long-running thing here uses, `Confirm` is reached by somebody clicking a
@@ -307,6 +299,7 @@ the whole list.
 | Transport                           | Kind             | Whose shape it is                                                                               |
 |-------------------------------------|------------------|-------------------------------------------------------------------------------------------------|
 | `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                             |
+| `uploads/registry/http`             | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                       |
 | `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store` |
 | `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`           |
 | `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request — over `dataprivacy.Service`                 |
@@ -314,10 +307,24 @@ the whole list.
 | `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                |
 <!-- /readmegen:transports -->
 
-One row is a binding rather than a surface. `sessions/http` binds a store to a
+Two rows are bindings rather than surfaces. `sessions/http` binds a store to a
 cookie, and a cookie's signing, encryption, `HttpOnly`, `Secure` and `SameSite`
 are security decisions this module already made — there is no resource of yours
 in it.
+
+`uploads/registry/http` makes the same claim about an object's bytes. Its store's
+documentation heads a section *"Why the row is the access control"* — whether
+this caller may read this object is answered from the owner and the scope on the
+row, not from the bucket — and then declines to act on it, because nothing in
+that package opens, reads or removes an object. A metadata surface would have
+shipped seven flat methods and left you the guarded serve, which is the half that
+gets written wrong: an unguessable key as the only protection a private document
+has, and a key is not a secret. What crosses instead is one route and the guard
+in front of it, and the decisions that come with it are security properties
+rather than API design — the row is read before the bucket is opened, a refusal
+is indistinguishable from an absence, a content type a browser executes is never
+served inline, and nothing is cached by a shared proxy. There is no resource of
+yours in that either: what is on the wire is bytes and a content type.
 
 The other five are resource surfaces, and they get there by two routes.
 `operations/http` is entirely this module's own resource: an `Operation`, its
