@@ -3,6 +3,7 @@ package sentinelmatrix
 import (
 	"slices"
 
+	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
@@ -47,7 +48,7 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are eight
+// The packages that map their own sentinels, spelled once each; there are nine
 // today. Each name is three things — a key in Matrix, an entry in Packages and a
 // case in Mappers — and a package that declares a pair later is added in all
 // three together.
@@ -55,6 +56,7 @@ func (d Disposition) String() string {
 // Each is a path relative to the module root rather than a package name,
 // because that is what the roster's own test reads the rows out of.
 const (
+	auditPkg         = "audit"
 	dataPrivacyPkg   = "dataprivacy"
 	identityPkg      = "identity"
 	linksPkg         = "links"
@@ -71,13 +73,49 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the eight
+// Matrix is the decision made about every exported sentinel in the nine
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
 //
 //nolint:goconst // The keys are sentinel identifiers in four other packages, and three of those packages have an ErrNilStore. That they collide is a fact the roster records, not a constant this one should extract.
 var Matrix = map[string]map[string]Decision{
+	auditPkg: {
+		// The one thing a reader of the log can be told about a request rather
+		// than about the process serving it. An entry never written, one
+		// retention has pruned, one that was deleted and one in another
+		// tenant's log all arrive as this, and audit/grpc answers all four the
+		// same way on purpose — see that package's GetEntry.
+		"ErrEntryNotFound": {Err: audit.ErrEntryNotFound, Is: Mapped},
+
+		// The nil-argument sentinels, which wrap errors.ErrNilInputParameter
+		// and are answered by the platform mapper for that reason.
+		"ErrNilDatabaseClient": {Err: audit.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilEntry":          {Err: audit.ErrNilEntry, Is: Platform},
+		"ErrNilExecutor":       {Err: audit.ErrNilExecutor, Is: Platform},
+
+		// Everything raised while the consumer's own code assembles an entry or
+		// wires this package up. None of them is anything a client sent: an
+		// entry with no resource type, no event type or no actor was built by
+		// the process recording it, a diff of two different types is a call in
+		// that process, and a table prefix is configuration. A 500 is the
+		// honest answer to a request that failed because the service was built
+		// wrong.
+		"ErrDiffTypeMismatch":   {Err: audit.ErrDiffTypeMismatch, Is: Unhandled},
+		"ErrEmptyActor":         {Err: audit.ErrEmptyActor, Is: Unhandled},
+		"ErrEmptyEventType":     {Err: audit.ErrEmptyEventType, Is: Unhandled},
+		"ErrEmptyResourceType":  {Err: audit.ErrEmptyResourceType, Is: Unhandled},
+		"ErrInvalidTablePrefix": {Err: audit.ErrInvalidTablePrefix, Is: Unhandled},
+		"ErrMalformedHash":      {Err: audit.ErrMalformedHash, Is: Unhandled},
+		"ErrNotAStruct":         {Err: audit.ErrNotAStruct, Is: Unhandled},
+		"ErrNothingToDiff":      {Err: audit.ErrNothingToDiff, Is: Unhandled},
+
+		// Not returned by Verify at all: a break is a finding, carried in the
+		// VerificationResult, and audit/grpc answers one with an ordinary
+		// response. It reaches a transport only through a consumer who chose to
+		// escalate it, at which point what it means is theirs to decide.
+		"ErrChainBroken": {Err: audit.ErrChainBroken, Is: Unhandled},
+	},
 	dataPrivacyPkg: {
 		// A subject asking after their own export or erasure is a client. These five
 		// are the answers they can act on: the ID is not one of theirs, the request
@@ -382,8 +420,8 @@ var Matrix = map[string]map[string]Decision{
 // module root. They are the eight that export mappers of their own; a package
 // that declares a pair later is added here, in Matrix and in Mappers together.
 var Packages = []string{
-	dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg,
-	oauth2ClientsPkg, notificationsPkg,
+	auditPkg, dataPrivacyPkg, identityPkg, linksPkg, operationsPkg,
+	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
@@ -391,6 +429,8 @@ var Packages = []string{
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
+	case auditPkg:
+		return audit.HTTPMapper, audit.GRPCMapper
 	case dataPrivacyPkg:
 		return dataprivacy.HTTPMapper, dataprivacy.GRPCMapper
 	case identityPkg:
