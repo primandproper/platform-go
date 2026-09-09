@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/links"
+	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
 
@@ -19,14 +20,14 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all eight unconditionally, including for a service that has no
-// privacy requests, runs no operations, reads no audit log and has nobody
-// signing in. An unused mapper costs one comparison
-// against a sentinel the process cannot produce, and that is the cheap direction
-// to be wrong in — the expensive one is an action link answering 500 because
-// nobody registered anything. Conditioning on presence would also mean this
-// package taking an argument describing which subsystems a service has, which is
-// the config tree it exists to avoid importing.
+// It registers all nine unconditionally, including for a service that has no
+// privacy requests, runs no operations, reads no audit log, tells nobody
+// anything and has nobody signing in. An unused mapper costs one comparison
+// against a sentinel the process cannot produce, and that is the cheap
+// direction to be wrong in — the expensive one is an action link answering
+// 500 because nobody registered anything. Conditioning on presence would also
+// mean this package taking an argument describing which subsystems a service
+// has, which is the config tree it exists to avoid importing.
 //
 // Registration is additive and safe to call from more than one goroutine.
 func Register() {
@@ -77,4 +78,13 @@ func Register() {
 	// audit's own errormappers.go.
 	httperrors.RegisterHTTPErrorMapper(audit.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(audit.GRPCMapper)
+
+	httperrors.RegisterHTTPErrorMapper(notifications.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(notifications.GRPCMapper)
+
+	// No client-safe sentinels for notifications. Half of its mapped refusals
+	// name a field a client is about to re-send and the mapper's own message says
+	// which; the other half are the two not-founds, whose whole property is that
+	// somebody else's notification and somebody else's handset read as absent.
+	// See the comment beside notifications.HTTPMapper.
 }
