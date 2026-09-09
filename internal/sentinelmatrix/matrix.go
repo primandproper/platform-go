@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
+	"github.com/primandproper/platform-go/v14/webhooks"
 
 	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
 	httperrors "github.com/primandproper/primitives-go/errors/http"
@@ -49,7 +50,7 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are ten
+// The packages that map their own sentinels, spelled once each; there are eleven
 // today. Each name is three things — a key in Matrix, an entry in Packages and a
 // case in Mappers — and a package that declares a pair later is added in all
 // three together.
@@ -67,6 +68,7 @@ const (
 	oauth2ClientsPkg = "authentication/oauth2clients"
 	notificationsPkg = "notifications"
 	commentsPkg      = "comments"
+	webhooksPkg      = "webhooks"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -75,7 +77,7 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the ten
+// Matrix is the decision made about every exported sentinel in the eleven
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
@@ -460,6 +462,68 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDatabaseClient": {Err: comments.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilExecutor":       {Err: comments.ErrNilExecutor, Is: Platform},
 	},
+
+	webhooksPkg: {
+		// The eight an operator managing endpoints can act on. Six are a field in
+		// the request they just sent — a URL that is not https, a host that is not
+		// reachable from the internet, a header this module reserves, an endpoint
+		// subscribing to nothing, an event type outside the consumer's catalog, an
+		// endpoint written into a scope it does not name — and two are the state
+		// they are writing against: an identifier another tenant already holds, and
+		// an endpoint disabled while somebody replays a delivery to it.
+		//
+		// The two not-found answers are one answer for absent, archived and in
+		// another tenant's scope, which is what keeps a read from being an
+		// enumeration oracle over somebody else's endpoints.
+		"ErrDeliveryNotFound":       {Err: webhooks.ErrDeliveryNotFound, Is: Mapped},
+		"ErrDisallowedEndpointHost": {Err: webhooks.ErrDisallowedEndpointHost, Is: Mapped},
+		"ErrEndpointDisabled":       {Err: webhooks.ErrEndpointDisabled, Is: Mapped},
+		"ErrEndpointOutOfScope":     {Err: webhooks.ErrEndpointOutOfScope, Is: Mapped},
+		"ErrInvalidEndpointURL":     {Err: webhooks.ErrInvalidEndpointURL, Is: Mapped},
+		"ErrNoEvents":               {Err: webhooks.ErrNoEvents, Is: Mapped},
+		"ErrReservedHeader":         {Err: webhooks.ErrReservedHeader, Is: Mapped},
+		"ErrScopeMismatch":          {Err: webhooks.ErrScopeMismatch, Is: Mapped},
+		"ErrUnknownEventType":       {Err: webhooks.ErrUnknownEventType, Is: Mapped},
+		"ErrUnknownSubscription":    {Err: webhooks.ErrUnknownSubscription, Is: Mapped},
+
+		// The ones that are somebody else's sentinel, answered by the platform
+		// mappers because that is the tier those sentinels belong to.
+		//
+		// Four wrap errors.ErrNilInputParameter and one wraps
+		// errors.ErrEmptyInputParameter. ErrNoScope is tenancy's own and wraps the
+		// empty-parameter sentinel too, which is why a scopeless call resolves the
+		// same way whether it was caught at registration, at dispatch, or by the
+		// driver. ErrCircuitOpen wraps circuitbreaking.ErrCircuitBroken and gets
+		// that sentinel's 503 and Unavailable — a webhooks case would be this
+		// package deciding what a primitive's sentinel means everywhere in the
+		// process.
+		"ErrCircuitOpen":       {Err: webhooks.ErrCircuitOpen, Is: Platform},
+		"ErrEmptyEventType":    {Err: webhooks.ErrEmptyEventType, Is: Platform},
+		"ErrNilDatabaseClient": {Err: webhooks.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilDelivery":       {Err: webhooks.ErrNilDelivery, Is: Platform},
+		"ErrNilEndpoint":       {Err: webhooks.ErrNilEndpoint, Is: Platform},
+		"ErrNilExecutor":       {Err: webhooks.ErrNilExecutor, Is: Platform},
+		"ErrNilStore":          {Err: webhooks.ErrNilStore, Is: Platform},
+		"ErrNoScope":           {Err: webhooks.ErrNoScope, Is: Platform},
+
+		// The three nobody answers. ErrLeaseTooShort is a worker configured with a
+		// lease that does not outlast its own request timeout, which is a process
+		// that should not have started. ErrNonSuccessStatus is a subscriber
+		// answering 4xx or 5xx, which is the delivery worker's own business and
+		// reaches no client of this module at all.
+		//
+		// ErrNoSigningSecret is the one that looks mappable. It is
+		// requestsigning.ErrNoSigningKey rather than a sentinel of this package's,
+		// deliberately, so that an endpoint refused at registration and a delivery
+		// that failed to sign report the same condition — and a case for it here
+		// would install that answer for every other caller of requestsigning in the
+		// process, where a keyring with no key is a wiring failure and a 500 is
+		// honest. webhooks/grpc refuses a keyless save at the request instead, with
+		// codes.InvalidArgument as that one call site's default.
+		"ErrLeaseTooShort":    {Err: webhooks.ErrLeaseTooShort, Is: Unhandled},
+		"ErrNoSigningSecret":  {Err: webhooks.ErrNoSigningSecret, Is: Unhandled},
+		"ErrNonSuccessStatus": {Err: webhooks.ErrNonSuccessStatus, Is: Unhandled},
+	},
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
@@ -468,6 +532,7 @@ var Matrix = map[string]map[string]Decision{
 var Packages = []string{
 	auditPkg, dataPrivacyPkg, identityPkg, linksPkg, operationsPkg,
 	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
+	webhooksPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
@@ -495,6 +560,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return notifications.HTTPMapper, notifications.GRPCMapper
 	case commentsPkg:
 		return comments.HTTPMapper, comments.GRPCMapper
+	case webhooksPkg:
+		return webhooks.HTTPMapper, webhooks.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}
