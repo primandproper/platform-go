@@ -1,0 +1,559 @@
+// Package primandproper.platform.settings.v1 is the wire schema for runtime
+// settings: the catalog an operator administers, the answers a person gives
+// about themselves, and what a setting resolves to for somebody who has not
+// answered it.
+//
+// Resolution is the point of it. A stored value falling back to the
+// definition's default, and a third answer for a setting nobody has decided, is
+// what a hand-written settings service gets subtly wrong -- a screen showing
+// blanks where it should show defaults -- so [ResolvedSetting] is the message
+// the rest of this file exists to make readable.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/settings/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/settings/v1/settings.proto=github.com/primandproper/platform-go/v14/settings/settingspb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # A value is typed where this package parses one, and a string where it compares bytes
+//
+// The one design decision in this file. settings.Kind is a closed set of four
+// -- string, boolean, integer, float -- and every value is stored as text, so
+// there are two honest ways to put one on a wire: a string plus the kind, which
+// makes every client re-derive the parse this package exists to have made once,
+// or a value that carries its own type. This schema does the second, in
+// [TypedValue], and applies it in exactly two places.
+//
+// Typed: [ResolvedSetting.typed_value], which is what Resolve and ResolveAll
+// answer with, and [SetValueRequest.value], which is what a person's choice
+// arrives as. Both are the parse. A client rendering a checkbox reads
+// bool_value rather than comparing a string against "true", and a client saving
+// one sends bool_value rather than formatting one -- and a bool_value sent for
+// an integer setting is refused with settings.ErrKindMismatch at the boundary
+// rather than stored as a row nothing can read back.
+//
+// A string: [SettingValue.raw], which is the row as stored and which GetValue
+// is documented to hand back unparsed; and [SettingDefinition.default_value]
+// and [SettingDefinition.enumeration], which are what every write is checked
+// against, byte for byte. That last one is the reason for the split rather than
+// a taste for consistency. A definition read as typed values and written back
+// unchanged would round-trip through a parse and a format -- "1.50" arriving
+// back as "1.5" -- and the enumeration is compared to stored values by string
+// equality, so an edit that changed nothing could refuse itself with
+// settings.ErrStrandedValues. A default is held to its own enumeration by the
+// same comparison.
+//
+// # Presence, and why the value is a oneof rather than a string
+//
+// "Absence is distinguishable from zero" is this package's doctrine and not a
+// preference: a text setting defaulting to "" answers every subject who has not
+// chosen, and one with no default answers none of them. A proto3 string cannot
+// hold that difference. A oneof can -- a string_value of "" sets the case and
+// is a value somebody chose, where naming no case at all is a request that
+// named no value -- and default_value is `optional` for the same reason, which
+// is the presence the Go *string carries.
+//
+// The third state has a field rather than an error. A setting the subject has
+// not answered and that has no default resolves to
+// [ValueSource.VALUE_SOURCE_UNSET] with no typed_value, because it is an answer
+// -- "nobody has decided" -- and the caller's own policy applies.
+// settings.ErrSettingUnset is what the Go accessors report for the same state
+// and is mapped for a consumer's own handlers, but no RPC here raises it.
+//
+// # What is a generated enum here, and what is not
+//
+// [SettingKind] and [ValueSource] are enums because they are closed sets this
+// package defines: a kind decides how a stored string is parsed, so a kind this
+// module does not implement is a value nothing can read back. That is the
+// opposite case from issuereports.Kind and comments.TargetType, which are the
+// consumer's catalog and stay opaque strings.
+//
+// The two vocabularies that are the consumer's stay strings here too. A
+// definition's name is one -- "notifications.digest" is the application's word,
+// and a generated enum would put it on this module's release cadence -- and so
+// is [SettingSubject.type], which settings.SubjectType documents as a bare
+// string precisely so that an application whose settings hang off a device, a
+// workspace or an API client can say so.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere, and the name is reserved so there cannot be one. A
+// scope a client could name is a cross-tenant read hiding behind a request
+// field -- here, a read or a write of another tenant's catalog. It comes off
+// the principal the consumer's interceptor put on the context, and every
+// statement behind these RPCs binds it. Reserving the name rather than only
+// saying so is audit.proto's pattern: `reserved "scope";` is a schema protoc
+// refuses to accept a scope field into, in this repository and in a consumer's
+// fork of the file alike, whereas a comment is a request to the next author. It
+// is reserved on every request message and on the four messages a response is
+// built from. See identity.proto, which says the underlying rule at greater
+// length.
+//
+// No erasure. settings.Store.DeleteValuesForSubject destroys everything one
+// subject answered, cleared answers included, and it is the one hard delete in
+// that package -- called by a dataprivacy.Eraser from inside the transaction
+// that removes the rest of the person. An RPC moves that write out of the
+// transaction that was the entire point of it, which leaves a subject erased
+// from one table and present in the others. The service comment below says so
+// again where a reader counting RPCs will be standing.
+//
+// No subject in a response's own right. Every value message carries the
+// [SettingSubject] it is about, because a page of one definition's values is a
+// page across subjects, but nothing here lets a caller ask for a subject
+// without the surface asking whether they may -- see settings/grpc's
+// SubjectAuthorizer, which is the half of authorization a per-method grant
+// cannot reach.
+
+syntax = "proto3";
+
+package primandproper.platform.settings.v1;
+
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/filtering/v1/filtering.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/settings/settingspb;settingspb";
+
+// SettingKind is how a setting's stored text is parsed. It is a closed set this
+// package owns; see the file comment.
+enum SettingKind {
+  // Unset. A request naming it is refused rather than defaulted: guessing which
+  // of four a caller meant is how a setting ends up holding a value nothing can
+  // read back.
+  SETTING_KIND_UNSPECIFIED = 0;
+
+  // Any text. Every value is legal unless the definition enumerates its own,
+  // and the empty string is one of them.
+  SETTING_KIND_STRING = 1;
+
+  // A flag.
+  SETTING_KIND_BOOLEAN = 2;
+
+  // A signed 64-bit integer.
+  SETTING_KIND_INTEGER = 3;
+
+  // A 64-bit float.
+  SETTING_KIND_FLOAT = 4;
+}
+
+// ValueSource says where a resolved setting's value came from. It is the
+// tri-state settings.Resolution exists for, carried as data rather than as an
+// error.
+enum ValueSource {
+  // Unset. No resolution this service returns carries it; a client reading one
+  // is reading a message some other producer built.
+  VALUE_SOURCE_UNSPECIFIED = 0;
+
+  // The subject chose it.
+  VALUE_SOURCE_SUBJECT = 1;
+
+  // They have not, and the definition has a default.
+  VALUE_SOURCE_DEFAULT = 2;
+
+  // They have not, and it has no default. typed_value is absent, and the
+  // caller's own policy applies.
+  VALUE_SOURCE_UNSET = 3;
+}
+
+// TypedValue is one setting's value, parsed into the kind its definition
+// declares.
+//
+// The case set is the same closed four [SettingKind] names, and a case that
+// disagrees with the setting's kind is refused with settings.ErrKindMismatch
+// rather than coerced -- reading an integer setting as a boolean is a mistake
+// in the calling code, and false is the worst available answer to it.
+message TypedValue {
+  oneof value {
+    string string_value = 1;
+    bool bool_value = 2;
+    int64 int_value = 3;
+    double float_value = 4;
+  }
+}
+
+// SettingSubject is whose setting a value is: a kind of principal and an
+// identifier within it.
+//
+// Two fields rather than one composite string, which is the same reading the
+// scope is under -- a key spelling "user:abc123" carries two facts in a column
+// that can only be indexed, filtered and enumerated as one.
+message SettingSubject {
+  reserved "scope";
+
+  // type is what kind of principal this is. "user" and "account" are the two
+  // this module suggests; the vocabulary is the consumer's, so it is a string.
+  string type = 1;
+
+  // id identifies the principal within that type.
+  string id = 2;
+}
+
+// SettingDefinition is what a setting is: the name application code asks for,
+// the kind of value it holds, what it falls back to, and which values it
+// admits.
+//
+// Definitions are administrative rows. Nothing on a request path creates one --
+// the catalog is a deployment's decision, in the same sense that a database
+// column is -- and what a request path does is read one and store an answer
+// against it.
+message SettingDefinition {
+  reserved "scope";
+
+  // created_at is when the definition was added, assigned by the database.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when it last changed, unset for one nobody has edited.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // archived_at is when it was retired, unset while it is live. The values
+  // stored against a retired definition are left alone and its name stays
+  // claimed, because archiving is not erasure and freeing the name would let a
+  // second definition inherit rows written for the first.
+  google.protobuf.Timestamp archived_at = 3;
+
+  // id is the row.
+  string id = 4;
+
+  // name is what application code asks for, unique within the deployment's
+  // scope, and the only handle a value-side call takes.
+  string name = 5;
+
+  // description is prose for whoever administers the setting.
+  string description = 6;
+
+  // kind is how a stored value is parsed.
+  SettingKind kind = 7;
+
+  // default_value is what a subject who has not chosen resolves to, absent for
+  // a definition with no default at all. The two are different answers, which
+  // is why the field carries presence.
+  //
+  // It is the string as stored rather than a TypedValue: a default is held to
+  // the enumeration by string equality, and a typed round-trip would rewrite
+  // the bytes that comparison is made with. See the file comment.
+  optional string default_value = 8;
+
+  // enumeration is the values this setting admits, or empty for one that admits
+  // any value of its kind. It comes back sorted, and it is a set rather than a
+  // sequence: what it decides is whether a write is legal, and membership has
+  // no order.
+  repeated string enumeration = 9;
+
+  // admin_only marks a setting only an administrator may write. It is recorded
+  // rather than enforced -- this schema has no notion of who is calling -- and
+  // what it is for is the consumer's own check and the admin UI that needs to
+  // know which settings to hide from a self-service page.
+  bool admin_only = 10;
+}
+
+// SettingValue is what one subject answered, as stored.
+//
+// It carries the raw text rather than a TypedValue, deliberately: this is the
+// row, and GetValue is the read that hands it back unparsed. [ResolvedSetting]
+// is where a value becomes typed, because that is where this package has read
+// the definition that says which type it is.
+message SettingValue {
+  reserved "scope";
+
+  // created_at is when the subject first answered. A value cleared and set
+  // again keeps it, because the write converges on the row rather than adding a
+  // second one.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when the answer last changed, unset for one set once.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // archived_at is when the answer was cleared. A cleared value resolves as
+  // though it had never been set, and the row still says what the subject
+  // chose, which is what an audit of a preference change reads.
+  google.protobuf.Timestamp archived_at = 3;
+
+  // subject is whose answer it is.
+  SettingSubject subject = 4;
+
+  // id identifies the row. It is not how the row is addressed -- every
+  // single-row statement keys on the subject and the definition -- and what it
+  // is for is the cursor a page walks.
+  string id = 5;
+
+  // definition_id is the definition this answers.
+  string definition_id = 6;
+
+  // raw is the answer as it is stored. One column holds every kind.
+  string raw = 7;
+}
+
+// ResolvedSetting is a setting resolved for a subject: the value, where it came
+// from, and the definition it was resolved against.
+//
+// It is the message this file exists for. Resolution has three answers and not
+// two -- the subject chose, the default answered, or nobody has decided -- and
+// a client that had to reconstruct that from a value and a definition would
+// reconstruct it slightly differently every time.
+message ResolvedSetting {
+  reserved "scope";
+
+  // definition is the setting that was resolved. Always present: resolution
+  // begins by reading it, and a setting that does not exist is an error rather
+  // than an unset resolution.
+  SettingDefinition definition = 1;
+
+  // value is the row the subject set, absent when the default answered or
+  // nothing did. It is here so a client can show when somebody chose.
+  SettingValue value = 2;
+
+  // typed_value is the answer, parsed into the definition's kind. Absent when
+  // source is VALUE_SOURCE_UNSET and present otherwise, including where the
+  // answer is the definition's default.
+  TypedValue typed_value = 3;
+
+  // source says which of the three cases this is.
+  ValueSource source = 4;
+}
+
+// SettingDefinitionInput is what a caller supplies to add a setting to the
+// catalog or to rewrite one. Everything else about the row -- the id, the
+// timestamps and the scope -- is decided by the service.
+message SettingDefinitionInput {
+  reserved "scope";
+
+  string name = 1;
+  string description = 2;
+  SettingKind kind = 3;
+
+  // default_value is absent for a setting with no default. A default the
+  // setting would not admit -- of another kind, or outside the enumeration
+  // below -- is refused rather than stored, because it would answer every
+  // subject who has not chosen with a value the setting does not admit.
+  optional string default_value = 4;
+
+  // enumeration is the values the setting admits. An empty or repeated entry is
+  // refused: the enumeration is what every write is checked against, and a
+  // legal "" cannot be told apart from a slot somebody left blank.
+  repeated string enumeration = 5;
+
+  bool admin_only = 6;
+}
+
+message CreateDefinitionRequest {
+  reserved "scope";
+
+  SettingDefinitionInput definition = 1;
+}
+
+message CreateDefinitionResponse {
+  SettingDefinition result = 1;
+}
+
+message GetDefinitionRequest {
+  reserved "scope";
+
+  string definition_id = 1;
+}
+
+message GetDefinitionResponse {
+  SettingDefinition result = 1;
+}
+
+message GetDefinitionByNameRequest {
+  reserved "scope";
+
+  string name = 1;
+}
+
+message GetDefinitionByNameResponse {
+  SettingDefinition result = 1;
+}
+
+message ListDefinitionsRequest {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListDefinitionsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated SettingDefinition results = 2;
+}
+
+message UpdateDefinitionRequest {
+  reserved "scope";
+
+  // definition_id is the row to rewrite. It is a field of the request rather
+  // than of the input below, so there is no second place for a caller to name
+  // one and no way for the two to disagree.
+  string definition_id = 1;
+
+  SettingDefinitionInput definition = 2;
+}
+
+message UpdateDefinitionResponse {
+  // result is the definition as rewritten, read back inside the transaction
+  // that wrote it, so its last_updated_at is the database's rather than the
+  // epoch.
+  SettingDefinition result = 1;
+}
+
+message ArchiveDefinitionRequest {
+  reserved "scope";
+
+  string definition_id = 1;
+}
+
+message ArchiveDefinitionResponse {}
+
+message ListValuesForDefinitionRequest {
+  reserved "scope";
+
+  // name is the setting, by the name application code spells rather than by its
+  // row id, which is the handle every value-side call takes.
+  string name = 1;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListValuesForDefinitionResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated SettingValue results = 2;
+}
+
+message SetValueRequest {
+  reserved "scope";
+
+  SettingSubject subject = 1;
+  string name = 2;
+
+  // value is the answer, typed. A case that disagrees with the setting's kind
+  // is refused with settings.ErrKindMismatch, and a value outside the
+  // definition's enumeration with settings.ErrNotEnumerated; naming no case at
+  // all is a request that named no value, which is not the same as a
+  // string_value of "".
+  TypedValue value = 3;
+}
+
+message SetValueResponse {
+  // resolution is the setting as it now resolves for the subject, read back
+  // inside the transaction that wrote the value. It is a resolution rather than
+  // the row because what a settings screen renders after a save is the
+  // effective value, and reading it anywhere but inside that transaction would
+  // answer with what the subject had before.
+  ResolvedSetting resolution = 1;
+}
+
+message GetValueRequest {
+  reserved "scope";
+
+  SettingSubject subject = 1;
+  string name = 2;
+}
+
+message GetValueResponse {
+  // result is the stored row, unparsed, and it is absent from no successful
+  // response: a subject who has not answered is settings.ErrValueNotFound
+  // rather than an empty value. Resolve is the read that applies the default.
+  SettingValue result = 1;
+}
+
+message ClearValueRequest {
+  reserved "scope";
+
+  SettingSubject subject = 1;
+  string name = 2;
+}
+
+message ClearValueResponse {
+  // resolution is what the setting resolves to now that the subject's answer is
+  // gone -- the definition's default, or nothing -- read back inside the
+  // transaction that cleared it. It is the value the screen that just showed a
+  // "reset" button has to render next.
+  ResolvedSetting resolution = 1;
+}
+
+message ListValuesForSubjectRequest {
+  reserved "scope";
+
+  SettingSubject subject = 1;
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+
+message ListValuesForSubjectResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated SettingValue results = 2;
+}
+
+message ResolveRequest {
+  reserved "scope";
+
+  SettingSubject subject = 1;
+  string name = 2;
+}
+
+message ResolveResponse {
+  ResolvedSetting resolution = 1;
+}
+
+message ResolveAllRequest {
+  reserved "scope";
+
+  SettingSubject subject = 1;
+}
+
+message ResolveAllResponse {
+  // resolutions is every live setting in the deployment's catalog, sorted by
+  // name, including the ones the subject has not answered. A page rendering
+  // "your preferences" wants those too, at their default or as unset.
+  //
+  // It is not paged, and the read beneath it is not either: it is one pass over
+  // the catalog and one over the subject's answers rather than one resolution
+  // per setting.
+  repeated ResolvedSetting resolutions = 1;
+}
+
+// SettingsService is the catalog and the answers stored against it.
+//
+// Thirteen RPCs over the fourteen methods of settings.Store, and the split in
+// them is two audiences rather than two nouns. The seven definition methods are
+// an operator's: what settings exist, what each holds, and who has overridden
+// one. The six value methods are a person acting on themselves, and they are
+// the settings screen every consumer ships.
+//
+// The fourteenth is DeleteValuesForSubject and it is deliberately absent. It
+// destroys everything one subject answered, cleared answers included, and it is
+// erasure machinery -- a dataprivacy.Eraser or a retention sweep calling on a
+// subject's behalf from inside the transaction that removes the rest of them.
+// A write whose whole property is that it commits with its caller's other
+// writes is not an RPC: over a wire it lands in a transaction of its own, at a
+// moment the caller does not choose, and what you get is a person erased from
+// one table and present in the others. settings.Store documents the same
+// absence on the method itself.
+//
+// Every method takes its scope off the caller's principal, and six of them take
+// a subject from the request -- which a grant on the method cannot check, so
+// settings/grpc asks a SubjectAuthorizer before any of the six reads or writes
+// a row.
+service SettingsService {
+  rpc CreateDefinition(CreateDefinitionRequest) returns (CreateDefinitionResponse);
+  rpc GetDefinition(GetDefinitionRequest) returns (GetDefinitionResponse);
+  rpc GetDefinitionByName(GetDefinitionByNameRequest) returns (GetDefinitionByNameResponse);
+  rpc ListDefinitions(ListDefinitionsRequest) returns (ListDefinitionsResponse);
+  rpc UpdateDefinition(UpdateDefinitionRequest) returns (UpdateDefinitionResponse);
+  rpc ArchiveDefinition(ArchiveDefinitionRequest) returns (ArchiveDefinitionResponse);
+  rpc ListValuesForDefinition(ListValuesForDefinitionRequest) returns (ListValuesForDefinitionResponse);
+
+  rpc SetValue(SetValueRequest) returns (SetValueResponse);
+  rpc GetValue(GetValueRequest) returns (GetValueResponse);
+  rpc ClearValue(ClearValueRequest) returns (ClearValueResponse);
+  rpc ListValuesForSubject(ListValuesForSubjectRequest) returns (ListValuesForSubjectResponse);
+  rpc Resolve(ResolveRequest) returns (ResolveResponse);
+  rpc ResolveAll(ResolveAllRequest) returns (ResolveAllResponse);
+}

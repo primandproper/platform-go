@@ -74,6 +74,23 @@ why the entity's field is not what the statement binds.
 There is deliberately no cross-scope listing — see [Store] for what that costs
 and why the alternative is worse.
 
+# The transport
+
+issuereports/grpc serves ten of the eleven store methods over gRPC — the filing,
+the reads, the four listings, the revision, the archive and the move — with the
+.proto they are described by, a typed client, and the permissions each one wants.
+[Store.TransitionReport] is why it is worth having: a compare-and-set is a better
+RPC than it is a method call, because over a wire the window between the read a
+triager decided from and the write recording their decision is a screen and a
+person wide, so the conflict the guard refuses is the ordinary case rather than
+the rare one.
+
+What does not cross is [Store.DeleteReportsByReporter], and the reason is the
+erasure below: it commits with the rest of a subject's footprint, which is a
+property an RPC cannot have. What a request cannot carry is a reporter — a report
+is filed by whoever is calling — or a scope, which comes off the principal a
+consumer's interceptor resolved.
+
 # Personal data
 
 The details are a sentence somebody typed, and nothing can promise a sentence

@@ -40,6 +40,18 @@ import (
 // "which tenant is this write for" answerable only by reading a struct the
 // caller assembled somewhere else; comments.Store settled it for the module and
 // this store follows.
+//
+// # Thirteen of these are on the wire and one is not
+//
+// settings/grpc serves both halves of this interface: the catalog, which is an
+// operator's, and the answers stored against it, which are a person's own. It
+// is the same split this interface already makes, and it is why that surface
+// has two sets of grants rather than one.
+//
+// [ValueStore.DeleteValuesForSubject] is the one method that stays off it, and
+// the reason is on the method itself: it is erasure, called from inside the
+// transaction that removes the rest of a person. A write whose whole property
+// is that it commits with its caller's other writes is not an RPC.
 type Store interface {
 	DefinitionStore
 	ValueStore
@@ -171,6 +183,21 @@ type ValueStore interface {
 	//
 	// Zero is not an error: a subject who never answered is a subject with
 	// nothing here to erase.
+	//
+	// It is the one method here that settings/grpc does not serve, and this
+	// paragraph is why. The transaction is not an implementation detail of the
+	// call: a subject access request removes a person from a dozen tables at
+	// once, and their stored preferences going with the rest or not at all is
+	// the whole of what an erasure means. Over a wire the write lands in a
+	// transaction of its own, on the far side of a network, at a moment the
+	// caller does not choose — so what a failure leaves behind is a person
+	// erased from one table and present in the others, which no amount of
+	// retrying repairs after the fact. It is the same fact audit.Recorder
+	// states about an audit entry, and the reason that method takes a Tx too.
+	//
+	// A process that erases people from somewhere else is describing an RPC of
+	// its own — the one whose handler owns the transaction this write belongs
+	// in — with this call inside it.
 	DeleteValuesForSubject(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject Subject) (int64, error)
 
 	// ListValuesForSubject pages everything one subject has answered.

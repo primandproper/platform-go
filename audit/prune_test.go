@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -204,7 +205,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 
 		// The watermark the sweep left behind is what the oldest survivor is
 		// anchored against; without it this would read as a deleted entry.
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 2, result.Checked)
@@ -258,7 +259,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 
 		// Still contiguous, still anchored: a batched sweep is several prefix
 		// prunes, never a hole.
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 
@@ -270,7 +271,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		test.EqOp(t, int64(1), mustSweep(t, client, c, target, time.Hour, 2))
 		test.EqOp(t, 0, countRows(t, client, "audit_log_entries", "1=1"))
 
-		result, err = reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err = reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	})
@@ -366,7 +367,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		test.EqOp(t, int64(1), next.Seq)
 		test.EqOp(t, first.Hash, next.PrevHash)
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	})

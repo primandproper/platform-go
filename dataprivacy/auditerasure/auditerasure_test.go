@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/primitives-go/database/dialect"
 	"github.com/primandproper/primitives-go/database/sqlite"
 	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -165,7 +166,7 @@ func TestEraser(T *testing.T) {
 
 		env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
 
-		result, err := env.reader.Verify(t.Context(), "account-9",
+		result, err := env.reader.Verify(t.Context(), tenancy.Of("account-9"),
 			time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 		must.NoError(t, err)
 

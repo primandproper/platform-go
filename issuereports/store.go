@@ -195,6 +195,15 @@ type Store interface {
 	// given, so that a subject's reports and the rest of their footprint commit
 	// or roll back together.
 	//
+	// That is also why it is the one method here that issuereports/grpc does not
+	// serve. The other ten are on the wire; this is erasure machinery, and the
+	// clause above is the whole of the reason — an RPC moves the delete into a
+	// transaction of its own, at a moment the caller does not choose, so an
+	// erasure run that failed halfway leaves a subject who has been told they
+	// were forgotten and half was. It is reached through issuereports/privacy's
+	// dataprivacy.Eraser, from the consumer's own erasure run, and
+	// issuereports/grpc/doc.go carries the ruling.
+	//
 	// Zero is not an error: a person who never filed a report is a person with
 	// nothing here to erase.
 	DeleteReportsByReporter(ctx context.Context, tx database.Tx, scope tenancy.Scope, reporter string) (int64, error)

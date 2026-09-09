@@ -68,6 +68,17 @@ import (
 // scopes either, because a bound set may not sit in a statement that also binds
 // a cursor and a page size on two of the three dialects this package serves.
 //
+// # Eight of these are on the wire and two are not
+//
+// comments/grpc serves CreateComment, GetComment, ListRootComments,
+// ListReplies, ListCommentsByTargetType, ListCommentsByAuthor, UpdateComment
+// and ArchiveComment. They are the whole lifecycle of the noun, and each of
+// them has a caller who is somewhere else.
+//
+// [Store.DeleteCommentsForTarget] and [Store.DeleteCommentsByAuthor] are the
+// two that stay off it, and each says why on its own method. They are one case:
+// bulk erasure that exists to commit inside somebody else's transaction.
+//
 // # The catalog gates writes, not reads
 //
 // A comment names a target type, and the catalog the store was built with is
@@ -208,6 +219,15 @@ type Store interface {
 	//
 	// Zero is not an error: a thing nobody commented on is a thing with nothing
 	// here to sweep.
+	//
+	// It is erasure machinery and has no RPC in comments/grpc, which is the same
+	// reading the tx it takes already states. The whole property of this write is
+	// that it commits with the delete that removed the target; an RPC moves it
+	// into a transaction of its own, at a moment the caller does not choose, and
+	// what is left is a window — sometimes a permanent one, if the second call
+	// never happens — in which the target is gone and its comments are live,
+	// listable, and about nothing. A moderator removing one comment is not this
+	// case and has ArchiveComment.
 	DeleteCommentsForTarget(ctx context.Context, tx database.Tx, scope tenancy.Scope, target Target) (int64, error)
 
 	// DeleteCommentsByAuthor destroys everything one person wrote within the
@@ -221,5 +241,13 @@ type Store interface {
 	// It runs inside the caller's transaction and must use the executor it is
 	// given, so that a subject's comments and the rest of their footprint commit
 	// or roll back together.
+	//
+	// That sentence is also why it is erasure machinery with no RPC in
+	// comments/grpc. Its caller is comments/privacy's dataprivacy.Eraser, inside
+	// the transaction destroying everything else a subject left behind; reached
+	// over a wire it would commit separately from that transaction, so a rolled
+	// back erasure would have taken these rows with it or left them when the rest
+	// went. Neither is recoverable by trying again, because the request naming
+	// the subject is the thing that has already returned.
 	DeleteCommentsByAuthor(ctx context.Context, tx database.Tx, scope tenancy.Scope, author string) (int64, error)
 }
