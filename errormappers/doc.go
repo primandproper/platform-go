@@ -4,7 +4,7 @@ registries, in one call.
 
 primitives-go's errors/http and errors/grpc are primitives and map primitives,
 and cannot import this module to reach any further. Everything above them maps
-itself: dataprivacy, identity, links, operations and sessions each
+itself: audit, dataprivacy, identity, links, operations and sessions each
 export an HTTPMapper and a GRPCMapper beside their sentinels, and links
 additionally exports the redemption outcomes whose own wording a gRPC status may
 carry. None

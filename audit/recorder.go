@@ -28,6 +28,21 @@ import (
 // it after the fact. Anything that genuinely can happen after the commit (fan-
 // out to a warehouse, notification, retention) happens after the commit;
 // nothing that constitutes the record itself does.
+//
+// # Record is never an RPC
+//
+// audit/grpc serves the Reader and stops there, and this is the reason. A
+// recording that crossed a connection would commit on its own, in a
+// transaction of the audit service's rather than of the change it describes,
+// so the two could disagree in either direction: an entry for a change that
+// rolled back, or a committed change no entry names. A retry does not fix
+// either after the fact, and a client that could be told the recording failed
+// has already committed the change it was about.
+//
+// It is the sharpest instance of a rule the whole transport lane is made by —
+// a write whose caller is already inside the process's own transaction is not
+// an RPC — and identity/grpc's package documentation states it once for every
+// surface that follows.
 type Recorder interface {
 	// Record appends entries to the log inside the caller's transaction.
 	//

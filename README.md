@@ -40,7 +40,7 @@ Because breaking changes ride the major-version import path, upgrading across ma
 
 **OpenTelemetry throughout.** Every store, transport and worker here instruments through primitives-go's `observability`, whose logging, tracing, metrics and profiling pillars a consumer supplies once and threads everywhere.
 
-**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `authentication/oauth2clients`, `authentication/signin`, `dataprivacy`, `identity`, `links`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all seven in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those seven has a decision recorded and that it still holds on both transports.
+**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/signin`, `dataprivacy`, `identity`, `links`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all eight in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those eight has a decision recorded and that it still holds on both transports.
 
 ## Package Catalog
 
@@ -83,7 +83,7 @@ reasons behind the three exceptions.
 ### Records, privacy & retention
 | Package                  | Purpose                                              | Implementations         |
 |--------------------------|------------------------------------------------------|-------------------------|
-| `audit`                  | Tamper-evident audit log                             | postgres, mysql, sqlite |
+| `audit`                  | Tamper-evident audit log                             | postgres, mysql, sqlite (+ grpc) |
 | `dataprivacy`            | Subject access & erasure requests                    | postgres, mysql, sqlite |
 | `cryptography/shredding` | Per-subject data keys that can be destroyed          | postgres, mysql, sqlite |
 | `retention`              | Policy-driven expiry deletion                        | postgres, mysql, sqlite |
@@ -251,6 +251,21 @@ options with four defaults. `authentication/signin/grpc` serves it, and is the
 one surface in the module that reads its tenant off the connection rather than
 off a caller — because a caller signing in has not become one yet.
 
+`audit` crosses too, and it is the one that ships **strictly narrower than its
+own interface**. `audit/grpc` serves the `Reader` and nothing else:
+read one entry, page them, verify a scope's hash chain. `Record` is not there
+and cannot be — an audit entry that can commit while the change it describes
+rolls back, or the reverse, is not a record of what happened, which is the
+sharpest instance of the rule that a write already inside your transaction is
+not an RPC. `Query.Scope` is not there either: in the Go type it is a `*string`
+in which nil means every tenant's events, so the scope binds off the connection
+and the schema *reserves* the field name, which makes the absence something
+`protoc` enforces rather than something a reviewer has to notice. What makes the
+crossing worth it is `Verify` — establishing that nobody edited, removed or
+reordered an entry is the capability a hand-written log reader never gets around
+to, and the one most worth calling remotely and on a schedule, which is why it
+is its own grant rather than a second use of the read one.
+
 Ten more were ruled on together, and each is to follow `identity`. The transport
 is not uniform and neither is the subset of a store that crosses:
 
@@ -263,7 +278,6 @@ is not uniform and neither is the subset of a store that crosses:
 | `notifications` | wire surface, both halves | gRPC | `CreateNotification`, `ListDevicesByPrincipals`, `InvalidateDeviceToken` |
 | `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the seven its store documents |
 | `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
-| `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, and `Query.Scope` itself |
 | `dataprivacy` | wire surface over the existing `Service` | HTTP | — |
 
 Seven get nothing, and saying so is the point of this section rather than
@@ -300,6 +314,7 @@ the whole list.
 |-------------------------------------|------------------|-------------------------------------------------------------------------------------------------|
 | `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                             |
 | `uploads/registry/http`             | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                       |
+| `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                             |
 | `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store` |
 | `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`           |
 | `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request — over `dataprivacy.Service`                 |
@@ -332,10 +347,10 @@ two-tier progress and its state machine are types you did not define, and
 polling one or subscribing to its server-sent events is the pattern's protocol
 rather than your API. *Starting* an operation is yours, and is deliberately not
 there. `identity/grpc`, `authentication/signin/grpc`,
-`authentication/oauth2clients/grpc` and `dataprivacy/http` are the other kind — a
+`authentication/oauth2clients/grpc`, `dataprivacy/http` and `audit/grpc` are the other kind — a
 domain's own transport, shipped under the rule above rather than as an exception
-to it, and the first four of the thirteen to cross. Three of those four are gRPC
-and the fourth is not, for the reason given above: `dataprivacy`'s flow was on
+to it, and five of the thirteen have crossed this way. Four of those five are gRPC
+and the fifth is not, for the reason given above: `dataprivacy`'s flow was on
 HTTP before there was a handler in it.
 
 The table is not written by hand either. `internal/cmd/readmegen` emits it on
