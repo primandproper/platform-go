@@ -196,10 +196,21 @@ chooses. The platform ships no numbered migration file — see that package.
 
 # Where this package stops
 
-At the store. A settings API's routes, its request and response types, and who
-is allowed to write a definition as opposed to read one are an application's,
-and this package ships none of them. The module README's "Transports" section
-is where that line is drawn for the module as a whole.
+Not at the store any more. settings/grpc serves thirteen of this store's
+fourteen methods over gRPC, from settings.proto, with converters, a typed client
+and a default permission fragment — because the resolution above is exactly what
+a hand-written service gets subtly wrong, and shipping the store without it left
+every consumer re-deriving the fallback.
+
+What it still does not ship is the policy, which is the bargain the module
+README's "Transports" section describes: who is calling is an interface a
+consumer's authentication interceptor satisfies, what each method requires is a
+map they compose into their own, and whose settings a caller may reach is a rule
+they supply — that last one required rather than defaulted, because a subject
+type is a vocabulary this package deliberately leaves open.
+
+[Store.DeleteValuesForSubject] is the fourteenth and is not on the wire. See the
+method.
 */
 package settings
 

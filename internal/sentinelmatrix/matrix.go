@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/platform-go/v14/links"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
+	"github.com/primandproper/platform-go/v14/settings"
 
 	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
 	httperrors "github.com/primandproper/primitives-go/errors/http"
@@ -46,7 +47,7 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are seven
+// The packages that map their own sentinels, spelled once each; there are eight
 // today. Each name is three things — a key in Matrix, an entry in Packages and a
 // case in Mappers — and a package that declares a pair later is added in all
 // three together.
@@ -61,6 +62,7 @@ const (
 	sessionsPkg      = "sessions"
 	signInPkg        = "authentication/signin"
 	oauth2ClientsPkg = "authentication/oauth2clients"
+	settingsPkg      = "settings"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -69,7 +71,7 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the seven
+// Matrix is the decision made about every exported sentinel in the eight
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
@@ -343,18 +345,70 @@ var Matrix = map[string]map[string]Decision{
 		// answer and no mapper claims it.
 		"ErrTOTPIssuerNotConfigured": {Err: signin.ErrTOTPIssuerNotConfigured, Is: Unhandled},
 	},
+	settingsPkg: {
+		// The seven a caller can act on. Three are absences and are all
+		// codes.NotFound — no setting by that name, no value stored against it,
+		// and a resolution with neither a value nor a default — which is the
+		// clearest case in this roster for why the wording matters as much as the
+		// code, and why all three are client-safe. Two are a request to correct.
+		// Two are state the caller is writing against: a name already defined, and
+		// an edit some stored value no longer satisfies.
+		//
+		// ErrSettingUnset is mapped despite settings/grpc never returning it: a
+		// resolution carries the unset state in its source rather than as a
+		// refusal, and the sentinel is what a consumer's own handler gets from
+		// Resolution.Int. A mapping that covered only the RPCs this module ships
+		// would make the answer depend on which transport asked.
+		"ErrDefinitionNameTaken":       {Err: settings.ErrDefinitionNameTaken, Is: Mapped},
+		"ErrDefinitionNotFound":        {Err: settings.ErrDefinitionNotFound, Is: Mapped},
+		"ErrDuplicateEnumerationValue": {Err: settings.ErrDuplicateEnumerationValue, Is: Mapped},
+		"ErrKindMismatch":              {Err: settings.ErrKindMismatch, Is: Mapped},
+		"ErrSettingUnset":              {Err: settings.ErrSettingUnset, Is: Mapped},
+		"ErrStrandedValues":            {Err: settings.ErrStrandedValues, Is: Mapped},
+		"ErrValueNotFound":             {Err: settings.ErrValueNotFound, Is: Mapped},
+
+		// The ten that are somebody else's sentinel, answered by the platform
+		// mappers because that is the tier those sentinels belong to.
+		//
+		// The last three are the ones worth pausing on, because they are refusals
+		// a client reads and are still not this package's to map. A value that is
+		// not of its setting's kind, a value outside the enumeration, and a kind
+		// nothing implements all wrap errors.ErrUnrecognizedInputValue, which
+		// errors/http already answers as a bad request and errors/grpc as
+		// InvalidArgument — and the platform mapper is asked first, so a case here
+		// would be unreachable. Two of them are on
+		// settings.ClientSafeSentinels anyway, which is the other half of the
+		// question and a separate registry: what the status *says* is decided
+		// there, and what code it carries here.
+		"ErrEmptyDefinitionName":   {Err: settings.ErrEmptyDefinitionName, Is: Platform},
+		"ErrEmptyEnumerationValue": {Err: settings.ErrEmptyEnumerationValue, Is: Platform},
+		"ErrEmptySubjectID":        {Err: settings.ErrEmptySubjectID, Is: Platform},
+		"ErrEmptySubjectType":      {Err: settings.ErrEmptySubjectType, Is: Platform},
+		"ErrNilDatabaseClient":     {Err: settings.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilDefinition":         {Err: settings.ErrNilDefinition, Is: Platform},
+		"ErrNilExecutor":           {Err: settings.ErrNilExecutor, Is: Platform},
+		"ErrMalformedValue":        {Err: settings.ErrMalformedValue, Is: Platform},
+		"ErrNotEnumerated":         {Err: settings.ErrNotEnumerated, Is: Platform},
+		"ErrUnknownKind":           {Err: settings.ErrUnknownKind, Is: Platform},
+
+		// The one nobody answers. A paged read that answered with the cursor it
+		// was handed is a store misbehaving toward its own caller — it reaches a
+		// handler only through a service that shipped broken, and a 500 is the
+		// honest reply.
+		"ErrCursorStalled": {Err: settings.ErrCursorStalled, Is: Unhandled},
+	},
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
-// module root. They are the seven that export mappers of their own; a package
+// module root. They are the eight that export mappers of their own; a package
 // that declares a pair later is added here, in Matrix and in Mappers together.
 var Packages = []string{
 	dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg,
-	oauth2ClientsPkg,
+	oauth2ClientsPkg, settingsPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
-// this package spells the seven out; everywhere else they are the strings in
+// this package spells the eight out; everywhere else they are the strings in
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
@@ -372,6 +426,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return signin.HTTPMapper, signin.GRPCMapper
 	case oauth2ClientsPkg:
 		return oauth2clients.HTTPMapper, oauth2clients.GRPCMapper
+	case settingsPkg:
+		return settings.HTTPMapper, settings.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}
