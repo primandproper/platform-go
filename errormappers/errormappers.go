@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/v14/links"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
+	"github.com/primandproper/platform-go/v14/webhooks"
 
 	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
 	httperrors "github.com/primandproper/primitives-go/errors/http"
@@ -18,13 +19,14 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all seven unconditionally, including for a service that has no
-// privacy requests, runs no operations and has nobody signing in. An unused mapper costs one comparison
-// against a sentinel the process cannot produce, and that is the cheap direction
-// to be wrong in — the expensive one is an action link answering 500 because
-// nobody registered anything. Conditioning on presence would also mean this
-// package taking an argument describing which subsystems a service has, which is
-// the config tree it exists to avoid importing.
+// It registers all eight unconditionally, including for a service that has no
+// privacy requests, runs no operations, delivers no webhooks and has nobody
+// signing in. An unused mapper costs one comparison against a sentinel the
+// process cannot produce, and that is the cheap direction to be wrong in — the
+// expensive one is an action link answering 500 because nobody registered
+// anything. Conditioning on presence would also mean this package taking an
+// argument describing which subsystems a service has, which is the config tree
+// it exists to avoid importing.
 //
 // Registration is additive and safe to call from more than one goroutine.
 func Register() {
@@ -68,4 +70,14 @@ func Register() {
 	// and so are indistinguishable by code, and each names a different remedy for
 	// somebody staring at a browser. See oauth2clients.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(oauth2clients.ClientSafeSentinels...)
+
+	httperrors.RegisterHTTPErrorMapper(webhooks.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(webhooks.GRPCMapper)
+
+	// No client-safe sentinels for webhooks. Its refusals name a field a console
+	// is about to re-render — a URL, a header, an event type — and the message
+	// the mapper writes says which one, so there is nothing the sentinel's own
+	// wording would add. The one whose wording is deliberately *narrower* than
+	// the sentinel's is ErrEndpointOutOfScope, which must not tell a caller that
+	// another tenant is holding the identifier they chose.
 }

@@ -117,6 +117,21 @@ type ClaimedDispatch struct {
 // are the same case: a worker draining a queue on a timer, not a request being
 // served.
 //
+// # Nine of these are on the wire and nine are not
+//
+// webhooks/grpc serves endpoint management and delivery history: SaveEndpoint,
+// GetEndpoint, ListEndpoints, ArchiveEndpoint, AddSubscription,
+// GetSubscription, ListSubscriptions, ArchiveSubscription and ListAttempts.
+// They are the half of this package that is a resource rather than a protocol,
+// and the only half a person ever touches.
+//
+// The seven above are the first group that stays off it, and the reason is the
+// paragraph they are already documented by: a caller supplying a transaction is
+// exactly what an RPC is, and it is the one thing the queue protocol cannot let
+// them supply. EndpointsForEvent and Enqueue are the other two, and each says so
+// on its own method — Enqueue is the sharp one, because it is the only method
+// here that is consumer-facing and still must not be reachable over a wire.
+//
 // # The scope is an argument, on every consumer method
 //
 // Every method reaching an endpoint, a subscription, or a delivery on a
@@ -211,10 +226,34 @@ type Store interface {
 	//
 	// The scope is a parameter and not an option: this is the query whose missing
 	// filter delivers one account's event to every other account's subscribers.
+	//
+	// It is off the wire, and the sentence above is why. This is the internal
+	// fan-out — the dispatcher asking itself who is subscribed on the way to its
+	// own work — so the caller who would reach for it over an RPC is not a
+	// caller at all. A console that wants to show which endpoints a given event
+	// reaches reads their subscriptions, which is what ListSubscriptions is for
+	// and is the same answer arrived at from the side that is scoped by
+	// construction.
 	EndpointsForEvent(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, eventType EventType) ([]*Endpoint, error)
 	// Enqueue writes a delivery and one dispatch per endpoint, in the caller's
 	// transaction, so both commit with whatever else that transaction did.
 	// The delivery's scope is stored with it.
+	//
+	// It is off the wire too, and it is the one absence here worth arguing about,
+	// because unlike the other eight it is consumer-facing: fanning an event out
+	// is something an application does on purpose. What it is not is separable
+	// from the transaction it is called in. That clause above — both commit with
+	// whatever else that transaction did — is the entire property, and an RPC
+	// moves the write into a transaction of its own, on the far side of a
+	// network, at a moment the caller does not choose. What you get back is a
+	// delivery for a row that rolled back, or a committed row nobody was ever
+	// told about, and no amount of retrying repairs either after the fact. It is
+	// the same fact audit.Recorder states about an audit entry and the reason
+	// that method takes a Tx as well.
+	//
+	// A process that wants to publish an event it did not cause is describing an
+	// RPC of its own — the one whose handler owns the transaction the write
+	// belongs in — with Dispatcher.Dispatch called inside it.
 	Enqueue(ctx context.Context, tx database.Tx, delivery *Delivery, endpointIDs []string, now time.Time) error
 
 	// Claim leases the next batch of due dispatches, incrementing their attempt
