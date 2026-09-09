@@ -1,0 +1,534 @@
+// Package primandproper.platform.waitlists.v1 is the wire schema for the queue
+// people join before the thing they are queueing for exists: the lists an
+// operator opens, and the signups against them with a lifecycle of their own.
+//
+// It is one service with two audiences, which is what makes it different from
+// the three domain surfaces that came before it. Three RPCs are the signup page
+// — the open lists, the form, and the unsubscribe — and are reachable by
+// somebody who has not signed in and frequently does not have an account to
+// sign in to. The other fourteen are whoever is running the launch, and every
+// one of them is behind a grant. See the service comment at the bottom.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/waitlists/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/waitlists/v1/waitlists.proto=github.com/primandproper/platform-go/v14/waitlists/waitlistspb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # status is an enum, and that is not the usual answer
+//
+// [SignupStatus] is a generated enum, where webhooks' event type, comments'
+// target type and issuereports' kind are all opaque strings. The rule those
+// three are under is that a consumer's catalog stays a string, because a
+// generated enum puts the application's vocabulary on this module's release
+// cadence. This is the opposite case and waitlists.Status says so in its own
+// documentation: the four statuses decide which transitions the store will
+// make and what a withdrawal means, so a fifth is not a word an application
+// adds -- it is a row nothing can move. settings.Kind is the other one of these.
+//
+// SubjectType is the string on this surface, and it is the one that is genuinely
+// the consumer's: "user" and "account" are suggestions, and an application whose
+// signups hang off a device or a workspace should say so rather than misfile it.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere, and the name is reserved so there cannot be one. A
+// scope a client could name is a cross-tenant read hiding behind a request
+// field -- on this surface, one tenant reading another's signup list, or joining
+// somebody to it. It is resolved off the caller where there is one and off the
+// connection where there is not; see waitlists/grpc.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern:
+// `reserved "scope";` is a schema protoc refuses to accept a scope field into,
+// in this repository and in a consumer's fork of the file alike, whereas a
+// comment is a request to the next author. It is reserved on every request
+// message and on the three messages a response is built from.
+//
+// No subject on [JoinRequest], and the name is reserved there too. A signup's
+// subject is provenance -- who this row belongs to -- and provenance a caller
+// could name is provenance that says whatever the caller wanted it to. It is
+// filled from the principal the consumer's interceptor resolved, so a signed-in
+// person's signup is theirs and an anonymous one belongs to nobody, which is the
+// ordinary case for a pre-launch list. It is the same reading webhooks.proto
+// takes of created_by. A deployment queueing whole organizations writes that
+// signup through waitlists.SignupStore.Join in the transaction that carries the
+// rest of what it knows about the organization, which is where a subject that is
+// not the caller can actually be vouched for.
+//
+// No notes on [JoinRequest], reserved for the same reason by a shorter argument:
+// Signup.notes is what whoever administers the list wrote about somebody, and
+// UpdateSignupNotes is behind a grant. A form that could write it would be a
+// form that writes the operator's column.
+//
+// No contact_digest on [Signup], and the name is reserved. The digest is what
+// the row is found by and what survives a withdrawal, and it is deliberately
+// unsalted over a fast hash -- so a client holding one can test any address it
+// likes against it offline. waitlists.SQLStore.Digest still exports it in
+// process, for the deployment migrating off a hand-written table, which is a
+// caller with the addresses already in hand.
+//
+// No queue position. "You are 4,102nd in line" is a count that changes under
+// whoever is reading it, and the paged reads here carry the counts a caller
+// needs to render a position it is willing to stand behind.
+
+syntax = "proto3";
+
+package primandproper.platform.waitlists.v1;
+
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/filtering/v1/filtering.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/waitlists/waitlistspb;waitlistspb";
+
+// SignupStatus is where one signup stands. It is a closed set this package owns
+// -- see the file comment for why this one is an enum where a consumer's catalog
+// would be a string.
+enum SignupStatus {
+  // SIGNUP_STATUS_UNSPECIFIED is the zero value, and no stored signup has it.
+  // A request carrying it is a client that did not set the field.
+  SIGNUP_STATUS_UNSPECIFIED = 0;
+
+  // SIGNUP_STATUS_WAITING is somebody who has joined and not yet been invited.
+  // It is where every signup starts, and it is the only status Join writes.
+  SIGNUP_STATUS_WAITING = 1;
+
+  // SIGNUP_STATUS_INVITED is somebody who has been let in and has not yet taken
+  // it up. status_changed_at is when, which is the field a reminder is
+  // scheduled off.
+  SIGNUP_STATUS_INVITED = 2;
+
+  // SIGNUP_STATUS_CONVERTED is somebody who took the invitation up. The
+  // waitlist has done its job and whatever they became is a row of yours.
+  SIGNUP_STATUS_CONVERTED = 3;
+
+  // SIGNUP_STATUS_WITHDRAWN is somebody who asked to come off the list. It is
+  // the one status nothing moves out of, and it is a suppression rather than a
+  // deletion: the row keeps a digest of the address and loses everything else
+  // that identifies a person, so a later signup from the same address is
+  // refused rather than quietly re-subscribing whoever asked to be left alone.
+  SIGNUP_STATUS_WITHDRAWN = 4;
+}
+
+// Waitlist is one named queue, as a client sees it.
+//
+// It is a Waitlist here and a waitlists.List in Go, because List is a word every
+// language a consumer generates into has already spent.
+message Waitlist {
+  reserved "scope";
+
+  // created_at is when the list was opened, assigned by the database.
+  google.protobuf.Timestamp created_at = 1;
+
+  // closes_at is when the list stops taking signups. Required, and there is no
+  // way to say "never": a list whose end is not yet decided names a far horizon
+  // and is brought in by UpdateList, and one that should stop this instant is
+  // archived. The column behind it is NOT NULL so that the open-lists read is
+  // one comparison against a bound instant rather than a disjunction over the
+  // column it pages by.
+  google.protobuf.Timestamp closes_at = 2;
+
+  // last_updated_at is when the list last changed, unset for one nobody has
+  // edited.
+  google.protobuf.Timestamp last_updated_at = 3;
+
+  // archived_at is when the list was retired, unset while it is live. An
+  // archived list takes no further signups whatever closes_at says, and the
+  // signups already against it are left alone -- archiving is not erasure.
+  google.protobuf.Timestamp archived_at = 4;
+
+  // id is the row, and is what every other RPC names a list by.
+  string id = 5;
+
+  // name is what the list is called, for whoever administers it and for
+  // whatever renders the signup form. Required, not unique, and not a handle:
+  // two lists may share a name and neither is reachable by it. Text somebody
+  // typed -- render it, never trust it.
+  string name = 6;
+
+  // description is prose about what people are queueing for.
+  string description = 7;
+}
+
+// SignupSubject is who a signup belongs to, where anybody does.
+//
+// It is two fields rather than one composite string for the reason the tenancy
+// doctrine gives about the scope: a key spelling "user:abc123" carries two facts
+// in a column that can only be indexed as one. Both empty is a signup that names
+// nobody, which is the ordinary case for a pre-launch list; half of one is
+// refused.
+message SignupSubject {
+  reserved "scope";
+
+  // type says what kind of principal this is. It is an opaque string with
+  // "user" and "account" as the suggestions, because what kinds of thing a
+  // deployment queues is the application's vocabulary -- see the file comment.
+  string type = 1;
+
+  // id identifies the principal within that type.
+  string id = 2;
+}
+
+// Signup is one person's place on one list.
+message Signup {
+  reserved "scope";
+
+  // contact_digest is deliberately absent; see the file comment.
+  reserved "contact_digest";
+
+  // created_at is when they joined, which is also the order they joined in.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when the row last changed, unset for one nobody has
+  // touched since it was written.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // status_changed_at is when the signup last moved through the lifecycle,
+  // unset for one still where it started.
+  //
+  // It is not last_updated_at, and the difference is the point: an
+  // administrator fixing a typo in notes changes the row without moving
+  // anybody, and the reminder that goes out three days after an invitation is
+  // scheduled off this field.
+  google.protobuf.Timestamp status_changed_at = 3;
+
+  // archived_at is when the signup was retired administratively, unset while it
+  // is live. It is not a withdrawal: nothing about what the row holds changes
+  // and nothing is suppressed.
+  google.protobuf.Timestamp archived_at = 4;
+
+  // subject is who the signup belongs to, where anybody does. Output only: no
+  // request sets it, and Join fills it from the caller.
+  SignupSubject subject = 5;
+
+  // id is the row.
+  string id = 6;
+
+  // list_id is the list this signup is for. It is half of what addresses a
+  // signup -- every signup-side RPC names both, so that a caller holding one
+  // list's id cannot be handed another list's row.
+  string list_id = 7 [json_name = "listID"];
+
+  // contact is the address the list exists to write to, as it was given. It is
+  // empty for a withdrawn signup, which is the whole of what a withdrawal
+  // erases from this field.
+  string contact = 8;
+
+  // notes is whatever whoever administers the list wrote about this signup, and
+  // it is empty for a withdrawn signup. It is written by UpdateSignupNotes,
+  // which is behind a grant, and never by the form.
+  string notes = 9;
+
+  // status is where the signup stands.
+  SignupStatus status = 10;
+}
+
+// WaitlistInput is what a caller supplies to open or revise a list. Everything
+// else about the row -- the id on a creation, the timestamps, the scope -- is
+// decided by the service.
+message WaitlistInput {
+  reserved "scope";
+
+  // id is the list to revise, and is ignored by CreateList, which mints one.
+  string id = 1;
+
+  // name is required. A list nobody can name is a list nobody can administer.
+  string name = 2;
+
+  string description = 3;
+
+  // closes_at is required and is refused rather than defaulted: an hour is too
+  // short for anything, a decade is a list nobody will ever close, and "never"
+  // is the state the column deliberately cannot hold.
+  google.protobuf.Timestamp closes_at = 4;
+}
+
+message CreateListRequest {
+  reserved "scope";
+
+  WaitlistInput list = 1;
+}
+message CreateListResponse { Waitlist result = 1; }
+
+message GetListRequest {
+  reserved "scope";
+
+  string list_id = 1 [json_name = "listID"];
+}
+message GetListResponse { Waitlist result = 1; }
+
+message ListListsRequest {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+message ListListsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Waitlist results = 2;
+}
+
+// ListOpenListsRequest asks for the lists still taking signups. It is the one
+// read on this service a caller reaches without a grant, and it is what a "join
+// the waitlist" page offers.
+message ListOpenListsRequest {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+message ListOpenListsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Waitlist results = 2;
+}
+
+message UpdateListRequest {
+  reserved "scope";
+
+  // list names the row by its id and carries what it should say. Moving
+  // closes_at is how a list is extended or brought in, and it is not guarded
+  // against the signups already on it: a list closed early keeps everybody who
+  // joined while it was open. It will not revive an archived list.
+  WaitlistInput list = 1;
+}
+// UpdateListResponse carries the list as stored, so that a client reads back
+// the last_updated_at the write stamped rather than the one it sent.
+message UpdateListResponse { Waitlist result = 1; }
+
+message ArchiveListRequest {
+  reserved "scope";
+
+  string list_id = 1 [json_name = "listID"];
+}
+message ArchiveListResponse {}
+
+// JoinRequest is the form somebody filled in.
+//
+// It carries an address and the list it is for, and nothing else. See the file
+// comment for why it names no subject and no notes.
+message JoinRequest {
+  reserved "scope";
+  reserved "subject";
+  reserved "notes";
+
+  string list_id = 1 [json_name = "listID"];
+
+  // contact is the address, as the person typed it. It is stored as given, so
+  // that a mail client renders the capitalization they chose, and it is
+  // digested trimmed and folded to lower case, so that two capitalizations of
+  // one address are one person.
+  string contact = 2;
+}
+message JoinResponse { Signup result = 1; }
+
+message GetSignupRequest {
+  reserved "scope";
+
+  string list_id = 1 [json_name = "listID"];
+  string signup_id = 2 [json_name = "signupID"];
+}
+message GetSignupResponse { Signup result = 1; }
+
+// GetSignupByContactRequest is the read behind "is this address on this list".
+//
+// It is behind a grant rather than on the public half, and that is the sharpest
+// authorization decision on this service. Answering it for anybody who can reach
+// the port makes the surface an oracle over which addresses are on which list --
+// which is what the list holds and what a person joining one has not agreed to
+// publish.
+message GetSignupByContactRequest {
+  reserved "scope";
+
+  string list_id = 1 [json_name = "listID"];
+  string contact = 2;
+}
+message GetSignupByContactResponse { Signup result = 1; }
+
+message ListSignupsRequest {
+  reserved "scope";
+
+  string list_id = 1 [json_name = "listID"];
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+message ListSignupsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Signup results = 2;
+}
+
+// ListSignupsForSubjectRequest pages the signups one principal holds across
+// every list in the tenant. It is the read a profile page makes and the one a
+// privacy export walks; the filter's include_archived is what an export sets.
+//
+// A withdrawn signup is never among them: a withdrawal blanks the subject along
+// with the contact, so the row that remembers a suppression no longer says whose
+// it was.
+message ListSignupsForSubjectRequest {
+  reserved "scope";
+
+  SignupSubject subject = 1;
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+}
+message ListSignupsForSubjectResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Signup results = 2;
+}
+
+// UpdateSignupNotesRequest rewrites the operator's note against a signup.
+//
+// It deliberately does not move the signup: a typo fixed in a note must not
+// reschedule the reminder somebody's invitation started, so status_changed_at is
+// left alone.
+message UpdateSignupNotesRequest {
+  reserved "scope";
+
+  string list_id = 1 [json_name = "listID"];
+  string signup_id = 2 [json_name = "signupID"];
+  string notes = 3;
+}
+message UpdateSignupNotesResponse { Signup result = 1; }
+
+// InviteRequest moves a waiting signup to invited and stamps the moment.
+//
+// Anything that is not waiting is refused, and the refusal is the affected-row
+// count of a guarded update rather than a decision made on a read -- so two
+// requests inviting the same person send one email between them.
+message InviteRequest {
+  reserved "scope";
+
+  string list_id = 1 [json_name = "listID"];
+  string signup_id = 2 [json_name = "signupID"];
+}
+// InviteResponse carries the signup as it now stands, because status_changed_at
+// is the field the reminder is scheduled off and this is the call that set it.
+message InviteResponse { Signup result = 1; }
+
+message ConvertRequest {
+  reserved "scope";
+
+  string list_id = 1 [json_name = "listID"];
+  string signup_id = 2 [json_name = "signupID"];
+}
+message ConvertResponse { Signup result = 1; }
+
+// WithdrawRequest is somebody asking to come off a list, at their own request.
+//
+// It is the second of the three RPCs a caller reaches without a grant, and it is
+// the one that names a row. A grant on the method could not have said whose row
+// this is, and neither can a signup identifier, which is minted by the store and
+// is not a credential -- so the standing to withdraw this signup is asked of the
+// consumer's own [waitlists/grpc.SignupAuthorizer], from inside the handler,
+// before anything is written. An unsubscribe link redeemed through
+// platform-go/links is the shape that answer usually takes.
+message WithdrawRequest {
+  reserved "scope";
+
+  string list_id = 1 [json_name = "listID"];
+  string signup_id = 2 [json_name = "signupID"];
+}
+// WithdrawResponse is empty, and carries no signup on purpose. What is left of
+// the row after a withdrawal is a status and a digest, and the caller who just
+// asked to be forgotten is not the caller to hand it to.
+message WithdrawResponse {}
+
+// WithdrawSignupsForSubjectRequest withdraws every signup one principal holds in
+// the tenant, archived signups included, and is the erasure path.
+//
+// It is a withdrawal rather than a delete for the reason a single withdrawal is:
+// a delete frees the unique key, so somebody erased at their own request could
+// be re-subscribed by the next form submission, which is the opposite of an
+// erasure.
+//
+// A subject naming nobody is refused rather than answered -- bound to nobody,
+// the statement would withdraw every signup nobody claimed.
+message WithdrawSignupsForSubjectRequest {
+  reserved "scope";
+
+  SignupSubject subject = 1;
+}
+message WithdrawSignupsForSubjectResponse {
+  // withdrawn is how many rows moved. Zero is not an error: a person who never
+  // joined a list is a person with nothing here to erase.
+  int64 withdrawn = 1;
+}
+
+// ArchiveSignupRequest retires a signup administratively.
+//
+// It is not a withdrawal and must not be used as one. It hides the row and
+// changes nothing about what it holds, so the contact is still stored, nothing
+// is suppressed, and the uniqueness still covers the row -- the next attempt
+// from that address gets "already signed up". Somebody asking to come off a list
+// wants Withdraw.
+message ArchiveSignupRequest {
+  reserved "scope";
+
+  string list_id = 1 [json_name = "listID"];
+  string signup_id = 2 [json_name = "signupID"];
+}
+message ArchiveSignupResponse {}
+
+// WaitlistsService is the whole of waitlists on the wire: all seventeen methods
+// of waitlists.Store, split by who calls them.
+//
+// There are no absences, which is unusual on this lane and is the reason this
+// was the first of the ten domains to cross. Every other surface in the module
+// carves something out because its realistic caller is a worker on a timer, a
+// processor callback, or the consumer's own code inside its own transaction.
+// Nothing here has that shape: a waitlist has no queue protocol, no fan-out and
+// no provider callback, and every one of the seventeen is either a form
+// somebody submitted or a console somebody is looking at.
+//
+// # The public three
+//
+// ListOpenLists, Join and Withdraw are reachable without a grant, because the
+// caller is a person on a signup page who has not signed in and frequently has
+// no account to sign in to. That is the whole of what "public" means here: the
+// consumer's authentication interceptor still runs, and a caller who does arrive
+// with a principal has their signup attributed to them.
+//
+// Public is not unguarded. Join is refused for a closed list, for an address
+// already on the list, and for one that has withdrawn from it. Withdraw names a
+// row, so the standing to move it is asked of a seam the consumer implements --
+// see WithdrawRequest. And the read a public caller gets is the catalog of open
+// lists, which is what a signup page publishes anyway.
+//
+// # The administrative fourteen
+//
+// List CRUD, the signup reads, the two lifecycle transitions, the note, the
+// archive and the erasure. Each is behind a grant, and waitlists/grpc's
+// Permissions is the default map a consumer composes into their policy.
+//
+// GetSignupByContact is the one to look at twice. It is a read, it looks
+// harmless beside Join, and it is the difference between a service and an oracle
+// over which addresses are on which list.
+service WaitlistsService {
+  // The catalog: what lists exist, what they are for, and when each stops
+  // taking signups. ListOpenLists is the public one.
+  rpc CreateList(CreateListRequest) returns (CreateListResponse);
+  rpc GetList(GetListRequest) returns (GetListResponse);
+  rpc ListLists(ListListsRequest) returns (ListListsResponse);
+  rpc ListOpenLists(ListOpenListsRequest) returns (ListOpenListsResponse);
+  rpc UpdateList(UpdateListRequest) returns (UpdateListResponse);
+  rpc ArchiveList(ArchiveListRequest) returns (ArchiveListResponse);
+
+  // The queue. Join and Withdraw are the person's own; the rest are the
+  // operator's.
+  rpc Join(JoinRequest) returns (JoinResponse);
+  rpc GetSignup(GetSignupRequest) returns (GetSignupResponse);
+  rpc GetSignupByContact(GetSignupByContactRequest) returns (GetSignupByContactResponse);
+  rpc ListSignups(ListSignupsRequest) returns (ListSignupsResponse);
+  rpc ListSignupsForSubject(ListSignupsForSubjectRequest) returns (ListSignupsForSubjectResponse);
+  rpc UpdateSignupNotes(UpdateSignupNotesRequest) returns (UpdateSignupNotesResponse);
+  rpc Invite(InviteRequest) returns (InviteResponse);
+  rpc Convert(ConvertRequest) returns (ConvertResponse);
+  rpc Withdraw(WithdrawRequest) returns (WithdrawResponse);
+  rpc WithdrawSignupsForSubject(WithdrawSignupsForSubjectRequest) returns (WithdrawSignupsForSubjectResponse);
+  rpc ArchiveSignup(ArchiveSignupRequest) returns (ArchiveSignupResponse);
+}

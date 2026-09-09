@@ -14,6 +14,7 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
 	"github.com/primandproper/platform-go/v14/settings"
+	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/webhooks"
 
 	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
@@ -25,7 +26,7 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all fourteen unconditionally, including for a service that has
+// It registers all fifteen unconditionally, including for a service that has
 // no privacy requests, runs no operations, reads no audit log, tells nobody
 // anything, delivers no webhooks, sells nothing, hears no complaints and has
 // nobody signing in. An unused mapper costs one comparison against a sentinel
@@ -142,4 +143,13 @@ func Register() {
 	// to tell somebody, and one of the six names the row an administrator has to
 	// clear before their edit can land. See settings.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(settings.ClientSafeSentinels...)
+
+	httperrors.RegisterHTTPErrorMapper(waitlists.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(waitlists.GRPCMapper)
+
+	// The fourth package whose wording is meant for the person reading it, and
+	// the only one whose reader is not signed in: four of its five refusals are
+	// FailedPrecondition, and the person meeting them is filling in a signup
+	// form or clicking an unsubscribe link. See waitlists.ClientSafeSentinels.
+	grpcerrors.RegisterClientSafeSentinels(waitlists.ClientSafeSentinels...)
 }

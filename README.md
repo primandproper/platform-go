@@ -40,7 +40,7 @@ Because breaking changes ride the major-version import path, upgrading across ma
 
 **OpenTelemetry throughout.** Every store, transport and worker here instruments through primitives-go's `observability`, whose logging, tracing, metrics and profiling pillars a consumer supplies once and threads everywhere.
 
-**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/signin`, `billing`, `comments`, `dataprivacy`, `identity`, `issuereports`, `links`, `notifications`, `operations`, `sessions`, `settings` and `webhooks` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all fourteen in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those fourteen has a decision recorded and that it still holds on both transports.
+**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/signin`, `billing`, `comments`, `dataprivacy`, `identity`, `issuereports`, `links`, `notifications`, `operations`, `sessions`, `settings`, `waitlists` and `webhooks` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all fifteen in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those fifteen has a decision recorded and that it still holds on both transports.
 
 ## Package Catalog
 
@@ -376,6 +376,24 @@ method, `DeleteValuesForSubject`, is erasure and stays behind for the reason
 every erasure does: it commits inside the transaction that removes the rest of
 the person.
 
+`waitlists` is the third across, and it is the one where nothing stayed behind.
+All seventeen of its store's methods are on the wire, which is unusual on this
+lane and is why it went first: every carve-out elsewhere is one test applied to
+different machinery — is the realistic caller a worker on a timer, a processor
+callback, or your own code inside your own transaction — and a waitlist has no
+queue protocol, no fan-out and no provider callback. What it has instead is two
+audiences. Three RPCs are the signup page — the open catalog, the form, and the
+unsubscribe link — and are reached by somebody who has not signed in and, on a
+pre-launch list, has nothing to sign in to; the other fourteen are whoever is
+running the launch. So the tenant comes off the caller where there is one and
+off the connection where there is not, which is `authentication/signin/grpc`'s
+arrangement applied to half a surface. And `Withdraw` is public and names a row,
+which no grant on a method could ever have been about, so the standing to move
+that row is a seam a consumer answers — usually by redeeming the action link the
+unsubscribe URL carried. The read that stayed administrative is the one worth
+naming: "is this address on this list" is what the table holds, and answering it
+to anybody who can reach the port would make the surface an oracle over it.
+
 Ten more were ruled on together, and each is to follow `identity`. The transport
 is not uniform and neither is the subset of a store that crosses:
 
@@ -441,6 +459,7 @@ the whole list.
 | `notifications/grpc`                | resource surface | the in-app inbox and the device registry — over `notifications.Inbox` and `notifications.Registry`        |
 | `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                          |
 | `settings/grpc`                     | resource surface | the catalog, the answers stored against it, and what a setting resolves to — over `settings.Store`        |
+| `waitlists/grpc`                    | resource surface | the catalog, the queue and the two audiences that reach them — over `waitlists.Store`                     |
 | `webhooks/grpc`                     | resource surface | endpoint management, subscriptions and the delivery log — over `webhooks.Dispatcher` and `webhooks.Store` |
 <!-- /readmegen:transports -->
 
@@ -463,10 +482,10 @@ is indistinguishable from an absence, a content type a browser executes is never
 served inline, and nothing is cached by a shared proxy. There is no resource of
 yours in that either: what is on the wire is bytes and a content type.
 
-The other twelve are resource surfaces, and they get there by two routes. The
-other twelve are resource surfaces, and they get there by two routes. The other
-twelve are resource surfaces, and they get there by two routes. The other
-twelve are resource surfaces, and they get there by two routes.
+The other thirteen are resource surfaces, and they get there by two routes. The
+other thirteen are resource surfaces, and they get there by two routes. The
+other thirteen are resource surfaces, and they get there by two routes. The
+other thirteen are resource surfaces, and they get there by two routes.
 `operations/http` is entirely this module's own resource: an `Operation`, its
 two-tier progress and its state machine are types you did not define, and
 polling one or subscribing to its server-sent events is the pattern's protocol
@@ -474,11 +493,11 @@ rather than your API. *Starting* an operation is yours, and is deliberately not
 there. `identity/grpc`, `authentication/signin/grpc`,
 `authentication/oauth2clients/grpc`, `dataprivacy/http`, `audit/grpc`,
 `notifications/grpc`, `comments/grpc`, `webhooks/grpc`, `billing/grpc`,
-`issuereports/grpc` and `settings/grpc` are the other kind — a domain's own
-transport, shipped under the rule above rather than as an exception to it, and
-eleven of the thirteen have crossed this way. Ten of those eleven are gRPC and
-the eleventh is not, for the reason given above: `dataprivacy`'s flow was on
-HTTP before there was a handler in it.
+`issuereports/grpc`, `settings/grpc` and `waitlists/grpc` are the other kind —
+a domain's own transport, shipped under the rule above rather than as an
+exception to it, and twelve of the thirteen have crossed this way. Eleven of
+those twelve are gRPC and the twelfth is not, for the reason given above:
+`dataprivacy`'s flow was on HTTP before there was a handler in it.
 
 `authentication/oauth2clients/grpc` and `issuereports/grpc` are the other kind —
 a domain's own transport, shipped under the rule above rather than as an
