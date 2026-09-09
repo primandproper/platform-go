@@ -132,6 +132,16 @@ to — so a plain string could not distinguish "only platform events" from "ever
 tenant's events", and in a multi-tenant read path that distinction is a
 disclosure rather than a wrong answer.
 
+# On the wire
+
+audit/grpc serves the Reader over gRPC — one entry, a page of them, and a
+verification — and it is strictly narrower than that interface on purpose.
+Record is not on it, for the reason Recorder gives. Query.Scope is not settable
+through it either: the scope binds off the connection, and the schema reserves
+the field name so that a request has nothing to carry one in. What makes the
+crossing worth making is Verify, which is the capability nobody writes for
+themselves and the one worth running on a schedule from somewhere else.
+
 # Where the SQL comes from
 
 Every statement this package executes is rendered by audit/internal/queries into
