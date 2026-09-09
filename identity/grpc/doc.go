@@ -118,6 +118,71 @@ No credential RPCs, no password on a registration, no avatar, and no scope on
 any message. Each absence is deliberate and the reason is in identity.proto's
 own documentation, which is the file a consumer generating a client in another
 language actually reads.
+
+# The pattern a fourth surface follows
+
+This package, authentication/signin/grpc and authentication/oauth2clients/grpc
+are three worked examples and were, for a while, the only statement of what a
+domain transport here looks like. The ten domains still to cross should not have
+to recover it by reading all three, so what the three have in common is written
+down here and cited from there.
+
+A write whose caller is already inside the process's own transaction is not an
+RPC. billing's four status moves, settings.DeleteValuesForSubject,
+issuereports.DeleteReportsByReporter, webhooks.Enqueue,
+notifications.CreateNotification and audit.Record are the instances, and
+audit.Recorder states the reason best: an audit entry that can commit while the
+change it describes rolls back — or the reverse — is not a record of what
+happened, and no amount of retrying fixes it after the fact. webhooks.Enqueue is
+the same fact about a delivery, which it writes with one dispatch per endpoint
+in the caller's transaction so that both commit with whatever else that
+transaction did. An RPC moves such a write out of the transaction that was the
+entire point of it.
+
+Machinery has three shapes rather than one, and the test for all three is who
+the realistic caller is. The transactional companion above is the first. The
+second is the internal fan-out: notifications.ListDevicesByPrincipals and
+webhooks.EndpointsForEvent are a component asking itself a question on the way
+to its own work. The third is the provider callback hook —
+notifications.InvalidateDeviceToken is reached when a push provider reports a
+dead token, and is wired as mobile.WithTokenInvalidator rather than called by
+anyone.
+
+A consumer's catalog stays an opaque string in the proto and never becomes a
+generated enum. comments.TargetType is a named string type and issuereports'
+Report.Kind and Report.SubjectType are plain string fields, but all three are
+the application's vocabulary rather than the package's, and both packages say
+so — issuereports: what varies is the catalog of categories and what a report
+can be about, and both of those are opaque to this package. A generated enum
+would put that vocabulary on this module's release cadence, which is the first
+of the three objections the README's Transports section says the split
+answered. A closed set the package itself defines is the opposite case and is an
+enum: settings.Kind is one.
+
+Scope binds off the connection and never off a request field.
+authentication/signin/grpc is the precedent, and audit is the sharp case: its
+Query.Scope is a *string in which nil means every tenant's events, and the
+field's own comment says getting it backwards is a cross-tenant disclosure
+rather than a wrong answer. Held in process that is a capability an operator
+built deliberately; put in a request field it is one any caller has.
+
+A surface owes a mapper pair beside its sentinels, an entry in
+errormappers.Register, and rows in internal/sentinelmatrix, which reds until
+every exported Err in the package is recorded as mapped, platform or unhandled.
+Of the ten still to cross, only dataprivacy has the pair today. Refusals whose
+wording is meant for the person reading them go to
+grpcerrors.RegisterClientSafeSentinels as well, or gRPC sends the code's name in
+place of the sentence.
+
+Two failures have already been paid for once here and should not be
+rediscovered. The first is that a grant on the method is not the whole answer:
+it says whether this kind of call is allowed at all, and which rows the caller
+may name is a second question — the one [TargetAuthorizer] above exists to ask,
+and a surface whose RPCs take their target from the request owes an equivalent.
+The second is that an ownership check standing in front of a write is not a
+check, because it reads through one connection what the write will act on
+through another. The owner belongs in the statement — a write keyed on the id,
+the scope and the owner together — rather than in a guard ahead of it.
 */
 package grpc
 

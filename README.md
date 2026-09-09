@@ -251,10 +251,44 @@ options with four defaults. `authentication/signin/grpc` serves it, and is the
 one surface in the module that reads its tenant off the connection rather than
 off a caller — because a caller signing in has not become one yet.
 
-`webhooks` endpoint management, `billing`, `settings`, `notifications`,
-`metering`, `audit`, `dataprivacy`, `saga`, `timers` and `workqueue` still ship
-a store and no handlers. Each is to follow `identity`, which is the
-pattern-setting one and the reason the rest waited; none has been filed yet.
+Ten more still ship a store and no handlers, and each is to follow `identity`.
+The transport is not uniform and neither is the subset of a store that crosses:
+
+| package | verdict | transport | carved out, and why |
+|---|---|---|---|
+| `waitlists` | wire surface, full | gRPC | — |
+| `comments` | wire surface, full | gRPC | the two bulk deletes — erasure machinery |
+| `issuereports` | wire surface, full | gRPC | `DeleteReportsByReporter` — erasure machinery |
+| `settings` | wire surface, full | gRPC | `DeleteValuesForSubject` — erasure machinery |
+| `notifications` | wire surface, both halves | gRPC | `CreateNotification`, `ListDevicesByPrincipals`, `InvalidateDeviceToken` |
+| `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the seven its store documents |
+| `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
+| `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, and `Query.Scope` itself |
+| `dataprivacy` | wire surface over the existing `Service` | HTTP | — |
+| `uploads/registry` | binding, not a resource surface | HTTP | all seven store methods; what ships is the guarded serve |
+
+Seven get nothing, and saying so is the point of this section rather than
+leaving them unmentioned: `metering`, `saga`, `timers`, `workqueue`, `outbox`,
+`retention` and `entitlements` are machinery. Their methods are called by a
+worker on a timer, or by your own code inside your own transaction, which is the
+same test the carve-outs above are made by. Owning a store is not what puts a
+package on the list; having a caller who is somebody else is.
+
+Two of the verdicts are not the house default, and each has a stated reason.
+`uploads/registry` is a binding rather than a resource surface. Its own
+documentation heads a section *"Why the row is the access control"* — whether
+this caller may read this object is answered from the owner and the scope on the
+row, not from the bucket — and then declines to act on it, because nothing in
+that package opens, reads or removes an object. A metadata surface would ship
+seven flat methods and leave you the guarded serve, which is the half that gets
+written wrong: an unguessable key as the only protection a private document has.
+`dataprivacy` is on HTTP because its flow already is. Progress is answered by
+`operations/http` against `Request.OperationID` and the same event stream every
+other long-running thing here uses, `Confirm` is reached by somebody clicking a
+link in a mail the notifier sent, and the artifact arrives as a freshly minted,
+expiring `DownloadURL`. A gRPC surface would put submit, confirm and cancel on
+one protocol while the confirm click, the progress stream and the download all
+lived on another.
 
 The flows over those nouns are the other half of the same list, and sign-in is
 the first of them. Passkeys, session management, password reset and email
@@ -292,7 +326,7 @@ rather than your API. *Starting* an operation is yours, and is deliberately not
 there. `identity/grpc`, `authentication/signin/grpc` and
 `authentication/oauth2clients/grpc` are the other kind — a domain's own
 transport, shipped under the rule above rather than as an exception to it, and
-the first three of the ten listed above to cross.
+the first three of the thirteen to cross.
 
 The table is not written by hand either. `internal/cmd/readmegen` emits it on
 `make generate` from the `http` and `grpc` directories the tree ships, and
