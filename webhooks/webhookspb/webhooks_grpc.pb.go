@@ -1,0 +1,589 @@
+// Package primandproper.platform.webhooks.v1 is the wire schema for webhook
+// endpoint management: the settings screen half of webhooks, where an
+// operator registers a URL, picks the events it wants, rotates its signing
+// keys, and reads back what was actually delivered.
+//
+// It is not the delivery pipeline. Nine of the eighteen methods on
+// webhooks.Store are here and nine deliberately are not; the service comment
+// at the bottom of this file names all nine absences and why each one stays
+// off the wire.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/webhooks/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/webhooks/v1/webhooks.proto=github.com/primandproper/platform-go/v14/webhooks/webhookspb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # event_type is a string, and will not become an enum
+//
+// Every event type in this schema is an opaque string. The set of them is the
+// consumer's catalog -- webhooks.Catalog, supplied at construction because what
+// an event means is an application opinion and this library has none -- and a
+// generated enum would put that vocabulary on this module's release cadence,
+// which is the first of the three objections the README's Transports section
+// says the module split answered. Adding "order.refunded" would become a
+// platform-go release.
+//
+// It is the same ruling issuereports.Kind and comments.TargetType are under,
+// and comments' own documentation calls its catalog "the webhooks event
+// catalog's idea applied to a second problem," so the two agree by
+// construction. What a client gets instead of compile-time checking is a
+// refusal: an event type outside the catalog is rejected at subscription with
+// webhooks.ErrUnknownEventType rather than accepted into an endpoint that never
+// fires.
+//
+// # What is not here, and why
+//
+// No scope field, anywhere, and the name is reserved so there cannot be one. A
+// scope a client could name is a cross-tenant read hiding behind a request
+// field -- on this surface, a read of where another tenant's events are being
+// sent. It comes off the principal the consumer's interceptor put on the
+// context, and every statement behind these RPCs binds it, so an endpoint in
+// another tenant's scope reads as one that does not exist.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern and is
+// the half that holds: `reserved "scope";` is a schema protoc refuses to accept
+// a scope field into, in this repository and in a consumer's fork of the file
+// alike, whereas a comment is a request to the next author. It is reserved on
+// every request message and on the three messages a response is built from --
+// those carry no scope either, because every row a response returns belongs to
+// the scope the connection resolved, so the field would be telling a client
+// something it supplied.
+//
+// See identity.proto, which says the underlying rule at greater length.
+//
+// No signing key on any response. [WebhookSigningKeys] appears on exactly one
+// message in this schema -- [SaveEndpointRequest] -- and it travels in one
+// direction only. webhooks.Store.GetEndpoint reads an endpoint "secrets
+// included" and [WebhookEndpoint] has nowhere to put them, which is the
+// property rather than an oversight: a subscriber authenticates a delivery by
+// its HMAC, so a key readable back over an administrative API is a key
+// anybody who can read that API can forge deliveries with.
+//
+// The consequence is that a save is a full re-registration, keys included,
+// because there is no read that hands the current ones back. That is deliberate
+// and is not a silent hazard: an endpoint saved without keys is refused rather
+// than saved with none, so the failure is an error at the console and never a
+// subscriber whose signature checks quietly stopped matching.
+//
+// No created_by in any request. It is output-only, filled from the principal
+// the consumer's interceptor resolved, because provenance a caller could name
+// is provenance that says whatever the caller wanted it to.
+//
+// No payload, no delivery, no dispatch and no replay. Those belong to the
+// pipeline, and the service comment below says which of them were considered
+// and refused.
+
+// Code generated by protoc-gen-go-grpc. DO NOT EDIT.
+// versions:
+// - protoc-gen-go-grpc v1.5.1
+// - protoc             v6.33.1
+// source: primandproper/platform/webhooks/v1/webhooks.proto
+
+package webhookspb
+
+import (
+	context "context"
+
+	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
+)
+
+// This is a compile-time assertion to ensure that this generated file
+// is compatible with the grpc package it is being compiled against.
+// Requires gRPC-Go v1.64.0 or later.
+const _ = grpc.SupportPackageIsVersion9
+
+const (
+	WebhooksService_SaveEndpoint_FullMethodName        = "/primandproper.platform.webhooks.v1.WebhooksService/SaveEndpoint"
+	WebhooksService_GetEndpoint_FullMethodName         = "/primandproper.platform.webhooks.v1.WebhooksService/GetEndpoint"
+	WebhooksService_ListEndpoints_FullMethodName       = "/primandproper.platform.webhooks.v1.WebhooksService/ListEndpoints"
+	WebhooksService_ArchiveEndpoint_FullMethodName     = "/primandproper.platform.webhooks.v1.WebhooksService/ArchiveEndpoint"
+	WebhooksService_AddSubscription_FullMethodName     = "/primandproper.platform.webhooks.v1.WebhooksService/AddSubscription"
+	WebhooksService_GetSubscription_FullMethodName     = "/primandproper.platform.webhooks.v1.WebhooksService/GetSubscription"
+	WebhooksService_ListSubscriptions_FullMethodName   = "/primandproper.platform.webhooks.v1.WebhooksService/ListSubscriptions"
+	WebhooksService_ArchiveSubscription_FullMethodName = "/primandproper.platform.webhooks.v1.WebhooksService/ArchiveSubscription"
+	WebhooksService_ListAttempts_FullMethodName        = "/primandproper.platform.webhooks.v1.WebhooksService/ListAttempts"
+)
+
+// WebhooksServiceClient is the client API for WebhooksService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// WebhooksService is endpoint management and delivery history: the half of
+// webhooks that is a resource rather than a protocol, and the only half a
+// person ever touches.
+//
+// Nine RPCs over webhooks.Store's eighteen methods, each behind a grant and
+// each acting only within the tenant the caller's principal names. The other
+// nine are absent on purpose, in three groups.
+//
+// Seven are the delivery machinery, which webhooks.Store already documents
+// under "The delivery machinery takes neither": Claim, MarkDelivered,
+// RecordFailure, RecordAttempt, Requeue, Backlog and Reap take no executor at
+// all and run on the handle the store was built with. They are a worker
+// draining a queue on a timer, servicing itself; the queue protocol's
+// correctness is that a claim commits before the request goes out, and a caller
+// supplying a transaction -- which is what an RPC is -- would be choosing when
+// that commit happens.
+//
+// EndpointsForEvent is the eighth, and it is the internal fan-out: the
+// dispatcher asking itself who is subscribed on the way to its own work. Its
+// own documentation calls it "the query whose missing filter delivers one
+// account's event to every other account's subscribers," which is a sentence
+// about a query nobody outside the component should be issuing.
+//
+// Enqueue is the ninth and is the sharpest of them, because it is the one that
+// looks like it belongs here. It is consumer-facing: an application calls it to
+// fan an event out. But it "writes a delivery and one dispatch per endpoint, in
+// the caller's transaction, so both commit with whatever else that transaction
+// did" -- and that is the whole reason it exists. An RPC moves the write out of
+// the caller's transaction, so you get a delivery for a row that rolled back,
+// or a committed row nobody was ever told about. It is the same fact
+// audit.Recorder states about an audit entry: a record that can commit while
+// the change it describes rolls back is not a record of what happened, and no
+// amount of retrying fixes it after the fact.
+//
+// A consumer who wants an event dispatched from another process sends that
+// process's own RPC -- the one whose handler owns the transaction the write
+// belongs in -- and calls webhooks.Dispatcher.Dispatch inside it.
+type WebhooksServiceClient interface {
+	SaveEndpoint(ctx context.Context, in *SaveEndpointRequest, opts ...grpc.CallOption) (*SaveEndpointResponse, error)
+	GetEndpoint(ctx context.Context, in *GetEndpointRequest, opts ...grpc.CallOption) (*GetEndpointResponse, error)
+	ListEndpoints(ctx context.Context, in *ListEndpointsRequest, opts ...grpc.CallOption) (*ListEndpointsResponse, error)
+	ArchiveEndpoint(ctx context.Context, in *ArchiveEndpointRequest, opts ...grpc.CallOption) (*ArchiveEndpointResponse, error)
+	AddSubscription(ctx context.Context, in *AddSubscriptionRequest, opts ...grpc.CallOption) (*AddSubscriptionResponse, error)
+	GetSubscription(ctx context.Context, in *GetSubscriptionRequest, opts ...grpc.CallOption) (*GetSubscriptionResponse, error)
+	ListSubscriptions(ctx context.Context, in *ListSubscriptionsRequest, opts ...grpc.CallOption) (*ListSubscriptionsResponse, error)
+	ArchiveSubscription(ctx context.Context, in *ArchiveSubscriptionRequest, opts ...grpc.CallOption) (*ArchiveSubscriptionResponse, error)
+	ListAttempts(ctx context.Context, in *ListAttemptsRequest, opts ...grpc.CallOption) (*ListAttemptsResponse, error)
+}
+
+type webhooksServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewWebhooksServiceClient(cc grpc.ClientConnInterface) WebhooksServiceClient {
+	return &webhooksServiceClient{cc}
+}
+
+func (c *webhooksServiceClient) SaveEndpoint(ctx context.Context, in *SaveEndpointRequest, opts ...grpc.CallOption) (*SaveEndpointResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SaveEndpointResponse)
+	err := c.cc.Invoke(ctx, WebhooksService_SaveEndpoint_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *webhooksServiceClient) GetEndpoint(ctx context.Context, in *GetEndpointRequest, opts ...grpc.CallOption) (*GetEndpointResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetEndpointResponse)
+	err := c.cc.Invoke(ctx, WebhooksService_GetEndpoint_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *webhooksServiceClient) ListEndpoints(ctx context.Context, in *ListEndpointsRequest, opts ...grpc.CallOption) (*ListEndpointsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListEndpointsResponse)
+	err := c.cc.Invoke(ctx, WebhooksService_ListEndpoints_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *webhooksServiceClient) ArchiveEndpoint(ctx context.Context, in *ArchiveEndpointRequest, opts ...grpc.CallOption) (*ArchiveEndpointResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ArchiveEndpointResponse)
+	err := c.cc.Invoke(ctx, WebhooksService_ArchiveEndpoint_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *webhooksServiceClient) AddSubscription(ctx context.Context, in *AddSubscriptionRequest, opts ...grpc.CallOption) (*AddSubscriptionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AddSubscriptionResponse)
+	err := c.cc.Invoke(ctx, WebhooksService_AddSubscription_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *webhooksServiceClient) GetSubscription(ctx context.Context, in *GetSubscriptionRequest, opts ...grpc.CallOption) (*GetSubscriptionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetSubscriptionResponse)
+	err := c.cc.Invoke(ctx, WebhooksService_GetSubscription_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *webhooksServiceClient) ListSubscriptions(ctx context.Context, in *ListSubscriptionsRequest, opts ...grpc.CallOption) (*ListSubscriptionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSubscriptionsResponse)
+	err := c.cc.Invoke(ctx, WebhooksService_ListSubscriptions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *webhooksServiceClient) ArchiveSubscription(ctx context.Context, in *ArchiveSubscriptionRequest, opts ...grpc.CallOption) (*ArchiveSubscriptionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ArchiveSubscriptionResponse)
+	err := c.cc.Invoke(ctx, WebhooksService_ArchiveSubscription_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *webhooksServiceClient) ListAttempts(ctx context.Context, in *ListAttemptsRequest, opts ...grpc.CallOption) (*ListAttemptsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAttemptsResponse)
+	err := c.cc.Invoke(ctx, WebhooksService_ListAttempts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// WebhooksServiceServer is the server API for WebhooksService service.
+// All implementations must embed UnimplementedWebhooksServiceServer
+// for forward compatibility.
+//
+// WebhooksService is endpoint management and delivery history: the half of
+// webhooks that is a resource rather than a protocol, and the only half a
+// person ever touches.
+//
+// Nine RPCs over webhooks.Store's eighteen methods, each behind a grant and
+// each acting only within the tenant the caller's principal names. The other
+// nine are absent on purpose, in three groups.
+//
+// Seven are the delivery machinery, which webhooks.Store already documents
+// under "The delivery machinery takes neither": Claim, MarkDelivered,
+// RecordFailure, RecordAttempt, Requeue, Backlog and Reap take no executor at
+// all and run on the handle the store was built with. They are a worker
+// draining a queue on a timer, servicing itself; the queue protocol's
+// correctness is that a claim commits before the request goes out, and a caller
+// supplying a transaction -- which is what an RPC is -- would be choosing when
+// that commit happens.
+//
+// EndpointsForEvent is the eighth, and it is the internal fan-out: the
+// dispatcher asking itself who is subscribed on the way to its own work. Its
+// own documentation calls it "the query whose missing filter delivers one
+// account's event to every other account's subscribers," which is a sentence
+// about a query nobody outside the component should be issuing.
+//
+// Enqueue is the ninth and is the sharpest of them, because it is the one that
+// looks like it belongs here. It is consumer-facing: an application calls it to
+// fan an event out. But it "writes a delivery and one dispatch per endpoint, in
+// the caller's transaction, so both commit with whatever else that transaction
+// did" -- and that is the whole reason it exists. An RPC moves the write out of
+// the caller's transaction, so you get a delivery for a row that rolled back,
+// or a committed row nobody was ever told about. It is the same fact
+// audit.Recorder states about an audit entry: a record that can commit while
+// the change it describes rolls back is not a record of what happened, and no
+// amount of retrying fixes it after the fact.
+//
+// A consumer who wants an event dispatched from another process sends that
+// process's own RPC -- the one whose handler owns the transaction the write
+// belongs in -- and calls webhooks.Dispatcher.Dispatch inside it.
+type WebhooksServiceServer interface {
+	SaveEndpoint(context.Context, *SaveEndpointRequest) (*SaveEndpointResponse, error)
+	GetEndpoint(context.Context, *GetEndpointRequest) (*GetEndpointResponse, error)
+	ListEndpoints(context.Context, *ListEndpointsRequest) (*ListEndpointsResponse, error)
+	ArchiveEndpoint(context.Context, *ArchiveEndpointRequest) (*ArchiveEndpointResponse, error)
+	AddSubscription(context.Context, *AddSubscriptionRequest) (*AddSubscriptionResponse, error)
+	GetSubscription(context.Context, *GetSubscriptionRequest) (*GetSubscriptionResponse, error)
+	ListSubscriptions(context.Context, *ListSubscriptionsRequest) (*ListSubscriptionsResponse, error)
+	ArchiveSubscription(context.Context, *ArchiveSubscriptionRequest) (*ArchiveSubscriptionResponse, error)
+	ListAttempts(context.Context, *ListAttemptsRequest) (*ListAttemptsResponse, error)
+	mustEmbedUnimplementedWebhooksServiceServer()
+}
+
+// UnimplementedWebhooksServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedWebhooksServiceServer struct{}
+
+func (UnimplementedWebhooksServiceServer) SaveEndpoint(context.Context, *SaveEndpointRequest) (*SaveEndpointResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SaveEndpoint not implemented")
+}
+func (UnimplementedWebhooksServiceServer) GetEndpoint(context.Context, *GetEndpointRequest) (*GetEndpointResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetEndpoint not implemented")
+}
+func (UnimplementedWebhooksServiceServer) ListEndpoints(context.Context, *ListEndpointsRequest) (*ListEndpointsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListEndpoints not implemented")
+}
+func (UnimplementedWebhooksServiceServer) ArchiveEndpoint(context.Context, *ArchiveEndpointRequest) (*ArchiveEndpointResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ArchiveEndpoint not implemented")
+}
+func (UnimplementedWebhooksServiceServer) AddSubscription(context.Context, *AddSubscriptionRequest) (*AddSubscriptionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddSubscription not implemented")
+}
+func (UnimplementedWebhooksServiceServer) GetSubscription(context.Context, *GetSubscriptionRequest) (*GetSubscriptionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSubscription not implemented")
+}
+func (UnimplementedWebhooksServiceServer) ListSubscriptions(context.Context, *ListSubscriptionsRequest) (*ListSubscriptionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListSubscriptions not implemented")
+}
+func (UnimplementedWebhooksServiceServer) ArchiveSubscription(context.Context, *ArchiveSubscriptionRequest) (*ArchiveSubscriptionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ArchiveSubscription not implemented")
+}
+func (UnimplementedWebhooksServiceServer) ListAttempts(context.Context, *ListAttemptsRequest) (*ListAttemptsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAttempts not implemented")
+}
+func (UnimplementedWebhooksServiceServer) mustEmbedUnimplementedWebhooksServiceServer() {}
+func (UnimplementedWebhooksServiceServer) testEmbeddedByValue()                         {}
+
+// UnsafeWebhooksServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to WebhooksServiceServer will
+// result in compilation errors.
+type UnsafeWebhooksServiceServer interface {
+	mustEmbedUnimplementedWebhooksServiceServer()
+}
+
+func RegisterWebhooksServiceServer(s grpc.ServiceRegistrar, srv WebhooksServiceServer) {
+	// If the following call pancis, it indicates UnimplementedWebhooksServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&WebhooksService_ServiceDesc, srv)
+}
+
+func _WebhooksService_SaveEndpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SaveEndpointRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhooksServiceServer).SaveEndpoint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhooksService_SaveEndpoint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhooksServiceServer).SaveEndpoint(ctx, req.(*SaveEndpointRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WebhooksService_GetEndpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetEndpointRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhooksServiceServer).GetEndpoint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhooksService_GetEndpoint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhooksServiceServer).GetEndpoint(ctx, req.(*GetEndpointRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WebhooksService_ListEndpoints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListEndpointsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhooksServiceServer).ListEndpoints(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhooksService_ListEndpoints_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhooksServiceServer).ListEndpoints(ctx, req.(*ListEndpointsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WebhooksService_ArchiveEndpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ArchiveEndpointRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhooksServiceServer).ArchiveEndpoint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhooksService_ArchiveEndpoint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhooksServiceServer).ArchiveEndpoint(ctx, req.(*ArchiveEndpointRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WebhooksService_AddSubscription_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddSubscriptionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhooksServiceServer).AddSubscription(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhooksService_AddSubscription_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhooksServiceServer).AddSubscription(ctx, req.(*AddSubscriptionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WebhooksService_GetSubscription_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSubscriptionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhooksServiceServer).GetSubscription(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhooksService_GetSubscription_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhooksServiceServer).GetSubscription(ctx, req.(*GetSubscriptionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WebhooksService_ListSubscriptions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSubscriptionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhooksServiceServer).ListSubscriptions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhooksService_ListSubscriptions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhooksServiceServer).ListSubscriptions(ctx, req.(*ListSubscriptionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WebhooksService_ArchiveSubscription_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ArchiveSubscriptionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhooksServiceServer).ArchiveSubscription(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhooksService_ArchiveSubscription_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhooksServiceServer).ArchiveSubscription(ctx, req.(*ArchiveSubscriptionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WebhooksService_ListAttempts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAttemptsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhooksServiceServer).ListAttempts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhooksService_ListAttempts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhooksServiceServer).ListAttempts(ctx, req.(*ListAttemptsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// WebhooksService_ServiceDesc is the grpc.ServiceDesc for WebhooksService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var WebhooksService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "primandproper.platform.webhooks.v1.WebhooksService",
+	HandlerType: (*WebhooksServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "SaveEndpoint",
+			Handler:    _WebhooksService_SaveEndpoint_Handler,
+		},
+		{
+			MethodName: "GetEndpoint",
+			Handler:    _WebhooksService_GetEndpoint_Handler,
+		},
+		{
+			MethodName: "ListEndpoints",
+			Handler:    _WebhooksService_ListEndpoints_Handler,
+		},
+		{
+			MethodName: "ArchiveEndpoint",
+			Handler:    _WebhooksService_ArchiveEndpoint_Handler,
+		},
+		{
+			MethodName: "AddSubscription",
+			Handler:    _WebhooksService_AddSubscription_Handler,
+		},
+		{
+			MethodName: "GetSubscription",
+			Handler:    _WebhooksService_GetSubscription_Handler,
+		},
+		{
+			MethodName: "ListSubscriptions",
+			Handler:    _WebhooksService_ListSubscriptions_Handler,
+		},
+		{
+			MethodName: "ArchiveSubscription",
+			Handler:    _WebhooksService_ArchiveSubscription_Handler,
+		},
+		{
+			MethodName: "ListAttempts",
+			Handler:    _WebhooksService_ListAttempts_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "primandproper/platform/webhooks/v1/webhooks.proto",
+}

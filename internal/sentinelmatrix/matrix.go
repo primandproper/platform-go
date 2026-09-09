@@ -3,14 +3,19 @@ package sentinelmatrix
 import (
 	"slices"
 
+	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v14/billing"
+	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	"github.com/primandproper/platform-go/v14/links"
+	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
+	"github.com/primandproper/platform-go/v14/webhooks"
 
 	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
 	httperrors "github.com/primandproper/primitives-go/errors/http"
@@ -47,7 +52,7 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are eight
+// The packages that map their own sentinels, spelled once each; there are thirteen
 // today. Each name is three things — a key in Matrix, an entry in Packages and a
 // case in Mappers — and a package that declares a pair later is added in all
 // three together.
@@ -55,6 +60,7 @@ func (d Disposition) String() string {
 // Each is a path relative to the module root rather than a package name,
 // because that is what the roster's own test reads the rows out of.
 const (
+	auditPkg         = "audit"
 	dataPrivacyPkg   = "dataprivacy"
 	identityPkg      = "identity"
 	linksPkg         = "links"
@@ -62,6 +68,10 @@ const (
 	sessionsPkg      = "sessions"
 	signInPkg        = "authentication/signin"
 	oauth2ClientsPkg = "authentication/oauth2clients"
+	notificationsPkg = "notifications"
+	commentsPkg      = "comments"
+	webhooksPkg      = "webhooks"
+	billingPkg       = "billing"
 	issueReportsPkg  = "issuereports"
 )
 
@@ -71,13 +81,111 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the eight
+// Matrix is the decision made about every exported sentinel in the thirteen
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
 //
 //nolint:goconst // The keys are sentinel identifiers in four other packages, and three of those packages have an ErrNilStore. That they collide is a fact the roster records, not a constant this one should extract.
 var Matrix = map[string]map[string]Decision{
+	auditPkg: {
+		// The one thing a reader of the log can be told about a request rather
+		// than about the process serving it. An entry never written, one
+		// retention has pruned, one that was deleted and one in another
+		// tenant's log all arrive as this, and audit/grpc answers all four the
+		// same way on purpose — see that package's GetEntry.
+		"ErrEntryNotFound": {Err: audit.ErrEntryNotFound, Is: Mapped},
+
+		// The nil-argument sentinels, which wrap errors.ErrNilInputParameter
+		// and are answered by the platform mapper for that reason.
+		"ErrNilDatabaseClient": {Err: audit.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilEntry":          {Err: audit.ErrNilEntry, Is: Platform},
+		"ErrNilExecutor":       {Err: audit.ErrNilExecutor, Is: Platform},
+
+		// Everything raised while the consumer's own code assembles an entry or
+		// wires this package up. None of them is anything a client sent: an
+		// entry with no resource type, no event type or no actor was built by
+		// the process recording it, a diff of two different types is a call in
+		// that process, and a table prefix is configuration. A 500 is the
+		// honest answer to a request that failed because the service was built
+		// wrong.
+		"ErrDiffTypeMismatch":   {Err: audit.ErrDiffTypeMismatch, Is: Unhandled},
+		"ErrEmptyActor":         {Err: audit.ErrEmptyActor, Is: Unhandled},
+		"ErrEmptyEventType":     {Err: audit.ErrEmptyEventType, Is: Unhandled},
+		"ErrEmptyResourceType":  {Err: audit.ErrEmptyResourceType, Is: Unhandled},
+		"ErrInvalidTablePrefix": {Err: audit.ErrInvalidTablePrefix, Is: Unhandled},
+		"ErrMalformedHash":      {Err: audit.ErrMalformedHash, Is: Unhandled},
+		"ErrNotAStruct":         {Err: audit.ErrNotAStruct, Is: Unhandled},
+		"ErrNothingToDiff":      {Err: audit.ErrNothingToDiff, Is: Unhandled},
+
+		// Not returned by Verify at all: a break is a finding, carried in the
+		// VerificationResult, and audit/grpc answers one with an ordinary
+		// response. It reaches a transport only through a consumer who chose to
+		// escalate it, at which point what it means is theirs to decide.
+		"ErrChainBroken": {Err: audit.ErrChainBroken, Is: Unhandled},
+	},
+
+	billingPkg: {
+		// The four absences, one per table. Each is what a client naming a row
+		// that is gone, archived, or in another scope is told, and the three
+		// cases are one answer so that a read cannot be used to enumerate
+		// another tenant's catalog or ledger.
+		"ErrProductNotFound":      {Err: billing.ErrProductNotFound, Is: Mapped},
+		"ErrPurchaseNotFound":     {Err: billing.ErrPurchaseNotFound, Is: Mapped},
+		"ErrSubscriptionNotFound": {Err: billing.ErrSubscriptionNotFound, Is: Mapped},
+		"ErrTransactionNotFound":  {Err: billing.ErrTransactionNotFound, Is: Mapped},
+
+		// The five collisions on a unique key. Four are a payment provider's
+		// identifier arriving twice, which is the ordinary redelivery this
+		// schema is shaped around, and ErrIDTaken is an application handing out
+		// an id it has already used. All five are a conflict rather than a
+		// server fault, which is what lets a webhook receiver acknowledge the
+		// delivery instead of retrying it forever.
+		"ErrIDTaken":            {Err: billing.ErrIDTaken, Is: Mapped},
+		"ErrProductExists":      {Err: billing.ErrProductExists, Is: Mapped},
+		"ErrPurchaseExists":     {Err: billing.ErrPurchaseExists, Is: Mapped},
+		"ErrSubscriptionExists": {Err: billing.ErrSubscriptionExists, Is: Mapped},
+		"ErrTransactionExists":  {Err: billing.ErrTransactionExists, Is: Mapped},
+
+		// The two answers a guarded write gives a replay: the status was
+		// already where the event would have put it, and the money had already
+		// arrived. Neither is a failure, and a 500 would tell a caller to retry
+		// work that has been done.
+		"ErrAlreadyCompleted": {Err: billing.ErrAlreadyCompleted, Is: Mapped},
+		"ErrStatusUnchanged":  {Err: billing.ErrStatusUnchanged, Is: Mapped},
+
+		// The seven a caller can correct, each naming a field rather than the
+		// call. They are mapped rather than left to the platform because none of
+		// them wraps a platform sentinel: they are judgements about a value that
+		// was supplied, not about one that was missing.
+		"ErrAmbiguousTransaction":      {Err: billing.ErrAmbiguousTransaction, Is: Mapped},
+		"ErrBackwardsPeriod":           {Err: billing.ErrBackwardsPeriod, Is: Mapped},
+		"ErrInvalidCurrency":           {Err: billing.ErrInvalidCurrency, Is: Mapped},
+		"ErrInvalidKind":               {Err: billing.ErrInvalidKind, Is: Mapped},
+		"ErrInvalidStatus":             {Err: billing.ErrInvalidStatus, Is: Mapped},
+		"ErrNegativeAmount":            {Err: billing.ErrNegativeAmount, Is: Mapped},
+		"ErrUnexpectedBillingInterval": {Err: billing.ErrUnexpectedBillingInterval, Is: Mapped},
+
+		// Wrap errors.ErrNilInputParameter, so the platform mappers answer them.
+		// Every one is a caller that passed no executor or no entity, which is a
+		// wiring failure rather than anything a client sent.
+		"ErrNilDatabaseClient": {Err: billing.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: billing.ErrNilExecutor, Is: Platform},
+		"ErrNilProduct":        {Err: billing.ErrNilProduct, Is: Platform},
+		"ErrNilPurchase":       {Err: billing.ErrNilPurchase, Is: Platform},
+		"ErrNilSubscription":   {Err: billing.ErrNilSubscription, Is: Platform},
+		"ErrNilTransaction":    {Err: billing.ErrNilTransaction, Is: Platform},
+
+		// Wrap errors.ErrEmptyInputParameter, which the platform mappers already
+		// answer as a bad request. A case of this package's own would be a
+		// second copy of that decision, free to drift from it.
+		"ErrEmptyAccount":         {Err: billing.ErrEmptyAccount, Is: Platform},
+		"ErrEmptyBillingInterval": {Err: billing.ErrEmptyBillingInterval, Is: Platform},
+		"ErrEmptyExternalID":      {Err: billing.ErrEmptyExternalID, Is: Platform},
+		"ErrEmptyPeriod":          {Err: billing.ErrEmptyPeriod, Is: Platform},
+		"ErrEmptyProduct":         {Err: billing.ErrEmptyProduct, Is: Platform},
+		"ErrEmptyProductName":     {Err: billing.ErrEmptyProductName, Is: Platform},
+	},
 	dataPrivacyPkg: {
 		// A subject asking after their own export or erasure is a client. These five
 		// are the answers they can act on: the ID is not one of theirs, the request
@@ -345,6 +453,143 @@ var Matrix = map[string]map[string]Decision{
 		// answer and no mapper claims it.
 		"ErrTOTPIssuerNotConfigured": {Err: signin.ErrTOTPIssuerNotConfigured, Is: Unhandled},
 	},
+	notificationsPkg: {
+		// The two reads' one answer. Absent, archived, and belonging to somebody
+		// else are deliberately the same 404 on both seams, which is what keeps a
+		// read by id from telling a caller what other people have been told and
+		// which handsets they hold.
+		"ErrNotificationNotFound": {Err: notifications.ErrNotificationNotFound, Is: Mapped},
+		"ErrDeviceNotFound":       {Err: notifications.ErrDeviceNotFound, Is: Mapped},
+
+		// The four a caller can correct, each naming its field. Three of them are
+		// reachable from notifications/grpc — a registration with no token, one
+		// naming no platform, one naming a platform this module does not serve —
+		// and ErrEmptyTopic is reachable from an HTTP handler a consumer writes
+		// over CreateNotification, which is the write that has no RPC.
+		"ErrEmptyPrincipal":  {Err: notifications.ErrEmptyPrincipal, Is: Mapped},
+		"ErrEmptyTopic":      {Err: notifications.ErrEmptyTopic, Is: Mapped},
+		"ErrEmptyToken":      {Err: notifications.ErrEmptyToken, Is: Mapped},
+		"ErrUnknownPlatform": {Err: notifications.ErrUnknownPlatform, Is: Mapped},
+
+		// A write whose entity names a different scope than the write does,
+		// refused rather than corrected. It is the same row oauth2clients carries
+		// and for the same reason: the caller holds both halves.
+		"ErrScopeMismatch": {Err: notifications.ErrScopeMismatch, Is: Mapped},
+
+		// The wiring failures. Each wraps a platform sentinel that errors/http
+		// and errors/grpc already answer, so this package's mappers say nothing
+		// about them.
+		"ErrNilDatabaseClient": {Err: notifications.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilDevice":         {Err: notifications.ErrNilDevice, Is: Platform},
+		"ErrNilExecutor":       {Err: notifications.ErrNilExecutor, Is: Platform},
+		"ErrNilNotification":   {Err: notifications.ErrNilNotification, Is: Platform},
+	},
+
+	commentsPkg: {
+		// The twelve a person writing or moderating a comment can act on. Nine
+		// are something about the request they just sent — a target type outside
+		// the consumer's catalog, a reply to a reply, a reply filed under a
+		// different discussion than its parent, an empty body, a read of replies
+		// that named no parent, a target missing one of its two halves, a comment
+		// attributed to nobody, and a comment written into a scope it does not
+		// name — and three are a row they named and cannot reach.
+		//
+		// The three not-found answers are three different absences and stay
+		// separate on purpose: the comment they named, the comment they were
+		// replying to, and the thing being discussed. A client shown the second
+		// has a discussion that moved under them; one shown the third has a stale
+		// list.
+		//
+		// ErrCommentNotFound is one answer for absent, archived and in another
+		// tenant's scope, which is what keeps a read from being an enumeration
+		// oracle over other tenants' discussions — and is why it is the one
+		// not-found here that is not client-safe.
+		"ErrCommentNotFound":   {Err: comments.ErrCommentNotFound, Is: Mapped},
+		"ErrEmptyAuthor":       {Err: comments.ErrEmptyAuthor, Is: Mapped},
+		"ErrEmptyBody":         {Err: comments.ErrEmptyBody, Is: Mapped},
+		"ErrEmptyParent":       {Err: comments.ErrEmptyParent, Is: Mapped},
+		"ErrEmptyTargetID":     {Err: comments.ErrEmptyTargetID, Is: Mapped},
+		"ErrEmptyTargetType":   {Err: comments.ErrEmptyTargetType, Is: Mapped},
+		"ErrNestedReply":       {Err: comments.ErrNestedReply, Is: Mapped},
+		"ErrParentNotFound":    {Err: comments.ErrParentNotFound, Is: Mapped},
+		"ErrScopeMismatch":     {Err: comments.ErrScopeMismatch, Is: Mapped},
+		"ErrTargetMismatch":    {Err: comments.ErrTargetMismatch, Is: Mapped},
+		"ErrTargetNotFound":    {Err: comments.ErrTargetNotFound, Is: Mapped},
+		"ErrUnknownTargetType": {Err: comments.ErrUnknownTargetType, Is: Mapped},
+
+		// The three that are somebody else's sentinel, answered by the platform
+		// mappers because that is the tier those sentinels belong to. All three
+		// wrap errors.ErrNilInputParameter, and all three are a nil argument
+		// inside the process rather than anything a request can express: no
+		// executor, no comment, no client. comments/grpc refuses a request whose
+		// comment field was never set with a sentinel of its own instead, where
+		// the answer is about that request rather than about the argument.
+		"ErrNilComment":        {Err: comments.ErrNilComment, Is: Platform},
+		"ErrNilDatabaseClient": {Err: comments.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: comments.ErrNilExecutor, Is: Platform},
+	},
+
+	webhooksPkg: {
+		// The eight an operator managing endpoints can act on. Six are a field in
+		// the request they just sent — a URL that is not https, a host that is not
+		// reachable from the internet, a header this module reserves, an endpoint
+		// subscribing to nothing, an event type outside the consumer's catalog, an
+		// endpoint written into a scope it does not name — and two are the state
+		// they are writing against: an identifier another tenant already holds, and
+		// an endpoint disabled while somebody replays a delivery to it.
+		//
+		// The two not-found answers are one answer for absent, archived and in
+		// another tenant's scope, which is what keeps a read from being an
+		// enumeration oracle over somebody else's endpoints.
+		"ErrDeliveryNotFound":       {Err: webhooks.ErrDeliveryNotFound, Is: Mapped},
+		"ErrDisallowedEndpointHost": {Err: webhooks.ErrDisallowedEndpointHost, Is: Mapped},
+		"ErrEndpointDisabled":       {Err: webhooks.ErrEndpointDisabled, Is: Mapped},
+		"ErrEndpointOutOfScope":     {Err: webhooks.ErrEndpointOutOfScope, Is: Mapped},
+		"ErrInvalidEndpointURL":     {Err: webhooks.ErrInvalidEndpointURL, Is: Mapped},
+		"ErrNoEvents":               {Err: webhooks.ErrNoEvents, Is: Mapped},
+		"ErrReservedHeader":         {Err: webhooks.ErrReservedHeader, Is: Mapped},
+		"ErrScopeMismatch":          {Err: webhooks.ErrScopeMismatch, Is: Mapped},
+		"ErrUnknownEventType":       {Err: webhooks.ErrUnknownEventType, Is: Mapped},
+		"ErrUnknownSubscription":    {Err: webhooks.ErrUnknownSubscription, Is: Mapped},
+
+		// The ones that are somebody else's sentinel, answered by the platform
+		// mappers because that is the tier those sentinels belong to.
+		//
+		// Four wrap errors.ErrNilInputParameter and one wraps
+		// errors.ErrEmptyInputParameter. ErrNoScope is tenancy's own and wraps the
+		// empty-parameter sentinel too, which is why a scopeless call resolves the
+		// same way whether it was caught at registration, at dispatch, or by the
+		// driver. ErrCircuitOpen wraps circuitbreaking.ErrCircuitBroken and gets
+		// that sentinel's 503 and Unavailable — a webhooks case would be this
+		// package deciding what a primitive's sentinel means everywhere in the
+		// process.
+		"ErrCircuitOpen":       {Err: webhooks.ErrCircuitOpen, Is: Platform},
+		"ErrEmptyEventType":    {Err: webhooks.ErrEmptyEventType, Is: Platform},
+		"ErrNilDatabaseClient": {Err: webhooks.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilDelivery":       {Err: webhooks.ErrNilDelivery, Is: Platform},
+		"ErrNilEndpoint":       {Err: webhooks.ErrNilEndpoint, Is: Platform},
+		"ErrNilExecutor":       {Err: webhooks.ErrNilExecutor, Is: Platform},
+		"ErrNilStore":          {Err: webhooks.ErrNilStore, Is: Platform},
+		"ErrNoScope":           {Err: webhooks.ErrNoScope, Is: Platform},
+
+		// The three nobody answers. ErrLeaseTooShort is a worker configured with a
+		// lease that does not outlast its own request timeout, which is a process
+		// that should not have started. ErrNonSuccessStatus is a subscriber
+		// answering 4xx or 5xx, which is the delivery worker's own business and
+		// reaches no client of this module at all.
+		//
+		// ErrNoSigningSecret is the one that looks mappable. It is
+		// requestsigning.ErrNoSigningKey rather than a sentinel of this package's,
+		// deliberately, so that an endpoint refused at registration and a delivery
+		// that failed to sign report the same condition — and a case for it here
+		// would install that answer for every other caller of requestsigning in the
+		// process, where a keyring with no key is a wiring failure and a 500 is
+		// honest. webhooks/grpc refuses a keyless save at the request instead, with
+		// codes.InvalidArgument as that one call site's default.
+		"ErrLeaseTooShort":    {Err: webhooks.ErrLeaseTooShort, Is: Unhandled},
+		"ErrNoSigningSecret":  {Err: webhooks.ErrNoSigningSecret, Is: Unhandled},
+		"ErrNonSuccessStatus": {Err: webhooks.ErrNonSuccessStatus, Is: Unhandled},
+	},
 
 	issueReportsPkg: {
 		// The eight a caller working a report queue can act on. Four are the
@@ -382,8 +627,9 @@ var Matrix = map[string]map[string]Decision{
 // module root. They are the eight that export mappers of their own; a package
 // that declares a pair later is added here, in Matrix and in Mappers together.
 var Packages = []string{
-	dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg,
-	oauth2ClientsPkg, issueReportsPkg,
+	auditPkg, dataPrivacyPkg, identityPkg, linksPkg, operationsPkg,
+	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
+	webhooksPkg, billingPkg, issueReportsPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
@@ -391,6 +637,8 @@ var Packages = []string{
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
+	case auditPkg:
+		return audit.HTTPMapper, audit.GRPCMapper
 	case dataPrivacyPkg:
 		return dataprivacy.HTTPMapper, dataprivacy.GRPCMapper
 	case identityPkg:
@@ -405,6 +653,14 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return signin.HTTPMapper, signin.GRPCMapper
 	case oauth2ClientsPkg:
 		return oauth2clients.HTTPMapper, oauth2clients.GRPCMapper
+	case notificationsPkg:
+		return notifications.HTTPMapper, notifications.GRPCMapper
+	case commentsPkg:
+		return comments.HTTPMapper, comments.GRPCMapper
+	case webhooksPkg:
+		return webhooks.HTTPMapper, webhooks.GRPCMapper
+	case billingPkg:
+		return billing.HTTPMapper, billing.GRPCMapper
 	case issueReportsPkg:
 		return issuereports.HTTPMapper, issuereports.GRPCMapper
 	default:

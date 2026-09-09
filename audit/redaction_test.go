@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/primitives-go/tenancy"
+
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
@@ -222,7 +224,7 @@ func TestRedaction(T *testing.T) {
 			},
 		})
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	})
