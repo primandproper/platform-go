@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
+	"github.com/primandproper/platform-go/v14/settings"
 	"github.com/primandproper/platform-go/v14/webhooks"
 
 	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
@@ -24,7 +25,7 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all thirteen unconditionally, including for a service that has
+// It registers all fourteen unconditionally, including for a service that has
 // no privacy requests, runs no operations, reads no audit log, tells nobody
 // anything, delivers no webhooks, sells nothing, hears no complaints and has
 // nobody signing in. An unused mapper costs one comparison against a sentinel
@@ -131,4 +132,14 @@ func Register() {
 	// instruction each, and the code carries neither. See
 	// issuereports.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(issuereports.ClientSafeSentinels...)
+
+	httperrors.RegisterHTTPErrorMapper(settings.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(settings.GRPCMapper)
+
+	// The fourth set whose wording is meant for the person reading it. Three of
+	// settings' refusals are codes.NotFound — no such setting, nobody has set
+	// it, and it has no value and no default — which are three different things
+	// to tell somebody, and one of the six names the row an administrator has to
+	// clear before their edit can land. See settings.ClientSafeSentinels.
+	grpcerrors.RegisterClientSafeSentinels(settings.ClientSafeSentinels...)
 }
