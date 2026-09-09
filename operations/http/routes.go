@@ -113,11 +113,14 @@ func New(svc operations.Service, opts ...Option) (*Handlers, error) {
 	// for capacity is a 500 rather than a 429 the client can back off from.
 	//
 	// This is the one exception to the rule that the composition root registers
-	// the domain tier, and the only place in the module that can be one: it is
-	// the only surface here that both answers through errors/http and belongs to
-	// a package errormappers.Register names. dataprivacy and links ship no
-	// transport at all, and sessions/http ships one that never writes an error
-	// response, so neither has anywhere to make this statement.
+	// the domain tier, and it stays one: this was the only surface here that
+	// both answered through errors/http and belonged to a package
+	// errormappers.Register names. dataprivacy/http is a second one now and
+	// registers nothing, because a mapper set assembled from whichever handlers
+	// a binary happens to have constructed is not one a consumer can read off a
+	// single call. links ships no transport at all, and sessions/http ships one
+	// that never writes an error response, so neither has anywhere to make this
+	// statement either.
 	//
 	// Here rather than in an init, because linking a package in is not a
 	// decision and building these handlers is: a consumer that constructs them

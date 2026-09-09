@@ -1,0 +1,324 @@
+// Package primandproper.platform.audit.v1 is the wire schema for reading the
+// audit log: one entry by id, a page of them, and a verification of one scope's
+// hash chain.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/audit/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/audit/v1/audit.proto=github.com/primandproper/platform-go/v14/audit/auditpb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Go links against the bindings this module already generated, in
+// github.com/primandproper/platform-go/v14/audit/auditpb. Swift, TypeScript and
+// Kotlin have no such bindings to link against and generate this file directly,
+// which is the whole point of shipping the schema.
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # There is no scope field, and there cannot be one
+//
+// audit.Query carries a scope selector in which nil means every tenant's
+// events, and that field's own documentation says getting it backwards is a
+// cross-tenant disclosure rather than a wrong answer. Held in a process it is a
+// capability an operator built deliberately, by constructing a Reader and
+// passing the query themselves. On a wire it would be a capability every caller
+// has, in a field a client fills in.
+//
+// So the scope is bound off the connection by audit/grpc, and the name "scope"
+// is reserved in every request message here. That is not a comment asking the
+// next author not to add one -- protoc refuses the field, in this repository
+// and in a consumer's fork of the schema alike.
+//
+// The entry messages carry no scope either. Every entry a response returns
+// belongs to the scope the connection resolved, so the field would tell a
+// client something it supplied, and its absence is what makes a converter
+// unable to read one back out of a request.
+//
+// # There is no recording RPC
+//
+// audit.Recorder is absent from this service on purpose, and the reason is on
+// the interface itself: an audit entry that can commit while the change it
+// describes rolls back -- or the reverse -- is not a record of what happened,
+// and no amount of retrying fixes it after the fact. A recording that crossed a
+// connection would commit in this service's transaction rather than in the
+// caller's, which is the one thing the whole package exists to prevent.
+//
+// What crosses is the reading, and Verify is the reason it is worth crossing:
+// walking a scope's chain and reporting the first break is the capability a
+// hand-written log reader never gets around to, and the one most worth calling
+// remotely and on a schedule.
+
+syntax = "proto3";
+
+package primandproper.platform.audit.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/filtering/v1/filtering.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/audit/auditpb;auditpb";
+
+// Actor is who did the thing an entry records.
+message Actor {
+  // id identifies the principal. Always set: an event with nobody responsible
+  // for it is refused at recording time.
+  string id = 1;
+
+  // type says what kind of principal it is -- "user", "service", "system" are
+  // the vocabulary this module suggests.
+  //
+  // It is a string rather than an enum because the taxonomy is the
+  // application's: a deployment whose fourth kind of principal is a partner
+  // integration should be able to say so without waiting for a release of this
+  // schema.
+  string type = 2;
+
+  // ip is the address the action arrived from, where there was one. It is
+  // recorded rather than derived at read time, because the association between
+  // a principal and an address is exactly what an investigation needs and is
+  // not recoverable afterwards.
+  string ip = 3;
+}
+
+// Change is one field's before and after.
+//
+// The two are Values rather than rendered strings, so a change to a numeric
+// field is still a number when a client reads it back and nobody is left
+// parsing. A creation has no old_value and a deletion has no new_value.
+message Change {
+  google.protobuf.Value old_value = 1;
+
+  google.protobuf.Value new_value = 2;
+}
+
+// Entry is one record in the audit log.
+//
+// It carries no scope: every entry in a response belongs to the scope the
+// connection resolved. See this file's own documentation.
+message Entry {
+  // id identifies the entry.
+  string id = 1;
+
+  // recorded_at is when the event happened.
+  //
+  // It is truncated to what the database will hand back unchanged --
+  // microseconds on Postgres and MySQL, whole seconds on SQLite -- because the
+  // digest is taken over the stored value. Order is not carried by it: the
+  // chain is defined by seq, and two entries recorded in one transaction share
+  // a timestamp.
+  google.protobuf.Timestamp recorded_at = 2;
+
+  // event_type names what happened -- "created", "updated", "deleted",
+  // "archived", "accessed" and "other" are the vocabulary this module
+  // suggests, and a consumer whose domain distinguishes "approved" from
+  // "updated" is expected to say so rather than flatten both.
+  //
+  // It is a string rather than an enum for that reason: the event taxonomy is
+  // the application's catalog, and a generated enum would put it on this
+  // module's release cadence.
+  string event_type = 3;
+
+  // resource_type names the kind of thing acted on. Always set.
+  string resource_type = 4;
+
+  // resource_id identifies the instance acted on.
+  string resource_id = 5;
+
+  // actor is who did it.
+  Actor actor = 6;
+
+  // changes is the per-field before and after, keyed by field name.
+  map<string, Change> changes = 7;
+
+  // metadata is free-form context -- a request id, a reason, a ticket
+  // reference.
+  map<string, string> metadata = 8;
+
+  // prev_hash is the hash of the preceding entry in this scope's chain,
+  // hex-encoded, or empty for the first entry in a scope.
+  string prev_hash = 9;
+
+  // hash is this entry's digest over prev_hash and its own canonical image,
+  // hex-encoded. It is what a deployment publishes somewhere the database's
+  // owner does not control, which is the only answer to a table replaced
+  // wholesale by a consistent forgery.
+  string hash = 10;
+
+  // seq is the entry's position in its scope's chain, starting at zero. It is
+  // unique per scope in the database, so the chain cannot fork.
+  int64 seq = 11;
+
+  reserved "scope";
+}
+
+// EntryQuery selects which entries a ListEntries returns.
+//
+// Every field is a conjunct: a query naming an actor and a resource type
+// matches that actor's events on that type. An empty field does not narrow, and
+// an empty query matches everything in the caller's scope.
+//
+// Each selector is one value rather than a set, which is the Go type's
+// constraint and not the wire's: a paged read narrowed by a bound set is a
+// statement two of the three dialects this package serves cannot hold. A client
+// wanting the union of two event types runs two reads.
+message EntryQuery {
+  // actor_id restricts to one principal.
+  string actor_id = 1;
+
+  // actor_type restricts to one kind of principal.
+  string actor_type = 2;
+
+  // resource_id restricts to one instance. Pair it with resource_type:
+  // instance ids are rarely unique across types.
+  string resource_id = 3;
+
+  // resource_type restricts to one kind of resource.
+  string resource_type = 4;
+
+  // event_type restricts to one kind of event.
+  string event_type = 5;
+
+  reserved "scope";
+}
+
+// BreakReason says how a chain failed to verify.
+//
+// Unlike the event and actor vocabularies this is a closed set that this module
+// defines, so it is an enum: a fourth way for a chain to break would be this
+// package finding one, not a consumer naming one.
+enum BreakReason {
+  BREAK_REASON_UNSPECIFIED = 0;
+
+  // The entry's stored hash is not the hash of the entry as it now reads: a
+  // column was changed after it was written.
+  BREAK_REASON_CONTENT_ALTERED = 1;
+
+  // The entry's recorded predecessor hash is not its predecessor's hash.
+  // Something was inserted, reordered, or rewritten.
+  BREAK_REASON_LINK_MISMATCH = 2;
+
+  // A position in the chain has no row and retention did not prune it: an entry
+  // was deleted.
+  BREAK_REASON_MISSING_ENTRY = 3;
+}
+
+// Break is where and how a chain stopped verifying.
+message Break {
+  // entry_id is the entry the break was detected at. It is empty for
+  // BREAK_REASON_MISSING_ENTRY, where the whole point is that there is no row.
+  string entry_id = 1;
+
+  // reason is what kind of break it is.
+  BreakReason reason = 2;
+
+  // expected is the hash the chain implies at this position.
+  string expected = 3;
+
+  // actual is the hash actually recorded there.
+  string actual = 4;
+
+  // seq is the position in the scope's chain.
+  int64 seq = 5;
+}
+
+// VerificationResult is what a verification found.
+//
+// There is deliberately no "intact" boolean. A chain held together exactly when
+// first_break is absent, and a second field saying so is a field that can
+// disagree with it -- which for this message would be a report calling a broken
+// log clean. The Go type makes the same refusal by exposing Intact as a method
+// rather than a field.
+message VerificationResult {
+  // from and to bound the window that was checked, as the request gave them. An
+  // absent bound was unbounded.
+  google.protobuf.Timestamp from = 1;
+
+  google.protobuf.Timestamp to = 2;
+
+  // first_break is where verification stopped, or absent if it did not.
+  //
+  // Only the first is reported, because after a break every subsequent link is
+  // evaluated against a predecessor already known to be wrong: the list of
+  // breaks after the first says how long the chain is, not how much of it was
+  // tampered with.
+  Break first_break = 3;
+
+  // checked is how many entries were walked.
+  int64 checked = 4;
+
+  reserved "scope";
+}
+
+message GetEntryRequest {
+  string entry_id = 1;
+
+  reserved "scope";
+}
+
+message GetEntryResponse {
+  Entry entry = 1;
+}
+
+message ListEntriesRequest {
+  EntryQuery query = 1;
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 2;
+
+  reserved "scope";
+}
+
+message ListEntriesResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+
+  repeated Entry results = 2;
+}
+
+message VerifyChainRequest {
+  // from and to bound the range to walk. An absent bound leaves that end
+  // unbounded, and a bound one is exclusive at both ends -- the same reading
+  // the window on a ListEntries filter has, since the two ask the same question
+  // of the same column.
+  google.protobuf.Timestamp from = 1;
+
+  google.protobuf.Timestamp to = 2;
+
+  reserved "scope";
+}
+
+message VerifyChainResponse {
+  VerificationResult result = 1;
+}
+
+// AuditService is the audit log on the wire: read one, page them, verify the
+// chain.
+//
+// Three RPCs, all reads, all against the one scope the connection resolved.
+// What is absent is the recording -- see this file's documentation for why a
+// write that belongs inside the caller's transaction cannot be an RPC.
+service AuditService {
+  // GetEntry reads one entry by id.
+  //
+  // An entry in another scope reads as absent, which is what it is from here.
+  rpc GetEntry(GetEntryRequest) returns (GetEntryResponse);
+
+  // ListEntries pages the caller's scope, narrowed by the query.
+  rpc ListEntries(ListEntriesRequest) returns (ListEntriesResponse);
+
+  // VerifyChain walks the caller's chain over a time range and reports the
+  // first break, or that there was none.
+  //
+  // A break is a finding rather than a failure: a chain that did not hold
+  // together is an ordinary response carrying first_break, not an error status.
+  // The error statuses here are the ones that mean the question could not be
+  // answered at all.
+  rpc VerifyChain(VerifyChainRequest) returns (VerifyChainResponse);
+}

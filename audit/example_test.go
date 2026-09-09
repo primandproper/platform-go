@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
 	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 type recipe struct {
@@ -66,7 +67,7 @@ func Example() {
 		panic(err)
 	}
 
-	result, err := reader.Verify(ctx, after.OwnerID, time.Time{}, time.Time{})
+	result, err := reader.Verify(ctx, tenancy.Of(after.OwnerID), time.Time{}, time.Time{})
 	if err != nil {
 		panic(err)
 	}

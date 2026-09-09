@@ -12,6 +12,7 @@ import (
 
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Ensure, that RecorderMock does implement audit.Recorder.
@@ -108,7 +109,7 @@ var _ audit.Reader = &ReaderMock{}
 //			ListFunc: func(ctx context.Context, q *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
 //				panic("mock out the List method")
 //			},
-//			VerifyFunc: func(ctx context.Context, scope string, from time.Time, to time.Time) (*audit.VerificationResult, error) {
+//			VerifyFunc: func(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time) (*audit.VerificationResult, error) {
 //				panic("mock out the Verify method")
 //			},
 //		}
@@ -125,7 +126,7 @@ type ReaderMock struct {
 	ListFunc func(ctx context.Context, q *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error)
 
 	// VerifyFunc mocks the Verify method.
-	VerifyFunc func(ctx context.Context, scope string, from time.Time, to time.Time) (*audit.VerificationResult, error)
+	VerifyFunc func(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time) (*audit.VerificationResult, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -150,7 +151,7 @@ type ReaderMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Scope is the scope argument value.
-			Scope string
+			Scope tenancy.Scope
 			// From is the from argument value.
 			From time.Time
 			// To is the to argument value.
@@ -239,13 +240,13 @@ func (mock *ReaderMock) ListCalls() []struct {
 }
 
 // Verify calls VerifyFunc.
-func (mock *ReaderMock) Verify(ctx context.Context, scope string, from time.Time, to time.Time) (*audit.VerificationResult, error) {
+func (mock *ReaderMock) Verify(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time) (*audit.VerificationResult, error) {
 	if mock.VerifyFunc == nil {
 		panic("ReaderMock.VerifyFunc: method is nil but Reader.Verify was just called")
 	}
 	callInfo := struct {
 		Ctx   context.Context
-		Scope string
+		Scope tenancy.Scope
 		From  time.Time
 		To    time.Time
 	}{
@@ -266,13 +267,13 @@ func (mock *ReaderMock) Verify(ctx context.Context, scope string, from time.Time
 //	len(mockedReader.VerifyCalls())
 func (mock *ReaderMock) VerifyCalls() []struct {
 	Ctx   context.Context
-	Scope string
+	Scope tenancy.Scope
 	From  time.Time
 	To    time.Time
 } {
 	var calls []struct {
 		Ctx   context.Context
-		Scope string
+		Scope tenancy.Scope
 		From  time.Time
 		To    time.Time
 	}

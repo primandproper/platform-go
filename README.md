@@ -40,7 +40,7 @@ Because breaking changes ride the major-version import path, upgrading across ma
 
 **OpenTelemetry throughout.** Every store, transport and worker here instruments through primitives-go's `observability`, whose logging, tracing, metrics and profiling pillars a consumer supplies once and threads everywhere.
 
-**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `authentication/oauth2clients`, `authentication/signin`, `comments`, `dataprivacy`, `identity`, `links`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all eight in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it is the only surface here that both answers through `errors/http` and belongs to a package on that list. `internal/sentinelmatrix` checks that every exported sentinel in those eight has a decision recorded and that it still holds on both transports.
+**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `audit`, `authentication/oauth2clients`, `authentication/signin`, `comments`, `dataprivacy`, `identity`, `links`, `notifications`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all ten in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it was the only surface here that both answered through `errors/http` and belonged to a package on that list; `dataprivacy/http` is a second one now and deliberately did not follow it, because one door stays one door. `internal/sentinelmatrix` checks that every exported sentinel in those ten has a decision recorded and that it still holds on both transports.
 
 ## Package Catalog
 
@@ -83,7 +83,7 @@ reasons behind the three exceptions.
 ### Records, privacy & retention
 | Package                  | Purpose                                              | Implementations         |
 |--------------------------|------------------------------------------------------|-------------------------|
-| `audit`                  | Tamper-evident audit log                             | postgres, mysql, sqlite |
+| `audit`                  | Tamper-evident audit log                             | postgres, mysql, sqlite (+ grpc) |
 | `dataprivacy`            | Subject access & erasure requests                    | postgres, mysql, sqlite |
 | `cryptography/shredding` | Per-subject data keys that can be destroyed          | postgres, mysql, sqlite |
 | `retention`              | Policy-driven expiry deletion                        | postgres, mysql, sqlite |
@@ -98,7 +98,7 @@ reasons behind the three exceptions.
 | `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres (+ http)       |
 | `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite |
 | `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite |
-| `notifications` | User notifications                                                                  | postgres, mysql, sqlite (+ async) |
+| `notifications` | User notifications                                                                  | postgres, mysql, sqlite (+ async, grpc) |
 | `search/sync`   | Reindexing worker driven by the outbox                                              | —                       |
 
 ### The composition root
@@ -251,6 +251,47 @@ options with four defaults. `authentication/signin/grpc` serves it, and is the
 one surface in the module that reads its tenant off the connection rather than
 off a caller — because a caller signing in has not become one yet.
 
+`audit` crosses too, and it is the one that ships **strictly narrower than its
+own interface**. `audit/grpc` serves the `Reader` and nothing else:
+read one entry, page them, verify a scope's hash chain. `Record` is not there
+and cannot be — an audit entry that can commit while the change it describes
+rolls back, or the reverse, is not a record of what happened, which is the
+sharpest instance of the rule that a write already inside your transaction is
+not an RPC. `Query.Scope` is not there either: in the Go type it is a `*string`
+in which nil means every tenant's events, so the scope binds off the connection
+and the schema *reserves* the field name, which makes the absence something
+`protoc` enforces rather than something a reviewer has to notice. What makes the
+crossing worth it is `Verify` — establishing that nobody edited, removed or
+reordered an entry is the capability a hand-written log reader never gets around
+to, and the one most worth calling remotely and on a schedule, which is why it
+is its own grant rather than a second use of the read one.
+
+`notifications` is the third across, and it is the first where the two halves of
+a package cross for two different reasons. The inbox half is the bell icon —
+list, list unread, get, mark one read, mark them all read, archive — which is
+the screen every consumer's application has and the code every consumer
+otherwise writes. The registry half is the strongest RPC case anywhere in the
+ten, because the caller is literally a remote device: a handset re-registers on
+every app launch and every token rotation, and the registration converges on
+(platform, token) rather than inserting, so a handset that changes hands has one
+owner.
+
+Three of its twelve store methods stay behind, and they are three different
+shapes of machinery rather than three instances of one — which is why this is
+the package the distinction is worth reading in. `CreateNotification` is the
+transactional companion: it files a notification in the caller's transaction so
+that it commits with the thing the notification is about, and an RPC would give
+you a refused order that has already told somebody it shipped.
+`ListDevicesByPrincipals` is the internal fan-out, one query for the tokens an
+announcement has to reach. `InvalidateDeviceToken` is the provider callback
+hook, and it is the one absence that is a security property rather than a shape:
+it removes a token whoever it belongs to, on the word of APNs or FCM, and
+published as an RPC it would delete any handset's registration in any tenant on
+the say-so of a caller claiming a provider said so. Nor does any response carry
+a device token: it travels in on one message, in one direction, so listing
+devices cannot become the call that harvests every push address an account
+holds.
+
 `comments` is across as well, and it is the surface where the opaque-catalog
 ruling is load-bearing. Threading one level deep, scoping, paging, editing,
 archiving and erasing is the same code in every application; what varies is the
@@ -267,20 +308,17 @@ a grant on the method cannot answer, *whose* comment this is, and
 `comments/grpc` ships it as a seam with a closed default: say nothing and
 authors edit and archive their own words and nobody else's.
 
-Nine more still ship a store and no handlers, and each is to follow `identity`.
-The transport is not uniform and neither is the subset of a store that crosses:
+Ten more were ruled on together, and each is to follow `identity`. The transport
+is not uniform and neither is the subset of a store that crosses:
 
 | package | verdict | transport | carved out, and why |
 |---|---|---|---|
 | `waitlists` | wire surface, full | gRPC | — |
 | `issuereports` | wire surface, full | gRPC | `DeleteReportsByReporter` — erasure machinery |
 | `settings` | wire surface, full | gRPC | `DeleteValuesForSubject` — erasure machinery |
-| `notifications` | wire surface, both halves | gRPC | `CreateNotification`, `ListDevicesByPrincipals`, `InvalidateDeviceToken` |
 | `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the seven its store documents |
 | `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
-| `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, and `Query.Scope` itself |
 | `dataprivacy` | wire surface over the existing `Service` | HTTP | — |
-| `uploads/registry` | binding, not a resource surface | HTTP | all seven store methods; what ships is the guarded serve |
 
 Seven get nothing, and saying so is the point of this section rather than
 leaving them unmentioned: `metering`, `saga`, `timers`, `workqueue`, `outbox`,
@@ -289,14 +327,7 @@ worker on a timer, or by your own code inside your own transaction, which is the
 same test the carve-outs above are made by. Owning a store is not what puts a
 package on the list; having a caller who is somebody else is.
 
-Two of the verdicts are not the house default, and each has a stated reason.
-`uploads/registry` is a binding rather than a resource surface. Its own
-documentation heads a section *"Why the row is the access control"* — whether
-this caller may read this object is answered from the owner and the scope on the
-row, not from the bucket — and then declines to act on it, because nothing in
-that package opens, reads or removes an object. A metadata surface would ship
-seven flat methods and leave you the guarded serve, which is the half that gets
-written wrong: an unguessable key as the only protection a private document has.
+One of the nine is not the house default, and it has a stated reason.
 `dataprivacy` is on HTTP because its flow already is. Progress is answered by
 `operations/http` against `Request.OperationID` and the same event stream every
 other long-running thing here uses, `Confirm` is reached by somebody clicking a
@@ -319,30 +350,51 @@ to hold to it. What is left here is the second half of that sentence, and it is
 the whole list.
 
 <!-- readmegen:transports -->
-| Transport                           | Kind             | Whose shape it is                                                                               |
-|-------------------------------------|------------------|-------------------------------------------------------------------------------------------------|
-| `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                             |
-| `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store` |
-| `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`           |
-| `comments/grpc`                     | resource surface | one noun and its whole lifecycle — over `comments.Store`                                        |
-| `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`               |
-| `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                |
+| Transport                           | Kind             | Whose shape it is                                                                                  |
+|-------------------------------------|------------------|----------------------------------------------------------------------------------------------------|
+| `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                |
+| `uploads/registry/http`             | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                          |
+| `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                                |
+| `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store`    |
+| `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`              |
+| `comments/grpc`                     | resource surface | one noun and its whole lifecycle — over `comments.Store`                                           |
+| `dataprivacy/http`                  | resource surface | submit, confirm, cancel and read a privacy request — over `dataprivacy.Service`                    |
+| `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`                  |
+| `notifications/grpc`                | resource surface | the in-app inbox and the device registry — over `notifications.Inbox` and `notifications.Registry` |
+| `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                   |
 <!-- /readmegen:transports -->
 
-One row is a binding rather than a surface. `sessions/http` binds a store to a
+Two rows are bindings rather than surfaces. `sessions/http` binds a store to a
 cookie, and a cookie's signing, encryption, `HttpOnly`, `Secure` and `SameSite`
 are security decisions this module already made — there is no resource of yours
 in it.
 
-The other five are resource surfaces, and they get there by two routes.
+`uploads/registry/http` makes the same claim about an object's bytes. Its store's
+documentation heads a section *"Why the row is the access control"* — whether
+this caller may read this object is answered from the owner and the scope on the
+row, not from the bucket — and then declines to act on it, because nothing in
+that package opens, reads or removes an object. A metadata surface would have
+shipped seven flat methods and left you the guarded serve, which is the half that
+gets written wrong: an unguessable key as the only protection a private document
+has, and a key is not a secret. What crosses instead is one route and the guard
+in front of it, and the decisions that come with it are security properties
+rather than API design — the row is read before the bucket is opened, a refusal
+is indistinguishable from an absence, a content type a browser executes is never
+served inline, and nothing is cached by a shared proxy. There is no resource of
+yours in that either: what is on the wire is bytes and a content type.
+
+The other eight are resource surfaces, and they get there by two routes.
 `operations/http` is entirely this module's own resource: an `Operation`, its
 two-tier progress and its state machine are types you did not define, and
 polling one or subscribing to its server-sent events is the pattern's protocol
 rather than your API. *Starting* an operation is yours, and is deliberately not
 there. `identity/grpc`, `authentication/signin/grpc`,
-`authentication/oauth2clients/grpc` and `comments/grpc` are the other kind — a
-domain's own transport, shipped under the rule above rather than as an exception
-to it, and the first four of the thirteen to cross.
+`authentication/oauth2clients/grpc`, `dataprivacy/http`, `audit/grpc`,
+`notifications/grpc` and `comments/grpc` are the other kind — a domain's own
+transport, shipped under the rule above rather than as an exception to it, and
+seven of the thirteen have crossed this way. Six of those seven are gRPC and
+the seventh is not, for the reason given above: `dataprivacy`'s flow was on
+HTTP before there was a handler in it.
 
 The table is not written by hand either. `internal/cmd/readmegen` emits it on
 `make generate` from the `http` and `grpc` directories the tree ships, and

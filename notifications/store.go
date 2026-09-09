@@ -53,6 +53,23 @@ import (
 // the registry servicing itself on a provider's word rather than answering a
 // consumer, and it says so on its own doc.
 //
+// # Nine of these twelve are on the wire and three are not
+//
+// notifications/grpc serves the inbox as six RPCs — ListNotifications,
+// ListUnreadNotifications, GetNotification, MarkNotificationRead,
+// MarkAllNotificationsRead and ArchiveNotification — and the registry as three:
+// RegisterDevice, ListDevices and RevokeDevice. Those nine are what a bell icon
+// and a device screen are made of, and the second three have a caller that is
+// literally a handset.
+//
+// The three that stay off it are three *different* shapes of machinery rather
+// than three instances of one, which is what makes this package the place to
+// read the distinction: [Inbox.CreateNotification] is the transactional
+// companion, [Registry.ListDevicesByPrincipals] is the internal fan-out, and
+// [Registry.InvalidateDeviceToken] is the provider callback hook. Each argues
+// its own case on its own method below, because a reader of this file is
+// standing where the question occurs to them.
+//
 // # The scope is an argument, on every method
 //
 // That includes the two writes that take a whole entity. [Inbox.CreateNotification]
@@ -89,6 +106,20 @@ type Inbox interface {
 	//
 	// A Notification.Scope that disagrees with the scope argument is
 	// ErrScopeMismatch; one that names none adopts the argument.
+	//
+	// It is off the wire, and the first sentence is why. This is the
+	// transactional companion: the realistic caller is the consumer's own code,
+	// telling somebody about the thing it is in the middle of writing. An RPC
+	// moves the write into a transaction of its own, on the far side of a
+	// network, at a moment the caller does not choose — so a refused order still
+	// tells somebody their order was placed, and the failure runs in the
+	// direction the user can see. It is the same fact audit.Recorder states
+	// about an audit entry, and the reason that method takes a Tx as well.
+	//
+	// A process that wants to notify somebody about something it did not cause
+	// is describing an RPC of its own, whose handler owns the transaction this
+	// write belongs in — which is exactly what notifications/grpc's own writes
+	// do with Client.WithTransaction.
 	CreateNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *Notification) error
 
 	// GetNotification reads one of the principal's live notifications. It
@@ -186,6 +217,16 @@ type Registry interface {
 	// Passed the transaction the inbox rows were written in, it sees the devices
 	// that transaction registered — which is the fan-out that pushes to a
 	// handset registered moments earlier in the same request.
+	//
+	// It is off the wire, and the two paragraphs above are why. This is the
+	// internal fan-out — a sender asking itself where to push on the way to its
+	// own work — so the caller who would reach for it over an RPC is not a
+	// caller at all. It also names other people's principals by construction,
+	// which is the one request field notifications.proto reserves the name of:
+	// every RPC on that surface reads the recipient off the connection, and a
+	// method taking a list of them would be the hole in that. A client that
+	// wants to know what handsets it has asks ListDevices, which is the same
+	// question bounded by the person asking.
 	ListDevicesByPrincipals(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principals []string) ([]*Device, error)
 
 	// RevokeDevice removes one of the principal's registrations through the
@@ -230,5 +271,16 @@ type Registry interface {
 	// It takes the platform and token as plain strings, which is what
 	// notifications/mobile.TokenInvalidator requires and what makes a Registry
 	// wirable into a sender without either package importing the other.
+	//
+	// It is off the wire, and here the reason is security rather than shape.
+	// This is the provider callback hook: what it acts on is a verdict APNs or
+	// FCM actually returned, and the sender that calls it is the code that
+	// received the verdict. Published as an RPC it becomes a call that deletes
+	// any handset's registration, in any tenant, on the say-so of a caller
+	// claiming a provider said so — because everything that makes the in-process
+	// version safe, the scope it does not need and the transaction it does not
+	// join, is exactly what makes the remote version unbounded. What a person
+	// signing a handset out wants is RevokeDevice, which names a device they own
+	// and is scoped and principal-bound like everything else on that surface.
 	InvalidateDeviceToken(ctx context.Context, platform, token string) error
 }

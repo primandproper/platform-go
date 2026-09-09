@@ -1,0 +1,346 @@
+// Package primandproper.platform.notifications.v1 is the wire schema for the
+// two halves of notifications: the in-app inbox a bell icon reads, and the
+// registry of handsets a push is addressed to.
+//
+// Nine of the twelve methods across notifications.Inbox and
+// notifications.Registry are here and three deliberately are not. The service
+// comment at the bottom of this file names all three and says which shape of
+// machinery each one is.
+//
+// This file is shipped inside the published Go module, and it is the file
+// itself that is shipped -- not a copy for you to keep in sync. A consumer puts
+// the module's proto directories on protoc's path and imports this file by its
+// canonical name, exactly as identity.proto and filtering.proto already work:
+//
+//	PLATFORM_PROTO := $(shell go list -m -f '{{.Dir}}' github.com/primandproper/platform-go/v14)
+//
+//	protoc --proto_path proto/ \
+//	    --proto_path $(PLATFORM_PROTO)/notifications/proto \
+//	    --proto_path $(PLATFORM_PROTO)/filtering/proto \
+//	    --go_opt=Mprimandproper/platform/notifications/v1/notifications.proto=github.com/primandproper/platform-go/v14/notifications/notificationspb \
+//	    $(CONSUMER_PROTO_FILES)   # the platform files deliberately absent from that list
+//
+// Field numbers are the compatibility promise, across every language a consumer
+// generates into. Numbers are never reused and never repurposed: a field that
+// goes away is reserved.
+//
+// # topic is a string and platform is an enum, and the difference is whose set it is
+//
+// [Notification]'s topic is opaque. The catalog of them -- order.shipped,
+// invite.received, whatever an application groups, mutes and routes by -- is
+// the consumer's, and notifications validates none of it, so a generated enum
+// would put that vocabulary on this module's release cadence. Adding
+// "subscription.lapsed" would become a platform-go release. It is the same
+// ruling issuereports.Kind and comments.TargetType are under.
+//
+// [DevicePlatform] is the opposite case and is therefore an enum. The set is
+// closed by what notifications/mobile can actually route to, which is this
+// module's fact rather than an application's: a token stored under a platform
+// no sender serves is a row that can never be delivered to and will never be
+// pruned, because the feedback that prunes rows comes from the provider that
+// rejected them. A string there would let a client register "IOS " and get a
+// row nothing ever reads.
+//
+// # What is not here, and why
+//
+// No scope field and no principal field, anywhere, and both names are reserved
+// so there cannot be one.
+//
+// The scope is the module-wide rule: a tenant a client could name is a
+// cross-tenant read hiding behind a request field. See identity.proto, which
+// says it at greater length.
+//
+// The principal is this schema's own, and on this surface it is the sharper of
+// the two. Every row here is addressed to one person -- a notification is not a
+// row the rest of their tenant may read, and a device token is not a handset the
+// rest of their tenant may revoke -- so a request naming a principal is a
+// request to read somebody else's bell icon. It comes off the caller the
+// consumer's interceptor put on the context, and every statement behind these
+// RPCs binds it, which is what makes "may this caller reach this row" a property
+// of the query rather than a check somebody has to remember to write. The
+// responses carry no principal either, because every row they return belongs to
+// the caller and the field would be telling a client something it supplied.
+//
+// Reserving the names rather than only saying so is audit.proto's pattern and
+// is the half that holds: `reserved "scope", "principal";` is a schema protoc
+// refuses those fields into, in this repository and in a consumer's fork of the
+// file alike, whereas a comment is a request to the next author.
+//
+// No device token on any response. It travels in on exactly one message --
+// [DeviceRegistrationInput] -- and in one direction only, and [Device] has
+// nowhere to put one. A handset knows its own token, because it minted it and
+// just sent it, so no read here exists to tell it; what a device list is for is
+// the other question, which is what is registered, on what, and when it was
+// last seen. Handing the set back the other way would make "list my devices"
+// the call that harvests every push address an account holds, and the row it
+// would harvest is the one notifications documents as the natural key.
+//
+// No unread count of its own. It is on the pagination of
+// [ListUnreadNotificationsResponse], filtered rather than paged, which is the
+// number a badge renders and is already the answer that read produces.
+
+syntax = "proto3";
+
+package primandproper.platform.notifications.v1;
+
+import "google/protobuf/timestamp.proto";
+import "primandproper/platform/filtering/v1/filtering.proto";
+
+option go_package = "github.com/primandproper/platform-go/v14/notifications/notificationspb;notificationspb";
+
+// DevicePlatform is which push provider a device token is addressed through.
+//
+// An enum rather than a string because the set is closed by this module: see
+// the file comment. UNSPECIFIED is proto3's zero and is never a platform a
+// registration may name -- a request carrying it is refused rather than
+// defaulted, because guessing which provider a token belongs to is guessing
+// which network a credential is sent to.
+enum DevicePlatform {
+  DEVICE_PLATFORM_UNSPECIFIED = 0;
+
+  // APNs. notifications/mobile spells it "ios".
+  DEVICE_PLATFORM_IOS = 1;
+
+  // FCM. notifications/mobile spells it "android".
+  DEVICE_PLATFORM_ANDROID = 2;
+}
+
+// Notification is one row of the caller's inbox: a thing they were told, and
+// whether they have read it.
+//
+// It carries no scope and no principal. See the file comment.
+message Notification {
+  reserved "scope", "principal";
+
+  // created_at is when the notification was filed, assigned by the database.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_updated_at is when the row last changed, which for this table means
+  // when it was read.
+  google.protobuf.Timestamp last_updated_at = 2;
+
+  // archived_at is when it was dismissed, unset while it is still in the inbox.
+  // No read on this surface returns an archived notification, so it is unset on
+  // everything a client sees today; it is here because the row outlives the
+  // inbox and a later read of what somebody was told would have nowhere to put
+  // it.
+  google.protobuf.Timestamp archived_at = 3;
+
+  // read_at is when the recipient read it, unset until they do.
+  //
+  // A timestamp rather than a boolean, because "when" answers "whether" and a
+  // boolean does not answer "when" -- which is what a digest that skips what
+  // somebody has already seen, and a re-notify that does not, are both about.
+  // It does not move: a second MarkNotificationRead keeps the first stamp.
+  google.protobuf.Timestamp read_at = 4;
+
+  // id is the row, and is what the three single-notification RPCs name one by.
+  string id = 5;
+
+  // topic is the application's own category: order.shipped, invite.received. A
+  // client groups, mutes and routes by it. Opaque here -- see the file comment.
+  string topic = 6;
+
+  // title is the headline and body is the rest, which may be empty. Both are
+  // text an application wrote for a person to read: render them, and treat them
+  // as untrusted as anything else that arrived over a wire.
+  string title = 7;
+  string body = 8;
+
+  // link is where reading it takes somebody, as the application spells it.
+  // Empty is a notification with nowhere to go.
+  string link = 9;
+}
+
+// Device is one handset of the caller's a push can be addressed to.
+//
+// It carries no token, no scope and no principal. See the file comment for all
+// three; the token is the one worth reading about.
+message Device {
+  reserved "scope", "principal", "token";
+
+  // created_at is when the token was first registered, assigned by the
+  // database. A re-registration keeps it: the handset is the same handset.
+  google.protobuf.Timestamp created_at = 1;
+
+  // last_seen_at is when the device last announced itself, which is every app
+  // launch and every token rotation. It is what a person reads to tell two
+  // handsets apart, and what a stale-device sweep reads.
+  google.protobuf.Timestamp last_seen_at = 2;
+
+  // id identifies the registration, and is what RevokeDevice names one by. It
+  // survives a re-registration, so a revocation issued against a device
+  // somebody is still holding finds it.
+  string id = 3;
+
+  // platform is which provider the token is addressed through.
+  DevicePlatform platform = 4;
+}
+
+// DeviceRegistrationInput is what a handset supplies to register itself, and is
+// the one message in this schema that carries a device token.
+//
+// Everything else about the row -- the id, the timestamps, whose handset it is
+// and which directory it is in -- is decided by the service from the caller on
+// the connection.
+message DeviceRegistrationInput {
+  reserved "scope", "principal";
+
+  // platform is which provider the token below is addressed through.
+  // UNSPECIFIED is refused rather than guessed.
+  DevicePlatform platform = 1;
+
+  // token is the provider's device token, minted by the handset and meaningful
+  // only to the provider that issued it.
+  //
+  // It is half of the row's natural key, with the platform, which is why
+  // registering is a convergence rather than an insert: a handset re-registers
+  // on every app launch and every token rotation, and one that changes hands
+  // presents the same token under a new person. The registry moves the row
+  // rather than keeping both, so the previous owner's notifications stop
+  // arriving on somebody else's lock screen.
+  string token = 2;
+}
+
+message ListNotificationsRequest {
+  reserved "scope", "principal";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListNotificationsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Notification results = 2;
+}
+
+message ListUnreadNotificationsRequest {
+  reserved "scope", "principal";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+// ListUnreadNotificationsResponse carries the badge count on its pagination
+// rather than in a field of its own: the filtered count is of everything
+// unread, not of the page, which is the number a bell icon renders.
+message ListUnreadNotificationsResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Notification results = 2;
+}
+
+message GetNotificationRequest {
+  reserved "scope", "principal";
+
+  string notification_id = 1;
+}
+
+message GetNotificationResponse { Notification result = 1; }
+
+message MarkNotificationReadRequest {
+  reserved "scope", "principal";
+
+  string notification_id = 1;
+}
+
+message MarkNotificationReadResponse {}
+
+message MarkAllNotificationsReadRequest {
+  reserved "scope", "principal";
+}
+
+message MarkAllNotificationsReadResponse {
+  // marked is how many notifications this call moved, which is what was sitting
+  // unread at the moment the statement ran. A retry answers zero, and that is
+  // the honest answer rather than a replay: nothing was unread the second time.
+  int64 marked = 1;
+}
+
+message ArchiveNotificationRequest {
+  reserved "scope", "principal";
+
+  string notification_id = 1;
+}
+
+message ArchiveNotificationResponse {}
+
+message RegisterDeviceRequest {
+  reserved "scope", "principal";
+
+  DeviceRegistrationInput input = 1;
+}
+
+message RegisterDeviceResponse { Device result = 1; }
+
+message ListDevicesRequest {
+  reserved "scope", "principal";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
+
+message ListDevicesResponse {
+  primandproper.platform.filtering.v1.Pagination pagination = 1;
+  repeated Device results = 2;
+}
+
+message RevokeDeviceRequest {
+  reserved "scope", "principal";
+
+  string device_id = 1;
+}
+
+message RevokeDeviceResponse {}
+
+// NotificationsService is the bell icon and the device registry.
+//
+// Every RPC acts on the caller's own rows and on nobody else's, and that is a
+// property of the schema rather than of a check: no request here names a
+// principal, the name is reserved on every one of them, and the service reads
+// the recipient off the caller the consumer's interceptor resolved. Every
+// method still requires a grant -- see the Permissions map in
+// notifications/grpc -- because "the caller owns the row" answers which rows,
+// not whether this deployment offers the call at all.
+//
+// # The three that are not here
+//
+// Twelve methods across notifications.Inbox and notifications.Registry, nine
+// RPCs, and the three absences are three different shapes of machinery rather
+// than three instances of one. Each argues its own case on its Store method,
+// which is where a reader of the Go API is standing when the question occurs to
+// them.
+//
+// CreateNotification is the transactional companion. It files a notification in
+// the caller's transaction so that it commits with the thing the notification
+// is about -- the order, the invitation, the failed payment -- and an RPC moves
+// that write into a transaction of its own, at a moment the caller does not
+// choose. What you get is a refused order that has already told somebody it
+// shipped, which is a failure running in the direction the user can see. It is
+// the same fact audit.Recorder states about an audit entry, and the reason that
+// method takes a transaction too. A process that wants to notify somebody about
+// something it did not cause is describing an RPC of its own, whose handler
+// owns the transaction the write belongs in.
+//
+// ListDevicesByPrincipals is the internal fan-out: one query for the tokens a
+// notification addressed to thirty people has to be pushed to, rather than
+// thirty round trips. It names other people's principals by construction, which
+// is exactly the request field this schema reserves the name of, and it is
+// documented as being passed the transaction the inbox rows were written in --
+// a caller no RPC has.
+//
+// InvalidateDeviceToken is the provider callback hook, and it is the one
+// absence here that is a security property rather than a shape. It removes a
+// token whoever it belongs to, taking neither a scope nor a transaction,
+// because what APNs and FCM hand back on a dead push is a token and nothing
+// else. Wired as mobile.WithTokenInvalidator it is a sender acting on a verdict
+// a provider actually returned; published as an RPC it is a call that deletes
+// any handset's registration in any tenant on the say-so of a caller claiming
+// the provider said so.
+service NotificationsService {
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+  rpc ListUnreadNotifications(ListUnreadNotificationsRequest) returns (ListUnreadNotificationsResponse);
+  rpc GetNotification(GetNotificationRequest) returns (GetNotificationResponse);
+  rpc MarkNotificationRead(MarkNotificationReadRequest) returns (MarkNotificationReadResponse);
+  rpc MarkAllNotificationsRead(MarkAllNotificationsReadRequest) returns (MarkAllNotificationsReadResponse);
+  rpc ArchiveNotification(ArchiveNotificationRequest) returns (ArchiveNotificationResponse);
+  rpc RegisterDevice(RegisterDeviceRequest) returns (RegisterDeviceResponse);
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+  rpc RevokeDevice(RevokeDeviceRequest) returns (RevokeDeviceResponse);
+}
