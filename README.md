@@ -40,7 +40,7 @@ Because breaking changes ride the major-version import path, upgrading across ma
 
 **OpenTelemetry throughout.** Every store, transport and worker here instruments through primitives-go's `observability`, whose logging, tracing, metrics and profiling pillars a consumer supplies once and threads everywhere.
 
-**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `authentication/oauth2clients`, `authentication/signin`, `dataprivacy`, `identity`, `links`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all seven in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it is the only surface here that both answers through `errors/http` and belongs to a package on that list. `internal/sentinelmatrix` checks that every exported sentinel in those seven has a decision recorded and that it still holds on both transports.
+**Error handling.** Uses [`cockroachdb/errors`](https://github.com/cockroachdb/errors) for rich, wrapped error context, over the sentinels primitives-go's `errors` package defines, conventionally imported as `platformerrors`. Its `errors/http` and `errors/grpc` map the primitives and cannot import the tier above them, so everything here maps itself: `authentication/oauth2clients`, `authentication/signin`, `billing`, `dataprivacy`, `identity`, `links`, `operations` and `sessions` each export an `HTTPMapper` and a `GRPCMapper` beside their sentinels. The composition root registers all eight in one call — `errormappers.Register()`, which `service.Register` makes for a service built from a `service.Config` and a service assembled by hand makes itself. `operations/http.New` is the single exception, registering its own HTTP mapper because it is the only surface here that both answers through `errors/http` and belongs to a package on that list. `internal/sentinelmatrix` checks that every exported sentinel in those eight has a decision recorded and that it still holds on both transports.
 
 ## Package Catalog
 
@@ -251,7 +251,21 @@ options with four defaults. `authentication/signin/grpc` serves it, and is the
 one surface in the module that reads its tenant off the connection rather than
 off a caller — because a caller signing in has not become one yet.
 
-Ten more still ship a store and no handlers, and each is to follow `identity`.
+`billing` is the next domain across, and it crosses read-biased. Its store has
+thirty methods and `billing/grpc` serves eighteen: the catalog and its
+administration, an account's own subscriptions, purchases and ledger, an
+operator's page over each of those three, and the `Archive*` set. The twelve
+absences are the interesting half. Seven are writes whose caller is not a client
+at all — a Stripe or RevenueCat callback, or the checkout handler that created
+the payment intent, each already inside a transaction that is also writing an
+audit entry and an outbox event — and four are lookups by a payment provider's
+identifier, which belong to that same callback path; the twelfth is the existence
+check a write makes on its way to inserting. What the surface refuses to ship is
+a reading: there is no `GetAccountStanding` and no `is_active` field
+anywhere in `billing.proto`, because which reported status leaves an account
+entitled is your policy and `billing/plans` is where it already lives.
+
+Nine more still ship a store and no handlers, and each is to follow `identity`.
 The transport is not uniform and neither is the subset of a store that crosses:
 
 | package | verdict | transport | carved out, and why |
@@ -262,7 +276,6 @@ The transport is not uniform and neither is the subset of a store that crosses:
 | `settings` | wire surface, full | gRPC | `DeleteValuesForSubject` — erasure machinery |
 | `notifications` | wire surface, both halves | gRPC | `CreateNotification`, `ListDevicesByPrincipals`, `InvalidateDeviceToken` |
 | `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the seven its store documents |
-| `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
 | `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, and `Query.Scope` itself |
 | `dataprivacy` | wire surface over the existing `Service` | HTTP | — |
 | `uploads/registry` | binding, not a resource surface | HTTP | all seven store methods; what ships is the guarded serve |
@@ -309,6 +322,7 @@ the whole list.
 | `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                             |
 | `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store` |
 | `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`           |
+| `billing/grpc`                      | resource surface | the catalog, the agreements, the sales and the ledger, read-biased — over `billing.Store`       |
 | `identity/grpc`                     | resource surface | the four nouns and their lifecycle — over `identity.Service` and `identity.Store`               |
 | `operations/http`                   | resource surface | poll, list, cancel, subscribe — over `Operation`                                                |
 <!-- /readmegen:transports -->
@@ -318,15 +332,15 @@ cookie, and a cookie's signing, encryption, `HttpOnly`, `Secure` and `SameSite`
 are security decisions this module already made — there is no resource of yours
 in it.
 
-The other four are resource surfaces, and they get there by two routes.
+The other five are resource surfaces, and they get there by two routes.
 `operations/http` is entirely this module's own resource: an `Operation`, its
 two-tier progress and its state machine are types you did not define, and
 polling one or subscribing to its server-sent events is the pattern's protocol
 rather than your API. *Starting* an operation is yours, and is deliberately not
-there. `identity/grpc`, `authentication/signin/grpc` and
-`authentication/oauth2clients/grpc` are the other kind — a domain's own
-transport, shipped under the rule above rather than as an exception to it, and
-the first three of the thirteen to cross.
+there. `identity/grpc`, `authentication/signin/grpc`,
+`authentication/oauth2clients/grpc` and `billing/grpc` are the other kind — a
+domain's own transport, shipped under the rule above rather than as an exception
+to it, and the first four of the thirteen to cross.
 
 The table is not written by hand either. `internal/cmd/readmegen` emits it on
 `make generate` from the `http` and `grpc` directories the tree ships, and

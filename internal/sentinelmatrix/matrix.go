@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/links"
@@ -46,7 +47,7 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are seven
+// The packages that map their own sentinels, spelled once each; there are eight
 // today. Each name is three things — a key in Matrix, an entry in Packages and a
 // case in Mappers — and a package that declares a pair later is added in all
 // three together.
@@ -61,6 +62,7 @@ const (
 	sessionsPkg      = "sessions"
 	signInPkg        = "authentication/signin"
 	oauth2ClientsPkg = "authentication/oauth2clients"
+	billingPkg       = "billing"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -69,13 +71,74 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the seven
+// Matrix is the decision made about every exported sentinel in the eight
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
 //
 //nolint:goconst // The keys are sentinel identifiers in four other packages, and three of those packages have an ErrNilStore. That they collide is a fact the roster records, not a constant this one should extract.
 var Matrix = map[string]map[string]Decision{
+	billingPkg: {
+		// The four absences, one per table. Each is what a client naming a row
+		// that is gone, archived, or in another scope is told, and the three
+		// cases are one answer so that a read cannot be used to enumerate
+		// another tenant's catalog or ledger.
+		"ErrProductNotFound":      {Err: billing.ErrProductNotFound, Is: Mapped},
+		"ErrPurchaseNotFound":     {Err: billing.ErrPurchaseNotFound, Is: Mapped},
+		"ErrSubscriptionNotFound": {Err: billing.ErrSubscriptionNotFound, Is: Mapped},
+		"ErrTransactionNotFound":  {Err: billing.ErrTransactionNotFound, Is: Mapped},
+
+		// The five collisions on a unique key. Four are a payment provider's
+		// identifier arriving twice, which is the ordinary redelivery this
+		// schema is shaped around, and ErrIDTaken is an application handing out
+		// an id it has already used. All five are a conflict rather than a
+		// server fault, which is what lets a webhook receiver acknowledge the
+		// delivery instead of retrying it forever.
+		"ErrIDTaken":            {Err: billing.ErrIDTaken, Is: Mapped},
+		"ErrProductExists":      {Err: billing.ErrProductExists, Is: Mapped},
+		"ErrPurchaseExists":     {Err: billing.ErrPurchaseExists, Is: Mapped},
+		"ErrSubscriptionExists": {Err: billing.ErrSubscriptionExists, Is: Mapped},
+		"ErrTransactionExists":  {Err: billing.ErrTransactionExists, Is: Mapped},
+
+		// The two answers a guarded write gives a replay: the status was
+		// already where the event would have put it, and the money had already
+		// arrived. Neither is a failure, and a 500 would tell a caller to retry
+		// work that has been done.
+		"ErrAlreadyCompleted": {Err: billing.ErrAlreadyCompleted, Is: Mapped},
+		"ErrStatusUnchanged":  {Err: billing.ErrStatusUnchanged, Is: Mapped},
+
+		// The seven a caller can correct, each naming a field rather than the
+		// call. They are mapped rather than left to the platform because none of
+		// them wraps a platform sentinel: they are judgements about a value that
+		// was supplied, not about one that was missing.
+		"ErrAmbiguousTransaction":      {Err: billing.ErrAmbiguousTransaction, Is: Mapped},
+		"ErrBackwardsPeriod":           {Err: billing.ErrBackwardsPeriod, Is: Mapped},
+		"ErrInvalidCurrency":           {Err: billing.ErrInvalidCurrency, Is: Mapped},
+		"ErrInvalidKind":               {Err: billing.ErrInvalidKind, Is: Mapped},
+		"ErrInvalidStatus":             {Err: billing.ErrInvalidStatus, Is: Mapped},
+		"ErrNegativeAmount":            {Err: billing.ErrNegativeAmount, Is: Mapped},
+		"ErrUnexpectedBillingInterval": {Err: billing.ErrUnexpectedBillingInterval, Is: Mapped},
+
+		// Wrap errors.ErrNilInputParameter, so the platform mappers answer them.
+		// Every one is a caller that passed no executor or no entity, which is a
+		// wiring failure rather than anything a client sent.
+		"ErrNilDatabaseClient": {Err: billing.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: billing.ErrNilExecutor, Is: Platform},
+		"ErrNilProduct":        {Err: billing.ErrNilProduct, Is: Platform},
+		"ErrNilPurchase":       {Err: billing.ErrNilPurchase, Is: Platform},
+		"ErrNilSubscription":   {Err: billing.ErrNilSubscription, Is: Platform},
+		"ErrNilTransaction":    {Err: billing.ErrNilTransaction, Is: Platform},
+
+		// Wrap errors.ErrEmptyInputParameter, which the platform mappers already
+		// answer as a bad request. A case of this package's own would be a
+		// second copy of that decision, free to drift from it.
+		"ErrEmptyAccount":         {Err: billing.ErrEmptyAccount, Is: Platform},
+		"ErrEmptyBillingInterval": {Err: billing.ErrEmptyBillingInterval, Is: Platform},
+		"ErrEmptyExternalID":      {Err: billing.ErrEmptyExternalID, Is: Platform},
+		"ErrEmptyPeriod":          {Err: billing.ErrEmptyPeriod, Is: Platform},
+		"ErrEmptyProduct":         {Err: billing.ErrEmptyProduct, Is: Platform},
+		"ErrEmptyProductName":     {Err: billing.ErrEmptyProductName, Is: Platform},
+	},
 	dataPrivacyPkg: {
 		// A subject asking after their own export or erasure is a client. These five
 		// are the answers they can act on: the ID is not one of theirs, the request
@@ -346,15 +409,15 @@ var Matrix = map[string]map[string]Decision{
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
-// module root. They are the seven that export mappers of their own; a package
+// module root. They are the eight that export mappers of their own; a package
 // that declares a pair later is added here, in Matrix and in Mappers together.
 var Packages = []string{
 	dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg,
-	oauth2ClientsPkg,
+	oauth2ClientsPkg, billingPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
-// this package spells the seven out; everywhere else they are the strings in
+// this package spells the eight out; everywhere else they are the strings in
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
@@ -372,6 +435,8 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return signin.HTTPMapper, signin.GRPCMapper
 	case oauth2ClientsPkg:
 		return oauth2clients.HTTPMapper, oauth2clients.GRPCMapper
+	case billingPkg:
+		return billing.HTTPMapper, billing.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}
