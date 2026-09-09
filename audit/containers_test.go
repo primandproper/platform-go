@@ -17,6 +17,7 @@ import (
 	"github.com/primandproper/primitives-go/database/mysql"
 	"github.com/primandproper/primitives-go/database/postgres"
 	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
+	"github.com/primandproper/primitives-go/tenancy"
 	"github.com/primandproper/primitives-go/testutils/containers/mysqltest"
 	"github.com/primandproper/primitives-go/testutils/containers/pgtest"
 
@@ -125,7 +126,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			return recorder.Record(t.Context(), q, first, second)
 		}))
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 2, result.Checked)
@@ -153,7 +154,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		must.NoError(t, err)
 		test.EqOp(t, entry.RecordedAt, read.RecordedAt)
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	})
@@ -199,7 +200,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			"somebody_else", second.ID)
 		must.NoError(t, err)
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		must.False(t, result.Intact())
 		test.EqOp(t, BreakContentAltered, result.FirstBreak.Reason)
@@ -256,7 +257,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		// between dialects.
 		test.EqOp(t, int64(1), env.prune(t, c, prefix, time.Hour))
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 1, result.Checked)
@@ -322,7 +323,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		test.EqOp(t, 3, countRows(t, env.client, prefix+"_audit_log_entries", "scope = 'acct_9'"))
 		test.EqOp(t, 1, countRows(t, env.client, prefix+"_audit_log_chains", "scope = 'acct_9'"))
 
-		result, err := reader.Verify(t.Context(), "acct_9", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_9"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact(), test.Sprintf("break: %+v", result.FirstBreak))
 		test.EqOp(t, 3, result.Checked)
@@ -335,7 +336,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			return recorder.Record(t.Context(), q, entryFor("user_1", "r5"))
 		}))
 
-		result, err = reader.Verify(t.Context(), "user_1", time.Time{}, time.Time{})
+		result, err = reader.Verify(t.Context(), tenancy.Of("user_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact(), test.Sprintf("break: %+v", result.FirstBreak))
 		test.EqOp(t, 1, result.Checked)
@@ -367,7 +368,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			must.NoError(t, <-errs)
 		}
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, writers, result.Checked)
@@ -531,7 +532,7 @@ func TestAudit_MigratorIntegration_Containers(T *testing.T) {
 			return recorder.Record(t.Context(), q, entryFor("acct_1", "r1"))
 		}))
 
-		result, err := reader.Verify(t.Context(), "acct_1", time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	}

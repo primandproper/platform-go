@@ -3,11 +3,14 @@ package sentinelmatrix
 import (
 	"slices"
 
+	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/links"
+	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
 	"github.com/primandproper/platform-go/v14/webhooks"
@@ -47,7 +50,7 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are eight
+// The packages that map their own sentinels, spelled once each; there are eleven
 // today. Each name is three things — a key in Matrix, an entry in Packages and a
 // case in Mappers — and a package that declares a pair later is added in all
 // three together.
@@ -55,6 +58,7 @@ func (d Disposition) String() string {
 // Each is a path relative to the module root rather than a package name,
 // because that is what the roster's own test reads the rows out of.
 const (
+	auditPkg         = "audit"
 	dataPrivacyPkg   = "dataprivacy"
 	identityPkg      = "identity"
 	linksPkg         = "links"
@@ -62,6 +66,8 @@ const (
 	sessionsPkg      = "sessions"
 	signInPkg        = "authentication/signin"
 	oauth2ClientsPkg = "authentication/oauth2clients"
+	notificationsPkg = "notifications"
+	commentsPkg      = "comments"
 	webhooksPkg      = "webhooks"
 )
 
@@ -71,13 +77,49 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the eight
+// Matrix is the decision made about every exported sentinel in the eleven
 // packages that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
 //
 //nolint:goconst // The keys are sentinel identifiers in four other packages, and three of those packages have an ErrNilStore. That they collide is a fact the roster records, not a constant this one should extract.
 var Matrix = map[string]map[string]Decision{
+	auditPkg: {
+		// The one thing a reader of the log can be told about a request rather
+		// than about the process serving it. An entry never written, one
+		// retention has pruned, one that was deleted and one in another
+		// tenant's log all arrive as this, and audit/grpc answers all four the
+		// same way on purpose — see that package's GetEntry.
+		"ErrEntryNotFound": {Err: audit.ErrEntryNotFound, Is: Mapped},
+
+		// The nil-argument sentinels, which wrap errors.ErrNilInputParameter
+		// and are answered by the platform mapper for that reason.
+		"ErrNilDatabaseClient": {Err: audit.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilEntry":          {Err: audit.ErrNilEntry, Is: Platform},
+		"ErrNilExecutor":       {Err: audit.ErrNilExecutor, Is: Platform},
+
+		// Everything raised while the consumer's own code assembles an entry or
+		// wires this package up. None of them is anything a client sent: an
+		// entry with no resource type, no event type or no actor was built by
+		// the process recording it, a diff of two different types is a call in
+		// that process, and a table prefix is configuration. A 500 is the
+		// honest answer to a request that failed because the service was built
+		// wrong.
+		"ErrDiffTypeMismatch":   {Err: audit.ErrDiffTypeMismatch, Is: Unhandled},
+		"ErrEmptyActor":         {Err: audit.ErrEmptyActor, Is: Unhandled},
+		"ErrEmptyEventType":     {Err: audit.ErrEmptyEventType, Is: Unhandled},
+		"ErrEmptyResourceType":  {Err: audit.ErrEmptyResourceType, Is: Unhandled},
+		"ErrInvalidTablePrefix": {Err: audit.ErrInvalidTablePrefix, Is: Unhandled},
+		"ErrMalformedHash":      {Err: audit.ErrMalformedHash, Is: Unhandled},
+		"ErrNotAStruct":         {Err: audit.ErrNotAStruct, Is: Unhandled},
+		"ErrNothingToDiff":      {Err: audit.ErrNothingToDiff, Is: Unhandled},
+
+		// Not returned by Verify at all: a break is a finding, carried in the
+		// VerificationResult, and audit/grpc answers one with an ordinary
+		// response. It reaches a transport only through a consumer who chose to
+		// escalate it, at which point what it means is theirs to decide.
+		"ErrChainBroken": {Err: audit.ErrChainBroken, Is: Unhandled},
+	},
 	dataPrivacyPkg: {
 		// A subject asking after their own export or erasure is a client. These five
 		// are the answers they can act on: the ID is not one of theirs, the request
@@ -345,6 +387,81 @@ var Matrix = map[string]map[string]Decision{
 		// answer and no mapper claims it.
 		"ErrTOTPIssuerNotConfigured": {Err: signin.ErrTOTPIssuerNotConfigured, Is: Unhandled},
 	},
+	notificationsPkg: {
+		// The two reads' one answer. Absent, archived, and belonging to somebody
+		// else are deliberately the same 404 on both seams, which is what keeps a
+		// read by id from telling a caller what other people have been told and
+		// which handsets they hold.
+		"ErrNotificationNotFound": {Err: notifications.ErrNotificationNotFound, Is: Mapped},
+		"ErrDeviceNotFound":       {Err: notifications.ErrDeviceNotFound, Is: Mapped},
+
+		// The four a caller can correct, each naming its field. Three of them are
+		// reachable from notifications/grpc — a registration with no token, one
+		// naming no platform, one naming a platform this module does not serve —
+		// and ErrEmptyTopic is reachable from an HTTP handler a consumer writes
+		// over CreateNotification, which is the write that has no RPC.
+		"ErrEmptyPrincipal":  {Err: notifications.ErrEmptyPrincipal, Is: Mapped},
+		"ErrEmptyTopic":      {Err: notifications.ErrEmptyTopic, Is: Mapped},
+		"ErrEmptyToken":      {Err: notifications.ErrEmptyToken, Is: Mapped},
+		"ErrUnknownPlatform": {Err: notifications.ErrUnknownPlatform, Is: Mapped},
+
+		// A write whose entity names a different scope than the write does,
+		// refused rather than corrected. It is the same row oauth2clients carries
+		// and for the same reason: the caller holds both halves.
+		"ErrScopeMismatch": {Err: notifications.ErrScopeMismatch, Is: Mapped},
+
+		// The wiring failures. Each wraps a platform sentinel that errors/http
+		// and errors/grpc already answer, so this package's mappers say nothing
+		// about them.
+		"ErrNilDatabaseClient": {Err: notifications.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilDevice":         {Err: notifications.ErrNilDevice, Is: Platform},
+		"ErrNilExecutor":       {Err: notifications.ErrNilExecutor, Is: Platform},
+		"ErrNilNotification":   {Err: notifications.ErrNilNotification, Is: Platform},
+	},
+
+	commentsPkg: {
+		// The twelve a person writing or moderating a comment can act on. Nine
+		// are something about the request they just sent — a target type outside
+		// the consumer's catalog, a reply to a reply, a reply filed under a
+		// different discussion than its parent, an empty body, a read of replies
+		// that named no parent, a target missing one of its two halves, a comment
+		// attributed to nobody, and a comment written into a scope it does not
+		// name — and three are a row they named and cannot reach.
+		//
+		// The three not-found answers are three different absences and stay
+		// separate on purpose: the comment they named, the comment they were
+		// replying to, and the thing being discussed. A client shown the second
+		// has a discussion that moved under them; one shown the third has a stale
+		// list.
+		//
+		// ErrCommentNotFound is one answer for absent, archived and in another
+		// tenant's scope, which is what keeps a read from being an enumeration
+		// oracle over other tenants' discussions — and is why it is the one
+		// not-found here that is not client-safe.
+		"ErrCommentNotFound":   {Err: comments.ErrCommentNotFound, Is: Mapped},
+		"ErrEmptyAuthor":       {Err: comments.ErrEmptyAuthor, Is: Mapped},
+		"ErrEmptyBody":         {Err: comments.ErrEmptyBody, Is: Mapped},
+		"ErrEmptyParent":       {Err: comments.ErrEmptyParent, Is: Mapped},
+		"ErrEmptyTargetID":     {Err: comments.ErrEmptyTargetID, Is: Mapped},
+		"ErrEmptyTargetType":   {Err: comments.ErrEmptyTargetType, Is: Mapped},
+		"ErrNestedReply":       {Err: comments.ErrNestedReply, Is: Mapped},
+		"ErrParentNotFound":    {Err: comments.ErrParentNotFound, Is: Mapped},
+		"ErrScopeMismatch":     {Err: comments.ErrScopeMismatch, Is: Mapped},
+		"ErrTargetMismatch":    {Err: comments.ErrTargetMismatch, Is: Mapped},
+		"ErrTargetNotFound":    {Err: comments.ErrTargetNotFound, Is: Mapped},
+		"ErrUnknownTargetType": {Err: comments.ErrUnknownTargetType, Is: Mapped},
+
+		// The three that are somebody else's sentinel, answered by the platform
+		// mappers because that is the tier those sentinels belong to. All three
+		// wrap errors.ErrNilInputParameter, and all three are a nil argument
+		// inside the process rather than anything a request can express: no
+		// executor, no comment, no client. comments/grpc refuses a request whose
+		// comment field was never set with a sentinel of its own instead, where
+		// the answer is about that request rather than about the argument.
+		"ErrNilComment":        {Err: comments.ErrNilComment, Is: Platform},
+		"ErrNilDatabaseClient": {Err: comments.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: comments.ErrNilExecutor, Is: Platform},
+	},
 
 	webhooksPkg: {
 		// The eight an operator managing endpoints can act on. Six are a field in
@@ -413,8 +530,9 @@ var Matrix = map[string]map[string]Decision{
 // module root. They are the eight that export mappers of their own; a package
 // that declares a pair later is added here, in Matrix and in Mappers together.
 var Packages = []string{
-	dataPrivacyPkg, identityPkg, linksPkg, operationsPkg, sessionsPkg, signInPkg,
-	oauth2ClientsPkg, webhooksPkg,
+	auditPkg, dataPrivacyPkg, identityPkg, linksPkg, operationsPkg,
+	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
+	webhooksPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
@@ -422,6 +540,8 @@ var Packages = []string{
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
+	case auditPkg:
+		return audit.HTTPMapper, audit.GRPCMapper
 	case dataPrivacyPkg:
 		return dataprivacy.HTTPMapper, dataprivacy.GRPCMapper
 	case identityPkg:
@@ -436,6 +556,10 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return signin.HTTPMapper, signin.GRPCMapper
 	case oauth2ClientsPkg:
 		return oauth2clients.HTTPMapper, oauth2clients.GRPCMapper
+	case notificationsPkg:
+		return notifications.HTTPMapper, notifications.GRPCMapper
+	case commentsPkg:
+		return comments.HTTPMapper, comments.GRPCMapper
 	case webhooksPkg:
 		return webhooks.HTTPMapper, webhooks.GRPCMapper
 	default:
