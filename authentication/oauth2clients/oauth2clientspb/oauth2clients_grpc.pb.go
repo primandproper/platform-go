@@ -63,10 +63,25 @@
 //
 // # What is not here, and why
 //
-// No scope field, anywhere. A scope a client could name is a cross-tenant read
-// hiding behind a request field; it comes off the principal the consumer's
-// interceptor put on the context. See identity.proto, which says this at
-// greater length.
+// No scope field, anywhere, and the name is reserved so there cannot be one. A
+// scope a client could name is a cross-tenant read hiding behind a request
+// field; it comes off the principal the consumer's interceptor put on the
+// context. See identity.proto, which says this at greater length.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern:
+// `reserved "scope";` is a schema protoc refuses to accept a scope field into,
+// in this repository and in a consumer's fork of the file alike, whereas a
+// comment is a request to the next author. It is reserved on all four request
+// messages, on [OAuth2ClientCreationInput], which one of them is built from,
+// and on [OAuth2Client] and [IssuedOAuth2Client], which the responses are built
+// from.
+//
+// The reservation is of the singular name only, and this is the one file on the
+// lane where that has to be said out loud: OAuth2Client.scopes and
+// OAuth2ClientCreationInput.scopes are OAuth2 authorization scopes, which are
+// what a client may ask for at /authorize and have nothing to do with a tenant.
+// Two different words that happen to be spelled the same; protoc reserves
+// "scope" and leaves "scopes" alone, which is the outcome wanted here.
 //
 // No belongs_to_user in any request, for the same reason one level in. An owner
 // a client could name is a credential minted in somebody else's name. It is

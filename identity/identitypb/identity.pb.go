@@ -30,11 +30,21 @@
 //
 // # What is not here, and why
 //
-// No scope field, anywhere. Every row this schema describes carries a
-// tenancy.Scope, and every read filters on it -- but a scope a client could put
-// in a request is a cross-tenant read hiding behind a request field. The scope
-// comes off the principal the consumer's authentication interceptor resolved,
-// and from nowhere else. See identity/grpc for that seam.
+// No scope field, anywhere, and the name is reserved so there cannot be one.
+// Every row this schema describes carries a tenancy.Scope, and every read
+// filters on it -- but a scope a client could put in a request is a
+// cross-tenant read hiding behind a request field. The scope comes off the
+// principal the consumer's authentication interceptor resolved, and from
+// nowhere else. See identity/grpc for that seam.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern:
+// `reserved "scope";` is a schema protoc refuses to accept a scope field into,
+// in this repository and in a consumer's fork of the file alike, whereas a
+// comment is a request to the next author. It is reserved on all twenty-eight
+// request messages, on the four inputs they are built from, and on the nine
+// messages a response is built from -- a scope on one of those would be
+// answering a client with something the client supplied. The response wrappers
+// hold nothing but those messages and reserve nothing.
 //
 // No credentials, in either direction. There is no hashed_password,
 // two_factor_secret or email_address_verification_token on User, and no token
@@ -4288,7 +4298,7 @@ var File_primandproper_platform_identity_v1_identity_proto protoreflect.FileDesc
 
 const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\n" +
-	"1primandproper/platform/identity/v1/identity.proto\x12\"primandproper.platform.identity.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\"\x93\b\n" +
+	"1primandproper/platform/identity/v1/identity.proto\x12\"primandproper.platform.identity.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\"\x9a\b\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12#\n" +
@@ -4310,7 +4320,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x18password_last_changed_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\x15passwordLastChangedAt\x12\\\n" +
 	"\x1dtwo_factor_secret_verified_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\x19twoFactorSecretVerifiedAt\x12^\n" +
 	"\x1elast_accepted_terms_of_service\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\x1alastAcceptedTermsOfService\x12[\n" +
-	"\x1clast_accepted_privacy_policy\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\x19lastAcceptedPrivacyPolicyJ\x04\b\x12\x10\x13\"\xb7\x01\n" +
+	"\x1clast_accepted_privacy_policy\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\x19lastAcceptedPrivacyPolicyJ\x04\b\x12\x10\x13R\x05scope\"\xbe\x01\n" +
 	"\x0eBillingAddress\x12\x14\n" +
 	"\x05line1\x18\x01 \x01(\tR\x05line1\x12\x14\n" +
 	"\x05line2\x18\x02 \x01(\tR\x05line2\x12\x12\n" +
@@ -4319,7 +4329,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\vpostal_code\x18\x05 \x01(\tR\n" +
 	"postalCode\x12\x18\n" +
 	"\acountry\x18\x06 \x01(\tR\acountry\x12\x14\n" +
-	"\x05phone\x18\a \x01(\tR\x05phone\"\xd6\x05\n" +
+	"\x05phone\x18\a \x01(\tR\x05phoneR\x05scope\"\xdd\x05\n" +
 	"\aAccount\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\"\n" +
@@ -4336,7 +4346,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\varchived_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"archivedAt\x12`\n" +
 	"\x1flast_payment_provider_synced_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\x1blastPaymentProviderSyncedAtB\x17\n" +
-	"\x15_subscription_plan_id\"\xed\x02\n" +
+	"\x15_subscription_plan_idR\x05scope\"\xf4\x02\n" +
 	"\n" +
 	"Membership\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12&\n" +
@@ -4348,12 +4358,12 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12B\n" +
 	"\x0flast_updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\rlastUpdatedAt\x12;\n" +
 	"\varchived_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"archivedAt\"\xa2\x01\n" +
+	"archivedAtR\x05scope\"\xa9\x01\n" +
 	"\x12MembershipWithUser\x12<\n" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\x12N\n" +
 	"\n" +
 	"membership\x18\x02 \x01(\v2..primandproper.platform.identity.v1.MembershipR\n" +
-	"membership\"\xdb\x04\n" +
+	"membershipR\x05scope\"\xe2\x04\n" +
 	"\n" +
 	"Invitation\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12,\n" +
@@ -4376,17 +4386,17 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\varchived_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"archivedAtB\n" +
 	"\n" +
-	"\b_to_userJ\x04\b\x0f\x10\x10\"\xc7\x01\n" +
+	"\b_to_userJ\x04\b\x0f\x10\x10R\x05scope\"\xce\x01\n" +
 	"\tPrincipal\x12<\n" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\x12*\n" +
 	"\x11active_account_id\x18\x02 \x01(\tR\x0factiveAccountID\x12P\n" +
-	"\vmemberships\x18\x03 \x03(\v2..primandproper.platform.identity.v1.MembershipR\vmemberships\"\xe3\x01\n" +
+	"\vmemberships\x18\x03 \x03(\v2..primandproper.platform.identity.v1.MembershipR\vmembershipsR\x05scope\"\xea\x01\n" +
 	"\fRegistration\x12<\n" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\x12E\n" +
 	"\aaccount\x18\x02 \x01(\v2+.primandproper.platform.identity.v1.AccountR\aaccount\x12N\n" +
 	"\n" +
 	"membership\x18\x03 \x01(\v2..primandproper.platform.identity.v1.MembershipR\n" +
-	"membership\"\xac\x01\n" +
+	"membershipR\x05scope\"\xb3\x01\n" +
 	"\n" +
 	"Acceptance\x12N\n" +
 	"\n" +
@@ -4394,17 +4404,17 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"invitation\x12N\n" +
 	"\n" +
 	"membership\x18\x02 \x01(\v2..primandproper.platform.identity.v1.MembershipR\n" +
-	"membership\"\x94\x01\n" +
+	"membershipR\x05scope\"\x9b\x01\n" +
 	"\x15UserRegistrationInput\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\x12#\n" +
 	"\remail_address\x18\x02 \x01(\tR\femailAddress\x12\x1d\n" +
 	"\n" +
 	"first_name\x18\x03 \x01(\tR\tfirstName\x12\x1b\n" +
-	"\tlast_name\x18\x04 \x01(\tR\blastName\"\xa4\x01\n" +
+	"\tlast_name\x18\x04 \x01(\tR\blastNameR\x05scope\"\xab\x01\n" +
 	"\x14AccountCreationInput\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
 	"\ttime_zone\x18\x02 \x01(\tR\btimeZone\x12[\n" +
-	"\x0fbilling_address\x18\x03 \x01(\v22.primandproper.platform.identity.v1.BillingAddressR\x0ebillingAddress\"\xe1\x01\n" +
+	"\x0fbilling_address\x18\x03 \x01(\v22.primandproper.platform.identity.v1.BillingAddressR\x0ebillingAddressR\x05scope\"\xe8\x01\n" +
 	"\x12ProfileUpdateInput\x12\x1f\n" +
 	"\busername\x18\x01 \x01(\tH\x00R\busername\x88\x01\x01\x12(\n" +
 	"\remail_address\x18\x02 \x01(\tH\x01R\femailAddress\x88\x01\x01\x12\"\n" +
@@ -4415,37 +4425,37 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x0e_email_addressB\r\n" +
 	"\v_first_nameB\f\n" +
 	"\n" +
-	"_last_name\"\xc3\x01\n" +
+	"_last_nameR\x05scope\"\xca\x01\n" +
 	"\x12AccountUpdateInput\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12 \n" +
 	"\ttime_zone\x18\x02 \x01(\tH\x01R\btimeZone\x88\x01\x01\x12[\n" +
 	"\x0fbilling_address\x18\x03 \x01(\v22.primandproper.platform.identity.v1.BillingAddressR\x0ebillingAddressB\a\n" +
 	"\x05_nameB\f\n" +
 	"\n" +
-	"_time_zone\"\xd5\x01\n" +
+	"_time_zoneR\x05scope\"\xdc\x01\n" +
 	"\x0fRegisterRequest\x12M\n" +
 	"\x04user\x18\x01 \x01(\v29.primandproper.platform.identity.v1.UserRegistrationInputR\x04user\x12R\n" +
 	"\aaccount\x18\x02 \x01(\v28.primandproper.platform.identity.v1.AccountCreationInputR\aaccount\x12\x1f\n" +
 	"\vowner_roles\x18\x03 \x03(\tR\n" +
-	"ownerRoles\"h\n" +
+	"ownerRolesR\x05scope\"h\n" +
 	"\x10RegisterResponse\x12T\n" +
-	"\fregistration\x18\x01 \x01(\v20.primandproper.platform.identity.v1.RegistrationR\fregistration\"d\n" +
+	"\fregistration\x18\x01 \x01(\v20.primandproper.platform.identity.v1.RegistrationR\fregistration\"k\n" +
 	"\x14UpdateProfileRequest\x12L\n" +
-	"\x05input\x18\x01 \x01(\v26.primandproper.platform.identity.v1.ProfileUpdateInputR\x05input\"U\n" +
+	"\x05input\x18\x01 \x01(\v26.primandproper.platform.identity.v1.ProfileUpdateInputR\x05inputR\x05scope\"U\n" +
 	"\x15UpdateProfileResponse\x12<\n" +
-	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\x83\x01\n" +
+	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\x8a\x01\n" +
 	"\x14UpdateAccountRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12L\n" +
-	"\x05input\x18\x02 \x01(\v26.primandproper.platform.identity.v1.AccountUpdateInputR\x05input\"^\n" +
+	"\x05input\x18\x02 \x01(\v26.primandproper.platform.identity.v1.AccountUpdateInputR\x05inputR\x05scope\"^\n" +
 	"\x15UpdateAccountResponse\x12E\n" +
-	"\aaccount\x18\x01 \x01(\v2+.primandproper.platform.identity.v1.AccountR\aaccount\"g\n" +
+	"\aaccount\x18\x01 \x01(\v2+.primandproper.platform.identity.v1.AccountR\aaccount\"n\n" +
 	"\x16RecordAgreementRequest\x12M\n" +
 	"\n" +
 	"agreements\x18\x01 \x03(\x0e2-.primandproper.platform.identity.v1.AgreementR\n" +
-	"agreements\"W\n" +
+	"agreementsR\x05scope\"W\n" +
 	"\x17RecordAgreementResponse\x12<\n" +
-	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\xc7\x01\n" +
+	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\xce\x01\n" +
 	"\rInviteRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x19\n" +
@@ -4454,162 +4464,162 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x04note\x18\x04 \x01(\tR\x04note\x12\x14\n" +
 	"\x05roles\x18\x05 \x03(\tR\x05roles\x129\n" +
 	"\n" +
-	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"`\n" +
+	"expires_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAtR\x05scope\"`\n" +
 	"\x0eInviteResponse\x12N\n" +
 	"\n" +
 	"invitation\x18\x01 \x01(\v2..primandproper.platform.identity.v1.InvitationR\n" +
-	"invitation\"u\n" +
+	"invitation\"|\n" +
 	"\x17AcceptInvitationRequest\x12#\n" +
 	"\rinvitation_id\x18\x01 \x01(\tR\finvitationId\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x1f\n" +
 	"\vstatus_note\x18\x03 \x01(\tR\n" +
-	"statusNote\"j\n" +
+	"statusNoteR\x05scope\"j\n" +
 	"\x18AcceptInvitationResponse\x12N\n" +
 	"\n" +
 	"acceptance\x18\x01 \x01(\v2..primandproper.platform.identity.v1.AcceptanceR\n" +
-	"acceptance\"u\n" +
+	"acceptance\"|\n" +
 	"\x17RejectInvitationRequest\x12#\n" +
 	"\rinvitation_id\x18\x01 \x01(\tR\finvitationId\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x1f\n" +
 	"\vstatus_note\x18\x03 \x01(\tR\n" +
-	"statusNote\"j\n" +
+	"statusNoteR\x05scope\"j\n" +
 	"\x18RejectInvitationResponse\x12N\n" +
 	"\n" +
 	"invitation\x18\x01 \x01(\v2..primandproper.platform.identity.v1.InvitationR\n" +
-	"invitation\"_\n" +
+	"invitation\"f\n" +
 	"\x17CancelInvitationRequest\x12#\n" +
 	"\rinvitation_id\x18\x01 \x01(\tR\finvitationId\x12\x1f\n" +
 	"\vstatus_note\x18\x02 \x01(\tR\n" +
-	"statusNote\"j\n" +
+	"statusNoteR\x05scope\"j\n" +
 	"\x18CancelInvitationResponse\x12N\n" +
 	"\n" +
 	"invitation\x18\x01 \x01(\v2..primandproper.platform.identity.v1.InvitationR\n" +
-	"invitation\"k\n" +
+	"invitation\"r\n" +
 	"\x1fTransferAccountOwnershipRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12)\n" +
-	"\x11new_owner_user_id\x18\x02 \x01(\tR\x0enewOwnerUserId\"i\n" +
+	"\x11new_owner_user_id\x18\x02 \x01(\tR\x0enewOwnerUserIdR\x05scope\"i\n" +
 	" TransferAccountOwnershipResponse\x12E\n" +
-	"\aaccount\x18\x01 \x01(\v2+.primandproper.platform.identity.v1.AccountR\aaccount\"9\n" +
+	"\aaccount\x18\x01 \x01(\v2+.primandproper.platform.identity.v1.AccountR\aaccount\"@\n" +
 	"\x18SetDefaultAccountRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\"k\n" +
+	"account_id\x18\x01 \x01(\tR\taccountIdR\x05scope\"k\n" +
 	"\x19SetDefaultAccountResponse\x12N\n" +
 	"\n" +
 	"membership\x18\x01 \x01(\v2..primandproper.platform.identity.v1.MembershipR\n" +
-	"membership\"i\n" +
+	"membership\"p\n" +
 	"\x19SetMembershipRolesRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x14\n" +
-	"\x05roles\x18\x03 \x03(\tR\x05roles\"l\n" +
+	"\x05roles\x18\x03 \x03(\tR\x05rolesR\x05scope\"l\n" +
 	"\x1aSetMembershipRolesResponse\x12N\n" +
 	"\n" +
 	"membership\x18\x01 \x01(\v2..primandproper.platform.identity.v1.MembershipR\n" +
-	"membership\"Q\n" +
+	"membership\"X\n" +
 	"\x17RemoveMembershipRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\tR\x06userId\"j\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userIdR\x05scope\"j\n" +
 	"\x18RemoveMembershipResponse\x12N\n" +
 	"\n" +
 	"membership\x18\x01 \x01(\v2..primandproper.platform.identity.v1.MembershipR\n" +
-	"membership\"-\n" +
+	"membership\"4\n" +
 	"\x12ArchiveUserRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userId\"S\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userIdR\x05scope\"S\n" +
 	"\x13ArchiveUserResponse\x12<\n" +
-	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\xa6\x01\n" +
+	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\xad\x01\n" +
 	"\x1eUpdateUserAccountStatusRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12I\n" +
 	"\x06status\x18\x02 \x01(\x0e21.primandproper.platform.identity.v1.AccountStatusR\x06status\x12 \n" +
-	"\vexplanation\x18\x03 \x01(\tR\vexplanation\"_\n" +
+	"\vexplanation\x18\x03 \x01(\tR\vexplanationR\x05scope\"_\n" +
 	"\x1fUpdateUserAccountStatusResponse\x12<\n" +
-	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"K\n" +
+	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"R\n" +
 	"\x1aSetUserServiceRolesRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
-	"\x05roles\x18\x02 \x03(\tR\x05roles\"[\n" +
+	"\x05roles\x18\x02 \x03(\tR\x05rolesR\x05scope\"[\n" +
 	"\x1bSetUserServiceRolesResponse\x12<\n" +
-	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\\\n" +
+	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"c\n" +
 	"\x13GetPrincipalRequest\x12/\n" +
 	"\x11active_account_id\x18\x01 \x01(\tH\x00R\x0factiveAccountId\x88\x01\x01B\x14\n" +
-	"\x12_active_account_id\"c\n" +
+	"\x12_active_account_idR\x05scope\"c\n" +
 	"\x14GetPrincipalResponse\x12K\n" +
-	"\tprincipal\x18\x01 \x01(\v2-.primandproper.platform.identity.v1.PrincipalR\tprincipal\")\n" +
+	"\tprincipal\x18\x01 \x01(\v2-.primandproper.platform.identity.v1.PrincipalR\tprincipal\"0\n" +
 	"\x0eGetUserRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userId\"O\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userIdR\x05scope\"O\n" +
 	"\x0fGetUserResponse\x12<\n" +
-	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\\\n" +
+	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"c\n" +
 	"\x10ListUsersRequest\x12H\n" +
-	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filter\"\xa8\x01\n" +
+	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xa8\x01\n" +
 	"\x11ListUsersResponse\x12O\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12B\n" +
-	"\aresults\x18\x02 \x03(\v2(.primandproper.platform.identity.v1.UserR\aresults\"\x80\x01\n" +
+	"\aresults\x18\x02 \x03(\v2(.primandproper.platform.identity.v1.UserR\aresults\"\x87\x01\n" +
 	"\x1cSearchUsersByUsernameRequest\x12\x16\n" +
 	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x12H\n" +
-	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filter\"\xb4\x01\n" +
+	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xb4\x01\n" +
 	"\x1dSearchUsersByUsernameResponse\x12O\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12B\n" +
-	"\aresults\x18\x02 \x03(\v2(.primandproper.platform.identity.v1.UserR\aresults\"2\n" +
+	"\aresults\x18\x02 \x03(\v2(.primandproper.platform.identity.v1.UserR\aresults\"9\n" +
 	"\x11GetAccountRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\"[\n" +
+	"account_id\x18\x01 \x01(\tR\taccountIdR\x05scope\"[\n" +
 	"\x12GetAccountResponse\x12E\n" +
-	"\aaccount\x18\x01 \x01(\v2+.primandproper.platform.identity.v1.AccountR\aaccount\"_\n" +
+	"\aaccount\x18\x01 \x01(\v2+.primandproper.platform.identity.v1.AccountR\aaccount\"f\n" +
 	"\x13ListAccountsRequest\x12H\n" +
-	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filter\"\xae\x01\n" +
+	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xae\x01\n" +
 	"\x14ListAccountsResponse\x12O\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12E\n" +
-	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.identity.v1.AccountR\aresults\"\x7f\n" +
+	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.identity.v1.AccountR\aresults\"\x86\x01\n" +
 	"\x1aListAccountsForUserRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12H\n" +
-	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filter\"\xb5\x01\n" +
+	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xb5\x01\n" +
 	"\x1bListAccountsForUserResponse\x12O\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12E\n" +
-	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.identity.v1.AccountR\aresults\"N\n" +
+	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.identity.v1.AccountR\aresults\"U\n" +
 	"\x14GetMembershipRequest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x02 \x01(\tR\taccountId\"g\n" +
+	"account_id\x18\x02 \x01(\tR\taccountIdR\x05scope\"g\n" +
 	"\x15GetMembershipResponse\x12N\n" +
 	"\n" +
 	"membership\x18\x01 \x01(\v2..primandproper.platform.identity.v1.MembershipR\n" +
-	"membership\"8\n" +
+	"membership\"?\n" +
 	"\x1dListMembershipsForUserRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userId\"j\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userIdR\x05scope\"j\n" +
 	"\x1eListMembershipsForUserResponse\x12H\n" +
-	"\aresults\x18\x01 \x03(\v2..primandproper.platform.identity.v1.MembershipR\aresults\"\x84\x01\n" +
+	"\aresults\x18\x01 \x03(\v2..primandproper.platform.identity.v1.MembershipR\aresults\"\x8b\x01\n" +
 	"\x19ListAccountMembersRequest\x12\x1d\n" +
 	"\n" +
 	"account_id\x18\x01 \x01(\tR\taccountId\x12H\n" +
-	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filter\"\xbf\x01\n" +
+	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xbf\x01\n" +
 	"\x1aListAccountMembersResponse\x12O\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12P\n" +
-	"\aresults\x18\x02 \x03(\v26.primandproper.platform.identity.v1.MembershipWithUserR\aresults\";\n" +
+	"\aresults\x18\x02 \x03(\v26.primandproper.platform.identity.v1.MembershipWithUserR\aresults\"B\n" +
 	"\x14GetInvitationRequest\x12#\n" +
-	"\rinvitation_id\x18\x01 \x01(\tR\finvitationId\"g\n" +
+	"\rinvitation_id\x18\x01 \x01(\tR\finvitationIdR\x05scope\"g\n" +
 	"\x15GetInvitationResponse\x12N\n" +
 	"\n" +
 	"invitation\x18\x01 \x01(\v2..primandproper.platform.identity.v1.InvitationR\n" +
-	"invitation\"j\n" +
+	"invitation\"q\n" +
 	"\x1eListInvitationsFromUserRequest\x12H\n" +
-	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filter\"\xbc\x01\n" +
+	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xbc\x01\n" +
 	"\x1fListInvitationsFromUserResponse\x12O\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12H\n" +
-	"\aresults\x18\x02 \x03(\v2..primandproper.platform.identity.v1.InvitationR\aresults\"q\n" +
+	"\aresults\x18\x02 \x03(\v2..primandproper.platform.identity.v1.InvitationR\aresults\"x\n" +
 	"%ListInvitationsForEmailAddressRequest\x12H\n" +
-	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filter\"\xc3\x01\n" +
+	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xc3\x01\n" +
 	"&ListInvitationsForEmailAddressResponse\x12O\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +

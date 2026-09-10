@@ -63,10 +63,25 @@
 //
 // # What is not here, and why
 //
-// No scope field, anywhere. A scope a client could name is a cross-tenant read
-// hiding behind a request field; it comes off the principal the consumer's
-// interceptor put on the context. See identity.proto, which says this at
-// greater length.
+// No scope field, anywhere, and the name is reserved so there cannot be one. A
+// scope a client could name is a cross-tenant read hiding behind a request
+// field; it comes off the principal the consumer's interceptor put on the
+// context. See identity.proto, which says this at greater length.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern:
+// `reserved "scope";` is a schema protoc refuses to accept a scope field into,
+// in this repository and in a consumer's fork of the file alike, whereas a
+// comment is a request to the next author. It is reserved on all four request
+// messages, on [OAuth2ClientCreationInput], which one of them is built from,
+// and on [OAuth2Client] and [IssuedOAuth2Client], which the responses are built
+// from.
+//
+// The reservation is of the singular name only, and this is the one file on the
+// lane where that has to be said out loud: OAuth2Client.scopes and
+// OAuth2ClientCreationInput.scopes are OAuth2 authorization scopes, which are
+// what a client may ask for at /authorize and have nothing to do with a tenant.
+// Two different words that happen to be spelled the same; protoc reserves
+// "scope" and leaves "scopes" alone, which is the outcome wanted here.
 //
 // No belongs_to_user in any request, for the same reason one level in. An owner
 // a client could name is a credential minted in somebody else's name. It is
@@ -95,6 +110,8 @@ option go_package = "github.com/primandproper/platform-go/v14/authentication/oau
 
 // OAuth2Client is one registration, as a client sees it.
 message OAuth2Client {
+  reserved "scope";
+
   // created_at is when the registration was accepted, assigned by the database.
   google.protobuf.Timestamp created_at = 1;
 
@@ -140,6 +157,8 @@ message OAuth2Client {
 // IssuedOAuth2Client is the one message in this schema that carries a
 // credential, returned by exactly the creation RPC.
 message IssuedOAuth2Client {
+  reserved "scope";
+
   OAuth2Client client = 1;
 
   // client_secret is the plaintext, sent once. It is not stored and not
@@ -152,6 +171,8 @@ message IssuedOAuth2Client {
 // Everything else about the row -- both identifiers, the secret, the timestamps,
 // the registry and the owner -- is decided by the service.
 message OAuth2ClientCreationInput {
+  reserved "scope";
+
   string name = 1;
   string description = 2;
 
@@ -163,19 +184,35 @@ message OAuth2ClientCreationInput {
   repeated string scopes = 4;
 }
 
-message CreateOAuth2ClientRequest { OAuth2ClientCreationInput input = 1; }
+message CreateOAuth2ClientRequest {
+  reserved "scope";
+
+  OAuth2ClientCreationInput input = 1;
+}
 message CreateOAuth2ClientResponse { IssuedOAuth2Client issued = 1; }
 
-message GetOAuth2ClientRequest { string oauth2_client_id = 1; }
+message GetOAuth2ClientRequest {
+  reserved "scope";
+
+  string oauth2_client_id = 1;
+}
 message GetOAuth2ClientResponse { OAuth2Client result = 1; }
 
-message ListOAuth2ClientsRequest { primandproper.platform.filtering.v1.QueryFilter filter = 1; }
+message ListOAuth2ClientsRequest {
+  reserved "scope";
+
+  primandproper.platform.filtering.v1.QueryFilter filter = 1;
+}
 message ListOAuth2ClientsResponse {
   primandproper.platform.filtering.v1.Pagination pagination = 1;
   repeated OAuth2Client results = 2;
 }
 
-message ArchiveOAuth2ClientRequest { string oauth2_client_id = 1; }
+message ArchiveOAuth2ClientRequest {
+  reserved "scope";
+
+  string oauth2_client_id = 1;
+}
 message ArchiveOAuth2ClientResponse {}
 
 // OAuth2ClientsService administers the registry.

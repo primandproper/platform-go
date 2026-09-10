@@ -30,11 +30,21 @@
 //
 // # What is not here, and why
 //
-// No scope field, anywhere. Every row this schema describes carries a
-// tenancy.Scope, and every read filters on it -- but a scope a client could put
-// in a request is a cross-tenant read hiding behind a request field. The scope
-// comes off the principal the consumer's authentication interceptor resolved,
-// and from nowhere else. See identity/grpc for that seam.
+// No scope field, anywhere, and the name is reserved so there cannot be one.
+// Every row this schema describes carries a tenancy.Scope, and every read
+// filters on it -- but a scope a client could put in a request is a
+// cross-tenant read hiding behind a request field. The scope comes off the
+// principal the consumer's authentication interceptor resolved, and from
+// nowhere else. See identity/grpc for that seam.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern:
+// `reserved "scope";` is a schema protoc refuses to accept a scope field into,
+// in this repository and in a consumer's fork of the file alike, whereas a
+// comment is a request to the next author. It is reserved on all twenty-eight
+// request messages, on the four inputs they are built from, and on the nine
+// messages a response is built from -- a scope on one of those would be
+// answering a client with something the client supplied. The response wrappers
+// hold nothing but those messages and reserve nothing.
 //
 // No credentials, in either direction. There is no hashed_password,
 // two_factor_secret or email_address_verification_token on User, and no token

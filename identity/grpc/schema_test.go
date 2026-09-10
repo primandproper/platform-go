@@ -2,6 +2,7 @@ package grpc_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,6 +97,44 @@ func TestNoMessageCarriesAScope(T *testing.T) {
 	}
 }
 
+// TestTheScopeNameIsReserved is the half of that guarantee protoc enforces
+// rather than this test.
+//
+// TestNoMessageCarriesAScope above says the field is not there today, which is a
+// statement about the file as it stands; `reserved "scope";` says it cannot be
+// added, here and in a consumer's fork of the schema alike. A comment asking the
+// next author not to add one is a request; a reservation is a compile failure.
+// It is audit/grpc's pattern, adopted rather than re-derived, and identity is
+// where the rule behind it is written down at length.
+//
+// It walks every message in the file rather than a list somebody remembered, and
+// excludes only the responses — which hold nothing but the messages above, each
+// of which reserves the name itself.
+func TestTheScopeNameIsReserved(T *testing.T) {
+	T.Parallel()
+
+	file := identityFileDescriptor(T)
+	messages := file.Messages()
+
+	test.Greater(T, 0, messages.Len(), test.Sprint("identity.proto declares no messages, so this asserted nothing"))
+
+	for i := range messages.Len() {
+		message := messages.Get(i)
+
+		name := string(message.Name())
+		if strings.HasSuffix(name, "Response") {
+			continue
+		}
+
+		T.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			test.True(t, reserves(message, "scope"), test.Sprintf(
+				"%s does not reserve the name \"scope\", so protoc would accept one being added", name))
+		})
+	}
+}
+
 // TestEveryEnumReservesItsZero checks that each enum has an UNSPECIFIED zero
 // value, which is what makes "the client did not set this" distinguishable from
 // a real value — and, for the two enums the converters refuse it on, what makes
@@ -172,6 +211,19 @@ func TestAConvertedInvitationCarriesNoToken(T *testing.T) {
 
 	test.StrNotContains(T, rendered, "the-secret-link-token")
 	test.StrNotContains(T, rendered, "acme")
+}
+
+// reserves reports whether a message reserves the given field name.
+func reserves(message protoreflect.MessageDescriptor, name protoreflect.Name) bool {
+	reserved := message.ReservedNames()
+
+	for i := range reserved.Len() {
+		if reserved.Get(i) == name {
+			return true
+		}
+	}
+
+	return false
 }
 
 func identityFileDescriptor(t *testing.T) protoreflect.FileDescriptor {

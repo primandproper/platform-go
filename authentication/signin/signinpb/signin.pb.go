@@ -41,13 +41,24 @@
 //
 // # What is not here, and why
 //
-// No scope field, anywhere, for the reason identity.proto gives at greater
-// length: a scope a client could name is a cross-tenant read hiding behind a
-// request field. Sign-in is the one place in the module where the scope cannot
-// come off a principal, because the caller has not proved they are one yet, so
-// it comes off the connection instead -- a resolver the consumer supplies, from
-// a host, a header, or nothing at all in a single-tenant deployment. See
-// authentication/signin/grpc.
+// No scope field, anywhere, and the name is reserved so there cannot be one.
+// The reason identity.proto gives at greater length: a scope a client could
+// name is a cross-tenant read hiding behind a request field. Sign-in is the one
+// place in the module where the scope cannot come off a principal, because the
+// caller has not proved they are one yet, so it comes off the connection
+// instead -- a resolver the consumer supplies, from a host, a header, or
+// nothing at all in a single-tenant deployment. See authentication/signin/grpc.
+//
+// That is what makes the reservation matter more here than anywhere else on
+// this lane. Every other surface resolves the scope from a caller who has
+// already been authenticated; these two doors resolve it for a request nobody
+// has vouched for, so a scope field would be one an anonymous caller fills in.
+// Reserving the name rather than only saying so is audit.proto's pattern:
+// `reserved "scope";` is a schema protoc refuses to accept a scope field into,
+// in this repository and in a consumer's fork of the file alike, whereas a
+// comment is a request to the next author. It is reserved on all seven request
+// messages, on [Credentials], which two of them are built from, and on
+// [IssuedToken] and [AuthStatus], which the responses are built from.
 //
 // No hashed password and no stored second-factor secret, in either direction.
 // The two secrets that do cross are the ones that have to: a plaintext password
@@ -1062,20 +1073,20 @@ var File_primandproper_platform_signin_v1_signin_proto protoreflect.FileDescript
 
 const file_primandproper_platform_signin_v1_signin_proto_rawDesc = "" +
 	"\n" +
-	"-primandproper/platform/signin/v1/signin.proto\x12 primandproper.platform.signin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a1primandproper/platform/identity/v1/identity.proto\"\xb3\x01\n" +
+	"-primandproper/platform/signin/v1/signin.proto\x12 primandproper.platform.signin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a1primandproper/platform/identity/v1/identity.proto\"\xba\x01\n" +
 	"\vCredentials\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\x12#\n" +
 	"\remail_address\x18\x02 \x01(\tR\femailAddress\x12\x1a\n" +
 	"\bpassword\x18\x03 \x01(\tR\bpassword\x12\x1b\n" +
 	"\ttotp_code\x18\x04 \x01(\tR\btotpCode\x12*\n" +
-	"\x11active_account_id\x18\x05 \x01(\tR\x0factiveAccountId\"\xcd\x01\n" +
+	"\x11active_account_id\x18\x05 \x01(\tR\x0factiveAccountIdR\x05scope\"\xd4\x01\n" +
 	"\vIssuedToken\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12\x19\n" +
 	"\btoken_id\x18\x02 \x01(\tR\atokenId\x129\n" +
 	"\n" +
 	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12*\n" +
 	"\x11active_account_id\x18\x04 \x01(\tR\x0factiveAccountId\x12&\n" +
-	"\x0eadministrative\x18\x05 \x01(\bR\x0eadministrative\"\xda\x02\n" +
+	"\x0eadministrative\x18\x05 \x01(\bR\x0eadministrativeR\x05scope\"\xe1\x02\n" +
 	"\n" +
 	"AuthStatus\x12<\n" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\x12*\n" +
@@ -1085,35 +1096,35 @@ const file_primandproper_platform_signin_v1_signin_proto_rawDesc = "" +
 	"\fhas_password\x18\x04 \x01(\bR\vhasPassword\x12.\n" +
 	"\x13two_factor_enrolled\x18\x05 \x01(\bR\x11twoFactorEnrolled\x128\n" +
 	"\x18requires_password_change\x18\x06 \x01(\bR\x16requiresPasswordChange\x124\n" +
-	"\x16email_address_verified\x18\a \x01(\bR\x14emailAddressVerified\"g\n" +
+	"\x16email_address_verified\x18\a \x01(\bR\x14emailAddressVerifiedR\x05scope\"n\n" +
 	"\x14LoginForTokenRequest\x12O\n" +
-	"\vcredentials\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.CredentialsR\vcredentials\"\\\n" +
+	"\vcredentials\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.CredentialsR\vcredentialsR\x05scope\"\\\n" +
 	"\x15LoginForTokenResponse\x12C\n" +
-	"\x05token\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.IssuedTokenR\x05token\"l\n" +
+	"\x05token\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.IssuedTokenR\x05token\"s\n" +
 	"\x19AdminLoginForTokenRequest\x12O\n" +
-	"\vcredentials\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.CredentialsR\vcredentials\"a\n" +
+	"\vcredentials\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.CredentialsR\vcredentialsR\x05scope\"a\n" +
 	"\x1aAdminLoginForTokenResponse\x12C\n" +
-	"\x05token\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.IssuedTokenR\x05token\"\x16\n" +
-	"\x14GetAuthStatusRequest\"\x83\x01\n" +
+	"\x05token\x18\x01 \x01(\v2-.primandproper.platform.signin.v1.IssuedTokenR\x05token\"\x1d\n" +
+	"\x14GetAuthStatusRequestR\x05scope\"\x83\x01\n" +
 	"\x15GetAuthStatusResponse\x12$\n" +
 	"\rauthenticated\x18\x01 \x01(\bR\rauthenticated\x12D\n" +
-	"\x06status\x18\x02 \x01(\v2,.primandproper.platform.signin.v1.AuthStatusR\x06status\"\x10\n" +
-	"\x0eGetSelfRequest\"O\n" +
+	"\x06status\x18\x02 \x01(\v2,.primandproper.platform.signin.v1.AuthStatusR\x06status\"\x17\n" +
+	"\x0eGetSelfRequestR\x05scope\"O\n" +
 	"\x0fGetSelfResponse\x12<\n" +
-	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\x82\x01\n" +
+	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\x89\x01\n" +
 	"\x15UpdatePasswordRequest\x12)\n" +
 	"\x10current_password\x18\x01 \x01(\tR\x0fcurrentPassword\x12!\n" +
 	"\fnew_password\x18\x02 \x01(\tR\vnewPassword\x12\x1b\n" +
-	"\ttotp_code\x18\x03 \x01(\tR\btotpCode\"\x18\n" +
-	"\x16UpdatePasswordResponse\"b\n" +
+	"\ttotp_code\x18\x03 \x01(\tR\btotpCodeR\x05scope\"\x18\n" +
+	"\x16UpdatePasswordResponse\"i\n" +
 	"\x18RefreshTOTPSecretRequest\x12)\n" +
 	"\x10current_password\x18\x01 \x01(\tR\x0fcurrentPassword\x12\x1b\n" +
-	"\ttotp_code\x18\x02 \x01(\tR\btotpCode\"^\n" +
+	"\ttotp_code\x18\x02 \x01(\tR\btotpCodeR\x05scope\"^\n" +
 	"\x19RefreshTOTPSecretResponse\x12\x16\n" +
 	"\x06secret\x18\x01 \x01(\tR\x06secret\x12)\n" +
-	"\x10provisioning_uri\x18\x02 \x01(\tR\x0fprovisioningUri\"6\n" +
+	"\x10provisioning_uri\x18\x02 \x01(\tR\x0fprovisioningUri\"=\n" +
 	"\x17VerifyTOTPSecretRequest\x12\x1b\n" +
-	"\ttotp_code\x18\x01 \x01(\tR\btotpCode\"\x1a\n" +
+	"\ttotp_code\x18\x01 \x01(\tR\btotpCodeR\x05scope\"\x1a\n" +
 	"\x18VerifyTOTPSecretResponse2\xb8\a\n" +
 	"\rSignInService\x12\x80\x01\n" +
 	"\rLoginForToken\x126.primandproper.platform.signin.v1.LoginForTokenRequest\x1a7.primandproper.platform.signin.v1.LoginForTokenResponse\x12\x8f\x01\n" +
