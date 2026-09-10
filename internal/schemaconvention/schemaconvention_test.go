@@ -7,22 +7,22 @@ import (
 	"testing"
 
 	auditmigrations "github.com/primandproper/platform-go/v14/audit/migrations"
-	oauth2migrations "github.com/primandproper/platform-go/v14/authentication/oauth2server/database/migrations"
-	webauthnmigrations "github.com/primandproper/platform-go/v14/authentication/webauthn/database/migrations"
-	authzmigrations "github.com/primandproper/platform-go/v14/authorization/database/migrations"
+	oauth2migrations "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
+	webauthnmigrations "github.com/primandproper/platform-go/v14/authentication/webauthncredentials/migrations"
 	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
-	shreddingmigrations "github.com/primandproper/platform-go/v14/cryptography/shredding/migrations"
 	dataprivacymigrations "github.com/primandproper/platform-go/v14/dataprivacy/migrations"
 	identitymigrations "github.com/primandproper/platform-go/v14/identity/migrations"
 	issuereportsmigrations "github.com/primandproper/platform-go/v14/issuereports/migrations"
+	mediaregistrymigrations "github.com/primandproper/platform-go/v14/mediaregistry/migrations"
 	meteringmigrations "github.com/primandproper/platform-go/v14/metering/migrations"
 	notificationsmigrations "github.com/primandproper/platform-go/v14/notifications/migrations"
 	operationsmigrations "github.com/primandproper/platform-go/v14/operations/migrations"
 	outboxmigrations "github.com/primandproper/platform-go/v14/outbox/migrations"
+	rbacmigrations "github.com/primandproper/platform-go/v14/rbac/migrations"
 	sagamigrations "github.com/primandproper/platform-go/v14/saga/migrations"
 	sessionsmigrations "github.com/primandproper/platform-go/v14/sessions/database/migrations"
+	shreddingmigrations "github.com/primandproper/platform-go/v14/shredding/migrations"
 	timersmigrations "github.com/primandproper/platform-go/v14/timers/migrations"
-	uploadsregistrymigrations "github.com/primandproper/platform-go/v14/uploads/registry/migrations"
 	webhooksmigrations "github.com/primandproper/platform-go/v14/webhooks/migrations"
 	workqueuemigrations "github.com/primandproper/platform-go/v14/workqueue/migrations"
 
@@ -51,8 +51,8 @@ var conventional = map[string]renderer{
 	"identity_accounts":      identitymigrations.Statements,
 	"identity_memberships":   identitymigrations.Statements,
 	"identity_invitations":   identitymigrations.Statements,
-	"authz_roles":            authzmigrations.Statements,
-	"authz_permissions":      authzmigrations.Statements,
+	"authz_roles":            rbacmigrations.Statements,
+	"authz_permissions":      rbacmigrations.Statements,
 	"operations":             operationsmigrations.Statements,
 	"webhooks_endpoints":     webhooksmigrations.Statements,
 	"webhooks_subscriptions": webhooksmigrations.Statements,
@@ -66,7 +66,7 @@ var conventional = map[string]renderer{
 	"metering_totals":        meteringmigrations.Statements,
 	"audit_log_chains":       auditmigrations.Statements,
 	"notifications_inbox":    notificationsmigrations.Statements,
-	"uploads_objects":        uploadsregistrymigrations.Statements,
+	"uploads_objects":        mediaregistrymigrations.Statements,
 }
 
 // exemption is a table that deliberately carries none of the triple, and the
@@ -105,8 +105,8 @@ var exempt = map[string]exemption{
 
 	// Mapping rows. Nothing lists, filters or soft-deletes one independently of
 	// its parents, and archiving a parent already hides them.
-	"authz_role_permissions":    {authzmigrations.Statements, "mapping rows, rewritten wholesale with their role"},
-	"authz_role_hierarchy":      {authzmigrations.Statements, "mapping rows, rewritten wholesale with their role"},
+	"authz_role_permissions":    {rbacmigrations.Statements, "mapping rows, rewritten wholesale with their role"},
+	"authz_role_hierarchy":      {rbacmigrations.Statements, "mapping rows, rewritten wholesale with their role"},
 	"identity_user_roles":       {identitymigrations.Statements, "mapping rows, rewritten wholesale with their user"},
 	"identity_membership_roles": {identitymigrations.Statements, "mapping rows, rewritten wholesale with their membership"},
 	"identity_invitation_roles": {identitymigrations.Statements, "mapping rows, rewritten wholesale with their invitation"},
@@ -213,7 +213,7 @@ func TestEveryTableIsClassified(T *testing.T) {
 
 	renderers := map[string]renderer{
 		"audit":         auditmigrations.Statements,
-		"authz":         authzmigrations.Statements,
+		"authz":         rbacmigrations.Statements,
 		"dataprivacy":   dataprivacymigrations.Statements,
 		"identity":      identitymigrations.Statements,
 		"comments":      commentsmigrations.Statements,

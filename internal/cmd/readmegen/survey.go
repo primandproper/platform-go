@@ -398,8 +398,8 @@ func dialectOf(engine string) string {
 // Attribution is by longest matching store prefix rather than by the generated
 // package's own directory, since the querier lives in an internal subpackage
 // several levels beneath the store — identity/internal/identitydb belongs to
-// identity, and authentication/webauthn/database/internal/webauthndb to
-// authentication/webauthn/database rather than to authentication.
+// identity, and authentication/webauthncredentials/internal/webauthndb to
+// authentication/webauthncredentials rather than to authentication.
 func checkQueriers(stores []store, emitted map[string][]string) error {
 	byStore := map[string][]string{}
 

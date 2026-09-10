@@ -207,7 +207,7 @@ func ExampleWithWriterSideEffect() {
 					}
 
 					// Keyed by document ID, which is what buys per-document
-					// ordering out of the relay. search/sync's Event.Message
+					// ordering out of the relay. searchsync's Event.Message
 					// does exactly this against a real index.
 					events = append(events, outbox.Message{
 						Topic:   "orders-index",

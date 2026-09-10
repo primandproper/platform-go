@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	authzdb "github.com/primandproper/platform-go/v14/authorization/database"
-	authzdbcfg "github.com/primandproper/platform-go/v14/authorization/database/config"
 	asyncably "github.com/primandproper/platform-go/v14/notifications/async/ably"
 	asyncnotifcfg "github.com/primandproper/platform-go/v14/notifications/async/config"
 	asyncpusher "github.com/primandproper/platform-go/v14/notifications/async/pusher"
+	"github.com/primandproper/platform-go/v14/rbac"
+	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
 
 	analyticscfg "github.com/primandproper/primitives-go/analytics/config"
 	analyticsposthog "github.com/primandproper/primitives-go/analytics/posthog"
@@ -134,7 +134,7 @@ func TestSelectedProviderMustBeConfigured(T *testing.T) {
 	}{
 		{name: "analytics/segment", provider: analyticscfg.ProviderSegment, cfg: &analyticscfg.Config{Provider: analyticscfg.ProviderSegment}},
 		{name: "analytics/posthog", provider: analyticscfg.ProviderPostHog, cfg: &analyticscfg.Config{Provider: analyticscfg.ProviderPostHog}},
-		{name: "authorization/database", provider: authzdbcfg.ProviderDatabase, cfg: &authzdbcfg.Config{Provider: authzdbcfg.ProviderDatabase}},
+		{name: "rbac", provider: rbaccfg.ProviderDatabase, cfg: &rbaccfg.Config{Provider: rbaccfg.ProviderDatabase}},
 		{name: "cache/redis", provider: cachecfg.ProviderRedis, cfg: &cachecfg.Config{Provider: cachecfg.ProviderRedis}},
 		{name: "capitalism/stripe", provider: capitalismcfg.StripeProvider, cfg: &capitalismcfg.Config{Provider: capitalismcfg.StripeProvider}},
 		{name: "capitalism/revenuecat", provider: capitalismcfg.RevenueCatProvider, cfg: &capitalismcfg.Config{Provider: capitalismcfg.RevenueCatProvider}},
@@ -237,17 +237,17 @@ func TestUnselectedProvidersAreNotEnforced(T *testing.T) {
 		// authorization
 		{
 			name: "authorization/unset",
-			cfg:  &authzdbcfg.Config{},
+			cfg:  &rbaccfg.Config{},
 		},
 		{
 			name: "authorization/static",
-			cfg:  &authzdbcfg.Config{Provider: authzdbcfg.ProviderStatic},
+			cfg:  &rbaccfg.Config{Provider: rbaccfg.ProviderStatic},
 		},
 		{
-			name: "authorization/database",
-			cfg: &authzdbcfg.Config{
-				Provider: authzdbcfg.ProviderDatabase,
-				Database: &authzdb.Config{Dialect: dialect.Postgres},
+			name: "rbac",
+			cfg: &rbaccfg.Config{
+				Provider: rbaccfg.ProviderDatabase,
+				Database: &rbac.Config{Dialect: dialect.Postgres},
 			},
 		},
 

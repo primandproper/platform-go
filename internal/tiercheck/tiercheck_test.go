@@ -3,6 +3,7 @@ package tiercheck_test
 import (
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -56,34 +57,34 @@ var roster = map[string]entry{
 	"identity":      {tier: domain},
 	"issuereports":  {tier: domain},
 	"links":         {tier: domain},
+	"mediaregistry": {tier: domain},
 	"metering":      {tier: domain},
 	"notifications": {tier: domain},
 	"operations":    {tier: domain},
 	"outbox":        {tier: domain},
+	"rbac":          {tier: domain},
 	"retention":     {tier: domain},
 	"saga":          {tier: domain},
+	"searchsync":    {tier: domain},
 	"sessions":      {tier: domain},
 	"settings":      {tier: domain},
+	"shredding":     {tier: domain},
 	"timers":        {tier: domain},
 	"waitlists":     {tier: domain},
 	"webhooks":      {tier: domain},
 	"workqueue":     {tier: domain},
 
 	// The straddles: a domain package under a path whose parent is a
-	// primitives-go package. Go is content with a parent directory holding no
-	// .go files, and these nine are what that buys — the store stays under the
-	// engine it belongs to instead of taking a name at the root that would hide
-	// the relationship. The README's "Primitives and Domains" section says why
-	// each one splits where it does.
-	"authentication/oauth2clients":         {tier: domain, why: "the administered client registry's table, under a protocol implementation that is a primitive"},
-	"authentication/oauth2server/database": {tier: domain, why: "the client and token tables, under a protocol implementation that is a primitive"},
-	"authentication/passwordreset":         {tier: domain, why: "a table of reset tokens, under engines that hash and issue"},
-	"authentication/signin":                {tier: domain, why: "the order the engines and the directory are used in, owning no table of its own"},
-	"authentication/webauthn/database":     {tier: domain, why: "the ceremony table, under a protocol engine that is a primitive"},
-	"authorization/database":               {tier: domain, why: "the roles and permissions tables, under a policy interface that is a primitive"},
-	"cryptography/shredding":               {tier: domain, why: "the per-subject key table, under primitives that encrypt and sign"},
-	"search/sync":                          {tier: domain, why: "a reindexing worker driven by the outbox, under two search indexes that are primitives"},
-	"uploads/registry":                     {tier: domain, why: "the object metadata rows, under an object store behind an interface"},
+	// primitives-go package. There is one such parent left, and it is the one
+	// that groups rather than indirects — authentication/ holds five related
+	// domain packages, so the name says something a reader wants, which is why
+	// it survived the flattening the other six parents did not. The README's
+	// "Primitives and Domains" section says why each one splits where it does.
+	"authentication/oauth2clients":       {tier: domain, why: "the administered client registry's table, under a protocol implementation that is a primitive"},
+	"authentication/oauth2serverstore":   {tier: domain, why: "the client and token tables, under a protocol implementation that is a primitive"},
+	"authentication/passwordreset":       {tier: domain, why: "a table of reset tokens, under engines that hash and issue"},
+	"authentication/signin":              {tier: domain, why: "the order the engines and the directory are used in, owning no table of its own"},
+	"authentication/webauthncredentials": {tier: domain, why: "the ceremony table, under a protocol engine that is a primitive"},
 
 	// The composition root.
 	"errormappers": {tier: root},
@@ -181,6 +182,75 @@ func TestNestedEntriesAreReasoned(t *testing.T) {
 			t.Errorf("%s carries a reason but is a top-level package; the README's table is where a "+
 				"top-level package's tier is explained", path)
 		}
+	}
+}
+
+// TestNoParentDirectoryOnlyIndirects fails a directory that holds no Go files
+// and exactly one Go-bearing child. That directory is not grouping anything —
+// it is one name a reader has to walk through, and it is worse than free,
+// because a parent that belongs to primitives-go shows a relationship to a
+// package this repository does not hold. `cryptography/` was the sharp case:
+// there has never been a `cryptography` here, so `cryptography/shredding` named
+// a parent that exists in neither tree a reader could open.
+//
+// Six directories were in that shape when this check was written and all six
+// were flattened inside the /v14 major — `uploads/`, `authorization/`,
+// `cryptography/` and `search/` at the root, and `authentication/oauth2server/`
+// and `authentication/webauthn/` under the parent that stayed. A package path is
+// the most breaking thing in Go, so the next one to appear is cheapest to catch
+// before it is tagged, which is what this test is for.
+//
+// `authentication/` passes because it groups: five related domain packages under
+// a name that says something. So does any directory holding Go files of its own,
+// whatever its children — `searchsync` has one subpackage and is a package
+// itself. proto/ trees are outside this entirely, because they hold no Go at any
+// depth: their shape is the protobuf import path's and not this module's to
+// choose.
+func TestNoParentDirectoryOnlyIndirects(t *testing.T) {
+	t.Parallel()
+
+	moduleDir := moduleRoot(t)
+
+	packages := packageDirs(t, moduleDir)
+
+	holdsGo := make(map[string]struct{}, len(packages))
+	for _, dir := range packages {
+		holdsGo[dir] = struct{}{}
+	}
+
+	// children is, for each directory that some Go package sits beneath, the
+	// set of its immediate children that lead to one. A directory holding no Go
+	// of its own is worth its name only if that set has more than one member.
+	children := map[string]map[string]struct{}{}
+
+	for _, dir := range packages {
+		segments := strings.Split(dir, "/")
+		for i := 1; i < len(segments); i++ {
+			ancestor := strings.Join(segments[:i], "/")
+
+			if children[ancestor] == nil {
+				children[ancestor] = map[string]struct{}{}
+			}
+
+			children[ancestor][segments[i]] = struct{}{}
+		}
+	}
+
+	for _, ancestor := range slices.Sorted(maps.Keys(children)) {
+		if _, ok := holdsGo[ancestor]; ok {
+			continue
+		}
+
+		if len(children[ancestor]) != 1 {
+			continue
+		}
+
+		only := slices.Sorted(maps.Keys(children[ancestor]))[0]
+
+		t.Errorf("%s holds no Go files and exactly one child, %s: it indirects rather than groups\n\t"+
+			"give the child a name that carries the relationship and move it up, as the six "+
+			"flattened for /v14 did; a parent that groups several packages is what this check allows",
+			ancestor, only)
 	}
 }
 

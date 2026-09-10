@@ -56,7 +56,7 @@ func clientFromRow(row *oauth2clientsdb.GetRegisteredClientRow) (*Client, error)
 // there is no cycle to find — so the error is dropped rather than returned up a
 // path that could do nothing with it.
 //
-// This is deliberately the same encoding authentication/oauth2server/database
+// This is deliberately the same encoding authentication/oauth2serverstore
 // writes for the same kind of list. The two never read each other's columns, so
 // the copy cannot drift into a wrong answer; what it buys is that a person
 // looking at either table sees one shape.
