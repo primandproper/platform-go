@@ -182,28 +182,77 @@ func (e *storeEnv) inTx(tb testing.TB, fn func(tx database.Tx) error) error {
 // instead, and they are in the transactions suite.
 func (e *storeEnv) reader() database.SQLQueryExecutor { return e.client.Reader() }
 
-// create files one notification in a transaction of its own and reports what the
-// write returned.
+// create files one notification in a transaction of its own and reports both
+// halves of what the write returned: the row, and the error.
 //
 // The transaction is a detail here rather than the subject: these cases are about
 // what the write checks, and a consumer that has nothing to commit alongside
 // opens exactly this. What a notification commits *with* is the transactions
 // suite.
-func (e *storeEnv) create(tb testing.TB, store *SQLStore, scope tenancy.Scope, n *Notification) error {
+//
+// The row is the answer rather than a convenience. The write does not touch the
+// Notification it is handed, so a case that needs the id, the scope or the
+// creation time reads them here or not at all — which is the property these
+// helpers exist to keep the suite honest about.
+func (e *storeEnv) create(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	n *Notification,
+) (*Notification, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.CreateNotification(tb.Context(), tx, scope, n)
+	var filed *Notification
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var createErr error
+
+		filed, createErr = store.CreateNotification(tb.Context(), tx, scope, n)
+
+		return createErr
 	})
+
+	return filed, err
 }
 
-// markRead stamps one notification read in a transaction of its own.
-func (e *storeEnv) markRead(tb testing.TB, store *SQLStore, scope tenancy.Scope, principal, id string) error {
+// mustCreate is create for the cases that are about something else: it fails the
+// test on a refusal and hands back the row.
+func (e *storeEnv) mustCreate(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	n *Notification,
+) *Notification {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.MarkNotificationRead(tb.Context(), tx, scope, principal, id)
+	filed, err := e.create(tb, store, scope, n)
+	must.NoError(tb, err)
+	must.NotNil(tb, filed)
+
+	return filed
+}
+
+// markRead stamps one notification read in a transaction of its own, reporting
+// the row the write answered with.
+func (e *storeEnv) markRead(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	principal, id string,
+) (*Notification, error) {
+	tb.Helper()
+
+	var marked *Notification
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var markErr error
+
+		marked, markErr = store.MarkNotificationRead(tb.Context(), tx, scope, principal, id)
+
+		return markErr
 	})
+
+	return marked, err
 }
 
 // markAllRead stamps everything unread in a transaction of its own, handing back
@@ -227,31 +276,79 @@ func (e *storeEnv) markAllRead(
 	return count, err
 }
 
-// archive dismisses one notification in a transaction of its own.
-func (e *storeEnv) archive(tb testing.TB, store *SQLStore, scope tenancy.Scope, principal, id string) error {
+// archive dismisses one notification in a transaction of its own, reporting the
+// row the write answered with.
+func (e *storeEnv) archive(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	principal, id string,
+) (*Notification, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ArchiveNotification(tb.Context(), tx, scope, principal, id)
+	var archived *Notification
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var archiveErr error
+
+		archived, archiveErr = store.ArchiveNotification(tb.Context(), tx, scope, principal, id)
+
+		return archiveErr
 	})
+
+	return archived, err
 }
 
-// register records one device in a transaction of its own.
-func (e *storeEnv) register(tb testing.TB, store *SQLStore, scope tenancy.Scope, d *Device) error {
+// register records one device in a transaction of its own, reporting the row the
+// write answered with.
+func (e *storeEnv) register(tb testing.TB, store *SQLStore, scope tenancy.Scope, d *Device) (*Device, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.RegisterDevice(tb.Context(), tx, scope, d)
+	var registered *Device
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var registerErr error
+
+		registered, registerErr = store.RegisterDevice(tb.Context(), tx, scope, d)
+
+		return registerErr
 	})
+
+	return registered, err
 }
 
-// revoke removes one registration in a transaction of its own.
-func (e *storeEnv) revoke(tb testing.TB, store *SQLStore, scope tenancy.Scope, principal, deviceID string) error {
+// mustRegister is register for the cases that are about something else.
+func (e *storeEnv) mustRegister(tb testing.TB, store *SQLStore, scope tenancy.Scope, d *Device) *Device {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.RevokeDevice(tb.Context(), tx, scope, principal, deviceID)
+	registered, err := e.register(tb, store, scope, d)
+	must.NoError(tb, err)
+	must.NotNil(tb, registered)
+
+	return registered
+}
+
+// revoke removes one registration in a transaction of its own, reporting the
+// registration the write says it removed.
+func (e *storeEnv) revoke(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	principal, deviceID string,
+) (*Device, error) {
+	tb.Helper()
+
+	var revoked *Device
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var revokeErr error
+
+		revoked, revokeErr = store.RevokeDevice(tb.Context(), tx, scope, principal, deviceID)
+
+		return revokeErr
 	})
+
+	return revoked, err
 }
 
 // newNotification is one inbox row's worth of input, with everything the store

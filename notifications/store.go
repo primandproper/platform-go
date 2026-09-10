@@ -81,6 +81,44 @@ import (
 // an entity field is exactly the derivation that rule exists to rule out. An
 // entity whose scope disagrees with the argument is [ErrScopeMismatch] rather
 // than either value quietly winning; one that names none adopts the argument.
+//
+// # Five of these writes hand back the row they moved, and two do not
+//
+// [Inbox.CreateNotification], [Inbox.MarkNotificationRead],
+// [Inbox.ArchiveNotification], [Registry.RegisterDevice] and
+// [Registry.RevokeDevice] each answer with the row the statement left behind,
+// read on the caller's transaction. None of them writes to anything the caller
+// still holds: the two that take an entity work on a copy of it, and the three
+// that take an id have nothing to write to.
+//
+// It is not a convenience, and the reason is the transaction. The stamps on
+// these rows are the server's clock rather than anything a caller could
+// assemble, and a caller inside an uncommitted transaction has no other way to
+// read them back. The audit entry describing one of these writes is written
+// beside it — same transaction, same request — so without this the caller reads
+// first and writes second, and its record then describes the row as it stood a
+// statement earlier rather than as the statement left it.
+//
+// Two of the five could not be answered by a later read at all, which is what
+// makes the boundary a line rather than a preference. An archived notification
+// is invisible to every single-row read here, because excluding archived rows
+// is what "the inbox" means; a revoked device is invisible to everything,
+// because the row is deleted. The other three are reachable a statement later
+// and hand the row back anyway, because a module with two spellings of "what
+// did I just write" is a module where the answer depends on which method you
+// called.
+//
+// The two that do not are the two with no row to describe.
+// [Inbox.MarkAllNotificationsRead] moves a set rather than a row and reports how
+// many; [Registry.InvalidateDeviceToken] is machinery — it takes neither
+// executor nor scope, and it is idempotent, so a token already gone is the
+// state its caller asked for and there is nothing that was moved.
+//
+// The rejected spelling was mutating the caller's argument in place, which
+// delivers the same guarantee — comments.Store.CreateComment does exactly that.
+// Returning is the one this module already has more of, and the only one
+// available to a write that takes an id rather than an entity, which is what
+// made it the module's answer rather than this package's.
 
 // Inbox is the persistence seam for in-app notifications.
 //
@@ -100,9 +138,16 @@ import (
 type Inbox interface {
 	// CreateNotification files one notification through the caller's
 	// transaction, so it commits with whatever the caller writes beside it — the
-	// order, the invitation, the failed payment the notification is about. It
-	// assigns the id where the caller left it empty, and writes back what was
-	// stored. A nil tx is an error wrapping ErrNilExecutor.
+	// order, the invitation, the failed payment the notification is about — and
+	// answers with the row it wrote: the id it assigned where the caller left one
+	// empty, the scope the call named, and the creation time the database
+	// stamped. A nil tx is an error wrapping ErrNilExecutor, and a refused write
+	// answers with a nil Notification.
+	//
+	// It leaves the Notification it was handed alone. What this call settled is
+	// on the row it returns and nowhere else, so a caller that files a
+	// notification and then serializes its own argument into a response
+	// serializes an empty id and a creation time in the year one.
 	//
 	// A Notification.Scope that disagrees with the scope argument is
 	// ErrScopeMismatch; one that names none adopts the argument.
@@ -120,7 +165,7 @@ type Inbox interface {
 	// is describing an RPC of its own, whose handler owns the transaction this
 	// write belongs in — which is exactly what notifications/grpc's own writes
 	// do with Client.WithTransaction.
-	CreateNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *Notification) error
+	CreateNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *Notification) (*Notification, error)
 
 	// GetNotification reads one of the principal's live notifications. It
 	// returns an error wrapping ErrNotificationNotFound when the notification
@@ -142,14 +187,18 @@ type Inbox interface {
 	ListUnreadNotifications(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Notification], error)
 
 	// MarkNotificationRead stamps one notification as read, now, through the
-	// caller's transaction. A nil tx is an error wrapping ErrNilExecutor.
+	// caller's transaction, and answers with the row as the statement left it. A
+	// nil tx is an error wrapping ErrNilExecutor.
 	//
 	// It is idempotent and does not move the stamp: a notification the principal
-	// has already read reports success and keeps the time it was first read,
-	// which is what a digest and a re-notify both read. A notification that is
-	// not in the inbox — archived, absent, or somebody else's — is an error
-	// wrapping ErrNotificationNotFound.
-	MarkNotificationRead(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal, notificationID string) error
+	// has already read reports success and comes back carrying the time it was
+	// first read, which is what a digest and a re-notify both read. That makes
+	// the returned ReadAt the answer to "when", whether this call wrote it or
+	// found it — which the error alone could not distinguish, since both are
+	// success. A notification that is not in the inbox — archived, absent, or
+	// somebody else's — is an error wrapping ErrNotificationNotFound and a nil
+	// Notification.
+	MarkNotificationRead(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal, notificationID string) (*Notification, error)
 
 	// MarkAllNotificationsRead stamps everything the principal has not read
 	// through the caller's transaction, and reports how many that was.
@@ -163,12 +212,20 @@ type Inbox interface {
 
 	// ArchiveNotification dismisses one notification through the caller's
 	// transaction, leaving the row for whoever asks later what somebody was
-	// told. A nil tx is an error wrapping ErrNilExecutor.
+	// told, and answers with the row it archived — carrying the ArchivedAt the
+	// statement stamped. A nil tx is an error wrapping ErrNilExecutor.
+	//
+	// It is the write here whose result nothing else on this interface can
+	// reach. Every single-row read excludes archived rows, because excluding them
+	// is what "the inbox" means, so the read that would describe what this did is
+	// the one read written not to find it. A paged list with
+	// filtering.QueryFilter.IncludeArchived still walks the row, and that is a
+	// page rather than an answer to "what did I just archive".
 	//
 	// A notification already archived is an error wrapping
 	// ErrNotificationNotFound, because an archived notification is not in the
 	// inbox and this method addresses the inbox.
-	ArchiveNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal, notificationID string) error
+	ArchiveNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal, notificationID string) (*Notification, error)
 }
 
 // Registry is the persistence seam for device tokens: what a push is addressed
@@ -182,8 +239,8 @@ type Inbox interface {
 // is gone rather than flagged.
 type Registry interface {
 	// RegisterDevice records a device token through the caller's transaction,
-	// under the scope the call names, and writes back what was stored. A nil tx
-	// is an error wrapping ErrNilExecutor.
+	// under the scope the call names, and answers with the row that is there
+	// afterwards. A nil tx is an error wrapping ErrNilExecutor.
 	//
 	// It converges on (platform, token) rather than inserting, because the token
 	// is the handset and a handset re-registers on every app launch and every
@@ -192,15 +249,23 @@ type Registry interface {
 	// handset that changes hands has one owner, and a registry that kept both
 	// would deliver the previous owner's notifications to the new one.
 	//
-	// It assigns the id and the last-seen time where the caller left them unset,
-	// and fills the value with the row that is there afterwards — which for a
-	// re-registration is the original id and creation time rather than whatever
-	// the caller was holding. That read-back runs on tx, so it is the row this
-	// transaction just wrote.
+	// So the row it hands back is the registration the token has now rather than
+	// the registration this call described, and on a re-registration those are
+	// not the same thing. A first registration answers with the row just
+	// inserted: the id the caller supplied or the one this assigned, the
+	// last-seen time the caller supplied or the clock's, and the creation time
+	// the database stamped. A re-registration answers with the pre-existing row
+	// the write converged on — its id and its creation time, carrying this call's
+	// principal, scope and last-seen stamp. A caller that assumed otherwise would
+	// hold an id no row has, and revoke nothing when the user signs out.
+	//
+	// It leaves the Device it was handed alone; the returned row is where the id
+	// and the stamps are. That read-back runs on tx, so it is the row this
+	// transaction just converged on.
 	//
 	// A Device.Scope that disagrees with the scope argument is ErrScopeMismatch;
 	// one that names none adopts the argument.
-	RegisterDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *Device) error
+	RegisterDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *Device) (*Device, error)
 
 	// ListDevices pages the principal's registered devices. A nil q is an error
 	// wrapping ErrNilExecutor.
@@ -230,15 +295,25 @@ type Registry interface {
 	ListDevicesByPrincipals(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principals []string) ([]*Device, error)
 
 	// RevokeDevice removes one of the principal's registrations through the
-	// caller's transaction — a sign-out, or a device somebody no longer has. The
-	// row is deleted rather than archived. A registration that is not there is an
-	// error wrapping ErrDeviceNotFound, and a nil tx is an error wrapping
+	// caller's transaction — a sign-out, or a device somebody no longer has — and
+	// answers with the registration it removed. The row is deleted rather than
+	// archived. A registration that is not there is an error wrapping
+	// ErrDeviceNotFound and a nil Device, and a nil tx is an error wrapping
 	// ErrNilExecutor.
+	//
+	// It is the write with the least choice about answering: the row is gone from
+	// every executor the moment this transaction commits, so a caller recording
+	// which handset stopped being addressable has nowhere else to read it from.
+	// The row is therefore read before the delete rather than after, which is the
+	// only order a deletion leaves available; the delete is keyed on the same
+	// scope, principal and id, and guards on its own count, so a row that moved
+	// between the two is ErrDeviceNotFound rather than a value handed back for a
+	// deletion that did not happen.
 	//
 	// A sign-out is the ordinary caller, and a sign-out is several writes: the
 	// session ends, the refresh token is revoked, the handset stops being
 	// addressable. Those are one fact, and this is the write that joins them.
-	RevokeDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal, deviceID string) error
+	RevokeDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal, deviceID string) (*Device, error)
 
 	// InvalidateDeviceToken removes a token the provider has permanently
 	// rejected, whoever it belongs to.

@@ -45,6 +45,37 @@ const deleteDeviceTokenMySQL = `DELETE FROM {{prefix}}notifications_devices
 WHERE platform = ?
 	AND token = ?`
 
+const getArchivedNotificationMySQL = `SELECT
+	{{prefix}}notifications_inbox.id,
+	{{prefix}}notifications_inbox.scope,
+	{{prefix}}notifications_inbox.principal,
+	{{prefix}}notifications_inbox.topic,
+	{{prefix}}notifications_inbox.title,
+	{{prefix}}notifications_inbox.body,
+	{{prefix}}notifications_inbox.link,
+	{{prefix}}notifications_inbox.read_at,
+	{{prefix}}notifications_inbox.created_at,
+	{{prefix}}notifications_inbox.last_updated_at,
+	{{prefix}}notifications_inbox.archived_at
+FROM {{prefix}}notifications_inbox
+WHERE {{prefix}}notifications_inbox.id = ?
+	AND {{prefix}}notifications_inbox.scope = ?
+	AND {{prefix}}notifications_inbox.principal = ?
+	AND {{prefix}}notifications_inbox.archived_at IS NOT NULL`
+
+const getDeviceMySQL = `SELECT
+	{{prefix}}notifications_devices.id,
+	{{prefix}}notifications_devices.scope,
+	{{prefix}}notifications_devices.principal,
+	{{prefix}}notifications_devices.platform,
+	{{prefix}}notifications_devices.token,
+	{{prefix}}notifications_devices.last_seen_at,
+	{{prefix}}notifications_devices.created_at
+FROM {{prefix}}notifications_devices
+WHERE {{prefix}}notifications_devices.id = ?
+	AND {{prefix}}notifications_devices.scope = ?
+	AND {{prefix}}notifications_devices.principal = ?`
+
 const getDeviceByTokenMySQL = `SELECT
 	{{prefix}}notifications_devices.id,
 	{{prefix}}notifications_devices.scope,
@@ -73,13 +104,6 @@ const getNotificationMySQL = `SELECT
 FROM {{prefix}}notifications_inbox
 WHERE {{prefix}}notifications_inbox.archived_at IS NULL
 	AND {{prefix}}notifications_inbox.id = ?
-	AND {{prefix}}notifications_inbox.scope = ?
-	AND {{prefix}}notifications_inbox.principal = ?`
-
-const getNotificationCreatedAtMySQL = `SELECT
-	{{prefix}}notifications_inbox.created_at
-FROM {{prefix}}notifications_inbox
-WHERE {{prefix}}notifications_inbox.id = ?
 	AND {{prefix}}notifications_inbox.scope = ?
 	AND {{prefix}}notifications_inbox.principal = ?`
 
@@ -427,9 +451,10 @@ type mysqlQueries struct {
 	archiveNotification               string
 	createNotification                string
 	deleteDeviceToken                 string
+	getArchivedNotification           string
+	getDevice                         string
 	getDeviceByToken                  string
 	getNotification                   string
-	getNotificationCreatedAt          string
 	listDevices                       string
 	listDevicesByPrincipals           string
 	listDevicesDescending             string
@@ -450,9 +475,10 @@ func newMySQL(prefix string) *mysqlQueries {
 		archiveNotification:               strings.ReplaceAll(archiveNotificationMySQL, prefixMarker, prefix),
 		createNotification:                strings.ReplaceAll(createNotificationMySQL, prefixMarker, prefix),
 		deleteDeviceToken:                 strings.ReplaceAll(deleteDeviceTokenMySQL, prefixMarker, prefix),
+		getArchivedNotification:           strings.ReplaceAll(getArchivedNotificationMySQL, prefixMarker, prefix),
+		getDevice:                         strings.ReplaceAll(getDeviceMySQL, prefixMarker, prefix),
 		getDeviceByToken:                  strings.ReplaceAll(getDeviceByTokenMySQL, prefixMarker, prefix),
 		getNotification:                   strings.ReplaceAll(getNotificationMySQL, prefixMarker, prefix),
-		getNotificationCreatedAt:          strings.ReplaceAll(getNotificationCreatedAtMySQL, prefixMarker, prefix),
 		listDevices:                       strings.ReplaceAll(listDevicesMySQL, prefixMarker, prefix),
 		listDevicesByPrincipals:           strings.ReplaceAll(listDevicesByPrincipalsMySQL, prefixMarker, prefix),
 		listDevicesDescending:             strings.ReplaceAll(listDevicesDescendingMySQL, prefixMarker, prefix),
@@ -510,6 +536,56 @@ func (q *mysqlQueries) DeleteDeviceToken(ctx context.Context, db DBTX, arg Delet
 	return result.RowsAffected()
 }
 
+// GetArchivedNotification runs the :one query against mysql.
+func (q *mysqlQueries) GetArchivedNotification(ctx context.Context, db DBTX, arg GetArchivedNotificationParams) (GetArchivedNotificationRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedNotification,
+		arg.ID,
+		arg.Scope,
+		arg.Principal,
+	)
+
+	var i GetArchivedNotificationRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Principal,
+		&i.Topic,
+		&i.Title,
+		&i.Body,
+		&i.Link,
+		&i.ReadAt,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
+// GetDevice runs the :one query against mysql.
+func (q *mysqlQueries) GetDevice(ctx context.Context, db DBTX, arg GetDeviceParams) (GetDeviceRow, error) {
+	row := db.QueryRowContext(ctx, q.getDevice,
+		arg.ID,
+		arg.Scope,
+		arg.Principal,
+	)
+
+	var i GetDeviceRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Principal,
+		&i.Platform,
+		&i.Token,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+	)
+
+	return i, err
+}
+
 // GetDeviceByToken runs the :one query against mysql.
 func (q *mysqlQueries) GetDeviceByToken(ctx context.Context, db DBTX, arg GetDeviceByTokenParams) (GetDeviceByTokenRow, error) {
 	row := db.QueryRowContext(ctx, q.getDeviceByToken,
@@ -555,23 +631,6 @@ func (q *mysqlQueries) GetNotification(ctx context.Context, db DBTX, arg GetNoti
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
-	)
-
-	return i, err
-}
-
-// GetNotificationCreatedAt runs the :one query against mysql.
-func (q *mysqlQueries) GetNotificationCreatedAt(ctx context.Context, db DBTX, arg GetNotificationCreatedAtParams) (GetNotificationCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getNotificationCreatedAt,
-		arg.ID,
-		arg.Scope,
-		arg.Principal,
-	)
-
-	var i GetNotificationCreatedAtRow
-
-	err := row.Scan(
-		&i.CreatedAt,
 	)
 
 	return i, err
@@ -1062,6 +1121,38 @@ var (
 		Token    string
 	}(DeleteDeviceTokenParams{})
 	_ = struct {
+		ID        string
+		Scope     tenancy.Scope
+		Principal string
+	}(GetArchivedNotificationParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Principal     string
+		Topic         string
+		Title         string
+		Body          string
+		Link          string
+		ReadAt        *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetArchivedNotificationRow{})
+	_ = struct {
+		ID        string
+		Scope     tenancy.Scope
+		Principal string
+	}(GetDeviceParams{})
+	_ = struct {
+		ID         string
+		Scope      tenancy.Scope
+		Principal  string
+		Platform   string
+		Token      string
+		LastSeenAt time.Time
+		CreatedAt  time.Time
+	}(GetDeviceRow{})
+	_ = struct {
 		Scope    tenancy.Scope
 		Platform string
 		Token    string
@@ -1093,14 +1184,6 @@ var (
 		LastUpdatedAt *time.Time
 		ArchivedAt    *time.Time
 	}(GetNotificationRow{})
-	_ = struct {
-		ID        string
-		Scope     tenancy.Scope
-		Principal string
-	}(GetNotificationCreatedAtParams{})
-	_ = struct {
-		CreatedAt time.Time
-	}(GetNotificationCreatedAtRow{})
 	_ = struct {
 		CreatedAfter  *time.Time
 		CreatedBefore *time.Time

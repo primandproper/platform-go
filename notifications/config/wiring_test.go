@@ -122,7 +122,9 @@ func TestBothHalvesCloseTheFeedbackLoop(t *testing.T) {
 		Token:     "token-from-a-handset-since-wiped",
 	}
 	must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
-		return registry.RegisterDevice(t.Context(), tx, scope, device)
+		_, registerErr := registry.RegisterDevice(t.Context(), tx, scope, device)
+
+		return registerErr
 	}))
 
 	before, err := registry.ListDevicesByPrincipals(t.Context(), client.Reader(), scope, []string{"user_1"})

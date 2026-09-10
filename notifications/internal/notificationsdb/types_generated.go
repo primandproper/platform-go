@@ -36,6 +36,46 @@ type DeleteDeviceTokenParams struct {
 	Token    string
 }
 
+// GetArchivedNotificationParams are the arguments to GetArchivedNotification.
+type GetArchivedNotificationParams struct {
+	ID        string
+	Scope     tenancy.Scope
+	Principal string
+}
+
+// GetArchivedNotificationRow is one row of GetArchivedNotification's result.
+type GetArchivedNotificationRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	Principal     string
+	Topic         string
+	Title         string
+	Body          string
+	Link          string
+	ReadAt        *time.Time
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+}
+
+// GetDeviceParams are the arguments to GetDevice.
+type GetDeviceParams struct {
+	ID        string
+	Scope     tenancy.Scope
+	Principal string
+}
+
+// GetDeviceRow is one row of GetDevice's result.
+type GetDeviceRow struct {
+	ID         string
+	Scope      tenancy.Scope
+	Principal  string
+	Platform   string
+	Token      string
+	LastSeenAt time.Time
+	CreatedAt  time.Time
+}
+
 // GetDeviceByTokenParams are the arguments to GetDeviceByToken.
 type GetDeviceByTokenParams struct {
 	Scope    tenancy.Scope
@@ -74,18 +114,6 @@ type GetNotificationRow struct {
 	CreatedAt     time.Time
 	LastUpdatedAt *time.Time
 	ArchivedAt    *time.Time
-}
-
-// GetNotificationCreatedAtParams are the arguments to GetNotificationCreatedAt.
-type GetNotificationCreatedAtParams struct {
-	ID        string
-	Scope     tenancy.Scope
-	Principal string
-}
-
-// GetNotificationCreatedAtRow is one row of GetNotificationCreatedAt's result.
-type GetNotificationCreatedAtRow struct {
-	CreatedAt time.Time
 }
 
 // ListDevicesParams are the arguments to ListDevices.

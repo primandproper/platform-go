@@ -31,6 +31,15 @@ import (
 // encoding interceptor re-runs the registered mappers over the preserved chain,
 // so notifications.GRPCMapper wins over the guess made here and no handler on
 // this surface switches on a sentinel.
+//
+// Two of the three writes discard the row the store answers with, because
+// MarkNotificationReadResponse and ArchiveNotificationResponse have no field to
+// carry it. What those RPCs promise is that the row moved, and a client that
+// wants to see it afterwards asks for it — the mark is visible to
+// GetNotification and the archive to a list that includes archived rows. The
+// store returns it for the caller that has no second read available, which is a
+// consumer writing an audit entry inside its own transaction rather than a
+// handler answering a request that is about to end.
 
 // ListNotifications pages the caller's inbox, in the direction the filter names.
 func (s *Server) ListNotifications(
@@ -156,7 +165,9 @@ func (s *Server) MarkNotificationRead(
 	req.op.Set(notificationIDKey, id)
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.inbox.MarkNotificationRead(ctx, tx, req.scope, req.principal, id)
+		_, markErr := s.inbox.MarkNotificationRead(ctx, tx, req.scope, req.principal, id)
+
+		return markErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "marking notification %q read", id)
@@ -224,7 +235,9 @@ func (s *Server) ArchiveNotification(
 	req.op.Set(notificationIDKey, id)
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.inbox.ArchiveNotification(ctx, tx, req.scope, req.principal, id)
+		_, archiveErr := s.inbox.ArchiveNotification(ctx, tx, req.scope, req.principal, id)
+
+		return archiveErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "archiving notification %q", id)

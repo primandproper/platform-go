@@ -179,8 +179,8 @@ func inboxWrites(g *querygen.Generator) []*querygen.Query {
 	}
 }
 
-// inboxReads is the get and the two paged lists, each list in both directions
-// because a paged list is two statements.
+// inboxReads is the get, the archived get, and the two paged lists, each list in
+// both directions because a paged list is two statements.
 //
 // The unread list is a second pair rather than a flag on the first, because
 // "unread" is IS NULL and there is no bound value a caller could leave unset to
@@ -188,6 +188,31 @@ func inboxWrites(g *querygen.Generator) []*querygen.Query {
 // on the rows of every list querygen renders, so the badge count a client asks
 // for first is what the unread page already carries, and this schema needs no
 // COUNT statement of its own.
+//
+// GetNotification answers three of the four inbox writes as well as the read a
+// consumer calls. A row this transaction just filed is not archived and a row it
+// just stamped read is still in the inbox, so the ordinary keyed read reaches
+// both on the caller's transaction — which is why the creation-time read this
+// corpus used to carry is gone. Projecting one column cost the same round trip
+// as projecting the row, and answered with what the caller assembled plus a
+// timestamp rather than with what the database holds.
+//
+// GetArchivedNotification is the exception, and it exists because archiving is
+// the one inbox write whose result no other statement here can see. Every
+// single-row read over this table filters archived_at IS NULL — which is what
+// makes an archived notification absent from the inbox — so the read that
+// describes what an archive did is the one read written not to find it.
+//
+// It is rendered from no column list at all, because querygen derives the
+// archived predicate from the columns it is handed: a read that must see
+// archived rows is one keyed entirely on its matches. What takes that
+// predicate's place is its complement — archived_at IS NOT NULL — so the
+// read-back asserts the thing it was called to confirm, and a guard that matched
+// nothing cannot be read back as a success.
+//
+// It is not a consumer-facing read and is on neither Inbox nor Registry. It runs
+// on the transaction that did the archiving, and the row it sees is visible to
+// nothing outside that transaction until it commits.
 func inboxReads(g *querygen.Generator) []*querygen.Query {
 	scope := querygen.Match{Column: ScopeColumn}
 	principal := querygen.Match{Column: PrincipalColumn}
@@ -195,14 +220,10 @@ func inboxReads(g *querygen.Generator) []*querygen.Query {
 	rendered := []*querygen.Query{
 		g.GetQuery("GetNotification", InboxTable, Inbox.Columns, scope, principal),
 
-		// The read the create runs to learn the creation time the database
-		// assigned. created_at is database-owned, so the insert does not carry
-		// it, and without this the value a caller serializes straight back into
-		// a response says 0001-01-01 for a row written a moment ago.
-		g.ReadQuery("GetNotificationCreatedAt", InboxTable,
-			[]string{querygen.IDColumn},
-			querygen.Read{Projection: []string{querygen.CreatedAtColumn}},
-			scope, principal),
+		g.ReadQuery("GetArchivedNotification", InboxTable, nil,
+			querygen.Read{Projection: Inbox.Columns},
+			querygen.Match{Column: querygen.IDColumn}, scope, principal,
+			querygen.Match{Column: querygen.ArchivedAtColumn, Against: querygen.NoValue, Exclude: true}),
 	}
 
 	rendered = append(rendered, g.ListQueries("ListNotifications", InboxTable, Inbox.Columns,
@@ -248,8 +269,8 @@ func deviceWrites(g *querygen.Generator) []*querygen.Query {
 	}
 }
 
-// deviceReads is one person's devices, paged, and the batched fan-out over a set
-// of people.
+// deviceReads is the two single-row reads the registry's writes answer with,
+// one person's devices paged, and the batched fan-out over a set of people.
 //
 // The batched one is the read the senders exist for: a notification addressed to
 // thirty members of an account is thirty inbox rows and one query for every
@@ -263,6 +284,15 @@ func deviceReads(g *querygen.Generator) []*querygen.Query {
 	// upsert that converged on an existing token kept that row's id and its
 	// creation time, and the value the caller was holding names neither. So the
 	// column list goes over without the id and the projection puts it back.
+	//
+	// GetDevice is what the revocation reads, and it runs *before* its write
+	// rather than after. A revocation deletes the row, so there is no moment
+	// after the statement at which anything can describe what it removed — which
+	// is the difference between this table and the inbox, where an archived
+	// notification is still there to be read by a statement written to see it.
+	// The delete is keyed on the same three columns as this read and guards on
+	// its own count, so a row that moved between the two is a refusal rather
+	// than a value handed back for a deletion that did not happen.
 	rendered := []*querygen.Query{
 		g.ReadQuery("GetDeviceByToken", DevicesTable,
 			Devices.ColumnsExcept(querygen.IDColumn),
@@ -270,6 +300,10 @@ func deviceReads(g *querygen.Generator) []*querygen.Query {
 			querygen.Match{Column: ScopeColumn},
 			querygen.Match{Column: PlatformColumn},
 			querygen.Match{Column: TokenColumn}),
+
+		g.GetQuery("GetDevice", DevicesTable, Devices.Columns,
+			querygen.Match{Column: ScopeColumn},
+			querygen.Match{Column: PrincipalColumn}),
 	}
 
 	rendered = append(rendered, g.ListQueries("ListDevices", DevicesTable, Devices.Columns,

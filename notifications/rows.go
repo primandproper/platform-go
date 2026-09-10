@@ -75,8 +75,8 @@ func pageValue[T any](row pageRow[T]) *T { return row.value }
 // answer in the order the client did not ask for, and nothing about the rows
 // that came back would say so.
 //
-// The descending rows are converted rather than restated field by field, which
-// is the one place in this file that casts. The preamble's rule is about two
+// The descending rows are converted rather than restated field by field, as in
+// the three other places in this file that cast. The preamble's rule is about two
 // projections that happen to agree; these are one projection rendered twice,
 // with the walk reversed and nothing else changed. So the conversion is the
 // assertion, and Go makes it the compiler's: the day the two projections stop
@@ -164,6 +164,20 @@ func notificationFromRow(r *notificationsdb.GetNotificationRow) *Notification {
 	}
 }
 
+// archivedNotificationFromRow is notificationFromRow for the row an archive
+// reads back.
+//
+// The two statements project Inbox.Columns in the same order and differ only in
+// which half of the table they can see — one filters archived_at IS NULL and the
+// other IS NOT NULL — so this is the conversion rather than a second
+// restatement, for unreadPageRow's reason. The day the two projections stop
+// being identical this stops building rather than filling the wrong fields.
+func archivedNotificationFromRow(r *notificationsdb.GetArchivedNotificationRow) *Notification {
+	converted := notificationsdb.GetNotificationRow(*r)
+
+	return notificationFromRow(&converted)
+}
+
 func notificationPageRow(r *notificationsdb.ListNotificationsRow) pageRow[Notification] {
 	return pageRow[Notification]{
 		value: &Notification{
@@ -239,6 +253,16 @@ func deviceFromRow(r *notificationsdb.GetDeviceByTokenRow) *Device {
 		Token:      r.Token,
 		Platform:   Platform(r.Platform),
 	}
+}
+
+// deviceFromGetRow is deviceFromRow for the row a revocation reads before it
+// deletes. Both statements project Devices.Columns and differ only in what they
+// key on — the id and the principal here, the natural key there — so this is the
+// conversion, on the same reading as archivedNotificationFromRow.
+func deviceFromGetRow(r *notificationsdb.GetDeviceRow) *Device {
+	converted := notificationsdb.GetDeviceByTokenRow(*r)
+
+	return deviceFromRow(&converted)
 }
 
 func devicePageRow(r *notificationsdb.ListDevicesRow) pageRow[Device] {

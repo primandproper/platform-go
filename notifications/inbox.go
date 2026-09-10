@@ -17,70 +17,80 @@ import (
 var _ Inbox = (*SQLStore)(nil)
 
 // CreateNotification files one notification through the caller's transaction and
-// reads back the creation time the database assigned.
+// answers with the row it wrote.
 //
 // The read-back is a second round trip on a write path, and it is worth it:
 // created_at is database-owned — see notifications/internal/queries — so the
-// insert does not carry it, and the alternative is a value whose CreatedAt says
-// 0001-01-01 for a row written a moment ago. A service that serializes what it
-// just created straight into a response would render that as a date rather than
-// as an absence. It runs on tx, so what it reads back is the row this
-// transaction just wrote rather than one a commit has made visible.
+// insert does not carry it, and a value assembled here would say 0001-01-01 for
+// a row written a moment ago. A service that serializes what it just created
+// straight into a response would render that as a date rather than as an
+// absence. It is the whole row rather than the stamp alone, which costs the same
+// round trip and answers with what the database holds instead of with what the
+// caller assembled plus a timestamp. It runs on tx, so what it reads back is the
+// row this transaction just wrote rather than one a commit has made visible.
+//
+// The caller's Notification is never written to. Everything this settles — the
+// id, the scope, the stamp — is on the value it returns, which is the module's
+// one spelling of what a write did; see [Inbox].
 func (s *SQLStore) CreateNotification(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	notification *Notification,
-) error {
+) (*Notification, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "creating notification")
+		return nil, op.Error(ErrNilExecutor, "creating notification")
 	}
 
 	if notification == nil {
-		return op.Error(ErrNilNotification, "creating notification")
+		return nil, op.Error(ErrNilNotification, "creating notification")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "creating notification")
+		return nil, op.Error(err, "creating notification")
 	}
 
-	if err := adoptScope(scope, &notification.Scope); err != nil {
-		return op.Error(err, "creating notification")
+	// A copy, so the id this mints and the scope it settles land on the row that
+	// is returned rather than on a value the caller still holds.
+	filed := *notification
+
+	if err := adoptScope(scope, &filed.Scope); err != nil {
+		return nil, op.Error(err, "creating notification")
 	}
 
-	op.Set(principalKey, notification.Principal)
+	op.Set(principalKey, filed.Principal)
 
-	if err := validNotification(notification); err != nil {
-		return op.Error(err, "creating notification")
+	if err := validNotification(&filed); err != nil {
+		return nil, op.Error(err, "creating notification")
 	}
 
-	if notification.ID == "" {
-		notification.ID = identifiers.New()
+	if filed.ID == "" {
+		filed.ID = identifiers.New()
 	}
 
-	op.Set(notificationIDKey, notification.ID)
+	op.Set(notificationIDKey, filed.ID)
 
 	if err := s.q.CreateNotification(ctx, tx,
-		createNotificationParams(scope, notification)); err != nil {
-		return op.Error(err, "creating notification")
+		createNotificationParams(scope, &filed)); err != nil {
+		return nil, op.Error(err, "creating notification")
 	}
 
-	created, err := s.q.GetNotificationCreatedAt(ctx, tx,
-		notificationsdb.GetNotificationCreatedAtParams{
-			ID:        notification.ID,
-			Scope:     scope,
-			Principal: notification.Principal,
-		})
+	// The ordinary keyed read reaches it: a row this transaction just inserted
+	// is not archived, so the statement that excludes archived rows finds it.
+	row, err := s.q.GetNotification(ctx, tx, notificationsdb.GetNotificationParams{
+		ID:        filed.ID,
+		Scope:     scope,
+		Principal: filed.Principal,
+	})
 	if err != nil {
-		return op.Error(err, "reading back the notification's creation time")
+		return nil, op.Error(notFound(err, ErrNotificationNotFound),
+			"reading back the filed notification")
 	}
 
-	notification.CreatedAt = created.CreatedAt.UTC()
-
-	return nil
+	return notificationFromRow(&row), nil
 }
 
 // GetNotification reads one of the principal's live notifications.
@@ -256,21 +266,26 @@ func drainNotifications(
 }
 
 // MarkNotificationRead stamps one notification as read, now, through the
-// caller's transaction.
+// caller's transaction, and answers with the row as the statement left it.
 //
 // The statement guards on the stamp being absent, so a second mark matches
 // nothing and the time the principal first read it survives. That leaves zero
-// rows meaning two things — already read, or not in the inbox at all — and they
-// are different answers, so the miss is disambiguated with a read rather than
-// collapsed. It costs a round trip only on the path that already did nothing,
-// and it runs on tx: the notification this transaction just filed is one it can
-// find.
+// rows meaning two things — already read, or not in the inbox at all — which are
+// different answers, and the read-back settles them both: a row that comes back
+// is in this principal's inbox and carries whichever stamp it has, and a row
+// that does not is ErrNotificationNotFound. The affected-row count is discarded
+// because it distinguishes nothing the row does not; both of its outcomes are
+// the success this method promises, and the stamp on the row is what says which
+// one happened.
+//
+// It runs on tx: the notification this transaction just filed is one it can
+// find, and the stamp it reads is the one this transaction just wrote.
 func (s *SQLStore) MarkNotificationRead(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	principal, notificationID string,
-) error {
+) (*Notification, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(principalKey, principal),
@@ -279,42 +294,40 @@ func (s *SQLStore) MarkNotificationRead(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "marking notification %q read", notificationID)
+		return nil, op.Error(ErrNilExecutor, "marking notification %q read", notificationID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "marking notification %q read", notificationID)
+		return nil, op.Error(err, "marking notification %q read", notificationID)
 	}
 
 	if principal == "" {
-		return op.Error(ErrEmptyPrincipal, "marking notification %q read", notificationID)
+		return nil, op.Error(ErrEmptyPrincipal, "marking notification %q read", notificationID)
 	}
 
 	readAt := s.now()
 
-	count, err := s.q.MarkNotificationRead(ctx, tx,
+	if _, err := s.q.MarkNotificationRead(ctx, tx,
 		notificationsdb.MarkNotificationReadParams{
 			ReadAt:    &readAt,
 			ID:        notificationID,
 			Scope:     scope,
 			Principal: principal,
-		})
+		}); err != nil {
+		return nil, op.Error(err, "marking notification %q read", notificationID)
+	}
+
+	row, err := s.q.GetNotification(ctx, tx, notificationsdb.GetNotificationParams{
+		ID:        notificationID,
+		Scope:     scope,
+		Principal: principal,
+	})
 	if err != nil {
-		return op.Error(err, "marking notification %q read", notificationID)
+		return nil, op.Error(notFound(err, ErrNotificationNotFound),
+			"marking notification %q read", notificationID)
 	}
 
-	if count > 0 {
-		return nil
-	}
-
-	// Nothing was written. Either it was already read — in which case this is
-	// the success the caller asked for — or the notification is not in this
-	// principal's inbox, which is the error they need.
-	if _, err = s.GetNotification(ctx, tx, scope, principal, notificationID); err != nil {
-		return op.Error(err, "marking notification %q read", notificationID)
-	}
-
-	return nil
+	return notificationFromRow(&row), nil
 }
 
 // MarkAllNotificationsRead stamps everything the principal has not read through
@@ -361,18 +374,33 @@ func (s *SQLStore) MarkAllNotificationsRead(
 }
 
 // ArchiveNotification dismisses one notification through the caller's
-// transaction.
+// transaction and answers with the row it archived.
 //
 // Zero rows is ErrNotificationNotFound rather than a quiet success, and the
 // reading is exact: the statement excludes archived rows, so a notification that
 // has already been dismissed is not in the inbox, which is what this method
 // addresses.
+//
+// The read-back cannot be GetNotification, for the same reason: that statement
+// is written not to see archived rows, which is what this one just made this
+// row. GetArchivedNotification is its complement — same projection, keyed the
+// same way, asserting archived_at IS NOT NULL — so a guard that matched nothing
+// cannot be read back as a success, and the row it returns is the one this
+// transaction hid.
+//
+// It is the guard that decides the answer, not the read. A write that moved
+// nothing is ErrNotificationNotFound before the read runs, so a notification
+// somebody else archived is never reported as this call's — and an empty
+// read-back after a guard that matched is left unmapped rather than folded into
+// that sentinel, because the statement holds the row until commit and there is
+// no state in which it is honestly absent: answering a broken invariant with
+// that sentinel would report it to a consumer as a 404.
 func (s *SQLStore) ArchiveNotification(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	principal, notificationID string,
-) error {
+) (*Notification, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(principalKey, principal),
@@ -381,15 +409,15 @@ func (s *SQLStore) ArchiveNotification(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving notification %q", notificationID)
+		return nil, op.Error(ErrNilExecutor, "archiving notification %q", notificationID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving notification %q", notificationID)
+		return nil, op.Error(err, "archiving notification %q", notificationID)
 	}
 
 	if principal == "" {
-		return op.Error(ErrEmptyPrincipal, "archiving notification %q", notificationID)
+		return nil, op.Error(ErrEmptyPrincipal, "archiving notification %q", notificationID)
 	}
 
 	count, err := s.q.ArchiveNotification(ctx, tx,
@@ -398,10 +426,22 @@ func (s *SQLStore) ArchiveNotification(
 			Scope:     scope,
 			Principal: principal,
 		})
+	if guardErr := guardCount(count, err, ErrNotificationNotFound,
+		"archiving the notification"); guardErr != nil {
+		return nil, op.Error(guardErr, "archiving notification %q", notificationID)
+	}
 
-	return op.Error(
-		guardCount(count, err, ErrNotificationNotFound, "archiving the notification"),
-		"archiving notification %q", notificationID)
+	archived, err := s.q.GetArchivedNotification(ctx, tx,
+		notificationsdb.GetArchivedNotificationParams{
+			ID:        notificationID,
+			Scope:     scope,
+			Principal: principal,
+		})
+	if err != nil {
+		return nil, op.Error(err, "reading back the archived notification")
+	}
+
+	return archivedNotificationFromRow(&archived), nil
 }
 
 // adoptScope settles which tenant a write is for, and writes the answer back

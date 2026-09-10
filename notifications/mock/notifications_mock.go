@@ -24,10 +24,10 @@ var _ notifications.Inbox = &InboxMock{}
 //
 //		// make and configure a mocked notifications.Inbox
 //		mockedInbox := &InboxMock{
-//			ArchiveNotificationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) error {
+//			ArchiveNotificationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
 //				panic("mock out the ArchiveNotification method")
 //			},
-//			CreateNotificationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) error {
+//			CreateNotificationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) (*notifications.Notification, error) {
 //				panic("mock out the CreateNotification method")
 //			},
 //			GetNotificationFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
@@ -42,7 +42,7 @@ var _ notifications.Inbox = &InboxMock{}
 //			MarkAllNotificationsReadFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error) {
 //				panic("mock out the MarkAllNotificationsRead method")
 //			},
-//			MarkNotificationReadFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) error {
+//			MarkNotificationReadFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
 //				panic("mock out the MarkNotificationRead method")
 //			},
 //		}
@@ -53,10 +53,10 @@ var _ notifications.Inbox = &InboxMock{}
 //	}
 type InboxMock struct {
 	// ArchiveNotificationFunc mocks the ArchiveNotification method.
-	ArchiveNotificationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) error
+	ArchiveNotificationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error)
 
 	// CreateNotificationFunc mocks the CreateNotification method.
-	CreateNotificationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) error
+	CreateNotificationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) (*notifications.Notification, error)
 
 	// GetNotificationFunc mocks the GetNotification method.
 	GetNotificationFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error)
@@ -71,7 +71,7 @@ type InboxMock struct {
 	MarkAllNotificationsReadFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error)
 
 	// MarkNotificationReadFunc mocks the MarkNotificationRead method.
-	MarkNotificationReadFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) error
+	MarkNotificationReadFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -173,7 +173,7 @@ type InboxMock struct {
 }
 
 // ArchiveNotification calls ArchiveNotificationFunc.
-func (mock *InboxMock) ArchiveNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) error {
+func (mock *InboxMock) ArchiveNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
 	if mock.ArchiveNotificationFunc == nil {
 		panic("InboxMock.ArchiveNotificationFunc: method is nil but Inbox.ArchiveNotification was just called")
 	}
@@ -221,7 +221,7 @@ func (mock *InboxMock) ArchiveNotificationCalls() []struct {
 }
 
 // CreateNotification calls CreateNotificationFunc.
-func (mock *InboxMock) CreateNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) error {
+func (mock *InboxMock) CreateNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) (*notifications.Notification, error) {
 	if mock.CreateNotificationFunc == nil {
 		panic("InboxMock.CreateNotificationFunc: method is nil but Inbox.CreateNotification was just called")
 	}
@@ -453,7 +453,7 @@ func (mock *InboxMock) MarkAllNotificationsReadCalls() []struct {
 }
 
 // MarkNotificationRead calls MarkNotificationReadFunc.
-func (mock *InboxMock) MarkNotificationRead(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) error {
+func (mock *InboxMock) MarkNotificationRead(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
 	if mock.MarkNotificationReadFunc == nil {
 		panic("InboxMock.MarkNotificationReadFunc: method is nil but Inbox.MarkNotificationRead was just called")
 	}
@@ -519,10 +519,10 @@ var _ notifications.Registry = &RegistryMock{}
 //			ListDevicesByPrincipalsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principals []string) ([]*notifications.Device, error) {
 //				panic("mock out the ListDevicesByPrincipals method")
 //			},
-//			RegisterDeviceFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) error {
+//			RegisterDeviceFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) (*notifications.Device, error) {
 //				panic("mock out the RegisterDevice method")
 //			},
-//			RevokeDeviceFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deviceID string) error {
+//			RevokeDeviceFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deviceID string) (*notifications.Device, error) {
 //				panic("mock out the RevokeDevice method")
 //			},
 //		}
@@ -542,10 +542,10 @@ type RegistryMock struct {
 	ListDevicesByPrincipalsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principals []string) ([]*notifications.Device, error)
 
 	// RegisterDeviceFunc mocks the RegisterDevice method.
-	RegisterDeviceFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) error
+	RegisterDeviceFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) (*notifications.Device, error)
 
 	// RevokeDeviceFunc mocks the RevokeDevice method.
-	RevokeDeviceFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deviceID string) error
+	RevokeDeviceFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deviceID string) (*notifications.Device, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -747,7 +747,7 @@ func (mock *RegistryMock) ListDevicesByPrincipalsCalls() []struct {
 }
 
 // RegisterDevice calls RegisterDeviceFunc.
-func (mock *RegistryMock) RegisterDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) error {
+func (mock *RegistryMock) RegisterDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) (*notifications.Device, error) {
 	if mock.RegisterDeviceFunc == nil {
 		panic("RegistryMock.RegisterDeviceFunc: method is nil but Registry.RegisterDevice was just called")
 	}
@@ -791,7 +791,7 @@ func (mock *RegistryMock) RegisterDeviceCalls() []struct {
 }
 
 // RevokeDevice calls RevokeDeviceFunc.
-func (mock *RegistryMock) RevokeDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deviceID string) error {
+func (mock *RegistryMock) RevokeDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deviceID string) (*notifications.Device, error) {
 	if mock.RevokeDeviceFunc == nil {
 		panic("RegistryMock.RevokeDeviceFunc: method is nil but Registry.RevokeDevice was just called")
 	}

@@ -45,6 +45,37 @@ const deleteDeviceTokenSQLite = `DELETE FROM {{prefix}}notifications_devices
 WHERE platform = ?1
 	AND token = ?2`
 
+const getArchivedNotificationSQLite = `SELECT
+	{{prefix}}notifications_inbox.id,
+	{{prefix}}notifications_inbox.scope,
+	{{prefix}}notifications_inbox.principal,
+	{{prefix}}notifications_inbox.topic,
+	{{prefix}}notifications_inbox.title,
+	{{prefix}}notifications_inbox.body,
+	{{prefix}}notifications_inbox.link,
+	{{prefix}}notifications_inbox.read_at,
+	{{prefix}}notifications_inbox.created_at,
+	{{prefix}}notifications_inbox.last_updated_at,
+	{{prefix}}notifications_inbox.archived_at
+FROM {{prefix}}notifications_inbox
+WHERE {{prefix}}notifications_inbox.id = ?1
+	AND {{prefix}}notifications_inbox.scope = ?2
+	AND {{prefix}}notifications_inbox.principal = ?3
+	AND {{prefix}}notifications_inbox.archived_at IS NOT NULL`
+
+const getDeviceSQLite = `SELECT
+	{{prefix}}notifications_devices.id,
+	{{prefix}}notifications_devices.scope,
+	{{prefix}}notifications_devices.principal,
+	{{prefix}}notifications_devices.platform,
+	{{prefix}}notifications_devices.token,
+	{{prefix}}notifications_devices.last_seen_at,
+	{{prefix}}notifications_devices.created_at
+FROM {{prefix}}notifications_devices
+WHERE {{prefix}}notifications_devices.id = ?1
+	AND {{prefix}}notifications_devices.scope = ?2
+	AND {{prefix}}notifications_devices.principal = ?3`
+
 const getDeviceByTokenSQLite = `SELECT
 	{{prefix}}notifications_devices.id,
 	{{prefix}}notifications_devices.scope,
@@ -73,13 +104,6 @@ const getNotificationSQLite = `SELECT
 FROM {{prefix}}notifications_inbox
 WHERE {{prefix}}notifications_inbox.archived_at IS NULL
 	AND {{prefix}}notifications_inbox.id = ?1
-	AND {{prefix}}notifications_inbox.scope = ?2
-	AND {{prefix}}notifications_inbox.principal = ?3`
-
-const getNotificationCreatedAtSQLite = `SELECT
-	{{prefix}}notifications_inbox.created_at
-FROM {{prefix}}notifications_inbox
-WHERE {{prefix}}notifications_inbox.id = ?1
 	AND {{prefix}}notifications_inbox.scope = ?2
 	AND {{prefix}}notifications_inbox.principal = ?3`
 
@@ -427,9 +451,10 @@ type sqliteQueries struct {
 	archiveNotification               string
 	createNotification                string
 	deleteDeviceToken                 string
+	getArchivedNotification           string
+	getDevice                         string
 	getDeviceByToken                  string
 	getNotification                   string
-	getNotificationCreatedAt          string
 	listDevices                       string
 	listDevicesByPrincipals           string
 	listDevicesDescending             string
@@ -450,9 +475,10 @@ func newSQLite(prefix string) *sqliteQueries {
 		archiveNotification:               strings.ReplaceAll(archiveNotificationSQLite, prefixMarker, prefix),
 		createNotification:                strings.ReplaceAll(createNotificationSQLite, prefixMarker, prefix),
 		deleteDeviceToken:                 strings.ReplaceAll(deleteDeviceTokenSQLite, prefixMarker, prefix),
+		getArchivedNotification:           strings.ReplaceAll(getArchivedNotificationSQLite, prefixMarker, prefix),
+		getDevice:                         strings.ReplaceAll(getDeviceSQLite, prefixMarker, prefix),
 		getDeviceByToken:                  strings.ReplaceAll(getDeviceByTokenSQLite, prefixMarker, prefix),
 		getNotification:                   strings.ReplaceAll(getNotificationSQLite, prefixMarker, prefix),
-		getNotificationCreatedAt:          strings.ReplaceAll(getNotificationCreatedAtSQLite, prefixMarker, prefix),
 		listDevices:                       strings.ReplaceAll(listDevicesSQLite, prefixMarker, prefix),
 		listDevicesByPrincipals:           strings.ReplaceAll(listDevicesByPrincipalsSQLite, prefixMarker, prefix),
 		listDevicesDescending:             strings.ReplaceAll(listDevicesDescendingSQLite, prefixMarker, prefix),
@@ -540,6 +566,56 @@ func (q *sqliteQueries) DeleteDeviceToken(ctx context.Context, db DBTX, arg Dele
 	return result.RowsAffected()
 }
 
+// GetArchivedNotification runs the :one query against sqlite.
+func (q *sqliteQueries) GetArchivedNotification(ctx context.Context, db DBTX, arg GetArchivedNotificationParams) (GetArchivedNotificationRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedNotification,
+		arg.ID,
+		arg.Scope,
+		arg.Principal,
+	)
+
+	var i GetArchivedNotificationRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Principal,
+		&i.Topic,
+		&i.Title,
+		&i.Body,
+		&i.Link,
+		&i.ReadAt,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
+// GetDevice runs the :one query against sqlite.
+func (q *sqliteQueries) GetDevice(ctx context.Context, db DBTX, arg GetDeviceParams) (GetDeviceRow, error) {
+	row := db.QueryRowContext(ctx, q.getDevice,
+		arg.ID,
+		arg.Scope,
+		arg.Principal,
+	)
+
+	var i GetDeviceRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Principal,
+		&i.Platform,
+		&i.Token,
+		&i.LastSeenAt,
+		&i.CreatedAt,
+	)
+
+	return i, err
+}
+
 // GetDeviceByToken runs the :one query against sqlite.
 func (q *sqliteQueries) GetDeviceByToken(ctx context.Context, db DBTX, arg GetDeviceByTokenParams) (GetDeviceByTokenRow, error) {
 	row := db.QueryRowContext(ctx, q.getDeviceByToken,
@@ -585,23 +661,6 @@ func (q *sqliteQueries) GetNotification(ctx context.Context, db DBTX, arg GetNot
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
-	)
-
-	return i, err
-}
-
-// GetNotificationCreatedAt runs the :one query against sqlite.
-func (q *sqliteQueries) GetNotificationCreatedAt(ctx context.Context, db DBTX, arg GetNotificationCreatedAtParams) (GetNotificationCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getNotificationCreatedAt,
-		arg.ID,
-		arg.Scope,
-		arg.Principal,
-	)
-
-	var i GetNotificationCreatedAtRow
-
-	err := row.Scan(
-		&i.CreatedAt,
 	)
 
 	return i, err
@@ -1037,6 +1096,38 @@ var (
 		Token    string
 	}(DeleteDeviceTokenParams{})
 	_ = struct {
+		ID        string
+		Scope     tenancy.Scope
+		Principal string
+	}(GetArchivedNotificationParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Principal     string
+		Topic         string
+		Title         string
+		Body          string
+		Link          string
+		ReadAt        *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetArchivedNotificationRow{})
+	_ = struct {
+		ID        string
+		Scope     tenancy.Scope
+		Principal string
+	}(GetDeviceParams{})
+	_ = struct {
+		ID         string
+		Scope      tenancy.Scope
+		Principal  string
+		Platform   string
+		Token      string
+		LastSeenAt time.Time
+		CreatedAt  time.Time
+	}(GetDeviceRow{})
+	_ = struct {
 		Scope    tenancy.Scope
 		Platform string
 		Token    string
@@ -1068,14 +1159,6 @@ var (
 		LastUpdatedAt *time.Time
 		ArchivedAt    *time.Time
 	}(GetNotificationRow{})
-	_ = struct {
-		ID        string
-		Scope     tenancy.Scope
-		Principal string
-	}(GetNotificationCreatedAtParams{})
-	_ = struct {
-		CreatedAt time.Time
-	}(GetNotificationCreatedAtRow{})
 	_ = struct {
 		CreatedAfter  *time.Time
 		CreatedBefore *time.Time

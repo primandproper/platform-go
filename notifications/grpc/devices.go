@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 
 	"github.com/primandproper/primitives-go/database"
@@ -25,6 +26,13 @@ import (
 // this handset is here, these are my handsets, that one is not mine any more.
 // The two registry methods that are not here are machinery — see roster_test.go
 // and the Store methods themselves.
+//
+// RegisterDevice answers with the row the store handed it rather than with the
+// registration it sent, because those differ whenever the write converged on a
+// token already registered. RevokeDevice discards the row it is handed:
+// RevokeDeviceResponse has no field to carry it, and the row is gone by the time
+// a client could ask about it, which is the case the store returns it for — a
+// consumer recording what it revoked inside its own transaction.
 
 // RegisterDevice records the calling handset's token, under the caller's own
 // principal.
@@ -65,8 +73,14 @@ func (s *Server) RegisterDevice(
 
 	req.op.Set(platformKey, device.Platform.String())
 
+	var registered *notifications.Device
+
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.registry.RegisterDevice(ctx, tx, req.scope, device)
+		var registerErr error
+
+		registered, registerErr = s.registry.RegisterDevice(ctx, tx, req.scope, device)
+
+		return registerErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "registering a %s device", device.Platform)
@@ -74,9 +88,9 @@ func (s *Server) RegisterDevice(
 		return nil, err
 	}
 
-	req.op.Set(deviceIDKey, device.ID)
+	req.op.Set(deviceIDKey, registered.ID)
 
-	return &notificationspb.RegisterDeviceResponse{Result: DeviceToProto(device)}, nil
+	return &notificationspb.RegisterDeviceResponse{Result: DeviceToProto(registered)}, nil
 }
 
 // ListDevices pages the caller's own registered devices.
@@ -143,7 +157,9 @@ func (s *Server) RevokeDevice(
 	req.op.Set(deviceIDKey, id)
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.registry.RevokeDevice(ctx, tx, req.scope, req.principal, id)
+		_, revokeErr := s.registry.RevokeDevice(ctx, tx, req.scope, req.principal, id)
+
+		return revokeErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "revoking device %q", id)

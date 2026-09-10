@@ -194,11 +194,17 @@ func (h *harness) seedNotification(tb testing.TB, scope tenancy.Scope, principal
 		Link:      "/things/1",
 	}
 
+	var filed *notifications.Notification
+
 	must.NoError(tb, h.db.WithTransaction(tb.Context(), func(tx database.Tx) error {
-		return h.store.CreateNotification(tb.Context(), tx, scope, notification)
+		var err error
+
+		filed, err = h.store.CreateNotification(tb.Context(), tx, scope, notification)
+
+		return err
 	}))
 
-	return notification
+	return filed
 }
 
 // seedDevice registers one handset directly through the store, for the same
@@ -212,9 +218,15 @@ func (h *harness) seedDevice(tb testing.TB, scope tenancy.Scope, principal, toke
 		Platform:  notifications.PlatformIOS,
 	}
 
+	var registered *notifications.Device
+
 	must.NoError(tb, h.db.WithTransaction(tb.Context(), func(tx database.Tx) error {
-		return h.store.RegisterDevice(tb.Context(), tx, scope, device)
+		var err error
+
+		registered, err = h.store.RegisterDevice(tb.Context(), tx, scope, device)
+
+		return err
 	}))
 
-	return device
+	return registered
 }
