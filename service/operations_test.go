@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/operations"
+	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
+
+	platformerrors "github.com/primandproper/primitives-go/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -55,7 +58,7 @@ func TestOperationsRunner_Run(T *testing.T) {
 		t.Parallel()
 
 		loop := newBlockingLoop(50 * time.Millisecond)
-		runner := newLoopRunner(loop.run)
+		runner := newLoopRunner("worker", loop.run)
 
 		go runner.Run()
 
@@ -78,7 +81,7 @@ func TestOperationsRunner_Run(T *testing.T) {
 		t.Parallel()
 
 		loop := newBlockingLoop(30 * time.Second)
-		runner := newLoopRunner(loop.run)
+		runner := newLoopRunner("worker", loop.run)
 
 		go runner.Run()
 
@@ -100,7 +103,7 @@ func TestOperationsRunner_Run(T *testing.T) {
 		t.Parallel()
 
 		loop := newBlockingLoop(0)
-		runner := newLoopRunner(loop.run)
+		runner := newLoopRunner("worker", loop.run)
 
 		go runner.Run()
 
@@ -123,7 +126,7 @@ func TestOperationsRunner_Close(T *testing.T) {
 		t.Parallel()
 
 		loop := newBlockingLoop(0)
-		runner := newLoopRunner(loop.run)
+		runner := newLoopRunner("worker", loop.run)
 
 		// Service.Run shuts down what it has not started yet — a profiler that
 		// will not start is the path — and a runner that waits there spends the
@@ -142,7 +145,7 @@ func TestOperationsRunner_Close(T *testing.T) {
 		t.Parallel()
 
 		loop := newBlockingLoop(0)
-		runner := newLoopRunner(loop.run)
+		runner := newLoopRunner("worker", loop.run)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 		defer cancel()
@@ -183,4 +186,134 @@ func TestNewOperationsRunner(t *testing.T) {
 
 	must.NoError(t, runner.Close(ctx))
 	test.ErrorIs(t, runner.ctx.Err(), context.Canceled)
+}
+
+// The adapter production wires for the watcher: the watcher's own loop, reached
+// through the constructor Service.New calls.
+func TestNewWatcherRunner(T *testing.T) {
+	T.Parallel()
+
+	// A store answering Get with one non-terminal operation, which is the whole
+	// of what Watch needs to hand back a live subscription.
+	newWatcher := func(t *testing.T) *operations.Watcher {
+		t.Helper()
+
+		store := &operationsmock.StoreMock{
+			GetFunc: func(context.Context, string) (*operations.Operation, error) {
+				return &operations.Operation{ID: "op-1", State: operations.StateRunning, Revision: 1}, nil
+			},
+		}
+
+		watcher, err := operations.NewWatcher(t.Context(), &operations.WatcherConfig{}, store)
+		must.NoError(t, err)
+
+		return watcher
+	}
+
+	T.Run("closes the subscriptions cancelling the context alone would strand", func(t *testing.T) {
+		t.Parallel()
+
+		watcher := newWatcher(t)
+		runner := newWatcherRunner(watcher)
+
+		go runner.Run()
+
+		updates, err := watcher.Watch(t.Context(), "op-1")
+		must.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+
+		must.NoError(t, runner.Close(ctx))
+
+		// The first snapshot is already buffered, so the channel is drained
+		// rather than read once: what is under test is that it ends, not what
+		// it carried.
+		drained := make(chan struct{})
+
+		go func() {
+			defer close(drained)
+
+			for range updates { //nolint:revive // draining to the close is the assertion
+			}
+		}()
+
+		select {
+		case <-drained:
+		case <-time.After(30 * time.Second):
+			t.Fatal("the subscription outlived the runner that owned it")
+		}
+
+		// And the other half of Watcher.Close: a subscriber arriving after
+		// shutdown is told so rather than handed a channel nothing will ever
+		// write to.
+		_, err = watcher.Watch(t.Context(), "op-1")
+		test.ErrorIs(t, err, operations.ErrWatcherClosed)
+	})
+
+	T.Run("names itself in the drain failure", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, "watcher", newWatcherRunner(newWatcher(t)).name)
+
+		// A watcher's own Run returns as soon as its context is done, so the
+		// budget is spent on a loop standing in for one that will not.
+		loop := newBlockingLoop(30 * time.Second)
+		runner := newLoopRunner("watcher", loop.run)
+
+		go runner.Run()
+
+		loop.awaitEntry(t)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+		defer cancel()
+
+		err := runner.Close(ctx)
+
+		// Shutdown reports which of the two operations loops would not stop,
+		// and the worker's name for the watcher's failure would send whoever
+		// reads it to the wrong loop.
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), "waiting for the operations watcher to drain")
+	})
+
+	T.Run("closes the watcher once however many times it is called", func(t *testing.T) {
+		t.Parallel()
+
+		var closes atomic.Int64
+
+		runner := newLoopRunner("watcher", newBlockingLoop(0).run)
+		runner.release = func() error {
+			closes.Add(1)
+
+			return nil
+		}
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+
+		must.NoError(t, runner.Close(ctx))
+		must.NoError(t, runner.Close(ctx))
+
+		test.EqOp(t, int64(1), closes.Load())
+	})
+
+	T.Run("reports what the release failed with, every time it is asked", func(t *testing.T) {
+		t.Parallel()
+
+		// Watcher.Close reports nil today, and Close's contract is that a
+		// shutdown hears about everything that failed rather than the first
+		// thing — so a release that does fail is reported rather than dropped
+		// on the way to the drain.
+		boom := platformerrors.New("closing the watcher")
+
+		runner := newLoopRunner("watcher", newBlockingLoop(0).run)
+		runner.release = func() error { return boom }
+
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+
+		test.ErrorIs(t, runner.Close(ctx), boom)
+		test.ErrorIs(t, runner.Close(ctx), boom)
+	})
 }
