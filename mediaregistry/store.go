@@ -124,6 +124,10 @@ type Store interface {
 	// The result is unpaged, and the set is what bounds it: the caller already
 	// holds the ids, so there is no window to walk and no cursor that would
 	// mean anything. A nil q is an error wrapping ErrNilExecutor.
+	//
+	// The set itself is bounded by MaxObjectIDsPerRead, and a larger one is
+	// ErrTooManyObjectIDs rather than a statement the dialect may or may not
+	// accept. ListObjectsByIDsInBatches reads a set of any size.
 	ListObjectsByIDs(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, objectIDs []string) ([]*Object, error)
 
 	// ArchiveObject soft-deletes the row through the caller's transaction, so

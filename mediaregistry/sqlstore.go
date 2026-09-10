@@ -518,6 +518,18 @@ func (s *SQLStore) ListObjectsByIDs(
 		return nil, s.failed(ctx, op.Error(err, "reading uploaded objects by id"))
 	}
 
+	// Refused rather than sent, because the set is one bound placeholder per id
+	// on two of the three dialects and an array on the third. A set past the
+	// engine's ceiling is a driver error on SQLite and MySQL and a working
+	// statement on Postgres, which makes an unbounded read a bug whose symptom
+	// is the deployment's choice of database. ListObjectsByIDsInBatches is the
+	// supported way to read more than this.
+	if len(objectIDs) > MaxObjectIDsPerRead {
+		return nil, s.failed(ctx, op.Error(
+			platformerrors.Wrapf(ErrTooManyObjectIDs, "%d ids, limit %d", len(objectIDs), MaxObjectIDsPerRead),
+			"reading uploaded objects by id"))
+	}
+
 	// An empty set is an empty answer without a query. The corpus has no
 	// rendering of an empty set — `IN ()` is a syntax error on two of the three
 	// dialects — so what a generator emits for one is a NULL that matches

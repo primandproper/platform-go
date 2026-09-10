@@ -547,6 +547,33 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.SliceEmpty(t, read)
 	})
 
+	t.Run("refuses a set larger than one statement should carry", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		set := make([]string, MaxObjectIDsPerRead+1)
+		for i := range set {
+			set[i] = identifiers.New()
+		}
+
+		// Refused before the statement, so the answer is the same on every
+		// dialect. Left to the engine it would not be: SQLite and MySQL bind a
+		// placeholder per id against ceilings of their own, and Postgres binds
+		// the set as one array and has none.
+		_, err := store.ListObjectsByIDs(t.Context(), env.reader(), testScope, set)
+		must.ErrorIs(t, err, ErrTooManyObjectIDs)
+
+		// And the largest set it accepts really is accepted — which is the
+		// assertion that checks the limit against the engines rather than
+		// against itself. Running here on all three is what says
+		// MaxObjectIDsPerRead sits under every real ceiling, so the refusal
+		// above is this module's judgment and never a driver's.
+		read, err := store.ListObjectsByIDs(t.Context(), env.reader(), testScope, set[:MaxObjectIDsPerRead])
+		must.NoError(t, err)
+		test.SliceEmpty(t, read)
+	})
+
 	t.Run("refuses an unset scope on every method", func(t *testing.T) {
 		t.Parallel()
 
