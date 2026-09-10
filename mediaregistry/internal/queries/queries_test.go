@@ -135,7 +135,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"CreateObject", "GetObject", "ListObjects", "ListObjectsDescending", "ArchiveObject",
 		"ListObjectsByOwner", "ListObjectsByOwnerDescending",
 		"ListObjectsBySubject", "ListObjectsBySubjectDescending",
-		"GetObjectByKey", "GetObjectIDByKey", "GetObjectCreatedAt",
+		"GetObjectByKey", "GetObjectIDByKey", "GetArchivedObject",
 		"ListObjectsByIDs",
 	}
 
@@ -284,4 +284,53 @@ func TestRender_InsertLeavesTheConventionTimestampsToTheDatabase(t *testing.T) {
 	// Everything else the table has, though: a column added to the list and
 	// left out of the insert is a column no write can ever fill.
 	test.SliceLen(t, len(ObjectColumns)-3, inserted)
+}
+
+// TestRender_TheArchiveReadBackSeesOnlyArchivedRows pins the complement, which
+// is the other statement here rendered from no column list and the only one that
+// carries archived_at IS NOT NULL.
+//
+// It is what makes the read-back an assertion rather than a second lookup: the
+// row the archive just moved is the one row every other statement over this
+// table is written not to return, so a read-back carrying the ordinary
+// predicate would find nothing on the write it was called to describe. The
+// inverse matters as much — a read-back carrying no archived predicate at all
+// would answer a guard that matched nothing with a live row.
+func TestRender_TheArchiveReadBackSeesOnlyArchivedRows(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			statements := map[string]string{}
+			for statement := range strings.SplitSeq(Render(d), "-- name: ") {
+				if name, body, ok := strings.Cut(statement, "\n"); ok {
+					statements[strings.Fields(name)[0]] = body
+				}
+			}
+
+			readBack := statements["GetArchivedObject"]
+			must.StrContains(t, readBack, "archived_at IS NOT NULL")
+			must.StrContains(t, readBack, ScopeColumn)
+
+			// It projects the whole table, so the row it returns converts to the
+			// live read's rather than needing a converter of its own.
+			for _, column := range ObjectColumns {
+				test.StrContains(t, readBack, ObjectsTable+"."+column,
+					test.Sprintf("the archive read-back omits %s", column))
+			}
+
+			// And it is the only one: every other statement either filters the
+			// archived rows out or says nothing about them.
+			for name, body := range statements {
+				if name == "GetArchivedObject" {
+					continue
+				}
+
+				test.StrNotContains(t, body, "IS NOT NULL",
+					test.Sprintf("%s reads archived rows", name))
+			}
+		})
+	}
 }

@@ -41,24 +41,28 @@ func utcPtr(t *time.Time) *time.Time {
 	return &utc
 }
 
-// createObjectParams renders an Object, under the scope the write named, as the
-// create's arguments.
+// createObjectParams renders an ObjectInput, under the scope the write named and
+// the id it settled on, as the create's arguments.
 //
 // The three convention timestamps are absent because the database owns them —
-// see mediaregistry/internal/queries — and the scope binds as the Scope the
-// call passed rather than a string derived from it or a field read off the
-// object, so an unset scope is a driver error instead of a row silently written
-// into the global tenant.
-func createObjectParams(scope tenancy.Scope, o *Object) registrydb.CreateObjectParams {
+// see mediaregistry/internal/queries — and the scope binds as the Scope the call
+// passed rather than a string derived from it, so an unset scope is a driver
+// error instead of a row silently written into the global tenant. The input
+// carries no scope of its own to read instead.
+//
+// The id is an argument rather than a field for the same reason: RecordObject
+// mints it where the input carries none, and what the write settled belongs on
+// the row it reads back rather than anywhere the caller can see it.
+func createObjectParams(scope tenancy.Scope, id string, in ObjectInput) registrydb.CreateObjectParams { //nolint:gocritic // hugeParam: by value on purpose — see ObjectInput, and the call does a round trip
 	return registrydb.CreateObjectParams{
-		ID:            o.ID,
+		ID:            id,
 		Scope:         scope,
-		ObjectKey:     o.Key,
-		ContentType:   o.ContentType,
-		SizeBytes:     o.Size,
-		OwnerID:       o.OwnerID,
-		BelongsToType: o.BelongsTo.Type,
-		BelongsToID:   o.BelongsTo.ID,
+		ObjectKey:     in.Key,
+		ContentType:   in.ContentType,
+		SizeBytes:     in.Size,
+		OwnerID:       in.OwnerID,
+		BelongsToType: in.BelongsTo.Type,
+		BelongsToID:   in.BelongsTo.ID,
 	}
 }
 
@@ -78,6 +82,21 @@ func objectFromRow(r *registrydb.GetObjectRow) *Object {
 		BelongsTo:     Subject{Type: r.BelongsToType, ID: r.BelongsToID},
 		Size:          r.SizeBytes,
 	}
+}
+
+// objectFromArchivedRow converts the archive's read-back, which is the one row
+// shape here that casts rather than restating itself.
+//
+// It is sortedRows' reason rather than an exception to the preamble's rule.
+// GetArchivedObject projects the same list GetObject does — ObjectColumns, in
+// that order — and differs from it only in which rows it will look at, so the
+// two row types are one projection rendered twice. The conversion is therefore
+// the assertion: the day the two projections stop agreeing, in field name, type
+// or order, this stops building rather than filling the wrong fields.
+func objectFromArchivedRow(r *registrydb.GetArchivedObjectRow) *Object {
+	row := registrydb.GetObjectRow(*r)
+
+	return objectFromRow(&row)
 }
 
 func objectFromKeyRow(r *registrydb.GetObjectByKeyRow) *Object {

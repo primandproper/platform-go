@@ -97,7 +97,8 @@ type Object struct {
 	_ struct{} `json:"-"`
 
 	// CreatedAt is when the object was registered, stamped by the database and
-	// read back — see the store's RecordObject.
+	// read back — see the store's RecordObject, which is where a caller gets a
+	// value with this field filled in.
 	CreatedAt time.Time `json:"createdAt"`
 
 	// LastUpdatedAt is when the row last changed. It is always nil today: no
@@ -116,9 +117,11 @@ type Object struct {
 	// BelongsTo is what the object hangs off, if anything.
 	BelongsTo Subject `json:"belongsTo"`
 
-	// ID identifies the row. Assigned by RecordObject when empty, so a caller
-	// that has already minted one — to reference the upload from a row it is
-	// writing in the same request — keeps it.
+	// ID identifies the row. Assigned by RecordObject when the object handed to
+	// it has none, and reported on the object that call returns rather than
+	// written back onto the argument; a caller that has already minted one — to
+	// reference the upload from a row it is writing in the same request — keeps
+	// it.
 	ID string `json:"id"`
 
 	// Key is where the bytes live, as uploads.UploadManager.Save was given it.
@@ -140,10 +143,10 @@ type Object struct {
 	// application, which is then exactly what it would have been without the
 	// column.
 	//
-	// A write takes the scope as an argument and writes it here, so leaving it
-	// unset is ordinary — this field is what a read fills in. Setting it to
-	// something the write does not name is ErrScopeMismatch rather than either
-	// value quietly winning; see Store.
+	// A write takes the scope as an argument and the row it returns carries it
+	// here. There is nothing to set it to on the way in: a write takes an
+	// [ObjectInput], which has no Scope, so this field is only ever what a read
+	// filled in.
 	Scope tenancy.Scope `json:"scope"`
 
 	// Size is how many bytes were stored, counted while they went past rather
@@ -152,7 +155,62 @@ type Object struct {
 	Size int64 `json:"size"`
 }
 
-var _ validation.ValidatableWithContext = (*Object)(nil)
+// ObjectInput is what a caller supplies to register an object: the facts about
+// bytes that are already in a bucket, and nothing the write settles.
+//
+// It is a separate type from [Object] rather than the same one, and the reason
+// is that the two are answers to different questions. An Object is a row — what
+// the registry holds, stamps included. An ObjectInput is a request to write one.
+// Sharing a type between them makes every field the write settles look like a
+// field the caller may set, and makes the argument a caller assembled
+// indistinguishable, to the compiler, from the row that came back.
+//
+// That indistinguishability is the whole cost. A caller that passed its own
+// argument onward — to a response, an audit entry, a cache — passed a struct
+// whose CreatedAt is the zero time and, after [StoreAndRecord], whose Size is
+// zero, and every line of it compiled. The fields are absent here so that the
+// mistake is a type error at the point it is made rather than a zero value on
+// the wire.
+//
+// Scope is absent for the same reason and one more: the write binds the scope it
+// was called with, so an ObjectInput has no second copy to disagree with it.
+// There is no reconciliation, and so no sentinel for one.
+//
+// It is taken by value. There is no nil to check and no way for a write to
+// modify what a caller still holds.
+type ObjectInput struct {
+	_ struct{} `json:"-"`
+
+	// BelongsTo is what the object hangs off, if anything.
+	BelongsTo Subject `json:"belongsTo"`
+
+	// ID identifies the row. Optional: [Store.RecordObject] mints one when this
+	// is empty, and reports whichever it used on the row it returns. A caller
+	// that has already minted one keeps it — a storage key is often built from
+	// the id, so the bytes have to know where they are going before anything
+	// writes them.
+	ID string `json:"id"`
+
+	// Key is where the bytes live, as uploads.UploadManager.Save was given it.
+	// Required. It is unique within a scope, archived rows included.
+	Key string `json:"key"`
+
+	// ContentType is what the object is — "image/png", "application/pdf" — as
+	// stored. Empty is legitimate for a provider that sniffed it and did not
+	// report back.
+	ContentType string `json:"contentType"`
+
+	// OwnerID is whoever the consumer's authorization model calls a principal.
+	// Required.
+	OwnerID string `json:"ownerID"`
+
+	// Size is how many bytes were stored. [StoreAndRecord] fills it in from what
+	// actually went past and ignores whatever was here; a caller registering
+	// bytes somebody else stored sets it themselves.
+	Size int64 `json:"size"`
+}
+
+var _ validation.ValidatableWithContext = (*ObjectInput)(nil)
 
 // ValidateWithContext refuses a row that could not answer the question the
 // registry exists for.
@@ -162,17 +220,22 @@ var _ validation.ValidatableWithContext = (*Object)(nil)
 // at all — an access check that reads it finds an owner nobody matches, or, in
 // the version somebody writes to make the check pass, one everybody does.
 //
+// It is on the input rather than on [Object] because validating is a write-time
+// question. An Object is a row the database answered with, and there is no
+// useful thing to tell a caller about one of those that the statement did not
+// already enforce.
+//
 // The scope is not checked here. It is validated where it is bound, by
 // tenancy.Scope itself, so an unset scope is a driver error on every statement
 // rather than a rule this one type remembers.
-func (o *Object) ValidateWithContext(ctx context.Context) error {
-	if err := validation.ValidateStructWithContext(ctx, o,
-		validation.Field(&o.Key, validation.Required),
-		validation.Field(&o.OwnerID, validation.Required),
-		validation.Field(&o.Size, validation.Min(0)),
+func (in *ObjectInput) ValidateWithContext(ctx context.Context) error {
+	if err := validation.ValidateStructWithContext(ctx, in,
+		validation.Field(&in.Key, validation.Required),
+		validation.Field(&in.OwnerID, validation.Required),
+		validation.Field(&in.Size, validation.Min(0)),
 	); err != nil {
 		return err
 	}
 
-	return o.BelongsTo.Validate()
+	return in.BelongsTo.Validate()
 }

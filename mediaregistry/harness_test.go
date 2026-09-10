@@ -112,29 +112,74 @@ func (e *storeEnv) inTx(tb testing.TB, fn func(tx database.Tx) error) error {
 // instead, and they are in the transaction suite.
 func (e *storeEnv) reader() database.SQLQueryExecutor { return e.client.Reader() }
 
-// record registers one object in a transaction of its own and reports what the
-// write returned.
+// record registers one object in a transaction of its own and reports both of
+// what the write returned.
 //
 // The transaction is a detail here rather than the subject: these cases are
 // about what the write checks and what the reads then see, and a consumer with
 // nothing to commit alongside opens exactly this. What a row commits *with* is
 // the transaction suite.
-func (e *storeEnv) record(tb testing.TB, store *SQLStore, scope tenancy.Scope, object *Object) error {
+//
+// The row is captured inside the callback rather than returned through
+// RunInTransaction, which carries an error and nothing else. It is left nil on
+// the refusals, which is the same answer the write gave.
+func (e *storeEnv) record(tb testing.TB, store *SQLStore, scope tenancy.Scope, in ObjectInput) (*Object, error) { //nolint:gocritic // hugeParam: by value on purpose — see ObjectInput, and the call does a round trip
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.RecordObject(tb.Context(), tx, scope, object)
+	var recorded *Object
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		recorded, txErr = store.RecordObject(tb.Context(), tx, scope, in)
+
+		return txErr
 	})
+
+	return recorded, err
 }
 
-// archive soft-deletes one row in a transaction of its own and reports what the
-// write returned.
-func (e *storeEnv) archive(tb testing.TB, store *SQLStore, scope tenancy.Scope, objectID string) error {
+// archive soft-deletes one row in a transaction of its own and reports both of
+// what the write returned.
+func (e *storeEnv) archive(tb testing.TB, store *SQLStore, scope tenancy.Scope, objectID string) (*Object, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ArchiveObject(tb.Context(), tx, scope, objectID)
+	var archived *Object
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		archived, txErr = store.ArchiveObject(tb.Context(), tx, scope, objectID)
+
+		return txErr
 	})
+
+	return archived, err
+}
+
+// mustRecord and mustArchive are the two above for the cases whose subject is
+// what happens after the write rather than the write itself: they fail the test
+// on a refusal and hand back the row, so a fixture reads as one line.
+//
+// They are what the suite reaches for most, because the row is now the only
+// place the id, the stamps and the bound scope appear — the argument is not
+// written to, so a case that needs the id needs the answer.
+func (e *storeEnv) mustRecord(tb testing.TB, store *SQLStore, scope tenancy.Scope, in ObjectInput) *Object { //nolint:gocritic // hugeParam: by value on purpose — see ObjectInput, and the call does a round trip
+	tb.Helper()
+
+	recorded, err := e.record(tb, store, scope, in)
+	must.NoError(tb, err)
+	must.NotNil(tb, recorded)
+
+	return recorded
+}
+
+func (e *storeEnv) mustArchive(tb testing.TB, store *SQLStore, scope tenancy.Scope, objectID string) *Object {
+	tb.Helper()
+
+	archived, err := e.archive(tb, store, scope, objectID)
+	must.NoError(tb, err)
+	must.NotNil(tb, archived)
+
+	return archived
 }
 
 // newObject is the object the suite records, with the fields a caller has to
@@ -143,8 +188,8 @@ func (e *storeEnv) archive(tb testing.TB, store *SQLStore, scope tenancy.Scope, 
 // It names no scope: the write's argument is what decides the tenant, and a
 // fixture that carried one would be asserting the field the port removed from
 // the write path. The cases about a scope-carrying object set it themselves.
-func newObject(key, ownerID string) *Object {
-	return &Object{
+func newInput(key, ownerID string) ObjectInput {
+	return ObjectInput{
 		Key:         key,
 		ContentType: "image/png",
 		OwnerID:     ownerID,

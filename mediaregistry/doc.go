@@ -29,7 +29,10 @@ function over the two seams rather than a method on either.
 Archival follows from the same split. [Store.ArchiveObject] is metadata-only: the
 row is hidden and the object stays in the bucket, because whether a receipt is
 still needed for tax purposes is the consumer's retention policy rather than
-this package's guess. See the retention package.
+this package's guess. See the retention package. It is also why that write hands
+the archived row back: the row is the only record of the key those surviving
+bytes are at, and once the transaction commits every read here is written not to
+see it.
 
 # The row commits with what references it
 
@@ -48,29 +51,34 @@ Every read is scoped and there is no unscoped variant of any of them. The scope
 is a column — TEXT NOT NULL with deliberately no DEFAULT, since the empty string
 is tenancy.Global() rather than "unset" — it is bound as a tenancy.Scope rather
 than a string derived from one, and no read path omits it. It is an argument on
-every method, [Store.RecordObject] included, rather than read off the Object the
-write is handed; see the Store documentation for why, and for what happens when
-the two disagree. An application with a single tenant passes tenancy.Global()
-everywhere and behaves exactly as it would have without the column.
+every method, [Store.RecordObject] included. A write takes an [ObjectInput],
+which carries no scope of its own for the argument to disagree with; see the
+Store documentation for why the row and the write's question are separate types.
+An application with a single tenant passes tenancy.Global() everywhere and
+behaves exactly as it would have without the column.
 
 # Usage
 
 	store, err := mediaregistry.NewSQLStore(client)
 	// ...
 
-	object := &mediaregistry.Object{
+	input := mediaregistry.ObjectInput{
 		Key:       "avatars/" + userID + "/original.png",
 		OwnerID:   userID,
 		BelongsTo: mediaregistry.Subject{Type: "user", ID: userID},
 	}
 
 	// The row and the profile it hangs off commit together, or neither does.
+	// Both writes hand back the row they wrote, so the id the reference needs
+	// and the stamps an audit entry records come from the write itself rather
+	// than from a read beside it.
 	err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		if txErr := mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, object, upload); txErr != nil {
+		recorded, txErr := mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, input, upload)
+		if txErr != nil {
 			return txErr
 		}
 
-		return profiles.SetAvatar(ctx, tx, scope, userID, object.ID)
+		return profiles.SetAvatar(ctx, tx, scope, userID, recorded.ID)
 	})
 	if err != nil {
 		// ...

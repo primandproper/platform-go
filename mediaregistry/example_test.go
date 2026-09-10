@@ -31,27 +31,35 @@ func Example() {
 	// application has, behaving exactly as it would without the column.
 	scope := tenancy.Global()
 
-	// No Scope on the value: the write's argument is what the row is filed
-	// under, and it is written back onto the object on the way through.
-	object := &mediaregistry.Object{
+	// An ObjectInput rather than an Object: what a caller supplies, with no
+	// Scope and no stamps on it. The write's argument is what the row is filed
+	// under, and the row the write hands back is where everything it settled
+	// appears.
+	input := mediaregistry.ObjectInput{
 		Key:         "avatars/ada/original.png",
 		ContentType: "image/png",
 		OwnerID:     "user_ada",
 		BelongsTo:   mediaregistry.Subject{Type: "user", ID: "user_ada"},
 	}
 
-	// StoreAndRecord writes the bytes, then the row, and fills in the size from
-	// what actually went past. The row goes in on the caller's transaction, so a
-	// consumer with a profile row to update writes it in this same function and
-	// the two commit together. Here there is nothing to join.
+	// StoreAndRecord writes the bytes, then the row, and answers with what was
+	// registered — the id it minted, the size counted from what actually went
+	// past. The row goes in on the caller's transaction, so a consumer with a
+	// profile row to update writes it in this same function and the two commit
+	// together. Here there is nothing to join.
+	var recorded *mediaregistry.Object
+
 	if err := client.WithTransaction(ctx, func(tx database.Tx) error {
-		return mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, object,
+		var txErr error
+		recorded, txErr = mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, input,
 			strings.NewReader("\x89PNG not really"))
+
+		return txErr
 	}); err != nil {
 		panic(err)
 	}
 
-	fmt.Println("size:", object.Size)
+	fmt.Println("size:", recorded.Size)
 
 	// Later, a request arrives holding the key rather than the row id. The row
 	// is what says whether this caller may have the bytes. This read is outside
@@ -68,12 +76,22 @@ func Example() {
 	}
 
 	// Archiving is metadata-only: the row is hidden and the object stays in the
-	// bucket until the consumer's retention policy removes it.
+	// bucket until the consumer's retention policy removes it. The write hands
+	// the row back because it is the last read that can see it — the key those
+	// surviving bytes are at is on it, and a retention sweep is written from
+	// exactly that.
+	var archived *mediaregistry.Object
+
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		return store.ArchiveObject(ctx, tx, scope, object.ID)
+		var txErr error
+		archived, txErr = store.ArchiveObject(ctx, tx, scope, recorded.ID)
+
+		return txErr
 	}); err != nil {
 		panic(err)
 	}
+
+	fmt.Println("archived key:", archived.Key)
 
 	_, err = store.GetObjectByKey(ctx, client.Reader(), scope, "avatars/ada/original.png")
 	fmt.Println("archived reads as absent:", errors.Is(err, mediaregistry.ErrObjectNotFound))
@@ -90,6 +108,7 @@ func Example() {
 	// size: 15
 	// owner: user_ada
 	// may user_bob read it: false
+	// archived key: avatars/ada/original.png
 	// archived reads as absent: true
 	// bytes still in the bucket: true
 }
@@ -104,7 +123,7 @@ func ExampleStore_listObjectsBySubject() {
 	invoice := mediaregistry.Subject{Type: "invoice", ID: "invoice_2026_01"}
 
 	for _, name := range []string{"january-receipt.pdf", "january-statement.pdf"} {
-		object := &mediaregistry.Object{
+		input := mediaregistry.ObjectInput{
 			Key:         "invoices/" + name,
 			ContentType: "application/pdf",
 			OwnerID:     "user_ada",
@@ -112,7 +131,9 @@ func ExampleStore_listObjectsBySubject() {
 		}
 
 		if err := client.WithTransaction(ctx, func(tx database.Tx) error {
-			return mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, object, strings.NewReader(name))
+			_, txErr := mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, input, strings.NewReader(name))
+
+			return txErr
 		}); err != nil {
 			panic(err)
 		}

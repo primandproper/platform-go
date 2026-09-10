@@ -51,8 +51,8 @@ func TestStoreAndRecord(T *testing.T) {
 	// database.Client.WithTransaction.
 	tx := database.NewTxForTesting(nil)
 
-	newObj := func() *mediaregistry.Object {
-		return &mediaregistry.Object{
+	newInput := func() mediaregistry.ObjectInput {
+		return mediaregistry.ObjectInput{
 			Key:         "avatars/grace/original.png",
 			ContentType: "image/png",
 			OwnerID:     "user_1",
@@ -69,27 +69,34 @@ func TestStoreAndRecord(T *testing.T) {
 
 		manager := drainingManager(t, &stored, &opts)
 
-		var recorded *mediaregistry.Object
+		// The store answers with the row, the way the SQL one answers with what
+		// it read back; here that is the value it was handed, which is what
+		// makes the assertions below about what StoreAndRecord passed on.
+		var offered mediaregistry.ObjectInput
 
 		store := &mediaregistrymock.StoreMock{
-			RecordObjectFunc: func(_ context.Context, _ database.Tx, _ tenancy.Scope, object *mediaregistry.Object) error {
-				recorded = object
+			RecordObjectFunc: func(_ context.Context, _ database.Tx, _ tenancy.Scope, in mediaregistry.ObjectInput) (*mediaregistry.Object, error) {
+				offered = in
 
-				return nil
+				return &mediaregistry.Object{Key: in.Key, ContentType: in.ContentType, OwnerID: in.OwnerID, Size: in.Size}, nil
 			},
 		}
 
-		object := newObj()
+		input := newInput()
 		content := "not really a png"
 
-		must.NoError(t, mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, object, strings.NewReader(content)))
+		recorded, err := mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, input, strings.NewReader(content))
+		must.NoError(t, err)
 
 		test.EqOp(t, content, string(stored))
 		must.NotNil(t, recorded)
-		test.EqOp(t, object, recorded)
 
-		// The size is what went past, not what anybody claimed.
-		test.EqOp(t, int64(len(content)), object.Size)
+		// The size is what went past, not what anybody claimed. It reaches the
+		// store on the input and comes back on the row; the caller's own input
+		// is a separate value and still says nothing about size.
+		test.EqOp(t, int64(len(content)), offered.Size)
+		test.EqOp(t, int64(len(content)), recorded.Size)
+		test.EqOp(t, int64(0), input.Size)
 
 		// The content type reaches the provider too, so the stored object and
 		// its row agree about what it is.
@@ -106,13 +113,16 @@ func TestStoreAndRecord(T *testing.T) {
 
 		manager := drainingManager(t, &stored, &opts)
 		store := &mediaregistrymock.StoreMock{
-			RecordObjectFunc: func(context.Context, database.Tx, tenancy.Scope, *mediaregistry.Object) error { return nil },
+			RecordObjectFunc: func(_ context.Context, _ database.Tx, _ tenancy.Scope, in mediaregistry.ObjectInput) (*mediaregistry.Object, error) {
+				return &mediaregistry.Object{Key: in.Key}, nil
+			},
 		}
 
-		object := newObj()
-		object.ContentType = ""
+		input := newInput()
+		input.ContentType = ""
 
-		must.NoError(t, mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, object, strings.NewReader("x")))
+		_, err := mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, input, strings.NewReader("x"))
+		must.NoError(t, err)
 
 		// Naming it explicitly as "" would replace a sniffed answer with none.
 		test.EqOp(t, "", opts.ContentType)
@@ -128,11 +138,14 @@ func TestStoreAndRecord(T *testing.T) {
 
 		manager := drainingManager(t, &stored, &opts)
 		store := &mediaregistrymock.StoreMock{
-			RecordObjectFunc: func(context.Context, database.Tx, tenancy.Scope, *mediaregistry.Object) error { return nil },
+			RecordObjectFunc: func(_ context.Context, _ database.Tx, _ tenancy.Scope, in mediaregistry.ObjectInput) (*mediaregistry.Object, error) {
+				return &mediaregistry.Object{Key: in.Key}, nil
+			},
 		}
 
-		must.NoError(t, mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, newObj(),
-			strings.NewReader("x"), uploads.WithCacheControl("max-age=3600")))
+		_, err := mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, newInput(),
+			strings.NewReader("x"), uploads.WithCacheControl("max-age=3600"))
+		must.NoError(t, err)
 
 		test.EqOp(t, "max-age=3600", opts.CacheControl)
 	})
@@ -151,7 +164,9 @@ func TestStoreAndRecord(T *testing.T) {
 		// are not there is the failure this order exists to prevent.
 		store := &mediaregistrymock.StoreMock{}
 
-		must.ErrorIs(t, mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, newObj(), strings.NewReader("x")), saveErr)
+		recorded, err := mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, newInput(), strings.NewReader("x"))
+		must.ErrorIs(t, err, saveErr)
+		test.Nil(t, recorded)
 	})
 
 	T.Run("reports what the registration reported", func(t *testing.T) {
@@ -164,15 +179,17 @@ func TestStoreAndRecord(T *testing.T) {
 
 		manager := drainingManager(t, &stored, &opts)
 		store := &mediaregistrymock.StoreMock{
-			RecordObjectFunc: func(context.Context, database.Tx, tenancy.Scope, *mediaregistry.Object) error {
-				return mediaregistry.ErrObjectKeyTaken
+			RecordObjectFunc: func(context.Context, database.Tx, tenancy.Scope, mediaregistry.ObjectInput) (*mediaregistry.Object, error) {
+				return nil, mediaregistry.ErrObjectKeyTaken
 			},
 		}
 
 		// The bytes are in the bucket and the row is not: an object with no
 		// row, which is invisible to every read and exactly what an orphan
 		// sweep is later written to find.
-		must.ErrorIs(t, mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, newObj(), strings.NewReader("x")), mediaregistry.ErrObjectKeyTaken)
+		recorded, err := mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, newInput(), strings.NewReader("x"))
+		must.ErrorIs(t, err, mediaregistry.ErrObjectKeyTaken)
+		test.Nil(t, recorded)
 	})
 
 	T.Run("refuses the pieces it cannot do without", func(t *testing.T) {
@@ -181,11 +198,39 @@ func TestStoreAndRecord(T *testing.T) {
 		manager := &uploadsmock.UploadManagerMock{}
 		store := &mediaregistrymock.StoreMock{}
 
-		must.ErrorIs(t, mediaregistry.StoreAndRecord(t.Context(), nil, scope, manager, store, newObj(), strings.NewReader("x")), mediaregistry.ErrNilExecutor)
-		must.ErrorIs(t, mediaregistry.StoreAndRecord(t.Context(), tx, scope, nil, store, newObj(), strings.NewReader("x")), mediaregistry.ErrNilUploadManager)
-		must.ErrorIs(t, mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, nil, newObj(), strings.NewReader("x")), mediaregistry.ErrNilStore)
-		must.ErrorIs(t, mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, nil, strings.NewReader("x")), mediaregistry.ErrNilObject)
-		must.ErrorIs(t, mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, newObj(), nil), mediaregistry.ErrNilReader)
+		for _, missing := range []struct {
+			call func() (*mediaregistry.Object, error)
+			want error
+		}{
+			{
+				call: func() (*mediaregistry.Object, error) {
+					return mediaregistry.StoreAndRecord(t.Context(), nil, scope, manager, store, newInput(), strings.NewReader("x"))
+				},
+				want: mediaregistry.ErrNilExecutor,
+			},
+			{
+				call: func() (*mediaregistry.Object, error) {
+					return mediaregistry.StoreAndRecord(t.Context(), tx, scope, nil, store, newInput(), strings.NewReader("x"))
+				},
+				want: mediaregistry.ErrNilUploadManager,
+			},
+			{
+				call: func() (*mediaregistry.Object, error) {
+					return mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, nil, newInput(), strings.NewReader("x"))
+				},
+				want: mediaregistry.ErrNilStore,
+			},
+			{
+				call: func() (*mediaregistry.Object, error) {
+					return mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, newInput(), nil)
+				},
+				want: mediaregistry.ErrNilReader,
+			},
+		} {
+			recorded, err := missing.call()
+			must.ErrorIs(t, err, missing.want)
+			test.Nil(t, recorded)
+		}
 	})
 
 	T.Run("refuses an unset scope before the bytes go", func(t *testing.T) {
@@ -199,8 +244,8 @@ func TestStoreAndRecord(T *testing.T) {
 
 		var unset tenancy.Scope
 
-		must.ErrorIs(t,
-			mediaregistry.StoreAndRecord(t.Context(), tx, unset, manager, store, newObj(), strings.NewReader("x")),
-			tenancy.ErrNoScope)
+		recorded, err := mediaregistry.StoreAndRecord(t.Context(), tx, unset, manager, store, newInput(), strings.NewReader("x"))
+		must.ErrorIs(t, err, tenancy.ErrNoScope)
+		test.Nil(t, recorded)
 	})
 }

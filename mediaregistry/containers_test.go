@@ -154,15 +154,15 @@ func assertIndexRefusesDuplicate(t *testing.T, env *storeEnv) {
 	store := env.newStore(t)
 
 	key := "avatars/grace/original.png"
-	must.NoError(t, env.record(t, store, testScope, newObject(key, "user_1")))
+	env.mustRecord(t, store, testScope, newInput(key, "user_1"))
 
-	duplicate := newObject(key, "user_2")
-	duplicate.ID = identifiers.New()
+	duplicate := newInput(key, "user_2")
 
 	// On the environment's own writer rather than through the store, which no
 	// longer holds one: the point is to reach the index without the check the
 	// store runs first.
-	err := store.q.CreateObject(t.Context(), env.client.Writer(), createObjectParams(testScope, duplicate))
+	err := store.q.CreateObject(t.Context(), env.client.Writer(),
+		createObjectParams(testScope, identifiers.New(), duplicate))
 	must.Error(t, err)
 }
 
