@@ -109,13 +109,18 @@ type Directory interface {
 	) error
 
 	// MarkUserTwoFactorSecretVerified records that the user proved possession of
-	// the secret they hold.
+	// the secret they hold, and answers with the user it moved.
+	//
+	// The stamp on that row is the one the write made, which is what this
+	// service hands AfterVerifyTOTPSecret: a consumer recording who proved a
+	// second factor and when reads it off the row the write returned rather than
+	// off the copy read before it, which carried no stamp at all.
 	MarkUserTwoFactorSecretVerified(
 		ctx context.Context,
 		tx database.Tx,
 		scope tenancy.Scope,
 		userID string,
-	) error
+	) (*identity.User, error)
 }
 
 // Credentials is what a sign-in form submits.

@@ -175,18 +175,24 @@ func (s *SQLStore) UpdateUserTwoFactorSecret(
 }
 
 // MarkUserTwoFactorSecretVerified records that the user proved possession of
-// their secret.
+// their secret, and answers with the user it moved.
 //
 // A user who has already verified matches nothing, and that reports
 // ErrUserNotFound rather than succeeding silently — a second verification is
 // either a replayed request or a flow that lost track of its own state, and
-// both are worth surfacing.
+// both are worth surfacing. A refusal answers with a nil user: the row comes
+// back only beside a nil error.
+//
+// The stamp the row carries is the one this statement wrote, which is the fact
+// a consumer's entry recording who proved a second factor and when is written
+// from. The alternative is that consumer reading the user back for itself, at
+// the same cost, a statement later.
 func (s *SQLStore) MarkUserTwoFactorSecretVerified(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	userID string,
-) error {
+) (*User, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(userIDKey, userID),
@@ -194,11 +200,11 @@ func (s *SQLStore) MarkUserTwoFactorSecretVerified(
 	defer op.End()
 
 	if err := requireExecutor(tx); err != nil {
-		return op.Error(err, "marking identity two factor secret verified")
+		return nil, op.Error(err, "marking identity two factor secret verified")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "marking identity two factor secret verified")
+		return nil, op.Error(err, "marking identity two factor secret verified")
 	}
 
 	// The guards are the statement's, not this method's: a secret that exists
@@ -213,10 +219,15 @@ func (s *SQLStore) MarkUserTwoFactorSecretVerified(
 			TwoFactorSecretVerifiedAt: pointer.To(s.now()),
 		})
 	if err = s.guardCount(ctx, count, err, ErrUserNotFound, "marking identity two factor secret verified"); err != nil {
-		return op.Error(err, "marking identity two factor secret verified")
+		return nil, op.Error(err, "marking identity two factor secret verified")
 	}
 
-	return nil
+	verified, err := s.readUser(ctx, tx, scope, userID)
+	if err != nil {
+		return nil, op.Error(err, "marking identity two factor secret verified")
+	}
+
+	return verified, nil
 }
 
 // SetUserEmailAddressVerificationToken stores the token a verification link will
@@ -322,13 +333,17 @@ func (s *SQLStore) MarkUserEmailAddressVerified(
 }
 
 // MarkUserEmailAddressUnverified withdraws the proof without touching the
-// address it was given for.
+// address it was given for, and answers with the user it moved.
+//
+// What a consumer's entry records here is which address stopped being proven,
+// and the row carries it — the column this write clears says nothing about
+// which address the proof was for.
 func (s *SQLStore) MarkUserEmailAddressUnverified(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	userID string,
-) error {
+) (*User, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(userIDKey, userID),
@@ -336,11 +351,11 @@ func (s *SQLStore) MarkUserEmailAddressUnverified(
 	defer op.End()
 
 	if err := requireExecutor(tx); err != nil {
-		return op.Error(err, "marking identity email address unverified")
+		return nil, op.Error(err, "marking identity email address unverified")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "marking identity email address unverified")
+		return nil, op.Error(err, "marking identity email address unverified")
 	}
 
 	// No token and no guard. There is nothing to compare against — the caller is
@@ -358,8 +373,13 @@ func (s *SQLStore) MarkUserEmailAddressUnverified(
 			EmailAddressVerifiedAt: nil,
 		})
 	if err = s.guardCount(ctx, count, err, ErrUserNotFound, "marking identity email address unverified"); err != nil {
-		return op.Error(err, "marking identity email address unverified")
+		return nil, op.Error(err, "marking identity email address unverified")
 	}
 
-	return nil
+	unverified, err := s.readUser(ctx, tx, scope, userID)
+	if err != nil {
+		return nil, op.Error(err, "marking identity email address unverified")
+	}
+
+	return unverified, nil
 }

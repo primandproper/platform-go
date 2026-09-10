@@ -130,7 +130,14 @@ func runBillingWriterSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		test.Nil(t, before.LastPaymentProviderSyncedAt)
 
-		must.NoError(t, env.markAccountBillingSynced(t, store, testScope, account.ID))
+		stamped, err := env.markAccountBillingSynced(t, store, testScope, account.ID)
+		must.NoError(t, err)
+
+		// The stamp is the whole content of the write and it is a read of this
+		// Store's clock, so a reconciler that had to read the account again to
+		// learn when it last reconciled would be paying for that answer twice.
+		must.NotNil(t, stamped.LastPaymentProviderSyncedAt)
+		test.EqOp(t, baseTime, *stamped.LastPaymentProviderSyncedAt)
 
 		synced, err := store.GetAccount(t.Context(), env.reader(), testScope, account.ID)
 		must.NoError(t, err)
@@ -143,12 +150,17 @@ func runBillingWriterSuite(t *testing.T, env *storeEnv) {
 		test.Nil(t, synced.SubscriptionPlanID)
 
 		clk.advance(time.Hour)
-		must.NoError(t, env.markAccountBillingSynced(t, store, testScope, account.ID))
 
-		again, err := store.GetAccount(t.Context(), env.reader(), testScope, account.ID)
+		again, err := env.markAccountBillingSynced(t, store, testScope, account.ID)
 		must.NoError(t, err)
 		must.NotNil(t, again.LastPaymentProviderSyncedAt)
 		test.EqOp(t, baseTime.Add(time.Hour), *again.LastPaymentProviderSyncedAt)
+
+		// A refusal answers with no account: the row comes back only beside a
+		// nil error.
+		missing, err := env.markAccountBillingSynced(t, store, otherScope, account.ID)
+		must.ErrorIs(t, err, ErrAccountNotFound)
+		test.Nil(t, missing)
 	})
 
 	t.Run("refuses a value that would be a clear dressed as a write", func(t *testing.T) {
@@ -222,7 +234,7 @@ func runBillingWriterSuite(t *testing.T, env *storeEnv) {
 			ErrAccountNotFound,
 		)
 		must.ErrorIs(t,
-			env.markAccountBillingSynced(t, store, otherScope, account.ID),
+			env.markAccountBillingSyncedErr(t, store, otherScope, account.ID),
 			ErrAccountNotFound,
 		)
 
@@ -244,6 +256,6 @@ func runBillingWriterSuite(t *testing.T, env *storeEnv) {
 		must.Error(t, env.recordAccountSubscription(t, store, unset, account.ID, BillingPaid, "plan_pro"))
 		must.Error(t, env.recordAccountSubscriptionEnded(t, store, unset, account.ID, BillingUnpaid))
 		must.Error(t, env.setAccountPaymentProcessorCustomerID(t, store, unset, account.ID, "cus_123"))
-		must.Error(t, env.markAccountBillingSynced(t, store, unset, account.ID))
+		must.Error(t, env.markAccountBillingSyncedErr(t, store, unset, account.ID))
 	})
 }

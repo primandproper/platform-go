@@ -26,7 +26,7 @@ func runSignInReaderSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		test.EqOp(t, user.ID, byEmail.ID)
 
-		must.NoError(t, env.archiveUser(t, store, testScope, user.ID))
+		must.NoError(t, env.archiveUserErr(t, store, testScope, user.ID))
 
 		// Every read by id excludes archived users too, now that they all run
 		// querygen's single-row statement. A caller who wants an archived user
