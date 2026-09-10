@@ -10,8 +10,8 @@ import (
 )
 
 // StoreAndRecord writes the bytes and then registers what was written through
-// the caller's transaction, filling in the object's Size from what actually went
-// past.
+// the caller's transaction, and answers with the row that was registered — Size
+// included, counted from what actually went past.
 //
 // It is the convenience, not the contract. Storing and registering stay
 // separately callable, and they have to: bytes that arrived through a signed URL
@@ -29,7 +29,9 @@ import (
 // number is a claim. A Content-Length header is whatever the client sent, and a
 // quota, a bill, or a storage report read off claimed sizes is one that does not
 // hold. Counting the bytes as they go past is the only number that is about what
-// is in the bucket.
+// is in the bucket. It is written onto a copy of the object, not onto the
+// caller's, which is [Store.RecordObject]'s rule applied one level up: what this
+// call settled is on the row it hands back.
 //
 // object.Key must be set — it is where the bytes go — and object.ContentType, if
 // set, is what the object is stored with, so the row and the stored object agree
@@ -62,18 +64,18 @@ func StoreAndRecord(
 	object *Object,
 	r io.Reader,
 	opts ...uploads.SaveOption,
-) error {
+) (*Object, error) {
 	switch {
 	case tx == nil:
-		return ErrNilExecutor
+		return nil, ErrNilExecutor
 	case manager == nil:
-		return ErrNilUploadManager
+		return nil, ErrNilUploadManager
 	case store == nil:
-		return ErrNilStore
+		return nil, ErrNilStore
 	case object == nil:
-		return ErrNilObject
+		return nil, ErrNilObject
 	case r == nil:
-		return ErrNilReader
+		return nil, ErrNilReader
 	}
 
 	// The scope is checked before the bytes go, not left to the registration
@@ -81,7 +83,7 @@ func StoreAndRecord(
 	// should not spend an upload first, and this is the one check that can be
 	// made without either seam.
 	if err := scope.Validate(); err != nil {
-		return err
+		return nil, err
 	}
 
 	// The content type is stated to the provider as well as recorded, so the
@@ -95,12 +97,13 @@ func StoreAndRecord(
 	counted := &countingReader{r: r}
 
 	if err := manager.Save(ctx, object.Key, counted, opts...); err != nil {
-		return err
+		return nil, err
 	}
 
-	object.Size = counted.n
+	recorded := *object
+	recorded.Size = counted.n
 
-	return store.RecordObject(ctx, tx, scope, object)
+	return store.RecordObject(ctx, tx, scope, &recorded)
 }
 
 // countingReader counts the bytes that pass through it.

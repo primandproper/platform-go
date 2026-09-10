@@ -29,6 +29,27 @@ type CreateObjectParams struct {
 	BelongsToID   string
 }
 
+// GetArchivedObjectParams are the arguments to GetArchivedObject.
+type GetArchivedObjectParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetArchivedObjectRow is one row of GetArchivedObject's result.
+type GetArchivedObjectRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	ObjectKey     string
+	ContentType   string
+	SizeBytes     int64
+	OwnerID       string
+	BelongsToType string
+	BelongsToID   string
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+}
+
 // GetObjectParams are the arguments to GetObject.
 type GetObjectParams struct {
 	ID    string
@@ -69,17 +90,6 @@ type GetObjectByKeyRow struct {
 	CreatedAt     time.Time
 	LastUpdatedAt *time.Time
 	ArchivedAt    *time.Time
-}
-
-// GetObjectCreatedAtParams are the arguments to GetObjectCreatedAt.
-type GetObjectCreatedAtParams struct {
-	ID    string
-	Scope tenancy.Scope
-}
-
-// GetObjectCreatedAtRow is one row of GetObjectCreatedAt's result.
-type GetObjectCreatedAtRow struct {
-	CreatedAt time.Time
 }
 
 // GetObjectIDByKeyParams are the arguments to GetObjectIDByKey.

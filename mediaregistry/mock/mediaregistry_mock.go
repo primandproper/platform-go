@@ -24,7 +24,7 @@ var _ mediaregistry.Store = &StoreMock{}
 //
 //		// make and configure a mocked mediaregistry.Store
 //		mockedStore := &StoreMock{
-//			ArchiveObjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, objectID string) error {
+//			ArchiveObjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, objectID string) (*mediaregistry.Object, error) {
 //				panic("mock out the ArchiveObject method")
 //			},
 //			GetObjectFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, objectID string) (*mediaregistry.Object, error) {
@@ -42,7 +42,7 @@ var _ mediaregistry.Store = &StoreMock{}
 //			ListObjectsBySubjectFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subject mediaregistry.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[mediaregistry.Object], error) {
 //				panic("mock out the ListObjectsBySubject method")
 //			},
-//			RecordObjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) error {
+//			RecordObjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) (*mediaregistry.Object, error) {
 //				panic("mock out the RecordObject method")
 //			},
 //		}
@@ -53,7 +53,7 @@ var _ mediaregistry.Store = &StoreMock{}
 //	}
 type StoreMock struct {
 	// ArchiveObjectFunc mocks the ArchiveObject method.
-	ArchiveObjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, objectID string) error
+	ArchiveObjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, objectID string) (*mediaregistry.Object, error)
 
 	// GetObjectFunc mocks the GetObject method.
 	GetObjectFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, objectID string) (*mediaregistry.Object, error)
@@ -71,7 +71,7 @@ type StoreMock struct {
 	ListObjectsBySubjectFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subject mediaregistry.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[mediaregistry.Object], error)
 
 	// RecordObjectFunc mocks the RecordObject method.
-	RecordObjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) error
+	RecordObjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) (*mediaregistry.Object, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -167,7 +167,7 @@ type StoreMock struct {
 }
 
 // ArchiveObject calls ArchiveObjectFunc.
-func (mock *StoreMock) ArchiveObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, objectID string) error {
+func (mock *StoreMock) ArchiveObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, objectID string) (*mediaregistry.Object, error) {
 	if mock.ArchiveObjectFunc == nil {
 		panic("StoreMock.ArchiveObjectFunc: method is nil but Store.ArchiveObject was just called")
 	}
@@ -439,7 +439,7 @@ func (mock *StoreMock) ListObjectsBySubjectCalls() []struct {
 }
 
 // RecordObject calls RecordObjectFunc.
-func (mock *StoreMock) RecordObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) error {
+func (mock *StoreMock) RecordObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *mediaregistry.Object) (*mediaregistry.Object, error) {
 	if mock.RecordObjectFunc == nil {
 		panic("StoreMock.RecordObjectFunc: method is nil but Store.RecordObject was just called")
 	}

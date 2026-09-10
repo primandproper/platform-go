@@ -40,6 +40,23 @@ INSERT INTO {{prefix}}uploads_objects (
 	?
 )`
 
+const getArchivedObjectMySQL = `SELECT
+	{{prefix}}uploads_objects.id,
+	{{prefix}}uploads_objects.scope,
+	{{prefix}}uploads_objects.object_key,
+	{{prefix}}uploads_objects.content_type,
+	{{prefix}}uploads_objects.size_bytes,
+	{{prefix}}uploads_objects.owner_id,
+	{{prefix}}uploads_objects.belongs_to_type,
+	{{prefix}}uploads_objects.belongs_to_id,
+	{{prefix}}uploads_objects.created_at,
+	{{prefix}}uploads_objects.last_updated_at,
+	{{prefix}}uploads_objects.archived_at
+FROM {{prefix}}uploads_objects
+WHERE {{prefix}}uploads_objects.id = ?
+	AND {{prefix}}uploads_objects.scope = ?
+	AND {{prefix}}uploads_objects.archived_at IS NOT NULL`
+
 const getObjectMySQL = `SELECT
 	{{prefix}}uploads_objects.id,
 	{{prefix}}uploads_objects.scope,
@@ -72,12 +89,6 @@ const getObjectByKeyMySQL = `SELECT
 FROM {{prefix}}uploads_objects
 WHERE {{prefix}}uploads_objects.archived_at IS NULL
 	AND {{prefix}}uploads_objects.object_key = ?
-	AND {{prefix}}uploads_objects.scope = ?`
-
-const getObjectCreatedAtMySQL = `SELECT
-	{{prefix}}uploads_objects.created_at
-FROM {{prefix}}uploads_objects
-WHERE {{prefix}}uploads_objects.id = ?
 	AND {{prefix}}uploads_objects.scope = ?`
 
 const getObjectIdbyKeyMySQL = `SELECT
@@ -414,9 +425,9 @@ LIMIT ?`
 type mysqlQueries struct {
 	archiveObject                  string
 	createObject                   string
+	getArchivedObject              string
 	getObject                      string
 	getObjectByKey                 string
-	getObjectCreatedAt             string
 	getObjectIdbyKey               string
 	listObjects                    string
 	listObjectsByOwner             string
@@ -432,9 +443,9 @@ func newMySQL(prefix string) *mysqlQueries {
 	return &mysqlQueries{
 		archiveObject:                  strings.ReplaceAll(archiveObjectMySQL, prefixMarker, prefix),
 		createObject:                   strings.ReplaceAll(createObjectMySQL, prefixMarker, prefix),
+		getArchivedObject:              strings.ReplaceAll(getArchivedObjectMySQL, prefixMarker, prefix),
 		getObject:                      strings.ReplaceAll(getObjectMySQL, prefixMarker, prefix),
 		getObjectByKey:                 strings.ReplaceAll(getObjectByKeyMySQL, prefixMarker, prefix),
-		getObjectCreatedAt:             strings.ReplaceAll(getObjectCreatedAtMySQL, prefixMarker, prefix),
 		getObjectIdbyKey:               strings.ReplaceAll(getObjectIdbyKeyMySQL, prefixMarker, prefix),
 		listObjects:                    strings.ReplaceAll(listObjectsMySQL, prefixMarker, prefix),
 		listObjectsByOwner:             strings.ReplaceAll(listObjectsByOwnerMySQL, prefixMarker, prefix),
@@ -472,6 +483,32 @@ func (q *mysqlQueries) CreateObject(ctx context.Context, db DBTX, arg CreateObje
 	)
 
 	return err
+}
+
+// GetArchivedObject runs the :one query against mysql.
+func (q *mysqlQueries) GetArchivedObject(ctx context.Context, db DBTX, arg GetArchivedObjectParams) (GetArchivedObjectRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedObject,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedObjectRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.ObjectKey,
+		&i.ContentType,
+		&i.SizeBytes,
+		&i.OwnerID,
+		&i.BelongsToType,
+		&i.BelongsToID,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
 }
 
 // GetObject runs the :one query against mysql.
@@ -521,22 +558,6 @@ func (q *mysqlQueries) GetObjectByKey(ctx context.Context, db DBTX, arg GetObjec
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
-	)
-
-	return i, err
-}
-
-// GetObjectCreatedAt runs the :one query against mysql.
-func (q *mysqlQueries) GetObjectCreatedAt(ctx context.Context, db DBTX, arg GetObjectCreatedAtParams) (GetObjectCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getObjectCreatedAt,
-		arg.ID,
-		arg.Scope,
-	)
-
-	var i GetObjectCreatedAtRow
-
-	err := row.Scan(
-		&i.CreatedAt,
 	)
 
 	return i, err
@@ -957,6 +978,23 @@ var (
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope
+	}(GetArchivedObjectParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		ObjectKey     string
+		ContentType   string
+		SizeBytes     int64
+		OwnerID       string
+		BelongsToType string
+		BelongsToID   string
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetArchivedObjectRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
 	}(GetObjectParams{})
 	_ = struct {
 		ID            string
@@ -988,13 +1026,6 @@ var (
 		LastUpdatedAt *time.Time
 		ArchivedAt    *time.Time
 	}(GetObjectByKeyRow{})
-	_ = struct {
-		ID    string
-		Scope tenancy.Scope
-	}(GetObjectCreatedAtParams{})
-	_ = struct {
-		CreatedAt time.Time
-	}(GetObjectCreatedAtRow{})
 	_ = struct {
 		ObjectKey string
 		Scope     tenancy.Scope

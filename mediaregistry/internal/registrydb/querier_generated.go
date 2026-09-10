@@ -34,12 +34,12 @@ type Querier interface {
 	ArchiveObject(ctx context.Context, db DBTX, arg ArchiveObjectParams) (int64, error)
 	// CreateObject runs the :exec query.
 	CreateObject(ctx context.Context, db DBTX, arg CreateObjectParams) error
+	// GetArchivedObject runs the :one query.
+	GetArchivedObject(ctx context.Context, db DBTX, arg GetArchivedObjectParams) (GetArchivedObjectRow, error)
 	// GetObject runs the :one query.
 	GetObject(ctx context.Context, db DBTX, arg GetObjectParams) (GetObjectRow, error)
 	// GetObjectByKey runs the :one query.
 	GetObjectByKey(ctx context.Context, db DBTX, arg GetObjectByKeyParams) (GetObjectByKeyRow, error)
-	// GetObjectCreatedAt runs the :one query.
-	GetObjectCreatedAt(ctx context.Context, db DBTX, arg GetObjectCreatedAtParams) (GetObjectCreatedAtRow, error)
 	// GetObjectIDByKey runs the :one query.
 	GetObjectIDByKey(ctx context.Context, db DBTX, arg GetObjectIDByKeyParams) (GetObjectIDByKeyRow, error)
 	// ListObjects runs the :many query.

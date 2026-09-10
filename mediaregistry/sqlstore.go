@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"time"
 
 	"github.com/primandproper/platform-go/v14/mediaregistry/internal/registrydb"
 	"github.com/primandproper/platform-go/v14/mediaregistry/migrations"
@@ -150,22 +149,32 @@ func (s *SQLStore) failed(ctx context.Context, err error) error {
 }
 
 // RecordObject writes the row for an object in storage, through the caller's
-// transaction.
+// transaction, and answers with the row it wrote.
 //
 // The three statements are one unit and always were — a collision check that
-// cleared a key somebody else then took, an insert, and the read-back of the
-// stamp the database assigned — but the transaction they are one unit in is now
-// the caller's rather than one this store opened and closed behind their back.
-// That is what lets the row commit with whatever references it: the profile row
-// naming the avatar, the audit entry naming who uploaded it. It also means the
-// creation time handed back is the one this transaction wrote, visible here
-// before anybody else can see it.
+// cleared a key somebody else then took, an insert, and the read-back — but the
+// transaction they are one unit in is now the caller's rather than one this
+// store opened and closed behind their back. That is what lets the row commit
+// with whatever references it: the profile row naming the avatar, the audit
+// entry naming who uploaded it. It also means the row handed back is the one
+// this transaction wrote, visible here before anybody else can see it.
+//
+// The read-back is GetObject rather than a statement of its own. A row this
+// transaction just inserted is not archived, so the ordinary keyed read reaches
+// it, and reading the whole row rather than the stamp alone costs the same one
+// round trip while answering with what the database holds instead of with what
+// the caller assembled plus a timestamp.
+//
+// The object handed in is not modified. Everything the write settled — the id it
+// minted, the scope it bound, the stamp the database assigned — is on the value
+// returned, so a caller that wants those reads them from one place rather than
+// from an argument that changed under them.
 func (s *SQLStore) RecordObject(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	object *Object,
-) error {
+) (*Object, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 	defer op.Time(ctx, nil, s.instruments.Latency)()
@@ -173,64 +182,63 @@ func (s *SQLStore) RecordObject(
 	s.instruments.Attempt(ctx)
 
 	if tx == nil {
-		return s.failed(ctx, op.Error(ErrNilExecutor, "recording uploaded object"))
+		return nil, s.failed(ctx, op.Error(ErrNilExecutor, "recording uploaded object"))
 	}
 
 	if object == nil {
-		return s.failed(ctx, op.Error(ErrNilObject, "recording uploaded object"))
+		return nil, s.failed(ctx, op.Error(ErrNilObject, "recording uploaded object"))
 	}
 
 	if err := object.ValidateWithContext(ctx); err != nil {
-		return s.failed(ctx, op.Error(err, "recording uploaded object"))
+		return nil, s.failed(ctx, op.Error(err, "recording uploaded object"))
 	}
 
 	if err := scope.Validate(); err != nil {
-		return s.failed(ctx, op.Error(err, "recording uploaded object"))
+		return nil, s.failed(ctx, op.Error(err, "recording uploaded object"))
 	}
 
-	if err := adoptScope(scope, object); err != nil {
-		return s.failed(ctx, op.Error(err, "recording uploaded object"))
+	if err := checkScope(scope, object); err != nil {
+		return nil, s.failed(ctx, op.Error(err, "recording uploaded object"))
 	}
 
-	object.ID = newID(object.ID)
+	id := newID(object.ID)
 
-	op.Set(objectIDKey, object.ID).
+	op.Set(objectIDKey, id).
 		Set(objectKeyKey, object.Key)
 
 	if err := s.ensureKeyFree(ctx, tx, scope, object.Key); err != nil {
-		return s.failed(ctx, op.Error(err, "recording uploaded object"))
+		return nil, s.failed(ctx, op.Error(err, "recording uploaded object"))
 	}
 
-	if err := s.q.CreateObject(ctx, tx, createObjectParams(scope, object)); err != nil {
-		return s.failed(ctx, op.Error(err, "writing the uploads registry row"))
+	if err := s.q.CreateObject(ctx, tx, createObjectParams(scope, id, object)); err != nil {
+		return nil, s.failed(ctx, op.Error(err, "writing the uploads registry row"))
 	}
 
-	created, readErr := s.q.GetObjectCreatedAt(ctx, tx,
-		registrydb.GetObjectCreatedAtParams{ID: object.ID, Scope: scope})
-	if err := stampCreatedAt(&object.CreatedAt, created.CreatedAt, readErr); err != nil {
-		return s.failed(ctx, op.Error(err, "recording uploaded object"))
+	row, err := s.q.GetObject(ctx, tx, registrydb.GetObjectParams{ID: id, Scope: scope})
+	if err != nil {
+		return nil, s.failed(ctx, op.Error(err, "reading back the recorded object"))
 	}
 
-	return nil
+	return objectFromRow(&row), nil
 }
 
-// adoptScope settles which tenant a write is for, and writes the answer back
-// onto the object.
+// checkScope refuses a write whose object names a tenant other than the one the
+// call named.
 //
 // The scope the call named is the one the statement binds, so an object that
 // names a different one is refused rather than corrected: the two disagreeing is
 // a caller holding one tenant's object and registering it into another, which is
 // a stale value or a mix-up and is not a thing to guess at. An object that names
-// none adopts the argument. tenancy.Scope tells the zero value apart from
+// none adopts the argument — which it does by the write binding the argument and
+// the read-back reporting it, rather than by this function writing to a struct
+// the caller still holds. tenancy.Scope tells the zero value apart from
 // Global(), so "unset" here is genuinely unset rather than the global scope
 // spelled shortly.
-func adoptScope(scope tenancy.Scope, object *Object) error {
+func checkScope(scope tenancy.Scope, object *Object) error {
 	if object.Scope != (tenancy.Scope{}) && object.Scope != scope {
 		return platformerrors.Wrapf(ErrScopeMismatch,
 			"object names %q, the write names %q", object.Scope, scope)
 	}
-
-	object.Scope = scope
 
 	return nil
 }
@@ -491,14 +499,26 @@ func (s *SQLStore) ListObjectsBySubject(
 	return filtering.Drain(rows, pageValue, pageCounts, objectID, filter), nil
 }
 
-// ArchiveObject soft-deletes the row through the caller's transaction. The
-// object stays in the bucket.
+// ArchiveObject soft-deletes the row through the caller's transaction, and
+// answers with the row it archived. The object stays in the bucket.
+//
+// The read-back is a statement of its own — GetArchivedObject — because it is
+// the one read here that has to see what every other read is written not to.
+// Two statements rather than one is what the dialect roster costs: RETURNING
+// would answer the write directly and MySQL has none, and the corpus is one text
+// per dialect rendered from one column list, so there is no per-dialect fork to
+// put it in. There is no gap between them: the guarded UPDATE holds the row until
+// commit and the read runs on the same transaction.
+//
+// It is the guard that decides the answer, not the read. A write that moved
+// nothing is ErrObjectNotFound before the read runs, so the read-back never
+// reports somebody else's archive as this call's.
 func (s *SQLStore) ArchiveObject(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	objectID string,
-) error {
+) (*Object, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(objectIDKey, objectID),
@@ -509,19 +529,24 @@ func (s *SQLStore) ArchiveObject(
 	s.instruments.Attempt(ctx)
 
 	if tx == nil {
-		return s.failed(ctx, op.Error(ErrNilExecutor, "archiving uploaded object %q", objectID))
+		return nil, s.failed(ctx, op.Error(ErrNilExecutor, "archiving uploaded object %q", objectID))
 	}
 
 	if err := scope.Validate(); err != nil {
-		return s.failed(ctx, op.Error(err, "archiving uploaded object %q", objectID))
+		return nil, s.failed(ctx, op.Error(err, "archiving uploaded object %q", objectID))
 	}
 
 	count, err := s.q.ArchiveObject(ctx, tx, registrydb.ArchiveObjectParams{ID: objectID, Scope: scope})
 	if err = guardCount(count, err, ErrObjectNotFound); err != nil {
-		return s.failed(ctx, op.Error(err, "archiving uploaded object %q", objectID))
+		return nil, s.failed(ctx, op.Error(err, "archiving uploaded object %q", objectID))
 	}
 
-	return nil
+	row, err := s.q.GetArchivedObject(ctx, tx, registrydb.GetArchivedObjectParams{ID: objectID, Scope: scope})
+	if err != nil {
+		return nil, s.failed(ctx, op.Error(err, "reading back the archived object %q", objectID))
+	}
+
+	return objectFromArchivedRow(&row), nil
 }
 
 // guardCount maps "touched nothing" onto the sentinel for the row that was not
@@ -539,25 +564,6 @@ func guardCount(count int64, err, missing error) error {
 	if count == 0 {
 		return missing
 	}
-
-	return nil
-}
-
-// stampCreatedAt writes the creation time the database assigned onto the value
-// the caller handed over.
-//
-// The column is the database's — see mediaregistry/internal/queries — so the
-// create does not carry it, and the alternative to this read is a caller whose
-// struct says 0001-01-01 for a row that was written a moment ago. CreatedAt is
-// exported and a service serializes the value it just created straight into a
-// response, where a zero time renders as a date rather than reading as an
-// absence.
-func stampCreatedAt(at *time.Time, created time.Time, err error) error {
-	if err != nil {
-		return platformerrors.Wrap(err, "reading back the assigned creation time")
-	}
-
-	*at = created.UTC()
 
 	return nil
 }

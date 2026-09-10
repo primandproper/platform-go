@@ -97,7 +97,8 @@ type Object struct {
 	_ struct{} `json:"-"`
 
 	// CreatedAt is when the object was registered, stamped by the database and
-	// read back — see the store's RecordObject.
+	// read back — see the store's RecordObject, which is where a caller gets a
+	// value with this field filled in.
 	CreatedAt time.Time `json:"createdAt"`
 
 	// LastUpdatedAt is when the row last changed. It is always nil today: no
@@ -116,9 +117,11 @@ type Object struct {
 	// BelongsTo is what the object hangs off, if anything.
 	BelongsTo Subject `json:"belongsTo"`
 
-	// ID identifies the row. Assigned by RecordObject when empty, so a caller
-	// that has already minted one — to reference the upload from a row it is
-	// writing in the same request — keeps it.
+	// ID identifies the row. Assigned by RecordObject when the object handed to
+	// it has none, and reported on the object that call returns rather than
+	// written back onto the argument; a caller that has already minted one — to
+	// reference the upload from a row it is writing in the same request — keeps
+	// it.
 	ID string `json:"id"`
 
 	// Key is where the bytes live, as uploads.UploadManager.Save was given it.
@@ -140,10 +143,10 @@ type Object struct {
 	// application, which is then exactly what it would have been without the
 	// column.
 	//
-	// A write takes the scope as an argument and writes it here, so leaving it
-	// unset is ordinary — this field is what a read fills in. Setting it to
-	// something the write does not name is ErrScopeMismatch rather than either
-	// value quietly winning; see Store.
+	// A write takes the scope as an argument and the row it returns carries it
+	// here, so leaving it unset on the way in is ordinary — this field is what a
+	// read fills in. Setting it to something the write does not name is
+	// ErrScopeMismatch rather than either value quietly winning; see Store.
 	Scope tenancy.Scope `json:"scope"`
 
 	// Size is how many bytes were stored, counted while they went past rather

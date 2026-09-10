@@ -40,7 +40,10 @@ lists:
   - the collision check behind ErrObjectKeyTaken, which reads the id alone and
     is rendered from no column list at all, because the unique index covers
     archived rows and so must the read
-  - the read-back of created_at, which the database assigned
+  - the read the archive answers with, rendered from no column list for the same
+    reason and carrying the complement of the predicate the others carry —
+    archived_at IS NOT NULL — because the row an archive just hid is the one row
+    every other read here is written not to see
 
 # The belongs-to pair is one key
 

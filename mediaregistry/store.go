@@ -57,6 +57,37 @@ import (
 // with the argument is [ErrScopeMismatch] rather than either value quietly
 // winning; an unset one adopts the argument.
 //
+// # Both writes hand back the row they moved
+//
+// [Store.RecordObject] answers with what it registered and [Store.ArchiveObject]
+// with what it hid, each read on the caller's transaction after the statement
+// ran. Neither modifies the [Object] it was handed.
+//
+// It is not a convenience, and the reason is the transaction. A caller inside an
+// uncommitted transaction has no other way to read the row back — the stamps on
+// it are the server's clock, not anything the caller could assemble — and the
+// audit entry describing the write is written beside the write, from the row.
+// Without this the caller reads first and writes second, and its record then
+// describes the row as it stood a statement earlier rather than as the statement
+// left it.
+//
+// The archive is the case where reading first does not merely mislead, and it is
+// worth saying why, because settings.Store draws the line in the other place and
+// for a reason that does not reach here. A retired setting is a row nothing
+// outside the database depends on; an archived object row is the only record of
+// the key bytes are still sitting at, and archival here is metadata-only, so the
+// bytes outlive it. Once the transaction commits, every read on this interface
+// filters archived_at IS NULL and that key is unreachable — which makes the row
+// the archive hands back the last place a consumer's retention sweep can read it
+// from. The cost is one statement, on a write whose caller is by construction
+// deciding what to do about the bytes.
+//
+// The rejected spelling was mutating the caller's argument in place, which
+// delivers the same guarantee — comments.Store.CreateComment does exactly that.
+// Returning is the one this module already has more of, and it is the one that
+// also works for a write that takes an id rather than an entity, which is what
+// made it the module's answer rather than this package's.
+//
 // # Nothing here touches bytes
 //
 // The Store writes and reads rows; uploads.UploadManager writes and reads
@@ -66,23 +97,24 @@ import (
 // registers what somebody else stored.
 type Store interface {
 	// RecordObject writes the row for an object in storage through the caller's
-	// transaction, so the row commits with whatever references it. It fills in
-	// the object's ID when it has none and its CreatedAt from the row, and
-	// writes the scope the call named onto it. A nil tx is an error wrapping
-	// ErrNilExecutor.
+	// transaction, so the row commits with whatever references it, and answers
+	// with the row it wrote: the ID it assigned when the object carried none,
+	// the CreatedAt the database stamped, and the scope the call named. The
+	// object handed in is not modified. A nil tx is an error wrapping
+	// ErrNilExecutor, and a failed write answers with a nil Object.
 	//
 	// The key must be free within the scope, archived rows included: a key
 	// already registered is ErrObjectKeyTaken. The collision check, the insert
-	// and the creation-time read-back all run on tx, so they are one unit with
-	// whatever else the caller is writing — and the creation time handed back is
-	// the one this transaction just wrote, rather than a zero time waiting on a
-	// commit.
+	// and the read-back all run on tx, so they are one unit with whatever else
+	// the caller is writing — and the row handed back is the one this
+	// transaction just wrote, rather than a struct whose creation time is a zero
+	// time waiting on a commit.
 	//
 	// The check is what turns the ordinary collision into a sentinel rather
 	// than what guarantees uniqueness — the unique index is that. Two
 	// registrations racing for one key reach the index, and the loser gets the
 	// driver's error rather than ErrObjectKeyTaken.
-	RecordObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *Object) error
+	RecordObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *Object) (*Object, error)
 
 	// GetObject reads one of the scope's objects by row id, on the caller's
 	// executor. An archived object reads as absent. A nil q is an error wrapping
@@ -108,12 +140,14 @@ type Store interface {
 	// ArchiveObject soft-deletes the row through the caller's transaction, so
 	// the row leaves and whatever the caller records about it — the audit entry
 	// naming who removed the attachment, the reference it hung off — commit
-	// together or not at all. A nil tx is an error wrapping ErrNilExecutor.
+	// together or not at all. It answers with the row it archived, carrying the
+	// ArchivedAt the database stamped. A nil tx is an error wrapping
+	// ErrNilExecutor, and a write that moved nothing answers with a nil Object.
 	//
 	// Metadata-only, and deliberately: the object stays in the bucket. Whether
 	// and when the bytes go is the consumer's retention policy, because the
 	// registry is not the thing that knows whether a receipt is still needed
 	// for tax purposes. Archiving a row that is already archived, or one in
 	// another scope, is ErrObjectNotFound.
-	ArchiveObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, objectID string) error
+	ArchiveObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, objectID string) (*Object, error)
 }

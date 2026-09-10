@@ -143,8 +143,9 @@ func keyedLists(g *querygen.Generator) []*querygen.Query {
 	return append(byOwner, bySubject...)
 }
 
-// keyedReads is the three single-row reads that key on something other than the
-// id, or project something narrower than the table.
+// keyedReads is the three single-row reads beyond the standard get: two that
+// key on something other than the id, and one that keys on the id but reaches
+// the rows the standard get is written not to see.
 //
 // GetObjectByKey is what a request holding a URL path runs: the caller has the
 // key the bytes live at, not the row id, and the row is what says whether they
@@ -157,8 +158,31 @@ func keyedLists(g *querygen.Generator) []*querygen.Query {
 // unique index covers archived rows and a check that skipped them would clear a
 // write the index then refuses.
 //
-// GetObjectCreatedAt reads back the stamp the database assigned, so the value a
-// caller holds after a create is the value in the row.
+// GetArchivedObject is the read the archive answers with: the row it just
+// hid, on the transaction that hid it.
+//
+// It exists because archiving is the one write here whose result no other read
+// can see. Every single-row statement over this table filters archived_at IS
+// NULL — which is what makes an archived object absent from a fetch — so a store
+// that archived a row and read it back through one of those would find nothing,
+// and once the transaction commits the row is unreadable through this package
+// entirely. That row is the only record of the key the bytes are still sitting
+// at, which is the fact a consumer's retention sweep is written from.
+//
+// It is rendered from no column list at all, for GetObjectIDByKey's trick and
+// the opposite half of its reason: querygen derives the archived predicate from
+// the columns it is handed, so a read that must see archived rows is one keyed
+// entirely on its matches. What takes that predicate's place is its complement —
+// archived_at IS NOT NULL — so the read-back asserts the thing it was called to
+// confirm, and a guard that matched nothing cannot be read back as a success.
+//
+// It is not a caller-facing read and is not on mediaregistry.Store. It runs on
+// the transaction that did the archiving, and the row it sees is visible to
+// nothing outside that transaction until it commits.
+//
+// There is no companion for the create. A row that was just inserted is not
+// archived, so GetObject reaches it on the same transaction, and the read-back
+// the create makes is that statement rather than one of its own.
 func keyedReads(g *querygen.Generator) []*querygen.Query {
 	scope := querygen.Match{Column: ScopeColumn}
 	key := querygen.Match{Column: ObjectKeyColumn}
@@ -170,8 +194,10 @@ func keyedReads(g *querygen.Generator) []*querygen.Query {
 		g.ReadQuery("GetObjectIDByKey", ObjectsTable, nil,
 			querygen.Read{Projection: []string{querygen.IDColumn}}, key, scope),
 
-		g.ReadQuery("GetObjectCreatedAt", ObjectsTable, []string{querygen.IDColumn},
-			querygen.Read{Projection: []string{querygen.CreatedAtColumn}}, scope),
+		g.ReadQuery("GetArchivedObject", ObjectsTable, nil,
+			querygen.Read{Projection: ObjectColumns},
+			querygen.Match{Column: querygen.IDColumn}, scope,
+			querygen.Match{Column: querygen.ArchivedAtColumn, Against: querygen.NoValue, Exclude: true}),
 	}
 }
 
