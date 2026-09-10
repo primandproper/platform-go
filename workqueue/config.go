@@ -91,7 +91,9 @@ type Config struct {
 
 	// MaxAttempts is how many times an item may be claimed before the queue
 	// stops handing it out. Zero — the default — means unlimited, which is the
-	// right answer when the work is idempotent and a failure is transient.
+	// right answer when the work is idempotent and a failure is transient. A
+	// negative ceiling is rejected rather than read as a second spelling of
+	// unlimited.
 	//
 	// Set it when an item can be poisonous. Without a ceiling, one key that
 	// reliably kills its worker is claimed, half-processed, and reclaimed
@@ -100,7 +102,7 @@ type Config struct {
 	// Stats.Stalled and excluded from every claim; they are not deleted, so the
 	// keys remain available for inspection and a Release resets nothing on its
 	// own — an operator re-enqueues them once the cause is fixed.
-	MaxAttempts uint `env:"MAX_ATTEMPTS" json:"maxAttempts,omitempty" yaml:"maxAttempts,omitempty"`
+	MaxAttempts int `env:"MAX_ATTEMPTS" json:"maxAttempts,omitempty" yaml:"maxAttempts,omitempty"`
 
 	// MaxClaimBatch caps how many items one Claim may lease. A larger limit is
 	// clamped to it rather than rejected, and a non-positive limit means "as
@@ -153,6 +155,7 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	return validation.ValidateStructWithContext(ctx, cfg,
 		validation.Field(&cfg.Name, validation.Required, validation.Length(1, MaxKeyLength)),
 		validation.Field(&cfg.Retention, validation.Required, validation.Min(time.Second)),
+		validation.Field(&cfg.MaxAttempts, validation.Min(0)),
 		validation.Field(&cfg.MaxClaimBatch, validation.Required, validation.Min(1)),
 		validation.Field(&cfg.ReapBatchSize, validation.Required, validation.Min(1)),
 		validation.Field(&cfg.WriteAttempts, validation.Required, validation.Min(uint(1))),
@@ -177,19 +180,16 @@ func (cfg *Config) resolvedTable() string {
 // attemptCeiling renders MaxAttempts as the bound parameter the predicates
 // expect, where a non-positive value means unlimited.
 //
-// The cast is uint -> int rather than the other way around because the ceiling
-// travels to Postgres as an int, and a MaxAttempts large enough to overflow one
-// is indistinguishable from unlimited anyway — so it saturates rather than
-// wrapping to a negative, which would read as "unlimited" and quietly turn the
-// poison-item guard off.
-//
-// It saturates at MaxInt32 rather than MaxInt because int32 is the width of the
-// attempts column — which also keeps the conversion in range where int is 32
+// A ceiling that does not fit the attempts column is indistinguishable from
+// unlimited anyway, so it saturates rather than reaching Postgres truncated to
+// a negative, which would read as "unlimited" and quietly turn the poison-item
+// guard off. It saturates at MaxInt32 rather than MaxInt because int32 is the
+// width of that column, which also keeps the value in range where int is 32
 // bits.
 func (cfg *Config) attemptCeiling() int {
-	if cfg.MaxAttempts > uint(math.MaxInt32) {
+	if cfg.MaxAttempts > math.MaxInt32 {
 		return math.MaxInt32
 	}
 
-	return int(cfg.MaxAttempts)
+	return cfg.MaxAttempts
 }
