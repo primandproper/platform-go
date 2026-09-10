@@ -387,6 +387,14 @@ func (s *SQLStore) MarkAllNotificationsRead(
 // same way, asserting archived_at IS NOT NULL — so a guard that matched nothing
 // cannot be read back as a success, and the row it returns is the one this
 // transaction hid.
+//
+// It is the guard that decides the answer, not the read. A write that moved
+// nothing is ErrNotificationNotFound before the read runs, so a notification
+// somebody else archived is never reported as this call's — and an empty
+// read-back after a guard that matched is left unmapped rather than folded into
+// that sentinel, because the statement holds the row until commit and there is
+// no state in which it is honestly absent: answering a broken invariant with
+// that sentinel would report it to a consumer as a 404.
 func (s *SQLStore) ArchiveNotification(
 	ctx context.Context,
 	tx database.Tx,
@@ -430,8 +438,7 @@ func (s *SQLStore) ArchiveNotification(
 			Principal: principal,
 		})
 	if err != nil {
-		return nil, op.Error(notFound(err, ErrNotificationNotFound),
-			"reading back the archived notification")
+		return nil, op.Error(err, "reading back the archived notification")
 	}
 
 	return archivedNotificationFromRow(&archived), nil
