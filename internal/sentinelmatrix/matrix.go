@@ -196,7 +196,7 @@ var Matrix = map[string]map[string]Decision{
 		// is not in the state the call needs, or the request they sent is malformed.
 		"ErrArtifactUnavailable":     {Err: dataprivacy.ErrArtifactUnavailable, Is: Mapped},
 		"ErrEmptySubjectID":          {Err: dataprivacy.ErrEmptySubjectID, Is: Mapped},
-		"ErrGlobalSubjectScope":      {Err: dataprivacy.ErrGlobalSubjectScope, Is: Mapped},
+		"ErrGlobalRequestScope":      {Err: dataprivacy.ErrGlobalRequestScope, Is: Mapped},
 		"ErrNotAwaitingConfirmation": {Err: dataprivacy.ErrNotAwaitingConfirmation, Is: Mapped},
 		"ErrRequestNotFound":         {Err: dataprivacy.ErrRequestNotFound, Is: Mapped},
 		"ErrUnknownRequestType":      {Err: dataprivacy.ErrUnknownRequestType, Is: Mapped},

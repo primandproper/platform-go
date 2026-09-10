@@ -45,7 +45,7 @@ func TestSQLStore_Observability(T *testing.T) {
 		store, recorder := recordingStore(t, env)
 
 		req := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
 		recorder.ObservedOperationWithData(t, map[string]any{
 			requestIDKey:   req.ID,
@@ -61,7 +61,7 @@ func TestSQLStore_Observability(T *testing.T) {
 		env := newSQLiteEnv(t)
 		store, recorder := recordingStore(t, env)
 
-		_, err := store.Get(t.Context(), "nope")
+		_, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, "nope")
 		test.ErrorIs(t, err, ErrRequestNotFound)
 
 		// A request ID that is not in the table is a 404 somebody is owed, or a
@@ -80,12 +80,12 @@ func TestSQLStore_Observability(T *testing.T) {
 
 		req := newRequest(identifiers.New(), RequestErasure, testSubject, baseTime)
 		req.Status = StatusInProgress
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
 		// Guarded on a status the request is not in — the shape of a subject
 		// confirming an erasure twice, or confirming one the sweep just lapsed.
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			_, transitionErr := store.Confirm(t.Context(), q, req.ID, "op-1")
+		err := env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, transitionErr := store.Confirm(t.Context(), tx, req.ID, "op-1")
 
 			return transitionErr
 		})
@@ -110,10 +110,10 @@ func TestSQLStore_Observability(T *testing.T) {
 
 		req := newRequest(identifiers.New(), RequestErasure, testSubject, baseTime)
 		req.Status = StatusAwaitingConfirmation
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
-			_, transitionErr := store.Confirm(t.Context(), q, req.ID, "op-1")
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, transitionErr := store.Confirm(t.Context(), tx, req.ID, "op-1")
 
 			return transitionErr
 		}))
@@ -137,14 +137,14 @@ func TestSQLStore_Observability(T *testing.T) {
 		// done and there is nowhere to record it.
 		req := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
 		req.Status = StatusCancelled
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
 		req.ArtifactRef = "dataprivacy/exports/x.json"
 		req.ArtifactBytes = 2048
 		req.ExpiresAt = baseTime.Add(DefaultArtifactTTL)
 
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.CompleteExport(t.Context(), q, req, baseTime)
+		err := env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.CompleteExport(t.Context(), tx, req, baseTime)
 		})
 		test.ErrorIs(t, err, ErrRequestNotFound)
 
@@ -165,14 +165,14 @@ func TestSQLStore_Observability(T *testing.T) {
 
 		req := newRequest(identifiers.New(), RequestErasure, testSubject, baseTime)
 		req.Status = StatusInProgress
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
 		req.Deleted = 7
 		req.Anonymized = 3
 		req.Retained = map[string]string{"invoices": "financial records"}
 
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.CompleteErasure(t.Context(), q, req, baseTime)
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.CompleteErasure(t.Context(), tx, req, baseTime)
 		}))
 
 		// The counts a regulator asks about, on the span that recorded them.
@@ -191,7 +191,7 @@ func TestSQLStore_Observability(T *testing.T) {
 
 		req := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
 		req.Status = StatusCancelled
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
 		// The row left StatusInProgress before the final attempt gave up:
 		// cancelled, or completed by a duplicate execution that got there first.
@@ -215,10 +215,10 @@ func TestSQLStore_Observability(T *testing.T) {
 		store, recorder := recordingStore(t, env)
 
 		for range 2 {
-			saveRequest(t, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
+			saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
 		}
 
-		_, err := store.List(t.Context(), testSubject, nil)
+		_, err := store.List(t.Context(), env.client.Reader(), testScopePtr, testSubject, nil)
 		must.NoError(t, err)
 
 		recorder.ObservedOperationWithData(t, map[string]any{
@@ -237,7 +237,7 @@ func TestSQLStore_Observability(T *testing.T) {
 		lapsing := newRequest(identifiers.New(), RequestErasure, testSubject, baseTime)
 		lapsing.Status = StatusAwaitingConfirmation
 		lapsing.ExpiresAt = baseTime
-		saveRequest(t, store, lapsing)
+		saveRequest(t, env.client, store, lapsing)
 
 		lapsed, err := store.LapseUnconfirmed(t.Context(), baseTime.Add(time.Hour), 10)
 		must.NoError(t, err)
@@ -272,9 +272,9 @@ func TestSQLStore_Observability(T *testing.T) {
 		store, recorder := recordingStore(t, env)
 
 		req := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
-		_, err := store.Get(t.Context(), req.ID)
+		_, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 
 		_, err = store.CountOverdue(t.Context(), baseTime.Add(365*24*time.Hour))

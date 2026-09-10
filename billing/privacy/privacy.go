@@ -119,7 +119,16 @@ type Account struct {
 // Returning none is an answer rather than a failure: a subject who has never
 // bought anything has no billing, and the collector reports an empty export for
 // them.
-type AccountResolver func(ctx context.Context, subject dataprivacy.Subject) ([]Account, error)
+//
+// requestScope is the confinement the privacy request named, handed over beside
+// the subject. The zero Scope is the request that named none — a plain "give me
+// my data" — and a resolver that has accounts in several scopes reads it as the
+// instruction to return all of them, or refuses, as its deployment requires.
+type AccountResolver func(
+	ctx context.Context,
+	requestScope tenancy.Scope,
+	subject dataprivacy.Subject,
+) ([]Account, error)
 
 // FixedAccounts is an AccountResolver for the deployment whose subject id is its
 // account id, in one scope — a single-tenant application where a person and
@@ -128,7 +137,7 @@ type AccountResolver func(ctx context.Context, subject dataprivacy.Subject) ([]A
 // It is spelled out here rather than made the default, so that taking it is a
 // deployment saying its model is that simple.
 func FixedAccounts(scope tenancy.Scope) AccountResolver {
-	return func(_ context.Context, subject dataprivacy.Subject) ([]Account, error) {
+	return func(_ context.Context, _ tenancy.Scope, subject dataprivacy.Subject) ([]Account, error) {
 		return []Account{{Scope: scope, ID: subject.ID}}, nil
 	}
 }
@@ -200,8 +209,12 @@ func NewCollector(
 // something the subject was sold, and an export that showed only what an operator
 // had not yet tidied away would be an export that answered a different question
 // than the one the right of access asks.
-func (c *Collector) Collect(ctx context.Context, subject dataprivacy.Subject) (json.RawMessage, error) {
-	accounts, err := c.resolve(ctx, subject)
+func (c *Collector) Collect(
+	ctx context.Context,
+	requestScope tenancy.Scope,
+	subject dataprivacy.Subject,
+) (json.RawMessage, error) {
+	accounts, err := c.resolve(ctx, requestScope, subject)
 	if err != nil {
 		return nil, platformerrors.Wrapf(err, "resolving billing accounts for subject %q", subject.ID)
 	}

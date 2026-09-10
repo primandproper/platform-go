@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/primitives-go/database"
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/identifiers"
 	"github.com/primandproper/primitives-go/jobs"
@@ -14,6 +15,7 @@ import (
 
 // sweeperEnv is a Sweeper wired over a live store and an in-memory bucket.
 type sweeperEnv struct {
+	client   database.Client
 	store    Store
 	sweeper  *Sweeper
 	uploader *memoryUploader
@@ -36,7 +38,7 @@ func newSweeperEnv(t *testing.T, cfg *SweeperConfig, opts ...SweeperOption) *swe
 	sweeper, err := NewSweeper(t.Context(), cfg, store, append(base, opts...)...)
 	must.NoError(t, err)
 
-	return &sweeperEnv{store: store, sweeper: sweeper, uploader: uploader, clock: stub}
+	return &sweeperEnv{client: env.client, store: store, sweeper: sweeper, uploader: uploader, clock: stub}
 }
 
 // completedExport saves a completed export whose artifact is in the bucket.
@@ -47,7 +49,7 @@ func (e *sweeperEnv) completedExport(t *testing.T, expiresAt time.Time) *Request
 	req.Status = StatusCompleted
 	req.ArtifactRef = "dataprivacy/exports/" + req.ID + ".json"
 	req.ExpiresAt = expiresAt
-	saveRequest(t, e.store, req)
+	saveRequest(t, e.client, e.store, req)
 
 	must.NoError(t, uploadString(t, e.uploader, req.ArtifactRef, `{"data":{}}`))
 
@@ -72,7 +74,7 @@ func TestSweeper_ExpireArtifacts(T *testing.T) {
 		_, stillThere := env.uploader.get(req.ArtifactRef)
 		test.False(t, stillThere)
 
-		read, err := env.store.Get(t.Context(), req.ID)
+		read, err := env.store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusExpired, read.Status)
 		test.EqOp(t, "", read.ArtifactRef)
@@ -112,7 +114,7 @@ func TestSweeper_ExpireArtifacts(T *testing.T) {
 		// that still exists.
 		test.EqOp(t, int64(0), result.ArtifactsExpired)
 
-		read, err := env.store.Get(t.Context(), req.ID)
+		read, err := env.store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusCompleted, read.Status)
 		test.EqOp(t, req.ArtifactRef, read.ArtifactRef)
@@ -145,7 +147,7 @@ func TestSweeper_ExpireArtifacts(T *testing.T) {
 		// perpetuity, so the absence is confirmed and accepted.
 		test.EqOp(t, int64(1), result.ArtifactsExpired)
 
-		read, err := env.store.Get(t.Context(), req.ID)
+		read, err := env.store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusExpired, read.Status)
 	})
@@ -162,14 +164,14 @@ func TestSweeper_Lapse(T *testing.T) {
 		req := newRequest(identifiers.New(), RequestErasure, testSubject, baseTime)
 		req.Status = StatusAwaitingConfirmation
 		req.ExpiresAt = baseTime.Add(-time.Minute)
-		saveRequest(t, env.store, req)
+		saveRequest(t, env.client, env.store, req)
 
 		result, err := env.sweeper.Sweep(t.Context())
 		must.NoError(t, err)
 
 		test.EqOp(t, int64(1), result.ErasuresLapsed)
 
-		read, err := env.store.Get(t.Context(), req.ID)
+		read, err := env.store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusCancelled, read.Status)
 	})
@@ -188,7 +190,7 @@ func TestSweeper_Reap(T *testing.T) {
 		req := newRequest(identifiers.New(), RequestExport, testSubject, completedAt)
 		req.Status = StatusExpired
 		req.CompletedAt = &completedAt
-		saveRequest(t, env.store, req)
+		saveRequest(t, env.client, env.store, req)
 
 		result, err := env.sweeper.Sweep(t.Context())
 		must.NoError(t, err)
@@ -206,14 +208,14 @@ func TestSweeper_Reap(T *testing.T) {
 		req := newRequest(identifiers.New(), RequestExport, testSubject, completedAt)
 		req.Status = StatusExpired
 		req.CompletedAt = &completedAt
-		saveRequest(t, env.store, req)
+		saveRequest(t, env.client, env.store, req)
 
 		result, err := env.sweeper.Sweep(t.Context())
 		must.NoError(t, err)
 
 		test.EqOp(t, int64(0), result.RecordsReaped)
 
-		_, err = env.store.Get(t.Context(), req.ID)
+		_, err = env.store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		test.NoError(t, err)
 	})
 }
@@ -228,7 +230,7 @@ func TestSweeper_Overdue(T *testing.T) {
 
 		overdue := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
 		overdue.DueAt = baseTime.Add(-time.Hour)
-		saveRequest(t, env.store, overdue)
+		saveRequest(t, env.client, env.store, overdue)
 
 		result, err := env.sweeper.Sweep(t.Context())
 		must.NoError(t, err)
@@ -294,7 +296,7 @@ func TestNewSweeper(T *testing.T) {
 		req.Status = StatusCompleted
 		req.ArtifactRef = "orphan.json"
 		req.ExpiresAt = baseTime.Add(-time.Hour)
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
 		result, err := sweeper.Sweep(t.Context())
 		must.NoError(t, err)
@@ -303,7 +305,7 @@ func TestNewSweeper(T *testing.T) {
 		// worse than no sweep, because it stops anybody looking.
 		test.EqOp(t, int64(0), result.ArtifactsExpired)
 
-		read, err := store.Get(t.Context(), req.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusCompleted, read.Status)
 	})

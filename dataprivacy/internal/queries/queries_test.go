@@ -96,10 +96,11 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	// the cursor comparison points, so it is answered by a second statement
 	// rather than by a bound argument. And each appears under two names, because
 	// the two readings of a scope are two statements rather than a predicate
-	// that changes shape.
+	// that changes shape — which is why the single-request read is a pair too.
 	want := []string{
 		"CreateRequest",
 		"GetRequest",
+		"GetRequestInScope",
 		"ListRequestsForSubject",
 		"ListRequestsForSubjectDescending",
 		"ListRequestsForSubjectInAnyScope",

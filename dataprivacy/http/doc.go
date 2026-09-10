@@ -5,6 +5,7 @@ It is imported as dataprivacyhttp.
 
 	handlers, err := dataprivacyhttp.New(svc,
 		dataprivacyhttp.WithSubjectResolver(subjectFromSession),
+		dataprivacyhttp.WithScopeResolver(tenantFromSession),
 		dataprivacyhttp.WithLogger(logger))
 	if err != nil {
 		return err
@@ -76,11 +77,29 @@ its own permission, and the audit entry names the agent because the Service's
 ActorResolver reads them off the context — which is a distinction a resolver that
 returned the target's subject would erase.
 
-The read of one request applies the listing's own rule to one row: the IDs must
-match, and the scope must match only where the resolved subject names one. That
-is what dataprivacy.Store.List already does, and answering the two questions
-differently would mean a request visible in a listing and absent from its own
-URL.
+# The scope is resolved beside it
+
+WithScopeResolver answers the other question every route needs — which tenant is
+being asked about — and it is separate from the subject resolver because a
+deployment answers the two from different places: who is asking comes off the
+session, and which tenant off the route, the host, or the membership that session
+was established under. They used to be one value, and a subject carrying the
+scope its own reads were narrowed by is how a listing ends up scoped by whatever
+assembled the struct.
+
+Unlike the subject resolver this one has a default, [UnconfinedRequests], and the
+asymmetry is the point. A surface that does not know who is asking serves one
+person's export to another. A surface that does not know which tenant is being
+asked about serves a subject their own requests across all of them — the right
+answer for a single-tenant deployment and for the ordinary "give me my data", and
+never a crossing to another person, because every route here is already narrowed
+to the resolved subject.
+
+The confinement is no longer compared in the handler. It is bound into the
+statement — dataprivacy.Store.Get takes the scope it selects by — so a request in
+another tenant is reported absent rather than fetched and rejected. What the
+handler still compares is the subject, which no store method narrows by: the IDs
+must match, and a request belonging to somebody else is not this caller's.
 
 A request belonging to somebody else is reported as dataprivacy.ErrRequestNotFound
 rather than as a permission failure, which is the same answer as one that does not

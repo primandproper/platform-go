@@ -139,11 +139,13 @@ func (e *storeEnv) newStore(t *testing.T) Store {
 }
 
 // saveRequest inserts a request through a transaction, as the Service does.
-func saveRequest(t *testing.T, store Store, req *Request) *Request {
+func saveRequest(t *testing.T, client database.Client, store Store, req *Request) *Request {
 	t.Helper()
 
-	must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
-		return store.Save(t.Context(), q, req)
+	// Through the client rather than the store: Store no longer offers a
+	// WithTransaction of its own, for the reason its documentation gives.
+	must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
+		return store.Save(t.Context(), tx, req)
 	}))
 
 	return req
@@ -152,10 +154,17 @@ func saveRequest(t *testing.T, store Store, req *Request) *Request {
 // newRequest builds an in-progress request of the given type, as Submit leaves
 // one: an operation exists and is fulfilling it.
 func newRequest(id string, t RequestType, subject Subject, at time.Time) *Request {
+	return newRequestInScope(id, t, testScope, subject, at)
+}
+
+// newRequestInScope is newRequest for a confinement other than testScope — most
+// often the zero Scope, which is the request that named none.
+func newRequestInScope(id string, t RequestType, scope tenancy.Scope, subject Subject, at time.Time) *Request {
 	return &Request{
 		ID:          id,
 		Type:        t,
 		Subject:     subject,
+		Scope:       scope,
 		Status:      StatusInProgress,
 		OperationID: "op-" + id,
 		CreatedAt:   at,
@@ -368,7 +377,14 @@ func (s *stubOperations) cancelledIDs() []string {
 }
 
 // testSubject is the subject most of this suite is about.
-var testSubject = Subject{ID: "user-1", Type: SubjectUser, Scope: tenancy.Of("account-1")}
+var testSubject = Subject{ID: "user-1", Type: SubjectUser}
+
+// testScope is the confinement most of this suite's requests are recorded
+// under, and testScopePtr is it as a read's narrowing.
+var (
+	testScope    = tenancy.Of("account-1")
+	testScopePtr = &testScope
+)
 
 // memoryUploader is an in-process UploadManager. It records what was written so
 // a test can assert the artifact's bytes, and implements Delete/Exists so the
@@ -483,21 +499,21 @@ func (s *signingUploader) SignedURL(_ context.Context, path string, opts *upload
 
 // staticCollector returns fixed bytes.
 func staticCollector(fragment string) Collector {
-	return CollectorFunc(func(context.Context, Subject) (json.RawMessage, error) {
+	return CollectorFunc(func(context.Context, tenancy.Scope, Subject) (json.RawMessage, error) {
 		return json.RawMessage(fragment), nil
 	})
 }
 
 // failingCollector always errors.
 func failingCollector(err error) Collector {
-	return CollectorFunc(func(context.Context, Subject) (json.RawMessage, error) {
+	return CollectorFunc(func(context.Context, tenancy.Scope, Subject) (json.RawMessage, error) {
 		return nil, err
 	})
 }
 
 // countingEraser reports a fixed outcome and records that it ran.
 func countingEraser(deleted, anonymized int64, retained map[string]string, ran *atomic.Int64) Eraser {
-	return EraserFunc(func(context.Context, database.Tx, Subject) (ErasureOutcome, error) {
+	return EraserFunc(func(context.Context, database.Tx, tenancy.Scope, Subject) (ErasureOutcome, error) {
 		if ran != nil {
 			ran.Add(1)
 		}

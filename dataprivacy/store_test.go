@@ -62,16 +62,16 @@ func suiteSaveAndGet(t *testing.T, env *storeEnv) {
 		req.Failures = map[string]string{"billing": "timed out"}
 		req.Retained = map[string]string{"invoices": "tax law"}
 
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
-		read, err := store.Get(t.Context(), req.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 
 		test.EqOp(t, req.ID, read.ID)
 		test.EqOp(t, RequestExport, read.Type)
 		test.EqOp(t, StatusCompleted, read.Status)
 		test.EqOp(t, testSubject.ID, read.Subject.ID)
-		test.EqOp(t, testSubject.Scope, read.Subject.Scope)
+		test.EqOp(t, testScope, read.Scope)
 		test.EqOp(t, SubjectUser, read.Subject.Type)
 		test.EqOp(t, req.ArtifactRef, read.ArtifactRef)
 		test.EqOp(t, int64(4096), read.ArtifactBytes)
@@ -94,9 +94,9 @@ func suiteSaveAndGet(t *testing.T, env *storeEnv) {
 
 		// Bound as a value rather than NULL, a zero timestamp reads back as
 		// year 1 — which every expiry sweep would treat as long overdue.
-		req := saveRequest(t, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
+		req := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
 
-		read, err := store.Get(t.Context(), req.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 
 		test.True(t, read.ExpiresAt.IsZero())
@@ -108,7 +108,7 @@ func suiteSaveAndGet(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		_, err := store.Get(t.Context(), "nope")
+		_, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, "nope")
 		test.True(t, errors.Is(err, ErrRequestNotFound))
 	})
 
@@ -119,6 +119,69 @@ func suiteSaveAndGet(t *testing.T, env *storeEnv) {
 
 		err := store.Save(t.Context(), nil, newRequest("x", RequestExport, testSubject, baseTime))
 		test.True(t, errors.Is(err, ErrNilExecutor))
+
+		// The reads take one too, and refuse the same way. Before they did, a
+		// caller had no executor to leave out — which is the defect underneath
+		// the subtest below.
+		_, err = store.Get(t.Context(), nil, testScopePtr, "x")
+		test.True(t, errors.Is(err, ErrNilExecutor))
+
+		_, err = store.List(t.Context(), nil, testScopePtr, testSubject, filtering.DefaultQueryFilter())
+		test.True(t, errors.Is(err, ErrNilExecutor))
+	})
+
+	// The whole point of the read taking an executor: a caller who has just
+	// written a request inside their own transaction can read it back. Through
+	// the client's reader it is not there yet, which on a deployment with a read
+	// replica is a request the caller was told they made and cannot then find.
+	t.Run("a read through the caller's transaction sees that transaction's write", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		req := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
+
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			if err := store.Save(t.Context(), tx, req); err != nil {
+				return err
+			}
+
+			read, err := store.Get(t.Context(), tx, testScopePtr, req.ID)
+			if err != nil {
+				return err
+			}
+
+			test.EqOp(t, req.ID, read.ID)
+
+			// The listing too, so both reads are pinned rather than the one
+			// that happened to be written first.
+			page, err := store.List(t.Context(), tx, testScopePtr, testSubject,
+				filtering.DefaultQueryFilter())
+			if err != nil {
+				return err
+			}
+
+			test.SliceLen(t, 1, page.Data)
+
+			return nil
+		}))
+	})
+
+	t.Run("a request confined to the global scope is refused", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		// The global scope is stored as the empty identifier, which is also how
+		// a request that named none is stored, so accepting this would write
+		// down a narrower request than the one that was made.
+		global := newRequestInScope(identifiers.New(), RequestExport, tenancy.Global(),
+			testSubject, baseTime)
+
+		err := env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.Save(t.Context(), tx, global)
+		})
+		test.True(t, errors.Is(err, ErrGlobalRequestScope))
 	})
 }
 
@@ -133,13 +196,13 @@ func suiteTransition(t *testing.T, env *storeEnv) {
 		req := newRequest(identifiers.New(), RequestErasure, testSubject, baseTime)
 		req.Status = StatusAwaitingConfirmation
 		req.ExpiresAt = baseTime.Add(72 * time.Hour)
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
 		var moved *Request
 
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
 			var err error
-			moved, err = store.Confirm(t.Context(), q, req.ID, "op-9")
+			moved, err = store.Confirm(t.Context(), tx, req.ID, "op-9")
 
 			return err
 		}))
@@ -160,10 +223,10 @@ func suiteTransition(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		req := saveRequest(t, store, newRequest(identifiers.New(), RequestErasure, testSubject, baseTime))
+		req := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestErasure, testSubject, baseTime))
 
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			_, txErr := store.Confirm(t.Context(), q, req.ID, "op-9")
+		err := env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, txErr := store.Confirm(t.Context(), tx, req.ID, "op-9")
 
 			return txErr
 		})
@@ -182,27 +245,27 @@ func suiteCompletion(t *testing.T, env *storeEnv) {
 
 		cancelled := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
 		cancelled.Status = StatusCancelled
-		saveRequest(t, store, cancelled)
+		saveRequest(t, env.client, store, cancelled)
 		cancelled.ArtifactRef = "x.json"
 		cancelled.ExpiresAt = baseTime.Add(DefaultArtifactTTL)
 
 		// A completion against a row that moved on would resurrect a request
 		// somebody withdrew — which is exactly what a long export racing a
 		// cancellation would otherwise do.
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.CompleteExport(t.Context(), q, cancelled, baseTime)
+		err := env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.CompleteExport(t.Context(), tx, cancelled, baseTime)
 		})
 		test.True(t, errors.Is(err, ErrRequestNotFound))
 
-		req := saveRequest(t, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
+		req := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
 		req.ArtifactRef = "x.json"
 		req.ExpiresAt = baseTime.Add(DefaultArtifactTTL)
 
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.CompleteExport(t.Context(), q, req, baseTime)
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.CompleteExport(t.Context(), tx, req, baseTime)
 		}))
 
-		read, err := store.Get(t.Context(), req.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusCompleted, read.Status)
 		test.EqOp(t, "x.json", read.ArtifactRef)
@@ -213,17 +276,17 @@ func suiteCompletion(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		req := saveRequest(t, store, newRequest(identifiers.New(), RequestErasure, testSubject, baseTime))
+		req := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestErasure, testSubject, baseTime))
 
 		req.Deleted = 12
 		req.Anonymized = 4
 		req.Retained = map[string]string{"billing.invoices": "tax law"}
 
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.CompleteErasure(t.Context(), q, req, baseTime)
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.CompleteErasure(t.Context(), tx, req, baseTime)
 		}))
 
-		read, err := store.Get(t.Context(), req.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, int64(12), read.Deleted)
 		test.EqOp(t, int64(4), read.Anonymized)
@@ -250,17 +313,17 @@ func suiteArtifactExpiry(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		req := saveRequest(t, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
+		req := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
 		req.ArtifactRef = "unexpiring.json"
 
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.CompleteExport(t.Context(), q, req, baseTime)
+		err := env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.CompleteExport(t.Context(), tx, req, baseTime)
 		})
 		test.ErrorIs(t, err, ErrUnexpiringArtifact)
 
 		// Refused before the statement rather than after it: the row is
 		// untouched, so the caller may set a TTL and complete it properly.
-		read, err := store.Get(t.Context(), req.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusInProgress, read.Status)
 		test.EqOp(t, "", read.ArtifactRef)
@@ -280,12 +343,12 @@ func suiteArtifactExpiry(t *testing.T, env *storeEnv) {
 
 		// Insert is the second way to write the column, and a consumer restoring
 		// history through it would otherwise plant the same stranded row.
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.Save(t.Context(), q, req)
+		err := env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.Save(t.Context(), tx, req)
 		})
 		test.ErrorIs(t, err, ErrUnexpiringArtifact)
 
-		_, err = store.Get(t.Context(), req.ID)
+		_, err = store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		test.True(t, errors.Is(err, ErrRequestNotFound))
 	})
 
@@ -297,13 +360,13 @@ func suiteArtifactExpiry(t *testing.T, env *storeEnv) {
 		// An erasure has no artifact and legitimately no expiry — the column
 		// held its confirmation window, and CompleteErasure clears it. The guard
 		// is about references, not about deadlines.
-		req := saveRequest(t, store, newRequest(identifiers.New(), RequestErasure, testSubject, baseTime))
+		req := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestErasure, testSubject, baseTime))
 
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.CompleteErasure(t.Context(), q, req, baseTime)
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.CompleteErasure(t.Context(), tx, req, baseTime)
 		}))
 
-		read, err := store.Get(t.Context(), req.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusCompleted, read.Status)
 		test.True(t, read.ExpiresAt.IsZero())
@@ -324,7 +387,7 @@ func suiteArtifactExpiry(t *testing.T, env *storeEnv) {
 		// not for the cases somebody thought to check.
 		var accepted []string
 
-		for _, write := range []func(*testing.T, Store, string, string, time.Time) bool{
+		for _, write := range []func(*testing.T, database.Client, Store, string, string, time.Time) bool{
 			insertTerminalRequest,
 			completeTerminalRequest,
 		} {
@@ -332,7 +395,7 @@ func suiteArtifactExpiry(t *testing.T, env *storeEnv) {
 				for _, expires := range []time.Time{{}, expiry} {
 					id := identifiers.New()
 
-					if write(t, store, id, ref, expires) {
+					if write(t, env.client, store, id, ref, expires) {
 						accepted = append(accepted, id)
 					}
 				}
@@ -361,7 +424,7 @@ func suiteArtifactExpiry(t *testing.T, env *storeEnv) {
 // insertTerminalRequest writes a terminal export through the insert, the way a
 // consumer migrating its own history into this table would, and reports whether
 // the store took it.
-func insertTerminalRequest(t *testing.T, store Store, id, ref string, expires time.Time) bool {
+func insertTerminalRequest(t *testing.T, client database.Client, store Store, id, ref string, expires time.Time) bool {
 	t.Helper()
 
 	completedAt := baseTime
@@ -372,8 +435,8 @@ func insertTerminalRequest(t *testing.T, store Store, id, ref string, expires ti
 	req.ArtifactRef = ref
 	req.ExpiresAt = expires
 
-	return acceptedWrite(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
-		return store.Save(t.Context(), q, req)
+	return acceptedWrite(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
+		return store.Save(t.Context(), tx, req)
 	}))
 }
 
@@ -383,20 +446,20 @@ func insertTerminalRequest(t *testing.T, store Store, id, ref string, expires ti
 //
 // The insert and the completion share one transaction, so a refused completion
 // rolls its own row back and a declined shape leaves nothing behind either way.
-func completeTerminalRequest(t *testing.T, store Store, id, ref string, expires time.Time) bool {
+func completeTerminalRequest(t *testing.T, client database.Client, store Store, id, ref string, expires time.Time) bool {
 	t.Helper()
 
 	req := newRequest(id, RequestExport, testSubject, baseTime)
 	req.ExpiresAt = expires
 
-	return acceptedWrite(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
-		if err := store.Save(t.Context(), q, req); err != nil {
+	return acceptedWrite(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
+		if err := store.Save(t.Context(), tx, req); err != nil {
 			return err
 		}
 
 		req.ArtifactRef = ref
 
-		return store.CompleteExport(t.Context(), q, req, baseTime)
+		return store.CompleteExport(t.Context(), tx, req, baseTime)
 	}))
 }
 
@@ -427,7 +490,7 @@ func suiteFail(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		req := saveRequest(t, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
+		req := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
 
 		// There is no retryable branch any more. The retry schedule and the
 		// attempt budget are the operation's, so the only failure this table
@@ -436,7 +499,7 @@ func suiteFail(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		test.True(t, failed)
 
-		read, err := store.Get(t.Context(), req.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusFailed, read.Status)
 		test.EqOp(t, "fatal", read.LastError)
@@ -450,7 +513,7 @@ func suiteFail(t *testing.T, env *storeEnv) {
 
 		req := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
 		req.Status = StatusCancelled
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
 		// Cancelled, or completed by a duplicate execution that got there
 		// first: in both, the row already says something truer than "failed".
@@ -458,7 +521,7 @@ func suiteFail(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		test.False(t, failed)
 
-		read, err := store.Get(t.Context(), req.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusCancelled, read.Status)
 	})
@@ -476,18 +539,18 @@ func suiteSweeps(t *testing.T, env *storeEnv) {
 		due.Status = StatusCompleted
 		due.ArtifactRef = "due.json"
 		due.ExpiresAt = baseTime
-		saveRequest(t, store, due)
+		saveRequest(t, env.client, store, due)
 
 		notYet := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
 		notYet.Status = StatusCompleted
 		notYet.ArtifactRef = "later.json"
 		notYet.ExpiresAt = baseTime.Add(time.Hour)
-		saveRequest(t, store, notYet)
+		saveRequest(t, env.client, store, notYet)
 
 		alreadySwept := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
 		alreadySwept.Status = StatusExpired
 		alreadySwept.ExpiresAt = baseTime
-		saveRequest(t, store, alreadySwept)
+		saveRequest(t, env.client, store, alreadySwept)
 
 		expiring, err := store.ExpiringArtifacts(t.Context(), baseTime, 10)
 		must.NoError(t, err)
@@ -504,11 +567,11 @@ func suiteSweeps(t *testing.T, env *storeEnv) {
 		req.Status = StatusCompleted
 		req.ArtifactRef = "gone.json"
 		req.ExpiresAt = baseTime
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
 		must.NoError(t, store.MarkExpired(t.Context(), req.ID, baseTime))
 
-		read, err := store.Get(t.Context(), req.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusExpired, read.Status)
 
@@ -525,23 +588,23 @@ func suiteSweeps(t *testing.T, env *storeEnv) {
 		lapsed := newRequest(identifiers.New(), RequestErasure, testSubject, baseTime)
 		lapsed.Status = StatusAwaitingConfirmation
 		lapsed.ExpiresAt = baseTime.Add(-time.Minute)
-		saveRequest(t, store, lapsed)
+		saveRequest(t, env.client, store, lapsed)
 
 		live := newRequest(identifiers.New(), RequestErasure, testSubject, baseTime)
 		live.Status = StatusAwaitingConfirmation
 		live.ExpiresAt = baseTime.Add(time.Hour)
-		saveRequest(t, store, live)
+		saveRequest(t, env.client, store, live)
 
 		count, err := store.LapseUnconfirmed(t.Context(), baseTime, 10)
 		must.NoError(t, err)
 		test.EqOp(t, int64(1), count)
 
-		read, err := store.Get(t.Context(), lapsed.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, lapsed.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusCancelled, read.Status)
 		must.NotNil(t, read.CompletedAt)
 
-		stillLive, err := store.Get(t.Context(), live.ID)
+		stillLive, err := store.Get(t.Context(), env.client.Reader(), testScopePtr, live.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusAwaitingConfirmation, stillLive.Status)
 	})
@@ -553,7 +616,7 @@ func suiteSweeps(t *testing.T, env *storeEnv) {
 
 		overdue := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
 		overdue.DueAt = baseTime.Add(-time.Hour)
-		saveRequest(t, store, overdue)
+		saveRequest(t, env.client, store, overdue)
 
 		// Late, but served. A fact about the past is not a thing to page
 		// somebody about.
@@ -569,7 +632,7 @@ func suiteSweeps(t *testing.T, env *storeEnv) {
 		served.DueAt = baseTime.Add(-time.Hour)
 		served.Status = StatusCompleted
 		served.CompletedAt = &servedAt
-		saveRequest(t, store, served)
+		saveRequest(t, env.client, store, served)
 
 		counts, err := store.CountOverdue(t.Context(), baseTime)
 		must.NoError(t, err)
@@ -592,12 +655,12 @@ func suiteSweeps(t *testing.T, env *storeEnv) {
 		withArtifact.ArtifactRef = "still-there.json"
 		withArtifact.ExpiresAt = baseTime.Add(time.Hour)
 		withArtifact.CompletedAt = &completedAt
-		saveRequest(t, store, withArtifact)
+		saveRequest(t, env.client, store, withArtifact)
 
 		swept := newRequest(identifiers.New(), RequestExport, testSubject, completedAt)
 		swept.Status = StatusExpired
 		swept.CompletedAt = &completedAt
-		saveRequest(t, store, swept)
+		saveRequest(t, env.client, store, swept)
 
 		reaped, err := store.Reap(t.Context(), baseTime.Add(-DefaultRequestRetention), 10)
 		must.NoError(t, err)
@@ -605,10 +668,10 @@ func suiteSweeps(t *testing.T, env *storeEnv) {
 
 		// Deleting the row first would leave a file containing everything known
 		// about a person with nothing left pointing at it.
-		_, err = store.Get(t.Context(), withArtifact.ID)
+		_, err = store.Get(t.Context(), env.client.Reader(), testScopePtr, withArtifact.ID)
 		test.NoError(t, err)
 
-		_, err = store.Get(t.Context(), swept.ID)
+		_, err = store.Get(t.Context(), env.client.Reader(), testScopePtr, swept.ID)
 		test.True(t, errors.Is(err, ErrRequestNotFound))
 	})
 }
@@ -621,15 +684,15 @@ func suiteList(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		first := saveRequest(t, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
-		second := saveRequest(t, store, newRequest(identifiers.New(), RequestErasure, testSubject, baseTime))
+		first := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
+		second := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestErasure, testSubject, baseTime))
 
-		other := Subject{ID: "user-2", Type: SubjectUser, Scope: tenancy.Of("account-1")}
-		saveRequest(t, store, newRequest(identifiers.New(), RequestExport, other, baseTime))
+		other := Subject{ID: "user-2", Type: SubjectUser}
+		saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestExport, other, baseTime))
 
 		// filtering.DefaultQueryFilter asks for ascending, and this package
 		// honors it rather than imposing a sort of its own.
-		ascending, err := store.List(t.Context(), testSubject, filtering.DefaultQueryFilter())
+		ascending, err := store.List(t.Context(), env.client.Reader(), testScopePtr, testSubject, filtering.DefaultQueryFilter())
 		must.NoError(t, err)
 		must.SliceLen(t, 2, ascending.Data)
 
@@ -640,7 +703,7 @@ func suiteList(t *testing.T, env *storeEnv) {
 		filter := filtering.DefaultQueryFilter()
 		filter.SortBy = filtering.SortDescending
 
-		descending, err := store.List(t.Context(), testSubject, filter)
+		descending, err := store.List(t.Context(), env.client.Reader(), testScopePtr, testSubject, filter)
 		must.NoError(t, err)
 		must.SliceLen(t, 2, descending.Data)
 
@@ -653,43 +716,94 @@ func suiteList(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		confined := newRequest(identifiers.New(), RequestExport,
-			Subject{ID: "user-9", Scope: tenancy.Of("account-9")}, baseTime)
-		unconfined := newRequest(identifiers.New(), RequestExport,
+		scope := tenancy.Of("account-9")
+
+		confined := newRequestInScope(identifiers.New(), RequestExport, scope,
+			Subject{ID: "user-9"}, baseTime)
+		unconfined := newRequestInScope(identifiers.New(), RequestExport, tenancy.Scope{},
 			Subject{ID: "user-9"}, baseTime)
 
-		saveRequest(t, store, confined)
-		saveRequest(t, store, unconfined)
+		saveRequest(t, env.client, store, confined)
+		saveRequest(t, env.client, store, unconfined)
 
-		read, err := store.Get(t.Context(), confined.ID)
+		read, err := store.Get(t.Context(), env.client.Reader(), &scope, confined.ID)
 		must.NoError(t, err)
-		test.EqOp(t, tenancy.Of("account-9"), read.Subject.Scope)
+		test.EqOp(t, scope, read.Scope)
 
 		// The column holds two states and the type has three, so the one
 		// reading that has to survive is that a request which named no scope
 		// still names none once it has been read back — not the global scope,
 		// which would be a narrower request than the one that was made.
-		read, err = store.Get(t.Context(), unconfined.ID)
+		read, err = store.Get(t.Context(), env.client.Reader(), nil, unconfined.ID)
 		must.NoError(t, err)
-		test.ErrorIs(t, read.Subject.Scope.Validate(), tenancy.ErrNoScope)
-		test.False(t, read.Subject.Scope.IsGlobal())
+		test.ErrorIs(t, read.Scope.Validate(), tenancy.ErrNoScope)
+		test.False(t, read.Scope.IsGlobal())
 	})
 
-	t.Run("a subject that names no scope matches every scope", func(t *testing.T) {
+	t.Run("a nil scope matches every confinement", func(t *testing.T) {
 		t.Parallel()
 
 		store := env.newStore(t)
 
-		saveRequest(t, store, newRequest(identifiers.New(), RequestExport,
-			Subject{ID: "user-1", Scope: tenancy.Of("account-1")}, baseTime))
-		saveRequest(t, store, newRequest(identifiers.New(), RequestExport,
-			Subject{ID: "user-1", Scope: tenancy.Of("account-2")}, baseTime))
+		subject := Subject{ID: "user-1"}
+
+		saveRequest(t, env.client, store, newRequestInScope(identifiers.New(), RequestExport,
+			tenancy.Of("account-1"), subject, baseTime))
+		saveRequest(t, env.client, store, newRequestInScope(identifiers.New(), RequestExport,
+			tenancy.Of("account-2"), subject, baseTime))
 
 		// A subject asking what has been requested in their name means all of
-		// it; omitting the scoped requests would be the wrong answer.
-		results, err := store.List(t.Context(), Subject{ID: "user-1"}, filtering.DefaultQueryFilter())
+		// it; omitting the confined requests would be the wrong answer.
+		results, err := store.List(t.Context(), env.client.Reader(), nil, subject,
+			filtering.DefaultQueryFilter())
 		must.NoError(t, err)
 		test.SliceLen(t, 2, results.Data)
+
+		// A scope that names one gets that one, which is the whole reason nil
+		// is a spelling rather than the only behavior.
+		second := tenancy.Of("account-2")
+
+		narrowed, err := store.List(t.Context(), env.client.Reader(), &second, subject,
+			filtering.DefaultQueryFilter())
+		must.NoError(t, err)
+		test.SliceLen(t, 1, narrowed.Data)
+	})
+
+	t.Run("a scope that names nobody is refused rather than widened", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		req := saveRequest(t, env.client, store,
+			newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
+
+		// The zero Scope is a caller whose own lookup came back empty. Reading
+		// it as "every confinement" would hand a caller who lost their tenant
+		// every tenant's rows, which is a disclosure rather than a wrong answer.
+		empty := tenancy.Scope{}
+
+		_, err := store.List(t.Context(), env.client.Reader(), &empty, testSubject,
+			filtering.DefaultQueryFilter())
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+
+		_, err = store.Get(t.Context(), env.client.Reader(), &empty, req.ID)
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+	})
+
+	t.Run("a request outside the scope named reads as absent", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		req := saveRequest(t, env.client, store, newRequestInScope(identifiers.New(),
+			RequestExport, tenancy.Of("account-7"), testSubject, baseTime))
+
+		// Not "forbidden": an opaque identifier that answers differently for a
+		// request that exists elsewhere is an oracle for whether it exists.
+		elsewhere := tenancy.Of("account-8")
+
+		_, err := store.Get(t.Context(), env.client.Reader(), &elsewhere, req.ID)
+		test.ErrorIs(t, err, ErrRequestNotFound)
 	})
 }
 

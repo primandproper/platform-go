@@ -13,6 +13,7 @@ import (
 
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Ensure, that StoreMock does implement dataprivacy.Store.
@@ -25,16 +26,16 @@ var _ dataprivacy.Store = &StoreMock{}
 //
 //		// make and configure a mocked dataprivacy.Store
 //		mockedStore := &StoreMock{
-//			CancelFunc: func(ctx context.Context, q database.Tx, requestID string, from dataprivacy.Status, at time.Time) (*dataprivacy.Request, error) {
+//			CancelFunc: func(ctx context.Context, tx database.Tx, requestID string, from dataprivacy.Status, at time.Time) (*dataprivacy.Request, error) {
 //				panic("mock out the Cancel method")
 //			},
-//			CompleteErasureFunc: func(ctx context.Context, q database.Tx, req *dataprivacy.Request, at time.Time) error {
+//			CompleteErasureFunc: func(ctx context.Context, tx database.Tx, req *dataprivacy.Request, at time.Time) error {
 //				panic("mock out the CompleteErasure method")
 //			},
-//			CompleteExportFunc: func(ctx context.Context, q database.Tx, req *dataprivacy.Request, at time.Time) error {
+//			CompleteExportFunc: func(ctx context.Context, tx database.Tx, req *dataprivacy.Request, at time.Time) error {
 //				panic("mock out the CompleteExport method")
 //			},
-//			ConfirmFunc: func(ctx context.Context, q database.Tx, requestID string, operationID string) (*dataprivacy.Request, error) {
+//			ConfirmFunc: func(ctx context.Context, tx database.Tx, requestID string, operationID string) (*dataprivacy.Request, error) {
 //				panic("mock out the Confirm method")
 //			},
 //			CountOverdueFunc: func(ctx context.Context, now time.Time) (map[dataprivacy.RequestType]int64, error) {
@@ -46,13 +47,13 @@ var _ dataprivacy.Store = &StoreMock{}
 //			FailFunc: func(ctx context.Context, requestID string, lastErr string, at time.Time) (bool, error) {
 //				panic("mock out the Fail method")
 //			},
-//			GetFunc: func(ctx context.Context, requestID string) (*dataprivacy.Request, error) {
+//			GetFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error) {
 //				panic("mock out the Get method")
 //			},
 //			LapseUnconfirmedFunc: func(ctx context.Context, now time.Time, limit int) (int64, error) {
 //				panic("mock out the LapseUnconfirmed method")
 //			},
-//			ListFunc: func(ctx context.Context, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error) {
+//			ListFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error) {
 //				panic("mock out the List method")
 //			},
 //			MarkExpiredFunc: func(ctx context.Context, requestID string, at time.Time) error {
@@ -64,11 +65,8 @@ var _ dataprivacy.Store = &StoreMock{}
 //			ReapFunc: func(ctx context.Context, before time.Time, limit int) (int64, error) {
 //				panic("mock out the Reap method")
 //			},
-//			SaveFunc: func(ctx context.Context, q database.Tx, req *dataprivacy.Request) error {
+//			SaveFunc: func(ctx context.Context, tx database.Tx, req *dataprivacy.Request) error {
 //				panic("mock out the Save method")
-//			},
-//			WithTransactionFunc: func(ctx context.Context, fn func(q database.Tx) error) error {
-//				panic("mock out the WithTransaction method")
 //			},
 //		}
 //
@@ -78,16 +76,16 @@ var _ dataprivacy.Store = &StoreMock{}
 //	}
 type StoreMock struct {
 	// CancelFunc mocks the Cancel method.
-	CancelFunc func(ctx context.Context, q database.Tx, requestID string, from dataprivacy.Status, at time.Time) (*dataprivacy.Request, error)
+	CancelFunc func(ctx context.Context, tx database.Tx, requestID string, from dataprivacy.Status, at time.Time) (*dataprivacy.Request, error)
 
 	// CompleteErasureFunc mocks the CompleteErasure method.
-	CompleteErasureFunc func(ctx context.Context, q database.Tx, req *dataprivacy.Request, at time.Time) error
+	CompleteErasureFunc func(ctx context.Context, tx database.Tx, req *dataprivacy.Request, at time.Time) error
 
 	// CompleteExportFunc mocks the CompleteExport method.
-	CompleteExportFunc func(ctx context.Context, q database.Tx, req *dataprivacy.Request, at time.Time) error
+	CompleteExportFunc func(ctx context.Context, tx database.Tx, req *dataprivacy.Request, at time.Time) error
 
 	// ConfirmFunc mocks the Confirm method.
-	ConfirmFunc func(ctx context.Context, q database.Tx, requestID string, operationID string) (*dataprivacy.Request, error)
+	ConfirmFunc func(ctx context.Context, tx database.Tx, requestID string, operationID string) (*dataprivacy.Request, error)
 
 	// CountOverdueFunc mocks the CountOverdue method.
 	CountOverdueFunc func(ctx context.Context, now time.Time) (map[dataprivacy.RequestType]int64, error)
@@ -99,13 +97,13 @@ type StoreMock struct {
 	FailFunc func(ctx context.Context, requestID string, lastErr string, at time.Time) (bool, error)
 
 	// GetFunc mocks the Get method.
-	GetFunc func(ctx context.Context, requestID string) (*dataprivacy.Request, error)
+	GetFunc func(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error)
 
 	// LapseUnconfirmedFunc mocks the LapseUnconfirmed method.
 	LapseUnconfirmedFunc func(ctx context.Context, now time.Time, limit int) (int64, error)
 
 	// ListFunc mocks the List method.
-	ListFunc func(ctx context.Context, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error)
+	ListFunc func(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error)
 
 	// MarkExpiredFunc mocks the MarkExpired method.
 	MarkExpiredFunc func(ctx context.Context, requestID string, at time.Time) error
@@ -117,10 +115,7 @@ type StoreMock struct {
 	ReapFunc func(ctx context.Context, before time.Time, limit int) (int64, error)
 
 	// SaveFunc mocks the Save method.
-	SaveFunc func(ctx context.Context, q database.Tx, req *dataprivacy.Request) error
-
-	// WithTransactionFunc mocks the WithTransaction method.
-	WithTransactionFunc func(ctx context.Context, fn func(q database.Tx) error) error
+	SaveFunc func(ctx context.Context, tx database.Tx, req *dataprivacy.Request) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -128,8 +123,8 @@ type StoreMock struct {
 		Cancel []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Q is the q argument value.
-			Q database.Tx
+			// Tx is the tx argument value.
+			Tx database.Tx
 			// RequestID is the requestID argument value.
 			RequestID string
 			// From is the from argument value.
@@ -141,8 +136,8 @@ type StoreMock struct {
 		CompleteErasure []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Q is the q argument value.
-			Q database.Tx
+			// Tx is the tx argument value.
+			Tx database.Tx
 			// Req is the req argument value.
 			Req *dataprivacy.Request
 			// At is the at argument value.
@@ -152,8 +147,8 @@ type StoreMock struct {
 		CompleteExport []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Q is the q argument value.
-			Q database.Tx
+			// Tx is the tx argument value.
+			Tx database.Tx
 			// Req is the req argument value.
 			Req *dataprivacy.Request
 			// At is the at argument value.
@@ -163,8 +158,8 @@ type StoreMock struct {
 		Confirm []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Q is the q argument value.
-			Q database.Tx
+			// Tx is the tx argument value.
+			Tx database.Tx
 			// RequestID is the requestID argument value.
 			RequestID string
 			// OperationID is the operationID argument value.
@@ -201,6 +196,10 @@ type StoreMock struct {
 		Get []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope *tenancy.Scope
 			// RequestID is the requestID argument value.
 			RequestID string
 		}
@@ -217,6 +216,10 @@ type StoreMock struct {
 		List []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope *tenancy.Scope
 			// Subject is the subject argument value.
 			Subject dataprivacy.Subject
 			// Filter is the filter argument value.
@@ -253,17 +256,10 @@ type StoreMock struct {
 		Save []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Q is the q argument value.
-			Q database.Tx
+			// Tx is the tx argument value.
+			Tx database.Tx
 			// Req is the req argument value.
 			Req *dataprivacy.Request
-		}
-		// WithTransaction holds details about calls to the WithTransaction method.
-		WithTransaction []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// Fn is the fn argument value.
-			Fn func(q database.Tx) error
 		}
 	}
 	lockCancel            sync.RWMutex
@@ -280,23 +276,22 @@ type StoreMock struct {
 	lockMarkKeyShredded   sync.RWMutex
 	lockReap              sync.RWMutex
 	lockSave              sync.RWMutex
-	lockWithTransaction   sync.RWMutex
 }
 
 // Cancel calls CancelFunc.
-func (mock *StoreMock) Cancel(ctx context.Context, q database.Tx, requestID string, from dataprivacy.Status, at time.Time) (*dataprivacy.Request, error) {
+func (mock *StoreMock) Cancel(ctx context.Context, tx database.Tx, requestID string, from dataprivacy.Status, at time.Time) (*dataprivacy.Request, error) {
 	if mock.CancelFunc == nil {
 		panic("StoreMock.CancelFunc: method is nil but Store.Cancel was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
-		Q         database.Tx
+		Tx        database.Tx
 		RequestID string
 		From      dataprivacy.Status
 		At        time.Time
 	}{
 		Ctx:       ctx,
-		Q:         q,
+		Tx:        tx,
 		RequestID: requestID,
 		From:      from,
 		At:        at,
@@ -304,7 +299,7 @@ func (mock *StoreMock) Cancel(ctx context.Context, q database.Tx, requestID stri
 	mock.lockCancel.Lock()
 	mock.calls.Cancel = append(mock.calls.Cancel, callInfo)
 	mock.lockCancel.Unlock()
-	return mock.CancelFunc(ctx, q, requestID, from, at)
+	return mock.CancelFunc(ctx, tx, requestID, from, at)
 }
 
 // CancelCalls gets all the calls that were made to Cancel.
@@ -313,14 +308,14 @@ func (mock *StoreMock) Cancel(ctx context.Context, q database.Tx, requestID stri
 //	len(mockedStore.CancelCalls())
 func (mock *StoreMock) CancelCalls() []struct {
 	Ctx       context.Context
-	Q         database.Tx
+	Tx        database.Tx
 	RequestID string
 	From      dataprivacy.Status
 	At        time.Time
 } {
 	var calls []struct {
 		Ctx       context.Context
-		Q         database.Tx
+		Tx        database.Tx
 		RequestID string
 		From      dataprivacy.Status
 		At        time.Time
@@ -332,25 +327,25 @@ func (mock *StoreMock) CancelCalls() []struct {
 }
 
 // CompleteErasure calls CompleteErasureFunc.
-func (mock *StoreMock) CompleteErasure(ctx context.Context, q database.Tx, req *dataprivacy.Request, at time.Time) error {
+func (mock *StoreMock) CompleteErasure(ctx context.Context, tx database.Tx, req *dataprivacy.Request, at time.Time) error {
 	if mock.CompleteErasureFunc == nil {
 		panic("StoreMock.CompleteErasureFunc: method is nil but Store.CompleteErasure was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
-		Q   database.Tx
+		Tx  database.Tx
 		Req *dataprivacy.Request
 		At  time.Time
 	}{
 		Ctx: ctx,
-		Q:   q,
+		Tx:  tx,
 		Req: req,
 		At:  at,
 	}
 	mock.lockCompleteErasure.Lock()
 	mock.calls.CompleteErasure = append(mock.calls.CompleteErasure, callInfo)
 	mock.lockCompleteErasure.Unlock()
-	return mock.CompleteErasureFunc(ctx, q, req, at)
+	return mock.CompleteErasureFunc(ctx, tx, req, at)
 }
 
 // CompleteErasureCalls gets all the calls that were made to CompleteErasure.
@@ -359,13 +354,13 @@ func (mock *StoreMock) CompleteErasure(ctx context.Context, q database.Tx, req *
 //	len(mockedStore.CompleteErasureCalls())
 func (mock *StoreMock) CompleteErasureCalls() []struct {
 	Ctx context.Context
-	Q   database.Tx
+	Tx  database.Tx
 	Req *dataprivacy.Request
 	At  time.Time
 } {
 	var calls []struct {
 		Ctx context.Context
-		Q   database.Tx
+		Tx  database.Tx
 		Req *dataprivacy.Request
 		At  time.Time
 	}
@@ -376,25 +371,25 @@ func (mock *StoreMock) CompleteErasureCalls() []struct {
 }
 
 // CompleteExport calls CompleteExportFunc.
-func (mock *StoreMock) CompleteExport(ctx context.Context, q database.Tx, req *dataprivacy.Request, at time.Time) error {
+func (mock *StoreMock) CompleteExport(ctx context.Context, tx database.Tx, req *dataprivacy.Request, at time.Time) error {
 	if mock.CompleteExportFunc == nil {
 		panic("StoreMock.CompleteExportFunc: method is nil but Store.CompleteExport was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
-		Q   database.Tx
+		Tx  database.Tx
 		Req *dataprivacy.Request
 		At  time.Time
 	}{
 		Ctx: ctx,
-		Q:   q,
+		Tx:  tx,
 		Req: req,
 		At:  at,
 	}
 	mock.lockCompleteExport.Lock()
 	mock.calls.CompleteExport = append(mock.calls.CompleteExport, callInfo)
 	mock.lockCompleteExport.Unlock()
-	return mock.CompleteExportFunc(ctx, q, req, at)
+	return mock.CompleteExportFunc(ctx, tx, req, at)
 }
 
 // CompleteExportCalls gets all the calls that were made to CompleteExport.
@@ -403,13 +398,13 @@ func (mock *StoreMock) CompleteExport(ctx context.Context, q database.Tx, req *d
 //	len(mockedStore.CompleteExportCalls())
 func (mock *StoreMock) CompleteExportCalls() []struct {
 	Ctx context.Context
-	Q   database.Tx
+	Tx  database.Tx
 	Req *dataprivacy.Request
 	At  time.Time
 } {
 	var calls []struct {
 		Ctx context.Context
-		Q   database.Tx
+		Tx  database.Tx
 		Req *dataprivacy.Request
 		At  time.Time
 	}
@@ -420,25 +415,25 @@ func (mock *StoreMock) CompleteExportCalls() []struct {
 }
 
 // Confirm calls ConfirmFunc.
-func (mock *StoreMock) Confirm(ctx context.Context, q database.Tx, requestID string, operationID string) (*dataprivacy.Request, error) {
+func (mock *StoreMock) Confirm(ctx context.Context, tx database.Tx, requestID string, operationID string) (*dataprivacy.Request, error) {
 	if mock.ConfirmFunc == nil {
 		panic("StoreMock.ConfirmFunc: method is nil but Store.Confirm was just called")
 	}
 	callInfo := struct {
 		Ctx         context.Context
-		Q           database.Tx
+		Tx          database.Tx
 		RequestID   string
 		OperationID string
 	}{
 		Ctx:         ctx,
-		Q:           q,
+		Tx:          tx,
 		RequestID:   requestID,
 		OperationID: operationID,
 	}
 	mock.lockConfirm.Lock()
 	mock.calls.Confirm = append(mock.calls.Confirm, callInfo)
 	mock.lockConfirm.Unlock()
-	return mock.ConfirmFunc(ctx, q, requestID, operationID)
+	return mock.ConfirmFunc(ctx, tx, requestID, operationID)
 }
 
 // ConfirmCalls gets all the calls that were made to Confirm.
@@ -447,13 +442,13 @@ func (mock *StoreMock) Confirm(ctx context.Context, q database.Tx, requestID str
 //	len(mockedStore.ConfirmCalls())
 func (mock *StoreMock) ConfirmCalls() []struct {
 	Ctx         context.Context
-	Q           database.Tx
+	Tx          database.Tx
 	RequestID   string
 	OperationID string
 } {
 	var calls []struct {
 		Ctx         context.Context
-		Q           database.Tx
+		Tx          database.Tx
 		RequestID   string
 		OperationID string
 	}
@@ -584,21 +579,25 @@ func (mock *StoreMock) FailCalls() []struct {
 }
 
 // Get calls GetFunc.
-func (mock *StoreMock) Get(ctx context.Context, requestID string) (*dataprivacy.Request, error) {
+func (mock *StoreMock) Get(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error) {
 	if mock.GetFunc == nil {
 		panic("StoreMock.GetFunc: method is nil but Store.Get was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     *tenancy.Scope
 		RequestID string
 	}{
 		Ctx:       ctx,
+		Q:         q,
+		Scope:     scope,
 		RequestID: requestID,
 	}
 	mock.lockGet.Lock()
 	mock.calls.Get = append(mock.calls.Get, callInfo)
 	mock.lockGet.Unlock()
-	return mock.GetFunc(ctx, requestID)
+	return mock.GetFunc(ctx, q, scope, requestID)
 }
 
 // GetCalls gets all the calls that were made to Get.
@@ -607,10 +606,14 @@ func (mock *StoreMock) Get(ctx context.Context, requestID string) (*dataprivacy.
 //	len(mockedStore.GetCalls())
 func (mock *StoreMock) GetCalls() []struct {
 	Ctx       context.Context
+	Q         database.SQLQueryExecutor
+	Scope     *tenancy.Scope
 	RequestID string
 } {
 	var calls []struct {
 		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     *tenancy.Scope
 		RequestID string
 	}
 	mock.lockGet.RLock()
@@ -660,23 +663,27 @@ func (mock *StoreMock) LapseUnconfirmedCalls() []struct {
 }
 
 // List calls ListFunc.
-func (mock *StoreMock) List(ctx context.Context, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error) {
+func (mock *StoreMock) List(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error) {
 	if mock.ListFunc == nil {
 		panic("StoreMock.ListFunc: method is nil but Store.List was just called")
 	}
 	callInfo := struct {
 		Ctx     context.Context
+		Q       database.SQLQueryExecutor
+		Scope   *tenancy.Scope
 		Subject dataprivacy.Subject
 		Filter  *filtering.QueryFilter
 	}{
 		Ctx:     ctx,
+		Q:       q,
+		Scope:   scope,
 		Subject: subject,
 		Filter:  filter,
 	}
 	mock.lockList.Lock()
 	mock.calls.List = append(mock.calls.List, callInfo)
 	mock.lockList.Unlock()
-	return mock.ListFunc(ctx, subject, filter)
+	return mock.ListFunc(ctx, q, scope, subject, filter)
 }
 
 // ListCalls gets all the calls that were made to List.
@@ -685,11 +692,15 @@ func (mock *StoreMock) List(ctx context.Context, subject dataprivacy.Subject, fi
 //	len(mockedStore.ListCalls())
 func (mock *StoreMock) ListCalls() []struct {
 	Ctx     context.Context
+	Q       database.SQLQueryExecutor
+	Scope   *tenancy.Scope
 	Subject dataprivacy.Subject
 	Filter  *filtering.QueryFilter
 } {
 	var calls []struct {
 		Ctx     context.Context
+		Q       database.SQLQueryExecutor
+		Scope   *tenancy.Scope
 		Subject dataprivacy.Subject
 		Filter  *filtering.QueryFilter
 	}
@@ -820,23 +831,23 @@ func (mock *StoreMock) ReapCalls() []struct {
 }
 
 // Save calls SaveFunc.
-func (mock *StoreMock) Save(ctx context.Context, q database.Tx, req *dataprivacy.Request) error {
+func (mock *StoreMock) Save(ctx context.Context, tx database.Tx, req *dataprivacy.Request) error {
 	if mock.SaveFunc == nil {
 		panic("StoreMock.SaveFunc: method is nil but Store.Save was just called")
 	}
 	callInfo := struct {
 		Ctx context.Context
-		Q   database.Tx
+		Tx  database.Tx
 		Req *dataprivacy.Request
 	}{
 		Ctx: ctx,
-		Q:   q,
+		Tx:  tx,
 		Req: req,
 	}
 	mock.lockSave.Lock()
 	mock.calls.Save = append(mock.calls.Save, callInfo)
 	mock.lockSave.Unlock()
-	return mock.SaveFunc(ctx, q, req)
+	return mock.SaveFunc(ctx, tx, req)
 }
 
 // SaveCalls gets all the calls that were made to Save.
@@ -845,53 +856,17 @@ func (mock *StoreMock) Save(ctx context.Context, q database.Tx, req *dataprivacy
 //	len(mockedStore.SaveCalls())
 func (mock *StoreMock) SaveCalls() []struct {
 	Ctx context.Context
-	Q   database.Tx
+	Tx  database.Tx
 	Req *dataprivacy.Request
 } {
 	var calls []struct {
 		Ctx context.Context
-		Q   database.Tx
+		Tx  database.Tx
 		Req *dataprivacy.Request
 	}
 	mock.lockSave.RLock()
 	calls = mock.calls.Save
 	mock.lockSave.RUnlock()
-	return calls
-}
-
-// WithTransaction calls WithTransactionFunc.
-func (mock *StoreMock) WithTransaction(ctx context.Context, fn func(q database.Tx) error) error {
-	if mock.WithTransactionFunc == nil {
-		panic("StoreMock.WithTransactionFunc: method is nil but Store.WithTransaction was just called")
-	}
-	callInfo := struct {
-		Ctx context.Context
-		Fn  func(q database.Tx) error
-	}{
-		Ctx: ctx,
-		Fn:  fn,
-	}
-	mock.lockWithTransaction.Lock()
-	mock.calls.WithTransaction = append(mock.calls.WithTransaction, callInfo)
-	mock.lockWithTransaction.Unlock()
-	return mock.WithTransactionFunc(ctx, fn)
-}
-
-// WithTransactionCalls gets all the calls that were made to WithTransaction.
-// Check the length with:
-//
-//	len(mockedStore.WithTransactionCalls())
-func (mock *StoreMock) WithTransactionCalls() []struct {
-	Ctx context.Context
-	Fn  func(q database.Tx) error
-} {
-	var calls []struct {
-		Ctx context.Context
-		Fn  func(q database.Tx) error
-	}
-	mock.lockWithTransaction.RLock()
-	calls = mock.calls.WithTransaction
-	mock.lockWithTransaction.RUnlock()
 	return calls
 }
 
@@ -905,25 +880,25 @@ var _ dataprivacy.Service = &ServiceMock{}
 //
 //		// make and configure a mocked dataprivacy.Service
 //		mockedService := &ServiceMock{
-//			CancelFunc: func(ctx context.Context, requestID string) (*dataprivacy.Request, error) {
+//			CancelFunc: func(ctx context.Context, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error) {
 //				panic("mock out the Cancel method")
 //			},
-//			ConfirmFunc: func(ctx context.Context, requestID string) (*dataprivacy.Request, error) {
+//			ConfirmFunc: func(ctx context.Context, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error) {
 //				panic("mock out the Confirm method")
 //			},
-//			DownloadFunc: func(ctx context.Context, requestID string) (string, error) {
+//			DownloadFunc: func(ctx context.Context, scope *tenancy.Scope, requestID string) (string, error) {
 //				panic("mock out the Download method")
 //			},
-//			GetFunc: func(ctx context.Context, requestID string) (*dataprivacy.Request, error) {
+//			GetFunc: func(ctx context.Context, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error) {
 //				panic("mock out the Get method")
 //			},
-//			ListFunc: func(ctx context.Context, subject dataprivacy.Subject, f *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error) {
+//			ListFunc: func(ctx context.Context, scope *tenancy.Scope, subject dataprivacy.Subject, f *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error) {
 //				panic("mock out the List method")
 //			},
-//			OpenFunc: func(ctx context.Context, requestID string) (io.ReadCloser, error) {
+//			OpenFunc: func(ctx context.Context, scope *tenancy.Scope, requestID string) (io.ReadCloser, error) {
 //				panic("mock out the Open method")
 //			},
-//			SubmitFunc: func(ctx context.Context, subject dataprivacy.Subject, t dataprivacy.RequestType) (*dataprivacy.Request, error) {
+//			SubmitFunc: func(ctx context.Context, scope tenancy.Scope, subject dataprivacy.Subject, t dataprivacy.RequestType) (*dataprivacy.Request, error) {
 //				panic("mock out the Submit method")
 //			},
 //		}
@@ -934,25 +909,25 @@ var _ dataprivacy.Service = &ServiceMock{}
 //	}
 type ServiceMock struct {
 	// CancelFunc mocks the Cancel method.
-	CancelFunc func(ctx context.Context, requestID string) (*dataprivacy.Request, error)
+	CancelFunc func(ctx context.Context, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error)
 
 	// ConfirmFunc mocks the Confirm method.
-	ConfirmFunc func(ctx context.Context, requestID string) (*dataprivacy.Request, error)
+	ConfirmFunc func(ctx context.Context, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error)
 
 	// DownloadFunc mocks the Download method.
-	DownloadFunc func(ctx context.Context, requestID string) (string, error)
+	DownloadFunc func(ctx context.Context, scope *tenancy.Scope, requestID string) (string, error)
 
 	// GetFunc mocks the Get method.
-	GetFunc func(ctx context.Context, requestID string) (*dataprivacy.Request, error)
+	GetFunc func(ctx context.Context, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error)
 
 	// ListFunc mocks the List method.
-	ListFunc func(ctx context.Context, subject dataprivacy.Subject, f *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error)
+	ListFunc func(ctx context.Context, scope *tenancy.Scope, subject dataprivacy.Subject, f *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error)
 
 	// OpenFunc mocks the Open method.
-	OpenFunc func(ctx context.Context, requestID string) (io.ReadCloser, error)
+	OpenFunc func(ctx context.Context, scope *tenancy.Scope, requestID string) (io.ReadCloser, error)
 
 	// SubmitFunc mocks the Submit method.
-	SubmitFunc func(ctx context.Context, subject dataprivacy.Subject, t dataprivacy.RequestType) (*dataprivacy.Request, error)
+	SubmitFunc func(ctx context.Context, scope tenancy.Scope, subject dataprivacy.Subject, t dataprivacy.RequestType) (*dataprivacy.Request, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -960,6 +935,8 @@ type ServiceMock struct {
 		Cancel []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Scope is the scope argument value.
+			Scope *tenancy.Scope
 			// RequestID is the requestID argument value.
 			RequestID string
 		}
@@ -967,6 +944,8 @@ type ServiceMock struct {
 		Confirm []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Scope is the scope argument value.
+			Scope *tenancy.Scope
 			// RequestID is the requestID argument value.
 			RequestID string
 		}
@@ -974,6 +953,8 @@ type ServiceMock struct {
 		Download []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Scope is the scope argument value.
+			Scope *tenancy.Scope
 			// RequestID is the requestID argument value.
 			RequestID string
 		}
@@ -981,6 +962,8 @@ type ServiceMock struct {
 		Get []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Scope is the scope argument value.
+			Scope *tenancy.Scope
 			// RequestID is the requestID argument value.
 			RequestID string
 		}
@@ -988,6 +971,8 @@ type ServiceMock struct {
 		List []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Scope is the scope argument value.
+			Scope *tenancy.Scope
 			// Subject is the subject argument value.
 			Subject dataprivacy.Subject
 			// F is the f argument value.
@@ -997,6 +982,8 @@ type ServiceMock struct {
 		Open []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Scope is the scope argument value.
+			Scope *tenancy.Scope
 			// RequestID is the requestID argument value.
 			RequestID string
 		}
@@ -1004,6 +991,8 @@ type ServiceMock struct {
 		Submit []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
 			// Subject is the subject argument value.
 			Subject dataprivacy.Subject
 			// T is the t argument value.
@@ -1020,21 +1009,23 @@ type ServiceMock struct {
 }
 
 // Cancel calls CancelFunc.
-func (mock *ServiceMock) Cancel(ctx context.Context, requestID string) (*dataprivacy.Request, error) {
+func (mock *ServiceMock) Cancel(ctx context.Context, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error) {
 	if mock.CancelFunc == nil {
 		panic("ServiceMock.CancelFunc: method is nil but Service.Cancel was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
+		Scope     *tenancy.Scope
 		RequestID string
 	}{
 		Ctx:       ctx,
+		Scope:     scope,
 		RequestID: requestID,
 	}
 	mock.lockCancel.Lock()
 	mock.calls.Cancel = append(mock.calls.Cancel, callInfo)
 	mock.lockCancel.Unlock()
-	return mock.CancelFunc(ctx, requestID)
+	return mock.CancelFunc(ctx, scope, requestID)
 }
 
 // CancelCalls gets all the calls that were made to Cancel.
@@ -1043,10 +1034,12 @@ func (mock *ServiceMock) Cancel(ctx context.Context, requestID string) (*datapri
 //	len(mockedService.CancelCalls())
 func (mock *ServiceMock) CancelCalls() []struct {
 	Ctx       context.Context
+	Scope     *tenancy.Scope
 	RequestID string
 } {
 	var calls []struct {
 		Ctx       context.Context
+		Scope     *tenancy.Scope
 		RequestID string
 	}
 	mock.lockCancel.RLock()
@@ -1056,21 +1049,23 @@ func (mock *ServiceMock) CancelCalls() []struct {
 }
 
 // Confirm calls ConfirmFunc.
-func (mock *ServiceMock) Confirm(ctx context.Context, requestID string) (*dataprivacy.Request, error) {
+func (mock *ServiceMock) Confirm(ctx context.Context, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error) {
 	if mock.ConfirmFunc == nil {
 		panic("ServiceMock.ConfirmFunc: method is nil but Service.Confirm was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
+		Scope     *tenancy.Scope
 		RequestID string
 	}{
 		Ctx:       ctx,
+		Scope:     scope,
 		RequestID: requestID,
 	}
 	mock.lockConfirm.Lock()
 	mock.calls.Confirm = append(mock.calls.Confirm, callInfo)
 	mock.lockConfirm.Unlock()
-	return mock.ConfirmFunc(ctx, requestID)
+	return mock.ConfirmFunc(ctx, scope, requestID)
 }
 
 // ConfirmCalls gets all the calls that were made to Confirm.
@@ -1079,10 +1074,12 @@ func (mock *ServiceMock) Confirm(ctx context.Context, requestID string) (*datapr
 //	len(mockedService.ConfirmCalls())
 func (mock *ServiceMock) ConfirmCalls() []struct {
 	Ctx       context.Context
+	Scope     *tenancy.Scope
 	RequestID string
 } {
 	var calls []struct {
 		Ctx       context.Context
+		Scope     *tenancy.Scope
 		RequestID string
 	}
 	mock.lockConfirm.RLock()
@@ -1092,21 +1089,23 @@ func (mock *ServiceMock) ConfirmCalls() []struct {
 }
 
 // Download calls DownloadFunc.
-func (mock *ServiceMock) Download(ctx context.Context, requestID string) (string, error) {
+func (mock *ServiceMock) Download(ctx context.Context, scope *tenancy.Scope, requestID string) (string, error) {
 	if mock.DownloadFunc == nil {
 		panic("ServiceMock.DownloadFunc: method is nil but Service.Download was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
+		Scope     *tenancy.Scope
 		RequestID string
 	}{
 		Ctx:       ctx,
+		Scope:     scope,
 		RequestID: requestID,
 	}
 	mock.lockDownload.Lock()
 	mock.calls.Download = append(mock.calls.Download, callInfo)
 	mock.lockDownload.Unlock()
-	return mock.DownloadFunc(ctx, requestID)
+	return mock.DownloadFunc(ctx, scope, requestID)
 }
 
 // DownloadCalls gets all the calls that were made to Download.
@@ -1115,10 +1114,12 @@ func (mock *ServiceMock) Download(ctx context.Context, requestID string) (string
 //	len(mockedService.DownloadCalls())
 func (mock *ServiceMock) DownloadCalls() []struct {
 	Ctx       context.Context
+	Scope     *tenancy.Scope
 	RequestID string
 } {
 	var calls []struct {
 		Ctx       context.Context
+		Scope     *tenancy.Scope
 		RequestID string
 	}
 	mock.lockDownload.RLock()
@@ -1128,21 +1129,23 @@ func (mock *ServiceMock) DownloadCalls() []struct {
 }
 
 // Get calls GetFunc.
-func (mock *ServiceMock) Get(ctx context.Context, requestID string) (*dataprivacy.Request, error) {
+func (mock *ServiceMock) Get(ctx context.Context, scope *tenancy.Scope, requestID string) (*dataprivacy.Request, error) {
 	if mock.GetFunc == nil {
 		panic("ServiceMock.GetFunc: method is nil but Service.Get was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
+		Scope     *tenancy.Scope
 		RequestID string
 	}{
 		Ctx:       ctx,
+		Scope:     scope,
 		RequestID: requestID,
 	}
 	mock.lockGet.Lock()
 	mock.calls.Get = append(mock.calls.Get, callInfo)
 	mock.lockGet.Unlock()
-	return mock.GetFunc(ctx, requestID)
+	return mock.GetFunc(ctx, scope, requestID)
 }
 
 // GetCalls gets all the calls that were made to Get.
@@ -1151,10 +1154,12 @@ func (mock *ServiceMock) Get(ctx context.Context, requestID string) (*dataprivac
 //	len(mockedService.GetCalls())
 func (mock *ServiceMock) GetCalls() []struct {
 	Ctx       context.Context
+	Scope     *tenancy.Scope
 	RequestID string
 } {
 	var calls []struct {
 		Ctx       context.Context
+		Scope     *tenancy.Scope
 		RequestID string
 	}
 	mock.lockGet.RLock()
@@ -1164,23 +1169,25 @@ func (mock *ServiceMock) GetCalls() []struct {
 }
 
 // List calls ListFunc.
-func (mock *ServiceMock) List(ctx context.Context, subject dataprivacy.Subject, f *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error) {
+func (mock *ServiceMock) List(ctx context.Context, scope *tenancy.Scope, subject dataprivacy.Subject, f *filtering.QueryFilter) (*filtering.QueryFilteredResult[dataprivacy.Request], error) {
 	if mock.ListFunc == nil {
 		panic("ServiceMock.ListFunc: method is nil but Service.List was just called")
 	}
 	callInfo := struct {
 		Ctx     context.Context
+		Scope   *tenancy.Scope
 		Subject dataprivacy.Subject
 		F       *filtering.QueryFilter
 	}{
 		Ctx:     ctx,
+		Scope:   scope,
 		Subject: subject,
 		F:       f,
 	}
 	mock.lockList.Lock()
 	mock.calls.List = append(mock.calls.List, callInfo)
 	mock.lockList.Unlock()
-	return mock.ListFunc(ctx, subject, f)
+	return mock.ListFunc(ctx, scope, subject, f)
 }
 
 // ListCalls gets all the calls that were made to List.
@@ -1189,11 +1196,13 @@ func (mock *ServiceMock) List(ctx context.Context, subject dataprivacy.Subject, 
 //	len(mockedService.ListCalls())
 func (mock *ServiceMock) ListCalls() []struct {
 	Ctx     context.Context
+	Scope   *tenancy.Scope
 	Subject dataprivacy.Subject
 	F       *filtering.QueryFilter
 } {
 	var calls []struct {
 		Ctx     context.Context
+		Scope   *tenancy.Scope
 		Subject dataprivacy.Subject
 		F       *filtering.QueryFilter
 	}
@@ -1204,21 +1213,23 @@ func (mock *ServiceMock) ListCalls() []struct {
 }
 
 // Open calls OpenFunc.
-func (mock *ServiceMock) Open(ctx context.Context, requestID string) (io.ReadCloser, error) {
+func (mock *ServiceMock) Open(ctx context.Context, scope *tenancy.Scope, requestID string) (io.ReadCloser, error) {
 	if mock.OpenFunc == nil {
 		panic("ServiceMock.OpenFunc: method is nil but Service.Open was just called")
 	}
 	callInfo := struct {
 		Ctx       context.Context
+		Scope     *tenancy.Scope
 		RequestID string
 	}{
 		Ctx:       ctx,
+		Scope:     scope,
 		RequestID: requestID,
 	}
 	mock.lockOpen.Lock()
 	mock.calls.Open = append(mock.calls.Open, callInfo)
 	mock.lockOpen.Unlock()
-	return mock.OpenFunc(ctx, requestID)
+	return mock.OpenFunc(ctx, scope, requestID)
 }
 
 // OpenCalls gets all the calls that were made to Open.
@@ -1227,10 +1238,12 @@ func (mock *ServiceMock) Open(ctx context.Context, requestID string) (io.ReadClo
 //	len(mockedService.OpenCalls())
 func (mock *ServiceMock) OpenCalls() []struct {
 	Ctx       context.Context
+	Scope     *tenancy.Scope
 	RequestID string
 } {
 	var calls []struct {
 		Ctx       context.Context
+		Scope     *tenancy.Scope
 		RequestID string
 	}
 	mock.lockOpen.RLock()
@@ -1240,23 +1253,25 @@ func (mock *ServiceMock) OpenCalls() []struct {
 }
 
 // Submit calls SubmitFunc.
-func (mock *ServiceMock) Submit(ctx context.Context, subject dataprivacy.Subject, t dataprivacy.RequestType) (*dataprivacy.Request, error) {
+func (mock *ServiceMock) Submit(ctx context.Context, scope tenancy.Scope, subject dataprivacy.Subject, t dataprivacy.RequestType) (*dataprivacy.Request, error) {
 	if mock.SubmitFunc == nil {
 		panic("ServiceMock.SubmitFunc: method is nil but Service.Submit was just called")
 	}
 	callInfo := struct {
 		Ctx     context.Context
+		Scope   tenancy.Scope
 		Subject dataprivacy.Subject
 		T       dataprivacy.RequestType
 	}{
 		Ctx:     ctx,
+		Scope:   scope,
 		Subject: subject,
 		T:       t,
 	}
 	mock.lockSubmit.Lock()
 	mock.calls.Submit = append(mock.calls.Submit, callInfo)
 	mock.lockSubmit.Unlock()
-	return mock.SubmitFunc(ctx, subject, t)
+	return mock.SubmitFunc(ctx, scope, subject, t)
 }
 
 // SubmitCalls gets all the calls that were made to Submit.
@@ -1265,11 +1280,13 @@ func (mock *ServiceMock) Submit(ctx context.Context, subject dataprivacy.Subject
 //	len(mockedService.SubmitCalls())
 func (mock *ServiceMock) SubmitCalls() []struct {
 	Ctx     context.Context
+	Scope   tenancy.Scope
 	Subject dataprivacy.Subject
 	T       dataprivacy.RequestType
 } {
 	var calls []struct {
 		Ctx     context.Context
+		Scope   tenancy.Scope
 		Subject dataprivacy.Subject
 		T       dataprivacy.RequestType
 	}

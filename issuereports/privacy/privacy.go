@@ -26,7 +26,7 @@ for them.
 # Scopes
 
 Every read and write in issuereports is scoped, and a subject access request may
-arrive without a scope — dataprivacy.Subject.Scope names nobody for the plain
+arrive without a scope — the request's confinement names nobody for the plain
 "give me my data". So both halves take a [ScopeResolver]: the mapping from a subject to
 the scopes their reports may be in, which is a question about the consumer's
 tenancy model rather than about this table.
@@ -105,24 +105,36 @@ var (
 // collector reports the domain as holding nothing, and the eraser deletes
 // nothing. Returning too many is how one subject's erasure reaches another
 // tenant's reports, so it is worth being exact.
-type ScopeResolver func(ctx context.Context, subject dataprivacy.Subject) ([]tenancy.Scope, error)
+// requestScope is the confinement the privacy request named, which the
+// fulfiller hands over beside the subject. The zero Scope is the request that
+// named none — a plain "give me my data" — and what a resolver makes of that is
+// the whole of the decision this seam exists for.
+type ScopeResolver func(
+	ctx context.Context,
+	requestScope tenancy.Scope,
+	subject dataprivacy.Subject,
+) ([]tenancy.Scope, error)
 
 // RequestScope resolves the scope the request itself names, for a deployment
 // where a privacy request always arrives scoped.
 //
 // A request that names none is ErrUnscopedRequest rather than the global scope.
-// The subject's scope is a tenancy.Scope, so the two are already distinct
-// values here and nothing has to reconstruct the difference; what a resolver
-// still cannot do is invent the scope a request declined to name. The
-// difference is not recoverable later: an
+// The confinement arrives as a tenancy.Scope, so "confined to nobody" and "the
+// global scope" are already distinct values here and nothing has to reconstruct
+// the difference; what a resolver still cannot do is invent the scope a request
+// declined to name. The difference is not recoverable later: an
 // export that quietly covered only the global scope would be well-formed, would
 // have a section, and would be missing every report the subject actually filed.
-func RequestScope(_ context.Context, subject dataprivacy.Subject) ([]tenancy.Scope, error) {
-	if subject.Scope.Validate() != nil {
+func RequestScope(
+	_ context.Context,
+	requestScope tenancy.Scope,
+	subject dataprivacy.Subject,
+) ([]tenancy.Scope, error) {
+	if requestScope.Validate() != nil {
 		return nil, platformerrors.Wrapf(ErrUnscopedRequest, "subject %q", subject.ID)
 	}
 
-	return []tenancy.Scope{subject.Scope}, nil
+	return []tenancy.Scope{requestScope}, nil
 }
 
 // FixedScopes resolves every subject to the same scopes, for a deployment whose
@@ -132,7 +144,7 @@ func FixedScopes(scopes ...tenancy.Scope) ScopeResolver {
 	fixed := make([]tenancy.Scope, len(scopes))
 	copy(fixed, scopes)
 
-	return func(context.Context, dataprivacy.Subject) ([]tenancy.Scope, error) {
+	return func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
 		return fixed, nil
 	}
 }
@@ -180,8 +192,12 @@ func NewCollector(
 // because a collector that read one page and stopped would return a truncated
 // subject access request — well-formed, present, and missing everything past the
 // first page.
-func (c *Collector) Collect(ctx context.Context, subject dataprivacy.Subject) (json.RawMessage, error) {
-	scopes, err := c.resolve(ctx, subject)
+func (c *Collector) Collect(
+	ctx context.Context,
+	requestScope tenancy.Scope,
+	subject dataprivacy.Subject,
+) (json.RawMessage, error) {
+	scopes, err := c.resolve(ctx, requestScope, subject)
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "resolving issue report scopes for subject")
 	}
@@ -232,14 +248,15 @@ func NewEraser(store issuereports.Store, resolve ScopeResolver) (*Eraser, error)
 // A subject who filed nothing erases nothing and is not an error.
 func (e *Eraser) Erase(
 	ctx context.Context,
-	q database.Tx,
+	tx database.Tx,
+	requestScope tenancy.Scope,
 	subject dataprivacy.Subject,
 ) (dataprivacy.ErasureOutcome, error) {
-	if q == nil {
+	if tx == nil {
 		return dataprivacy.ErasureOutcome{}, ErrNilExecutor
 	}
 
-	scopes, err := e.resolve(ctx, subject)
+	scopes, err := e.resolve(ctx, requestScope, subject)
 	if err != nil {
 		return dataprivacy.ErasureOutcome{},
 			platformerrors.Wrap(err, "resolving issue report scopes for subject")
@@ -248,7 +265,7 @@ func (e *Eraser) Erase(
 	var outcome dataprivacy.ErasureOutcome
 
 	for _, scope := range scopes {
-		deleted, deleteErr := e.store.DeleteReportsByReporter(ctx, q, scope, subject.ID)
+		deleted, deleteErr := e.store.DeleteReportsByReporter(ctx, tx, scope, subject.ID)
 		if deleteErr != nil {
 			return dataprivacy.ErasureOutcome{},
 				platformerrors.Wrapf(deleteErr, "erasing issue reports in scope %q", scope)

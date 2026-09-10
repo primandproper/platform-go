@@ -67,6 +67,7 @@ func (r *recordingAudit) last() *audit.Entry {
 
 // auditServiceEnv is a Service wired to a recording audit log.
 type auditServiceEnv struct {
+	client   database.Client
 	svc      Service
 	store    Store
 	recorder *recordingAudit
@@ -90,10 +91,10 @@ func newAuditServiceEnv(t *testing.T, cfg *ServiceConfig, opts ...ServiceOption)
 		}),
 	}
 
-	svc, err := NewService(t.Context(), cfg, store, newStubOperations(), append(base, opts...)...)
+	svc, err := NewService(t.Context(), cfg, env.client, store, newStubOperations(), append(base, opts...)...)
 	must.NoError(t, err)
 
-	return &auditServiceEnv{svc: svc, store: store, recorder: recorder, uploader: uploader}
+	return &auditServiceEnv{client: env.client, svc: svc, store: store, recorder: recorder, uploader: uploader}
 }
 
 func TestService_AuditRecording(T *testing.T) {
@@ -104,7 +105,7 @@ func TestService_AuditRecording(T *testing.T) {
 
 		env := newAuditServiceEnv(t, &ServiceConfig{})
 
-		req, err := env.svc.Submit(t.Context(), testSubject, RequestExport)
+		req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 		must.NoError(t, err)
 
 		entry := env.recorder.last()
@@ -116,7 +117,7 @@ func TestService_AuditRecording(T *testing.T) {
 
 		// The scope is the subject's tenancy boundary, so a tenant's audit
 		// chain covers requests made about its own people.
-		test.EqOp(t, testSubject.Scope, entry.Scope)
+		test.EqOp(t, testScope, entry.Scope)
 
 		// The actor is who is acting, which is not the subject: a support agent
 		// running an export for a customer is the event worth recording.
@@ -132,7 +133,7 @@ func TestService_AuditRecording(T *testing.T) {
 
 		env := newAuditServiceEnv(t, &ServiceConfig{})
 
-		_, err := env.svc.Submit(t.Context(), testSubject, RequestExport)
+		_, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 		must.NoError(t, err)
 
 		entry := env.recorder.last()
@@ -157,10 +158,10 @@ func TestService_AuditRecording(T *testing.T) {
 		env := newSQLiteEnv(t)
 		store := env.newStore(t)
 
-		svc, err := NewService(t.Context(), &ServiceConfig{}, store, newStubOperations(), WithServiceClock(newStubClock()))
+		svc, err := NewService(t.Context(), &ServiceConfig{}, env.client, store, newStubOperations(), WithServiceClock(newStubClock()))
 		must.NoError(t, err)
 
-		_, err = svc.Submit(t.Context(), testSubject, RequestExport)
+		_, err = svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 		test.NoError(t, err)
 	})
 
@@ -173,14 +174,14 @@ func TestService_AuditRecording(T *testing.T) {
 		env.recorder.err = platformerrors.New("audit chain is locked")
 		env.recorder.mu.Unlock()
 
-		req, err := env.svc.Submit(t.Context(), testSubject, RequestExport)
+		req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 		must.Error(t, err)
 		test.Nil(t, req)
 
 		// This is the whole reason Save takes the caller's executor: a request
 		// that commits without a record of who asked is a data-export path with
 		// no alarm on it.
-		results, err := env.store.List(t.Context(), testSubject, filtering.DefaultQueryFilter())
+		results, err := env.store.List(t.Context(), env.client.Reader(), testScopePtr, testSubject, filtering.DefaultQueryFilter())
 		must.NoError(t, err)
 		test.SliceEmpty(t, results.Data)
 	})
@@ -190,10 +191,10 @@ func TestService_AuditRecording(T *testing.T) {
 
 		env := newAuditServiceEnv(t, &ServiceConfig{ConfirmationWindow: 72 * time.Hour})
 
-		confirmed, err := env.svc.Submit(t.Context(), testSubject, RequestErasure)
+		confirmed, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestErasure)
 		must.NoError(t, err)
 
-		_, err = env.svc.Confirm(t.Context(), confirmed.ID)
+		_, err = env.svc.Confirm(t.Context(), testScopePtr, confirmed.ID)
 		must.NoError(t, err)
 
 		entry := env.recorder.last()
@@ -202,10 +203,10 @@ func TestService_AuditRecording(T *testing.T) {
 		test.EqOp(t, "confirmed", entry.Metadata["reason"])
 		test.EqOp(t, string(StatusInProgress), entry.Metadata["status"])
 
-		cancelled, err := env.svc.Submit(t.Context(), testSubject, RequestErasure)
+		cancelled, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestErasure)
 		must.NoError(t, err)
 
-		_, err = env.svc.Cancel(t.Context(), cancelled.ID)
+		_, err = env.svc.Cancel(t.Context(), testScopePtr, cancelled.ID)
 		must.NoError(t, err)
 
 		entry = env.recorder.last()
@@ -223,11 +224,11 @@ func TestService_AuditRecording(T *testing.T) {
 		req.Status = StatusCompleted
 		req.ArtifactRef = "dataprivacy/exports/" + req.ID + ".json"
 		req.ExpiresAt = baseTime.Add(DefaultArtifactTTL)
-		saveRequest(t, env.store, req)
+		saveRequest(t, env.client, env.store, req)
 
 		must.NoError(t, env.uploader.Save(t.Context(), req.ArtifactRef, stringReader(`{"data":{}}`)))
 
-		_, err := env.svc.Download(t.Context(), req.ID)
+		_, err := env.svc.Download(t.Context(), testScopePtr, req.ID)
 		must.NoError(t, err)
 
 		entry := env.recorder.last()
@@ -248,11 +249,11 @@ func TestService_AuditRecording(T *testing.T) {
 		req.Status = StatusCompleted
 		req.ArtifactRef = "dataprivacy/exports/" + req.ID + ".json"
 		req.ExpiresAt = baseTime.Add(DefaultArtifactTTL)
-		saveRequest(t, env.store, req)
+		saveRequest(t, env.client, env.store, req)
 
 		must.NoError(t, env.uploader.Save(t.Context(), req.ArtifactRef, stringReader(`{"data":{}}`)))
 
-		reader, err := env.svc.Open(t.Context(), req.ID)
+		reader, err := env.svc.Open(t.Context(), testScopePtr, req.ID)
 		must.NoError(t, err)
 		must.NoError(t, reader.Close())
 
@@ -271,7 +272,7 @@ func TestService_AuditRecording(T *testing.T) {
 		req.Status = StatusCompleted
 		req.ArtifactRef = "dataprivacy/exports/" + req.ID + ".json"
 		req.ExpiresAt = baseTime.Add(DefaultArtifactTTL)
-		saveRequest(t, env.store, req)
+		saveRequest(t, env.client, env.store, req)
 
 		must.NoError(t, env.uploader.Save(t.Context(), req.ArtifactRef, stringReader(`{"data":{}}`)))
 
@@ -281,7 +282,7 @@ func TestService_AuditRecording(T *testing.T) {
 
 		// The read already happened by the time the record is attempted, so
 		// failing the call would report an error for something that succeeded.
-		url, err := env.svc.Download(t.Context(), req.ID)
+		url, err := env.svc.Download(t.Context(), testScopePtr, req.ID)
 		test.NoError(t, err)
 		test.StrContains(t, url, req.ArtifactRef)
 	})
@@ -293,13 +294,13 @@ func TestService_AuditRecording(T *testing.T) {
 		store := env.newStore(t)
 		recorder := newRecordingAudit()
 
-		svc, err := NewService(t.Context(), &ServiceConfig{}, store, newStubOperations(),
+		svc, err := NewService(t.Context(), &ServiceConfig{}, env.client, store, newStubOperations(),
 			WithServiceClock(newStubClock()),
 			WithServiceAuditRecorder(recorder),
 		)
 		must.NoError(t, err)
 
-		_, err = svc.Submit(t.Context(), testSubject, RequestExport)
+		_, err = svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 		must.NoError(t, err)
 
 		entry := recorder.last()
@@ -430,15 +431,15 @@ func TestService_List(T *testing.T) {
 	T.Run("returns a subject's requests", func(t *testing.T) {
 		t.Parallel()
 
-		svc, _, _ := newTestService(t, &ServiceConfig{})
+		svc, _, _, _ := newTestService(t, &ServiceConfig{})
 
-		first, err := svc.Submit(t.Context(), testSubject, RequestExport)
+		first, err := svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 		must.NoError(t, err)
 
-		second, err := svc.Submit(t.Context(), testSubject, RequestErasure)
+		second, err := svc.Submit(t.Context(), testScope, testSubject, RequestErasure)
 		must.NoError(t, err)
 
-		results, err := svc.List(t.Context(), testSubject, filtering.DefaultQueryFilter())
+		results, err := svc.List(t.Context(), testScopePtr, testSubject, filtering.DefaultQueryFilter())
 		must.NoError(t, err)
 		must.SliceLen(t, 2, results.Data)
 
@@ -449,12 +450,12 @@ func TestService_List(T *testing.T) {
 	T.Run("a nil filter is defaulted", func(t *testing.T) {
 		t.Parallel()
 
-		svc, _, _ := newTestService(t, &ServiceConfig{})
+		svc, _, _, _ := newTestService(t, &ServiceConfig{})
 
-		_, err := svc.Submit(t.Context(), testSubject, RequestExport)
+		_, err := svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 		must.NoError(t, err)
 
-		results, err := svc.List(t.Context(), testSubject, nil)
+		results, err := svc.List(t.Context(), testScopePtr, testSubject, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 1, results.Data)
 	})
@@ -462,9 +463,9 @@ func TestService_List(T *testing.T) {
 	T.Run("rejects an empty subject", func(t *testing.T) {
 		t.Parallel()
 
-		svc, _, _ := newTestService(t, &ServiceConfig{})
+		svc, _, _, _ := newTestService(t, &ServiceConfig{})
 
-		_, err := svc.List(t.Context(), Subject{}, nil)
+		_, err := svc.List(t.Context(), testScopePtr, Subject{}, nil)
 		test.True(t, errors.Is(err, ErrEmptySubjectID))
 	})
 }

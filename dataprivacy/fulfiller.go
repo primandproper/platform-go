@@ -24,6 +24,7 @@ import (
 	"github.com/primandproper/primitives-go/observability/metrics"
 	"github.com/primandproper/primitives-go/observability/tracing"
 	"github.com/primandproper/primitives-go/panicking"
+	"github.com/primandproper/primitives-go/tenancy"
 	"github.com/primandproper/primitives-go/uploads"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -139,6 +140,7 @@ const shredRetentionKey = "encryption_keys"
 //	}
 type Fulfiller struct {
 	store    Store
+	client   database.Client
 	registry *Registry
 	clock    clock.Clock
 	o11y     observability.Observer
@@ -186,12 +188,17 @@ type Fulfiller struct {
 func NewFulfiller(
 	ctx context.Context,
 	cfg *FulfillerConfig,
+	client database.Client,
 	store Store,
 	registry *Registry,
 	opts ...FulfillerOption,
 ) (*Fulfiller, error) {
 	if cfg == nil {
 		return nil, platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil dataprivacy fulfiller config")
+	}
+
+	if client == nil {
+		return nil, ErrNilDatabaseClient
 	}
 
 	if store == nil {
@@ -206,6 +213,7 @@ func NewFulfiller(
 
 	f := &Fulfiller{
 		cfg:      *cfg,
+		client:   client,
 		store:    store,
 		registry: registry,
 		clock:    clock.NewClock(),
@@ -424,6 +432,15 @@ func (f *Fulfiller) run(
 // succeeds with that attempt's outcome rather than repeating the work. Every
 // other state the row could be in is a hard failure, because none of them
 // becomes StatusInProgress again by waiting.
+//
+// The read names no confinement, and this is the machinery reading rather than
+// a hole in Store.Get's rule. A worker draining a queue is servicing this
+// component, not answering a tenant: the operation it was handed already names
+// the request, that request was written under whatever confinement its subject
+// asked for, and a runner that had to be told the confinement in advance would
+// need one worker per tenant to fulfill requests the queue holds across all of
+// them. The confinement it finds on the row is what the erasers are then given
+// — see erase.
 func (f *Fulfiller) resolve(
 	ctx context.Context,
 	job Job,
@@ -434,7 +451,7 @@ func (f *Fulfiller) resolve(
 			"dataprivacy operation names no request"))
 	}
 
-	req, err := f.store.Get(ctx, job.RequestID)
+	req, err := f.store.Get(ctx, f.client.Reader(), nil, job.RequestID)
 	if err != nil {
 		if errors.Is(err, ErrRequestNotFound) {
 			return nil, nil, operations.Unretryable(operations.WithCode(CodeRequestGone, err))
@@ -576,12 +593,12 @@ func (f *Fulfiller) export(
 	// the whole point of keeping it out of telemetry.
 	op.Set(artifactRefKey, ref).Set(artifactSizeKey, req.ArtifactBytes)
 
-	if err = f.store.WithTransaction(ctx, func(q database.Tx) error {
-		if txErr := f.store.CompleteExport(ctx, q, req, now); txErr != nil {
+	if err = f.client.WithTransaction(ctx, func(tx database.Tx) error {
+		if txErr := f.store.CompleteExport(ctx, tx, req, now); txErr != nil {
 			return txErr
 		}
 
-		return f.record(ctx, q, req, map[string]string{
+		return f.record(ctx, tx, req, map[string]string{
 			"artifact_bytes":  itoa(req.ArtifactBytes),
 			"sections":        itoa(int64(len(doc.Data))),
 			"failed_sections": itoa(int64(len(doc.Manifest.Failures))),
@@ -642,7 +659,7 @@ func (f *Fulfiller) collect(ctx context.Context, req *Request, rep operations.Re
 			rep.StartUnit(key)
 			defer rep.FinishUnit()
 
-			fragment, err := f.collectOne(ctx, key, req.Subject)
+			fragment, err := f.collectOne(ctx, key, req.Scope, req.Subject)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -699,10 +716,16 @@ func (f *Fulfiller) collect(ctx context.Context, req *Request, rep operations.Re
 // taking the operation down. It is somebody else's code running in our
 // goroutine, and a nil map access in one domain should cost that domain's
 // section.
-func (f *Fulfiller) collectOne(ctx context.Context, key string, subject Subject) (json.RawMessage, error) {
+func (f *Fulfiller) collectOne(
+	ctx context.Context,
+	key string,
+	scope tenancy.Scope,
+	subject Subject,
+) (json.RawMessage, error) {
 	ctx, op := f.o11y.Begin(ctx,
 		observability.WithValue(sectionKey, key),
 		observability.WithValue(subjectIDKey, subject.ID),
+		observability.WithValue(subjectScopeKey, scope.String()),
 	)
 	defer op.End()
 
@@ -720,7 +743,7 @@ func (f *Fulfiller) collectOne(ctx context.Context, key string, subject Subject)
 
 	err := panicking.Contain(func() error {
 		var collectErr error
-		fragment, collectErr = collector.Collect(ctx, subject)
+		fragment, collectErr = collector.Collect(ctx, scope, subject)
 
 		return collectErr
 	})
@@ -814,7 +837,7 @@ func (f *Fulfiller) erase(
 		return nil, err
 	}
 
-	err = f.store.WithTransaction(ctx, func(q database.Tx) error {
+	err = f.client.WithTransaction(ctx, func(tx database.Tx) error {
 		var (
 			deleted    int64
 			anonymized int64
@@ -830,7 +853,7 @@ func (f *Fulfiller) erase(
 		// data race the driver will either serialize or reject.
 		for _, key := range keys {
 			// The progress flush this triggers writes to the operations table
-			// rather than through q, so it does not join this transaction — and
+			// rather than through tx, so it does not join this transaction — and
 			// it is what extends the operation's lease, which is how an erasure
 			// across forty domains stays owned by the worker running it.
 			//
@@ -842,7 +865,7 @@ func (f *Fulfiller) erase(
 			// concurrency plus its flushes, not for its concurrency.
 			rep.StartUnit(key)
 
-			outcome, eraseErr := f.eraseOne(ctx, q, key, req.Subject)
+			outcome, eraseErr := f.eraseOne(ctx, tx, key, req.Scope, req.Subject)
 			if eraseErr != nil {
 				return eraseErr
 			}
@@ -869,7 +892,7 @@ func (f *Fulfiller) erase(
 			req.Retained = retained
 		}
 
-		if txErr := f.store.CompleteErasure(ctx, q, req, now); txErr != nil {
+		if txErr := f.store.CompleteErasure(ctx, tx, req, now); txErr != nil {
 			return txErr
 		}
 
@@ -887,7 +910,7 @@ func (f *Fulfiller) erase(
 			metadata["key_shredded_at"] = req.KeyShreddedAt.Format(time.RFC3339Nano)
 		}
 
-		return f.record(ctx, q, req, metadata)
+		return f.record(ctx, tx, req, metadata)
 	})
 	if err != nil {
 		return nil, err
@@ -932,11 +955,11 @@ func (f *Fulfiller) shred(ctx context.Context, req *Request) (map[string]string,
 	ctx, op := f.o11y.Begin(ctx,
 		observability.WithValue(requestIDKey, req.ID),
 		observability.WithValue(subjectIDKey, req.Subject.ID),
-		observability.WithValue(subjectScopeKey, req.Subject.Scope.String()),
+		observability.WithValue(subjectScopeKey, req.Scope.String()),
 	)
 	defer op.End()
 
-	if req.Subject.Scope.Validate() == nil {
+	if req.Scope.Validate() == nil {
 		op.Set(shreddedKey, false)
 
 		retained[shredRetentionKey] = "encryption keys retained: this request is confined to one scope, " +
@@ -974,13 +997,15 @@ func (f *Fulfiller) shred(ctx context.Context, req *Request) (map[string]string,
 // with a half-applied erasure in flight.
 func (f *Fulfiller) eraseOne(
 	ctx context.Context,
-	q database.Tx,
+	tx database.Tx,
 	key string,
+	scope tenancy.Scope,
 	subject Subject,
 ) (ErasureOutcome, error) {
 	ctx, op := f.o11y.Begin(ctx,
 		observability.WithValue(sectionKey, key),
 		observability.WithValue(subjectIDKey, subject.ID),
+		observability.WithValue(subjectScopeKey, scope.String()),
 	)
 	defer op.End()
 
@@ -993,7 +1018,7 @@ func (f *Fulfiller) eraseOne(
 
 	err := panicking.Contain(func() error {
 		var eraseErr error
-		outcome, eraseErr = eraser.Erase(ctx, q, subject)
+		outcome, eraseErr = eraser.Erase(ctx, tx, scope, subject)
 
 		return eraseErr
 	})
@@ -1033,13 +1058,13 @@ func (f *Fulfiller) stop(ctx context.Context, req *Request, format string, args 
 
 	now := f.clock.Now().UTC()
 
-	if err := f.store.WithTransaction(ctx, func(q database.Tx) error {
-		stopped, txErr := f.store.Cancel(ctx, q, req.ID, StatusInProgress, now)
+	if err := f.client.WithTransaction(ctx, func(tx database.Tx) error {
+		stopped, txErr := f.store.Cancel(ctx, tx, req.ID, StatusInProgress, now)
 		if txErr != nil {
 			return txErr
 		}
 
-		return f.record(ctx, q, stopped, map[string]string{metadataReasonKey: "cancelled while in progress"})
+		return f.record(ctx, tx, stopped, map[string]string{metadataReasonKey: "cancelled while in progress"})
 	}); err != nil {
 		// Logged rather than returned. The operation is going to be recorded as
 		// cancelled either way, and replacing that with a database error would
@@ -1132,7 +1157,7 @@ func (f *Fulfiller) notify(ctx context.Context, req *Request) {
 // record appends the completion audit entry inside the caller's transaction.
 func (f *Fulfiller) record(
 	ctx context.Context,
-	q database.Tx,
+	tx database.Tx,
 	req *Request,
 	metadata map[string]string,
 ) error {
@@ -1148,12 +1173,12 @@ func (f *Fulfiller) record(
 	}
 	maps.Copy(fields, metadata)
 
-	return f.recorder.Record(ctx, q, &audit.Entry{
+	return f.recorder.Record(ctx, tx, &audit.Entry{
 		EventType:    audit.EventUpdated,
 		ResourceType: auditResourceType,
 		ResourceID:   req.ID,
 		Actor:        f.actor(ctx),
-		Scope:        auditScope(req.Subject.Scope),
+		Scope:        auditScope(req.Scope),
 		Metadata:     fields,
 		RecordedAt:   f.clock.Now().UTC(),
 	})

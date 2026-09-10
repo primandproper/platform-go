@@ -138,6 +138,37 @@ type GetRequestRow struct {
 	KeyShreddedAt  *time.Time
 }
 
+// GetRequestInScopeParams are the arguments to GetRequestInScope.
+type GetRequestInScopeParams struct {
+	ID           string
+	SubjectScope string
+}
+
+// GetRequestInScopeRow is one row of GetRequestInScope's result.
+type GetRequestInScopeRow struct {
+	ID             string
+	RequestType    string
+	Status         string
+	OperationID    string
+	SubjectID      string
+	SubjectType    string
+	SubjectScope   string
+	CreatedAt      time.Time
+	LastUpdatedAt  *time.Time
+	ArchivedAt     *time.Time
+	DueAt          time.Time
+	ExpiresAt      *time.Time
+	CompletedAt    *time.Time
+	ArtifactRef    string
+	ArtifactBytes  int64
+	DeletedRows    int64
+	AnonymizedRows int64
+	Failures       []byte
+	Retained       []byte
+	LastError      *string
+	KeyShreddedAt  *time.Time
+}
+
 // LapseUnconfirmedRequestsParams are the arguments to LapseUnconfirmedRequests.
 type LapseUnconfirmedRequestsParams struct {
 	Status        string

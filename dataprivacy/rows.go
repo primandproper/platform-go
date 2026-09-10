@@ -27,9 +27,19 @@ import (
 // identical, and they are still restated one function each: restating is the
 // cost, and the compiler checking every field name is what it buys.
 
-// requestFromRow turns the single-request read into a Request.
+// requestFromRow turns the unscoped single-request read into a Request.
 func requestFromRow(r *dataprivacydb.GetRequestRow) (*Request, error) {
-	return request(&requestFields{
+	return request(getRowFields(r))
+}
+
+// getRowFields is the unscoped single-request read's projection, unpacked.
+//
+// It is separate from requestFromRow because SQLStore.Get chooses its statement
+// before it decodes anything: the two reads return nominally distinct row types
+// carrying identical columns, and unpacking each into the shared fields is what
+// lets one decode serve both.
+func getRowFields(r *dataprivacydb.GetRequestRow) *requestFields {
+	return &requestFields{
 		id:             r.ID,
 		requestType:    r.RequestType,
 		status:         r.Status,
@@ -49,7 +59,37 @@ func requestFromRow(r *dataprivacydb.GetRequestRow) (*Request, error) {
 		retained:       r.Retained,
 		lastError:      r.LastError,
 		keyShreddedAt:  r.KeyShreddedAt,
-	})
+	}
+}
+
+// scopedGetRowFields is getRowFields for the read that names a confinement.
+//
+// The two projections are identical and this is still restated field by field,
+// for the reason the file header gives: the row structs are nominal per
+// statement, and the compiler checking every field name is what a restatement
+// buys.
+func scopedGetRowFields(r *dataprivacydb.GetRequestInScopeRow) *requestFields {
+	return &requestFields{
+		id:             r.ID,
+		requestType:    r.RequestType,
+		status:         r.Status,
+		operationID:    r.OperationID,
+		subjectID:      r.SubjectID,
+		subjectType:    r.SubjectType,
+		subjectScope:   r.SubjectScope,
+		createdAt:      r.CreatedAt,
+		dueAt:          r.DueAt,
+		expiresAt:      r.ExpiresAt,
+		completedAt:    r.CompletedAt,
+		artifactRef:    r.ArtifactRef,
+		artifactBytes:  r.ArtifactBytes,
+		deletedRows:    r.DeletedRows,
+		anonymizedRows: r.AnonymizedRows,
+		failures:       r.Failures,
+		retained:       r.Retained,
+		lastError:      r.LastError,
+		keyShreddedAt:  r.KeyShreddedAt,
+	}
 }
 
 // requestFromExpiringRow turns one row of the artifact expiry sweep into a
@@ -181,10 +221,10 @@ func request(f *requestFields) (*Request, error) {
 		Status:      Status(f.status),
 		OperationID: f.operationID,
 		Subject: Subject{
-			ID:    f.subjectID,
-			Type:  SubjectType(f.subjectType),
-			Scope: subjectScope(f.subjectScope),
+			ID:   f.subjectID,
+			Type: SubjectType(f.subjectType),
 		},
+		Scope:         subjectScope(f.subjectScope),
 		CreatedAt:     f.createdAt.UTC(),
 		DueAt:         f.dueAt.UTC(),
 		ExpiresAt:     utcValue(f.expiresAt),
@@ -224,7 +264,7 @@ func createRequestParams(req *Request, failures, retained []byte) dataprivacydb.
 		OperationID:    req.OperationID,
 		SubjectID:      req.Subject.ID,
 		SubjectType:    string(req.Subject.Type),
-		SubjectScope:   subjectScopeValue(req.Subject.Scope),
+		SubjectScope:   subjectScopeValue(req.Scope),
 		DueAt:          req.DueAt.UTC(),
 		ExpiresAt:      instant(req.ExpiresAt),
 		CompletedAt:    utcPtr(req.CompletedAt),
@@ -274,8 +314,12 @@ func windowFrom(filter *filtering.QueryFilter) listWindow {
 	return w
 }
 
-// listRequestsParams binds a subject's scoped history.
-func listRequestsParams(subject Subject, filter *filtering.QueryFilter) dataprivacydb.ListRequestsForSubjectParams {
+// listRequestsParams binds a subject's history inside one confinement.
+func listRequestsParams(
+	scope tenancy.Scope,
+	subject Subject,
+	filter *filtering.QueryFilter,
+) dataprivacydb.ListRequestsForSubjectParams {
 	w := windowFrom(filter)
 
 	return dataprivacydb.ListRequestsForSubjectParams{
@@ -285,7 +329,7 @@ func listRequestsParams(subject Subject, filter *filtering.QueryFilter) datapriv
 		UpdatedBefore:   w.updatedBefore,
 		IncludeArchived: w.includeArchived,
 		SubjectID:       subject.ID,
-		SubjectScope:    subjectScopeValue(subject.Scope),
+		SubjectScope:    subjectScopeValue(scope),
 		PageCursor:      w.pageCursor,
 		ResultLimit:     w.resultLimit,
 	}
@@ -437,8 +481,8 @@ func decodeMap(b []byte) (m map[string]string, err error) {
 // does not. The column holds an optional confinement, and tenancy.Scope's own
 // binding refuses the scope that names nobody — right for a column that must
 // hold an owner, wrong for one whose emptiness is an answer. The scope that
-// cannot survive this round trip is tenancy.Global, and Subject.validate
-// refuses it rather than letting it arrive here.
+// cannot survive this round trip is tenancy.Global, and validateScope refuses
+// it rather than letting it arrive here.
 func subjectScope(stored string) tenancy.Scope {
 	if stored == "" {
 		return tenancy.Scope{}

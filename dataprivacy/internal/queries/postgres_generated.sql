@@ -70,6 +70,34 @@ FROM dataprivacy_requests
 WHERE dataprivacy_requests.archived_at IS NULL
 	AND dataprivacy_requests.id = sqlc.arg(id);
 
+-- name: GetRequestInScope :one
+SELECT
+	dataprivacy_requests.id,
+	dataprivacy_requests.request_type,
+	dataprivacy_requests.status,
+	dataprivacy_requests.operation_id,
+	dataprivacy_requests.subject_id,
+	dataprivacy_requests.subject_type,
+	dataprivacy_requests.subject_scope,
+	dataprivacy_requests.created_at,
+	dataprivacy_requests.last_updated_at,
+	dataprivacy_requests.archived_at,
+	dataprivacy_requests.due_at,
+	dataprivacy_requests.expires_at,
+	dataprivacy_requests.completed_at,
+	dataprivacy_requests.artifact_ref,
+	dataprivacy_requests.artifact_bytes,
+	dataprivacy_requests.deleted_rows,
+	dataprivacy_requests.anonymized_rows,
+	dataprivacy_requests.failures,
+	dataprivacy_requests.retained,
+	dataprivacy_requests.last_error,
+	dataprivacy_requests.key_shredded_at
+FROM dataprivacy_requests
+WHERE dataprivacy_requests.archived_at IS NULL
+	AND dataprivacy_requests.id = sqlc.arg(id)
+	AND dataprivacy_requests.subject_scope = sqlc.arg(subject_scope);
+
 -- name: ListRequestsForSubject :many
 SELECT
 	dataprivacy_requests.id,

@@ -340,12 +340,12 @@ func TestCollectorFor(T *testing.T) {
 
 		store := newPagedStore(collectRows(12), 5)
 
-		collector := CollectorFor(func(ctx context.Context, _ Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[collectRow], error) {
+		collector := CollectorFor(func(ctx context.Context, _ tenancy.Scope, _ Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[collectRow], error) {
 			return store.fetch(ctx, filter)
 		})
 		must.NotNil(t, collector)
 
-		fragment, err := collector.Collect(t.Context(), Subject{ID: "subject", Type: SubjectUser})
+		fragment, err := collector.Collect(t.Context(), testScope, Subject{ID: "subject", Type: SubjectUser})
 		must.NoError(t, err)
 
 		var decoded []collectRow
@@ -359,31 +359,41 @@ func TestCollectorFor(T *testing.T) {
 
 		store := newPagedStore(nil, filtering.MaxQueryFilterLimit)
 
-		collector := CollectorFor(func(ctx context.Context, _ Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[collectRow], error) {
+		collector := CollectorFor(func(ctx context.Context, _ tenancy.Scope, _ Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[collectRow], error) {
 			return store.fetch(ctx, filter)
 		})
 
-		fragment, err := collector.Collect(t.Context(), Subject{ID: "subject"})
+		fragment, err := collector.Collect(t.Context(), testScope, Subject{ID: "subject"})
 		must.NoError(t, err)
 		test.Nil(t, fragment)
 	})
 
-	T.Run("the subject reaches the read", func(t *testing.T) {
+	T.Run("the subject and the scope both reach the read", func(t *testing.T) {
 		t.Parallel()
 
-		subject := Subject{ID: "subject", Scope: tenancy.Of("account"), Type: SubjectUser}
+		subject := Subject{ID: "subject", Type: SubjectUser}
+		scope := tenancy.Of("account")
 
-		var seen []Subject
+		var (
+			seen       []Subject
+			seenScopes []tenancy.Scope
+		)
 
-		collector := CollectorFor(func(_ context.Context, s Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[collectRow], error) {
+		collector := CollectorFor(func(_ context.Context, sc tenancy.Scope, s Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[collectRow], error) {
 			seen = append(seen, s)
+			seenScopes = append(seenScopes, sc)
 
 			return filtering.NewQueryFilteredResult(collectRows(1), 1, 1, collectRowID, filter), nil
 		})
 
-		_, err := collector.Collect(t.Context(), subject)
+		_, err := collector.Collect(t.Context(), scope, subject)
 		must.NoError(t, err)
 		test.Eq(t, []Subject{subject}, seen)
+
+		// The confinement arrives as its own argument. A read narrowed by a
+		// scope dug out of the subject is the shape this seam exists to rule
+		// out.
+		test.Eq(t, []tenancy.Scope{scope}, seenScopes)
 	})
 
 	T.Run("a failed read is not a fragment", func(t *testing.T) {
@@ -391,11 +401,11 @@ func TestCollectorFor(T *testing.T) {
 
 		boom := platformerrors.New("boom")
 
-		collector := CollectorFor(func(context.Context, Subject, *filtering.QueryFilter) (*filtering.QueryFilteredResult[collectRow], error) {
+		collector := CollectorFor(func(context.Context, tenancy.Scope, Subject, *filtering.QueryFilter) (*filtering.QueryFilteredResult[collectRow], error) {
 			return nil, boom
 		})
 
-		fragment, err := collector.Collect(t.Context(), Subject{ID: "subject"})
+		fragment, err := collector.Collect(t.Context(), testScope, Subject{ID: "subject"})
 		test.ErrorIs(t, err, boom)
 		test.Nil(t, fragment)
 	})
@@ -419,7 +429,7 @@ func TestCollectorFor(T *testing.T) {
 		store := newPagedStore(collectRows(4), 2)
 
 		must.NoError(t, registry.RegisterCollector("domain", CollectorFor(
-			func(ctx context.Context, _ Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[collectRow], error) {
+			func(ctx context.Context, _ tenancy.Scope, _ Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[collectRow], error) {
 				return store.fetch(ctx, filter)
 			},
 		)))

@@ -34,6 +34,7 @@ type (
 
 	options struct {
 		resolver       SubjectResolver
+		scopes         ScopeResolver
 		logger         logging.Logger
 		tracerProvider tracing.Provider
 
@@ -48,6 +49,7 @@ func newOptions(opts []Option) *options {
 	o := &options{
 		basePath:       BasePath,
 		operationsPath: operationshttp.BasePath,
+		scopes:         UnconfinedRequests,
 		tags:           []string{"privacy"},
 	}
 
@@ -65,6 +67,17 @@ func newOptions(opts []Option) *options {
 // ErrNilSubjectResolver.
 func WithSubjectResolver(resolver SubjectResolver) Option {
 	return func(o *options) { o.resolver = resolver }
+}
+
+// WithScopeResolver supplies the function that says which tenant's privacy
+// requests a call is about. It defaults to UnconfinedRequests; see that function
+// for why this one has a default where WithSubjectResolver does not.
+func WithScopeResolver(resolve ScopeResolver) Option {
+	return func(o *options) {
+		if resolve != nil {
+			o.scopes = resolve
+		}
+	}
 }
 
 // WithBasePath mounts the surface somewhere other than /privacy-requests.
