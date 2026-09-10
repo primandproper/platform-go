@@ -152,7 +152,12 @@ type ClaimedDispatch struct {
 // The exceptions are the machinery above. Claim, Backlog and Reap deliberately
 // span every scope, because one worker drains one queue for the whole
 // deployment, and MarkDelivered, RecordFailure, RecordAttempt and Requeue
-// address a dispatch the worker or an operator is already holding.
+// address a dispatch the worker or an operator is already holding. Enqueue is
+// the eighth, and the one that does still write consumer data: it stores
+// Delivery.Scope, because its only caller is Dispatcher.Dispatch, which took the
+// scope as an argument and settled it onto the delivery before resolving an
+// endpoint. The door a consumer goes through is Dispatch, and that one takes the
+// argument.
 type Store interface {
 	// SaveEndpoint creates or replaces an endpoint in scope, through the caller's
 	// transaction, and reconciles its subscriptions against the set it names.
@@ -238,6 +243,16 @@ type Store interface {
 	// Enqueue writes a delivery and one dispatch per endpoint, in the caller's
 	// transaction, so both commit with whatever else that transaction did.
 	// The delivery's scope is stored with it.
+	//
+	// It is the one write here that reads the scope off the entity rather than
+	// taking it as an argument, and it is machinery rather than an exception to
+	// the rule: the only caller is Dispatcher.Dispatch, which has already settled
+	// which tenant the fan-out is for — it took the scope as an argument, refused
+	// a delivery naming a different one with ErrScopeMismatch, and wrote the
+	// answer onto Delivery.Scope before resolving a single endpoint. Repeating
+	// the argument here would be the dispatcher handing itself back a value it
+	// just derived, and would give a hand-written caller two places to disagree
+	// where the door meant for them has one.
 	//
 	// It is off the wire too, and it is the one absence here worth arguing about,
 	// because unlike the other eight it is consumer-facing: fanning an event out
