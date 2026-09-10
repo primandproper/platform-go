@@ -36,9 +36,9 @@ import (
 // between what was written and what is checked, and that round trip is lossy —
 // see canonicalImage for the case that breaks.
 type storedEntry struct {
-	entry       Entry
 	rawChanges  []byte
 	rawMetadata []byte
+	entry       Entry
 }
 
 // entryFromRow turns the single-entry read's row into a storedEntry.
@@ -238,9 +238,10 @@ func utcPtr(t *time.Time) *time.Time {
 // optional renders a selector a caller may leave unset: the empty string is
 // "do not narrow", and every other value is the one the column must hold.
 //
-// The scope is the exception and does not come through here, because there the
-// empty string is a value a row can hold — see [Query.Scope], which is a
-// pointer for exactly that reason.
+// The scope is the exception and does not come through here. Its absence is not
+// an empty string but an absent [Query.Scope], because the identifier the empty
+// string names — tenancy.Global() — is a value a row can hold and a narrowing a
+// caller may ask for.
 func optional(value string) *string {
 	if value == "" {
 		return nil

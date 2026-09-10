@@ -24,6 +24,7 @@ import (
 	"github.com/primandproper/primitives-go/database/dialect"
 	"github.com/primandproper/primitives-go/database/sqlite"
 	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 	"github.com/primandproper/primitives-go/uploads"
 
 	"github.com/shoenig/test/must"
@@ -367,7 +368,7 @@ func (s *stubOperations) cancelledIDs() []string {
 }
 
 // testSubject is the subject most of this suite is about.
-var testSubject = Subject{ID: "user-1", Type: SubjectUser, Scope: "account-1"}
+var testSubject = Subject{ID: "user-1", Type: SubjectUser, Scope: tenancy.Of("account-1")}
 
 // memoryUploader is an in-process UploadManager. It records what was written so
 // a test can assert the artifact's bytes, and implements Delete/Exists so the

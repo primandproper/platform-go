@@ -3,6 +3,8 @@ package audit
 import (
 	"testing"
 	"time"
+
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // The cost Record adds over a plain INSERT is what these measure: canonicalize
@@ -27,7 +29,7 @@ func benchEntry() *Entry {
 		RecordedAt:   time.Date(2026, time.July, 31, 12, 0, 0, 0, time.UTC),
 		ID:           "entry_01HZY0000000000000",
 		Seq:          4096,
-		Scope:        "acct_01HZY0000000000000",
+		Scope:        tenancy.Of("acct_01HZY0000000000000"),
 		ResourceType: "recipe",
 		ResourceID:   "recipe_01HZY0000000000000",
 		EventType:    EventUpdated,

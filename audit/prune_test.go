@@ -191,14 +191,14 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		recorder := newTestRecorder(t, c)
 		reader := newTestReader(t, client)
 
-		first := entryFor("acct_1", "r1")
+		first := entryFor(tenancy.Of("acct_1"), "r1")
 		record(t, client, recorder, first)
 
 		c.advance(2 * time.Hour)
-		record(t, client, recorder, entryFor("acct_1", "r2"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r2"))
 
 		c.advance(2 * time.Hour)
-		record(t, client, recorder, entryFor("acct_1", "r3"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r3"))
 
 		test.EqOp(t, int64(1), mustSweep(t, client, c, PruneTarget{}, 3*time.Hour, 100))
 		test.EqOp(t, 2, countRows(t, client, "audit_log_entries", "1=1"))
@@ -221,7 +221,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		c := newStubClock()
 		recorder := newTestRecorder(t, c)
 
-		record(t, client, recorder, entryFor("acct_1", "r1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r1"))
 		c.advance(time.Minute)
 
 		test.EqOp(t, int64(0), mustSweep(t, client, c, PruneTarget{}, time.Hour, 100))
@@ -245,7 +245,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		reader := newTestReader(t, client)
 
 		for i := range 5 {
-			record(t, client, recorder, entryFor("acct_1", string(rune('a'+i))))
+			record(t, client, recorder, entryFor(tenancy.Of("acct_1"), string(rune('a'+i))))
 		}
 
 		c.advance(4 * time.Hour)
@@ -284,8 +284,8 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		recorder := newTestRecorder(t, c)
 
 		record(t, client, recorder,
-			entryFor("acct_1", "r1"), entryFor("acct_1", "r2"),
-			entryFor("acct_2", "r1"), entryFor("acct_2", "r2"))
+			entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_1"), "r2"),
+			entryFor(tenancy.Of("acct_2"), "r1"), entryFor(tenancy.Of("acct_2"), "r2"))
 		c.advance(4 * time.Hour)
 
 		// Three of the four, so the budget runs out mid-way through the second
@@ -302,7 +302,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		recorder := newTestRecorder(t, c)
 
 		record(t, client, recorder,
-			entryFor("acct_1", "r1"), entryFor("acct_2", "r1"), entryFor("acct_3", "r1"))
+			entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_2"), "r1"), entryFor(tenancy.Of("acct_3"), "r1"))
 		c.advance(4 * time.Hour)
 
 		// A page of one, three scopes: the page is not a cap, so the batch
@@ -322,7 +322,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		// The empty scope is where platform-level events go — including the
 		// retention sweep's own accounting entry. A cursor that could not
 		// express "no cursor yet" would make it the one scope never pruned.
-		record(t, client, recorder, entryFor("", "r1"), entryFor("acct_1", "r1"))
+		record(t, client, recorder, entryFor(tenancy.Global(), "r1"), entryFor(tenancy.Of("acct_1"), "r1"))
 		c.advance(4 * time.Hour)
 
 		test.EqOp(t, int64(2), mustSweep(t, client, c, PruneTarget{}, time.Hour, 100))
@@ -336,7 +336,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		c := newStubClock()
 		recorder := newTestRecorder(t, c)
 
-		record(t, client, recorder, entryFor("acct_1", "r1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r1"))
 		c.advance(time.Hour)
 
 		// At or before, not strictly before — the same reading the backlog
@@ -352,7 +352,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		recorder := newTestRecorder(t, c)
 		reader := newTestReader(t, client)
 
-		first := entryFor("acct_1", "r1")
+		first := entryFor(tenancy.Of("acct_1"), "r1")
 		record(t, client, recorder, first)
 
 		c.advance(4 * time.Hour)
@@ -361,7 +361,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 
 		// The chain row outlives the entries, so the next write continues the
 		// chain rather than restarting at a position already used.
-		next := entryFor("acct_1", "r2")
+		next := entryFor(tenancy.Of("acct_1"), "r2")
 		record(t, client, recorder, next)
 
 		test.EqOp(t, int64(1), next.Seq)
@@ -379,7 +379,7 @@ func TestPruneTarget_Sweep(T *testing.T) {
 		c := newStubClock()
 		recorder := newTestRecorder(t, c)
 
-		record(t, client, recorder, entryFor("acct_1", "r1"), entryFor("acct_1", "r2"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_1"), "r2"))
 		c.advance(4 * time.Hour)
 
 		// Backdating the *second* entry is the clock-skew case: position 1 is
@@ -409,9 +409,9 @@ func TestPruneTarget_Backlog(T *testing.T) {
 		c := newStubClock()
 		recorder := newTestRecorder(t, c)
 
-		record(t, client, recorder, entryFor("acct_1", "r1"), entryFor("acct_2", "r1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_2"), "r1"))
 		c.advance(4 * time.Hour)
-		record(t, client, recorder, entryFor("acct_1", "r2"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r2"))
 
 		test.EqOp(t, int64(2), backlogOf(t, client, c, PruneTarget{}, time.Hour, 100))
 	})
@@ -424,7 +424,7 @@ func TestPruneTarget_Backlog(T *testing.T) {
 		recorder := newTestRecorder(t, c)
 
 		for i := range 5 {
-			record(t, client, recorder, entryFor("acct_1", string(rune('a'+i))))
+			record(t, client, recorder, entryFor(tenancy.Of("acct_1"), string(rune('a'+i))))
 		}
 		c.advance(4 * time.Hour)
 
@@ -454,7 +454,7 @@ func TestPruneTarget_PropagatesFailures(T *testing.T) {
 		c := newStubClock()
 		recorder := newTestRecorder(t, c)
 
-		record(t, client, recorder, entryFor("acct_1", "r1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r1"))
 		c.advance(4 * time.Hour)
 
 		exec(t, client, "DROP TABLE audit_log_entries")
@@ -470,7 +470,7 @@ func TestPruneTarget_PropagatesFailures(T *testing.T) {
 		c := newStubClock()
 		recorder := newTestRecorder(t, c)
 
-		record(t, client, recorder, entryFor("acct_1", "r1"), entryFor("acct_2", "r1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_2"), "r1"))
 		c.advance(4 * time.Hour)
 
 		// Scopes list fine and the deletes would succeed, but the watermark

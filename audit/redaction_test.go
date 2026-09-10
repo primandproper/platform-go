@@ -25,6 +25,7 @@ func TestRedaction(T *testing.T) {
 		entry := &Entry{
 			EventType:    EventUpdated,
 			ResourceType: "user",
+			Scope:        tenancy.Global(),
 			ResourceID:   "user_1",
 			Actor:        Actor{ID: "user_1", Type: ActorUser},
 			Changes: map[string]Change{
@@ -55,6 +56,7 @@ func TestRedaction(T *testing.T) {
 		entry := &Entry{
 			EventType:    EventUpdated,
 			ResourceType: "user",
+			Scope:        tenancy.Global(),
 			Actor:        Actor{ID: "user_1"},
 			Changes:      map[string]Change{"token": {Old: "secret-a", New: "secret-b"}},
 		}
@@ -84,6 +86,7 @@ func TestRedaction(T *testing.T) {
 		entry := &Entry{
 			EventType:    EventCreated,
 			ResourceType: "user",
+			Scope:        tenancy.Global(),
 			Actor:        Actor{ID: "user_1"},
 			Changes:      map[string]Change{"token": {New: "secret"}},
 		}
@@ -106,6 +109,7 @@ func TestRedaction(T *testing.T) {
 		entry := &Entry{
 			EventType:    EventAccessed,
 			ResourceType: "user",
+			Scope:        tenancy.Global(),
 			Actor:        Actor{ID: "user_1"},
 			Metadata:     map[string]string{"authorization": "Bearer abc", "requestID": "req_1"},
 		}
@@ -128,6 +132,7 @@ func TestRedaction(T *testing.T) {
 		entry := &Entry{
 			EventType:    EventAccessed,
 			ResourceType: "user",
+			Scope:        tenancy.Global(),
 			Actor:        Actor{ID: "user_1"},
 			Metadata:     map[string]string{"sessionID": "sess_secret", "requestID": "req_1"},
 		}
@@ -155,6 +160,7 @@ func TestRedaction(T *testing.T) {
 		entry := &Entry{
 			EventType:    EventUpdated,
 			ResourceType: "something_else_entirely",
+			Scope:        tenancy.Global(),
 			Actor:        Actor{ID: "user_1"},
 			Changes:      map[string]Change{"password": {New: "hunter2"}, "name": {New: "x"}},
 		}
@@ -178,6 +184,7 @@ func TestRedaction(T *testing.T) {
 		entry := &Entry{
 			EventType:    EventUpdated,
 			ResourceType: "user",
+			Scope:        tenancy.Global(),
 			Actor:        Actor{ID: "user_1"},
 			Changes:      map[string]Change{"token": {New: "secret"}},
 		}
@@ -196,7 +203,7 @@ func TestRedaction(T *testing.T) {
 			WithRedaction("user", Redaction{Drop: []string{"name"}}))
 		reader := newTestReader(t, client)
 
-		entry := entryFor("acct_1", "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		record(t, client, recorder, entry)
 
 		read, err := reader.Get(t.Context(), entry.ID)
@@ -215,7 +222,7 @@ func TestRedaction(T *testing.T) {
 		record(t, client, recorder, &Entry{
 			EventType:    EventUpdated,
 			ResourceType: "user",
-			Scope:        "acct_1",
+			Scope:        tenancy.Of("acct_1"),
 			Actor:        Actor{ID: "user_1"},
 			Changes: map[string]Change{
 				"passwordHash": {New: "$2a$new"},

@@ -248,7 +248,7 @@ func (s *SQLStore) List(
 	ctx, op := s.o11y.Begin(ctx, observability.WithValues(map[string]any{
 		subjectIDKey:    subject.ID,
 		subjectTypeKey:  string(subject.Type),
-		subjectScopeKey: subject.Scope,
+		subjectScopeKey: subject.Scope.String(),
 	}))
 	defer op.End()
 
@@ -280,17 +280,17 @@ func (s *SQLStore) List(
 // or every scope, ascending or descending.
 //
 // The scope reading is a statement rather than a predicate that changes shape.
-// An empty Subject.Scope means every scope the subject appears in — a subject
-// asking what has been requested in their name means all of it, and a listing
-// that quietly omitted the scoped requests would be the wrong answer to the one
-// question this endpoint exists to answer — and there is no bound value that
-// turns an equality into "any".
+// A Subject that names no scope means every scope the subject appears in — a
+// subject asking what has been requested in their name means all of it, and a
+// listing that quietly omitted the scoped requests would be the wrong answer to
+// the one question this endpoint exists to answer — and there is no bound value
+// that turns an equality into "any".
 func (s *SQLStore) subjectPage(
 	ctx context.Context,
 	subject Subject,
 	filter *filtering.QueryFilter,
 ) ([]pageRow, error) {
-	if subject.Scope == "" {
+	if subject.Scope.Validate() != nil {
 		return s.anyScopePage(ctx, subject, filter)
 	}
 

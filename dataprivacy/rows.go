@@ -8,6 +8,7 @@ import (
 
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // The typed seam between the generated package and this package's own types.
@@ -182,7 +183,7 @@ func request(f *requestFields) (*Request, error) {
 		Subject: Subject{
 			ID:    f.subjectID,
 			Type:  SubjectType(f.subjectType),
-			Scope: f.subjectScope,
+			Scope: subjectScope(f.subjectScope),
 		},
 		CreatedAt:     f.createdAt.UTC(),
 		DueAt:         f.dueAt.UTC(),
@@ -223,7 +224,7 @@ func createRequestParams(req *Request, failures, retained []byte) dataprivacydb.
 		OperationID:    req.OperationID,
 		SubjectID:      req.Subject.ID,
 		SubjectType:    string(req.Subject.Type),
-		SubjectScope:   req.Subject.Scope,
+		SubjectScope:   subjectScopeValue(req.Subject.Scope),
 		DueAt:          req.DueAt.UTC(),
 		ExpiresAt:      instant(req.ExpiresAt),
 		CompletedAt:    utcPtr(req.CompletedAt),
@@ -284,7 +285,7 @@ func listRequestsParams(subject Subject, filter *filtering.QueryFilter) datapriv
 		UpdatedBefore:   w.updatedBefore,
 		IncludeArchived: w.includeArchived,
 		SubjectID:       subject.ID,
-		SubjectScope:    subject.Scope,
+		SubjectScope:    subjectScopeValue(subject.Scope),
 		PageCursor:      w.pageCursor,
 		ResultLimit:     w.resultLimit,
 	}
@@ -426,4 +427,28 @@ func decodeMap(b []byte) (m map[string]string, err error) {
 	}
 
 	return m, nil
+}
+
+// subjectScope reads a stored confinement back: the empty identifier is the
+// request that named no scope, and anything else is the scope it named.
+//
+// It is a conversion here rather than a tenancy.Scope on the generated
+// parameter, which is what dataprivacy/unison.yaml would buy and deliberately
+// does not. The column holds an optional confinement, and tenancy.Scope's own
+// binding refuses the scope that names nobody — right for a column that must
+// hold an owner, wrong for one whose emptiness is an answer. The scope that
+// cannot survive this round trip is tenancy.Global, and Subject.validate
+// refuses it rather than letting it arrive here.
+func subjectScope(stored string) tenancy.Scope {
+	if stored == "" {
+		return tenancy.Scope{}
+	}
+
+	return tenancy.Of(stored)
+}
+
+// subjectScopeValue renders a confinement for the column, mapping the request
+// that named no scope to the empty identifier. It is subjectScope's inverse.
+func subjectScopeValue(scope tenancy.Scope) string {
+	return scope.Owner()
 }

@@ -51,7 +51,7 @@ func Example() {
 		EventType:    audit.EventUpdated,
 		ResourceType: "recipe",
 		ResourceID:   after.ID,
-		Scope:        after.OwnerID,
+		Scope:        tenancy.Of(after.OwnerID),
 		Actor:        audit.Actor{ID: "user_123", Type: audit.ActorUser, IP: "203.0.113.7"},
 	}
 
@@ -133,6 +133,7 @@ func ExampleWithRedaction() {
 		EventType:    audit.EventUpdated,
 		ResourceType: "api_key",
 		ResourceID:   "key_1",
+		Scope:        tenancy.Global(),
 		Actor:        audit.Actor{ID: "user_123", Type: audit.ActorUser},
 		Changes: map[string]audit.Change{
 			"password": {New: "hunter2"},

@@ -9,6 +9,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 const advanceAuditChainHeadPostgreSQL = `UPDATE {{prefix}}audit_log_chains SET
@@ -838,7 +840,7 @@ var (
 	_ = struct {
 		HeadSeq  int64
 		HeadHash string
-		Scope    string
+		Scope    tenancy.Scope
 	}(AdvanceAuditChainHeadParams{})
 	_ = struct {
 		SubjectID string
@@ -854,7 +856,7 @@ var (
 		Count int64
 	}(CountPrunableAuditEntriesRow{})
 	_ = struct {
-		Scope string
+		Scope tenancy.Scope
 	}(CreateAuditChainParams{})
 	_ = struct {
 		Scopes []string
@@ -863,7 +865,7 @@ var (
 		Scopes []string
 	}(DeleteAuditLogEntriesInScopesParams{})
 	_ = struct {
-		Scope string
+		Scope tenancy.Scope
 	}(GetAuditChainParams{})
 	_ = struct {
 		HeadSeq           int64
@@ -877,7 +879,7 @@ var (
 	_ = struct {
 		ID           string
 		Seq          int64
-		Scope        string
+		Scope        tenancy.Scope
 		RecordedAt   time.Time
 		EventType    string
 		ResourceType string
@@ -891,13 +893,13 @@ var (
 		Hash         string
 	}(GetAuditLogEntryRow{})
 	_ = struct {
-		Scope string
+		Scope tenancy.Scope
 		Seq   int64
 	}(GetAuditLogEntryBySeqParams{})
 	_ = struct {
 		ID           string
 		Seq          int64
-		Scope        string
+		Scope        tenancy.Scope
 		RecordedAt   time.Time
 		EventType    string
 		ResourceType string
@@ -912,14 +914,14 @@ var (
 	}(GetAuditLogEntryBySeqRow{})
 	_ = struct {
 		Horizon time.Time
-		Scope   string
+		Scope   tenancy.Scope
 	}(GetAuditPruneBoundsParams{})
 	_ = struct {
 		OldestSeq    *int64
 		FirstKeptSeq *int64
 	}(GetAuditPruneBoundsRow{})
 	_ = struct {
-		Scope    string
+		Scope    tenancy.Scope
 		Boundary int64
 	}(GetAuditPruneTargetParams{})
 	_ = struct {
@@ -929,7 +931,7 @@ var (
 	_ = struct {
 		ID           string
 		Seq          int64
-		Scope        string
+		Scope        tenancy.Scope
 		RecordedAt   time.Time
 		EventType    string
 		ResourceType string
@@ -943,14 +945,14 @@ var (
 		Hash         string
 	}(InsertAuditLogEntryParams{})
 	_ = struct {
-		Scope          string
+		Scope          tenancy.Scope
 		RecordedAfter  *time.Time
 		RecordedBefore *time.Time
 	}(ListAuditChainEntriesParams{})
 	_ = struct {
 		ID           string
 		Seq          int64
-		Scope        string
+		Scope        tenancy.Scope
 		RecordedAt   time.Time
 		EventType    string
 		ResourceType string
@@ -978,7 +980,7 @@ var (
 	_ = struct {
 		ID            string
 		Seq           int64
-		Scope         string
+		Scope         tenancy.Scope
 		RecordedAt    time.Time
 		EventType     string
 		ResourceType  string
@@ -1008,7 +1010,7 @@ var (
 	_ = struct {
 		ID            string
 		Seq           int64
-		Scope         string
+		Scope         tenancy.Scope
 		RecordedAt    time.Time
 		EventType     string
 		ResourceType  string
@@ -1028,7 +1030,7 @@ var (
 		ResultLimit int64
 	}(ListPrunableAuditScopesParams{})
 	_ = struct {
-		Scope string
+		Scope tenancy.Scope
 	}(ListPrunableAuditScopesRow{})
 	_ = struct {
 		Horizon     time.Time
@@ -1036,10 +1038,10 @@ var (
 		ResultLimit int64
 	}(ListPrunableAuditScopesAfterParams{})
 	_ = struct {
-		Scope string
+		Scope tenancy.Scope
 	}(ListPrunableAuditScopesAfterRow{})
 	_ = struct {
-		Scope string
+		Scope tenancy.Scope
 	}(LockAuditChainParams{})
 	_ = struct {
 		HeadSeq           int64
@@ -1048,13 +1050,13 @@ var (
 		PrunedThroughHash string
 	}(LockAuditChainRow{})
 	_ = struct {
-		Scope       string
+		Scope       tenancy.Scope
 		ThroughSeq  int64
 		ResultLimit int64
 	}(PruneAuditLogEntriesParams{})
 	_ = struct {
 		PrunedThroughSeq  int64
 		PrunedThroughHash string
-		Scope             string
+		Scope             tenancy.Scope
 	}(RecordAuditChainPruneParams{})
 )

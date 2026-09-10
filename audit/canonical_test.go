@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/primitives-go/tenancy"
+
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
@@ -47,7 +49,7 @@ func TestCanonicalImage(T *testing.T) {
 			"seq":          func(e *Entry) { e.Seq++ },
 			"id":           func(e *Entry) { e.ID = "other" },
 			"recordedAt":   func(e *Entry) { e.RecordedAt = e.RecordedAt.Add(time.Microsecond) },
-			"scope":        func(e *Entry) { e.Scope = "other" },
+			"scope":        func(e *Entry) { e.Scope = tenancy.Of("other") },
 			"resourceType": func(e *Entry) { e.ResourceType = "other" },
 			"resourceID":   func(e *Entry) { e.ResourceID = "other" },
 			"eventType":    func(e *Entry) { e.EventType = EventDeleted },
@@ -158,13 +160,52 @@ func TestHashValue(T *testing.T) {
 	})
 }
 
+// TestCanonicalImageIsUnchangedByTheScopeType pins the one byte sequence in
+// this file that a type change could have moved without any test noticing.
+//
+// The scope contributes to the preimage as the identifier it names, so an entry
+// whose scope was written as a string and one whose scope is a tenancy.Scope
+// over the same identifier digest identically — which is what keeps every chain
+// already in a database verifiable across the retype. The constant is the digest
+// that version of the code produced.
+func TestCanonicalImageIsUnchangedByTheScopeType(T *testing.T) {
+	T.Parallel()
+
+	T.Run("digests a fixed entry to the recorded value", func(t *testing.T) {
+		t.Parallel()
+
+		hashed, err := chainHash("", canonicalImage(sampleEntry(), nil, nil))
+		must.NoError(t, err)
+
+		test.EqOp(t, goldenSampleDigest, hashed)
+	})
+
+	T.Run("reads the global scope as the empty identifier", func(t *testing.T) {
+		t.Parallel()
+
+		global := sampleEntry()
+		global.Scope = tenancy.Global()
+
+		unset := sampleEntry()
+		unset.Scope = tenancy.Scope{}
+
+		// The two render the same bytes, which is exactly why Record refuses
+		// the second rather than leaving the distinction to the digest.
+		test.Eq(t, canonicalImage(global, nil, nil), canonicalImage(unset, nil, nil))
+	})
+}
+
+// goldenSampleDigest is sampleEntry's genesis hash. It is written down rather
+// than computed so that a change to the framing has to be made here too.
+const goldenSampleDigest = "c6058a9b21db47bb975161c5de8ac8d2665c1f170c9ed3e9e6787bfbe5085785"
+
 // sampleEntry is a fully populated entry for the framing tests.
 func sampleEntry() *Entry {
 	return &Entry{
 		RecordedAt:   time.Date(2026, time.July, 31, 12, 0, 0, 0, time.UTC),
 		ID:           "entry_1",
 		Seq:          3,
-		Scope:        "acct_1",
+		Scope:        tenancy.Of("acct_1"),
 		ResourceType: "recipe",
 		ResourceID:   "recipe_1",
 		EventType:    EventUpdated,

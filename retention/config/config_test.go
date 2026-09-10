@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/sqlite"
 	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -45,6 +46,7 @@ func newTestClient(t *testing.T) database.Client {
 func testPolicies() []retention.Policy {
 	return []retention.Policy{{
 		Name:   "widgets",
+		Scope:  tenancy.Global(),
 		Target: retention.Table{Name: "widgets", Column: "created_at"},
 		Age:    24 * time.Hour,
 	}}

@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/primitives-go/tenancy"
+
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
@@ -294,6 +296,7 @@ func TestDiff_RoundTripsThroughAnEntry(T *testing.T) {
 	entry := &Entry{
 		EventType:    EventUpdated,
 		ResourceType: "audited",
+		Scope:        tenancy.Global(),
 		ResourceID:   "a1",
 		Actor:        Actor{ID: "user_1", Type: ActorUser},
 		Changes:      changes,

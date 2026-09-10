@@ -8,6 +8,7 @@ import (
 
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -370,7 +371,7 @@ func TestCollectorFor(T *testing.T) {
 	T.Run("the subject reaches the read", func(t *testing.T) {
 		t.Parallel()
 
-		subject := Subject{ID: "subject", Scope: "account", Type: SubjectUser}
+		subject := Subject{ID: "subject", Scope: tenancy.Of("account"), Type: SubjectUser}
 
 		var seen []Subject
 

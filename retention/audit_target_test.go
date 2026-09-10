@@ -25,7 +25,7 @@ import (
 // The narrower behavior of the target itself lives in package audit.
 
 // auditEntry builds a minimally valid audit entry for a scope.
-func auditEntry(scope, resourceID string) *audit.Entry {
+func auditEntry(scope tenancy.Scope, resourceID string) *audit.Entry {
 	return &audit.Entry{
 		EventType:    audit.EventUpdated,
 		ResourceType: "recipe",
@@ -74,6 +74,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 
 		policy := Policy{
 			Name:   audit.DefaultRetentionPolicyName,
+			Scope:  tenancy.Global(),
 			Target: audit.PruneTarget{},
 			Age:    24 * time.Hour,
 			Basis:  audit.DefaultRetentionBasis,
@@ -95,10 +96,10 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 		sweeper, c, recorder, client := newAuditSweeper(t, nil)
 
 		recordAuditEntries(t, client, recorder,
-			auditEntry("acct_1", "r1"), auditEntry("acct_1", "r2"), auditEntry("acct_2", "r1"))
+			auditEntry(tenancy.Of("acct_1"), "r1"), auditEntry(tenancy.Of("acct_1"), "r2"), auditEntry(tenancy.Of("acct_2"), "r1"))
 
 		c.advance(48 * time.Hour)
-		survivor := auditEntry("acct_1", "r3")
+		survivor := auditEntry(tenancy.Of("acct_1"), "r3")
 		recordAuditEntries(t, client, recorder, survivor)
 
 		result, err := sweeper.Sweep(t.Context())
@@ -126,7 +127,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 
 		sweeper, c, recorder, client := newAuditSweeper(t, nil)
 
-		recordAuditEntries(t, client, recorder, auditEntry("acct_1", "r1"), auditEntry("acct_1", "r2"))
+		recordAuditEntries(t, client, recorder, auditEntry(tenancy.Of("acct_1"), "r1"), auditEntry(tenancy.Of("acct_1"), "r2"))
 		c.advance(48 * time.Hour)
 
 		_, err := sweeper.Sweep(t.Context())
@@ -165,7 +166,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 		})
 
 		recordAuditEntries(t, client, recorder,
-			auditEntry("acct_1", "r1"), auditEntry("acct_1", "r2"), auditEntry("acct_1", "r3"))
+			auditEntry(tenancy.Of("acct_1"), "r1"), auditEntry(tenancy.Of("acct_1"), "r2"), auditEntry(tenancy.Of("acct_1"), "r3"))
 		c.advance(48 * time.Hour)
 
 		result, err := sweeper.Sweep(t.Context())
@@ -189,6 +190,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 		// start rather than a nightly failure into a log nobody reads.
 		_, err := NewSweeper(t.Context(), &SweeperConfig{}, newTestClient(t), []Policy{{
 			Name:   audit.DefaultRetentionPolicyName,
+			Scope:  tenancy.Global(),
 			Target: audit.PruneTarget{TablePrefix: "audit-"},
 			Age:    audit.DefaultRetention,
 		}})

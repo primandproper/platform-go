@@ -120,7 +120,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		recorder := env.recorder(t, c, prefix)
 		reader := env.reader(t, prefix)
 
-		first, second := entryFor("acct_1", "r1"), entryFor("acct_1", "r2")
+		first, second := entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_1"), "r2")
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return recorder.Record(t.Context(), q, first, second)
@@ -140,7 +140,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		recorder := env.recorder(t, c, prefix)
 		reader := env.reader(t, prefix)
 
-		entry := entryFor("acct_1", "r1")
+		entry := entryFor(tenancy.Of("acct_1"), "r1")
 		entry.RecordedAt = time.Date(2026, time.July, 31, 12, 0, 0, 123456789, time.UTC)
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
@@ -169,7 +169,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		boom := fmt.Errorf("caller work failed")
 
 		err := env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			if recordErr := recorder.Record(t.Context(), q, entryFor("acct_1", "r1")); recordErr != nil {
+			if recordErr := recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "r1")); recordErr != nil {
 				return recordErr
 			}
 
@@ -188,7 +188,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		recorder := env.recorder(t, c, prefix)
 		reader := env.reader(t, prefix)
 
-		first, second := entryFor("acct_1", "r1"), entryFor("acct_1", "r2")
+		first, second := entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_1"), "r2")
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return recorder.Record(t.Context(), q, first, second)
@@ -213,7 +213,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		prefix := env.newPrefix(t)
 		recorder := env.recorder(t, c, prefix)
 
-		entry := entryFor("acct_1", "r1")
+		entry := entryFor(tenancy.Of("acct_1"), "r1")
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return recorder.Record(t.Context(), q, entry)
@@ -243,13 +243,13 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		reader := env.reader(t, prefix)
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor("acct_1", "r1"))
+			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "r1"))
 		}))
 
 		c.advance(2 * time.Hour)
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor("acct_1", "r2"))
+			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "r2"))
 		}))
 
 		// Exercises the CASE-expression prune bounds and the keyset scope page
@@ -275,20 +275,20 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		// The subject as the thing acted on rather than the actor, which is the
 		// second arm of the count's disjunction, and one entry that names them
 		// in neither column.
-		actedOn := entryFor("acct_9", "user_1")
+		actedOn := entryFor(tenancy.Of("acct_9"), "user_1")
 		actedOn.Actor = Actor{ID: "user_2", Type: ActorUser}
 
-		unrelated := entryFor("acct_9", "r4")
+		unrelated := entryFor(tenancy.Of("acct_9"), "r4")
 		unrelated.Actor = Actor{ID: "user_2", Type: ActorUser}
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor("user_1", "r1"), entryFor("user_1", "r2"))
+			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("user_1"), "r1"), entryFor(tenancy.Of("user_1"), "r2"))
 		}))
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor("user_1_devices", "d1"))
+			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("user_1_devices"), "d1"))
 		}))
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor("acct_9", "r3"), actedOn, unrelated)
+			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_9"), "r3"), actedOn, unrelated)
 		}))
 
 		// Two scopes in one statement. The bound set is `= ANY($1::text[])` on
@@ -298,7 +298,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			var err error
-			if deleted, err = erasure.DeleteScopes(t.Context(), q, []string{"user_1", "user_1_devices"}); err != nil {
+			if deleted, err = erasure.DeleteScopes(t.Context(), q, []tenancy.Scope{tenancy.Of("user_1"), tenancy.Of("user_1_devices")}); err != nil {
 				return err
 			}
 
@@ -333,7 +333,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		// a head that is no longer there, and the verification below would
 		// report the hole as tampering.
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor("user_1", "r5"))
+			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("user_1"), "r5"))
 		}))
 
 		result, err = reader.Verify(t.Context(), tenancy.Of("user_1"), time.Time{}, time.Time{})
@@ -359,7 +359,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		for i := range writers {
 			go func() {
 				errs <- env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-					return recorder.Record(t.Context(), q, entryFor("acct_1", fmt.Sprintf("r%d", i)))
+					return recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), fmt.Sprintf("r%d", i)))
 				})
 			}()
 		}
@@ -390,7 +390,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		for range writers {
 			go func() {
 				errs <- env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-					return recorder.Record(t.Context(), q, entryFor("brand_new_scope", "r"))
+					return recorder.Record(t.Context(), q, entryFor(tenancy.Of("brand_new_scope"), "r"))
 				})
 			}()
 		}
@@ -410,7 +410,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		applyAppendOnly(t, env.client, env.dialect, prefix)
 
 		recorder := env.recorder(t, c, prefix)
-		entry := entryFor("acct_1", "r1")
+		entry := entryFor(tenancy.Of("acct_1"), "r1")
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return recorder.Record(t.Context(), q, entry)
@@ -434,13 +434,13 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return recorder.Record(t.Context(), q,
-				entryFor("acct_1", "r1"),
-				entryFor("acct_1", "r2"),
-				entryFor("acct_2", "r3"),
+				entryFor(tenancy.Of("acct_1"), "r1"),
+				entryFor(tenancy.Of("acct_1"), "r2"),
+				entryFor(tenancy.Of("acct_2"), "r3"),
 			)
 		}))
 
-		scope := "acct_1"
+		scope := tenancy.Of("acct_1")
 
 		listed, err := reader.List(t.Context(), &Query{Scope: &scope}, nil)
 		must.NoError(t, err)
@@ -529,7 +529,7 @@ func TestAudit_MigratorIntegration_Containers(T *testing.T) {
 		must.NoError(t, err)
 
 		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor("acct_1", "r1"))
+			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "r1"))
 		}))
 
 		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})

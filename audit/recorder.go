@@ -18,6 +18,7 @@ import (
 	"github.com/primandproper/primitives-go/observability/logging"
 	"github.com/primandproper/primitives-go/observability/metrics"
 	"github.com/primandproper/primitives-go/observability/tracing"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Recorder writes entries into the audit log.
@@ -189,7 +190,7 @@ func (r *ChainRecorder) Record(ctx context.Context, q database.Tx, entries ...*E
 		if err := r.recordScope(ctx, q, scope, byScope[scope], now); err != nil {
 			r.recordErrCounter.Add(ctx, 1)
 
-			return op.Error(err, "recording audit entries for scope %q", scope)
+			return op.Error(err, "recording audit entries for scope %s", scope)
 		}
 	}
 
@@ -219,7 +220,7 @@ func (r *ChainRecorder) Record(ctx context.Context, q database.Tx, entries ...*E
 func (r *ChainRecorder) recordScope(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
-	scope string,
+	scope tenancy.Scope,
 	entries []*Entry,
 	now time.Time,
 ) error {
@@ -324,7 +325,7 @@ type chainState struct {
 func (r *ChainRecorder) lockChainHead(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
-	scope string,
+	scope tenancy.Scope,
 ) (*chainState, error) {
 	state, err := r.readChainHead(ctx, q, scope)
 	if err == nil {
@@ -339,7 +340,7 @@ func (r *ChainRecorder) lockChainHead(
 	// commit and then locks the row that now exists, rather than failing on the
 	// primary key.
 	if _, err = r.q.CreateAuditChain(ctx, q, auditdb.CreateAuditChainParams{Scope: scope}); err != nil {
-		return nil, platformerrors.Wrapf(err, "creating audit chain for scope %q", scope)
+		return nil, platformerrors.Wrapf(err, "creating audit chain for scope %s", scope)
 	}
 
 	// Re-read rather than assume the genesis values: another transaction may
@@ -359,14 +360,14 @@ func (r *ChainRecorder) lockChainHead(
 // clause is statement text on all three servers — so the locked read and the
 // unlocked one the reader uses are two named statements in the corpus, and this
 // is the one that holds the row.
-func (r *ChainRecorder) readChainHead(ctx context.Context, q database.SQLQueryExecutor, scope string) (*chainState, error) {
+func (r *ChainRecorder) readChainHead(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope) (*chainState, error) {
 	row, err := r.q.LockAuditChain(ctx, q, auditdb.LockAuditChainParams{Scope: scope})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
 
-		return nil, platformerrors.Wrapf(err, "reading audit chain head for scope %q", scope)
+		return nil, platformerrors.Wrapf(err, "reading audit chain head for scope %s", scope)
 	}
 
 	return &chainState{headHash: row.HeadHash, headSeq: row.HeadSeq}, nil
@@ -375,8 +376,12 @@ func (r *ChainRecorder) readChainHead(ctx context.Context, q database.SQLQueryEx
 // groupByScope buckets entries by scope, returning the scopes in the order they
 // were first seen so that Record's behavior does not depend on map iteration.
 // Entries have already been validated, so none is nil.
-func groupByScope(entries []*Entry) (scopes []string, byScope map[string][]*Entry) {
-	byScope = make(map[string][]*Entry, 1)
+//
+// A tenancy.Scope is a comparable struct, so it keys the map directly rather
+// than through the identifier it names — which is what keeps the bucketing on
+// the value the chain is partitioned by.
+func groupByScope(entries []*Entry) (scopes []tenancy.Scope, byScope map[tenancy.Scope][]*Entry) {
+	byScope = make(map[tenancy.Scope][]*Entry, 1)
 
 	for _, entry := range entries {
 		if _, seen := byScope[entry.Scope]; !seen {

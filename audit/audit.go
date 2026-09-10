@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/primitives-go/database/ddl"
 	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.
@@ -215,23 +216,11 @@ type Entry struct {
 	// dropped in there.
 	Metadata map[string]string `json:"metadata,omitempty"`
 
-	// ID identifies the entry. The Recorder assigns one when empty.
-	ID string `json:"id"`
-
 	// Actor is who did it. Actor.ID is required.
 	Actor Actor `json:"actor"`
 
-	// Scope is the tenancy boundary the entry belongs to — an account, an
-	// organization, a workspace. It is one opaque string rather than the
-	// two-level user/account pair the prior art hardcoded, because tenancy
-	// depth is an application's decision and a two-level model cannot express
-	// one level or three.
-	//
-	// It is also the hash chain's partition: entries chain per scope, so two
-	// tenants writing concurrently do not serialize against each other. Empty
-	// is a scope like any other, and is the right one for platform-level events
-	// that belong to no tenant.
-	Scope string `json:"scope,omitempty"`
+	// ID identifies the entry. The Recorder assigns one when empty.
+	ID string `json:"id"`
 
 	// ResourceType names the kind of thing acted on. Required.
 	ResourceType string `json:"resourceType"`
@@ -250,6 +239,22 @@ type Entry struct {
 	// hex-encoded. Assigned by Record. See the package documentation for what
 	// it does and does not prove.
 	Hash string `json:"hash"`
+
+	// Scope is the tenancy boundary the entry belongs to — an account, an
+	// organization, a workspace. It is a tenancy.Scope rather than the
+	// identifier it names, so an entry that lost its scope fails to record
+	// rather than landing in the global chain.
+	//
+	// It is also the hash chain's partition: entries chain per scope, so two
+	// tenants writing concurrently do not serialize against each other. The two
+	// readings are one value, because a tenancy.Scope is one opaque owner
+	// identifier and a chain key is the same — see the package documentation.
+	//
+	// Platform-level events that belong to no tenant name tenancy.Global(),
+	// which is a scope like any other and stored as the empty identifier. The
+	// zero Scope is not that: it is the absence of a decision, and Record
+	// refuses it.
+	Scope tenancy.Scope `json:"scope"`
 
 	// Seq is the entry's position in its scope's chain, starting at zero.
 	// Assigned by Record, and unique per scope: the chain cannot fork, because
@@ -270,6 +275,14 @@ func (e *Entry) validate() error {
 	case e.Actor.ID == "":
 		return ErrEmptyActor
 	default:
+		// The scope is checked through tenancy rather than against a sentinel of
+		// this package's own, so that "the caller forgot the scope" is one error
+		// with one message wherever it is caught. An entry meant for no tenant
+		// names tenancy.Global() and passes here.
+		if err := e.Scope.Validate(); err != nil {
+			return platformerrors.Wrapf(err, "audit entry %q for resource %q", e.ID, e.ResourceType)
+		}
+
 		return nil
 	}
 }

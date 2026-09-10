@@ -7,13 +7,15 @@ package auditdb
 
 import (
 	"time"
+
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // AdvanceAuditChainHeadParams are the arguments to AdvanceAuditChainHead.
 type AdvanceAuditChainHeadParams struct {
 	HeadSeq  int64
 	HeadHash string
-	Scope    string
+	Scope    tenancy.Scope
 }
 
 // CountAuditLogEntriesForSubjectParams are the arguments to CountAuditLogEntriesForSubject.
@@ -39,7 +41,7 @@ type CountPrunableAuditEntriesRow struct {
 
 // CreateAuditChainParams are the arguments to CreateAuditChain.
 type CreateAuditChainParams struct {
-	Scope string
+	Scope tenancy.Scope
 }
 
 // DeleteAuditChainsInScopesParams are the arguments to DeleteAuditChainsInScopes.
@@ -54,7 +56,7 @@ type DeleteAuditLogEntriesInScopesParams struct {
 
 // GetAuditChainParams are the arguments to GetAuditChain.
 type GetAuditChainParams struct {
-	Scope string
+	Scope tenancy.Scope
 }
 
 // GetAuditChainRow is one row of GetAuditChain's result.
@@ -74,7 +76,7 @@ type GetAuditLogEntryParams struct {
 type GetAuditLogEntryRow struct {
 	ID           string
 	Seq          int64
-	Scope        string
+	Scope        tenancy.Scope
 	RecordedAt   time.Time
 	EventType    string
 	ResourceType string
@@ -90,7 +92,7 @@ type GetAuditLogEntryRow struct {
 
 // GetAuditLogEntryBySeqParams are the arguments to GetAuditLogEntryBySeq.
 type GetAuditLogEntryBySeqParams struct {
-	Scope string
+	Scope tenancy.Scope
 	Seq   int64
 }
 
@@ -98,7 +100,7 @@ type GetAuditLogEntryBySeqParams struct {
 type GetAuditLogEntryBySeqRow struct {
 	ID           string
 	Seq          int64
-	Scope        string
+	Scope        tenancy.Scope
 	RecordedAt   time.Time
 	EventType    string
 	ResourceType string
@@ -115,7 +117,7 @@ type GetAuditLogEntryBySeqRow struct {
 // GetAuditPruneBoundsParams are the arguments to GetAuditPruneBounds.
 type GetAuditPruneBoundsParams struct {
 	Horizon time.Time
-	Scope   string
+	Scope   tenancy.Scope
 }
 
 // GetAuditPruneBoundsRow is one row of GetAuditPruneBounds's result.
@@ -126,7 +128,7 @@ type GetAuditPruneBoundsRow struct {
 
 // GetAuditPruneTargetParams are the arguments to GetAuditPruneTarget.
 type GetAuditPruneTargetParams struct {
-	Scope    string
+	Scope    tenancy.Scope
 	Boundary int64
 }
 
@@ -140,7 +142,7 @@ type GetAuditPruneTargetRow struct {
 type InsertAuditLogEntryParams struct {
 	ID           string
 	Seq          int64
-	Scope        string
+	Scope        tenancy.Scope
 	RecordedAt   time.Time
 	EventType    string
 	ResourceType string
@@ -156,7 +158,7 @@ type InsertAuditLogEntryParams struct {
 
 // ListAuditChainEntriesParams are the arguments to ListAuditChainEntries.
 type ListAuditChainEntriesParams struct {
-	Scope          string
+	Scope          tenancy.Scope
 	RecordedAfter  *time.Time
 	RecordedBefore *time.Time
 }
@@ -165,7 +167,7 @@ type ListAuditChainEntriesParams struct {
 type ListAuditChainEntriesRow struct {
 	ID           string
 	Seq          int64
-	Scope        string
+	Scope        tenancy.Scope
 	RecordedAt   time.Time
 	EventType    string
 	ResourceType string
@@ -197,7 +199,7 @@ type ListAuditLogEntriesParams struct {
 type ListAuditLogEntriesRow struct {
 	ID            string
 	Seq           int64
-	Scope         string
+	Scope         tenancy.Scope
 	RecordedAt    time.Time
 	EventType     string
 	ResourceType  string
@@ -231,7 +233,7 @@ type ListAuditLogEntriesDescendingParams struct {
 type ListAuditLogEntriesDescendingRow struct {
 	ID            string
 	Seq           int64
-	Scope         string
+	Scope         tenancy.Scope
 	RecordedAt    time.Time
 	EventType     string
 	ResourceType  string
@@ -255,7 +257,7 @@ type ListPrunableAuditScopesParams struct {
 
 // ListPrunableAuditScopesRow is one row of ListPrunableAuditScopes's result.
 type ListPrunableAuditScopesRow struct {
-	Scope string
+	Scope tenancy.Scope
 }
 
 // ListPrunableAuditScopesAfterParams are the arguments to ListPrunableAuditScopesAfter.
@@ -267,12 +269,12 @@ type ListPrunableAuditScopesAfterParams struct {
 
 // ListPrunableAuditScopesAfterRow is one row of ListPrunableAuditScopesAfter's result.
 type ListPrunableAuditScopesAfterRow struct {
-	Scope string
+	Scope tenancy.Scope
 }
 
 // LockAuditChainParams are the arguments to LockAuditChain.
 type LockAuditChainParams struct {
-	Scope string
+	Scope tenancy.Scope
 }
 
 // LockAuditChainRow is one row of LockAuditChain's result.
@@ -285,7 +287,7 @@ type LockAuditChainRow struct {
 
 // PruneAuditLogEntriesParams are the arguments to PruneAuditLogEntries.
 type PruneAuditLogEntriesParams struct {
-	Scope       string
+	Scope       tenancy.Scope
 	ThroughSeq  int64
 	ResultLimit int64
 }
@@ -294,5 +296,5 @@ type PruneAuditLogEntriesParams struct {
 type RecordAuditChainPruneParams struct {
 	PrunedThroughSeq  int64
 	PrunedThroughHash string
-	Scope             string
+	Scope             tenancy.Scope
 }

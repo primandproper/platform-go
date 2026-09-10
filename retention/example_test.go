@@ -6,6 +6,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/retention"
+
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // A policy set is data: what to delete from, how old it has to be, and why.
@@ -18,12 +20,14 @@ func ExamplePolicy() {
 	policies := []retention.Policy{
 		{
 			Name:   "expired-oauth2-tokens",
+			Scope:  tenancy.Global(),
 			Target: retention.Table{Name: "oauth2_client_tokens", Column: "expires_at"},
 			Age:    24 * time.Hour,
 			Basis:  "an expired access token cannot authorize anything; kept a day for support",
 		},
 		{
 			Name:      "delivered-webhook-attempts",
+			Scope:     tenancy.Global(),
 			Target:    retention.Table{Name: "webhook_delivery_attempts", Column: "created_at"},
 			Age:       30 * 24 * time.Hour,
 			Basis:     "delivery history is operational data, useful for a month",
@@ -31,6 +35,7 @@ func ExamplePolicy() {
 		},
 		{
 			Name:   "request-captures",
+			Scope:  tenancy.Global(),
 			Target: retention.Table{Name: "request_captures", Column: "created_at"},
 			Age:    7 * 24 * time.Hour,
 			Basis:  "captures hold request bodies and may contain personal data",
@@ -61,12 +66,14 @@ func ExampleTarget() {
 	policies := []retention.Policy{
 		{
 			Name:   "expired-oauth2-tokens",
+			Scope:  tenancy.Global(),
 			Target: retention.Table{Name: "oauth2_client_tokens", Column: "expires_at"},
 			Age:    24 * time.Hour,
 			Basis:  "an expired access token cannot authorize anything; kept a day for support",
 		},
 		{
 			Name:   audit.DefaultRetentionPolicyName,
+			Scope:  tenancy.Global(),
 			Target: audit.PruneTarget{},
 			Age:    audit.DefaultRetention,
 			Basis:  audit.DefaultRetentionBasis,
@@ -91,12 +98,14 @@ func ExampleTarget() {
 func ExampleTable() {
 	immediate := retention.Policy{
 		Name:   "expired-sessions",
+		Scope:  tenancy.Global(),
 		Target: retention.Table{Name: "sessions", Column: "expires_at"},
 	}
 
 	// A retention window, measured from when the row was written.
 	window := retention.Policy{
 		Name:   "old-sessions",
+		Scope:  tenancy.Global(),
 		Target: retention.Table{Name: "sessions", Column: "created_at"},
 		Age:    90 * 24 * time.Hour,
 	}

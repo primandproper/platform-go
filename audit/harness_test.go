@@ -14,6 +14,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
 	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test/must"
 )
@@ -154,7 +155,7 @@ func record(t *testing.T, client database.Client, r Recorder, entries ...*Entry)
 }
 
 // entryFor builds a minimally valid entry for a scope.
-func entryFor(scope, resourceID string) *Entry {
+func entryFor(scope tenancy.Scope, resourceID string) *Entry {
 	return &Entry{
 		EventType:    EventUpdated,
 		ResourceType: "recipe",

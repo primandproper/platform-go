@@ -932,11 +932,11 @@ func (f *Fulfiller) shred(ctx context.Context, req *Request) (map[string]string,
 	ctx, op := f.o11y.Begin(ctx,
 		observability.WithValue(requestIDKey, req.ID),
 		observability.WithValue(subjectIDKey, req.Subject.ID),
-		observability.WithValue(subjectScopeKey, req.Subject.Scope),
+		observability.WithValue(subjectScopeKey, req.Subject.Scope.String()),
 	)
 	defer op.End()
 
-	if req.Subject.Scope != "" {
+	if req.Subject.Scope.Validate() == nil {
 		op.Set(shreddedKey, false)
 
 		retained[shredRetentionKey] = "encryption keys retained: this request is confined to one scope, " +
@@ -1153,7 +1153,7 @@ func (f *Fulfiller) record(
 		ResourceType: auditResourceType,
 		ResourceID:   req.ID,
 		Actor:        f.actor(ctx),
-		Scope:        req.Subject.Scope,
+		Scope:        auditScope(req.Subject.Scope),
 		Metadata:     fields,
 		RecordedAt:   f.clock.Now().UTC(),
 	})

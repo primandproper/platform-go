@@ -7,6 +7,7 @@ import (
 
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -35,7 +36,7 @@ func TestAppendOnlyTriggers(T *testing.T) {
 		applyAppendOnly(t, client, dialect.SQLite, DefaultTablePrefix)
 
 		recorder := newTestRecorder(t, newStubClock())
-		entry := entryFor("acct_1", "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		record(t, client, recorder, entry)
 
 		// Without the trigger this is the edit the chain would merely reveal
@@ -59,8 +60,8 @@ func TestAppendOnlyTriggers(T *testing.T) {
 		// Record advances the chain row with an UPDATE, so the trigger has to
 		// cover the entries table alone — a blanket ban would have broken
 		// recording itself.
-		record(t, client, recorder, entryFor("acct_1", "r1"))
-		record(t, client, recorder, entryFor("acct_1", "r2"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r2"))
 
 		test.EqOp(t, 2, countRows(t, client, "audit_log_entries", "1=1"))
 	})
@@ -72,7 +73,7 @@ func TestAppendOnlyTriggers(T *testing.T) {
 		applyAppendOnly(t, client, dialect.SQLite, DefaultTablePrefix)
 
 		recorder := newTestRecorder(t, newStubClock())
-		entry := entryFor("acct_1", "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		record(t, client, recorder, entry)
 
 		// Deliberately permitted: no trigger can tell the retention sweep apart

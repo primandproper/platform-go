@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.
@@ -132,10 +133,16 @@ type Policy struct {
 	// policy.
 	Basis string
 
-	// Scope is the audit scope the sweep's entry is recorded in. Empty is a
-	// scope like any other, and is the right one for a fleet-wide sweep that
-	// belongs to no tenant.
-	Scope string
+	// Scope is the audit scope the sweep's entry is recorded in. Required, and
+	// tenancy.Global is what a fleet-wide sweep names: it is a scope like any
+	// other, belonging to no tenant, and it is what the audit chain for
+	// platform-level events is keyed by.
+	//
+	// It is required because the alternative is a policy that validates, is
+	// registered, sweeps, and then fails at the moment it tries to account for
+	// what it deleted. A scope the policy forgot is worth reporting where the
+	// policy is declared.
+	Scope tenancy.Scope
 
 	// Age is how long a row is kept past the instant in the column the Target
 	// measures from.
@@ -188,6 +195,13 @@ func (p *Policy) validate(d dialect.Dialect) error {
 		return platformerrors.Wrapf(ErrInvalidPolicy, "policy %q has a negative batch size", p.Name)
 	case p.MaxBatches < 0:
 		return platformerrors.Wrapf(ErrInvalidPolicy, "policy %q has a negative batch cap", p.Name)
+	}
+
+	// Checked through tenancy rather than against this package's own sentinel,
+	// so that "the caller forgot the scope" reads the same here as everywhere
+	// else it is caught. A fleet-wide policy names tenancy.Global and passes.
+	if err := p.Scope.Validate(); err != nil {
+		return platformerrors.Wrapf(err, "retention policy %q", p.Name)
 	}
 
 	if err := p.Target.Validate(d); err != nil {

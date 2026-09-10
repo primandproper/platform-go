@@ -14,6 +14,7 @@ import (
 	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
 	metricsnoop "github.com/primandproper/primitives-go/observability/metrics/noop"
 	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -212,9 +213,10 @@ func TestNewRetentionPolicy(T *testing.T) {
 		test.EqOp(t, audit.DefaultRetentionBasis, policy.Basis)
 		test.EqOp(t, "audit_log_entries", policy.Target.Describe())
 
-		// Empty: a fleet-wide sweep belongs to no tenant, and the empty scope
-		// is the chain platform-level events are recorded in.
-		test.EqOp(t, "", policy.Scope)
+		// Global, named rather than omitted: a fleet-wide sweep belongs to no
+		// tenant, and the global scope is the chain platform-level events are
+		// recorded in. An unset scope would be a policy retention refuses.
+		test.EqOp(t, tenancy.Global(), policy.Scope)
 	})
 
 	T.Run("takes a configured window and basis", func(t *testing.T) {

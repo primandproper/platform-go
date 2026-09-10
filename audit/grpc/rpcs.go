@@ -44,7 +44,7 @@ func (s *Server) GetEntry(
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "reading audit entry %q", request.GetEntryId())
 	}
 
-	if entry == nil || entry.Scope != req.scope.Owner() {
+	if entry == nil || entry.Scope != req.scope {
 		err = grpcerrors.PrepareAndLogGRPCStatus(
 			platformerrors.Wrapf(audit.ErrEntryNotFound, "audit entry %q", request.GetEntryId()),
 			req.op.Logger(), req.op.Span(), codes.NotFound, "reading audit entry %q", request.GetEntryId())
@@ -84,7 +84,7 @@ func (s *Server) ListEntries(
 	}
 
 	query := queryFromProto(request.GetQuery())
-	query.Scope = pointer.To(req.scope.Owner())
+	query.Scope = pointer.To(req.scope)
 
 	page, err := s.reader.List(ctx, query, filter)
 	if err != nil {

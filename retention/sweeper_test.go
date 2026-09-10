@@ -12,6 +12,7 @@ import (
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/filtering"
 	"github.com/primandproper/primitives-go/jobs"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -78,7 +79,7 @@ func TestSweeperConfig(T *testing.T) {
 func TestNewSweeper(T *testing.T) {
 	T.Parallel()
 
-	policies := []Policy{{Name: "widgets", Target: Table{Name: widgetsTable, Column: "created_at"}, Age: time.Hour}}
+	policies := []Policy{{Name: "widgets", Scope: tenancy.Global(), Target: Table{Name: widgetsTable, Column: "created_at"}, Age: time.Hour}}
 
 	T.Run("builds from a zero config", func(t *testing.T) {
 		t.Parallel()
@@ -116,7 +117,7 @@ func TestNewSweeper(T *testing.T) {
 
 		_, err := NewSweeper(t.Context(), &SweeperConfig{}, newTestClient(t), []Policy{
 			policies[0],
-			{Name: "typo", Target: Table{Name: "not an identifier", Column: "created_at"}},
+			{Name: "typo", Scope: tenancy.Global(), Target: Table{Name: "not an identifier", Column: "created_at"}},
 		})
 		test.ErrorIs(t, err, dialect.ErrInvalidIdentifier)
 	})
@@ -131,7 +132,7 @@ func TestNewSweeper(T *testing.T) {
 	T.Run("copies the caller's slice", func(t *testing.T) {
 		t.Parallel()
 
-		given := []Policy{{Name: "widgets", Target: Table{Name: widgetsTable, Column: "created_at"}}}
+		given := []Policy{{Name: "widgets", Scope: tenancy.Global(), Target: Table{Name: widgetsTable, Column: "created_at"}}}
 
 		sweeper, err := NewSweeper(t.Context(), &SweeperConfig{}, newTestClient(t), given)
 		must.NoError(t, err)
@@ -165,6 +166,7 @@ func TestSweeper_Sweep(T *testing.T) {
 
 		sweeper, _ := newTestSweeper(t, client, []Policy{{
 			Name:   "widgets",
+			Scope:  tenancy.Global(),
 			Target: Table{Name: widgetsTable, Column: "created_at"},
 			Age:    24 * time.Hour,
 		}})
@@ -190,6 +192,7 @@ func TestSweeper_Sweep(T *testing.T) {
 
 		sweeper, stub := newTestSweeper(t, client, []Policy{{
 			Name:   "widgets",
+			Scope:  tenancy.Global(),
 			Target: Table{Name: widgetsTable, Column: "created_at"},
 			Age:    24 * time.Hour,
 		}})
@@ -218,6 +221,7 @@ func TestSweeper_Sweep(T *testing.T) {
 
 		sweeper, stub := newTestSweeper(t, client, []Policy{{
 			Name:      "widgets",
+			Scope:     tenancy.Global(),
 			Target:    Table{Name: widgetsTable, Column: "created_at"},
 			Age:       24 * time.Hour,
 			BatchSize: 3,
@@ -246,6 +250,7 @@ func TestSweeper_Sweep(T *testing.T) {
 
 		sweeper, _ := newTestSweeper(t, client, []Policy{{
 			Name:       "widgets",
+			Scope:      tenancy.Global(),
 			Target:     Table{Name: widgetsTable, Column: "created_at"},
 			Age:        24 * time.Hour,
 			BatchSize:  2,
@@ -271,6 +276,7 @@ func TestSweeper_Sweep(T *testing.T) {
 
 		sweeper, _ := newTestSweeper(t, client, []Policy{{
 			Name:     "widgets",
+			Scope:    tenancy.Global(),
 			Target:   Table{Name: widgetsTable, Column: "created_at"},
 			Age:      24 * time.Hour,
 			Disabled: true,
@@ -291,8 +297,8 @@ func TestSweeper_Sweep(T *testing.T) {
 		insertWidgets(t, client, "stale", baseTime.Add(-48*time.Hour), 2)
 
 		sweeper, _ := newTestSweeper(t, client, []Policy{
-			{Name: "missing-table", Target: Table{Name: "absent", Column: "created_at"}},
-			{Name: "widgets", Target: Table{Name: widgetsTable, Column: "created_at"}, Age: 24 * time.Hour},
+			{Name: "missing-table", Scope: tenancy.Global(), Target: Table{Name: "absent", Column: "created_at"}},
+			{Name: "widgets", Scope: tenancy.Global(), Target: Table{Name: widgetsTable, Column: "created_at"}, Age: 24 * time.Hour},
 		})
 
 		result, err := sweeper.Sweep(t.Context())
@@ -318,7 +324,7 @@ func TestSweeper_Sweep(T *testing.T) {
 		}
 
 		sweeper, _ := newTestSweeper(t, newTestClient(t), []Policy{
-			{Name: "flaky", Target: target, BatchSize: 4},
+			{Name: "flaky", Scope: tenancy.Global(), Target: target, BatchSize: 4},
 		})
 
 		result, err := sweeper.Sweep(t.Context())
@@ -341,7 +347,7 @@ func TestSweeper_Sweep(T *testing.T) {
 			backlogFunc: func(int) (int64, error) { return 900, nil },
 		}
 
-		sweeper, _ := newTestSweeper(t, newTestClient(t), []Policy{{Name: "flaky", Target: target}})
+		sweeper, _ := newTestSweeper(t, newTestClient(t), []Policy{{Name: "flaky", Scope: tenancy.Global(), Target: target}})
 
 		result, err := sweeper.Sweep(t.Context())
 		test.Error(t, err)
@@ -361,7 +367,7 @@ func TestSweeper_Sweep(T *testing.T) {
 			backlogFunc: func(int) (int64, error) { return 0, platformerrors.New("statement timeout") },
 		}
 
-		sweeper, _ := newTestSweeper(t, newTestClient(t), []Policy{{Name: "widgets", Target: target, BatchSize: 5}})
+		sweeper, _ := newTestSweeper(t, newTestClient(t), []Policy{{Name: "widgets", Scope: tenancy.Global(), Target: target, BatchSize: 5}})
 
 		result, err := sweeper.Sweep(t.Context())
 		must.NoError(t, err)
@@ -384,7 +390,7 @@ func TestSweeper_Sweep(T *testing.T) {
 		}
 
 		sweeper, err := NewSweeper(t.Context(), &SweeperConfig{BacklogCeiling: 42}, newTestClient(t),
-			[]Policy{{Name: "widgets", Target: target}}, WithSweeperClock(newStubClock()))
+			[]Policy{{Name: "widgets", Scope: tenancy.Global(), Target: target}}, WithSweeperClock(newStubClock()))
 		must.NoError(t, err)
 
 		_, err = sweeper.Sweep(t.Context())
@@ -405,8 +411,8 @@ func TestSweeper_Sweep(T *testing.T) {
 		}
 
 		sweeper, _ := newTestSweeper(t, newTestClient(t), []Policy{
-			{Name: "children", Target: newRecordingTarget("children")},
-			{Name: "parents", Target: newRecordingTarget("parents")},
+			{Name: "children", Scope: tenancy.Global(), Target: newRecordingTarget("children")},
+			{Name: "parents", Scope: tenancy.Global(), Target: newRecordingTarget("parents")},
 		})
 
 		_, err := sweeper.Sweep(t.Context())
@@ -423,7 +429,7 @@ func TestSweeper_Sweep(T *testing.T) {
 		target := &stubTarget{name: "widgets", sweepFunc: func(limit int) (int64, error) { return int64(limit), nil }}
 
 		sweeper, stub := newTestSweeper(t, newTestClient(t),
-			[]Policy{{Name: "widgets", Target: target, BatchSize: 1, MaxBatches: 50}})
+			[]Policy{{Name: "widgets", Scope: tenancy.Global(), Target: target, BatchSize: 1, MaxBatches: 50}})
 		stub.pauseExpires = true
 
 		_, err := sweeper.Sweep(t.Context())
@@ -443,6 +449,7 @@ func TestSweeper_Sweep(T *testing.T) {
 
 		sweeper, _ := newTestSweeper(t, client, []Policy{{
 			Name:   "widgets",
+			Scope:  tenancy.Global(),
 			Target: Table{Name: widgetsTable, Column: "created_at"},
 			Age:    24 * time.Hour,
 		}})
@@ -497,7 +504,7 @@ func TestSweeper_audit(T *testing.T) {
 			Target: Table{Name: widgetsTable, Column: "created_at"},
 			Age:    24 * time.Hour,
 			Basis:  "widgets are useless after a day",
-			Scope:  "platform",
+			Scope:  tenancy.Of("platform"),
 		}}, WithSweeperAuditRecorder(newRecorder(t)))
 
 		_, err := sweeper.Sweep(t.Context())
@@ -510,7 +517,7 @@ func TestSweeper_audit(T *testing.T) {
 		test.EqOp(t, audit.EventDeleted, entry.EventType)
 		test.EqOp(t, AuditResourceType, entry.ResourceType)
 		test.EqOp(t, "widgets", entry.ResourceID)
-		test.EqOp(t, "platform", entry.Scope)
+		test.EqOp(t, tenancy.Of("platform"), entry.Scope)
 		test.EqOp(t, DefaultAuditActorID, entry.Actor.ID)
 		test.EqOp(t, audit.ActorSystem, entry.Actor.Type)
 		test.EqOp(t, "5", entry.Metadata["rows_removed"])
@@ -530,6 +537,7 @@ func TestSweeper_audit(T *testing.T) {
 
 		sweeper, _ := newTestSweeper(t, client, []Policy{{
 			Name:   "widgets",
+			Scope:  tenancy.Global(),
 			Target: Table{Name: widgetsTable, Column: "created_at"},
 			Age:    24 * time.Hour,
 		}}, WithSweeperAuditRecorder(newRecorder(t)))
@@ -556,7 +564,7 @@ func TestSweeper_audit(T *testing.T) {
 			return 0, platformerrors.New("locked")
 		}
 
-		sweeper, _ := newTestSweeper(t, client, []Policy{{Name: "widgets", Target: target, BatchSize: 3}},
+		sweeper, _ := newTestSweeper(t, client, []Policy{{Name: "widgets", Scope: tenancy.Global(), Target: target, BatchSize: 3}},
 			WithSweeperAuditRecorder(newRecorder(t)))
 
 		_, err := sweeper.Sweep(t.Context())
@@ -577,6 +585,7 @@ func TestSweeper_audit(T *testing.T) {
 
 		sweeper, _ := newTestSweeper(t, client, []Policy{{
 			Name:   "widgets",
+			Scope:  tenancy.Global(),
 			Target: Table{Name: widgetsTable, Column: "created_at"},
 			Age:    24 * time.Hour,
 		}},
@@ -602,6 +611,7 @@ func TestSweeper_audit(T *testing.T) {
 
 		sweeper, _ := newTestSweeper(t, client, []Policy{{
 			Name:   "widgets",
+			Scope:  tenancy.Global(),
 			Target: Table{Name: widgetsTable, Column: "created_at"},
 			Age:    24 * time.Hour,
 		}})
@@ -624,6 +634,7 @@ func TestSweeper_Job(T *testing.T) {
 
 		sweeper, _ := newTestSweeper(t, client, []Policy{{
 			Name:   "widgets",
+			Scope:  tenancy.Global(),
 			Target: Table{Name: widgetsTable, Column: "created_at"},
 			Age:    24 * time.Hour,
 		}})
@@ -642,7 +653,7 @@ func TestSweeper_Job(T *testing.T) {
 		t.Parallel()
 
 		sweeper, _ := newTestSweeper(t, newTestClient(t), []Policy{
-			{Name: "missing-table", Target: Table{Name: "absent", Column: "created_at"}},
+			{Name: "missing-table", Scope: tenancy.Global(), Target: Table{Name: "absent", Column: "created_at"}},
 		})
 
 		test.Error(t, sweeper.Job(jobs.MustCron("0 4 * * *"), time.Minute).Run(t.Context()))
@@ -656,7 +667,7 @@ func TestSweeper_Policies(T *testing.T) {
 		t.Parallel()
 
 		sweeper, _ := newTestSweeper(t, newTestClient(t), []Policy{
-			{Name: "widgets", Target: Table{Name: widgetsTable, Column: "created_at"}},
+			{Name: "widgets", Scope: tenancy.Global(), Target: Table{Name: widgetsTable, Column: "created_at"}},
 		})
 
 		reported := sweeper.Policies()

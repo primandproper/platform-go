@@ -44,6 +44,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
 	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -211,8 +212,10 @@ func NewPruneTarget(ctx context.Context, cfg *Config) (audit.PruneTarget, error)
 // zero age, because against an expires_at column that is a legal grace period,
 // and against this log it would mean emptying the table.
 //
-// Scope is left empty: a fleet-wide sweep belongs to no tenant, and the empty
-// scope is the chain platform-level events are recorded in.
+// The scope is tenancy.Global, named rather than omitted: a fleet-wide sweep
+// belongs to no tenant, and the global scope is the chain platform-level events
+// are recorded in. Leaving it unset would be a policy that had not decided,
+// which retention refuses.
 func NewRetentionPolicy(ctx context.Context, cfg *Config) (retention.Policy, error) {
 	target, err := NewPruneTarget(ctx, cfg)
 	if err != nil {
@@ -224,6 +227,7 @@ func NewRetentionPolicy(ctx context.Context, cfg *Config) (retention.Policy, err
 		Target:    target,
 		Age:       cfg.Retention.Retention,
 		Basis:     cfg.Retention.Basis,
+		Scope:     tenancy.Global(),
 		BatchSize: cfg.Retention.BatchSize,
 	}, nil
 }

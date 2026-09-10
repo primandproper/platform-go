@@ -70,7 +70,7 @@ func TestReader_Get(T *testing.T) {
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		written := entryFor("acct_1", "recipe_1")
+		written := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		written.Metadata = map[string]string{"reason": "typo"}
 		record(t, client, recorder, written)
 
@@ -118,17 +118,17 @@ func TestReader_List(T *testing.T) {
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		mine := entryFor("acct_1", "recipe_1")
+		mine := entryFor(tenancy.Of("acct_1"), "recipe_1")
 
-		theirs := entryFor("acct_2", "recipe_2")
+		theirs := entryFor(tenancy.Of("acct_2"), "recipe_2")
 		theirs.Actor.ID = "user_2"
 
-		deletion := entryFor("acct_1", "recipe_3")
+		deletion := entryFor(tenancy.Of("acct_1"), "recipe_3")
 		deletion.EventType = EventDeleted
 
 		record(t, client, recorder, mine, theirs, deletion)
 
-		listed, err := reader.List(t.Context(), &Query{Scope: pointer.To("acct_1")}, nil)
+		listed, err := reader.List(t.Context(), &Query{Scope: pointer.To(tenancy.Of("acct_1"))}, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 2, listed.Data)
 		test.EqOp(t, uint64(2), listed.TotalCount)
@@ -157,26 +157,48 @@ func TestReader_List(T *testing.T) {
 		test.SliceEmpty(t, listed.Data)
 	})
 
-	T.Run("treats the empty scope as a scope of its own", func(t *testing.T) {
+	T.Run("treats the global scope as a scope of its own", func(t *testing.T) {
 		t.Parallel()
 
 		client := newTestClient(t)
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		platform := entryFor("", "config_1")
-		tenant := entryFor("acct_1", "recipe_1")
+		platform := entryFor(tenancy.Global(), "config_1")
+		tenant := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		record(t, client, recorder, platform, tenant)
 
 		// A plain string field could not have expressed this: it would have
 		// been indistinguishable from "do not filter", and would have returned
 		// the tenant's entry too.
-		listed, err := reader.List(t.Context(), &Query{Scope: pointer.To("")}, nil)
+		listed, err := reader.List(t.Context(), &Query{Scope: pointer.To(tenancy.Global())}, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, listed.Data)
 		test.EqOp(t, platform.ID, listed.Data[0].ID)
 
 		listed, err = reader.List(t.Context(), &Query{}, nil)
+		must.NoError(t, err)
+		test.SliceLen(t, 2, listed.Data)
+	})
+
+	T.Run("refuses a narrowing whose scope names nobody", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client)
+
+		record(t, client, recorder, entryFor(tenancy.Global(), "config_1"), entryFor(tenancy.Of("acct_1"), "recipe_1"))
+
+		// The three readings, and the one that is not a reading. A nil Scope
+		// narrows nothing; a Scope narrows to it; and a pointer at the zero
+		// Scope is a caller whose own lookup came back empty, which is refused
+		// rather than widened into either of the other two.
+		listed, err := reader.List(t.Context(), &Query{Scope: pointer.To(tenancy.Scope{})}, nil)
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+		test.Nil(t, listed)
+
+		listed, err = reader.List(t.Context(), &Query{Scope: nil}, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 2, listed.Data)
 	})
@@ -189,14 +211,14 @@ func TestReader_List(T *testing.T) {
 		recorder := newTestRecorder(t, c)
 		reader := newTestReader(t, client)
 
-		record(t, client, recorder, entryFor("acct_1", "r1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r1"))
 		c.advance(48 * time.Hour)
-		record(t, client, recorder, entryFor("acct_1", "r2"), entryFor("acct_1", "r3"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r2"), entryFor(tenancy.Of("acct_1"), "r3"))
 
 		filter := filtering.DefaultQueryFilter()
 		filter.CreatedAfter = pointer.To(c.Now().Add(-time.Hour))
 
-		listed, err := reader.List(t.Context(), &Query{Scope: pointer.To("acct_1")}, filter)
+		listed, err := reader.List(t.Context(), &Query{Scope: pointer.To(tenancy.Of("acct_1"))}, filter)
 		must.NoError(t, err)
 
 		filtered, total, known := listed.Counts()
@@ -216,12 +238,12 @@ func TestReader_List(T *testing.T) {
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		record(t, client, recorder, entryFor("acct_1", "r1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r1"))
 
 		// The counts ride on the rows, so a page with no rows has none to read
 		// them off — and a zero reported there is indistinguishable from "no
 		// rows match", which is the ambiguity CountsKnown exists to remove.
-		listed, err := reader.List(t.Context(), &Query{Scope: pointer.To("acct_9")}, nil)
+		listed, err := reader.List(t.Context(), &Query{Scope: pointer.To(tenancy.Of("acct_9"))}, nil)
 		must.NoError(t, err)
 
 		test.SliceEmpty(t, listed.Data)
@@ -238,7 +260,7 @@ func TestReader_List(T *testing.T) {
 		reader := newTestReader(t, client)
 
 		for i := range 5 {
-			record(t, client, recorder, entryFor("acct_1", string(rune('a'+i))))
+			record(t, client, recorder, entryFor(tenancy.Of("acct_1"), string(rune('a'+i))))
 		}
 
 		filter := filtering.DefaultQueryFilter()
@@ -264,10 +286,10 @@ func TestReader_List(T *testing.T) {
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		first := entryFor("acct_1", "recipe_1")
+		first := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		record(t, client, recorder, first)
 
-		last := entryFor("acct_1", "recipe_2")
+		last := entryFor(tenancy.Of("acct_1"), "recipe_2")
 		record(t, client, recorder, last)
 
 		filter := filtering.DefaultQueryFilter()
@@ -287,12 +309,12 @@ func TestReader_List(T *testing.T) {
 		recorder := newTestRecorder(t, c)
 		reader := newTestReader(t, client)
 
-		old := entryFor("acct_1", "recipe_1")
+		old := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		record(t, client, recorder, old)
 
 		c.advance(48 * time.Hour)
 
-		recent := entryFor("acct_1", "recipe_2")
+		recent := entryFor(tenancy.Of("acct_1"), "recipe_2")
 		record(t, client, recorder, recent)
 
 		filter := filtering.DefaultQueryFilter()
@@ -316,9 +338,9 @@ func TestReader_Verify(T *testing.T) {
 		reader := newTestReader(t, client)
 
 		record(t, client, recorder,
-			entryFor("acct_1", "recipe_1"),
-			entryFor("acct_1", "recipe_2"),
-			entryFor("acct_1", "recipe_3"),
+			entryFor(tenancy.Of("acct_1"), "recipe_1"),
+			entryFor(tenancy.Of("acct_1"), "recipe_2"),
+			entryFor(tenancy.Of("acct_1"), "recipe_3"),
 		)
 
 		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
@@ -346,7 +368,7 @@ func TestReader_Verify(T *testing.T) {
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		first, second := entryFor("acct_1", "recipe_1"), entryFor("acct_1", "recipe_2")
+		first, second := entryFor(tenancy.Of("acct_1"), "recipe_1"), entryFor(tenancy.Of("acct_1"), "recipe_2")
 		record(t, client, recorder, first, second)
 
 		// Rewriting a column without touching the hashes: exactly what somebody
@@ -369,7 +391,7 @@ func TestReader_Verify(T *testing.T) {
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		first, second := entryFor("acct_1", "recipe_1"), entryFor("acct_1", "recipe_2")
+		first, second := entryFor(tenancy.Of("acct_1"), "recipe_1"), entryFor(tenancy.Of("acct_1"), "recipe_2")
 		record(t, client, recorder, first, second)
 
 		exec(t, client,
@@ -390,7 +412,7 @@ func TestReader_Verify(T *testing.T) {
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		first, second, third := entryFor("acct_1", "r1"), entryFor("acct_1", "r2"), entryFor("acct_1", "r3")
+		first, second, third := entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_1"), "r2"), entryFor(tenancy.Of("acct_1"), "r3")
 		record(t, client, recorder, first, second, third)
 
 		exec(t, client, "DELETE FROM audit_log_entries WHERE id = ?", second.ID)
@@ -409,7 +431,7 @@ func TestReader_Verify(T *testing.T) {
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		first, second := entryFor("acct_1", "r1"), entryFor("acct_1", "r2")
+		first, second := entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_1"), "r2")
 		record(t, client, recorder, first, second)
 
 		// Nothing left in range to link against, and no prune watermark to
@@ -431,14 +453,14 @@ func TestReader_Verify(T *testing.T) {
 		recorder := newTestRecorder(t, c)
 		reader := newTestReader(t, client)
 
-		record(t, client, recorder, entryFor("acct_1", "r1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r1"))
 
 		c.advance(24 * time.Hour)
-		middle := entryFor("acct_1", "r2")
+		middle := entryFor(tenancy.Of("acct_1"), "r2")
 		record(t, client, recorder, middle)
 
 		c.advance(24 * time.Hour)
-		record(t, client, recorder, entryFor("acct_1", "r3"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r3"))
 
 		// The window excludes the first entry, so the walk has to fetch it to
 		// anchor the second — and still verifies cleanly. The lower bound is
@@ -457,7 +479,7 @@ func TestReader_Verify(T *testing.T) {
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		record(t, client, recorder, entryFor("acct_1", "r1"), entryFor("acct_1", "r2"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_1"), "r2"))
 
 		// A scope with no chain row has never been pruned, so a chain that
 		// starts at position zero is exactly what it should be. Reporting a
@@ -477,7 +499,7 @@ func TestReader_Verify(T *testing.T) {
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		record(t, client, recorder, entryFor("acct_1", "recipe_1"))
+		record(t, client, recorder, entryFor(tenancy.Of("acct_1"), "recipe_1"))
 
 		// The zero Scope is the caller who lost theirs, and it is refused
 		// rather than resolved to the global chain — which is what the string
@@ -498,7 +520,7 @@ func TestReader_Verify(T *testing.T) {
 		// An entry belonging to no tenant, which is the empty Scope column and
 		// therefore tenancy.Global. It is a scope like any other here: it
 		// matches only itself, so the tenant's entry below is not in it.
-		record(t, client, recorder, entryFor("", "platform_1"), entryFor("acct_1", "recipe_1"))
+		record(t, client, recorder, entryFor(tenancy.Global(), "platform_1"), entryFor(tenancy.Of("acct_1"), "recipe_1"))
 
 		result, err := reader.Verify(t.Context(), tenancy.Global(), time.Time{}, time.Time{})
 		must.NoError(t, err)
@@ -514,7 +536,7 @@ func TestReader_Verify(T *testing.T) {
 		recorder := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		mine, theirs := entryFor("acct_1", "r1"), entryFor("acct_2", "r1")
+		mine, theirs := entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_2"), "r1")
 		record(t, client, recorder, mine, theirs)
 
 		exec(t, client,

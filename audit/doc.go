@@ -33,7 +33,7 @@ is just another statement in the caller's transaction and lives or dies with it:
 			EventType:    audit.EventUpdated,
 			ResourceType: "recipe",
 			ResourceID:   after.ID,
-			Scope:        accountID,
+			Scope:        tenancy.Of(accountID),
 			Actor:        audit.Actor{ID: userID, Type: audit.ActorUser, IP: remoteIP},
 			Changes:      changes,
 		})
@@ -67,6 +67,23 @@ prove the table was not replaced wholesale by a consistent forgery — nothing
 self-contained can. The answer to that is to publish head hashes somewhere the
 database's owner does not control; Record writes each entry's Hash back into the
 value you passed, which is what you would publish.
+
+# The scope is one thing, read two ways
+
+An entry's scope is the chain's partition and it is a tenancy.Scope, and those
+are not two facts to reconcile. Both are one opaque owner identifier: the chain
+key is whatever partition integrity is wanted over, and tenancy.Scope names
+whose data a row is, with no depth model in it at all. An application whose
+chains are per user passes each user's scope and gets a chain per user, because
+a user is an owner.
+
+What the type adds over the identifier is one bit. tenancy.Global is the chain
+platform-level events are recorded in, stored as the empty identifier; the zero
+Scope is a caller who never decided, and Record refuses it rather than filing
+the event under the platform's own chain. The distinction is worth a type
+because it is the one a string cannot hold, and both this package and
+comments/privacy had reimplemented it — a pointer here, a sentinel there —
+before they shared one.
 
 Append-only enforcement is available but optional, because it is separately
 privileged: migrations.AppendOnlyStatements renders triggers that make the
@@ -127,10 +144,10 @@ Reader.List pages with filtering.QueryFilter, so the cursor, limit, and time
 window an HTTP caller already knows how to send work here unchanged — the window
 maps onto recorded_at, which is when the event happened. Query selects by scope,
 actor, resource, and event type, one value each. Note that Query.Scope is a
-pointer: the empty string is a real scope — the one platform-level events belong
-to — so a plain string could not distinguish "only platform events" from "every
-tenant's events", and in a multi-tenant read path that distinction is a
-disclosure rather than a wrong answer.
+*tenancy.Scope where an Entry's is a tenancy.Scope: a narrowing has a third
+reading a scope does not, "do not narrow at all", and in a multi-tenant read
+path telling that from "the platform's own events" is a disclosure rather than a
+wrong answer.
 
 # On the wire
 

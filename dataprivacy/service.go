@@ -159,7 +159,7 @@ func (s *StoreService) Submit(ctx context.Context, subject Subject, t RequestTyp
 	ctx, op := s.o11y.Begin(ctx, observability.WithValues(map[string]any{
 		subjectIDKey:    subject.ID,
 		subjectTypeKey:  string(subject.Type),
-		subjectScopeKey: subject.Scope,
+		subjectScopeKey: subject.Scope.String(),
 		requestTypeKey:  string(t),
 	}))
 	defer op.End()
@@ -292,7 +292,7 @@ func (s *StoreService) List(
 ) (*filtering.QueryFilteredResult[Request], error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(subjectIDKey, subject.ID),
-		observability.WithValue(subjectScopeKey, subject.Scope),
+		observability.WithValue(subjectScopeKey, subject.Scope.String()),
 	)
 	defer op.End()
 
@@ -579,7 +579,7 @@ func (s *StoreService) entryFor(ctx context.Context, req *Request, event audit.E
 		ResourceType: auditResourceType,
 		ResourceID:   req.ID,
 		Actor:        s.actor(ctx),
-		Scope:        req.Subject.Scope,
+		Scope:        auditScope(req.Subject.Scope),
 		Metadata:     fields,
 		RecordedAt:   s.clock.Now().UTC(),
 	}

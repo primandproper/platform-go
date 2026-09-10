@@ -11,6 +11,7 @@ import (
 
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -310,7 +311,7 @@ func TestHandlers_get(T *testing.T) {
 	T.Run("an unscoped subject reads their scoped request", func(t *testing.T) {
 		t.Parallel()
 
-		scoped := dataprivacy.Subject{ID: theSubject.ID, Scope: "account_1", Type: dataprivacy.SubjectUser}
+		scoped := dataprivacy.Subject{ID: theSubject.ID, Scope: tenancy.Of("account_1"), Type: dataprivacy.SubjectUser}
 		req := requestFor("req_1", scoped, dataprivacy.StatusCompleted, "op_1")
 
 		res := do(t, mount(t, serviceReturning(req), theSubject), nethttp.MethodGet, BasePath+"/req_1", "")
@@ -323,10 +324,10 @@ func TestHandlers_get(T *testing.T) {
 	T.Run("a scoped subject does not read another scope's request", func(t *testing.T) {
 		t.Parallel()
 
-		other := dataprivacy.Subject{ID: theSubject.ID, Scope: "account_2", Type: dataprivacy.SubjectUser}
+		other := dataprivacy.Subject{ID: theSubject.ID, Scope: tenancy.Of("account_2"), Type: dataprivacy.SubjectUser}
 		req := requestFor("req_1", other, dataprivacy.StatusCompleted, "op_1")
 
-		caller := dataprivacy.Subject{ID: theSubject.ID, Scope: "account_1", Type: dataprivacy.SubjectUser}
+		caller := dataprivacy.Subject{ID: theSubject.ID, Scope: tenancy.Of("account_1"), Type: dataprivacy.SubjectUser}
 
 		res := do(t, mount(t, serviceReturning(req), caller), nethttp.MethodGet, BasePath+"/req_1", "")
 
@@ -553,7 +554,7 @@ func TestHandlers_receipt(T *testing.T) {
 func TestOwns(T *testing.T) {
 	T.Parallel()
 
-	req := requestFor("req_1", dataprivacy.Subject{ID: "subject_1", Scope: "account_1"}, dataprivacy.StatusCompleted, "op_1")
+	req := requestFor("req_1", dataprivacy.Subject{ID: "subject_1", Scope: tenancy.Of("account_1")}, dataprivacy.StatusCompleted, "op_1")
 
 	cases := map[string]struct {
 		req     *dataprivacy.Request
@@ -561,8 +562,8 @@ func TestOwns(T *testing.T) {
 		want    bool
 	}{
 		"same subject, no scope named":  {subject: dataprivacy.Subject{ID: "subject_1"}, req: req, want: true},
-		"same subject, same scope":      {subject: dataprivacy.Subject{ID: "subject_1", Scope: "account_1"}, req: req, want: true},
-		"same subject, other scope":     {subject: dataprivacy.Subject{ID: "subject_1", Scope: "account_2"}, req: req, want: false},
+		"same subject, same scope":      {subject: dataprivacy.Subject{ID: "subject_1", Scope: tenancy.Of("account_1")}, req: req, want: true},
+		"same subject, other scope":     {subject: dataprivacy.Subject{ID: "subject_1", Scope: tenancy.Of("account_2")}, req: req, want: false},
 		"different subject":             {subject: dataprivacy.Subject{ID: "subject_2"}, req: req, want: false},
 		"no request":                    {subject: dataprivacy.Subject{ID: "subject_1"}, req: nil, want: false},
 		"empty subject matches nothing": {subject: dataprivacy.Subject{}, req: req, want: false},

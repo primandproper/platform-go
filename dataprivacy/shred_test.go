@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/identifiers"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -242,7 +243,7 @@ func TestFulfiller_ShredScoped(T *testing.T) {
 		// Scope confines an erasure to one tenant; a data key covers every
 		// scope its subject appears in. Destroying it would erase that person's
 		// data inside tenants nobody asked about.
-		read := runErasureFor(t, env, Subject{ID: "user-1", Type: SubjectUser, Scope: "account-1"})
+		read := runErasureFor(t, env, Subject{ID: "user-1", Type: SubjectUser, Scope: tenancy.Of("account-1")})
 
 		test.EqOp(t, StatusCompleted, read.Status)
 		test.SliceEmpty(t, shredder.subjects)

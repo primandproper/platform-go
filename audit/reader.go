@@ -49,12 +49,22 @@ import (
 // reads. What it gains is that the narrowing it did ask for is a statement sqlc
 // checked against the schema, on every dialect.
 type Query struct {
-	// Scope restricts to one tenancy boundary. It is a pointer because the
-	// empty string is a real scope, the one platform-level events belong to,
-	// so a plain string could not distinguish "only platform events" from "every
-	// tenant's events" — and getting that backwards in a multi-tenant read path
-	// is a cross-tenant disclosure rather than a wrong answer.
-	Scope *string
+	// Scope restricts to one tenancy boundary. Nil narrows nothing: every
+	// tenant's events, which is what an operator console asks for and what
+	// nothing a tenant can reach should. A scope names one, and tenancy.Global
+	// names the chain platform-level events are recorded in.
+	//
+	// It is a pointer to a Scope rather than a Scope because a Scope carries two
+	// of these three readings and not the third. Scope.known separates the
+	// global scope from a caller who never decided; it does not separate either
+	// of those from "do not narrow at all", and getting that distinction
+	// backwards in a multi-tenant read path is a cross-tenant disclosure rather
+	// than a wrong answer.
+	//
+	// A non-nil pointer at the zero Scope is therefore not "every tenant" but a
+	// caller whose own lookup came back empty. List refuses it with
+	// tenancy.ErrNoScope rather than widening the read to cover it.
+	Scope *tenancy.Scope
 	// ActorID restricts to one principal. Empty does not filter.
 	ActorID string
 	// ActorType restricts to one kind of principal. Empty does not filter.
@@ -83,20 +93,55 @@ type selectors struct {
 // leaves alone.
 //
 // The scope is the one that reads its absence off a pointer rather than off the
-// empty string, for the reason its own field gives: the empty scope is a scope.
+// empty string, for the reason its own field gives: the empty identifier is a
+// scope. It renders to the identifier the column holds, which validate has
+// already refused to derive from a scope that names nobody.
 func (q *Query) selectors() selectors {
 	if q == nil {
 		return selectors{}
 	}
 
 	return selectors{
-		scope:        q.Scope,
+		scope:        scopeFilter(q.Scope),
 		actorID:      optional(q.ActorID),
 		actorType:    optional(string(q.ActorType)),
 		resourceID:   optional(q.ResourceID),
 		resourceType: optional(q.ResourceType),
 		eventType:    optional(string(q.EventType)),
 	}
+}
+
+// validate reports whether the query's narrowings can be bound. It is nil-safe,
+// because a nil Query is the query that narrows nothing.
+//
+// Only the scope has anything to check. Every other selector reads its absence
+// off the empty string, which is a value no caller can arrive at by losing one;
+// the scope reads its absence off the pointer, so a Scope that names nobody has
+// reached this field on purpose and cannot be told from one that was dropped.
+func (q *Query) validate() error {
+	if q == nil || q.Scope == nil {
+		return nil
+	}
+
+	return q.Scope.Validate()
+}
+
+// scopeFilter renders the scope narrowing as the identifier the column holds,
+// or nil for a query that does not narrow on it.
+//
+// The narrowing is a *string where the column is a tenancy.Scope, and the two
+// are deliberately different types: the predicate compares this argument
+// against the column in one arm and against NULL in the other, and that second
+// arm resolves to a type of its own on MySQL. See SelectorArgSuffix in
+// audit/internal/queries, where the split is argued for all six selectors.
+func scopeFilter(scope *tenancy.Scope) *string {
+	if scope == nil {
+		return nil
+	}
+
+	owner := scope.Owner()
+
+	return &owner
 }
 
 // BreakReason says how a chain failed to verify.
@@ -292,6 +337,13 @@ func (r *SQLReader) List(
 	tracing.AttachQueryFilterToSpan(op.Span(), filter)
 	q.attachTo(op)
 
+	// Checked after the query is on the span and before anything is bound, so a
+	// read that named a scope it had lost is refused with the query it asked
+	// legible in the trace.
+	if err := q.validate(); err != nil {
+		return nil, op.Error(err, "listing audit entries")
+	}
+
 	filter = pageFilter(filter)
 
 	rows, err := r.listRows(ctx, q, filter)
@@ -396,13 +448,12 @@ func pageFilter(filter *filtering.QueryFilter) *filtering.QueryFilter {
 // pass — and a verification that silently walked the wrong chain reports a
 // clean result for a log nobody checked.
 //
-// An unset scope is tenancy.ErrNoScope, refused here rather than at the driver.
-// The statement binds the owner identifier and not the Scope itself, because
-// the column is written by Record off Entry.Scope and the generated parameter
-// is that column's type; validating first is what the binding would otherwise
-// have bought, made explicit and made the first thing this method does.
+// An unset scope is tenancy.ErrNoScope, reported here rather than at the driver
+// so that the error names the call rather than the statement. The scope is
+// bound as itself either way — the column holds one — so the refusal is the
+// driver's too, and validating first only decides which of the two says so.
 // tenancy.Global is a scope like any other here and walks the platform chain,
-// which is what the empty Entry.Scope records into.
+// which is what an entry recorded for no tenant records into.
 func (r *SQLReader) Verify(ctx context.Context, scope tenancy.Scope, from, to time.Time) (*VerificationResult, error) {
 	ctx, op := r.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
@@ -411,15 +462,13 @@ func (r *SQLReader) Verify(ctx context.Context, scope tenancy.Scope, from, to ti
 		return nil, op.Error(err, "verifying an audit chain")
 	}
 
-	owner := scope.Owner()
-
 	rows, err := r.q.ListAuditChainEntries(ctx, r.client.Reader(), auditdb.ListAuditChainEntriesParams{
-		Scope:          owner,
+		Scope:          scope,
 		RecordedAfter:  boundOrNil(from),
 		RecordedBefore: boundOrNil(to),
 	})
 	if err != nil {
-		return nil, op.Error(err, "reading audit chain for scope %q", scope)
+		return nil, op.Error(err, "reading audit chain for scope %s", scope)
 	}
 
 	stored, err := convertRows(rows, func(row *auditdb.ListAuditChainEntriesRow) (storedEntry, error) {
@@ -431,15 +480,15 @@ func (r *SQLReader) Verify(ctx context.Context, scope tenancy.Scope, from, to ti
 		return *converted, nil
 	})
 	if err != nil {
-		return nil, op.Error(err, "reading audit chain for scope %q", scope)
+		return nil, op.Error(err, "reading audit chain for scope %s", scope)
 	}
 
 	result := &VerificationResult{Scope: scope, From: from, To: to, Checked: len(stored)}
 
 	if len(stored) > 0 {
 		var anchor *anchorState
-		if anchor, err = r.anchorFor(ctx, owner, stored[0].entry.Seq); err != nil {
-			return nil, op.Error(err, "anchoring audit chain for scope %q", scope)
+		if anchor, err = r.anchorFor(ctx, scope, stored[0].entry.Seq); err != nil {
+			return nil, op.Error(err, "anchoring audit chain for scope %s", scope)
 		}
 
 		result.FirstBreak = walkChain(stored, anchor)
@@ -462,7 +511,7 @@ func (r *SQLReader) Verify(ctx context.Context, scope tenancy.Scope, from, to ti
 		// that undiscovered until it did.
 		op.Acknowledge(
 			platformerrors.Wrapf(ErrChainBroken, "%s at position %d", result.FirstBreak.Reason, result.FirstBreak.Seq),
-			"verifying audit chain for scope %q", scope,
+			"verifying audit chain for scope %s", scope,
 		)
 	}
 
@@ -488,7 +537,7 @@ type anchorState struct {
 // and any other range starts mid-chain and links to the entry before it. If
 // that entry is simply absent, the chain has a hole retention did not make,
 // which is a deletion and is reported as one.
-func (r *SQLReader) anchorFor(ctx context.Context, scope string, firstSeq int64) (*anchorState, error) {
+func (r *SQLReader) anchorFor(ctx context.Context, scope tenancy.Scope, firstSeq int64) (*anchorState, error) {
 	prunedThroughSeq, prunedThroughHash, err := r.prunedThrough(ctx, scope)
 	if err != nil {
 		return nil, err
@@ -518,7 +567,7 @@ func (r *SQLReader) anchorFor(ctx context.Context, scope string, firstSeq int64)
 
 // prunedThrough reads how far retention has pruned a scope. A scope with no
 // chain row has never been written to, and so has never been pruned either.
-func (r *SQLReader) prunedThrough(ctx context.Context, scope string) (seq int64, hash string, err error) {
+func (r *SQLReader) prunedThrough(ctx context.Context, scope tenancy.Scope) (seq int64, hash string, err error) {
 	// The unlocked read, where the recorder takes the locked one. A verifier
 	// holds nothing: it is reading what a chain has already committed, and a
 	// row lock here would make a report block a write.
@@ -528,7 +577,7 @@ func (r *SQLReader) prunedThrough(ctx context.Context, scope string) (seq int64,
 			return -1, "", nil
 		}
 
-		return 0, "", platformerrors.Wrapf(err, "reading audit chain for scope %q", scope)
+		return 0, "", platformerrors.Wrapf(err, "reading audit chain for scope %s", scope)
 	}
 
 	return row.PrunedThroughSeq, row.PrunedThroughHash, nil
@@ -606,7 +655,10 @@ func (q *Query) attachTo(op observability.Operation) {
 	}
 
 	if q.Scope != nil {
-		op.Set(scopeKey, *q.Scope)
+		// The scope reads as prose here, not as the identifier the column holds:
+		// a span attribute is read by a person, and "<global>" is legible where
+		// an empty string is a field that looks unset.
+		op.Set(scopeKey, q.Scope.String())
 	}
 	if q.ActorID != "" {
 		op.Set(actorIDKey, q.ActorID)
