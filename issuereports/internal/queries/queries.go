@@ -172,8 +172,8 @@ func writes(g *querygen.Generator) []*querygen.Query {
 	}
 }
 
-// reads is the get, the read-back the create runs, and the four paged lists,
-// each list in both directions because a paged list is two statements.
+// reads is the get, the read-back the archive answers with, and the four paged
+// lists, each list in both directions because a paged list is two statements.
 //
 // The four lists are four statements rather than one with optional predicates,
 // which is the reading notifications' unread list already takes: querygen's
@@ -187,14 +187,35 @@ func reads(g *querygen.Generator) []*querygen.Query {
 	rendered := []*querygen.Query{
 		g.GetQuery("GetReport", ReportsTable, Reports.Columns, scope),
 
-		// The read the create runs to learn the creation time the database
-		// assigned. created_at is database-owned, so the insert does not carry
-		// it, and without this the value a caller serializes straight back into
-		// a response says 0001-01-01 for a row written a moment ago.
-		g.ReadQuery("GetReportCreatedAt", ReportsTable,
-			[]string{querygen.IDColumn},
-			querygen.Read{Projection: []string{querygen.CreatedAtColumn}},
-			scope),
+		// The read the archive answers with: the row it just took out of the
+		// queue, on the transaction that took it.
+		//
+		// It exists because archiving is the one write here whose result no
+		// other read can see. Every single-row statement over this table filters
+		// archived_at IS NULL — which is what makes an archived report absent
+		// from the queue — so a store that archived a row and read it back
+		// through GetReport would find nothing, and once the transaction commits
+		// the row is unreachable through every keyed read this package has. What
+		// somebody wrote is still in it, which is the fact a moderation entry
+		// naming what was removed is written from.
+		//
+		// It is rendered from no column list at all, which is the same trick the
+		// erasure's ColumnsExcept plays for the opposite reason: querygen
+		// derives the archived predicate from the columns it is handed, so a
+		// read that must see archived rows is one keyed entirely on its matches.
+		// What takes that predicate's place is its complement — archived_at IS
+		// NOT NULL — so the read-back asserts the thing it was called to
+		// confirm, and a guard that matched nothing cannot be read back as a
+		// success.
+		//
+		// There is no companion for the create or the revision. Neither leaves
+		// the queue, so GetReport reaches both on the transaction that wrote
+		// them, and the read-back each makes is that statement rather than one
+		// of its own.
+		g.ReadQuery("GetArchivedReport", ReportsTable, nil,
+			querygen.Read{Projection: Reports.Columns},
+			querygen.Match{Column: querygen.IDColumn}, scope,
+			querygen.Match{Column: querygen.ArchivedAtColumn, Against: querygen.NoValue, Exclude: true}),
 	}
 
 	rendered = append(rendered,

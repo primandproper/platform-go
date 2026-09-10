@@ -37,6 +37,29 @@ type DeleteReportsByReporterParams struct {
 	Reporter string
 }
 
+// GetArchivedReportParams are the arguments to GetArchivedReport.
+type GetArchivedReportParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetArchivedReportRow is one row of GetArchivedReport's result.
+type GetArchivedReportRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	Reporter      string
+	Kind          string
+	Details       string
+	SubjectType   string
+	SubjectID     string
+	Status        string
+	Resolution    string
+	ClosedAt      *time.Time
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+}
+
 // GetReportParams are the arguments to GetReport.
 type GetReportParams struct {
 	ID    string
@@ -58,17 +81,6 @@ type GetReportRow struct {
 	CreatedAt     time.Time
 	LastUpdatedAt *time.Time
 	ArchivedAt    *time.Time
-}
-
-// GetReportCreatedAtParams are the arguments to GetReportCreatedAt.
-type GetReportCreatedAtParams struct {
-	ID    string
-	Scope tenancy.Scope
-}
-
-// GetReportCreatedAtRow is one row of GetReportCreatedAt's result.
-type GetReportCreatedAtRow struct {
-	CreatedAt time.Time
 }
 
 // ListReportsParams are the arguments to ListReports.

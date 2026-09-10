@@ -39,6 +39,14 @@ other than the row's own id says so by handing over a list without the id, and
 what it projects is a separate list. One statement here uses it — the erasure,
 which keys on a person rather than on a report.
 
+The archived predicate comes from the same list, and one read here needs its
+complement instead. GetArchivedReport is the row the archive hands back, and the
+row an archive just moved is the one row every other statement over this table is
+written not to return — so it is rendered from no column list at all and carries
+archived_at IS NOT NULL as a match of its own. That makes the read-back an
+assertion rather than a second lookup: a guard that touched nothing cannot be
+read back as a live row.
+
 # The four lists
 
 There are four paged lists — the scope's whole queue, one status, one reporter,

@@ -259,19 +259,22 @@ func (h *harness) seedReportAbout(
 ) *issuereports.Report {
 	tb.Helper()
 
-	report := &issuereports.Report{
-		Reporter:    reporter,
-		Kind:        "bug",
-		Details:     "the thing did not work",
-		SubjectType: subjectType,
-		SubjectID:   subjectID,
-	}
+	var filed *issuereports.Report
 
 	must.NoError(tb, h.db.WithTransaction(tb.Context(), func(tx database.Tx) error {
-		return h.store.CreateReport(tb.Context(), tx, scope, report)
+		var err error
+		filed, err = h.store.CreateReport(tb.Context(), tx, scope, &issuereports.Report{
+			Reporter:    reporter,
+			Kind:        "bug",
+			Details:     "the thing did not work",
+			SubjectType: subjectType,
+			SubjectID:   subjectID,
+		})
+
+		return err
 	}))
 
-	return report
+	return filed
 }
 
 // move transitions a seeded report directly through the store, for the tests

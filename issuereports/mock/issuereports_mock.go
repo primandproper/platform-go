@@ -24,10 +24,10 @@ var _ issuereports.Store = &StoreMock{}
 //
 //		// make and configure a mocked issuereports.Store
 //		mockedStore := &StoreMock{
-//			ArchiveReportFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, reportID string) error {
+//			ArchiveReportFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, reportID string) (*issuereports.Report, error) {
 //				panic("mock out the ArchiveReport method")
 //			},
-//			CreateReportFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error {
+//			CreateReportFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) (*issuereports.Report, error) {
 //				panic("mock out the CreateReport method")
 //			},
 //			DeleteReportsByReporterFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, reporter string) (int64, error) {
@@ -54,7 +54,7 @@ var _ issuereports.Store = &StoreMock{}
 //			TransitionReportFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, reportID string, from issuereports.Status, to issuereports.Status, resolution string) (*issuereports.Report, error) {
 //				panic("mock out the TransitionReport method")
 //			},
-//			UpdateReportFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error {
+//			UpdateReportFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) (*issuereports.Report, error) {
 //				panic("mock out the UpdateReport method")
 //			},
 //		}
@@ -65,10 +65,10 @@ var _ issuereports.Store = &StoreMock{}
 //	}
 type StoreMock struct {
 	// ArchiveReportFunc mocks the ArchiveReport method.
-	ArchiveReportFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, reportID string) error
+	ArchiveReportFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, reportID string) (*issuereports.Report, error)
 
 	// CreateReportFunc mocks the CreateReport method.
-	CreateReportFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error
+	CreateReportFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) (*issuereports.Report, error)
 
 	// DeleteReportsByReporterFunc mocks the DeleteReportsByReporter method.
 	DeleteReportsByReporterFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, reporter string) (int64, error)
@@ -95,7 +95,7 @@ type StoreMock struct {
 	TransitionReportFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, reportID string, from issuereports.Status, to issuereports.Status, resolution string) (*issuereports.Report, error)
 
 	// UpdateReportFunc mocks the UpdateReport method.
-	UpdateReportFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error
+	UpdateReportFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) (*issuereports.Report, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -251,7 +251,7 @@ type StoreMock struct {
 }
 
 // ArchiveReport calls ArchiveReportFunc.
-func (mock *StoreMock) ArchiveReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, reportID string) error {
+func (mock *StoreMock) ArchiveReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, reportID string) (*issuereports.Report, error) {
 	if mock.ArchiveReportFunc == nil {
 		panic("StoreMock.ArchiveReportFunc: method is nil but Store.ArchiveReport was just called")
 	}
@@ -295,7 +295,7 @@ func (mock *StoreMock) ArchiveReportCalls() []struct {
 }
 
 // CreateReport calls CreateReportFunc.
-func (mock *StoreMock) CreateReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error {
+func (mock *StoreMock) CreateReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) (*issuereports.Report, error) {
 	if mock.CreateReportFunc == nil {
 		panic("StoreMock.CreateReportFunc: method is nil but Store.CreateReport was just called")
 	}
@@ -723,7 +723,7 @@ func (mock *StoreMock) TransitionReportCalls() []struct {
 }
 
 // UpdateReport calls UpdateReportFunc.
-func (mock *StoreMock) UpdateReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) error {
+func (mock *StoreMock) UpdateReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *issuereports.Report) (*issuereports.Report, error) {
 	if mock.UpdateReportFunc == nil {
 		panic("StoreMock.UpdateReportFunc: method is nil but Store.UpdateReport was just called")
 	}

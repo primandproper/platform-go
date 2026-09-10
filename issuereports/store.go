@@ -47,6 +47,29 @@ import (
 // these types; an implementation with no transaction of its own ignores the
 // executor, and the seam stays one signature rather than one per backing.
 //
+// # Every write that names one report answers with it
+//
+// [Store.CreateReport], [Store.UpdateReport], [Store.TransitionReport] and
+// [Store.ArchiveReport] each return the row the statement left, read back on the
+// caller's transaction. Returning is the spelling rather than writing the answer
+// onto the argument: the two deliver the same guarantee, and one of them is
+// available to a write that takes an id rather than an entity, so this interface
+// spells it one way. None of the four modifies the value it was handed.
+//
+// The reading is not "a write returns". It is that the row is what the caller
+// acts on next and no read of theirs can reach it as the statement left it. A
+// transition assigns a stamp and a note the caller did not supply. A revision
+// moves last_updated_at, which is the database's. An archive hides the row from
+// every keyed read this interface has, so the entry naming what was removed is
+// written from the returned row or from a read taken before the write, describing
+// a report that was still in the queue.
+//
+// [Store.DeleteReportsByReporter] is the one write that does not, and the reason
+// is the shape of the answer rather than an exception to the rule: an erasure
+// destroys a set rather than moving a row, and what a caller reports is how many
+// went. Handing back the rows would be handing back the free text the erasure
+// exists to remove.
+//
 // # The scope is an argument, on every method
 //
 // Every method takes a tenancy.Scope, and none of them offers a variant that
@@ -75,18 +98,24 @@ import (
 // a cursor and a page size on two of the three dialects this package serves.
 type Store interface {
 	// CreateReport files one report through the caller's transaction, so the
-	// report commits with whatever the caller writes beside it. It assigns the
-	// id where the caller left it empty, sets the status to StatusOpen, and
-	// writes back what was stored. A nil tx is an error wrapping ErrNilExecutor.
+	// report commits with whatever the caller writes beside it, and answers with
+	// the row it wrote. It assigns the id where the caller left it empty and
+	// sets the status to StatusOpen. A nil tx is an error wrapping
+	// ErrNilExecutor.
 	//
 	// A report is born open, so a value arriving in any other status is
 	// ErrInvalidStatusTransition rather than a stored row: a report that started
 	// resolved is one nobody resolved.
 	//
-	// Both statements run on tx, so the creation time read back is the one this
+	// The report handed in is not modified. Everything the write settled — the
+	// id it minted, the scope it bound, the status it assigned, the stamp the
+	// database wrote — is on the value returned, so a caller reads them from one
+	// place rather than from an argument that changed under them.
+	//
+	// Both statements run on tx, so the row read back is the one this
 	// transaction just wrote rather than a read of a row nothing else can see
 	// yet.
-	CreateReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *Report) error
+	CreateReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *Report) (*Report, error)
 
 	// GetReport reads one of the scope's live reports. It returns an error
 	// wrapping ErrReportNotFound when the report does not exist, has been
@@ -126,17 +155,25 @@ type Store interface {
 	// UpdateReport revises what the reporter said — the kind, the details, and
 	// what the report is about — through the caller's transaction, so the
 	// revision and whatever the caller records about it commit together or not
-	// at all. A revision is an event as much as it is a write: who changed what,
-	// and when. A nil tx is an error wrapping ErrNilExecutor.
+	// at all, and answers with the revised row. A revision is an event as much
+	// as it is a write: who changed what, and when, and the entry recording it
+	// describes the row the statement left rather than the one the caller read
+	// before it. A nil tx is an error wrapping ErrNilExecutor.
 	//
 	// It does not move the status, and it cannot: the lifecycle has one door and
 	// it is TransitionReport, which names the status it believed the row was in.
 	// A whole-row write that also assigned the status would be a revision that
-	// silently reopened a report somebody had just resolved.
+	// silently reopened a report somebody had just resolved. The row returned is
+	// what makes that visible rather than assumed — it carries the status the
+	// table holds, not the one the argument named.
+	//
+	// The report handed in is not modified, and last_updated_at is the
+	// database's, so a response assembled from the argument would say the row
+	// was last touched at the epoch.
 	//
 	// A report that is not in the scope — absent, archived, or somebody else's —
 	// is an error wrapping ErrReportNotFound.
-	UpdateReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *Report) error
+	UpdateReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, report *Report) (*Report, error)
 
 	// TransitionReport moves a report from one status to another through the
 	// caller's transaction and returns it as stored, so the move commits with
@@ -171,16 +208,29 @@ type Store interface {
 	TransitionReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, reportID string, from, to Status, resolution string) (*Report, error)
 
 	// ArchiveReport removes a report from the queue through the caller's
-	// transaction, leaving the row for whoever asks later what was reported. It
-	// is the write a moderation action reaches for: the report leaves the queue
-	// and the entry naming who removed it land together, or neither does. A nil
-	// tx is an error wrapping ErrNilExecutor.
+	// transaction, leaving the row for whoever asks later what was reported, and
+	// answers with the row it hid. It is the write a moderation action reaches
+	// for: the report leaves the queue and the entry naming who removed it land
+	// together, or neither does. A nil tx is an error wrapping ErrNilExecutor.
 	//
 	// It is not "closed": closing is a status, and an archived report is one
 	// that should stop being listed at all. A report already archived is an
 	// error wrapping ErrReportNotFound, because an archived report is not in the
 	// queue and this method addresses the queue.
-	ArchiveReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, reportID string) error
+	//
+	// It returns the row because this is the write whose result no ordinary read
+	// here can reach. GetReport cannot see an archived report at all — that is
+	// what archiving means — and the five lists reach it only for a caller who
+	// set QueryFilter.IncludeArchived and then pages for it, which is a
+	// different question from "what did I just remove". The details somebody
+	// wrote are what a moderator's entry has to name, and the alternative is the
+	// read a consumer takes a statement earlier, describing the row as it stood
+	// before the write rather than as the write left it.
+	//
+	// The read-back runs on tx and only after the guard has matched, so a write
+	// that moved nothing is ErrReportNotFound rather than somebody else's
+	// archive reported as this one's.
+	ArchiveReport(ctx context.Context, tx database.Tx, scope tenancy.Scope, reportID string) (*Report, error)
 
 	// DeleteReportsByReporter destroys every report one person filed within the
 	// scope, archived ones included, and reports how many that was.

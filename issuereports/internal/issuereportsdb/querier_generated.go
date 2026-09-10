@@ -39,10 +39,10 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	DeleteReportsByReporter(ctx context.Context, db DBTX, arg DeleteReportsByReporterParams) (int64, error)
+	// GetArchivedReport runs the :one query.
+	GetArchivedReport(ctx context.Context, db DBTX, arg GetArchivedReportParams) (GetArchivedReportRow, error)
 	// GetReport runs the :one query.
 	GetReport(ctx context.Context, db DBTX, arg GetReportParams) (GetReportRow, error)
-	// GetReportCreatedAt runs the :one query.
-	GetReportCreatedAt(ctx context.Context, db DBTX, arg GetReportCreatedAtParams) (GetReportCreatedAtRow, error)
 	// ListReports runs the :many query.
 	ListReports(ctx context.Context, db DBTX, arg ListReportsParams) ([]ListReportsRow, error)
 	// ListReportsByReporter runs the :many query.

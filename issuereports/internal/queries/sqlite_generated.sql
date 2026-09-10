@@ -79,12 +79,25 @@ WHERE issue_reports.archived_at IS NULL
 	AND issue_reports.id = sqlc.arg(id)
 	AND issue_reports.scope = sqlc.arg(scope);
 
--- name: GetReportCreatedAt :one
+-- name: GetArchivedReport :one
 SELECT
-	issue_reports.created_at
+	issue_reports.id,
+	issue_reports.scope,
+	issue_reports.reporter,
+	issue_reports.kind,
+	issue_reports.details,
+	issue_reports.subject_type,
+	issue_reports.subject_id,
+	issue_reports.status,
+	issue_reports.resolution,
+	issue_reports.closed_at,
+	issue_reports.created_at,
+	issue_reports.last_updated_at,
+	issue_reports.archived_at
 FROM issue_reports
 WHERE issue_reports.id = sqlc.arg(id)
-	AND issue_reports.scope = sqlc.arg(scope);
+	AND issue_reports.scope = sqlc.arg(scope)
+	AND issue_reports.archived_at IS NOT NULL;
 
 -- name: ListReports :many
 SELECT

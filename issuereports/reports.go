@@ -14,8 +14,8 @@ import (
 	"github.com/primandproper/primitives-go/tenancy"
 )
 
-// CreateReport files one report through the caller's transaction and reads back
-// the creation time the database assigned.
+// CreateReport files one report through the caller's transaction and answers
+// with the row it wrote.
 //
 // The read-back is a second round trip on a write path, and it is worth it:
 // created_at is database-owned — see issuereports/internal/queries — so the
@@ -23,6 +23,16 @@ import (
 // 0001-01-01 for a row written a moment ago. A service that serializes what it
 // just created straight into a response would render that as a date rather than
 // as an absence.
+//
+// It is GetReport rather than a statement of its own. A row this transaction
+// just inserted is not archived, so the ordinary keyed read reaches it, and
+// reading the whole row costs the same round trip a read of the stamp alone
+// would while answering with what the database holds instead of with what the
+// caller assembled plus a timestamp.
+//
+// The report handed in is not modified. What the write settles — the id, the
+// scope, the status, the stamp — is on the value returned, so a caller reads
+// those from one place rather than from an argument that changed under them.
 //
 // Every check and both statements run on tx, so the value handed back is the row
 // this transaction wrote rather than a read of a row nothing else can see yet.
@@ -32,74 +42,78 @@ func (s *SQLStore) CreateReport(
 	tx database.Tx,
 	scope tenancy.Scope,
 	report *Report,
-) error {
+) (*Report, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "creating issue report")
+		return nil, op.Error(ErrNilExecutor, "creating issue report")
 	}
 
 	if report == nil {
-		return op.Error(ErrNilReport, "creating issue report")
+		return nil, op.Error(ErrNilReport, "creating issue report")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "creating issue report")
+		return nil, op.Error(err, "creating issue report")
 	}
 
-	if err := adoptScope(scope, report); err != nil {
-		return op.Error(err, "creating issue report")
+	// The copy is what keeps the caller's value out of this. Everything below
+	// assigns — the scope it adopts, the status it is born in, the id it mints —
+	// and every one of those answers is on what this returns, so writing them
+	// through the pointer as well would be two places to read one fact from and
+	// a refused write that had already edited its argument.
+	filing := *report
+
+	if err := adoptScope(scope, &filing); err != nil {
+		return nil, op.Error(err, "creating issue report")
 	}
 
-	op.Set(reporterKey, report.Reporter)
+	op.Set(reporterKey, filing.Reporter)
 
-	if err := validReport(report); err != nil {
-		return op.Error(err, "creating issue report")
+	if err := validReport(&filing); err != nil {
+		return nil, op.Error(err, "creating issue report")
 	}
 
 	// A report is born open, and the caller does not get to say otherwise. A
 	// value arriving resolved is a transition spelled as a create — the one move
 	// that would skip the guard the rest of the lifecycle rests on — so it is
 	// refused rather than silently corrected.
-	switch report.Status {
+	switch filing.Status {
 	case "":
-		report.Status = StatusOpen
+		filing.Status = StatusOpen
 	case StatusOpen:
 	default:
-		return op.Error(platformerrors.Wrapf(ErrInvalidStatusTransition,
-			"an issue report is created %q, not %q", StatusOpen, report.Status),
+		return nil, op.Error(platformerrors.Wrapf(ErrInvalidStatusTransition,
+			"an issue report is created %q, not %q", StatusOpen, filing.Status),
 			"creating issue report")
 	}
 
 	// Neither belongs to a report nobody has closed, and a caller that filled
 	// them in is a caller who has a resolution for something still open.
-	report.ClosedAt = nil
-	report.Resolution = ""
+	filing.ClosedAt = nil
+	filing.Resolution = ""
 
-	if report.ID == "" {
-		report.ID = identifiers.New()
+	if filing.ID == "" {
+		filing.ID = identifiers.New()
 	}
 
-	op.Set(reportIDKey, report.ID).Set(statusKey, report.Status.String())
+	op.Set(reportIDKey, filing.ID).Set(statusKey, filing.Status.String())
 
-	if err := s.q.CreateReport(ctx, tx, createReportParams(scope, report)); err != nil {
-		return op.Error(err, "creating issue report")
+	if err := s.q.CreateReport(ctx, tx, createReportParams(scope, &filing)); err != nil {
+		return nil, op.Error(err, "creating issue report")
 	}
 
-	created, err := s.q.GetReportCreatedAt(ctx, tx,
-		issuereportsdb.GetReportCreatedAtParams{ID: report.ID, Scope: scope})
+	created, err := s.reportOn(ctx, tx, scope, filing.ID)
 	if err != nil {
-		return op.Error(err, "reading back the issue report's creation time")
+		return nil, op.Error(err, "reading back the created issue report")
 	}
 
-	report.CreatedAt = created.CreatedAt.UTC()
-
-	return nil
+	return created, nil
 }
 
-// adoptScope settles which tenant a write is for, and writes the answer back
-// onto the report.
+// adoptScope settles which tenant a write is for, and writes the answer onto the
+// report it is handed — which is the write's own copy, never the caller's.
 //
 // The scope the call named is the one the statement binds, so a report that
 // names a different one is refused rather than corrected: the two disagreeing is
@@ -153,11 +167,12 @@ func (s *SQLStore) GetReport(
 
 // reportOn reads one live report through the executor it is given.
 //
-// It exists because a transition's two reads must go where the transition wrote:
-// a row that transaction has written and not committed is visible on no other
-// connection, so the report handed back would say it never moved, and the
-// disambiguation of a missed guard would report a report that is there as
-// absent.
+// It exists because a write's read-back must go where the write went: a row that
+// transaction has written and not committed is visible on no other connection,
+// so a report read anywhere else would say it was never filed, or never moved,
+// and the disambiguation of a missed guard would report a report that is there
+// as absent. Three of the four single-row writes answer through this; the fourth
+// is the archive, whose row is the one this read is written not to see.
 func (s *SQLStore) reportOn(
 	ctx context.Context,
 	exec issuereportsdb.DBTX,
@@ -446,43 +461,61 @@ func listPage(
 
 // UpdateReport revises what the reporter said, through the caller's transaction,
 // so the revision and whatever the caller records about it commit together or
-// not at all. See [Store.UpdateReport].
+// not at all, and answers with the revised row. See [Store.UpdateReport].
+//
+// The read-back is GetReport, on the transaction that did the writing. The row
+// is still in the queue — a revision does not move it out — so the ordinary
+// keyed read reaches it, and what it carries is what a caller's entry has to
+// describe: last_updated_at, which is the database's, and the status, which this
+// statement does not assign and the argument may well have been wrong about.
+//
+// The report handed in is not modified, the scope it adopts included: the write
+// binds the argument's scope either way, and the row returned carries the one
+// the table holds.
 func (s *SQLStore) UpdateReport(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	report *Report,
-) error {
+) (*Report, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "updating issue report")
+		return nil, op.Error(ErrNilExecutor, "updating issue report")
 	}
 
 	if report == nil {
-		return op.Error(ErrNilReport, "updating issue report")
+		return nil, op.Error(ErrNilReport, "updating issue report")
 	}
 
 	op.Set(reportIDKey, report.ID)
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "updating issue report %q", report.ID)
+		return nil, op.Error(err, "updating issue report %q", report.ID)
 	}
 
-	if err := adoptScope(scope, report); err != nil {
-		return op.Error(err, "updating issue report %q", report.ID)
+	revision := *report
+
+	if err := adoptScope(scope, &revision); err != nil {
+		return nil, op.Error(err, "updating issue report %q", report.ID)
 	}
 
-	if err := validReport(report); err != nil {
-		return op.Error(err, "updating issue report %q", report.ID)
+	if err := validReport(&revision); err != nil {
+		return nil, op.Error(err, "updating issue report %q", report.ID)
 	}
 
-	count, err := s.q.UpdateReport(ctx, tx, updateReportParams(scope, report))
+	count, err := s.q.UpdateReport(ctx, tx, updateReportParams(scope, &revision))
+	if err = guardCount(count, err, ErrReportNotFound, "updating the issue report"); err != nil {
+		return nil, op.Error(err, "updating issue report %q", report.ID)
+	}
 
-	return op.Error(
-		guardCount(count, err, ErrReportNotFound, "updating the issue report"),
-		"updating issue report %q", report.ID)
+	revised, err := s.reportOn(ctx, tx, scope, revision.ID)
+	if err != nil {
+		return nil, op.Error(err, "reading back the revised issue report")
+	}
+
+	return revised, nil
 }
 
 // TransitionReport moves a report from one status to another, through the
@@ -580,17 +613,33 @@ func (s *SQLStore) TransitionReport(
 
 // ArchiveReport removes a report from the queue, through the caller's
 // transaction, so the removal and whatever the caller records about it commit
-// together or not at all. See [Store.ArchiveReport].
+// together or not at all, and answers with the row it hid.
+// See [Store.ArchiveReport].
 //
 // Zero rows is ErrReportNotFound rather than a quiet success, and the reading is
 // exact: the statement excludes archived rows, so a report that has already been
 // archived is not in the queue, which is what this method addresses.
+//
+// The read-back is GetArchivedReport rather than GetReport, because it is the
+// one read here that has to see what every other read is written not to. Two
+// statements rather than one is what the dialect roster costs — RETURNING would
+// answer the write directly and MySQL has none, and the corpus is one text per
+// dialect rendered from one column list, so there is no per-dialect fork to put
+// it in. There is no gap between them: the guarded UPDATE holds the row until
+// commit and the read runs on the same transaction.
+//
+// It is the guard that decides the answer, not the read. A write that moved
+// nothing is ErrReportNotFound before the read runs, so a report somebody else
+// archived is never reported as this call's — and an empty read-back after a
+// guard that matched is left unmapped rather than folded into that sentinel,
+// because the statement holds the row until commit and there is no state in
+// which it is honestly absent.
 func (s *SQLStore) ArchiveReport(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	reportID string,
-) error {
+) (*Report, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(reportIDKey, reportID),
@@ -598,19 +647,26 @@ func (s *SQLStore) ArchiveReport(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving issue report %q", reportID)
+		return nil, op.Error(ErrNilExecutor, "archiving issue report %q", reportID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving issue report %q", reportID)
+		return nil, op.Error(err, "archiving issue report %q", reportID)
 	}
 
 	count, err := s.q.ArchiveReport(ctx, tx,
 		issuereportsdb.ArchiveReportParams{ID: reportID, Scope: scope})
+	if err = guardCount(count, err, ErrReportNotFound, "archiving the issue report"); err != nil {
+		return nil, op.Error(err, "archiving issue report %q", reportID)
+	}
 
-	return op.Error(
-		guardCount(count, err, ErrReportNotFound, "archiving the issue report"),
-		"archiving issue report %q", reportID)
+	row, err := s.q.GetArchivedReport(ctx, tx,
+		issuereportsdb.GetArchivedReportParams{ID: reportID, Scope: scope})
+	if err != nil {
+		return nil, op.Error(err, "reading back the archived issue report")
+	}
+
+	return reportFromArchivedRow(&row), nil
 }
 
 // DeleteReportsByReporter destroys every report one person filed within the
