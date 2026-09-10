@@ -26,7 +26,6 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/distributedlock"
 	"github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/idempotency"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -112,16 +111,15 @@ func NewStore(
 // NewWorker builds the Worker that advances instances.
 //
 // The locker is required and has no default — see saga.ErrNilLocker. The
-// idempotency manager and the event publisher are optional; both may be nil,
-// and the package documentation says what each one being absent costs.
+// idempotency manager and the event publisher are not arguments at all: see
+// WithWorkerIdempotency and WithWorkerEventPublisher, each of which says what a
+// worker without it does.
 func NewWorker(
 	ctx context.Context,
 	cfg *Config,
 	store saga.Store,
 	registry *saga.Registry,
 	locker distributedlock.ScopedLocker,
-	manager *idempotency.Manager[saga.StepResult],
-	publisher saga.EventPublisher,
 	opts ...Option,
 ) (*saga.Worker, error) {
 	o := newOptions(opts)
@@ -141,7 +139,7 @@ func NewWorker(
 		saga.WithWorkerLogger(logger),
 		saga.WithWorkerTracerProvider(tracerProvider),
 		saga.WithWorkerMetricsProvider(metricsProvider),
-		saga.WithWorkerIdempotency(manager),
-		saga.WithWorkerEventPublisher(publisher),
+		saga.WithWorkerIdempotency(o.manager),
+		saga.WithWorkerEventPublisher(o.publisher),
 	)
 }

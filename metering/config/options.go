@@ -3,6 +3,8 @@ package meteringcfg
 import (
 	"github.com/primandproper/platform-go/v14/metering"
 
+	"github.com/primandproper/primitives-go/analytics"
+	"github.com/primandproper/primitives-go/cache"
 	"github.com/primandproper/primitives-go/observability"
 	"github.com/primandproper/primitives-go/observability/logging"
 	"github.com/primandproper/primitives-go/observability/metrics"
@@ -17,11 +19,17 @@ import (
 // nothing. Requiring them positionally made a caller that wanted none of the
 // three name all three anyway, usually as noops.
 //
-// The passthrough options each apply to one constructor and are ignored by the
-// others, so a single wiring site can carry options for whichever component it
-// happens to build. They cannot be a second variadic on the constructor: Go
-// allows one per function, and that slot is what makes the observability
-// optional.
+// The analytics reporter, the quota source and the totals cache are options for
+// the same reason and were parameters until they were not: each is a dependency
+// a legitimate deployment simply has none of, and a positional parameter made
+// every one of those deployments spell a nil the constructor's own
+// documentation had already predicted.
+//
+// The dependency options and the passthrough options each apply to one
+// constructor and are ignored by the others, so a single wiring site can carry
+// options for whichever component it happens to build. They cannot be a second
+// variadic on the constructor: Go allows one per function, and that slot is what
+// makes the observability optional.
 type Option func(*options)
 
 // options collects what the options set.
@@ -29,6 +37,10 @@ type options struct {
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
+
+	analytics analytics.EventReporter
+	quotas    metering.QuotaSource
+	totals    cache.Cache[metering.CachedTotal]
 
 	store    []metering.SQLStoreOption
 	recorder []metering.RecorderOption
@@ -73,6 +85,34 @@ func WithMetricsProvider(metricsProvider metrics.Provider) Option {
 // its pillars and then override one of them.
 func WithPillars(p *observability.Pillars) Option {
 	return func(o *options) { o.logger, o.tracerProvider, o.metricsProvider = p.Deps() }
+}
+
+// WithRecorderAnalytics attaches the reporter NewRecorder mirrors usage events
+// to. Absent — which is usually what a deployment wants — nothing is mirrored;
+// see metering.WithRecorderAnalytics for why it is off by default. The other
+// constructors ignore it.
+//
+// It is not NewFlusher's reporter, which is a capitalism.UsageReporter, is
+// required, and stays a parameter for the reason NewFlusher's documentation
+// gives.
+func WithRecorderAnalytics(reporter analytics.EventReporter) Option {
+	return func(o *options) { o.analytics = reporter }
+}
+
+// WithEnforcerQuotaSource attaches the source NewEnforcer reads per-subject
+// limits from — entitlementscfg.NewQuotaSource builds the one that keeps the
+// limit an account is shown and the limit enforced against it the same number.
+// Absent, the Registry's static quotas serve every subject. The other
+// constructors ignore it.
+func WithEnforcerQuotaSource(quotas metering.QuotaSource) Option {
+	return func(o *options) { o.quotas = quotas }
+}
+
+// WithEnforcerCache attaches the totals cache NewEnforcer answers Check from.
+// Absent, every Check is a durable read — see metering.WithEnforcerCache. The
+// other constructors ignore it.
+func WithEnforcerCache(totals cache.Cache[metering.CachedTotal]) Option {
+	return func(o *options) { o.totals = totals }
 }
 
 // WithStoreOptions passes opts to NewStore, which applies them after the options it

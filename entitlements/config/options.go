@@ -2,7 +2,10 @@ package entitlementscfg
 
 import (
 	"github.com/primandproper/platform-go/v14/entitlements"
+	"github.com/primandproper/platform-go/v14/metering"
 
+	"github.com/primandproper/primitives-go/cache"
+	"github.com/primandproper/primitives-go/featureflags"
 	"github.com/primandproper/primitives-go/observability"
 	"github.com/primandproper/primitives-go/observability/logging"
 	"github.com/primandproper/primitives-go/observability/metrics"
@@ -17,11 +20,18 @@ import (
 // nothing. Requiring them positionally would make a caller that wants none of
 // the three name all three anyway, usually as noops.
 //
+// The enforcer, the flag manager, and the assignment cache are options for the
+// same reason and were parameters until they were not: each is a dependency a
+// legitimate deployment simply has none of, and a positional parameter made
+// every one of those deployments spell a nil the constructor's own
+// documentation had already predicted.
+//
 // NewCatalog and NewQuotaSource accept the type and ignore every value of it.
-// Neither builds anything that observes: a catalog is a map assembled at
-// startup, and a quota source is a lookup metering traces from its own side.
-// They take the parameter so that one wiring site can pass the same options to
-// all three constructors without knowing which of them care.
+// Neither builds anything that observes, and neither takes a dependency any of
+// the options name: a catalog is a map assembled at startup, and a quota source
+// is a lookup metering traces from its own side. They take the parameter so that
+// one wiring site can pass the same options to all three constructors without
+// knowing which of them care.
 type Option func(*options)
 
 // options collects what the options set.
@@ -29,6 +39,10 @@ type options struct {
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
+
+	enforcer    metering.Enforcer
+	flags       featureflags.FeatureFlagManager
+	assignments cache.Cache[entitlements.Assignment]
 
 	checker []entitlements.CheckerOption
 }
@@ -70,6 +84,29 @@ func WithMetricsProvider(metricsProvider metrics.Provider) Option {
 // its pillars and then override one of them.
 func WithPillars(p *observability.Pillars) Option {
 	return func(o *options) { o.logger, o.tracerProvider, o.metricsProvider = p.Deps() }
+}
+
+// WithEnforcer attaches the metering enforcer NewChecker consults for quota
+// features. It is required when the catalog has any quota feature — see
+// entitlements.ErrEnforcerRequired — and pointless when it does not: a
+// deployment gating only boolean features needs no metering tables and no store.
+// Other constructors ignore it.
+func WithEnforcer(enforcer metering.Enforcer) Option {
+	return func(o *options) { o.enforcer = enforcer }
+}
+
+// WithFeatureFlags attaches the flag manager NewChecker consults for per-account
+// grants and kills. Absent, every grant and kill flag is inert and decisions come
+// from the plan alone. Other constructors ignore it.
+func WithFeatureFlags(flags featureflags.FeatureFlagManager) Option {
+	return func(o *options) { o.flags = flags }
+}
+
+// WithAssignmentCache attaches the cache NewChecker resolves plan assignments
+// through. Absent, the account's plan is resolved from the PlanSource on every
+// check. Other constructors ignore it.
+func WithAssignmentCache(assignments cache.Cache[entitlements.Assignment]) Option {
+	return func(o *options) { o.assignments = assignments }
 }
 
 // WithCheckerOptions passes opts to NewChecker, which applies them after the

@@ -92,6 +92,17 @@ func RegisterChecker(i do.Injector) {
 			return nil, err
 		}
 
+		opts := []Option{WithPillars(pillars)}
+		if enforcer != nil {
+			opts = append(opts, WithEnforcer(enforcer))
+		}
+		if flags != nil {
+			opts = append(opts, WithFeatureFlags(flags))
+		}
+		if assignments != nil {
+			opts = append(opts, WithAssignmentCache(assignments))
+		}
+
 		// Built into a variable and returned only once err is known to be nil:
 		// NewChecker returns an *entitlements.PlanChecker, and returning it
 		// straight through would register a non-nil entitlements.Checker
@@ -103,10 +114,7 @@ func RegisterChecker(i do.Injector) {
 			do.MustInvoke[*Config](i),
 			do.MustInvoke[*entitlements.Catalog](i),
 			do.MustInvoke[entitlements.PlanSource](i),
-			enforcer,
-			flags,
-			assignments,
-			WithPillars(pillars),
+			opts...,
 		)
 		if err != nil {
 			return nil, err

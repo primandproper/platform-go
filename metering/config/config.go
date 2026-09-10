@@ -21,8 +21,6 @@ import (
 
 	"github.com/primandproper/platform-go/v14/metering"
 
-	"github.com/primandproper/primitives-go/analytics"
-	"github.com/primandproper/primitives-go/cache"
 	"github.com/primandproper/primitives-go/capitalism"
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/errors"
@@ -143,15 +141,14 @@ func NewStore(
 // NewRecorder builds the ingest path.
 //
 // The registry is a required argument rather than a config field: which meters an
-// application counts is Go code. reporter may be nil, and usually should be — see
-// metering.WithRecorderAnalytics for why it is off by default.
+// application counts is Go code. The analytics mirror is not an argument at all —
+// see WithRecorderAnalytics, which is off by default and says why.
 func NewRecorder(
 	ctx context.Context,
 	cfg *Config,
 	store metering.Store,
 	registry *metering.Registry,
 	resolver metering.PeriodResolver,
-	reporter analytics.EventReporter,
 	opts ...Option,
 ) (*metering.DurableRecorder, error) {
 	o := newOptions(opts)
@@ -165,8 +162,8 @@ func NewRecorder(
 	if resolver != nil {
 		base = append(base, metering.WithRecorderPeriodResolver(resolver))
 	}
-	if reporter != nil {
-		base = append(base, metering.WithRecorderAnalytics(reporter))
+	if o.analytics != nil {
+		base = append(base, metering.WithRecorderAnalytics(o.analytics))
 	}
 	if logger != nil {
 		base = append(base, metering.WithRecorderLogger(logger))
@@ -194,9 +191,9 @@ func NewRecorder(
 // whose replica lag is long enough for a subject to spend the same quota twice
 // wants metering.NewQuotaEnforcer directly, with Writer().
 //
-// totals may be nil, at the cost of a durable read on every Check — see
-// metering.WithEnforcerCache. quotas may be nil, in which case the Registry's
-// static quotas serve every subject.
+// The totals cache and the quota source are options rather than arguments — see
+// WithEnforcerCache and WithEnforcerQuotaSource, each of which says what an
+// enforcer without it does.
 //
 // resolver must be the same one NewRecorder was given. Two resolvers that
 // disagree about where a period begins would have the enforcer reading a total
@@ -210,8 +207,6 @@ func NewEnforcer(
 	store metering.Store,
 	registry *metering.Registry,
 	resolver metering.PeriodResolver,
-	quotas metering.QuotaSource,
-	totals cache.Cache[metering.CachedTotal],
 	opts ...Option,
 ) (*metering.QuotaEnforcer, error) {
 	o := newOptions(opts)
@@ -229,11 +224,11 @@ func NewEnforcer(
 	if resolver != nil {
 		base = append(base, metering.WithEnforcerPeriodResolver(resolver))
 	}
-	if quotas != nil {
-		base = append(base, metering.WithEnforcerQuotaSource(quotas))
+	if o.quotas != nil {
+		base = append(base, metering.WithEnforcerQuotaSource(o.quotas))
 	}
-	if totals != nil {
-		base = append(base, metering.WithEnforcerCache(totals))
+	if o.totals != nil {
+		base = append(base, metering.WithEnforcerCache(o.totals))
 	}
 	if logger != nil {
 		base = append(base, metering.WithEnforcerLogger(logger))

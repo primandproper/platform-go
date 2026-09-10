@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/saga"
 
+	"github.com/primandproper/primitives-go/config/injection"
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/distributedlock"
 	"github.com/primandproper/primitives-go/idempotency"
@@ -58,16 +59,39 @@ func RegisterOutboxEventPublisher(i do.Injector) {
 
 // RegisterWorker registers a *saga.Worker with the injector.
 //
+// The idempotency manager and the event publisher are both optional. Without
+// the manager, a step whose instance is advanced twice runs twice; without a
+// publisher, instances still advance and nothing outside the saga tables hears
+// about it. That the publisher is optional is what lets a deployment configure
+// sagas without an outbox — see RegisterOutboxEventPublisher, which is the
+// publisher an outbox-carrying deployment registers.
+//
 // Prerequisites: *Config, saga.Store (see RegisterStore), *saga.Registry (the
-// application's saga definitions), distributedlock.ScopedLocker,
-// *idempotency.Manager[saga.StepResult], and saga.EventPublisher (see
-// RegisterOutboxEventPublisher) must be registered in the injector before the
-// Worker is invoked.
+// application's saga definitions), and distributedlock.ScopedLocker must be
+// registered in the injector before the Worker is invoked.
 func RegisterWorker(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*saga.Worker, error) {
 		pillars, err := observability.InvokePillars(i)
 		if err != nil {
 			return nil, err
+		}
+
+		manager, err := injection.InvokeOptional[*idempotency.Manager[saga.StepResult]](i)
+		if err != nil {
+			return nil, err
+		}
+
+		publisher, err := injection.InvokeOptional[saga.EventPublisher](i)
+		if err != nil {
+			return nil, err
+		}
+
+		opts := []Option{WithPillars(pillars)}
+		if manager != nil {
+			opts = append(opts, WithWorkerIdempotency(manager))
+		}
+		if publisher != nil {
+			opts = append(opts, WithWorkerEventPublisher(publisher))
 		}
 
 		return NewWorker(
@@ -76,9 +100,7 @@ func RegisterWorker(i do.Injector) {
 			do.MustInvoke[saga.Store](i),
 			do.MustInvoke[*saga.Registry](i),
 			do.MustInvoke[distributedlock.ScopedLocker](i),
-			do.MustInvoke[*idempotency.Manager[saga.StepResult]](i),
-			do.MustInvoke[saga.EventPublisher](i),
-			WithPillars(pillars),
+			opts...,
 		)
 	})
 }

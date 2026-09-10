@@ -174,9 +174,9 @@ func TestConstructors(T *testing.T) {
 			store,
 			registry,
 			metering.NewCalendarPeriodResolver(nil),
-			&analyticsmock.EventReporterMock{
+			WithRecorderAnalytics(&analyticsmock.EventReporterMock{
 				EventOccurredFunc: func(context.Context, string, string, map[string]any) error { return nil },
-			},
+			}),
 			WithLogger(logger),
 			WithTracerProvider(tracerProvider),
 			WithMetricsProvider(metricsProvider),
@@ -196,8 +196,8 @@ func TestConstructors(T *testing.T) {
 			store,
 			registry,
 			metering.NewCalendarPeriodResolver(nil),
-			metering.NewRegistryQuotaSource(registry),
-			totals,
+			WithEnforcerQuotaSource(metering.NewRegistryQuotaSource(registry)),
+			WithEnforcerCache(totals),
 			WithLogger(logger),
 			WithTracerProvider(tracerProvider),
 			WithMetricsProvider(metricsProvider),
@@ -248,15 +248,16 @@ func TestConstructors(T *testing.T) {
 		store, err := NewStore(t.Context(), cfg, client)
 		must.NoError(t, err)
 
-		_, err = NewRecorder(t.Context(), cfg, store, registry, nil, nil)
+		_, err = NewRecorder(t.Context(), cfg, store, registry, nil)
 		must.NoError(t, err)
 
-		_, err = NewEnforcer(t.Context(), cfg, client, store, registry, nil, nil, nil)
+		_, err = NewEnforcer(t.Context(), cfg, client, store, registry, nil)
 		must.NoError(t, err)
 
-		// The client is not optional the way the resolver and the cache are: it
-		// is where Check reads the durable total when the cache cannot answer.
-		_, err = NewEnforcer(t.Context(), cfg, nil, store, registry, nil, nil, nil)
+		// The client is not optional the way the resolver, the quota source and
+		// the cache are: it is where Check reads the durable total when the
+		// cache cannot answer.
+		_, err = NewEnforcer(t.Context(), cfg, nil, store, registry, nil)
 		test.ErrorIs(t, err, errors.ErrNilInputParameter)
 
 		_, err = NewFlusher(
@@ -269,6 +270,71 @@ func TestConstructors(T *testing.T) {
 			capitalismnoop.NewUsageReporter(),
 		)
 		must.NoError(t, err)
+	})
+
+	T.Run("the optional dependencies arrive through their options", func(t *testing.T) {
+		t.Parallel()
+
+		client := newClient(t)
+		cfg := newValidConfig()
+		registry := newRegistry(t)
+
+		store, err := NewStore(t.Context(), cfg, client)
+		must.NoError(t, err)
+
+		reporter := &analyticsmock.EventReporterMock{
+			EventOccurredFunc: func(context.Context, string, string, map[string]any) error { return nil },
+		}
+
+		recorder, err := NewRecorder(t.Context(), cfg, store, registry,
+			metering.NewCalendarPeriodResolver(nil), WithRecorderAnalytics(reporter))
+		must.NoError(t, err)
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return recorder.Record(t.Context(), tx, metering.Usage{
+				Subject: "account-1", Meter: "api_requests", Quantity: 5, IdempotencyKey: "req-1",
+			})
+		}))
+
+		// A recorder that never received the reporter mirrors nowhere, so the
+		// call itself is the evidence the option arrived.
+		test.SliceNotEmpty(t, reporter.EventOccurredCalls())
+
+		// The registry's own quota allows 100 per period. A quota source that
+		// allows one is therefore only reachable through the option.
+		var cacheReads int
+
+		totals := &cachemock.CacheMock[metering.CachedTotal]{
+			GetFunc: func(context.Context, string) (*metering.CachedTotal, error) {
+				cacheReads++
+
+				return nil, cache.ErrNotFound
+			},
+			SetFunc: func(context.Context, string, *metering.CachedTotal, ...cache.WriteOption) error { return nil },
+		}
+
+		enforcer, err := NewEnforcer(t.Context(), cfg, client, store, registry,
+			metering.NewCalendarPeriodResolver(nil),
+			WithEnforcerQuotaSource(metering.QuotaSourceFunc(
+				func(context.Context, string, string) (metering.Quota, error) {
+					return metering.Quota{
+						Meter:    "api_requests",
+						Limit:    1,
+						Behavior: metering.BehaviorBlock,
+						Period:   metering.PeriodMonth,
+					}, nil
+				})),
+			WithEnforcerCache(totals),
+		)
+		must.NoError(t, err)
+
+		decision, err := enforcer.Check(t.Context(), "account-1", "api_requests", 1)
+		must.NoError(t, err)
+		test.False(t, decision.Allowed)
+		test.EqOp(t, int64(1), decision.Limit)
+
+		// And the cache was the first thing asked, which is the other option.
+		test.Positive(t, cacheReads)
 	})
 
 	T.Run("refuses a nil config everywhere", func(t *testing.T) {
@@ -284,10 +350,10 @@ func TestConstructors(T *testing.T) {
 		_, err := NewStore(t.Context(), nil, client)
 		test.ErrorIs(t, err, errors.ErrNilInputParameter)
 
-		_, err = NewRecorder(t.Context(), nil, nil, registry, nil, nil)
+		_, err = NewRecorder(t.Context(), nil, nil, registry, nil)
 		test.ErrorIs(t, err, errors.ErrNilInputParameter)
 
-		_, err = NewEnforcer(t.Context(), nil, nil, nil, registry, nil, nil, nil)
+		_, err = NewEnforcer(t.Context(), nil, nil, nil, registry, nil)
 		test.ErrorIs(t, err, errors.ErrNilInputParameter)
 
 		_, err = NewFlusher(t.Context(), nil, nil, mapper, capitalismnoop.NewUsageReporter())
@@ -311,11 +377,11 @@ func TestConstructors(T *testing.T) {
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "must exceed flush timeout")
 
-		_, err = NewRecorder(t.Context(), bad, nil, registry, nil, nil)
+		_, err = NewRecorder(t.Context(), bad, nil, registry, nil)
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "must exceed flush timeout")
 
-		_, err = NewEnforcer(t.Context(), bad, nil, nil, registry, nil, nil, nil)
+		_, err = NewEnforcer(t.Context(), bad, nil, nil, registry, nil)
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "must exceed flush timeout")
 
@@ -332,7 +398,7 @@ func TestConstructors(T *testing.T) {
 		store, err := NewStore(t.Context(), cfg, newClient(t))
 		must.NoError(t, err)
 
-		_, err = NewRecorder(t.Context(), cfg, nil, newRegistry(t), nil, nil)
+		_, err = NewRecorder(t.Context(), cfg, nil, newRegistry(t), nil)
 		test.ErrorIs(t, err, metering.ErrNilStore)
 
 		_, err = NewFlusher(t.Context(), cfg, store, nil, capitalismnoop.NewUsageReporter())

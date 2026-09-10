@@ -3,6 +3,12 @@ package meteringcfg
 import (
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/metering"
+
+	"github.com/primandproper/primitives-go/analytics"
+	analyticsmock "github.com/primandproper/primitives-go/analytics/mock"
+	"github.com/primandproper/primitives-go/cache"
+	cachemock "github.com/primandproper/primitives-go/cache/mock"
 	"github.com/primandproper/primitives-go/observability"
 	"github.com/primandproper/primitives-go/observability/logging"
 	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
@@ -86,6 +92,42 @@ func TestOptions(T *testing.T) {
 		test.Nil(t, o.metricsProvider)
 		test.NotNil(t, o.logger)
 		test.NotNil(t, o.tracerProvider)
+	})
+
+	T.Run("each dependency option sets the field it names", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			reporter analytics.EventReporter           = &analyticsmock.EventReporterMock{}
+			quotas   metering.QuotaSource              = metering.NewRegistryQuotaSource(metering.NewRegistry())
+			totals   cache.Cache[metering.CachedTotal] = &cachemock.CacheMock[metering.CachedTotal]{}
+		)
+
+		o := newOptions([]Option{
+			WithRecorderAnalytics(reporter),
+			WithEnforcerQuotaSource(quotas),
+			WithEnforcerCache(totals),
+		})
+
+		test.Eq(t, reporter, o.analytics)
+		test.Eq(t, quotas, o.quotas)
+		test.Eq(t, totals, o.totals)
+	})
+
+	T.Run("a nil dependency is stored as nil", func(t *testing.T) {
+		t.Parallel()
+
+		// The option records what it was given; the constructor is what decides
+		// what an absent dependency costs.
+		o := newOptions([]Option{
+			WithRecorderAnalytics(nil),
+			WithEnforcerQuotaSource(nil),
+			WithEnforcerCache(nil),
+		})
+
+		test.Nil(t, o.analytics)
+		test.Nil(t, o.quotas)
+		test.Nil(t, o.totals)
 	})
 
 	T.Run("each passthrough option collects into the field it names", func(t *testing.T) {

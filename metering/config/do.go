@@ -37,16 +37,30 @@ func RegisterStore(i do.Injector) {
 
 // RegisterRecorder registers a *metering.DurableRecorder with the injector.
 //
+// The analytics reporter is optional: absent, usage events are recorded and
+// mirrored nowhere, which is metering.WithRecorderAnalytics' documented default.
+// A deployment that wants the mirror registers an analytics.EventReporter — the
+// named noop is for one that wants the wiring without the traffic.
+//
 // Prerequisites: *Config, metering.Store (see RegisterStore),
-// *metering.Registry (the application's meter definitions),
-// metering.PeriodResolver, and analytics.EventReporter must be registered in
-// the injector before the Recorder is invoked. Where no analytics reporting is
-// wanted, register the named noop reporter.
+// *metering.Registry (the application's meter definitions), and
+// metering.PeriodResolver must be registered in the injector before the Recorder
+// is invoked.
 func RegisterRecorder(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*metering.DurableRecorder, error) {
 		pillars, err := observability.InvokePillars(i)
 		if err != nil {
 			return nil, err
+		}
+
+		reporter, err := injection.InvokeOptional[analytics.EventReporter](i)
+		if err != nil {
+			return nil, err
+		}
+
+		opts := []Option{WithPillars(pillars)}
+		if reporter != nil {
+			opts = append(opts, WithRecorderAnalytics(reporter))
 		}
 
 		return NewRecorder(
@@ -55,21 +69,21 @@ func RegisterRecorder(i do.Injector) {
 			do.MustInvoke[metering.Store](i),
 			do.MustInvoke[*metering.Registry](i),
 			do.MustInvoke[metering.PeriodResolver](i),
-			do.MustInvoke[analytics.EventReporter](i),
-			WithPillars(pillars),
+			opts...,
 		)
 	})
 }
 
-// RegisterEnforcer registers a *metering.Enforcer with the injector. The
-// totals cache is optional: absent, the enforcer reads the store on every
-// decision, which is metering.NewEnforcer's documented uncached behavior.
+// RegisterEnforcer registers a *metering.Enforcer with the injector. The totals
+// cache and the quota source are both optional: without the cache the enforcer
+// reads the store on every decision, which is metering.NewEnforcer's documented
+// uncached behavior, and without a quota source the Registry's static quotas
+// serve every subject. Register entitlementscfg.NewQuotaSource's output as a
+// metering.QuotaSource where the catalog's plan limits are the enforced ones.
 //
 // Prerequisites: *Config, database.Client, metering.Store (see RegisterStore),
-// *metering.Registry, metering.PeriodResolver, and metering.QuotaSource must
-// be registered in the injector before the Enforcer is invoked.
-// metering.NewRegistryQuotaSource adapts the Registry where quotas live in
-// meter definitions.
+// *metering.Registry, and metering.PeriodResolver must be registered in the
+// injector before the Enforcer is invoked.
 func RegisterEnforcer(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (metering.Enforcer, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -77,9 +91,22 @@ func RegisterEnforcer(i do.Injector) {
 			return nil, err
 		}
 
+		quotas, err := injection.InvokeOptional[metering.QuotaSource](i)
+		if err != nil {
+			return nil, err
+		}
+
 		totals, err := injection.InvokeOptional[cache.Cache[metering.CachedTotal]](i)
 		if err != nil {
 			return nil, err
+		}
+
+		opts := []Option{WithPillars(pillars)}
+		if quotas != nil {
+			opts = append(opts, WithEnforcerQuotaSource(quotas))
+		}
+		if totals != nil {
+			opts = append(opts, WithEnforcerCache(totals))
 		}
 
 		// Built into a variable and returned only once err is known to be nil:
@@ -93,9 +120,7 @@ func RegisterEnforcer(i do.Injector) {
 			do.MustInvoke[metering.Store](i),
 			do.MustInvoke[*metering.Registry](i),
 			do.MustInvoke[metering.PeriodResolver](i),
-			do.MustInvoke[metering.QuotaSource](i),
-			totals,
-			WithPillars(pillars),
+			opts...,
 		)
 		if err != nil {
 			return nil, err

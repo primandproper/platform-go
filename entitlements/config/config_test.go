@@ -8,8 +8,12 @@ import (
 	"github.com/primandproper/platform-go/v14/entitlements"
 	"github.com/primandproper/platform-go/v14/metering"
 
+	"github.com/primandproper/primitives-go/cache"
+	"github.com/primandproper/primitives-go/cache/memory"
 	"github.com/primandproper/primitives-go/database"
 	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/featureflags"
+	featureflagsmock "github.com/primandproper/primitives-go/featureflags/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -48,6 +52,35 @@ func testRegistry(t *testing.T) *metering.Registry {
 	}))
 
 	return r
+}
+
+// enabledFlags reports true for exactly the named flags and false for the rest,
+// which is what every real provider does for a flag it has never heard of.
+func enabledFlags(enabled ...string) featureflags.FeatureFlagManager {
+	on := make(map[string]struct{}, len(enabled))
+	for _, f := range enabled {
+		on[f] = struct{}{}
+	}
+
+	return &featureflagsmock.FeatureFlagManagerMock{
+		CanUseFeatureFunc: func(_ context.Context, feature string, _ featureflags.EvaluationContext) (bool, error) {
+			_, ok := on[feature]
+
+			return ok, nil
+		},
+		CloseFunc: func() error { return nil },
+	}
+}
+
+// newAssignmentCache builds the in-memory cache the read-through test seeds.
+func newAssignmentCache(tb testing.TB) cache.Cache[entitlements.Assignment] {
+	tb.Helper()
+
+	c, err := memory.NewInMemoryCache[entitlements.Assignment](time.Minute)
+	must.NoError(tb, err)
+	tb.Cleanup(func() { _ = c.Close() })
+
+	return c
 }
 
 func testEnforcer() metering.Enforcer {
@@ -167,7 +200,7 @@ func TestNewChecker(T *testing.T) {
 		must.NoError(t, err)
 
 		checker, err := NewChecker(t.Context(), &Config{}, catalog,
-			entitlements.NewStaticPlanSource("pro"), testEnforcer(), nil, nil)
+			entitlements.NewStaticPlanSource("pro"), WithEnforcer(testEnforcer()))
 		must.NoError(t, err)
 
 		d, err := checker.Check(t.Context(), "account_123", "advanced_search")
@@ -179,7 +212,7 @@ func TestNewChecker(T *testing.T) {
 		t.Parallel()
 
 		_, err := NewChecker(t.Context(), nil, entitlements.NewCatalog(),
-			entitlements.NewStaticPlanSource("pro"), nil, nil, nil)
+			entitlements.NewStaticPlanSource("pro"))
 
 		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
 	})
@@ -191,9 +224,68 @@ func TestNewChecker(T *testing.T) {
 		must.NoError(t, err)
 
 		_, err = NewChecker(t.Context(), &Config{}, catalog,
-			entitlements.NewStaticPlanSource("pro"), nil, nil, nil)
+			entitlements.NewStaticPlanSource("pro"))
 
 		test.ErrorIs(t, err, entitlements.ErrEnforcerRequired)
+	})
+
+	T.Run("an enforcer supplied by option satisfies a quota catalog", func(t *testing.T) {
+		t.Parallel()
+
+		catalog, err := NewCatalog(t.Context(), &Config{Plans: testPlans()}, testFeatures())
+		must.NoError(t, err)
+
+		checker, err := NewChecker(t.Context(), &Config{}, catalog,
+			entitlements.NewStaticPlanSource("pro"), WithEnforcer(testEnforcer()))
+
+		must.NoError(t, err)
+		test.NotNil(t, checker)
+	})
+
+	T.Run("the flag manager supplied by option reaches the checker", func(t *testing.T) {
+		t.Parallel()
+
+		// advanced_search is not in the free plan, so the only way to be
+		// allowed it is through the grant flag — which is only consulted if the
+		// option arrived.
+		features := []entitlements.Feature{
+			{Key: "advanced_search", Kind: entitlements.KindBoolean, GrantFlag: "advanced_search_grant"},
+		}
+
+		catalog, err := NewCatalog(t.Context(),
+			&Config{Plans: []entitlements.Plan{{Name: "free"}}}, features)
+		must.NoError(t, err)
+
+		checker, err := NewChecker(t.Context(), &Config{}, catalog,
+			entitlements.NewStaticPlanSource("free"),
+			WithFeatureFlags(enabledFlags("advanced_search_grant")))
+		must.NoError(t, err)
+
+		d, err := checker.Check(t.Context(), "account_123", "advanced_search")
+		must.NoError(t, err)
+		test.True(t, d.Allowed)
+	})
+
+	T.Run("the assignment cache supplied by option reaches the checker", func(t *testing.T) {
+		t.Parallel()
+
+		catalog, err := NewCatalog(t.Context(), &Config{Plans: testPlans()}, testFeatures())
+		must.NoError(t, err)
+
+		// The plan source says free and the cache says pro. A checker that
+		// received the cache answers from it.
+		assignments := newAssignmentCache(t)
+		must.NoError(t, assignments.Set(t.Context(),
+			entitlements.DefaultCachePrefix+"account_123", &entitlements.Assignment{Plan: "pro"}))
+
+		checker, err := NewChecker(t.Context(), &Config{}, catalog,
+			entitlements.NewStaticPlanSource("free"),
+			WithEnforcer(testEnforcer()), WithAssignmentCache(assignments))
+		must.NoError(t, err)
+
+		d, err := checker.Check(t.Context(), "account_123", "advanced_search")
+		must.NoError(t, err)
+		test.True(t, d.Allowed)
 	})
 
 	T.Run("passes explicit options through after the derived ones", func(t *testing.T) {
@@ -202,10 +294,10 @@ func TestNewChecker(T *testing.T) {
 		catalog, err := NewCatalog(t.Context(), &Config{Plans: testPlans()}, testFeatures())
 		must.NoError(t, err)
 
-		// The enforcer positional is nil, so only the passthrough option can
-		// satisfy the quota catalog.
+		// No WithEnforcer, so only the passthrough option can satisfy the quota
+		// catalog — which is what pins that the passthrough is applied at all.
 		checker, err := NewChecker(t.Context(), &Config{}, catalog,
-			entitlements.NewStaticPlanSource("pro"), nil, nil, nil,
+			entitlements.NewStaticPlanSource("pro"),
 			WithCheckerOptions(entitlements.WithEnforcer(testEnforcer())))
 
 		must.NoError(t, err)
