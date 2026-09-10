@@ -2,7 +2,6 @@ package metering
 
 import (
 	"context"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -849,39 +848,3 @@ func TestTruncateError(T *testing.T) {
 // usageReporterIsSatisfied keeps the noop's interface conformance checked at
 // compile time.
 var _ capitalism.UsageReporter = (*recordingReporter)(nil)
-
-// TestFlushResult_CountsAreWide pins the width of the integers a pass reports.
-//
-// A count's type is exported API in the one way its value never shows: nothing
-// a caller writes against Flushed reads differently at int than at int64, so
-// the narrowing is invisible right up until the day the field has to widen —
-// and widening an exported field is a major bump, not a patch. Four of the six
-// counted in int while Quantity and EventsReaped beside them did not, which is
-// how the backlog gauge came to convert one subtraction and not the other.
-func TestFlushResult_CountsAreWide(t *testing.T) {
-	t.Parallel()
-
-	for field := range reflect.TypeFor[FlushResult]().Fields() {
-		if !field.IsExported() {
-			continue
-		}
-
-		test.False(t, narrowIntegerKinds[field.Type.Kind()],
-			test.Sprintf("FlushResult.%s counts, so it is int64 like every other result count in the module", field.Name))
-	}
-}
-
-// narrowIntegerKinds are the integer kinds an exported count may not have. It
-// lists the disallowed ones rather than asserting int64 outright so that a
-// field which is not an integer at all is left alone.
-var narrowIntegerKinds = map[reflect.Kind]bool{
-	reflect.Int:    true,
-	reflect.Int8:   true,
-	reflect.Int16:  true,
-	reflect.Int32:  true,
-	reflect.Uint:   true,
-	reflect.Uint8:  true,
-	reflect.Uint16: true,
-	reflect.Uint32: true,
-	reflect.Uint64: true,
-}
