@@ -93,9 +93,9 @@ func TestNewSQLStore(T *testing.T) {
 	T.Run("every store option is the one type", func(t *testing.T) {
 		t.Parallel()
 
-		// Thirteen sibling stores spell this SQLStoreOption, and the variadic
-		// they are collected into is what makes the name a consumer's problem
-		// rather than this file's.
+		// Every sibling SQL store in the module spells this SQLStoreOption,
+		// and the variadic they are collected into is what makes the name a
+		// consumer's problem rather than this file's.
 		opts := []SQLStoreOption{
 			WithStoreLogger(nil),
 			WithStoreTracerProvider(nil),

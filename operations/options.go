@@ -9,6 +9,14 @@ import (
 )
 
 // SQLStoreOption configures a SQLStore at construction.
+//
+// The name is the one every sibling SQL store in the module carries, so a
+// consumer assembling store options for more than one of them writes one
+// spelling rather than remembering which package chose which. The WithStoreX
+// constructors keep their infix: this package has five option families in one
+// file — store, service, start, worker and watcher — so the prefix is
+// disambiguating here where a sibling's bare WithTablePrefix has nothing to
+// disambiguate from.
 type SQLStoreOption func(*SQLStore)
 
 // WithStoreLogger attaches a logger to the store.
