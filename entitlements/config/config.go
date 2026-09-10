@@ -25,9 +25,7 @@ import (
 	"github.com/primandproper/platform-go/v14/entitlements"
 	"github.com/primandproper/platform-go/v14/metering"
 
-	"github.com/primandproper/primitives-go/cache"
 	"github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/featureflags"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -131,11 +129,12 @@ func NewCatalog(
 
 // NewChecker builds the read path.
 //
-// enforcer is required when the catalog has any quota feature and pointless when
-// it does not — a deployment gating only boolean features needs no metering
-// tables and no store. flags may be nil, in which case every grant and kill flag
-// is inert and decisions come from the plan alone. assignments may be nil, at the
-// cost of resolving the account's plan on every check.
+// The catalog and the plan source are the two things this package cannot build:
+// the first is NewCatalog's output and the second is where a deployment keeps
+// which account is on which plan. Everything else the checker consults is a
+// dependency some deployment legitimately has none of, so each is an option —
+// WithEnforcer, WithFeatureFlags and WithAssignmentCache each say what a checker
+// without it does.
 //
 // Explicit options run after the config-derived ones, so a caller can still
 // override anything.
@@ -144,9 +143,6 @@ func NewChecker(
 	cfg *Config,
 	catalog *entitlements.Catalog,
 	plans entitlements.PlanSource,
-	enforcer metering.Enforcer,
-	flags featureflags.FeatureFlagManager,
-	assignments cache.Cache[entitlements.Assignment],
 	opts ...Option,
 ) (*entitlements.PlanChecker, error) {
 	o := newOptions(opts)
@@ -157,14 +153,14 @@ func NewChecker(
 	}
 
 	var base []entitlements.CheckerOption
-	if enforcer != nil {
-		base = append(base, entitlements.WithEnforcer(enforcer))
+	if o.enforcer != nil {
+		base = append(base, entitlements.WithEnforcer(o.enforcer))
 	}
-	if flags != nil {
-		base = append(base, entitlements.WithFeatureFlags(flags))
+	if o.flags != nil {
+		base = append(base, entitlements.WithFeatureFlags(o.flags))
 	}
-	if assignments != nil {
-		base = append(base, entitlements.WithCache(assignments))
+	if o.assignments != nil {
+		base = append(base, entitlements.WithCache(o.assignments))
 	}
 	if logger != nil {
 		base = append(base, entitlements.WithLogger(logger))

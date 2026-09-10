@@ -3,18 +3,24 @@ package sagacfg
 import (
 	"context"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/saga"
+	"github.com/primandproper/platform-go/v14/saga/migrations"
 
+	cachememory "github.com/primandproper/primitives-go/cache/memory"
 	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
 	"github.com/primandproper/primitives-go/database/sqlite"
 	"github.com/primandproper/primitives-go/distributedlock"
 	lockmemory "github.com/primandproper/primitives-go/distributedlock/memory"
+	"github.com/primandproper/primitives-go/idempotency"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"github.com/shoenig/test/wait"
 )
 
 // testClientConfig is the minimum database.ClientConfig a SQLite client needs.
@@ -191,8 +197,6 @@ func TestNewWorker(T *testing.T) {
 			store,
 			registry(t),
 			newLocker(t),
-			nil,
-			nil,
 		)
 		must.NoError(t, err)
 		must.NotNil(t, worker)
@@ -204,7 +208,7 @@ func TestNewWorker(T *testing.T) {
 		store, err := NewStore(t.Context(), validConfig(), newClient(t))
 		must.NoError(t, err)
 
-		_, err = NewWorker(t.Context(), nil, store, registry(t), newLocker(t), nil, nil)
+		_, err = NewWorker(t.Context(), nil, store, registry(t), newLocker(t))
 		test.Error(t, err)
 	})
 
@@ -218,7 +222,7 @@ func TestNewWorker(T *testing.T) {
 		cfg.Worker.StepTimeout = time.Hour
 		cfg.Worker.AdvanceTimeout = time.Second
 
-		_, err = NewWorker(t.Context(), cfg, store, registry(t), newLocker(t), nil, nil)
+		_, err = NewWorker(t.Context(), cfg, store, registry(t), newLocker(t))
 		test.Error(t, err)
 	})
 
@@ -234,9 +238,88 @@ func TestNewWorker(T *testing.T) {
 			store,
 			registry(t),
 			nil,
-			nil,
-			nil,
 		)
 		test.ErrorIs(t, err, saga.ErrNilLocker)
 	})
+
+	T.Run("the event publisher supplied by option reaches the worker", func(t *testing.T) {
+		t.Parallel()
+
+		client := newClient(t)
+		migrate(t, client, saga.DefaultTablePrefix)
+
+		cfg := validConfig()
+		cfg.Worker.PollInterval = time.Millisecond
+
+		store, err := NewStore(t.Context(), cfg, client)
+		must.NoError(t, err)
+
+		reg := registry(t)
+
+		runner, err := saga.NewRunner[struct{}](store, reg)
+		must.NoError(t, err)
+
+		_, err = runner.Start(t.Context(), "orders", struct{}{})
+		must.NoError(t, err)
+
+		var (
+			mu        sync.Mutex
+			published []saga.Event
+		)
+
+		publisher := saga.EventPublisherFunc(
+			func(_ context.Context, _ database.Tx, events ...saga.Event) error {
+				mu.Lock()
+				defer mu.Unlock()
+
+				published = append(published, events...)
+
+				return nil
+			})
+
+		// The manager is supplied too, so that a worker carrying both options is
+		// the one actually driven.
+		records, err := cachememory.NewInMemoryCache[idempotency.Record[saga.StepResult]](time.Hour)
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = records.Close() })
+
+		manager, err := idempotency.NewManager(records, newLocker(t),
+			idempotency.WithInFlightTTL(time.Minute))
+		must.NoError(t, err)
+
+		worker, err := NewWorker(t.Context(), cfg, store, reg, newLocker(t),
+			WithWorkerEventPublisher(publisher),
+			WithWorkerIdempotency(manager),
+		)
+		must.NoError(t, err)
+
+		go worker.Run()
+		t.Cleanup(func() { _ = worker.Close(context.Background()) })
+
+		// A worker that never received the publisher advances the instance and
+		// announces nothing, so the events are the evidence the option arrived.
+		must.Wait(t, wait.InitialSuccess(
+			wait.BoolFunc(func() bool {
+				mu.Lock()
+				defer mu.Unlock()
+
+				return len(published) > 0
+			}),
+			wait.Timeout(10*time.Second),
+			wait.Gap(5*time.Millisecond),
+		))
+	})
+}
+
+// migrate renders and applies the saga schema to a SQLite client.
+func migrate(t *testing.T, client database.Client, prefix string) {
+	t.Helper()
+
+	stmts, err := migrations.Statements(dialect.SQLite, prefix)
+	must.NoError(t, err)
+
+	for _, stmt := range stmts {
+		_, execErr := client.Writer().ExecContext(t.Context(), stmt)
+		must.NoError(t, execErr)
+	}
 }

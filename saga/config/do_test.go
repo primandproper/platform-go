@@ -13,6 +13,7 @@ import (
 	databasecfg "github.com/primandproper/primitives-go/database/config"
 	"github.com/primandproper/primitives-go/distributedlock"
 	distributedlockcfg "github.com/primandproper/primitives-go/distributedlock/config"
+	"github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/idempotency"
 	idempotencycfg "github.com/primandproper/primitives-go/idempotency/config"
 
@@ -127,4 +128,65 @@ func TestRegisterWorker(T *testing.T) {
 		must.NoError(t, err)
 		test.NotNil(t, worker)
 	})
+
+	T.Run("builds with neither the idempotency manager nor the publisher registered", func(t *testing.T) {
+		t.Parallel()
+
+		// This is the shape service.Register produces for a deployment that
+		// configures sagas and no outbox: a worker that advances instances,
+		// replays nothing, and announces nothing.
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue(i, &Config{})
+		do.ProvideValue(i, saga.NewRegistry())
+
+		locker, err := distributedlockcfg.NewScopedLocker(
+			t.Context(),
+			&distributedlockcfg.Config{Provider: distributedlockcfg.MemoryProvider},
+			nil,
+		)
+		must.NoError(t, err)
+		do.ProvideValue[distributedlock.ScopedLocker](i, locker)
+
+		RegisterStore(i)
+		RegisterWorker(i)
+
+		worker, err := do.Invoke[*saga.Worker](i)
+		must.NoError(t, err)
+		test.NotNil(t, worker)
+	})
+
+	T.Run("a registered publisher that fails to build is an error", func(t *testing.T) {
+		t.Parallel()
+
+		// The distinction injection.InvokeOptional exists to preserve: nobody
+		// registered one is fine, the registered one failing to build is not.
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue[database.Client](i, testDBClient(t))
+		do.ProvideValue(i, &Config{})
+		do.ProvideValue(i, saga.NewRegistry())
+
+		locker, err := distributedlockcfg.NewScopedLocker(
+			t.Context(),
+			&distributedlockcfg.Config{Provider: distributedlockcfg.MemoryProvider},
+			nil,
+		)
+		must.NoError(t, err)
+		do.ProvideValue[distributedlock.ScopedLocker](i, locker)
+
+		do.Provide(i, func(do.Injector) (saga.EventPublisher, error) {
+			return nil, errTestPublisher
+		})
+
+		RegisterStore(i)
+		RegisterWorker(i)
+
+		_, err = do.Invoke[*saga.Worker](i)
+		test.ErrorIs(t, err, errTestPublisher)
+	})
 }
+
+// errTestPublisher is the failure a deliberately broken provider returns.
+var errTestPublisher = errors.New("publisher unavailable")

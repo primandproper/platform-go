@@ -1,8 +1,15 @@
 package sagacfg
 
 import (
+	"context"
 	"testing"
+	"time"
 
+	"github.com/primandproper/platform-go/v14/saga"
+
+	cachememory "github.com/primandproper/primitives-go/cache/memory"
+	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/idempotency"
 	"github.com/primandproper/primitives-go/observability"
 	"github.com/primandproper/primitives-go/observability/logging"
 	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
@@ -10,6 +17,7 @@ import (
 	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
 
 	"github.com/shoenig/test"
+	"github.com/shoenig/test/must"
 )
 
 func TestOptions(T *testing.T) {
@@ -69,6 +77,41 @@ func TestOptions(T *testing.T) {
 		test.Nil(t, o.metricsProvider)
 	})
 
+	T.Run("each dependency option sets the field it names", func(t *testing.T) {
+		t.Parallel()
+
+		records, err := cachememory.NewInMemoryCache[idempotency.Record[saga.StepResult]](time.Hour)
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = records.Close() })
+
+		manager, err := idempotency.NewManager(records, newLocker(t))
+		must.NoError(t, err)
+
+		var publisher saga.EventPublisher = &stubPublisher{}
+
+		o := newOptions([]Option{
+			WithWorkerIdempotency(manager),
+			WithWorkerEventPublisher(publisher),
+		})
+
+		test.Eq(t, manager, o.manager)
+		test.Eq(t, publisher, o.publisher)
+	})
+
+	T.Run("a nil dependency is stored as nil", func(t *testing.T) {
+		t.Parallel()
+
+		// The option records what it was given; NewWorker is what decides what
+		// an absent manager or publisher costs.
+		o := newOptions([]Option{
+			WithWorkerIdempotency(nil),
+			WithWorkerEventPublisher(nil),
+		})
+
+		test.Nil(t, o.manager)
+		test.Nil(t, o.publisher)
+	})
+
 	T.Run("a later option overrides what the pillars supplied", func(t *testing.T) {
 		t.Parallel()
 
@@ -88,3 +131,9 @@ func TestOptions(T *testing.T) {
 		test.NotNil(t, o.tracerProvider)
 	})
 }
+
+// stubPublisher is a publisher identity an option test can compare against; a
+// func value cannot be, since two func values are only equal to nil.
+type stubPublisher struct{}
+
+func (*stubPublisher) Publish(context.Context, database.Tx, ...saga.Event) error { return nil }

@@ -77,6 +77,40 @@ func TestOptions(T *testing.T) {
 		test.Nil(t, o.metricsProvider)
 	})
 
+	T.Run("each dependency option sets the field it names", func(t *testing.T) {
+		t.Parallel()
+
+		enforcer := testEnforcer()
+		flags := enabledFlags()
+		assignments := newAssignmentCache(t)
+
+		o := newOptions([]Option{
+			WithEnforcer(enforcer),
+			WithFeatureFlags(flags),
+			WithAssignmentCache(assignments),
+		})
+
+		test.Eq(t, enforcer, o.enforcer)
+		test.Eq(t, flags, o.flags)
+		test.Eq(t, assignments, o.assignments)
+	})
+
+	T.Run("a nil dependency is stored as nil", func(t *testing.T) {
+		t.Parallel()
+
+		// The option records what it was given; NewChecker is what decides that
+		// an absent enforcer is fine for one catalog and an error for another.
+		o := newOptions([]Option{
+			WithEnforcer(nil),
+			WithFeatureFlags(nil),
+			WithAssignmentCache(nil),
+		})
+
+		test.Nil(t, o.enforcer)
+		test.Nil(t, o.flags)
+		test.Nil(t, o.assignments)
+	})
+
 	T.Run("checker options accumulate", func(t *testing.T) {
 		t.Parallel()
 

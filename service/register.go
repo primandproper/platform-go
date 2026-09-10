@@ -433,7 +433,9 @@ func registerDurableWorkflows(i do.Injector, cfg *Config) {
 
 		// The outbox publisher is the seam between the two packages, so it is
 		// registered only when both ends were configured. Without an outbox,
-		// the application names its own saga.EventPublisher.
+		// the application names its own saga.EventPublisher — or names none,
+		// since sagacfg.RegisterWorker resolves the publisher optionally and a
+		// worker without one still advances instances.
 		if cfg.Outbox != nil {
 			sagacfg.RegisterOutboxEventPublisher(i)
 		}
