@@ -184,7 +184,7 @@ message Product {
   // external_product_id is the payment provider's identifier for the same
   // product, empty for one that was never mirrored to a provider -- a free
   // tier, or a plan that only exists to be comped.
-  string external_product_id = 9;
+  string external_product_id = 9 [json_name = "externalProductID"];
 
   // amount_cents is the price in the currency's minor unit: cents for USD,
   // whole yen for JPY. It is 64-bit because a signed 32-bit count of cents runs
@@ -235,12 +235,12 @@ message Subscription {
 
   // product_id is what was subscribed to. It is mutable at the store, because
   // an upgrade is the same agreement pointed at a different product.
-  string product_id = 8;
+  string product_id = 8 [json_name = "productID"];
 
   // external_subscription_id is the provider's identifier for the same
   // agreement, empty for one granted by hand -- which is what grandfathering
   // somebody looks like.
-  string external_subscription_id = 9;
+  string external_subscription_id = 9 [json_name = "externalSubscriptionID"];
 
   // status is where the agreement stands with the processor, in capitalism's
   // vocabulary rather than a provider's words: "incomplete",
@@ -281,11 +281,11 @@ message Purchase {
 
   // belongs_to_account is who bought it, and product_id is what they bought.
   string belongs_to_account = 6;
-  string product_id = 7;
+  string product_id = 7 [json_name = "productID"];
 
   // external_transaction_id is the provider's identifier for the payment, empty
   // for a purchase granted without one.
-  string external_transaction_id = 8;
+  string external_transaction_id = 8 [json_name = "externalTransactionID"];
 
   // currency is the ISO 4217 code amount_cents is in, upper case.
   string currency = 9;
@@ -324,15 +324,15 @@ message Transaction {
   // other, and a row claiming both is one a reconciliation would count twice.
   // Both empty is legal and means neither is still here, which is what a refund
   // of something since removed looks like.
-  string subscription_id = 6;
-  string purchase_id = 7;
+  string subscription_id = 6 [json_name = "subscriptionID"];
+  string purchase_id = 7 [json_name = "purchaseID"];
 
   // external_transaction_id is the provider's identifier for the attempt, empty
   // for a row with no provider behind it. It is the column that makes the
   // ledger safe to write from a webhook: providers redeliver, and the unique
   // index over it turns a second delivery into a refusal instead of a second
   // row.
-  string external_transaction_id = 8;
+  string external_transaction_id = 8 [json_name = "externalTransactionID"];
 
   // status is what became of the attempt.
   TransactionStatus status = 9;
@@ -355,7 +355,7 @@ message ProductCreationInput {
   string description = 2;
   ProductKind kind = 3;
   string currency = 4;
-  string external_product_id = 5;
+  string external_product_id = 5 [json_name = "externalProductID"];
   int64 amount_cents = 6;
   int64 billing_interval_months = 7;
 }
@@ -375,7 +375,7 @@ message ProductUpdateInput {
   string description = 2;
   ProductKind kind = 3;
   string currency = 4;
-  string external_product_id = 5;
+  string external_product_id = 5 [json_name = "externalProductID"];
   int64 amount_cents = 6;
   int64 billing_interval_months = 7;
 }
@@ -395,7 +395,7 @@ message CreateProductResponse {
 message GetProductRequest {
   reserved "scope";
 
-  string product_id = 1;
+  string product_id = 1 [json_name = "productID"];
 }
 
 message GetProductResponse {
@@ -420,7 +420,7 @@ message ListProductsResponse {
 message UpdateProductRequest {
   reserved "scope";
 
-  string product_id = 1;
+  string product_id = 1 [json_name = "productID"];
   ProductUpdateInput input = 2;
 }
 
@@ -433,7 +433,7 @@ message UpdateProductResponse {
 message ArchiveProductRequest {
   reserved "scope";
 
-  string product_id = 1;
+  string product_id = 1 [json_name = "productID"];
 }
 
 message ArchiveProductResponse {
@@ -443,7 +443,7 @@ message ArchiveProductResponse {
 message GetSubscriptionRequest {
   reserved "scope";
 
-  string subscription_id = 1;
+  string subscription_id = 1 [json_name = "subscriptionID"];
 }
 
 message GetSubscriptionResponse {
@@ -468,7 +468,7 @@ message ListSubscriptionsResponse {
 message ListSubscriptionsForAccountRequest {
   reserved "scope";
 
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 
@@ -482,7 +482,7 @@ message ListSubscriptionsForAccountResponse {
 message ListCurrentSubscriptionsRequest {
   reserved "scope";
 
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 
@@ -496,7 +496,7 @@ message ListCurrentSubscriptionsResponse {
 message ArchiveSubscriptionRequest {
   reserved "scope";
 
-  string subscription_id = 1;
+  string subscription_id = 1 [json_name = "subscriptionID"];
 }
 
 message ArchiveSubscriptionResponse {
@@ -506,7 +506,7 @@ message ArchiveSubscriptionResponse {
 message GetPurchaseRequest {
   reserved "scope";
 
-  string purchase_id = 1;
+  string purchase_id = 1 [json_name = "purchaseID"];
 }
 
 message GetPurchaseResponse {
@@ -531,7 +531,7 @@ message ListPurchasesResponse {
 message ListPurchasesForAccountRequest {
   reserved "scope";
 
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 
@@ -545,7 +545,7 @@ message ListPurchasesForAccountResponse {
 message ArchivePurchaseRequest {
   reserved "scope";
 
-  string purchase_id = 1;
+  string purchase_id = 1 [json_name = "purchaseID"];
 }
 
 message ArchivePurchaseResponse {
@@ -555,7 +555,7 @@ message ArchivePurchaseResponse {
 message GetTransactionRequest {
   reserved "scope";
 
-  string transaction_id = 1;
+  string transaction_id = 1 [json_name = "transactionID"];
 }
 
 message GetTransactionResponse {
@@ -580,7 +580,7 @@ message ListTransactionsResponse {
 message ListTransactionsForAccountRequest {
   reserved "scope";
 
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 
@@ -594,7 +594,7 @@ message ListTransactionsForAccountResponse {
 message ArchiveTransactionRequest {
   reserved "scope";
 
-  string transaction_id = 1;
+  string transaction_id = 1 [json_name = "transactionID"];
 }
 
 message ArchiveTransactionResponse {

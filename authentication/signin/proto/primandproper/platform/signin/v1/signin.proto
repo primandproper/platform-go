@@ -115,7 +115,7 @@ message Credentials {
   // the user's default account. An account the user is not a live member of is
   // refused rather than honoured, which is the check that stops a client
   // choosing whose data its token reaches.
-  string active_account_id = 5;
+  string active_account_id = 5 [json_name = "activeAccountID"];
 }
 
 // IssuedToken is a token and what it is good for.
@@ -132,7 +132,7 @@ message IssuedToken {
 
   // token_id is the issuer's "jti": the handle a revocation list names, and the
   // one part of this message safe to record.
-  string token_id = 2;
+  string token_id = 2 [json_name = "tokenID"];
 
   // expires_at is when the token stops being accepted, as the service asked for
   // it.
@@ -142,7 +142,7 @@ message IssuedToken {
   // request named, or the user's default. It is here as well as in the token's
   // own claims so that a client which cannot parse the token still knows which
   // account it is holding one for.
-  string active_account_id = 4;
+  string active_account_id = 4 [json_name = "activeAccountID"];
 
   // administrative reports whether this token came through the administrative
   // door, which typically means a shorter lifetime.
@@ -158,10 +158,10 @@ message AuthStatus {
   primandproper.platform.identity.v1.User user = 1;
 
   // active_account_id is the account this caller's requests are against.
-  string active_account_id = 2;
+  string active_account_id = 2 [json_name = "activeAccountID"];
 
   // account_ids is every account they are a live member of, default first.
-  repeated string account_ids = 3;
+  repeated string account_ids = 3 [json_name = "accountIDs"];
 
   // has_password reports whether they hold a password credential at all. A
   // passwordless user -- registered with a passkey, or federated -- reports

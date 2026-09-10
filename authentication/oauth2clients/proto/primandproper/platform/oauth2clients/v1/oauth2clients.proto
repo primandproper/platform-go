@@ -130,7 +130,7 @@ message OAuth2Client {
 
   // client_id is the identifier the client sends at /authorize and /token. It
   // is not a secret: it travels in every authorization URL and is meant to.
-  string client_id = 5;
+  string client_id = 5 [json_name = "clientID"];
 
   // name is shown on the consent form, and description is for whoever
   // administers the registry. Both are text somebody typed -- render them,
@@ -194,7 +194,7 @@ message CreateOAuth2ClientResponse { IssuedOAuth2Client issued = 1; }
 message GetOAuth2ClientRequest {
   reserved "scope";
 
-  string oauth2_client_id = 1;
+  string oauth2_client_id = 1 [json_name = "oauth2ClientID"];
 }
 message GetOAuth2ClientResponse { OAuth2Client result = 1; }
 
@@ -211,7 +211,7 @@ message ListOAuth2ClientsResponse {
 message ArchiveOAuth2ClientRequest {
   reserved "scope";
 
-  string oauth2_client_id = 1;
+  string oauth2_client_id = 1 [json_name = "oauth2ClientID"];
 }
 message ArchiveOAuth2ClientResponse {}
 

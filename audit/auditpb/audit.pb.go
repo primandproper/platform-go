@@ -307,7 +307,7 @@ type Entry struct {
 	// resource_type names the kind of thing acted on. Always set.
 	ResourceType string `protobuf:"bytes,4,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
 	// resource_id identifies the instance acted on.
-	ResourceId string `protobuf:"bytes,5,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
+	ResourceId string `protobuf:"bytes,5,opt,name=resource_id,json=resourceID,proto3" json:"resource_id,omitempty"`
 	// actor is who did it.
 	Actor *Actor `protobuf:"bytes,6,opt,name=actor,proto3" json:"actor,omitempty"`
 	// changes is the per-field before and after, keyed by field name.
@@ -450,12 +450,12 @@ func (x *Entry) GetSeq() int64 {
 type EntryQuery struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// actor_id restricts to one principal.
-	ActorId string `protobuf:"bytes,1,opt,name=actor_id,json=actorId,proto3" json:"actor_id,omitempty"`
+	ActorId string `protobuf:"bytes,1,opt,name=actor_id,json=actorID,proto3" json:"actor_id,omitempty"`
 	// actor_type restricts to one kind of principal.
 	ActorType string `protobuf:"bytes,2,opt,name=actor_type,json=actorType,proto3" json:"actor_type,omitempty"`
 	// resource_id restricts to one instance. Pair it with resource_type:
 	// instance ids are rarely unique across types.
-	ResourceId string `protobuf:"bytes,3,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
+	ResourceId string `protobuf:"bytes,3,opt,name=resource_id,json=resourceID,proto3" json:"resource_id,omitempty"`
 	// resource_type restricts to one kind of resource.
 	ResourceType string `protobuf:"bytes,4,opt,name=resource_type,json=resourceType,proto3" json:"resource_type,omitempty"`
 	// event_type restricts to one kind of event.
@@ -534,7 +534,7 @@ type Break struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// entry_id is the entry the break was detected at. It is empty for
 	// BREAK_REASON_MISSING_ENTRY, where the whole point is that there is no row.
-	EntryId string `protobuf:"bytes,1,opt,name=entry_id,json=entryId,proto3" json:"entry_id,omitempty"`
+	EntryId string `protobuf:"bytes,1,opt,name=entry_id,json=entryID,proto3" json:"entry_id,omitempty"`
 	// reason is what kind of break it is.
 	Reason BreakReason `protobuf:"varint,2,opt,name=reason,proto3,enum=primandproper.platform.audit.v1.BreakReason" json:"reason,omitempty"`
 	// expected is the hash the chain implies at this position.
@@ -698,7 +698,7 @@ func (x *VerificationResult) GetChecked() int64 {
 
 type GetEntryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	EntryId       string                 `protobuf:"bytes,1,opt,name=entry_id,json=entryId,proto3" json:"entry_id,omitempty"`
+	EntryId       string                 `protobuf:"bytes,1,opt,name=entry_id,json=entryID,proto3" json:"entry_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1008,7 +1008,7 @@ const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
 	"event_type\x18\x03 \x01(\tR\teventType\x12#\n" +
 	"\rresource_type\x18\x04 \x01(\tR\fresourceType\x12\x1f\n" +
 	"\vresource_id\x18\x05 \x01(\tR\n" +
-	"resourceId\x12<\n" +
+	"resourceID\x12<\n" +
 	"\x05actor\x18\x06 \x01(\v2&.primandproper.platform.audit.v1.ActorR\x05actor\x12M\n" +
 	"\achanges\x18\a \x03(\v23.primandproper.platform.audit.v1.Entry.ChangesEntryR\achanges\x12P\n" +
 	"\bmetadata\x18\b \x03(\v24.primandproper.platform.audit.v1.Entry.MetadataEntryR\bmetadata\x12\x1b\n" +
@@ -1024,16 +1024,16 @@ const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01R\x05scope\"\xb2\x01\n" +
 	"\n" +
 	"EntryQuery\x12\x19\n" +
-	"\bactor_id\x18\x01 \x01(\tR\aactorId\x12\x1d\n" +
+	"\bactor_id\x18\x01 \x01(\tR\aactorID\x12\x1d\n" +
 	"\n" +
 	"actor_type\x18\x02 \x01(\tR\tactorType\x12\x1f\n" +
 	"\vresource_id\x18\x03 \x01(\tR\n" +
-	"resourceId\x12#\n" +
+	"resourceID\x12#\n" +
 	"\rresource_type\x18\x04 \x01(\tR\fresourceType\x12\x1d\n" +
 	"\n" +
 	"event_type\x18\x05 \x01(\tR\teventTypeR\x05scope\"\xae\x01\n" +
 	"\x05Break\x12\x19\n" +
-	"\bentry_id\x18\x01 \x01(\tR\aentryId\x12D\n" +
+	"\bentry_id\x18\x01 \x01(\tR\aentryID\x12D\n" +
 	"\x06reason\x18\x02 \x01(\x0e2,.primandproper.platform.audit.v1.BreakReasonR\x06reason\x12\x1a\n" +
 	"\bexpected\x18\x03 \x01(\tR\bexpected\x12\x16\n" +
 	"\x06actual\x18\x04 \x01(\tR\x06actual\x12\x10\n" +
@@ -1045,7 +1045,7 @@ const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
 	"firstBreak\x12\x18\n" +
 	"\achecked\x18\x04 \x01(\x03R\acheckedR\x05scope\"3\n" +
 	"\x0fGetEntryRequest\x12\x19\n" +
-	"\bentry_id\x18\x01 \x01(\tR\aentryIdR\x05scope\"P\n" +
+	"\bentry_id\x18\x01 \x01(\tR\aentryIDR\x05scope\"P\n" +
 	"\x10GetEntryResponse\x12<\n" +
 	"\x05entry\x18\x01 \x01(\v2&.primandproper.platform.audit.v1.EntryR\x05entry\"\xa8\x01\n" +
 	"\x12ListEntriesRequest\x12A\n" +

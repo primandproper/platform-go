@@ -211,12 +211,13 @@ message Account {
   // owner_user_id is who owns it. It moves only through
   // TransferAccountOwnership, never through UpdateAccount.
   //
-  // The explicit json_name here and on the fields below is not decoration.
-  // protobuf would derive "ownerUserId", and the Go type this renders carries
-  // `json:"ownerUserID"` — so a consumer serving the same account over JSON and
-  // over gRPC-JSON would emit two spellings of one field. Pinning the name
-  // makes the two descriptions of this type agree, which identity/grpc's
-  // conformance test then holds them to.
+  // The explicit json_name here and on every other id field in this module's
+  // schemas is not decoration. protobuf would derive "ownerUserId", and the Go
+  // type this renders carries `json:"ownerUserID"` — so a consumer serving the
+  // same account over JSON and over gRPC-JSON would emit two spellings of one
+  // field. Pinning the name makes the two descriptions of this type agree,
+  // which identity/grpc's conformance test then holds them to, and
+  // internal/protoconvention holds all eleven schemas to.
   string owner_user_id = 3 [json_name = "ownerUserID"];
 
   BillingStatus billing_status = 4;
@@ -462,7 +463,7 @@ message UpdateProfileResponse {
 message UpdateAccountRequest {
   reserved "scope";
 
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
 
   AccountUpdateInput input = 2;
 }
@@ -486,7 +487,7 @@ message RecordAgreementResponse {
 message InviteRequest {
   reserved "scope";
 
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
 
   string to_email = 2;
 
@@ -517,7 +518,7 @@ message InviteResponse {
 message AcceptInvitationRequest {
   reserved "scope";
 
-  string invitation_id = 1;
+  string invitation_id = 1 [json_name = "invitationID"];
 
   // token is what the link carried. It is checked against the invitation the id
   // names, and an expired one is reported as expired rather than as absent, so
@@ -534,7 +535,7 @@ message AcceptInvitationResponse {
 message RejectInvitationRequest {
   reserved "scope";
 
-  string invitation_id = 1;
+  string invitation_id = 1 [json_name = "invitationID"];
 
   // token is required for the same reason it is on acceptance: a rejection
   // arrives from whoever followed the link, and the link is the token. A status
@@ -553,7 +554,7 @@ message CancelInvitationRequest {
 
   // No token: the sender never had one. They are looking at what they sent,
   // addressed by id.
-  string invitation_id = 1;
+  string invitation_id = 1 [json_name = "invitationID"];
 
   string status_note = 2;
 }
@@ -565,9 +566,9 @@ message CancelInvitationResponse {
 message TransferAccountOwnershipRequest {
   reserved "scope";
 
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
 
-  string new_owner_user_id = 2;
+  string new_owner_user_id = 2 [json_name = "newOwnerUserID"];
 }
 
 message TransferAccountOwnershipResponse {
@@ -579,7 +580,7 @@ message SetDefaultAccountRequest {
 
   // The user is the caller. Setting somebody else's landing account is not a
   // thing this service does.
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
 }
 
 message SetDefaultAccountResponse {
@@ -589,9 +590,9 @@ message SetDefaultAccountResponse {
 message SetMembershipRolesRequest {
   reserved "scope";
 
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
 
-  string user_id = 2;
+  string user_id = 2 [json_name = "userID"];
 
   // roles replace rather than merge. A caller adding one reads the membership
   // and sends the union; a merging setter cannot revoke.
@@ -605,9 +606,9 @@ message SetMembershipRolesResponse {
 message RemoveMembershipRequest {
   reserved "scope";
 
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
 
-  string user_id = 2;
+  string user_id = 2 [json_name = "userID"];
 }
 
 message RemoveMembershipResponse {
@@ -618,7 +619,7 @@ message RemoveMembershipResponse {
 message ArchiveUserRequest {
   reserved "scope";
 
-  string user_id = 1;
+  string user_id = 1 [json_name = "userID"];
 }
 
 message ArchiveUserResponse {
@@ -628,7 +629,7 @@ message ArchiveUserResponse {
 message UpdateUserAccountStatusRequest {
   reserved "scope";
 
-  string user_id = 1;
+  string user_id = 1 [json_name = "userID"];
 
   AccountStatus status = 2;
 
@@ -642,7 +643,7 @@ message UpdateUserAccountStatusResponse {
 message SetUserServiceRolesRequest {
   reserved "scope";
 
-  string user_id = 1;
+  string user_id = 1 [json_name = "userID"];
 
   // roles replace rather than merge, for the reason SetMembershipRoles gives.
   // This is the write that grants and withdraws operator access.
@@ -659,7 +660,7 @@ message GetPrincipalRequest {
   // active_account_id names which of the caller's accounts this is about.
   // Absent resolves to their default. An account they hold no live membership
   // in is refused rather than answered.
-  optional string active_account_id = 1;
+  optional string active_account_id = 1 [json_name = "activeAccountID"];
 }
 
 message GetPrincipalResponse {
@@ -669,7 +670,7 @@ message GetPrincipalResponse {
 message GetUserRequest {
   reserved "scope";
 
-  string user_id = 1;
+  string user_id = 1 [json_name = "userID"];
 }
 
 message GetUserResponse {
@@ -707,7 +708,7 @@ message SearchUsersByUsernameResponse {
 message GetAccountRequest {
   reserved "scope";
 
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
 }
 
 message GetAccountResponse {
@@ -729,7 +730,7 @@ message ListAccountsResponse {
 message ListAccountsForUserRequest {
   reserved "scope";
 
-  string user_id = 1;
+  string user_id = 1 [json_name = "userID"];
 
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
@@ -743,9 +744,9 @@ message ListAccountsForUserResponse {
 message GetMembershipRequest {
   reserved "scope";
 
-  string user_id = 1;
+  string user_id = 1 [json_name = "userID"];
 
-  string account_id = 2;
+  string account_id = 2 [json_name = "accountID"];
 }
 
 message GetMembershipResponse {
@@ -755,7 +756,7 @@ message GetMembershipResponse {
 message ListMembershipsForUserRequest {
   reserved "scope";
 
-  string user_id = 1;
+  string user_id = 1 [json_name = "userID"];
 }
 
 message ListMembershipsForUserResponse {
@@ -768,7 +769,7 @@ message ListMembershipsForUserResponse {
 message ListAccountMembersRequest {
   reserved "scope";
 
-  string account_id = 1;
+  string account_id = 1 [json_name = "accountID"];
 
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
@@ -782,7 +783,7 @@ message ListAccountMembersResponse {
 message GetInvitationRequest {
   reserved "scope";
 
-  string invitation_id = 1;
+  string invitation_id = 1 [json_name = "invitationID"];
 }
 
 message GetInvitationResponse {

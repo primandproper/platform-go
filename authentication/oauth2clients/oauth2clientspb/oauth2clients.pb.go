@@ -143,7 +143,7 @@ type OAuth2Client struct {
 	Id string `protobuf:"bytes,4,opt,name=id,proto3" json:"id,omitempty"`
 	// client_id is the identifier the client sends at /authorize and /token. It
 	// is not a secret: it travels in every authorization URL and is meant to.
-	ClientId string `protobuf:"bytes,5,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	ClientId string `protobuf:"bytes,5,opt,name=client_id,json=clientID,proto3" json:"client_id,omitempty"`
 	// name is shown on the consent form, and description is for whoever
 	// administers the registry. Both are text somebody typed -- render them,
 	// never trust them.
@@ -487,7 +487,7 @@ func (x *CreateOAuth2ClientResponse) GetIssued() *IssuedOAuth2Client {
 
 type GetOAuth2ClientRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	Oauth2ClientId string                 `protobuf:"bytes,1,opt,name=oauth2_client_id,json=oauth2ClientId,proto3" json:"oauth2_client_id,omitempty"`
+	Oauth2ClientId string                 `protobuf:"bytes,1,opt,name=oauth2_client_id,json=oauth2ClientID,proto3" json:"oauth2_client_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -671,7 +671,7 @@ func (x *ListOAuth2ClientsResponse) GetResults() []*OAuth2Client {
 
 type ArchiveOAuth2ClientRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	Oauth2ClientId string                 `protobuf:"bytes,1,opt,name=oauth2_client_id,json=oauth2ClientId,proto3" json:"oauth2_client_id,omitempty"`
+	Oauth2ClientId string                 `protobuf:"bytes,1,opt,name=oauth2_client_id,json=oauth2ClientID,proto3" json:"oauth2_client_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -761,7 +761,7 @@ const file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDesc =
 	"\varchived_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"archivedAt\x12\x0e\n" +
 	"\x02id\x18\x04 \x01(\tR\x02id\x12\x1b\n" +
-	"\tclient_id\x18\x05 \x01(\tR\bclientId\x12\x12\n" +
+	"\tclient_id\x18\x05 \x01(\tR\bclientID\x12\x12\n" +
 	"\x04name\x18\x06 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\a \x01(\tR\vdescription\x12#\n" +
 	"\rredirect_uris\x18\b \x03(\tR\fredirectUris\x12\x16\n" +
@@ -781,7 +781,7 @@ const file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDesc =
 	"\x1aCreateOAuth2ClientResponse\x12S\n" +
 	"\x06issued\x18\x01 \x01(\v2;.primandproper.platform.oauth2clients.v1.IssuedOAuth2ClientR\x06issued\"I\n" +
 	"\x16GetOAuth2ClientRequest\x12(\n" +
-	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientIdR\x05scope\"h\n" +
+	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientIDR\x05scope\"h\n" +
 	"\x17GetOAuth2ClientResponse\x12M\n" +
 	"\x06result\x18\x01 \x01(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\x06result\"k\n" +
 	"\x18ListOAuth2ClientsRequest\x12H\n" +
@@ -792,7 +792,7 @@ const file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDesc =
 	"pagination\x12O\n" +
 	"\aresults\x18\x02 \x03(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\aresults\"M\n" +
 	"\x1aArchiveOAuth2ClientRequest\x12(\n" +
-	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientIdR\x05scope\"\x1d\n" +
+	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientIDR\x05scope\"\x1d\n" +
 	"\x1bArchiveOAuth2ClientResponse2\x8d\x05\n" +
 	"\x14OAuth2ClientsService\x12\x9d\x01\n" +
 	"\x12CreateOAuth2Client\x12B.primandproper.platform.oauth2clients.v1.CreateOAuth2ClientRequest\x1aC.primandproper.platform.oauth2clients.v1.CreateOAuth2ClientResponse\x12\x94\x01\n" +

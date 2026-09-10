@@ -142,7 +142,7 @@ message Comment {
   // refused, because assembling a deeper tree is a recursive walk and a
   // recursive walk is not one statement on the three engines this module
   // serves.
-  string parent_id = 5;
+  string parent_id = 5 [json_name = "parentID"];
 
   // author is who wrote it, as the consumer's directory identifies people. It
   // is output only, filled from the caller's principal at creation; see the
@@ -172,7 +172,7 @@ message CommentInput {
   // The parent must be a live comment in the caller's scope and must itself be
   // a root. A reply to a reply is refused rather than flattened, because
   // flattening it would file somebody's answer against the wrong question.
-  string parent_id = 1;
+  string parent_id = 1 [json_name = "parentID"];
 
   // target is what the comment is about. A reply may leave it unset and adopt
   // its parent's; one that names a different target than its parent is refused,
@@ -198,7 +198,7 @@ message CreateCommentResponse {
 message GetCommentRequest {
   reserved "scope";
 
-  string comment_id = 1;
+  string comment_id = 1 [json_name = "commentID"];
 }
 message GetCommentResponse {
   reserved "scope";
@@ -231,7 +231,7 @@ message ListRepliesRequest {
   // parent_id is the root whose replies are wanted. Required: the empty parent
   // is what a root stores, so answering it with the roots would be the wrong
   // half of the discussion with nothing about the rows saying so.
-  string parent_id = 2;
+  string parent_id = 2 [json_name = "parentID"];
 
   primandproper.platform.filtering.v1.QueryFilter filter = 3;
 }
@@ -283,7 +283,7 @@ message ListCommentsByAuthorResponse {
 message UpdateCommentRequest {
   reserved "scope", "author", "target", "parent_id";
 
-  string comment_id = 1;
+  string comment_id = 1 [json_name = "commentID"];
 
   // body is the revised text. Required: an edit that empties a comment is a
   // deletion spelled as an edit, and archiving is what this service offers for
@@ -299,7 +299,7 @@ message UpdateCommentResponse {
 message ArchiveCommentRequest {
   reserved "scope";
 
-  string comment_id = 1;
+  string comment_id = 1 [json_name = "commentID"];
 }
 message ArchiveCommentResponse { reserved "scope"; }
 

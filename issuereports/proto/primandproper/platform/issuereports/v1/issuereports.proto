@@ -169,7 +169,7 @@ message IssueReport {
 
   // subject_id is which one. Empty is a report about a kind of thing rather than
   // about one of them.
-  string subject_id = 10;
+  string subject_id = 10 [json_name = "subjectID"];
 
   // status is where the report stands.
   Status status = 11;
@@ -205,7 +205,7 @@ message IssueReportCreationInput {
   // useful shape. A type with no id is every report about that kind of thing; a
   // report about the product in general names neither.
   string subject_type = 3;
-  string subject_id = 4;
+  string subject_id = 4 [json_name = "subjectID"];
 }
 
 // IssueReportUpdateInput revises what the reporter said.
@@ -223,7 +223,7 @@ message IssueReportUpdateInput {
   string kind = 1;
   string details = 2;
   string subject_type = 3;
-  string subject_id = 4;
+  string subject_id = 4 [json_name = "subjectID"];
 }
 
 message CreateReportRequest {
@@ -244,7 +244,7 @@ message CreateReportResponse {
 message GetReportRequest {
   reserved "scope";
 
-  string report_id = 1;
+  string report_id = 1 [json_name = "reportID"];
 }
 
 message GetReportResponse {
@@ -327,7 +327,7 @@ message ListReportsForSubjectRequest {
 
   // subject_type and subject_id together name one particular thing.
   string subject_type = 1;
-  string subject_id = 2;
+  string subject_id = 2 [json_name = "subjectID"];
 
   primandproper.platform.filtering.v1.QueryFilter filter = 3;
 }
@@ -343,7 +343,7 @@ message UpdateReportRequest {
   reserved "scope";
   reserved "reporter";
 
-  string report_id = 1;
+  string report_id = 1 [json_name = "reportID"];
   IssueReportUpdateInput input = 2;
 }
 
@@ -360,7 +360,7 @@ message UpdateReportResponse {
 message TransitionReportRequest {
   reserved "scope";
 
-  string report_id = 1;
+  string report_id = 1 [json_name = "reportID"];
 
   // expected_status is what the caller believed the row held, and it is required.
   // The statement requires the row to still hold it, so a report that moved
@@ -389,7 +389,7 @@ message TransitionReportResponse {
 message ArchiveReportRequest {
   reserved "scope";
 
-  string report_id = 1;
+  string report_id = 1 [json_name = "reportID"];
 }
 
 message ArchiveReportResponse {}

@@ -215,7 +215,7 @@ type IssueReport struct {
 	SubjectType string `protobuf:"bytes,9,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
 	// subject_id is which one. Empty is a report about a kind of thing rather than
 	// about one of them.
-	SubjectId string `protobuf:"bytes,10,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
+	SubjectId string `protobuf:"bytes,10,opt,name=subject_id,json=subjectID,proto3" json:"subject_id,omitempty"`
 	// status is where the report stands.
 	Status Status `protobuf:"varint,11,opt,name=status,proto3,enum=primandproper.platform.issuereports.v1.Status" json:"status,omitempty"`
 	// resolution is why the report is in the terminal status it is in -- the note
@@ -355,7 +355,7 @@ type IssueReportCreationInput struct {
 	// useful shape. A type with no id is every report about that kind of thing; a
 	// report about the product in general names neither.
 	SubjectType   string `protobuf:"bytes,3,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
-	SubjectId     string `protobuf:"bytes,4,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
+	SubjectId     string `protobuf:"bytes,4,opt,name=subject_id,json=subjectID,proto3" json:"subject_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -429,7 +429,7 @@ type IssueReportUpdateInput struct {
 	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	Details       string                 `protobuf:"bytes,2,opt,name=details,proto3" json:"details,omitempty"`
 	SubjectType   string                 `protobuf:"bytes,3,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
-	SubjectId     string                 `protobuf:"bytes,4,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
+	SubjectId     string                 `protobuf:"bytes,4,opt,name=subject_id,json=subjectID,proto3" json:"subject_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -584,7 +584,7 @@ func (x *CreateReportResponse) GetResult() *IssueReport {
 
 type GetReportRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ReportId      string                 `protobuf:"bytes,1,opt,name=report_id,json=reportId,proto3" json:"report_id,omitempty"`
+	ReportId      string                 `protobuf:"bytes,1,opt,name=report_id,json=reportID,proto3" json:"report_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1093,7 +1093,7 @@ type ListReportsForSubjectRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// subject_type and subject_id together name one particular thing.
 	SubjectType   string                   `protobuf:"bytes,1,opt,name=subject_type,json=subjectType,proto3" json:"subject_type,omitempty"`
-	SubjectId     string                   `protobuf:"bytes,2,opt,name=subject_id,json=subjectId,proto3" json:"subject_id,omitempty"`
+	SubjectId     string                   `protobuf:"bytes,2,opt,name=subject_id,json=subjectID,proto3" json:"subject_id,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1204,7 +1204,7 @@ func (x *ListReportsForSubjectResponse) GetResults() []*IssueReport {
 
 type UpdateReportRequest struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
-	ReportId      string                  `protobuf:"bytes,1,opt,name=report_id,json=reportId,proto3" json:"report_id,omitempty"`
+	ReportId      string                  `protobuf:"bytes,1,opt,name=report_id,json=reportID,proto3" json:"report_id,omitempty"`
 	Input         *IssueReportUpdateInput `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1304,7 +1304,7 @@ func (x *UpdateReportResponse) GetResult() *IssueReport {
 // the report held, the status it should move to, and why.
 type TransitionReportRequest struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
-	ReportId string                 `protobuf:"bytes,1,opt,name=report_id,json=reportId,proto3" json:"report_id,omitempty"`
+	ReportId string                 `protobuf:"bytes,1,opt,name=report_id,json=reportID,proto3" json:"report_id,omitempty"`
 	// expected_status is what the caller believed the row held, and it is required.
 	// The statement requires the row to still hold it, so a report that moved
 	// between the read this decision was made from and this call is refused rather
@@ -1427,7 +1427,7 @@ func (x *TransitionReportResponse) GetResult() *IssueReport {
 
 type ArchiveReportRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ReportId      string                 `protobuf:"bytes,1,opt,name=report_id,json=reportId,proto3" json:"report_id,omitempty"`
+	ReportId      string                 `protobuf:"bytes,1,opt,name=report_id,json=reportID,proto3" json:"report_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1524,7 +1524,7 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\fsubject_type\x18\t \x01(\tR\vsubjectType\x12\x1d\n" +
 	"\n" +
 	"subject_id\x18\n" +
-	" \x01(\tR\tsubjectId\x12F\n" +
+	" \x01(\tR\tsubjectID\x12F\n" +
 	"\x06status\x18\v \x01(\x0e2..primandproper.platform.issuereports.v1.StatusR\x06status\x12\x1e\n" +
 	"\n" +
 	"resolution\x18\f \x01(\tR\n" +
@@ -1534,20 +1534,20 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\adetails\x18\x02 \x01(\tR\adetails\x12!\n" +
 	"\fsubject_type\x18\x03 \x01(\tR\vsubjectType\x12\x1d\n" +
 	"\n" +
-	"subject_id\x18\x04 \x01(\tR\tsubjectIdR\x05scopeR\breporterR\x06status\"\xad\x01\n" +
+	"subject_id\x18\x04 \x01(\tR\tsubjectIDR\x05scopeR\breporterR\x06status\"\xad\x01\n" +
 	"\x16IssueReportUpdateInput\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x18\n" +
 	"\adetails\x18\x02 \x01(\tR\adetails\x12!\n" +
 	"\fsubject_type\x18\x03 \x01(\tR\vsubjectType\x12\x1d\n" +
 	"\n" +
-	"subject_id\x18\x04 \x01(\tR\tsubjectIdR\x05scopeR\breporterR\x06statusR\n" +
+	"subject_id\x18\x04 \x01(\tR\tsubjectIDR\x05scopeR\breporterR\x06statusR\n" +
 	"resolution\"~\n" +
 	"\x13CreateReportRequest\x12V\n" +
 	"\x05input\x18\x01 \x01(\v2@.primandproper.platform.issuereports.v1.IssueReportCreationInputR\x05inputR\x05scopeR\breporter\"j\n" +
 	"\x14CreateReportResponse\x12K\n" +
 	"\x06result\x18\x01 \x01(\v23.primandproper.platform.issuereports.v1.IssueReportR\x06resultR\x05scope\"6\n" +
 	"\x10GetReportRequest\x12\x1b\n" +
-	"\treport_id\x18\x01 \x01(\tR\breportIdR\x05scope\"g\n" +
+	"\treport_id\x18\x01 \x01(\tR\breportIDR\x05scope\"g\n" +
 	"\x11GetReportResponse\x12K\n" +
 	"\x06result\x18\x01 \x01(\v23.primandproper.platform.issuereports.v1.IssueReportR\x06resultR\x05scope\"e\n" +
 	"\x12ListReportsRequest\x12H\n" +
@@ -1584,7 +1584,7 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\x1cListReportsForSubjectRequest\x12!\n" +
 	"\fsubject_type\x18\x01 \x01(\tR\vsubjectType\x12\x1d\n" +
 	"\n" +
-	"subject_id\x18\x02 \x01(\tR\tsubjectId\x12H\n" +
+	"subject_id\x18\x02 \x01(\tR\tsubjectID\x12H\n" +
 	"\x06filter\x18\x03 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xc6\x01\n" +
 	"\x1dListReportsForSubjectResponse\x12O\n" +
 	"\n" +
@@ -1592,12 +1592,12 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"pagination\x12M\n" +
 	"\aresults\x18\x02 \x03(\v23.primandproper.platform.issuereports.v1.IssueReportR\aresultsR\x05scope\"\x99\x01\n" +
 	"\x13UpdateReportRequest\x12\x1b\n" +
-	"\treport_id\x18\x01 \x01(\tR\breportId\x12T\n" +
+	"\treport_id\x18\x01 \x01(\tR\breportID\x12T\n" +
 	"\x05input\x18\x02 \x01(\v2>.primandproper.platform.issuereports.v1.IssueReportUpdateInputR\x05inputR\x05scopeR\breporter\"j\n" +
 	"\x14UpdateReportResponse\x12K\n" +
 	"\x06result\x18\x01 \x01(\v23.primandproper.platform.issuereports.v1.IssueReportR\x06resultR\x05scope\"\x8b\x02\n" +
 	"\x17TransitionReportRequest\x12\x1b\n" +
-	"\treport_id\x18\x01 \x01(\tR\breportId\x12W\n" +
+	"\treport_id\x18\x01 \x01(\tR\breportID\x12W\n" +
 	"\x0fexpected_status\x18\x02 \x01(\x0e2..primandproper.platform.issuereports.v1.StatusR\x0eexpectedStatus\x12S\n" +
 	"\rtarget_status\x18\x03 \x01(\x0e2..primandproper.platform.issuereports.v1.StatusR\ftargetStatus\x12\x1e\n" +
 	"\n" +
@@ -1606,7 +1606,7 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\x18TransitionReportResponse\x12K\n" +
 	"\x06result\x18\x01 \x01(\v23.primandproper.platform.issuereports.v1.IssueReportR\x06resultR\x05scope\":\n" +
 	"\x14ArchiveReportRequest\x12\x1b\n" +
-	"\treport_id\x18\x01 \x01(\tR\breportIdR\x05scope\"\x17\n" +
+	"\treport_id\x18\x01 \x01(\tR\breportIDR\x05scope\"\x17\n" +
 	"\x15ArchiveReportResponse*t\n" +
 	"\x06Status\x12\x16\n" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +

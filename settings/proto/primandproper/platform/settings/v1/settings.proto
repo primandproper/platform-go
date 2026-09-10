@@ -287,7 +287,7 @@ message SettingValue {
   string id = 5;
 
   // definition_id is the definition this answers.
-  string definition_id = 6;
+  string definition_id = 6 [json_name = "definitionID"];
 
   // raw is the answer as it is stored. One column holds every kind.
   string raw = 7;
@@ -358,7 +358,7 @@ message CreateDefinitionResponse {
 message GetDefinitionRequest {
   reserved "scope";
 
-  string definition_id = 1;
+  string definition_id = 1 [json_name = "definitionID"];
 }
 
 message GetDefinitionResponse {
@@ -392,7 +392,7 @@ message UpdateDefinitionRequest {
   // definition_id is the row to rewrite. It is a field of the request rather
   // than of the input below, so there is no second place for a caller to name
   // one and no way for the two to disagree.
-  string definition_id = 1;
+  string definition_id = 1 [json_name = "definitionID"];
 
   SettingDefinitionInput definition = 2;
 }
@@ -407,7 +407,7 @@ message UpdateDefinitionResponse {
 message ArchiveDefinitionRequest {
   reserved "scope";
 
-  string definition_id = 1;
+  string definition_id = 1 [json_name = "definitionID"];
 }
 
 message ArchiveDefinitionResponse {}

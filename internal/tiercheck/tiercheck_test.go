@@ -96,6 +96,7 @@ var roster = map[string]entry{
 	"internal/cmd":              {tier: root, why: "generators run by make, over the whole tree"},
 	"internal/configroster":     {tier: root, why: "the roster of every config subpackage a service wires, both modules'"},
 	"internal/countwidth":       {tier: root, why: "a convention test over every result count the module exports"},
+	"internal/protoconvention":  {tier: root, why: "a convention test over every .proto the module ships"},
 	"internal/schemaconvention": {tier: root, why: "a convention test over every package that ships DDL"},
 	"internal/scopeddl":         {tier: root, why: "a convention test over every scoped table in the module"},
 	"internal/sentinelmatrix":   {tier: root, why: "the roster of every domain sentinel and the mappers that answer for it"},

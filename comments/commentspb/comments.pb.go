@@ -199,7 +199,7 @@ type Comment struct {
 	// refused, because assembling a deeper tree is a recursive walk and a
 	// recursive walk is not one statement on the three engines this module
 	// serves.
-	ParentId string `protobuf:"bytes,5,opt,name=parent_id,json=parentId,proto3" json:"parent_id,omitempty"`
+	ParentId string `protobuf:"bytes,5,opt,name=parent_id,json=parentID,proto3" json:"parent_id,omitempty"`
 	// author is who wrote it, as the consumer's directory identifies people. It
 	// is output only, filled from the caller's principal at creation; see the
 	// file comment.
@@ -313,7 +313,7 @@ type CommentInput struct {
 	// The parent must be a live comment in the caller's scope and must itself be
 	// a root. A reply to a reply is refused rather than flattened, because
 	// flattening it would file somebody's answer against the wrong question.
-	ParentId string `protobuf:"bytes,1,opt,name=parent_id,json=parentId,proto3" json:"parent_id,omitempty"`
+	ParentId string `protobuf:"bytes,1,opt,name=parent_id,json=parentID,proto3" json:"parent_id,omitempty"`
 	// target is what the comment is about. A reply may leave it unset and adopt
 	// its parent's; one that names a different target than its parent is refused,
 	// because a reply belongs to its parent's discussion.
@@ -466,7 +466,7 @@ func (x *CreateCommentResponse) GetResult() *Comment {
 
 type GetCommentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CommentId     string                 `protobuf:"bytes,1,opt,name=comment_id,json=commentId,proto3" json:"comment_id,omitempty"`
+	CommentId     string                 `protobuf:"bytes,1,opt,name=comment_id,json=commentID,proto3" json:"comment_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -666,7 +666,7 @@ type ListRepliesRequest struct {
 	// parent_id is the root whose replies are wanted. Required: the empty parent
 	// is what a root stores, so answering it with the roots would be the wrong
 	// half of the discussion with nothing about the rows saying so.
-	ParentId      string                   `protobuf:"bytes,2,opt,name=parent_id,json=parentId,proto3" json:"parent_id,omitempty"`
+	ParentId      string                   `protobuf:"bytes,2,opt,name=parent_id,json=parentID,proto3" json:"parent_id,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,3,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -995,7 +995,7 @@ func (x *ListCommentsByAuthorResponse) GetResults() []*Comment {
 
 type UpdateCommentRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
-	CommentId string                 `protobuf:"bytes,1,opt,name=comment_id,json=commentId,proto3" json:"comment_id,omitempty"`
+	CommentId string                 `protobuf:"bytes,1,opt,name=comment_id,json=commentID,proto3" json:"comment_id,omitempty"`
 	// body is the revised text. Required: an edit that empties a comment is a
 	// deletion spelled as an edit, and archiving is what this service offers for
 	// that.
@@ -1094,7 +1094,7 @@ func (x *UpdateCommentResponse) GetResult() *Comment {
 
 type ArchiveCommentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	CommentId     string                 `protobuf:"bytes,1,opt,name=comment_id,json=commentId,proto3" json:"comment_id,omitempty"`
+	CommentId     string                 `protobuf:"bytes,1,opt,name=comment_id,json=commentID,proto3" json:"comment_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1187,12 +1187,12 @@ const file_primandproper_platform_comments_v1_comments_proto_rawDesc = "" +
 	"\varchived_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"archivedAt\x12\x0e\n" +
 	"\x02id\x18\x04 \x01(\tR\x02id\x12\x1b\n" +
-	"\tparent_id\x18\x05 \x01(\tR\bparentId\x12\x16\n" +
+	"\tparent_id\x18\x05 \x01(\tR\bparentID\x12\x16\n" +
 	"\x06author\x18\x06 \x01(\tR\x06author\x12\x12\n" +
 	"\x04body\x18\a \x01(\tR\x04body\x12I\n" +
 	"\x06target\x18\b \x01(\v21.primandproper.platform.comments.v1.CommentTargetR\x06targetR\x05scope\"\x9d\x01\n" +
 	"\fCommentInput\x12\x1b\n" +
-	"\tparent_id\x18\x01 \x01(\tR\bparentId\x12I\n" +
+	"\tparent_id\x18\x01 \x01(\tR\bparentID\x12I\n" +
 	"\x06target\x18\x02 \x01(\v21.primandproper.platform.comments.v1.CommentTargetR\x06target\x12\x12\n" +
 	"\x04body\x18\x03 \x01(\tR\x04bodyR\x05scopeR\x06authorR\x02id\"i\n" +
 	"\x14CreateCommentRequest\x12J\n" +
@@ -1201,7 +1201,7 @@ const file_primandproper_platform_comments_v1_comments_proto_rawDesc = "" +
 	"\x06result\x18\x01 \x01(\v2+.primandproper.platform.comments.v1.CommentR\x06resultR\x05scope\"9\n" +
 	"\x11GetCommentRequest\x12\x1d\n" +
 	"\n" +
-	"comment_id\x18\x01 \x01(\tR\tcommentIdR\x05scope\"`\n" +
+	"comment_id\x18\x01 \x01(\tR\tcommentIDR\x05scope\"`\n" +
 	"\x12GetCommentResponse\x12C\n" +
 	"\x06result\x18\x01 \x01(\v2+.primandproper.platform.comments.v1.CommentR\x06resultR\x05scope\"\xb5\x01\n" +
 	"\x17ListRootCommentsRequest\x12I\n" +
@@ -1214,7 +1214,7 @@ const file_primandproper_platform_comments_v1_comments_proto_rawDesc = "" +
 	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.comments.v1.CommentR\aresultsR\x05scope\"\xcd\x01\n" +
 	"\x12ListRepliesRequest\x12I\n" +
 	"\x06target\x18\x01 \x01(\v21.primandproper.platform.comments.v1.CommentTargetR\x06target\x12\x1b\n" +
-	"\tparent_id\x18\x02 \x01(\tR\bparentId\x12H\n" +
+	"\tparent_id\x18\x02 \x01(\tR\bparentID\x12H\n" +
 	"\x06filter\x18\x03 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xb4\x01\n" +
 	"\x13ListRepliesResponse\x12O\n" +
 	"\n" +
@@ -1240,13 +1240,13 @@ const file_primandproper_platform_comments_v1_comments_proto_rawDesc = "" +
 	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.comments.v1.CommentR\aresultsR\x05scope\"k\n" +
 	"\x14UpdateCommentRequest\x12\x1d\n" +
 	"\n" +
-	"comment_id\x18\x01 \x01(\tR\tcommentId\x12\x12\n" +
+	"comment_id\x18\x01 \x01(\tR\tcommentID\x12\x12\n" +
 	"\x04body\x18\x02 \x01(\tR\x04bodyR\x05scopeR\x06authorR\x06targetR\tparent_id\"c\n" +
 	"\x15UpdateCommentResponse\x12C\n" +
 	"\x06result\x18\x01 \x01(\v2+.primandproper.platform.comments.v1.CommentR\x06resultR\x05scope\"=\n" +
 	"\x15ArchiveCommentRequest\x12\x1d\n" +
 	"\n" +
-	"comment_id\x18\x01 \x01(\tR\tcommentIdR\x05scope\"\x1f\n" +
+	"comment_id\x18\x01 \x01(\tR\tcommentIDR\x05scope\"\x1f\n" +
 	"\x16ArchiveCommentResponseR\x05scope2\xfa\b\n" +
 	"\x0fCommentsService\x12\x84\x01\n" +
 	"\rCreateComment\x128.primandproper.platform.comments.v1.CreateCommentRequest\x1a9.primandproper.platform.comments.v1.CreateCommentResponse\x12{\n" +
