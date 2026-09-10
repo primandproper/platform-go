@@ -41,13 +41,24 @@
 //
 // # What is not here, and why
 //
-// No scope field, anywhere, for the reason identity.proto gives at greater
-// length: a scope a client could name is a cross-tenant read hiding behind a
-// request field. Sign-in is the one place in the module where the scope cannot
-// come off a principal, because the caller has not proved they are one yet, so
-// it comes off the connection instead -- a resolver the consumer supplies, from
-// a host, a header, or nothing at all in a single-tenant deployment. See
-// authentication/signin/grpc.
+// No scope field, anywhere, and the name is reserved so there cannot be one.
+// The reason identity.proto gives at greater length: a scope a client could
+// name is a cross-tenant read hiding behind a request field. Sign-in is the one
+// place in the module where the scope cannot come off a principal, because the
+// caller has not proved they are one yet, so it comes off the connection
+// instead -- a resolver the consumer supplies, from a host, a header, or
+// nothing at all in a single-tenant deployment. See authentication/signin/grpc.
+//
+// That is what makes the reservation matter more here than anywhere else on
+// this lane. Every other surface resolves the scope from a caller who has
+// already been authenticated; these two doors resolve it for a request nobody
+// has vouched for, so a scope field would be one an anonymous caller fills in.
+// Reserving the name rather than only saying so is audit.proto's pattern:
+// `reserved "scope";` is a schema protoc refuses to accept a scope field into,
+// in this repository and in a consumer's fork of the file alike, whereas a
+// comment is a request to the next author. It is reserved on all seven request
+// messages, on [Credentials], which two of them are built from, and on
+// [IssuedToken] and [AuthStatus], which the responses are built from.
 //
 // No hashed password and no stored second-factor secret, in either direction.
 // The two secrets that do cross are the ones that have to: a plaintext password

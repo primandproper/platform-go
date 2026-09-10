@@ -63,10 +63,25 @@
 //
 // # What is not here, and why
 //
-// No scope field, anywhere. A scope a client could name is a cross-tenant read
-// hiding behind a request field; it comes off the principal the consumer's
-// interceptor put on the context. See identity.proto, which says this at
-// greater length.
+// No scope field, anywhere, and the name is reserved so there cannot be one. A
+// scope a client could name is a cross-tenant read hiding behind a request
+// field; it comes off the principal the consumer's interceptor put on the
+// context. See identity.proto, which says this at greater length.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern:
+// `reserved "scope";` is a schema protoc refuses to accept a scope field into,
+// in this repository and in a consumer's fork of the file alike, whereas a
+// comment is a request to the next author. It is reserved on all four request
+// messages, on [OAuth2ClientCreationInput], which one of them is built from,
+// and on [OAuth2Client] and [IssuedOAuth2Client], which the responses are built
+// from.
+//
+// The reservation is of the singular name only, and this is the one file on the
+// lane where that has to be said out loud: OAuth2Client.scopes and
+// OAuth2ClientCreationInput.scopes are OAuth2 authorization scopes, which are
+// what a client may ask for at /authorize and have nothing to do with a tenant.
+// Two different words that happen to be spelled the same; protoc reserves
+// "scope" and leaves "scopes" alone, which is the outcome wanted here.
 //
 // No belongs_to_user in any request, for the same reason one level in. An owner
 // a client could name is a credential minted in somebody else's name. It is
@@ -738,7 +753,7 @@ var File_primandproper_platform_oauth2clients_v1_oauth2clients_proto protoreflec
 
 const file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDesc = "" +
 	"\n" +
-	";primandproper/platform/oauth2clients/v1/oauth2clients.proto\x12'primandproper.platform.oauth2clients.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\"\x92\x03\n" +
+	";primandproper/platform/oauth2clients/v1/oauth2clients.proto\x12'primandproper.platform.oauth2clients.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\"\x99\x03\n" +
 	"\fOAuth2Client\x129\n" +
 	"\n" +
 	"created_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12B\n" +
@@ -752,32 +767,32 @@ const file_primandproper_platform_oauth2clients_v1_oauth2clients_proto_rawDesc =
 	"\rredirect_uris\x18\b \x03(\tR\fredirectUris\x12\x16\n" +
 	"\x06scopes\x18\t \x03(\tR\x06scopes\x12&\n" +
 	"\x0fbelongs_to_user\x18\n" +
-	" \x01(\tR\rbelongsToUser\"\x88\x01\n" +
+	" \x01(\tR\rbelongsToUserR\x05scope\"\x8f\x01\n" +
 	"\x12IssuedOAuth2Client\x12M\n" +
 	"\x06client\x18\x01 \x01(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\x06client\x12#\n" +
-	"\rclient_secret\x18\x02 \x01(\tR\fclientSecret\"\x8e\x01\n" +
+	"\rclient_secret\x18\x02 \x01(\tR\fclientSecretR\x05scope\"\x95\x01\n" +
 	"\x19OAuth2ClientCreationInput\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12#\n" +
 	"\rredirect_uris\x18\x03 \x03(\tR\fredirectUris\x12\x16\n" +
-	"\x06scopes\x18\x04 \x03(\tR\x06scopes\"u\n" +
+	"\x06scopes\x18\x04 \x03(\tR\x06scopesR\x05scope\"|\n" +
 	"\x19CreateOAuth2ClientRequest\x12X\n" +
-	"\x05input\x18\x01 \x01(\v2B.primandproper.platform.oauth2clients.v1.OAuth2ClientCreationInputR\x05input\"q\n" +
+	"\x05input\x18\x01 \x01(\v2B.primandproper.platform.oauth2clients.v1.OAuth2ClientCreationInputR\x05inputR\x05scope\"q\n" +
 	"\x1aCreateOAuth2ClientResponse\x12S\n" +
-	"\x06issued\x18\x01 \x01(\v2;.primandproper.platform.oauth2clients.v1.IssuedOAuth2ClientR\x06issued\"B\n" +
+	"\x06issued\x18\x01 \x01(\v2;.primandproper.platform.oauth2clients.v1.IssuedOAuth2ClientR\x06issued\"I\n" +
 	"\x16GetOAuth2ClientRequest\x12(\n" +
-	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientId\"h\n" +
+	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientIdR\x05scope\"h\n" +
 	"\x17GetOAuth2ClientResponse\x12M\n" +
-	"\x06result\x18\x01 \x01(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\x06result\"d\n" +
+	"\x06result\x18\x01 \x01(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\x06result\"k\n" +
 	"\x18ListOAuth2ClientsRequest\x12H\n" +
-	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filter\"\xbd\x01\n" +
+	"\x06filter\x18\x01 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xbd\x01\n" +
 	"\x19ListOAuth2ClientsResponse\x12O\n" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12O\n" +
-	"\aresults\x18\x02 \x03(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\aresults\"F\n" +
+	"\aresults\x18\x02 \x03(\v25.primandproper.platform.oauth2clients.v1.OAuth2ClientR\aresults\"M\n" +
 	"\x1aArchiveOAuth2ClientRequest\x12(\n" +
-	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientId\"\x1d\n" +
+	"\x10oauth2_client_id\x18\x01 \x01(\tR\x0eoauth2ClientIdR\x05scope\"\x1d\n" +
 	"\x1bArchiveOAuth2ClientResponse2\x8d\x05\n" +
 	"\x14OAuth2ClientsService\x12\x9d\x01\n" +
 	"\x12CreateOAuth2Client\x12B.primandproper.platform.oauth2clients.v1.CreateOAuth2ClientRequest\x1aC.primandproper.platform.oauth2clients.v1.CreateOAuth2ClientResponse\x12\x94\x01\n" +

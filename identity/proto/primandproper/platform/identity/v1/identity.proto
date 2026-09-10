@@ -30,11 +30,21 @@
 //
 // # What is not here, and why
 //
-// No scope field, anywhere. Every row this schema describes carries a
-// tenancy.Scope, and every read filters on it -- but a scope a client could put
-// in a request is a cross-tenant read hiding behind a request field. The scope
-// comes off the principal the consumer's authentication interceptor resolved,
-// and from nowhere else. See identity/grpc for that seam.
+// No scope field, anywhere, and the name is reserved so there cannot be one.
+// Every row this schema describes carries a tenancy.Scope, and every read
+// filters on it -- but a scope a client could put in a request is a
+// cross-tenant read hiding behind a request field. The scope comes off the
+// principal the consumer's authentication interceptor resolved, and from
+// nowhere else. See identity/grpc for that seam.
+//
+// Reserving the name rather than only saying so is audit.proto's pattern:
+// `reserved "scope";` is a schema protoc refuses to accept a scope field into,
+// in this repository and in a consumer's fork of the file alike, whereas a
+// comment is a request to the next author. It is reserved on all twenty-eight
+// request messages, on the four inputs they are built from, and on the nine
+// messages a response is built from -- a scope on one of those would be
+// answering a client with something the client supplied. The response wrappers
+// hold nothing but those messages and reserve nothing.
 //
 // No credentials, in either direction. There is no hashed_password,
 // two_factor_secret or email_address_verification_token on User, and no token
@@ -120,6 +130,8 @@ enum Agreement {
 // and are present, because "two-factor enabled since" and "password last
 // changed" are things a settings page shows.
 message User {
+  reserved "scope";
+
   string id = 1;
 
   // username is the handle the user signs in with, unique within the directory.
@@ -175,6 +187,8 @@ message User {
 
 // BillingAddress is where an account's invoices go.
 message BillingAddress {
+  reserved "scope";
+
   string line1 = 1;
   string line2 = 2;
   string city = 3;
@@ -188,6 +202,8 @@ message BillingAddress {
 // comment on scope, and identity's own package documentation on why an account
 // is a row here rather than a directory of its own.
 message Account {
+  reserved "scope";
+
   string id = 1;
 
   string name = 2;
@@ -227,6 +243,8 @@ message Account {
 
 // Membership puts a user in an account and says what they may do there.
 message Membership {
+  reserved "scope";
+
   string id = 1;
 
   string belongs_to_user = 2;
@@ -251,6 +269,8 @@ message Membership {
 // MembershipWithUser is a roster row: the membership and who holds it, so a
 // member list is one call rather than a list and then N reads.
 message MembershipWithUser {
+  reserved "scope";
+
   User user = 1;
 
   Membership membership = 2;
@@ -262,6 +282,8 @@ message MembershipWithUser {
 // and it is cleared from every invitation this service returns; it appears in
 // this schema only as a request field on the two RPCs that answer one.
 message Invitation {
+  reserved "scope";
+
   string id = 1;
 
   string belongs_to_account = 2;
@@ -305,6 +327,8 @@ message Invitation {
 // and the account this request is against -- everything a client needs to
 // render "who am I and what may I do", in one call.
 message Principal {
+  reserved "scope";
+
   User user = 1;
 
   // active_account_id is the account this request is against: the one asked
@@ -319,6 +343,8 @@ message Principal {
 // transaction: a user with no account signs in to nothing, and an account whose
 // owner is not on its roster fails every roster-driven permission check.
 message Registration {
+  reserved "scope";
+
   User user = 1;
 
   Account account = 2;
@@ -329,6 +355,8 @@ message Registration {
 // Acceptance is what accepting an invitation produced: the answered invitation
 // and the membership it promised.
 message Acceptance {
+  reserved "scope";
+
   Invitation invitation = 1;
 
   Membership membership = 2;
@@ -338,6 +366,8 @@ message Acceptance {
 // credential and no status: a registrant has proven nothing yet, and the status
 // they start in is the store's decision rather than the caller's.
 message UserRegistrationInput {
+  reserved "scope";
+
   string username = 1;
 
   string email_address = 2;
@@ -350,6 +380,8 @@ message UserRegistrationInput {
 // AccountCreationInput is the first account a registrant owns. The owner is the
 // registrant and is not a field here.
 message AccountCreationInput {
+  reserved "scope";
+
   string name = 1;
 
   string time_zone = 2;
@@ -369,6 +401,8 @@ message AccountCreationInput {
 // that read absent as "make it empty" would have wiped every field a client
 // did not think to repeat.
 message ProfileUpdateInput {
+  reserved "scope";
+
   optional string username = 1;
 
   optional string email_address = 2;
@@ -389,6 +423,8 @@ message ProfileUpdateInput {
 // zone to UTC and blanked the billing address, and reported all three as
 // changed.
 message AccountUpdateInput {
+  reserved "scope";
+
   optional string name = 1;
 
   optional string time_zone = 2;
@@ -397,6 +433,8 @@ message AccountUpdateInput {
 }
 
 message RegisterRequest {
+  reserved "scope";
+
   UserRegistrationInput user = 1;
 
   AccountCreationInput account = 2;
@@ -412,6 +450,8 @@ message RegisterResponse {
 }
 
 message UpdateProfileRequest {
+  reserved "scope";
+
   ProfileUpdateInput input = 1;
 }
 
@@ -420,6 +460,8 @@ message UpdateProfileResponse {
 }
 
 message UpdateAccountRequest {
+  reserved "scope";
+
   string account_id = 1;
 
   AccountUpdateInput input = 2;
@@ -430,6 +472,8 @@ message UpdateAccountResponse {
 }
 
 message RecordAgreementRequest {
+  reserved "scope";
+
   // agreements are stamped with one clock read, so accepting two in one call
   // records one moment rather than two a later comparison could order.
   repeated Agreement agreements = 1;
@@ -440,6 +484,8 @@ message RecordAgreementResponse {
 }
 
 message InviteRequest {
+  reserved "scope";
+
   string account_id = 1;
 
   string to_email = 2;
@@ -469,6 +515,8 @@ message InviteResponse {
 }
 
 message AcceptInvitationRequest {
+  reserved "scope";
+
   string invitation_id = 1;
 
   // token is what the link carried. It is checked against the invitation the id
@@ -484,6 +532,8 @@ message AcceptInvitationResponse {
 }
 
 message RejectInvitationRequest {
+  reserved "scope";
+
   string invitation_id = 1;
 
   // token is required for the same reason it is on acceptance: a rejection
@@ -499,6 +549,8 @@ message RejectInvitationResponse {
 }
 
 message CancelInvitationRequest {
+  reserved "scope";
+
   // No token: the sender never had one. They are looking at what they sent,
   // addressed by id.
   string invitation_id = 1;
@@ -511,6 +563,8 @@ message CancelInvitationResponse {
 }
 
 message TransferAccountOwnershipRequest {
+  reserved "scope";
+
   string account_id = 1;
 
   string new_owner_user_id = 2;
@@ -521,6 +575,8 @@ message TransferAccountOwnershipResponse {
 }
 
 message SetDefaultAccountRequest {
+  reserved "scope";
+
   // The user is the caller. Setting somebody else's landing account is not a
   // thing this service does.
   string account_id = 1;
@@ -531,6 +587,8 @@ message SetDefaultAccountResponse {
 }
 
 message SetMembershipRolesRequest {
+  reserved "scope";
+
   string account_id = 1;
 
   string user_id = 2;
@@ -545,6 +603,8 @@ message SetMembershipRolesResponse {
 }
 
 message RemoveMembershipRequest {
+  reserved "scope";
+
   string account_id = 1;
 
   string user_id = 2;
@@ -556,6 +616,8 @@ message RemoveMembershipResponse {
 }
 
 message ArchiveUserRequest {
+  reserved "scope";
+
   string user_id = 1;
 }
 
@@ -564,6 +626,8 @@ message ArchiveUserResponse {
 }
 
 message UpdateUserAccountStatusRequest {
+  reserved "scope";
+
   string user_id = 1;
 
   AccountStatus status = 2;
@@ -576,6 +640,8 @@ message UpdateUserAccountStatusResponse {
 }
 
 message SetUserServiceRolesRequest {
+  reserved "scope";
+
   string user_id = 1;
 
   // roles replace rather than merge, for the reason SetMembershipRoles gives.
@@ -588,6 +654,8 @@ message SetUserServiceRolesResponse {
 }
 
 message GetPrincipalRequest {
+  reserved "scope";
+
   // active_account_id names which of the caller's accounts this is about.
   // Absent resolves to their default. An account they hold no live membership
   // in is refused rather than answered.
@@ -599,6 +667,8 @@ message GetPrincipalResponse {
 }
 
 message GetUserRequest {
+  reserved "scope";
+
   string user_id = 1;
 }
 
@@ -607,6 +677,8 @@ message GetUserResponse {
 }
 
 message ListUsersRequest {
+  reserved "scope";
+
   primandproper.platform.filtering.v1.QueryFilter filter = 1;
 }
 
@@ -617,6 +689,8 @@ message ListUsersResponse {
 }
 
 message SearchUsersByUsernameRequest {
+  reserved "scope";
+
   // prefix matches from the start of a username. It is a prefix rather than a
   // substring so the read can use the index.
   string prefix = 1;
@@ -631,6 +705,8 @@ message SearchUsersByUsernameResponse {
 }
 
 message GetAccountRequest {
+  reserved "scope";
+
   string account_id = 1;
 }
 
@@ -639,6 +715,8 @@ message GetAccountResponse {
 }
 
 message ListAccountsRequest {
+  reserved "scope";
+
   primandproper.platform.filtering.v1.QueryFilter filter = 1;
 }
 
@@ -649,6 +727,8 @@ message ListAccountsResponse {
 }
 
 message ListAccountsForUserRequest {
+  reserved "scope";
+
   string user_id = 1;
 
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
@@ -661,6 +741,8 @@ message ListAccountsForUserResponse {
 }
 
 message GetMembershipRequest {
+  reserved "scope";
+
   string user_id = 1;
 
   string account_id = 2;
@@ -671,6 +753,8 @@ message GetMembershipResponse {
 }
 
 message ListMembershipsForUserRequest {
+  reserved "scope";
+
   string user_id = 1;
 }
 
@@ -682,6 +766,8 @@ message ListMembershipsForUserResponse {
 }
 
 message ListAccountMembersRequest {
+  reserved "scope";
+
   string account_id = 1;
 
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
@@ -694,6 +780,8 @@ message ListAccountMembersResponse {
 }
 
 message GetInvitationRequest {
+  reserved "scope";
+
   string invitation_id = 1;
 }
 
@@ -702,6 +790,8 @@ message GetInvitationResponse {
 }
 
 message ListInvitationsFromUserRequest {
+  reserved "scope";
+
   // The sender is the caller: this is "what have I sent".
   primandproper.platform.filtering.v1.QueryFilter filter = 1;
 }
@@ -713,6 +803,8 @@ message ListInvitationsFromUserResponse {
 }
 
 message ListInvitationsForEmailAddressRequest {
+  reserved "scope";
+
   // The address is the caller's own, read off the principal's user. An address
   // a client could name is an oracle for which addresses have been invited
   // where.

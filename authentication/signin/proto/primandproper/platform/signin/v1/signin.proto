@@ -41,13 +41,24 @@
 //
 // # What is not here, and why
 //
-// No scope field, anywhere, for the reason identity.proto gives at greater
-// length: a scope a client could name is a cross-tenant read hiding behind a
-// request field. Sign-in is the one place in the module where the scope cannot
-// come off a principal, because the caller has not proved they are one yet, so
-// it comes off the connection instead -- a resolver the consumer supplies, from
-// a host, a header, or nothing at all in a single-tenant deployment. See
-// authentication/signin/grpc.
+// No scope field, anywhere, and the name is reserved so there cannot be one.
+// The reason identity.proto gives at greater length: a scope a client could
+// name is a cross-tenant read hiding behind a request field. Sign-in is the one
+// place in the module where the scope cannot come off a principal, because the
+// caller has not proved they are one yet, so it comes off the connection
+// instead -- a resolver the consumer supplies, from a host, a header, or
+// nothing at all in a single-tenant deployment. See authentication/signin/grpc.
+//
+// That is what makes the reservation matter more here than anywhere else on
+// this lane. Every other surface resolves the scope from a caller who has
+// already been authenticated; these two doors resolve it for a request nobody
+// has vouched for, so a scope field would be one an anonymous caller fills in.
+// Reserving the name rather than only saying so is audit.proto's pattern:
+// `reserved "scope";` is a schema protoc refuses to accept a scope field into,
+// in this repository and in a consumer's fork of the file alike, whereas a
+// comment is a request to the next author. It is reserved on all seven request
+// messages, on [Credentials], which two of them are built from, and on
+// [IssuedToken] and [AuthStatus], which the responses are built from.
 //
 // No hashed password and no stored second-factor secret, in either direction.
 // The two secrets that do cross are the ones that have to: a plaintext password
@@ -82,6 +93,8 @@ option go_package = "github.com/primandproper/platform-go/v14/authentication/sig
 // neither is refused: a client sending both has a bug, and picking one for them
 // makes it a bug that signs somebody in.
 message Credentials {
+  reserved "scope";
+
   // username is the handle the user signs in with.
   string username = 1;
 
@@ -112,6 +125,8 @@ message Credentials {
 // permission set frozen at sign-in, where revoking a role has no effect until
 // the token expires.
 message IssuedToken {
+  reserved "scope";
+
   // token is the credential itself.
   string token = 1;
 
@@ -137,6 +152,8 @@ message IssuedToken {
 // AuthStatus is where a signed-in caller stands: who they are, which account
 // they are in, and what a client has to make them do before anything else.
 message AuthStatus {
+  reserved "scope";
+
   // user is the caller, redacted, exactly as identity returns them.
   primandproper.platform.identity.v1.User user = 1;
 
@@ -168,6 +185,8 @@ message AuthStatus {
 }
 
 message LoginForTokenRequest {
+  reserved "scope";
+
   Credentials credentials = 1;
 }
 
@@ -179,6 +198,8 @@ message LoginForTokenResponse {
 // credentials and is a message of its own so that the two doors can diverge
 // without either becoming a field on the other.
 message AdminLoginForTokenRequest {
+  reserved "scope";
+
   Credentials credentials = 1;
 }
 
@@ -189,7 +210,9 @@ message AdminLoginForTokenResponse {
 // GetAuthStatusRequest names nobody. The subject is whoever is calling, and a
 // field naming somebody else would be a directory read wearing a whoami's
 // clothes.
-message GetAuthStatusRequest {}
+message GetAuthStatusRequest {
+  reserved "scope";
+}
 
 message GetAuthStatusResponse {
   // authenticated reports whether the request arrived with a caller on it. It is
@@ -201,7 +224,9 @@ message GetAuthStatusResponse {
   AuthStatus status = 2;
 }
 
-message GetSelfRequest {}
+message GetSelfRequest {
+  reserved "scope";
+}
 
 message GetSelfResponse {
   primandproper.platform.identity.v1.User user = 1;
@@ -211,6 +236,8 @@ message GetSelfResponse {
 // field naming a user: an operator resetting somebody else's credential is a
 // different act with a different permission, and it is not this one.
 message UpdatePasswordRequest {
+  reserved "scope";
+
   // current_password is required and is checked. A token proves somebody had the
   // password once; asking again is the whole point, and the laptop left unlocked
   // in between is the reason.
@@ -233,6 +260,8 @@ message UpdatePasswordResponse {}
 // RefreshTOTPSecretRequest asks for a new second-factor secret for the calling
 // user, replacing whatever they hold.
 message RefreshTOTPSecretRequest {
+  reserved "scope";
+
   // current_password is required. Issuing a new second-factor secret to whoever
   // is holding an unlocked laptop is how a second factor stops being one.
   string current_password = 1;
@@ -261,6 +290,8 @@ message RefreshTOTPSecretResponse {
 }
 
 message VerifyTOTPSecretRequest {
+  reserved "scope";
+
   // totp_code is a code from the secret the user was just issued. Producing one
   // is what proves possession, which is what turns the secret into a second
   // factor.

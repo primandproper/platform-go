@@ -170,6 +170,18 @@ schema reserves the name "scope" in every request message, so the field is one
 protoc refuses rather than one a reviewer has to notice. A surface whose Go type
 has a selector this dangerous should do the same.
 
+Every one of the eleven now does, this file's own schema included. It was the
+last of the three to, along with signin.proto and oauth2clients.proto, and the
+three were the ones a consumer forks first — so the rule stated here was being
+stated by the file least able to point at itself. Reserving a name no field uses
+changes no descriptor a client depends on, so the crossing was not a wire break
+and could not become one. What it bought is that the schema test the lane
+promises is now eleven of eleven, and each package's grpc/ asserts it off
+MessageDescriptor.ReservedNames rather than off a comment. The reservation
+covers every request message, the inputs a request is built from, and the
+messages a response is built from; the response wrappers hold nothing but those
+and reserve nothing.
+
 A surface owes a mapper pair beside its sentinels, an entry in
 errormappers.Register, and rows in internal/sentinelmatrix, which reds until
 every exported Err in the package is recorded as mapped, platform or unhandled.
