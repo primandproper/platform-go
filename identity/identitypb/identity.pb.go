@@ -618,12 +618,13 @@ type Account struct {
 	// owner_user_id is who owns it. It moves only through
 	// TransferAccountOwnership, never through UpdateAccount.
 	//
-	// The explicit json_name here and on the fields below is not decoration.
-	// protobuf would derive "ownerUserId", and the Go type this renders carries
-	// `json:"ownerUserID"` — so a consumer serving the same account over JSON and
-	// over gRPC-JSON would emit two spellings of one field. Pinning the name
-	// makes the two descriptions of this type agree, which identity/grpc's
-	// conformance test then holds them to.
+	// The explicit json_name here and on every other id field in this module's
+	// schemas is not decoration. protobuf would derive "ownerUserId", and the Go
+	// type this renders carries `json:"ownerUserID"` — so a consumer serving the
+	// same account over JSON and over gRPC-JSON would emit two spellings of one
+	// field. Pinning the name makes the two descriptions of this type agree,
+	// which identity/grpc's conformance test then holds them to, and
+	// internal/protoconvention holds all eleven schemas to.
 	OwnerUserId                string        `protobuf:"bytes,3,opt,name=owner_user_id,json=ownerUserID,proto3" json:"owner_user_id,omitempty"`
 	BillingStatus              BillingStatus `protobuf:"varint,4,opt,name=billing_status,json=billingStatus,proto3,enum=primandproper.platform.identity.v1.BillingStatus" json:"billing_status,omitempty"`
 	PaymentProcessorCustomerId string        `protobuf:"bytes,5,opt,name=payment_processor_customer_id,json=paymentProcessorCustomerID,proto3" json:"payment_processor_customer_id,omitempty"`
