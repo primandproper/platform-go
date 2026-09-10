@@ -95,6 +95,7 @@ var roster = map[string]entry{
 	// covers the whole tree rather than the part of it a consumer can see.
 	"internal/cmd":              {tier: root, why: "generators run by make, over the whole tree"},
 	"internal/configroster":     {tier: root, why: "the roster of every config subpackage a service wires, both modules'"},
+	"internal/countwidth":       {tier: root, why: "a convention test over every result count the module exports"},
 	"internal/protoconvention":  {tier: root, why: "a convention test over every .proto the module ships"},
 	"internal/schemaconvention": {tier: root, why: "a convention test over every package that ships DDL"},
 	"internal/scopeddl":         {tier: root, why: "a convention test over every scoped table in the module"},

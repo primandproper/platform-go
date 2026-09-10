@@ -63,10 +63,12 @@ type (
 // eventcapture.Recorder is generic, so Service cannot resolve one from an
 // injector — it joins through WithRunners like any application-owned loop. The
 // assertion is here anyway, because the convention it satisfies is the same.
-// operations.Worker is the exception, and the one this list would have hidden.
-// Its Run takes a context and returns an error, so it joins through
-// operationsRunner rather than directly — see that type for why neither side is
-// wrong about its shape.
+// The two operations loops are the exception, and the ones this list would have
+// hidden. Worker.Run and Watcher.Run take a context and return an error, so
+// both join through operationsRunner rather than directly — see that type for
+// why neither side is wrong about its shape. The watcher differs at the other
+// end too: its Close takes no context, because closing a subscriber's channel
+// is not something a deadline can be spent on.
 var (
 	_ Runner = (*eventcapture.Recorder[struct{}])(nil)
 	_ Runner = (*jobs.Pool)(nil)

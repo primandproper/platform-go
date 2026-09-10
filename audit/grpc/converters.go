@@ -315,7 +315,7 @@ func VerificationResultToProto(in *audit.VerificationResult) *auditpb.Verificati
 		From:       timeToProto(in.From),
 		To:         timeToProto(in.To),
 		FirstBreak: BreakToProto(in.FirstBreak),
-		Checked:    int64(in.Checked),
+		Checked:    in.Checked,
 	}
 }
 
@@ -334,6 +334,6 @@ func VerificationResultFromProto(in *auditpb.VerificationResult) *audit.Verifica
 		From:       timeFromProto(in.GetFrom()),
 		To:         timeFromProto(in.GetTo()),
 		FirstBreak: BreakFromProto(in.GetFirstBreak()),
-		Checked:    int(in.GetChecked()),
+		Checked:    in.GetChecked(),
 	}
 }
