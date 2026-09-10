@@ -6,6 +6,7 @@ import (
 
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Fragment encodes a collector's result, or reports that the domain holds
@@ -143,6 +144,11 @@ func CollectAll[T any](
 // the preamble writes it and calls CollectAll and Fragment itself; this
 // constructor is for the common case where there is nothing else to say.
 //
+// The scope reaches fetch as its own argument, the way Collector hands it over.
+// A domain read narrowed by a scope taken off the subject is the shape this
+// package spent a major version removing, and a helper that put it back would
+// undo it in every consumer at once.
+//
 // held is len(rows) > 0, which is the right rule for a list read and the reason
 // this covers a list read only. A domain whose "nothing held" is something else
 // — a settings row that exists with every field defaulted, a counter struct
@@ -152,15 +158,20 @@ func CollectAll[T any](
 // refuses. That fails at wiring time rather than at the first export, which is
 // where a domain silently missing from the artifact would otherwise be found.
 func CollectorFor[T any](
-	fetch func(ctx context.Context, subject Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[T], error),
+	fetch func(
+		ctx context.Context,
+		scope tenancy.Scope,
+		subject Subject,
+		filter *filtering.QueryFilter,
+	) (*filtering.QueryFilteredResult[T], error),
 ) Collector {
 	if fetch == nil {
 		return nil
 	}
 
-	return CollectorFunc(func(ctx context.Context, subject Subject) (json.RawMessage, error) {
+	return CollectorFunc(func(ctx context.Context, scope tenancy.Scope, subject Subject) (json.RawMessage, error) {
 		rows, err := CollectAll(ctx, func(ctx context.Context, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[T], error) {
-			return fetch(ctx, subject, filter)
+			return fetch(ctx, scope, subject, filter)
 		})
 		if err != nil {
 			return nil, err

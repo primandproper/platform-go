@@ -69,6 +69,7 @@ func RegisterService(i do.Injector) {
 		return NewService(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
+			do.MustInvoke[database.Client](i),
 			do.MustInvoke[dataprivacy.Store](i),
 			do.MustInvoke[operations.Service](i),
 			WithPillars(pillars),
@@ -120,6 +121,7 @@ func RegisterFulfiller(i do.Injector) {
 		return NewFulfiller(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
+			do.MustInvoke[database.Client](i),
 			do.MustInvoke[dataprivacy.Store](i),
 			do.MustInvoke[*dataprivacy.Registry](i),
 			do.MustInvoke[*operations.Registry](i),

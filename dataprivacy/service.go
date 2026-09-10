@@ -19,6 +19,7 @@ import (
 	"github.com/primandproper/primitives-go/observability/logging"
 	"github.com/primandproper/primitives-go/observability/metrics"
 	"github.com/primandproper/primitives-go/observability/tracing"
+	"github.com/primandproper/primitives-go/tenancy"
 	"github.com/primandproper/primitives-go/uploads"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -35,6 +36,7 @@ var _ Service = (*StoreService)(nil)
 // the service it built rather than on the Service seam.
 type StoreService struct {
 	store      Store
+	client     database.Client
 	operations operations.Service
 	clock      clock.Clock
 	o11y       observability.Observer
@@ -97,12 +99,17 @@ func (encryptorPresent) Encrypt(context.Context, []byte, []byte) ([]byte, error)
 func NewService(
 	ctx context.Context,
 	cfg *ServiceConfig,
+	client database.Client,
 	store Store,
 	ops operations.Service,
 	opts ...ServiceOption,
 ) (*StoreService, error) {
 	if cfg == nil {
 		return nil, platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil dataprivacy service config")
+	}
+
+	if client == nil {
+		return nil, ErrNilDatabaseClient
 	}
 
 	if store == nil {
@@ -117,6 +124,7 @@ func NewService(
 
 	s := &StoreService{
 		cfg:        *cfg,
+		client:     client,
 		store:      store,
 		operations: ops,
 		clock:      clock.NewClock(),
@@ -155,17 +163,26 @@ func NewService(
 	return s, nil
 }
 
-func (s *StoreService) Submit(ctx context.Context, subject Subject, t RequestType) (*Request, error) {
+func (s *StoreService) Submit(
+	ctx context.Context,
+	scope tenancy.Scope,
+	subject Subject,
+	t RequestType,
+) (*Request, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValues(map[string]any{
 		subjectIDKey:    subject.ID,
 		subjectTypeKey:  string(subject.Type),
-		subjectScopeKey: subject.Scope.String(),
+		subjectScopeKey: scope.String(),
 		requestTypeKey:  string(t),
 	}))
 	defer op.End()
 
 	if err := subject.validate(); err != nil {
 		return nil, op.Error(err, "validating dataprivacy subject")
+	}
+
+	if err := validateScope(scope, subject.ID); err != nil {
+		return nil, op.Error(err, "validating dataprivacy request scope")
 	}
 
 	if !t.Valid() {
@@ -178,6 +195,7 @@ func (s *StoreService) Submit(ctx context.Context, subject Subject, t RequestTyp
 		ID:        identifiers.New(),
 		Type:      t,
 		Subject:   subject,
+		Scope:     scope,
 		Status:    StatusInProgress,
 		CreatedAt: now,
 		DueAt:     now.Add(s.cfg.responseWindow(t)),
@@ -196,7 +214,7 @@ func (s *StoreService) Submit(ctx context.Context, subject Subject, t RequestTyp
 
 	var started *operations.Operation
 
-	if err := s.store.WithTransaction(ctx, func(q database.Tx) error {
+	if err := s.client.WithTransaction(ctx, func(tx database.Tx) error {
 		// Started inside the request's own transaction, so a process that dies
 		// between the two leaves neither. The alternative — record the request,
 		// commit, then start — produces a request nothing is fulfilling, which
@@ -204,18 +222,18 @@ func (s *StoreService) Submit(ctx context.Context, subject Subject, t RequestTyp
 		// deploy.
 		if !held {
 			var startErr error
-			if started, startErr = s.start(ctx, q, req); startErr != nil {
+			if started, startErr = s.start(ctx, tx, req); startErr != nil {
 				return startErr
 			}
 
 			req.OperationID = started.ID
 		}
 
-		if err := s.store.Save(ctx, q, req); err != nil {
+		if err := s.store.Save(ctx, tx, req); err != nil {
 			return err
 		}
 
-		return s.record(ctx, q, req, audit.EventCreated, nil)
+		return s.record(ctx, tx, req, audit.EventCreated, nil)
 	}); err != nil {
 		return nil, op.Error(err, "submitting dataprivacy request")
 	}
@@ -273,11 +291,11 @@ func (s *StoreService) enqueue(ctx context.Context, started *operations.Operatio
 	}
 }
 
-func (s *StoreService) Get(ctx context.Context, requestID string) (*Request, error) {
+func (s *StoreService) Get(ctx context.Context, scope *tenancy.Scope, requestID string) (*Request, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(requestIDKey, requestID))
 	defer op.End()
 
-	req, err := s.store.Get(ctx, requestID)
+	req, err := s.read(ctx, scope, requestID)
 	if err != nil {
 		return nil, op.Error(err, "reading dataprivacy request")
 	}
@@ -285,22 +303,37 @@ func (s *StoreService) Get(ctx context.Context, requestID string) (*Request, err
 	return req, nil
 }
 
+// read is the service's one read of a single request: through the client's
+// reader, under whatever confinement the caller named.
+//
+// Every method here that acts on one request goes through it rather than
+// reaching for the store directly, so a surface cannot acquire an unscoped read
+// by being written next year. A caller inside a transaction wanting to see its
+// own uncommitted write calls Store.Get with that transaction; this is the
+// service's path, and the service opens its transactions rather than joining
+// them.
+func (s *StoreService) read(ctx context.Context, scope *tenancy.Scope, requestID string) (*Request, error) {
+	return s.store.Get(ctx, s.client.Reader(), scope, requestID)
+}
+
 func (s *StoreService) List(
 	ctx context.Context,
+	scope *tenancy.Scope,
 	subject Subject,
 	filter *filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[Request], error) {
-	ctx, op := s.o11y.Begin(ctx,
-		observability.WithValue(subjectIDKey, subject.ID),
-		observability.WithValue(subjectScopeKey, subject.Scope.String()),
-	)
+	ctx, op := s.o11y.Begin(ctx, observability.WithValue(subjectIDKey, subject.ID))
 	defer op.End()
+
+	if scope != nil {
+		op.Set(subjectScopeKey, scope.String())
+	}
 
 	if err := subject.validate(); err != nil {
 		return nil, op.Error(err, "validating dataprivacy subject")
 	}
 
-	results, err := s.store.List(ctx, subject, filter)
+	results, err := s.store.List(ctx, s.client.Reader(), scope, subject, filter)
 	if err != nil {
 		return nil, op.Error(err, "listing dataprivacy requests")
 	}
@@ -308,7 +341,7 @@ func (s *StoreService) List(
 	return results, nil
 }
 
-func (s *StoreService) Confirm(ctx context.Context, requestID string) (*Request, error) {
+func (s *StoreService) Confirm(ctx context.Context, scope *tenancy.Scope, requestID string) (*Request, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(requestIDKey, requestID))
 	defer op.End()
 
@@ -321,24 +354,27 @@ func (s *StoreService) Confirm(ctx context.Context, requestID string) (*Request,
 	// the reason Submit does the same: a confirmation recorded without the work
 	// it authorized is a request that will sit in progress until the statutory
 	// window closes.
-	if err := s.store.WithTransaction(ctx, func(q database.Tx) error {
+	if err := s.client.WithTransaction(ctx, func(tx database.Tx) error {
 		// Read first, because the operation has to be started with the request's
 		// own type and subject and the transition does not know them. The guard
 		// is still the transition's — this read decides nothing.
-		existing, err := s.store.Get(ctx, requestID)
+		// Through the transaction rather than the reader, so the read sees
+		// whatever this transaction has already done. It narrows by the caller's
+		// confinement for the reason every read here does.
+		existing, err := s.store.Get(ctx, tx, scope, requestID)
 		if err != nil {
 			return err
 		}
 
-		if started, err = s.start(ctx, q, existing); err != nil {
+		if started, err = s.start(ctx, tx, existing); err != nil {
 			return err
 		}
 
-		if req, err = s.store.Confirm(ctx, q, requestID, started.ID); err != nil {
+		if req, err = s.store.Confirm(ctx, tx, requestID, started.ID); err != nil {
 			return err
 		}
 
-		return s.record(ctx, q, req, audit.EventUpdated, map[string]string{metadataReasonKey: "confirmed"})
+		return s.record(ctx, tx, req, audit.EventUpdated, map[string]string{metadataReasonKey: "confirmed"})
 	}); err != nil {
 		return nil, op.Error(s.notAwaitingConfirmation(requestID, err), "confirming dataprivacy request")
 	}
@@ -351,11 +387,11 @@ func (s *StoreService) Confirm(ctx context.Context, requestID string) (*Request,
 	return req, nil
 }
 
-func (s *StoreService) Cancel(ctx context.Context, requestID string) (*Request, error) {
+func (s *StoreService) Cancel(ctx context.Context, scope *tenancy.Scope, requestID string) (*Request, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(requestIDKey, requestID))
 	defer op.End()
 
-	existing, err := s.store.Get(ctx, requestID)
+	existing, err := s.read(ctx, scope, requestID)
 	if err != nil {
 		return nil, op.Error(err, "reading dataprivacy request")
 	}
@@ -370,14 +406,14 @@ func (s *StoreService) Cancel(ctx context.Context, requestID string) (*Request, 
 
 	var req *Request
 
-	if err = s.store.WithTransaction(ctx, func(q database.Tx) error {
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
 		var txErr error
-		if req, txErr = s.store.Cancel(ctx, q, requestID,
+		if req, txErr = s.store.Cancel(ctx, tx, requestID,
 			StatusAwaitingConfirmation, s.clock.Now().UTC()); txErr != nil {
 			return txErr
 		}
 
-		return s.record(ctx, q, req, audit.EventUpdated, map[string]string{metadataReasonKey: "cancelled by request"})
+		return s.record(ctx, tx, req, audit.EventUpdated, map[string]string{metadataReasonKey: "cancelled by request"})
 	}); err != nil {
 		return nil, op.Error(s.notAwaitingConfirmation(requestID, err), "cancelling dataprivacy request")
 	}
@@ -434,11 +470,11 @@ func (s *StoreService) notAwaitingConfirmation(requestID string, err error) erro
 	return err
 }
 
-func (s *StoreService) Download(ctx context.Context, requestID string) (string, error) {
+func (s *StoreService) Download(ctx context.Context, scope *tenancy.Scope, requestID string) (string, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(requestIDKey, requestID))
 	defer op.End()
 
-	req, err := s.artifactRequest(ctx, requestID)
+	req, err := s.artifactRequest(ctx, scope, requestID)
 	if err != nil {
 		return "", op.Error(err, "resolving dataprivacy artifact")
 	}
@@ -479,11 +515,11 @@ func (s *StoreService) Download(ctx context.Context, requestID string) (string, 
 	return url, nil
 }
 
-func (s *StoreService) Open(ctx context.Context, requestID string) (io.ReadCloser, error) {
+func (s *StoreService) Open(ctx context.Context, scope *tenancy.Scope, requestID string) (io.ReadCloser, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(requestIDKey, requestID))
 	defer op.End()
 
-	req, err := s.artifactRequest(ctx, requestID)
+	req, err := s.artifactRequest(ctx, scope, requestID)
 	if err != nil {
 		return nil, op.Error(err, "resolving dataprivacy artifact")
 	}
@@ -508,12 +544,16 @@ func (s *StoreService) Open(ctx context.Context, requestID string) (io.ReadClose
 }
 
 // artifactRequest resolves a request that actually has a fetchable artifact.
-func (s *StoreService) artifactRequest(ctx context.Context, requestID string) (*Request, error) {
+func (s *StoreService) artifactRequest(
+	ctx context.Context,
+	scope *tenancy.Scope,
+	requestID string,
+) (*Request, error) {
 	if s.uploader == nil {
 		return nil, platformerrors.Wrap(ErrArtifactUnavailable, "no dataprivacy upload manager configured")
 	}
 
-	req, err := s.store.Get(ctx, requestID)
+	req, err := s.read(ctx, scope, requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -555,8 +595,8 @@ func (s *StoreService) recordOutOfBand(ctx context.Context, req *Request, event 
 		return nil
 	}
 
-	return s.store.WithTransaction(ctx, func(q database.Tx) error {
-		return s.recorder.Record(ctx, q, s.entryFor(ctx, req, event, metadata))
+	return s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		return s.recorder.Record(ctx, tx, s.entryFor(ctx, req, event, metadata))
 	})
 }
 
@@ -579,7 +619,7 @@ func (s *StoreService) entryFor(ctx context.Context, req *Request, event audit.E
 		ResourceType: auditResourceType,
 		ResourceID:   req.ID,
 		Actor:        s.actor(ctx),
-		Scope:        auditScope(req.Subject.Scope),
+		Scope:        auditScope(req.Scope),
 		Metadata:     fields,
 		RecordedAt:   s.clock.Now().UTC(),
 	}

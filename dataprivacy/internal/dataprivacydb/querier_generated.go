@@ -63,6 +63,8 @@ type Querier interface {
 	FailRequest(ctx context.Context, db DBTX, arg FailRequestParams) (int64, error)
 	// GetRequest runs the :one query.
 	GetRequest(ctx context.Context, db DBTX, arg GetRequestParams) (GetRequestRow, error)
+	// GetRequestInScope runs the :one query.
+	GetRequestInScope(ctx context.Context, db DBTX, arg GetRequestInScopeParams) (GetRequestInScopeRow, error)
 	// LapseUnconfirmedRequests runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note

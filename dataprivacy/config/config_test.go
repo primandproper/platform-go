@@ -20,6 +20,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
 	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/tenancy"
 	"github.com/primandproper/primitives-go/uploads/noop"
 
 	"github.com/shoenig/test"
@@ -147,10 +148,10 @@ func TestConstructors(T *testing.T) {
 		_, err := NewStore(t.Context(), nil, nil)
 		test.Error(t, err)
 
-		_, err = NewService(t.Context(), nil, nil, nil)
+		_, err = NewService(t.Context(), nil, nil, nil, nil)
 		test.Error(t, err)
 
-		_, err = NewFulfiller(t.Context(), nil, nil, nil, nil, nil, false)
+		_, err = NewFulfiller(t.Context(), nil, nil, nil, nil, nil, nil, false)
 		test.Error(t, err)
 
 		_, err = NewSweeper(t.Context(), nil, nil, nil)
@@ -174,6 +175,7 @@ func TestConstructors(T *testing.T) {
 		svc, err := NewService(
 			t.Context(),
 			cfg,
+			env.client,
 			store,
 			stubOperations(),
 		)
@@ -182,7 +184,7 @@ func TestConstructors(T *testing.T) {
 
 		domains := dataprivacy.NewRegistry()
 		must.NoError(t, domains.RegisterEraser("identity", dataprivacy.EraserFunc(
-			func(context.Context, database.Tx, dataprivacy.Subject) (dataprivacy.ErasureOutcome, error) {
+			func(context.Context, database.Tx, tenancy.Scope, dataprivacy.Subject) (dataprivacy.ErasureOutcome, error) {
 				return dataprivacy.ErasureOutcome{}, nil
 			},
 		)))
@@ -192,6 +194,7 @@ func TestConstructors(T *testing.T) {
 		fulfiller, err := NewFulfiller(
 			t.Context(),
 			cfg,
+			env.client,
 			store,
 			domains,
 			kinds,
@@ -217,10 +220,10 @@ func TestConstructors(T *testing.T) {
 
 		// The whole point of one Config: the prefix the Service writes to is by
 		// construction the one the Fulfiller reads from.
-		req, err := svc.Submit(t.Context(), dataprivacy.Subject{ID: "user-1"}, dataprivacy.RequestErasure)
+		req, err := svc.Submit(t.Context(), tenancy.Of("account-1"), dataprivacy.Subject{ID: "user-1"}, dataprivacy.RequestErasure)
 		must.NoError(t, err)
 
-		read, err := svc.Get(t.Context(), req.ID)
+		read, err := svc.Get(t.Context(), nil, req.ID)
 		must.NoError(t, err)
 		test.EqOp(t, req.ID, read.ID)
 	})
@@ -234,10 +237,11 @@ func TestConstructors(T *testing.T) {
 		_, err := NewStore(t.Context(), cfg, env.client)
 		test.Error(t, err)
 
-		_, err = NewService(t.Context(), cfg, nil, stubOperations())
+		_, err = NewService(t.Context(), cfg, env.client, nil, stubOperations())
 		test.Error(t, err)
 
-		_, err = NewFulfiller(t.Context(), cfg, nil, dataprivacy.NewRegistry(), operations.NewRegistry(), nil, false)
+		_, err = NewFulfiller(t.Context(), cfg, env.client, nil, dataprivacy.NewRegistry(),
+			operations.NewRegistry(), nil, false)
 		test.Error(t, err)
 
 		_, err = NewSweeper(t.Context(), cfg, nil, nil)
@@ -259,14 +263,14 @@ func TestConstructors(T *testing.T) {
 
 		domains := dataprivacy.NewRegistry()
 		must.NoError(t, domains.RegisterCollector("identity", dataprivacy.CollectorFunc(
-			func(context.Context, dataprivacy.Subject) (json.RawMessage, error) {
+			func(context.Context, tenancy.Scope, dataprivacy.Subject) (json.RawMessage, error) {
 				return json.RawMessage(`{}`), nil
 			},
 		)))
 
 		// Supplying the uploader is what satisfies the export runner's storage
 		// requirement and wires the signer in one step.
-		fulfiller, err := NewFulfiller(t.Context(), cfg, store, domains, operations.NewRegistry(),
+		fulfiller, err := NewFulfiller(t.Context(), cfg, env.client, store, domains, operations.NewRegistry(),
 			noop.NewUploadManager(), false)
 		must.NoError(t, err)
 		test.NotNil(t, fulfiller)
@@ -333,7 +337,7 @@ func TestRegisterAuditEraser_Failures(T *testing.T) {
 
 		registry := dataprivacy.NewRegistry()
 		must.NoError(t, registry.RegisterEraser(auditerasure.DefaultKey, dataprivacy.EraserFunc(
-			func(context.Context, database.Tx, dataprivacy.Subject) (dataprivacy.ErasureOutcome, error) {
+			func(context.Context, database.Tx, tenancy.Scope, dataprivacy.Subject) (dataprivacy.ErasureOutcome, error) {
 				return dataprivacy.ErasureOutcome{}, nil
 			},
 		)))

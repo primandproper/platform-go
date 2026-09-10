@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/identifiers"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -20,6 +21,7 @@ import (
 
 // fulfillerEnv is a Fulfiller wired over a live store and an in-memory bucket.
 type fulfillerEnv struct {
+	client    database.Client
 	store     Store
 	fulfiller *Fulfiller
 	uploader  *memoryUploader
@@ -48,10 +50,10 @@ func newFulfillerEnv(t *testing.T, register func(*Registry), opts ...FulfillerOp
 		WithFulfillerClock(stub),
 	}
 
-	fulfiller, err := NewFulfiller(t.Context(), &FulfillerConfig{}, store, registry, append(base, opts...)...)
+	fulfiller, err := NewFulfiller(t.Context(), &FulfillerConfig{}, env.client, store, registry, append(base, opts...)...)
 	must.NoError(t, err)
 
-	return &fulfillerEnv{store: store, fulfiller: fulfiller, uploader: uploader, registry: registry, clock: stub}
+	return &fulfillerEnv{client: env.client, store: store, fulfiller: fulfiller, uploader: uploader, registry: registry, clock: stub}
 }
 
 // submitAndRun saves a request and runs the kind that fulfills it, on what the
@@ -60,11 +62,11 @@ func newFulfillerEnv(t *testing.T, register func(*Registry), opts ...FulfillerOp
 func (e *fulfillerEnv) submitAndRun(t *testing.T, requestType RequestType) *Request {
 	t.Helper()
 
-	req := saveRequest(t, e.store, newRequest(identifiers.New(), requestType, testSubject, e.clock.read()))
+	req := saveRequest(t, e.client, e.store, newRequest(identifiers.New(), requestType, testSubject, e.clock.read()))
 
 	e.run(t, req.ID, requestType, newFinalReporter())
 
-	read, err := e.store.Get(t.Context(), req.ID)
+	read, err := e.store.Get(t.Context(), e.client.Reader(), nil, req.ID)
 	must.NoError(t, err)
 
 	return read
@@ -91,10 +93,14 @@ func (e *fulfillerEnv) run(
 }
 
 // reread reads a request back after a run.
+//
+// It narrows by nothing, because the confinement is what half of these subtests
+// are varying: a read pinned to one scope would report the unconfined requests
+// as absent rather than showing what the run left on them.
 func (e *fulfillerEnv) reread(t *testing.T, requestID string) *Request {
 	t.Helper()
 
-	read, err := e.store.Get(t.Context(), requestID)
+	read, err := e.store.Get(t.Context(), e.client.Reader(), nil, requestID)
 	must.NoError(t, err)
 
 	return read
@@ -171,7 +177,7 @@ func TestFulfiller_Export(T *testing.T) {
 			must.NoError(t, r.RegisterCollector("billing", failingCollector(platformerrors.New("nope"))))
 		})
 
-		req := saveRequest(t, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
+		req := saveRequest(t, env.client, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
 
 		_, err := env.run(t, req.ID, RequestExport, newRecordingReporter(
 			operations.Attempt{ID: "op-1", Number: 1}))
@@ -195,7 +201,7 @@ func TestFulfiller_Export(T *testing.T) {
 		env := newFulfillerEnv(t, func(r *Registry) {
 			must.NoError(t, r.RegisterCollector("identity", staticCollector(`{"email":"a@example.com"}`)))
 			must.NoError(t, r.RegisterCollector("billing", CollectorFunc(
-				func(context.Context, Subject) (json.RawMessage, error) { return nil, nil },
+				func(context.Context, tenancy.Scope, Subject) (json.RawMessage, error) { return nil, nil },
 			)))
 		})
 
@@ -213,13 +219,40 @@ func TestFulfiller_Export(T *testing.T) {
 		test.MapLen(t, 1, doc.Data)
 	})
 
+	T.Run("the request's confinement reaches the collectors", func(t *testing.T) {
+		t.Parallel()
+
+		scope := tenancy.Of("account-7")
+
+		var seen []tenancy.Scope
+
+		env := newFulfillerEnv(t, func(r *Registry) {
+			must.NoError(t, r.RegisterCollector("identity", CollectorFunc(
+				func(_ context.Context, s tenancy.Scope, _ Subject) (json.RawMessage, error) {
+					seen = append(seen, s)
+
+					return json.RawMessage(`{}`), nil
+				},
+			)))
+		})
+
+		req := saveRequest(t, env.client, env.store,
+			newRequestInScope(identifiers.New(), RequestExport, scope, testSubject, env.clock.read()))
+
+		_, err := env.run(t, req.ID, RequestExport, newFinalReporter())
+		must.NoError(t, err)
+
+		must.SliceLen(t, 1, seen)
+		test.EqOp(t, scope, seen[0])
+	})
+
 	T.Run("a collector panic becomes that section's failure", func(t *testing.T) {
 		t.Parallel()
 
 		env := newFulfillerEnv(t, func(r *Registry) {
 			must.NoError(t, r.RegisterCollector("identity", staticCollector(`{"ok":true}`)))
 			must.NoError(t, r.RegisterCollector("billing", CollectorFunc(
-				func(context.Context, Subject) (json.RawMessage, error) { panic("boom") },
+				func(context.Context, tenancy.Scope, Subject) (json.RawMessage, error) { panic("boom") },
 			)))
 		})
 
@@ -302,7 +335,7 @@ func TestFulfiller_Export(T *testing.T) {
 
 		env.fulfiller.cfg.MaxDocumentBytes = 8
 
-		req := saveRequest(t, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
+		req := saveRequest(t, env.client, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
 
 		// Unretryable, so the row is failed on the first attempt rather than
 		// waiting for a budget to run out on a document that will be the same
@@ -353,7 +386,7 @@ func TestFulfiller_Erasure(T *testing.T) {
 		env := newFulfillerEnv(t, func(r *Registry) {
 			must.NoError(t, r.RegisterEraser("aaa", countingEraser(5, 0, nil, &ranFirst)))
 			must.NoError(t, r.RegisterEraser("zzz", EraserFunc(
-				func(context.Context, database.Tx, Subject) (ErasureOutcome, error) {
+				func(context.Context, database.Tx, tenancy.Scope, Subject) (ErasureOutcome, error) {
 					return ErasureOutcome{}, platformerrors.New("cannot reach billing")
 				},
 			)))
@@ -373,12 +406,73 @@ func TestFulfiller_Erasure(T *testing.T) {
 		test.EqOp(t, int64(1), ranFirst.Load())
 	})
 
+	// The confinement the request was recorded under reaches the fan-out as its
+	// own argument. An eraser that had to dig it out of the subject would be one
+	// whose blast radius came from a struct field.
+	T.Run("the request's confinement reaches the erasers", func(t *testing.T) {
+		t.Parallel()
+
+		scope := tenancy.Of("account-7")
+
+		var seen []tenancy.Scope
+
+		env := newFulfillerEnv(t, func(r *Registry) {
+			must.NoError(t, r.RegisterEraser("identity", EraserFunc(
+				func(_ context.Context, _ database.Tx, s tenancy.Scope, _ Subject) (ErasureOutcome, error) {
+					seen = append(seen, s)
+
+					return ErasureOutcome{}, nil
+				},
+			)))
+		})
+
+		req := saveRequest(t, env.client, env.store,
+			newRequestInScope(identifiers.New(), RequestErasure, scope, testSubject, env.clock.read()))
+
+		_, err := env.run(t, req.ID, RequestErasure, newFinalReporter())
+		must.NoError(t, err)
+
+		must.SliceLen(t, 1, seen)
+		test.EqOp(t, scope, seen[0])
+	})
+
+	// And the request that named none arrives as the zero Scope rather than as
+	// the global one — a domain reading it as "everywhere this subject appears"
+	// and a domain reading it as "the platform's own rows" must be able to tell
+	// those apart.
+	T.Run("an unconfined request reaches the erasers as no scope", func(t *testing.T) {
+		t.Parallel()
+
+		var seen []tenancy.Scope
+
+		env := newFulfillerEnv(t, func(r *Registry) {
+			must.NoError(t, r.RegisterEraser("identity", EraserFunc(
+				func(_ context.Context, _ database.Tx, s tenancy.Scope, _ Subject) (ErasureOutcome, error) {
+					seen = append(seen, s)
+
+					return ErasureOutcome{}, nil
+				},
+			)))
+		})
+
+		req := saveRequest(t, env.client, env.store,
+			newRequestInScope(identifiers.New(), RequestErasure, tenancy.Scope{}, testSubject,
+				env.clock.read()))
+
+		_, err := env.run(t, req.ID, RequestErasure, newFinalReporter())
+		must.NoError(t, err)
+
+		must.SliceLen(t, 1, seen)
+		test.ErrorIs(t, seen[0].Validate(), tenancy.ErrNoScope)
+		test.False(t, seen[0].IsGlobal())
+	})
+
 	T.Run("an eraser panic aborts the erasure", func(t *testing.T) {
 		t.Parallel()
 
 		env := newFulfillerEnv(t, func(r *Registry) {
 			must.NoError(t, r.RegisterEraser("identity", EraserFunc(
-				func(context.Context, database.Tx, Subject) (ErasureOutcome, error) {
+				func(context.Context, database.Tx, tenancy.Scope, Subject) (ErasureOutcome, error) {
 					panic("boom")
 				},
 			)))
@@ -427,7 +521,7 @@ func TestFulfiller_Failure(T *testing.T) {
 
 		env.fulfiller.uploader = &failingSaveUploader{memoryUploader: env.uploader}
 
-		req := saveRequest(t, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
+		req := saveRequest(t, env.client, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
 
 		_, err := env.run(t, req.ID, RequestExport, newRecordingReporter(
 			operations.Attempt{ID: "op-1", Number: 1, Final: false}))
@@ -464,7 +558,7 @@ func TestFulfiller_Failure(T *testing.T) {
 
 		env.fulfiller.uploader = &failingSaveUploader{memoryUploader: env.uploader}
 
-		req := saveRequest(t, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
+		req := saveRequest(t, env.client, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
 
 		_, err := env.run(t, req.ID, RequestExport, newRecordingReporter(
 			operations.Attempt{ID: "op-1", Number: DefaultMaxAttempts, Final: true}))
@@ -502,7 +596,7 @@ func TestFulfiller_Failure(T *testing.T) {
 		// the row already says something truer than "failed".
 		req := newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read())
 		req.Status = StatusCancelled
-		saveRequest(t, env.store, req)
+		saveRequest(t, env.client, env.store, req)
 
 		_, err := env.run(t, req.ID, RequestExport, newFinalReporter())
 		must.Error(t, err)
@@ -522,7 +616,7 @@ func TestFulfiller_Failure(T *testing.T) {
 			must.NoError(t, r.RegisterEraser("identity", countingEraser(0, 0, nil, nil)))
 		})
 
-		req := saveRequest(t, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
+		req := saveRequest(t, env.client, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
 
 		// Started as an export against a registry with no collectors: the kind
 		// and the row disagree, which no retry resolves.
@@ -627,7 +721,7 @@ func TestFulfiller_Cancellation(T *testing.T) {
 
 		env := newFulfillerEnv(t, func(r *Registry) {
 			must.NoError(t, r.RegisterCollector("identity", CollectorFunc(
-				func(context.Context, Subject) (json.RawMessage, error) {
+				func(context.Context, tenancy.Scope, Subject) (json.RawMessage, error) {
 					collected.Add(1)
 
 					return json.RawMessage(`{"ok":true}`), nil
@@ -635,7 +729,7 @@ func TestFulfiller_Cancellation(T *testing.T) {
 			)))
 		})
 
-		req := saveRequest(t, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
+		req := saveRequest(t, env.client, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
 
 		rep := newFinalReporter()
 		rep.cancel()
@@ -662,7 +756,7 @@ func TestFulfiller_Cancellation(T *testing.T) {
 			must.NoError(t, r.RegisterEraser("identity", countingEraser(1, 0, nil, &erased)))
 		})
 
-		req := saveRequest(t, env.store, newRequest(identifiers.New(), RequestErasure, testSubject, env.clock.read()))
+		req := saveRequest(t, env.client, env.store, newRequest(identifiers.New(), RequestErasure, testSubject, env.clock.read()))
 
 		rep := newFinalReporter()
 		rep.cancel()
@@ -691,7 +785,7 @@ func TestFulfiller_DuplicateExecution(T *testing.T) {
 
 		env := newFulfillerEnv(t, func(r *Registry) {
 			must.NoError(t, r.RegisterCollector("identity", CollectorFunc(
-				func(context.Context, Subject) (json.RawMessage, error) {
+				func(context.Context, tenancy.Scope, Subject) (json.RawMessage, error) {
 					collected.Add(1)
 
 					return json.RawMessage(`{"ok":true}`), nil
@@ -728,7 +822,7 @@ func TestFulfiller_DuplicateExecution(T *testing.T) {
 
 		req := newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read())
 		req.Status = StatusCancelled
-		saveRequest(t, env.store, req)
+		saveRequest(t, env.client, env.store, req)
 
 		_, err := env.run(t, req.ID, RequestExport, newFinalReporter())
 
@@ -905,7 +999,7 @@ func TestNewFulfiller(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 
-		_, err := NewFulfiller(t.Context(), &FulfillerConfig{}, env.newStore(t), NewRegistry(),
+		_, err := NewFulfiller(t.Context(), &FulfillerConfig{}, env.client, env.newStore(t), NewRegistry(),
 			WithFulfillerUploadManager(newMemoryUploader()))
 		test.ErrorIs(t, err, ErrNoCollectors)
 	})
@@ -920,7 +1014,7 @@ func TestNewFulfiller(T *testing.T) {
 
 		// A fulfiller that collects eleven domains and then discovers it has
 		// nowhere to write has already done all the expensive work.
-		_, err := NewFulfiller(t.Context(), &FulfillerConfig{}, env.newStore(t), registry)
+		_, err := NewFulfiller(t.Context(), &FulfillerConfig{}, env.client, env.newStore(t), registry)
 		test.ErrorIs(t, err, ErrNoUploadManager)
 	})
 
@@ -932,7 +1026,7 @@ func TestNewFulfiller(T *testing.T) {
 		registry := NewRegistry()
 		must.NoError(t, registry.RegisterEraser("identity", countingEraser(0, 0, nil, nil)))
 
-		_, err := NewFulfiller(t.Context(), &FulfillerConfig{}, env.newStore(t), registry)
+		_, err := NewFulfiller(t.Context(), &FulfillerConfig{}, env.client, env.newStore(t), registry)
 		test.NoError(t, err)
 	})
 
@@ -950,7 +1044,7 @@ func TestNewFulfiller(T *testing.T) {
 		_, err := NewFulfiller(t.Context(), &FulfillerConfig{
 			FulfillmentTimeout: time.Minute,
 			CollectorTimeout:   time.Hour,
-		}, env.newStore(t), registry)
+		}, env.client, env.newStore(t), registry)
 
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "must exceed collector timeout")

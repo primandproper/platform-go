@@ -56,7 +56,7 @@ func (c *uncountableClient) WithTransaction(ctx context.Context, fn func(databas
 	})
 }
 
-func newUncountableStore(t *testing.T) Store {
+func newUncountableStore(t *testing.T) (database.Client, Store) {
 	t.Helper()
 
 	env := newSQLiteEnv(t)
@@ -64,10 +64,12 @@ func newUncountableStore(t *testing.T) Store {
 	// Migrate through the real client, then wrap it.
 	_ = env.newStore(t)
 
-	store, err := NewSQLStore(&uncountableClient{Client: env.client})
+	client := &uncountableClient{Client: env.client}
+
+	store, err := NewSQLStore(client)
 	must.NoError(t, err)
 
-	return store
+	return client, store
 }
 
 func TestSQLStore_UnreadableRowCounts(T *testing.T) {
@@ -76,17 +78,17 @@ func TestSQLStore_UnreadableRowCounts(T *testing.T) {
 	T.Run("are reported rather than treated as success", func(t *testing.T) {
 		t.Parallel()
 
-		store := newUncountableStore(t)
+		client, store := newUncountableStore(t)
 
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			_, txErr := store.Cancel(t.Context(), q, "r", StatusInProgress, baseTime)
+		err := client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, txErr := store.Cancel(t.Context(), tx, "r", StatusInProgress, baseTime)
 
 			return txErr
 		})
 		test.ErrorIs(t, err, errDatabase)
 
-		err = store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.CompleteExport(t.Context(), q, newRequest("r", RequestExport, testSubject, baseTime), baseTime)
+		err = client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.CompleteExport(t.Context(), tx, newRequest("r", RequestExport, testSubject, baseTime), baseTime)
 		})
 		test.ErrorIs(t, err, errDatabase)
 
@@ -107,7 +109,7 @@ func TestSQLStore_CorruptStoredMaps(T *testing.T) {
 		env := newSQLiteEnv(t)
 		store := env.newStore(t)
 
-		req := saveRequest(t, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
+		req := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
 
 		// Whatever wrote this was not this package, but the read still has to
 		// say so rather than hand back a half-decoded request.
@@ -117,7 +119,7 @@ func TestSQLStore_CorruptStoredMaps(T *testing.T) {
 			"UPDATE "+prefix+"_dataprivacy_requests SET failures = ? WHERE id = ?", []byte("{not json"), req.ID)
 		must.NoError(t, err)
 
-		_, err = store.Get(t.Context(), req.ID)
+		_, err = store.Get(t.Context(), env.client.Reader(), testScopePtr, req.ID)
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "decoding dataprivacy request failures")
 	})
@@ -182,7 +184,7 @@ func TestFulfiller_DegradedStorage(T *testing.T) {
 		// A row written by a newer build than this one, reached by the export
 		// runner because that is the kind its operation names.
 		req := newRequest(identifiers.New(), RequestType("rectification"), testSubject, env.clock.read())
-		saveRequest(t, env.store, req)
+		saveRequest(t, env.client, env.store, req)
 
 		_, err := env.run(t, req.ID, RequestExport, newRecordingReporter(
 			operations.Attempt{ID: "op-1", Number: 1}))
@@ -238,22 +240,24 @@ func TestService_DegradedDependencies(T *testing.T) {
 	T.Run("a failing store surfaces through every read and write", func(t *testing.T) {
 		t.Parallel()
 
-		svc, err := NewService(t.Context(), &ServiceConfig{}, newFailingStore(t), newStubOperations(),
+		client, store := newFailingStore(t)
+
+		svc, err := NewService(t.Context(), &ServiceConfig{}, client, store, newStubOperations(),
 			WithServiceClock(newStubClock()),
 			WithServiceUploadManager(newMemoryUploader()),
 		)
 		must.NoError(t, err)
 
-		_, err = svc.Submit(t.Context(), testSubject, RequestExport)
+		_, err = svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 		test.ErrorIs(t, err, errDatabase)
 
-		_, err = svc.List(t.Context(), testSubject, filtering.DefaultQueryFilter())
+		_, err = svc.List(t.Context(), testScopePtr, testSubject, filtering.DefaultQueryFilter())
 		test.ErrorIs(t, err, errDatabase)
 
 		// Confirm maps a genuine store failure to the failure, not to
 		// "not awaiting confirmation" — the two mean very different things to
 		// somebody debugging a stuck request.
-		_, err = svc.Confirm(t.Context(), "r")
+		_, err = svc.Confirm(t.Context(), testScopePtr, "r")
 		test.Error(t, err)
 	})
 
@@ -263,19 +267,19 @@ func TestService_DegradedDependencies(T *testing.T) {
 		env := newSQLiteEnv(t)
 		store := env.newStore(t)
 
-		svc, err := NewService(t.Context(), &ServiceConfig{}, store, newStubOperations(), WithServiceClock(newStubClock()))
+		svc, err := NewService(t.Context(), &ServiceConfig{}, env.client, store, newStubOperations(), WithServiceClock(newStubClock()))
 		must.NoError(t, err)
 
 		req := newRequest(identifiers.New(), RequestExport, testSubject, baseTime)
 		req.Status = StatusCompleted
 		req.ArtifactRef = "exports/x.json"
 		req.ExpiresAt = baseTime.Add(DefaultArtifactTTL)
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
-		_, err = svc.Download(t.Context(), req.ID)
+		_, err = svc.Download(t.Context(), testScopePtr, req.ID)
 		test.ErrorIs(t, err, ErrArtifactUnavailable)
 
-		_, err = svc.Open(t.Context(), req.ID)
+		_, err = svc.Open(t.Context(), testScopePtr, req.ID)
 		test.ErrorIs(t, err, ErrArtifactUnavailable)
 	})
 
@@ -285,7 +289,7 @@ func TestService_DegradedDependencies(T *testing.T) {
 		env := newSQLiteEnv(t)
 		store := env.newStore(t)
 
-		svc, err := NewService(t.Context(), &ServiceConfig{}, store, newStubOperations(),
+		svc, err := NewService(t.Context(), &ServiceConfig{}, env.client, store, newStubOperations(),
 			WithServiceClock(newStubClock()),
 			WithServiceUploadManager(newMemoryUploader()),
 		)
@@ -296,9 +300,9 @@ func TestService_DegradedDependencies(T *testing.T) {
 		req.Status = StatusCompleted
 		req.ArtifactRef = "exports/missing.json"
 		req.ExpiresAt = baseTime.Add(DefaultArtifactTTL)
-		saveRequest(t, store, req)
+		saveRequest(t, env.client, store, req)
 
-		_, err = svc.Open(t.Context(), req.ID)
+		_, err = svc.Open(t.Context(), testScopePtr, req.ID)
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "reading dataprivacy artifact")
 	})

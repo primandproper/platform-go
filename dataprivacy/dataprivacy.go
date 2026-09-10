@@ -78,6 +78,13 @@ var (
 
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
+	//
+	// NewService and NewFulfiller both require one, because both open
+	// transactions and neither may take one from the Store: a request's row,
+	// the audit entry describing it and the operation that fulfills it are one
+	// fact, so whoever writes them decides where the transaction begins and
+	// ends. The Store used to offer a WithTransaction of its own and no longer
+	// does — see Store, which records why one way in is the module's rule.
 	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil data privacy database client")
 
 	// ErrNilExecutor indicates a Store method that runs in the caller's
@@ -108,7 +115,7 @@ var (
 	// asking for the empty string's data — which some of them will answer.
 	ErrEmptySubjectID = platformerrors.New("empty dataprivacy subject ID")
 
-	// ErrGlobalSubjectScope indicates a Subject confined to tenancy.Global.
+	// ErrGlobalRequestScope indicates a request confined to tenancy.Global.
 	//
 	// The confinement is stored in a column that holds two states where the type
 	// has three: an owner identifier, or the empty identifier for a request that
@@ -120,8 +127,8 @@ var (
 	// It is refused rather than reconciled because there is nothing behind it to
 	// reconcile with. The global scope holds the platform's own rows, and those
 	// are not held about a subject; a request that means "everything of mine"
-	// names no scope, which is a spelling this type already has.
-	ErrGlobalSubjectScope = platformerrors.New("dataprivacy subject confined to the global scope")
+	// names no scope, which is a spelling Request.Scope already has.
+	ErrGlobalRequestScope = platformerrors.New("dataprivacy request confined to the global scope")
 
 	// ErrUnknownRequestType indicates a RequestType outside the two this package
 	// implements.
@@ -244,26 +251,21 @@ const (
 )
 
 // Subject is who or what a request is about.
+//
+// It names a person and nothing else. The scope a request is confined to used
+// to live here, and it does not any more: one field cannot be both a fact about
+// the subject and the value a read narrows rows by, and while it was both, the
+// store learned which tenant a listing was for by reading a struct its caller
+// assembled somewhere else. The confinement is Request.Scope, and every store
+// method that selects rows takes the scope it selects by as an argument.
+//
+// What the erasers and collectors still need is the confinement, and they are
+// handed it beside the subject — see Collector and Eraser.
 type Subject struct {
 	// ID identifies the subject. Required.
 	ID string `json:"id"`
 	// Type says what kind of subject it is.
 	Type SubjectType `json:"type,omitempty"`
-	// Scope is the account or tenant the request is confined to, when it is
-	// confined at all. The zero Scope is the request that is not confined: it
-	// spans every scope the subject appears in, which is what a plain "give me
-	// my data" asks for.
-	//
-	// That absence is the same one audit.Query.Scope's nil carries, in the shape
-	// each of the two needs. A Query narrows a column and needs a fourth
-	// reading — a caller who lost the scope they meant to narrow by — so it
-	// wraps the Scope in a pointer. A Subject describes the request, where
-	// naming no scope is a request a subject can actually make, so the Scope's
-	// own bit is the whole of it.
-	//
-	// tenancy.Global is not a confinement a request may name; see
-	// ErrGlobalSubjectScope.
-	Scope tenancy.Scope `json:"scope,omitzero"`
 }
 
 // validate reports whether the subject names anything.
@@ -272,8 +274,17 @@ func (s Subject) validate() error {
 		return ErrEmptySubjectID
 	}
 
-	if s.Scope.IsGlobal() {
-		return platformerrors.Wrapf(ErrGlobalSubjectScope, "dataprivacy subject %q", s.ID)
+	return nil
+}
+
+// validateScope reports whether a scope is one a request may be confined to.
+//
+// The zero Scope passes: a request that names no confinement spans every scope
+// its subject appears in, which is what a plain "give me my data" asks for.
+// tenancy.Global does not, for the reason ErrGlobalRequestScope gives.
+func validateScope(scope tenancy.Scope, subjectID string) error {
+	if scope.IsGlobal() {
+		return platformerrors.Wrapf(ErrGlobalRequestScope, "dataprivacy request for subject %q", subjectID)
 	}
 
 	return nil
@@ -481,6 +492,21 @@ type Request struct {
 	// Subject is who the request is about.
 	Subject Subject `json:"subject"`
 
+	// Scope is the account or tenant the request is confined to, when it is
+	// confined at all. The zero Scope is the request that is not confined: it
+	// spans every scope the subject appears in, which is what a plain "give me
+	// my data" asks for.
+	//
+	// It is a fact recorded on the request rather than a narrowing, which is why
+	// it is a Scope and not the *Scope the reads take. A write has two readings
+	// to tell apart — confined to this, or confined to nothing — and Scope's own
+	// bit carries both. A read has three, because it may also decline to narrow
+	// at all, and no Scope value spells that; see Store.List.
+	//
+	// tenancy.Global is not a confinement a request may name; see
+	// ErrGlobalRequestScope.
+	Scope tenancy.Scope `json:"scope,omitzero"`
+
 	// ArtifactBytes is the stored size of the artifact, after compression and
 	// encryption. Zero for an erasure or an unfulfilled export.
 	ArtifactBytes int64 `json:"artifactBytes,omitempty"`
@@ -631,16 +657,23 @@ type ErasureSummary struct {
 // would be silently wrong in the direction that matters. An application whose
 // jurisdiction or dispute posture needs that guarantee has to implement it in
 // its collectors, and know that it has.
+// The scope is the request's confinement, passed beside the subject rather than
+// carried inside it. A domain whose rows are scoped needs both — who, and
+// whose tenant — and taking the second off the first was how this package used
+// to hand a store a scope nobody named in the call. The zero Scope is the
+// request that named no confinement, which a domain reads as "every scope this
+// subject appears in"; what that resolves to is the domain's question, and the
+// privacy adapters take a resolver for it rather than guessing.
 type Collector interface {
-	Collect(ctx context.Context, subject Subject) (json.RawMessage, error)
+	Collect(ctx context.Context, scope tenancy.Scope, subject Subject) (json.RawMessage, error)
 }
 
 // CollectorFunc adapts a function to Collector.
-type CollectorFunc func(ctx context.Context, subject Subject) (json.RawMessage, error)
+type CollectorFunc func(ctx context.Context, scope tenancy.Scope, subject Subject) (json.RawMessage, error)
 
 // Collect implements Collector.
-func (f CollectorFunc) Collect(ctx context.Context, subject Subject) (json.RawMessage, error) {
-	return f(ctx, subject)
+func (f CollectorFunc) Collect(ctx context.Context, scope tenancy.Scope, subject Subject) (json.RawMessage, error) {
+	return f(ctx, scope, subject)
 }
 
 // Eraser removes or anonymizes one domain's data about a subject.
@@ -657,16 +690,26 @@ func (f CollectorFunc) Collect(ctx context.Context, subject Subject) (json.RawMe
 // given rather than a handle of its own. Every registered eraser for one
 // request shares that transaction, so an erasure is all-or-nothing: a subject
 // is not left half-deleted across eleven domains because the ninth timed out.
+// The scope is the request's confinement, and Collector's account of it applies
+// here unchanged — with one more thing at stake. An eraser that took the scope
+// off the subject would be one whose blast radius came from a struct field, and
+// the failure mode of getting that wrong is not a short answer but somebody
+// else's rows.
 type Eraser interface {
-	Erase(ctx context.Context, q database.Tx, subject Subject) (ErasureOutcome, error)
+	Erase(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject Subject) (ErasureOutcome, error)
 }
 
 // EraserFunc adapts a function to Eraser.
-type EraserFunc func(ctx context.Context, q database.Tx, subject Subject) (ErasureOutcome, error)
+type EraserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject Subject) (ErasureOutcome, error)
 
 // Erase implements Eraser.
-func (f EraserFunc) Erase(ctx context.Context, q database.Tx, subject Subject) (ErasureOutcome, error) {
-	return f(ctx, q, subject)
+func (f EraserFunc) Erase(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	subject Subject,
+) (ErasureOutcome, error) {
+	return f(ctx, tx, scope, subject)
 }
 
 // ErasureOutcome is what one domain did.
@@ -712,26 +755,44 @@ type Service interface {
 	// An erasure submitted to a Service with a confirmation window returns
 	// StatusAwaitingConfirmation and an empty OperationID, and nothing runs
 	// until Confirm.
-	Submit(ctx context.Context, subject Subject, t RequestType) (*Request, error)
+	// scope is the confinement the request is recorded under and nothing
+	// narrows: the zero Scope submits a request that spans every scope its
+	// subject appears in. tenancy.Global is refused with ErrGlobalRequestScope.
+	Submit(ctx context.Context, scope tenancy.Scope, subject Subject, t RequestType) (*Request, error)
 
 	// Get reads one request. It returns an error wrapping ErrRequestNotFound
-	// when there is no such request.
-	Get(ctx context.Context, requestID string) (*Request, error)
+	// when there is no such request, and the same error for a request outside
+	// the scope named — a caller who may not see a request is told it is not
+	// there rather than told it is somebody else's.
+	//
+	// scope is Store.Get's, unchanged: nil reads across every confinement, and
+	// a non-nil scope naming nobody is refused rather than widened.
+	Get(ctx context.Context, scope *tenancy.Scope, requestID string) (*Request, error)
 
 	// List pages through a subject's requests. A subject is entitled to know
 	// what has been asked in their name, which is the reason this is scoped to
 	// a subject rather than global.
 	//
+	// scope is Store.List's, unchanged: nil is every confinement the subject
+	// appears in, which is what a subject asking after their own history means.
+	//
 	// Ordering follows the filter's SortBy — ascending by default, as
 	// filtering.DefaultQueryFilter asks. Requests are ordered by ID, which for
 	// generated identifiers is submission order.
-	List(ctx context.Context, subject Subject, f *filtering.QueryFilter) (*filtering.QueryFilteredResult[Request], error)
+	List(
+		ctx context.Context,
+		scope *tenancy.Scope,
+		subject Subject,
+		f *filtering.QueryFilter,
+	) (*filtering.QueryFilteredResult[Request], error)
 
 	// Confirm moves an erasure out of StatusAwaitingConfirmation and starts the
 	// operation that fulfills it, returning the request with OperationID set.
 	// It returns an error wrapping ErrNotAwaitingConfirmation for a request in
 	// any other state, including one whose window has already lapsed.
-	Confirm(ctx context.Context, requestID string) (*Request, error)
+	//
+	// scope narrows the read that precedes the transition, the way Get's does.
+	Confirm(ctx context.Context, scope *tenancy.Scope, requestID string) (*Request, error)
 
 	// Cancel withdraws a request.
 	//
@@ -746,7 +807,9 @@ type Service interface {
 	// honest outcome rather than a gap: the erasers share one transaction and
 	// the shred that precedes them cannot be undone, so the last moment at which
 	// stopping means anything is before either has run.
-	Cancel(ctx context.Context, requestID string) (*Request, error)
+	//
+	// scope narrows the read that precedes the withdrawal, the way Get's does.
+	Cancel(ctx context.Context, scope *tenancy.Scope, requestID string) (*Request, error)
 
 	// Download mints a time-limited URL for a completed export's artifact,
 	// letting the subject fetch it from storage without the bytes passing
@@ -756,7 +819,12 @@ type Service interface {
 	// It returns an error wrapping ErrArtifactUnavailable for a request with no
 	// artifact, ErrArtifactEncrypted when the Service encrypts artifacts at
 	// rest, and ErrNoURLSigner when the storage provider cannot sign.
-	Download(ctx context.Context, requestID string) (string, error)
+	//
+	// scope narrows the read of the request whose artifact is being signed, the
+	// way Get's does. A signed URL is the one output of this package that
+	// leaves the process, so the read behind it names the confinement rather
+	// than trusting a caller to compare afterwards.
+	Download(ctx context.Context, scope *tenancy.Scope, requestID string) (string, error)
 
 	// Open returns a completed export's artifact as canonical JSON, reversing
 	// whatever compression and encryption it was stored under. The caller must
@@ -770,5 +838,7 @@ type Service interface {
 	// It is the path that always works — every storage provider, encrypted or
 	// not — at the cost of proxying the bytes through the application. Prefer
 	// Download where it is available, and reach for this when it is not.
-	Open(ctx context.Context, requestID string) (io.ReadCloser, error)
+	//
+	// scope narrows the read, the way Download's does.
+	Open(ctx context.Context, scope *tenancy.Scope, requestID string) (io.ReadCloser, error)
 }

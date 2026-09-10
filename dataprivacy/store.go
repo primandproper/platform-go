@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Store is the persistence seam for the request state machine.
@@ -22,6 +23,37 @@ import (
 // resolve those races by whichever transaction was slower. The predicates are
 // in the queries for that reason, and a transition that matched nothing returns
 // an error rather than silently succeeding.
+//
+// # Executors and scopes
+//
+// Every consumer-facing write takes the caller's database.Tx and every
+// consumer-facing read takes a database.SQLQueryExecutor, so one read serves
+// both a caller holding Client.Reader() and a caller inside a transaction —
+// and the caller who has just written a request can read it back. Every read
+// that selects rows takes the scope it selects by as an argument rather than
+// off a struct, so a call that did not decide which tenant it was for does not
+// compile into one that quietly means all of them.
+//
+// There is no WithTransaction here, and it is worth saying why it went. It used
+// to be on this interface, arguing that an erasure has to be atomic across
+// domains and with its own bookkeeping. That is true and it is not a method
+// this store owes: database.Client.WithTransaction already provides it, and one
+// way in is the module's rule. What the argument was really recording is that
+// every registered Eraser and the request's completion must share one
+// transaction — a statement about how Fulfiller is wired, which is where it now
+// lives.
+//
+// # The seven that take neither
+//
+// MarkKeyShredded, Fail, ExpiringArtifacts, MarkExpired, LapseUnconfirmed,
+// CountOverdue and Reap run on the handle the store was built with. They are
+// this component servicing itself — a sweeper on a timer, and the runner
+// recording that an operation's last attempt is spent — rather than answering a
+// consumer read, so there is no caller whose transaction they could join and no
+// tenant whose question they are answering. A sweep that took a caller's
+// transaction would hold every tenant's rows inside somebody else's unit of
+// work; one that took a scope would have to be run once per tenant to do a job
+// that is defined across all of them. Each says so on itself.
 //
 // The two transitions are named rather than parameterized, and the difference
 // between them is one column rather than the source status. A confirmation
@@ -49,27 +81,57 @@ type Store interface {
 	// asked for this person's data" is itself an auditable event, and an audit
 	// entry that can commit while the request it describes rolls back — or the
 	// reverse — is not a record of anything.
-	Save(ctx context.Context, q database.Tx, req *Request) error
+	//
+	// It takes no scope. The confinement is Request.Scope — a fact the insert
+	// records rather than a narrowing it selects by — and an insert selects no
+	// rows for a scope to narrow. tenancy.Global is refused with
+	// ErrGlobalRequestScope, for the reason that sentinel gives.
+	Save(ctx context.Context, tx database.Tx, req *Request) error
 
-	// Get reads one request. It returns an error wrapping ErrRequestNotFound
-	// when there is no such request.
-	Get(ctx context.Context, requestID string) (*Request, error)
+	// Get reads one request, through the caller's executor.
+	//
+	// It returns an error wrapping ErrRequestNotFound when there is no such
+	// request, and the same error when the request exists outside the scope
+	// named. Those are one answer on purpose: a caller who may not see a
+	// request learns nothing from the difference between "no such request" and
+	// "not yours", and the second wording is how an opaque identifier becomes
+	// an oracle.
+	//
+	// See List for what the scope pointer's three readings are; they are the
+	// same three here.
+	Get(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, requestID string) (*Request, error)
 
 	// List pages through a subject's requests, ordered by ID in the direction
 	// the filter's SortBy asks for, under the rest of the filter's window.
 	//
-	// A Subject that names no scope matches every scope rather than only the
-	// unconfined requests. A subject asking what has been requested in their
-	// name means all of it, and a listing that silently omitted the scoped
-	// requests would be the wrong answer to the one question this endpoint
-	// exists to answer.
+	// # The scope's three readings
 	//
-	// That is the unset tenancy.Scope, and it is a reading rather than an
-	// accident: a confinement is optional on a Subject, so the scope that names
-	// nobody is the request that named none. tenancy.Global is not a spelling
-	// of it — a Subject refuses that outright, for the reason
-	// ErrGlobalSubjectScope gives.
-	List(ctx context.Context, subject Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Request], error)
+	// A nil scope matches every confinement rather than only the unconfined
+	// requests. A subject asking what has been requested in their name means
+	// all of it, and a listing that silently omitted the confined requests
+	// would be the wrong answer to the one question this method exists to
+	// answer.
+	//
+	// A non-nil scope naming an owner matches that confinement and no other.
+	//
+	// A non-nil scope naming nobody — the zero tenancy.Scope — is a caller
+	// whose own lookup came back empty, and it is refused with
+	// tenancy.ErrNoScope rather than widened into the first reading. That is
+	// the pointer's whole reason for being: Scope.known separates the global
+	// scope from a caller who never decided, and it does not separate either of
+	// those from "do not narrow at all". audit.Query.Scope carries the same
+	// three readings in the same shape, and for the same reason.
+	//
+	// tenancy.Global is not a confinement any request holds — Save refuses it —
+	// so a scope naming it matches nothing rather than matching the unconfined
+	// requests.
+	List(
+		ctx context.Context,
+		q database.SQLQueryExecutor,
+		scope *tenancy.Scope,
+		subject Subject,
+		filter *filtering.QueryFilter,
+	) (*filtering.QueryFilteredResult[Request], error)
 
 	// Confirm moves a request out of StatusAwaitingConfirmation and into
 	// StatusInProgress using the caller's transaction, recording the operation
@@ -84,7 +146,7 @@ type Store interface {
 	// confirmation" — a subject clicking confirm twice, or clicking it at the
 	// instant the lapse sweep cancelled it. Callers wrap it into whichever of
 	// the two their API means.
-	Confirm(ctx context.Context, q database.Tx, requestID, operationID string) (*Request, error)
+	Confirm(ctx context.Context, tx database.Tx, requestID, operationID string) (*Request, error)
 
 	// Cancel moves a request from the named status to StatusCancelled using the
 	// caller's transaction, stamping at as its completion, and returns the
@@ -104,7 +166,7 @@ type Store interface {
 	// It returns an error wrapping ErrRequestNotFound when no row matched, and
 	// one wrapping ErrUnknownStatus when from is not a status this package
 	// writes.
-	Cancel(ctx context.Context, q database.Tx, requestID string, from Status, at time.Time) (*Request, error)
+	Cancel(ctx context.Context, tx database.Tx, requestID string, from Status, at time.Time) (*Request, error)
 
 	// CompleteExport records a fulfilled export using the caller's transaction: its
 	// artifact, that artifact's expiry, and any per-section failures.
@@ -115,21 +177,11 @@ type Store interface {
 	// at a packaged copy of everything held about somebody that no sweep will
 	// ever visit. The expiry is refused rather than defaulted, because how long
 	// an export stays fetchable is the caller's policy and not this store's.
-	CompleteExport(ctx context.Context, q database.Tx, req *Request, at time.Time) error
-
-	// WithTransaction runs fn against the store's database.
-	//
-	// It is on this interface because an erasure has to be atomic across
-	// domains and with its own bookkeeping: every registered Eraser and the
-	// request's completion share one transaction, so a subject is never left
-	// half-erased across eleven domains because the ninth failed. A Store that
-	// is not backed by the same database as the erasers cannot offer that, and
-	// should refuse erasure rather than pretend.
-	WithTransaction(ctx context.Context, fn func(q database.Tx) error) error
+	CompleteExport(ctx context.Context, tx database.Tx, req *Request, at time.Time) error
 
 	// CompleteErasure records a fulfilled erasure using the caller's transaction,
 	// so it commits with the deletions it describes.
-	CompleteErasure(ctx context.Context, q database.Tx, req *Request, at time.Time) error
+	CompleteErasure(ctx context.Context, tx database.Tx, req *Request, at time.Time) error
 
 	// MarkKeyShredded records that the subject's data key was destroyed, on its
 	// own and before the erasure it belongs to has finished.
@@ -142,6 +194,12 @@ type Store interface {
 	//
 	// It is idempotent. A retried erasure re-shreds, gets the original
 	// destruction time back, and must not overwrite the record with a later one.
+	//
+	// It takes neither executor nor scope. The shred happens before the erasure
+	// transaction opens and has to survive that transaction rolling back — the
+	// key is gone either way, and the one fact nothing else can reconstruct is
+	// when — so joining the caller's transaction is the one thing it must not
+	// do. The request it stamps is already identified by id.
 	MarkKeyShredded(ctx context.Context, requestID string, at time.Time) error
 
 	// Fail moves an in-progress request to StatusFailed, recording why, and
@@ -159,6 +217,10 @@ type Store interface {
 	// truer than "failed" — but the caller has to know, because telling a
 	// subject their request failed when it was cancelled is worse than telling
 	// them nothing.
+	//
+	// It takes neither executor nor scope. It is the runner recording that an
+	// operation is out of attempts, on its own handle and after whatever
+	// transaction the attempt held has gone; the row it moves is named by id.
 	Fail(ctx context.Context, requestID, lastErr string, at time.Time) (bool, error)
 
 	// ExpiringArtifacts returns completed exports whose artifacts are due for
@@ -166,14 +228,28 @@ type Store interface {
 	// this deliberately returns the requests rather than expiring them in bulk:
 	// a row marked expired while its object survived is a file nobody is
 	// looking for any more and nobody will delete.
+	//
+	// It takes neither executor nor scope. It is the artifact sweep asking what
+	// is due across every tenant, on the store's own handle: an expiry is a
+	// deadline the clock reached, not a question anybody asked about their own
+	// data.
 	ExpiringArtifacts(ctx context.Context, now time.Time, limit int) ([]*Request, error)
 
 	// MarkExpired clears a request's artifact reference and moves it to
 	// StatusExpired, once the object itself is gone.
+	//
+	// It takes neither executor nor scope, as the sweep that calls it does not.
+	// It runs after the object has been deleted, so it must commit on its own:
+	// a transaction the caller could still roll back would leave a row pointing
+	// at a file that no longer exists.
 	MarkExpired(ctx context.Context, requestID string, at time.Time) error
 
 	// LapseUnconfirmed cancels erasures whose confirmation window has passed,
 	// returning how many were cancelled.
+	//
+	// It takes neither executor nor scope. It is one bounded write across every
+	// tenant on a timer, and a lapse is the absence of a confirmation rather
+	// than anybody's request.
 	LapseUnconfirmed(ctx context.Context, now time.Time, limit int) (int64, error)
 
 	// CountOverdue counts unfulfilled requests past their statutory deadline,
@@ -182,6 +258,11 @@ type Store interface {
 	// Every type is in the result whether or not any request of that type is
 	// overdue, so a gauge that was reporting three overdue exports actively
 	// drops to zero when they are served rather than holding a stale reading.
+	//
+	// It takes neither executor nor scope. It feeds a process-level gauge, whose
+	// reading is "how far behind is this deployment" — a number defined across
+	// every tenant, which a per-scope count could not produce without being run
+	// once per tenant and summed.
 	CountOverdue(ctx context.Context, now time.Time) (map[RequestType]int64, error)
 
 	// Reap deletes terminal request records completed before the given time, up
@@ -191,5 +272,10 @@ type Store interface {
 	// them forever is the mistake this package would otherwise make on every
 	// consumer's behalf. What it does not do is delete a request whose artifact
 	// still exists — see the retention discussion in the package docs.
+	//
+	// It takes neither executor nor scope. Retention is the deployment's policy
+	// applied to every tenant's records on a timer, not a deletion any subject
+	// asked for; the erasure they did ask for is CompleteErasure, which takes
+	// the caller's transaction.
 	Reap(ctx context.Context, before time.Time, limit int) (int64, error)
 }

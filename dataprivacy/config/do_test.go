@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	databasecfg "github.com/primandproper/primitives-go/database/config"
 	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/tenancy"
 	"github.com/primandproper/primitives-go/uploads"
 	uploadsnoop "github.com/primandproper/primitives-go/uploads/noop"
 
@@ -72,7 +73,7 @@ func TestRegisterService(T *testing.T) {
 
 		domains := dataprivacy.NewRegistry()
 		must.NoError(t, domains.RegisterCollector("example", dataprivacy.CollectorFunc(
-			func(context.Context, dataprivacy.Subject) (json.RawMessage, error) {
+			func(context.Context, tenancy.Scope, dataprivacy.Subject) (json.RawMessage, error) {
 				return json.RawMessage(`{}`), nil
 			},
 		)))
@@ -121,7 +122,7 @@ func TestRegisterFulfiller(T *testing.T) {
 
 		domains := dataprivacy.NewRegistry()
 		must.NoError(t, domains.RegisterCollector("example", dataprivacy.CollectorFunc(
-			func(context.Context, dataprivacy.Subject) (json.RawMessage, error) {
+			func(context.Context, tenancy.Scope, dataprivacy.Subject) (json.RawMessage, error) {
 				return json.RawMessage(`{}`), nil
 			},
 		)))
