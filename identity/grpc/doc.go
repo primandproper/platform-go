@@ -89,7 +89,7 @@ apart.
 
 # Mounting it
 
-	srv, err := identitycfg.NewServer(ctx, cfg, client, svc, store, principalFromContext,
+	srv, err := identitycfg.NewServer(ctx, cfg, svc, store, client, principalFromContext,
 		identitycfg.WithPillars(pillars))
 
 	reqs, err := identitygrpc.Require(authzgrpc.NewRequirements()).Build()

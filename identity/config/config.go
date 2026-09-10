@@ -194,6 +194,10 @@ func NewService(
 
 // NewServer builds the gRPC surface over a Service and a Store.
 //
+// The dependencies read in the order identitygrpc.NewServer takes them, which
+// is the order every gRPC surface in this module takes its own: domain
+// dependencies, then the database client, then the principal extractor.
+//
 // principals is positional and required for the reason identitygrpc's own
 // constructor gives: a directory server that cannot say who is calling has no
 // scope to filter its reads on, and the only available default is one that
@@ -217,9 +221,9 @@ func NewService(
 func NewServer(
 	ctx context.Context,
 	cfg *Config,
-	client database.Client,
 	svc *identity.Service,
 	store identity.Store,
+	client database.Client,
 	principals identitygrpc.PrincipalExtractor,
 	opts ...Option,
 ) (*identitygrpc.Server, error) {
@@ -243,5 +247,5 @@ func NewServer(
 		identitygrpc.WithMaxInvitationTTL(cfg.MaxInvitationTTL),
 	}
 
-	return identitygrpc.NewServer(client, svc, store, principals, append(base, options.server...)...)
+	return identitygrpc.NewServer(svc, store, client, principals, append(base, options.server...)...)
 }

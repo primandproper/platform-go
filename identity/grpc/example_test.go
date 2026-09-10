@@ -54,7 +54,7 @@ func Example_mount() {
 			return err
 		}
 
-		srv, err := identitycfg.NewServer(ctx, cfg, client, svc, store, principal, opts...)
+		srv, err := identitycfg.NewServer(ctx, cfg, svc, store, client, principal, opts...)
 		if err != nil {
 			return err
 		}
