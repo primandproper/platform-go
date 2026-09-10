@@ -124,7 +124,7 @@ func TestTheMoveCarriesBothStatuses(T *testing.T) {
 		must.NotNil(T, descriptor, must.Sprintf("TransitionReportRequest has no %s", field))
 
 		test.EqOp(T, protoreflect.EnumKind, descriptor.Kind(), test.Sprintf(
-			"%s is not the Status enum, so a client could name a status this queue does not have", field))
+			"%s is not the ReportStatus enum, so a client could name a status this queue does not have", field))
 	}
 }
 
@@ -145,8 +145,8 @@ func TestTheStatusEnumCoversTheLifecycle(T *testing.T) {
 			t.Parallel()
 
 			rendered := issuereportsgrpc.StatusToProto(status)
-			test.NotEqOp(t, issuereportspb.Status_STATUS_UNSPECIFIED, rendered, test.Sprintf(
-				"%q has no member in the Status enum", status))
+			test.NotEqOp(t, issuereportspb.ReportStatus_REPORT_STATUS_UNSPECIFIED, rendered, test.Sprintf(
+				"%q has no member in the ReportStatus enum", status))
 
 			// And back, because a value that renders and does not read is a
 			// filter a client cannot ask for.
@@ -156,9 +156,54 @@ func TestTheStatusEnumCoversTheLifecycle(T *testing.T) {
 
 	// The other direction: an enum member this module does not serve would be a
 	// queue a client can name and no store can page.
-	values := issuereportspb.Status(0).Descriptor().Values()
+	values := issuereportspb.ReportStatus(0).Descriptor().Values()
 	test.EqOp(T, len(issuereports.Statuses)+1, values.Len(), test.Sprint(
 		"the enum and the lifecycle disagree about how many statuses there are, counting UNSPECIFIED"))
+}
+
+// TestTheStatusEnumCarriesItsNoun pins the name, which is the half of an enum a
+// consumer cannot rename once it has shipped.
+//
+// A bare Status was what this file declared first, and it is the one enum name
+// in the eleven schemas that named the concept without naming whose it is --
+// AccountStatus, BillingStatus, InvitationStatus, SignupStatus,
+// TransactionStatus, SettingKind, ValueSource, DevicePlatform, ProductKind and
+// BreakReason all do. The cost is not paid in Go, where issuereportspb.Status is
+// already qualified by its package: it is paid in the languages a consumer
+// generates into that have one flat namespace per file or per module, where a
+// second schema's Status is a collision and the fix is a rename in a schema
+// neither of them owns.
+//
+// Both halves are asserted, because they break independently and the second is
+// the expensive one. The type name is a Go identifier, so renaming it after a
+// tag stops a dependent compiling; each value's spelling is what protojson and
+// grpc-gateway put on the wire, so renaming one after a tag changes the JSON
+// encoding of every report already stored. Neither has a /vN to go in.
+func TestTheStatusEnumCarriesItsNoun(T *testing.T) {
+	T.Parallel()
+
+	enums := issuereportspb.File_primandproper_platform_issuereports_v1_issuereports_proto.Enums()
+	must.EqOp(T, 1, enums.Len(), must.Sprint(
+		"this file declares an enum this test has never seen, and the naming rule is asserted about one"))
+
+	enum := enums.Get(0)
+	test.EqOp(T, protoreflect.Name("ReportStatus"), enum.Name())
+
+	values := enum.Values()
+	must.Positive(T, values.Len(), must.Sprint("the enum has no values, so this asserted nothing"))
+
+	for i := range values.Len() {
+		value := values.Get(i)
+
+		test.StrHasPrefix(T, "REPORT_STATUS_", string(value.Name()), test.Sprintf(
+			"%s does not carry the enum's own name, so protojson and grpc-gateway would spell it "+
+				"differently from every sibling", value.Name()))
+	}
+
+	// The zero value says "nobody named one" rather than naming a queue, and the
+	// spelling is the one protoc's own style guide asks for -- which is what
+	// makes a client's unset field readable as unset in every language.
+	test.EqOp(T, protoreflect.Name("REPORT_STATUS_UNSPECIFIED"), values.ByNumber(0).Name())
 }
 
 // TestTheServiceIsTenMethods pins the count the .proto's service comment argues

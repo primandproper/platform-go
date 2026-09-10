@@ -58,7 +58,7 @@ func TestReportToProto(T *testing.T) {
 		test.EqOp(t, "the thing did not work", rendered.GetDetails())
 		test.EqOp(t, "recipe", rendered.GetSubjectType())
 		test.EqOp(t, "recipe_1", rendered.GetSubjectId())
-		test.EqOp(t, issuereportspb.Status_STATUS_RESOLVED, rendered.GetStatus())
+		test.EqOp(t, issuereportspb.ReportStatus_REPORT_STATUS_RESOLVED, rendered.GetStatus())
 		test.EqOp(t, "fixed", rendered.GetResolution())
 	})
 
@@ -124,7 +124,7 @@ func TestStatusFromProto(T *testing.T) {
 		// is what keeps a request that named none from quietly becoming the open
 		// queue, or a move the caller did not ask for.
 		test.EqOp(t, issuereports.Status(""),
-			issuereportsgrpc.StatusFromProto(issuereportspb.Status_STATUS_UNSPECIFIED))
+			issuereportsgrpc.StatusFromProto(issuereportspb.ReportStatus_REPORT_STATUS_UNSPECIFIED))
 	})
 
 	T.Run("a member no lifecycle has is the empty status too", func(t *testing.T) {
@@ -132,13 +132,13 @@ func TestStatusFromProto(T *testing.T) {
 
 		// A number off the wire that the enum does not declare. It is refused
 		// rather than rendered as anything, for the same reason.
-		test.EqOp(t, issuereports.Status(""), issuereportsgrpc.StatusFromProto(issuereportspb.Status(99)))
+		test.EqOp(t, issuereports.Status(""), issuereportsgrpc.StatusFromProto(issuereportspb.ReportStatus(99)))
 	})
 
 	T.Run("a status this module does not serve renders as unspecified", func(t *testing.T) {
 		t.Parallel()
 
-		test.EqOp(t, issuereportspb.Status_STATUS_UNSPECIFIED,
+		test.EqOp(t, issuereportspb.ReportStatus_REPORT_STATUS_UNSPECIFIED,
 			issuereportsgrpc.StatusToProto(issuereports.Status("triaged-ish")))
 	})
 }
