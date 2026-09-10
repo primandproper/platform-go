@@ -6,10 +6,13 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/operations"
+	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	"github.com/primandproper/platform-go/v14/outbox"
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
 	"github.com/primandproper/platform-go/v14/saga"
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
+	"github.com/primandproper/platform-go/v14/workqueue"
 
 	"github.com/primandproper/primitives-go/config/injection"
 	"github.com/primandproper/primitives-go/database"
@@ -145,6 +148,28 @@ func TestRegister(T *testing.T) {
 
 				test.SliceNotEmpty(t, added, test.Sprintf("%s is a sub-config Register never reads", name))
 			})
+		}
+	})
+
+	T.Run("an operations config registers every loop its own settings configure", func(t *testing.T) {
+		t.Parallel()
+
+		// OPERATIONS_WATCHER_* is parsed, defaulted and validated like every
+		// other knob on this config, so it has to reach something a process
+		// runs. The five registrations are one tier rather than five
+		// independently switchable pieces of one, and the watcher is the one
+		// this walk used to leave out — an operator who tuned the poll interval
+		// got a loop nothing started and no error saying so.
+		names := provided(newInjector(t, &Config{Name: "example", Operations: &operationscfg.Config{}}))
+
+		for _, svc := range []string{
+			do.NameOf[operations.Store](),
+			do.NameOf[*workqueue.Queue[string]](),
+			do.NameOf[operations.Service](),
+			do.NameOf[*operations.Worker](),
+			do.NameOf[*operations.Watcher](),
+		} {
+			test.MapContainsKey(t, names, svc)
 		}
 	})
 

@@ -112,7 +112,9 @@ func RegisterWorker(i do.Injector) {
 // Like the Worker, its Run blocks and the injector will not call it — but unlike
 // the Worker, nothing works without it: a Watcher whose Run is not started
 // delivers each subscriber its first snapshot and then nothing. Start it beside
-// the rest of your background work.
+// the rest of your background work, which for a service composed by
+// service.Register is already done: service.New resolves the Watcher into its
+// runner list and Run starts it.
 func RegisterWatcher(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*operations.Watcher, error) {
 		pillars, err := observability.InvokePillars(i)

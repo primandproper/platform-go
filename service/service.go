@@ -242,6 +242,12 @@ func (s *Service) resolveHealth(r *resolver, checks []healthcheck.Checker) {
 //     draining.
 //   - The remaining loops own their own tables and depend on nothing above
 //     them, so their order among themselves is stable rather than meaningful.
+//   - The operations watcher is last and therefore first down, which is the one
+//     end of this list that is meaningful rather than stable. It is a read-side
+//     loop, nothing downstream of it produces anything, and its subscribers
+//     reach it through ingress that Shutdown has already drained by the time it
+//     is closed — so closing it early ends the subscriptions of connections that
+//     are already gone rather than cutting off ones still being served.
 //
 // The audit log's retention sweep is not here. It is a retention.Policy run by
 // the jobs scheduler, so it is already governed by the scheduler's place in
@@ -253,6 +259,7 @@ func (s *Service) resolveRunners(r *resolver) {
 	resolve(r, func(w *saga.Worker) { s.addRunner("saga worker", w) })
 	resolve(r, func(w *webhooks.Worker) { s.addRunner("webhooks worker", w) })
 	resolve(r, func(w *operations.Worker) { s.addRunner("operations worker", newOperationsRunner(w)) })
+	resolve(r, func(w *operations.Watcher) { s.addRunner("operations watcher", newWatcherRunner(w)) })
 }
 
 // resolveFlushes collects the drains that have no loop of their own and have to

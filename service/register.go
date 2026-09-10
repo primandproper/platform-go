@@ -354,12 +354,27 @@ func registerDurableWorkflows(i do.Injector, cfg *Config) {
 	// here is documentation rather than mechanism — do resolves lazily — but the
 	// two belong next to each other for the same reason they are validated
 	// together in Config.
+	//
+	// All five bridges, on the same reading of presence the rest of this walk
+	// makes: the config names one operations tier, not five independently
+	// switchable pieces of one, so a deployment that set OPERATIONS_WATCHER_POLL
+	// gets a watcher rather than a knob nothing reads. The alternative was a
+	// switch here saying which of the loops to start, and there is nothing for
+	// one to decide that the config does not already say — the same argument
+	// this package's documentation makes about feature flags.
+	//
+	// What it costs a process that streams nothing is a ticker: do.Provide is
+	// lazy, Service.New starts what it resolves, and a watcher nobody has
+	// subscribed to reads no rows on a tick. That is what makes "inert for a
+	// process that serves no streaming endpoint" true of the loop and not only
+	// of the settings.
 	if cfg.Operations != nil {
 		do.ProvideValue(i, cfg.Operations)
 		operationscfg.RegisterStore(i)
 		operationscfg.RegisterQueue(i)
 		operationscfg.RegisterService(i)
 		operationscfg.RegisterWorker(i)
+		operationscfg.RegisterWatcher(i)
 	}
 
 	if cfg.DataPrivacy != nil {

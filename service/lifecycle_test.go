@@ -82,6 +82,7 @@ func TestNew_ordering(T *testing.T) {
 		do.ProvideValue(i, &saga.Worker{})
 		do.ProvideValue(i, &webhooks.Worker{})
 		do.ProvideValue(i, &operations.Worker{})
+		do.ProvideValue(i, &operations.Watcher{})
 
 		do.ProvideValue(i, &metering.Flusher{})
 
@@ -114,6 +115,7 @@ func TestNew_ordering(T *testing.T) {
 			"saga worker",
 			"webhooks worker",
 			"operations worker",
+			"operations watcher",
 		}, names(svc.runners))
 
 		test.Eq(t, []string{"metering flusher"}, names(svc.flushes))
