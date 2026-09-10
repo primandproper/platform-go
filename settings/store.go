@@ -41,12 +41,12 @@ import (
 // caller assembled somewhere else; comments.Store settled it for the module and
 // this store follows.
 //
-// # Every write hands back what it wrote
+// # A write hands back what a later read cannot
 //
-// The five writes here return the row they wrote, read on the caller's
-// transaction after the statement: CreateDefinition and SetValue return what was
-// stored, UpdateDefinition and ArchiveDefinition the definition they moved, and
-// ClearValue the answer it took back.
+// Four writes here return the row they wrote, read on the caller's transaction
+// after the statement: CreateDefinition and SetValue return what was stored,
+// UpdateDefinition the definition it edited, and ClearValue the answer it took
+// back.
 //
 // It is not a convenience, and the reason is the transaction. A caller inside an
 // uncommitted transaction has no other way to read the row back — the stamps on
@@ -58,13 +58,25 @@ import (
 // is gone from every read on this interface once the row is archived, so the
 // value it hands back is the last place that fact exists.
 //
+// ArchiveDefinition is the write that does not, and the boundary is worth
+// stating because "every write returns" would have been the tidier rule. A
+// retired definition is not unreachable the way a cleared value is — it is the
+// row the caller named, still there under the id they passed — so a caller that
+// wants it reads it with GetDefinition before archiving, on the same
+// transaction and for the same one statement. Returning it would instead have
+// charged two statements to every caller, the archived row and its enumeration,
+// including the ones that only wanted the setting retired. A return is worth a
+// round trip where it buys a fact nothing else can supply, and not where it
+// duplicates a read the caller can decline.
+//
 // The rejected spelling was mutating the caller's argument in place, which
 // delivers the same guarantee — comments.Store.CreateComment does exactly that.
 // Neither is wrong; one module wants one of them, and more of this one already
 // returns.
 //
-// DeleteValuesForSubject is the exception and answers with a count. It is not a
-// write over one row, and the rows it destroys are destroyed rather than moved.
+// DeleteValuesForSubject answers with a count for a different reason. It is not
+// a write over one row, and the rows it destroys are destroyed rather than
+// moved.
 //
 // # Thirteen of these are on the wire and one is not
 //
@@ -151,9 +163,8 @@ type DefinitionStore interface {
 	// second way. See [Store] on what returning the row is for.
 	UpdateDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *Definition) (*Definition, error)
 
-	// ArchiveDefinition retires a setting inside the caller's transaction and
-	// returns the definition it retired. A nil tx is an error wrapping
-	// ErrNilExecutor.
+	// ArchiveDefinition retires a setting inside the caller's transaction. A nil
+	// tx is an error wrapping ErrNilExecutor.
 	//
 	// The values stored against it are left alone and the name stays claimed:
 	// archiving is not erasure, and freeing the name would let a second
@@ -161,16 +172,16 @@ type DefinitionStore interface {
 	// wants the name back deletes the definition, which takes its values with
 	// it through the schema's cascade.
 	//
-	// The row comes back because a caller of this holds an id and nothing else,
-	// and the entry recording a retirement is about the name, the kind and the
-	// enumeration that id stood for. It is read on tx after the write, through
-	// one of the two statements here that reach an archived row — the other is
-	// [ValueStore.ClearValue]'s — so it carries the retirement stamp as well,
-	// which no caller can reconstruct because archived_at is the server's clock.
+	// It is the one write here that answers with an error alone. A caller
+	// recording what it retired reads the definition with GetDefinition first,
+	// on the same transaction — the row is still the one this id names, so that
+	// read costs what a read-back here would have cost and only the callers who
+	// want it pay. See [Store] on where the line falls, and
+	// [ValueStore.ClearValue] for the write on the other side of it.
 	//
 	// A definition that was already archived, or that is not in this scope, is
-	// ErrDefinitionNotFound and a nil row.
-	ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*Definition, error)
+	// ErrDefinitionNotFound.
+	ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error
 }
 
 // ValueStore is the request path: what one subject answered, and what a setting

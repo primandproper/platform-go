@@ -102,10 +102,10 @@ update returns the definition it wrote, read on the transaction that wrote it,
 so this handler sends that rather than assembling a response from the request —
 which would carry the epoch where last_updated_at belongs.
 
-ArchiveDefinition's response carries nothing, and the store's answer is dropped
-here. The row a retirement returns is what an in-process caller writes its audit
-entry from; a client that archives by id already had the definition, and asking
-for it back is a read.
+ArchiveDefinition's response carries nothing, and the store's write returns
+nothing either. A client that archives by id already had the definition, and
+asking for it back is a read — one it can make on this surface, before the
+archive, rather than one every caller of the store is charged for.
 
 Every write here opens its own transaction with Client.WithTransaction, because
 settings.Store's writes take a database.Tx and an RPC handler is precisely the

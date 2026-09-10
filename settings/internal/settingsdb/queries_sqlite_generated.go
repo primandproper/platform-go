@@ -54,22 +54,6 @@ WHERE scope = ?1
 	AND subject_type = ?2
 	AND subject_id = ?3`
 
-const getArchivedDefinitionSQLite = `SELECT
-	{{prefix}}settings_definitions.id,
-	{{prefix}}settings_definitions.scope,
-	{{prefix}}settings_definitions.name,
-	{{prefix}}settings_definitions.description,
-	{{prefix}}settings_definitions.kind,
-	{{prefix}}settings_definitions.default_value,
-	{{prefix}}settings_definitions.admin_only,
-	{{prefix}}settings_definitions.created_at,
-	{{prefix}}settings_definitions.last_updated_at,
-	{{prefix}}settings_definitions.archived_at
-FROM {{prefix}}settings_definitions
-WHERE {{prefix}}settings_definitions.id = ?1
-	AND {{prefix}}settings_definitions.scope = ?2
-	AND {{prefix}}settings_definitions.archived_at IS NOT NULL`
-
 const getArchivedValueSQLite = `SELECT
 	{{prefix}}settings_values.id,
 	{{prefix}}settings_values.scope,
@@ -515,7 +499,6 @@ type sqliteQueries struct {
 	createDefinition                     string
 	deleteDefinitionOptions              string
 	deleteValuesForSubject               string
-	getArchivedDefinition                string
 	getArchivedValue                     string
 	getDefinition                        string
 	getDefinitionByName                  string
@@ -543,7 +526,6 @@ func newSQLite(prefix string) *sqliteQueries {
 		createDefinition:                     strings.ReplaceAll(createDefinitionSQLite, prefixMarker, prefix),
 		deleteDefinitionOptions:              strings.ReplaceAll(deleteDefinitionOptionsSQLite, prefixMarker, prefix),
 		deleteValuesForSubject:               strings.ReplaceAll(deleteValuesForSubjectSQLite, prefixMarker, prefix),
-		getArchivedDefinition:                strings.ReplaceAll(getArchivedDefinitionSQLite, prefixMarker, prefix),
 		getArchivedValue:                     strings.ReplaceAll(getArchivedValueSQLite, prefixMarker, prefix),
 		getDefinition:                        strings.ReplaceAll(getDefinitionSQLite, prefixMarker, prefix),
 		getDefinitionByName:                  strings.ReplaceAll(getDefinitionByNameSQLite, prefixMarker, prefix),
@@ -660,31 +642,6 @@ func (q *sqliteQueries) DeleteValuesForSubject(ctx context.Context, db DBTX, arg
 	}
 
 	return result.RowsAffected()
-}
-
-// GetArchivedDefinition runs the :one query against sqlite.
-func (q *sqliteQueries) GetArchivedDefinition(ctx context.Context, db DBTX, arg GetArchivedDefinitionParams) (GetArchivedDefinitionRow, error) {
-	row := db.QueryRowContext(ctx, q.getArchivedDefinition,
-		arg.ID,
-		arg.Scope,
-	)
-
-	var i GetArchivedDefinitionRow
-
-	err := row.Scan(
-		&i.ID,
-		&i.Scope,
-		&i.Name,
-		&i.Description,
-		&i.Kind,
-		&i.DefaultValue,
-		&i.AdminOnly,
-		&i.CreatedAt,
-		&i.LastUpdatedAt,
-		&i.ArchivedAt,
-	)
-
-	return i, err
 }
 
 // GetArchivedValue runs the :one query against sqlite.
@@ -1240,22 +1197,6 @@ var (
 		SubjectType string
 		SubjectID   string
 	}(DeleteValuesForSubjectParams{})
-	_ = struct {
-		ID    string
-		Scope tenancy.Scope
-	}(GetArchivedDefinitionParams{})
-	_ = struct {
-		ID            string
-		Scope         tenancy.Scope
-		Name          string
-		Description   string
-		Kind          string
-		DefaultValue  *string
-		AdminOnly     bool
-		CreatedAt     time.Time
-		LastUpdatedAt *time.Time
-		ArchivedAt    *time.Time
-	}(GetArchivedDefinitionRow{})
 	_ = struct {
 		Scope        tenancy.Scope
 		SubjectType  string

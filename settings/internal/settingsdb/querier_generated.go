@@ -64,8 +64,6 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	DeleteValuesForSubject(ctx context.Context, db DBTX, arg DeleteValuesForSubjectParams) (int64, error)
-	// GetArchivedDefinition runs the :one query.
-	GetArchivedDefinition(ctx context.Context, db DBTX, arg GetArchivedDefinitionParams) (GetArchivedDefinitionRow, error)
 	// GetArchivedValue runs the :one query.
 	GetArchivedValue(ctx context.Context, db DBTX, arg GetArchivedValueParams) (GetArchivedValueRow, error)
 	// GetDefinition runs the :one query.

@@ -24,7 +24,7 @@ var _ settings.Store = &StoreMock{}
 //
 //		// make and configure a mocked settings.Store
 //		mockedStore := &StoreMock{
-//			ArchiveDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error) {
+//			ArchiveDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error {
 //				panic("mock out the ArchiveDefinition method")
 //			},
 //			ClearValueFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) (*settings.Value, error) {
@@ -74,7 +74,7 @@ var _ settings.Store = &StoreMock{}
 //	}
 type StoreMock struct {
 	// ArchiveDefinitionFunc mocks the ArchiveDefinition method.
-	ArchiveDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error)
+	ArchiveDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error
 
 	// ClearValueFunc mocks the ClearValue method.
 	ClearValueFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) (*settings.Value, error)
@@ -303,7 +303,7 @@ type StoreMock struct {
 }
 
 // ArchiveDefinition calls ArchiveDefinitionFunc.
-func (mock *StoreMock) ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error) {
+func (mock *StoreMock) ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error {
 	if mock.ArchiveDefinitionFunc == nil {
 		panic("StoreMock.ArchiveDefinitionFunc: method is nil but Store.ArchiveDefinition was just called")
 	}
@@ -956,7 +956,7 @@ var _ settings.DefinitionStore = &DefinitionStoreMock{}
 //
 //		// make and configure a mocked settings.DefinitionStore
 //		mockedDefinitionStore := &DefinitionStoreMock{
-//			ArchiveDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error) {
+//			ArchiveDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error {
 //				panic("mock out the ArchiveDefinition method")
 //			},
 //			CreateDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error) {
@@ -982,7 +982,7 @@ var _ settings.DefinitionStore = &DefinitionStoreMock{}
 //	}
 type DefinitionStoreMock struct {
 	// ArchiveDefinitionFunc mocks the ArchiveDefinition method.
-	ArchiveDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error)
+	ArchiveDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error
 
 	// CreateDefinitionFunc mocks the CreateDefinition method.
 	CreateDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error)
@@ -1077,7 +1077,7 @@ type DefinitionStoreMock struct {
 }
 
 // ArchiveDefinition calls ArchiveDefinitionFunc.
-func (mock *DefinitionStoreMock) ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error) {
+func (mock *DefinitionStoreMock) ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error {
 	if mock.ArchiveDefinitionFunc == nil {
 		panic("DefinitionStoreMock.ArchiveDefinitionFunc: method is nil but DefinitionStore.ArchiveDefinition was just called")
 	}

@@ -178,19 +178,12 @@ func (e *storeEnv) archive(
 	store *SQLStore,
 	scope tenancy.Scope,
 	definitionID string,
-) (*Definition, error) {
+) error {
 	tb.Helper()
 
-	var archived *Definition
-
-	err := e.inTx(tb, func(tx database.Tx) error {
-		var txErr error
-		archived, txErr = store.ArchiveDefinition(tb.Context(), tx, scope, definitionID)
-
-		return txErr
+	return e.inTx(tb, func(tx database.Tx) error {
+		return store.ArchiveDefinition(tb.Context(), tx, scope, definitionID)
 	})
-
-	return archived, err
 }
 
 // set stores one subject's answer in a transaction of its own and reports what
@@ -306,14 +299,10 @@ func mustUpdate(tb testing.TB, e *storeEnv, store *SQLStore, scope tenancy.Scope
 }
 
 // mustArchive retires a definition and fails the test if it will not retire.
-func mustArchive(tb testing.TB, e *storeEnv, store *SQLStore, scope tenancy.Scope, definitionID string) *Definition {
+func mustArchive(tb testing.TB, e *storeEnv, store *SQLStore, scope tenancy.Scope, definitionID string) {
 	tb.Helper()
 
-	archived, err := e.archive(tb, store, scope, definitionID)
-	must.NoError(tb, err)
-	must.NotNil(tb, archived)
-
-	return archived
+	must.NoError(tb, e.archive(tb, store, scope, definitionID))
 }
 
 // mustClear takes a subject's answer back and fails the test if there was none.

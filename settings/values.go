@@ -471,11 +471,15 @@ func (s *SQLStore) readValue(
 // readArchivedValue is the clearing's read-back: the row ClearValue has just
 // archived, on the transaction that archived it.
 //
-// It is a second statement rather than readValue for the reason
-// readArchivedDefinition is one. GetValue filters archived_at IS NULL — which is
-// what makes a cleared answer resolve to the default rather than to itself — so
-// the read that would describe what a clearing did is the one read that cannot
-// see it, and the statement here carries the complement instead.
+// It is a second statement rather than readValue because the two ask opposite
+// questions. GetValue filters archived_at IS NULL — which is what makes a
+// cleared answer resolve to the default rather than to itself — so the read
+// that would describe what a clearing did is the one read that cannot see it,
+// and the statement here carries the complement instead.
+//
+// It is the only read-back of its kind in this store. [SQLStore.ArchiveDefinition]
+// needs none: the definition it retires stays reachable by the id its caller
+// already holds, where a cleared value does not.
 func (s *SQLStore) readArchivedValue(
 	ctx context.Context,
 	q database.SQLQueryExecutor,

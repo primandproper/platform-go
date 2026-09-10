@@ -316,8 +316,9 @@ func (s *SQLStore) UpdateDefinition(
 // The read-back is the same read every caller of GetDefinition makes, on the
 // transaction the edit was written in — so it sees the row and the enumeration
 // this call has just written rather than the ones the last commit left, and the
-// definition it returns carries the stamp the server assigned. The edit is not
-// archived, so it is the live read rather than readArchivedDefinition.
+// definition it returns carries the stamp the server assigned. The edit leaves
+// the row live, so the read that describes it is the one every other caller
+// makes.
 func (s *SQLStore) rewriteDefinition(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
@@ -352,24 +353,28 @@ func (s *SQLStore) rewriteDefinition(
 }
 
 // ArchiveDefinition retires one of the scope's settings, inside the caller's
-// transaction, and answers with the definition it retired.
+// transaction.
 //
-// It takes the caller's transaction rather than a writer of the store's own:
-// retiring a setting is an administrative act with an audit entry beside it, and
-// the entry is worth what its atomicity with the retirement is worth. The row it
-// hands back is what that entry describes — the name, the kind and the
-// enumeration a caller holding only an id never had, and the retirement stamp
-// nothing outside the server could supply.
+// It is one statement, and it still takes the caller's transaction rather than a
+// writer of the store's own: retiring a setting is an administrative act with an
+// audit entry beside it, and the entry is worth what its atomicity with the
+// retirement is worth.
 //
-// Two statements rather than one, and the second cannot be the read every other
-// caller makes: the row this one just archived is exactly the row a live read
-// excludes. See readArchivedDefinition.
+// It answers with an error and nothing else, which is where it parts company
+// with the four writes around it. Those return because the row they describe is
+// otherwise unreachable — [SQLStore.ClearValue]'s most sharply, since a cleared
+// answer is gone from every read on this interface once the transaction commits.
+// An archived definition is not gone: it is the row the caller named, still
+// there, and a caller that wants it reads it with GetDefinition before archiving
+// it, on the same transaction and at the same cost. Returning it here would have
+// meant two more statements — the archived row and its enumeration — charged to
+// every caller, including the ones that only wanted the setting retired.
 func (s *SQLStore) ArchiveDefinition(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	definitionID string,
-) (*Definition, error) {
+) error {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(definitionIDKey, definitionID),
@@ -377,24 +382,19 @@ func (s *SQLStore) ArchiveDefinition(
 	defer op.End()
 
 	if tx == nil {
-		return nil, op.Error(ErrNilExecutor, "archiving setting definition %q", definitionID)
+		return op.Error(ErrNilExecutor, "archiving setting definition %q", definitionID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return nil, op.Error(err, "archiving setting definition %q", definitionID)
+		return op.Error(err, "archiving setting definition %q", definitionID)
 	}
 
 	count, err := s.q.ArchiveDefinition(ctx, tx, settingsdb.ArchiveDefinitionParams{ID: definitionID, Scope: scope})
 	if err = guardCount(count, err, ErrDefinitionNotFound, "archiving setting definition"); err != nil {
-		return nil, op.Error(err, "archiving setting definition %q", definitionID)
+		return op.Error(err, "archiving setting definition %q", definitionID)
 	}
 
-	archived, err := s.readArchivedDefinition(ctx, tx, scope, definitionID)
-	if err != nil {
-		return nil, op.Error(err, "reading back the archived setting definition %q", definitionID)
-	}
-
-	return archived, nil
+	return nil
 }
 
 // readDefinition is the read by id, through whatever executor the caller is
@@ -411,47 +411,6 @@ func (s *SQLStore) readDefinition(
 	}
 
 	definition := definitionFromRow(&row)
-
-	if err = s.hydrateEnumerations(ctx, q, []*Definition{definition}); err != nil {
-		return nil, err
-	}
-
-	return definition, nil
-}
-
-// readArchivedDefinition is the archive's read-back: the row ArchiveDefinition
-// has just retired, on the transaction that retired it.
-//
-// It is a second statement rather than readDefinition because the two ask
-// opposite questions. Every live read here filters archived_at IS NULL, which is
-// what makes a retired setting absent from a catalog, so the read that would
-// describe what an archive did is the one read that cannot see it. The statement
-// this runs carries the complement — see settings/internal/queries — so a row
-// the archive did not move is not a row it answers with either.
-//
-// The enumeration is attached the same way every other definition read attaches
-// it. Archiving a definition leaves its options alone, and a caller recording
-// what was retired wants the values it admitted.
-func (s *SQLStore) readArchivedDefinition(
-	ctx context.Context,
-	q database.SQLQueryExecutor,
-	scope tenancy.Scope,
-	definitionID string,
-) (*Definition, error) {
-	row, err := s.q.GetArchivedDefinition(ctx, q,
-		settingsdb.GetArchivedDefinitionParams{ID: definitionID, Scope: scope})
-	if err != nil {
-		return nil, notFound(err, ErrDefinitionNotFound)
-	}
-
-	// The two statements project the same columns in the same order, so the
-	// conversion is the whole of what they have to say to each other. A second
-	// hand-written converter beside definitionFromRow could assign a field wrong
-	// and nothing would report it; this fails to compile the day the projections
-	// diverge.
-	live := settingsdb.GetDefinitionRow(row)
-
-	definition := definitionFromRow(&live)
 
 	if err = s.hydrateEnumerations(ctx, q, []*Definition{definition}); err != nil {
 		return nil, err

@@ -3,6 +3,7 @@ package settings
 import (
 	"testing"
 
+	"github.com/primandproper/primitives-go/database"
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/filtering"
 	"github.com/primandproper/primitives-go/pointer"
@@ -171,7 +172,7 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		_, err = store.ListDefinitions(t.Context(), env.reader(), unset, nil)
 		test.ErrorIs(t, err, tenancy.ErrNoScope)
 
-		_, err = env.archive(t, store, unset, "whatever")
+		err = env.archive(t, store, unset, "whatever")
 		test.ErrorIs(t, err, tenancy.ErrNoScope)
 	})
 
@@ -188,7 +189,7 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		_, err = store.GetDefinitionByName(t.Context(), env.reader(), otherScope, "digest")
 		test.ErrorIs(t, err, ErrDefinitionNotFound)
 
-		_, err = env.archive(t, store, otherScope, created.ID)
+		err = env.archive(t, store, otherScope, created.ID)
 		test.ErrorIs(t, err, ErrDefinitionNotFound)
 	})
 
@@ -330,28 +331,40 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		test.Eq(t, read.Enumeration, updated.Enumeration)
 	})
 
-	t.Run("an archive answers with the definition it retired", func(t *testing.T) {
+	t.Run("an archive answers with an error alone, and the row is readable until it runs", func(t *testing.T) {
 		t.Parallel()
 
-		// A caller of this holds an id and nothing else, so the row it hands
-		// back is the whole of what an entry recording the retirement can say —
-		// and the retirement stamp is on a row no read here reaches afterwards.
+		// The write that does not return, and the case that says why it does not
+		// have to: a caller recording what it retired reads the definition on
+		// the same transaction, before the archive, and gets everything a
+		// read-back here would have given it. What it does not get is the
+		// retirement stamp, which is the server's — and that is the trade, paid
+		// only by the callers who want the row.
 		store := env.newStore(t)
 
 		created := mustCreate(t, env, store, testScope,
 			&Definition{Name: "digest", Kind: KindString, Enumeration: []string{"daily", "weekly"}})
 
-		archived := mustArchive(t, env, store, testScope, created.ID)
+		var read *Definition
 
-		test.EqOp(t, created.ID, archived.ID)
-		test.EqOp(t, "digest", archived.Name)
-		test.EqOp(t, KindString, archived.Kind)
-		test.EqOp(t, testScope, archived.Scope)
-		test.Eq(t, []string{"daily", "weekly"}, archived.Enumeration)
-		test.NotNil(t, archived.ArchivedAt)
+		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
+			var readErr error
+			if read, readErr = store.GetDefinition(t.Context(), tx, testScope, created.ID); readErr != nil {
+				return readErr
+			}
 
-		// The row it describes is one no read on this interface reaches, which
-		// is why the return is not a convenience.
+			return store.ArchiveDefinition(t.Context(), tx, testScope, created.ID)
+		}))
+
+		must.NotNil(t, read)
+		test.EqOp(t, created.ID, read.ID)
+		test.EqOp(t, "digest", read.Name)
+		test.EqOp(t, KindString, read.Kind)
+		test.EqOp(t, testScope, read.Scope)
+		test.Eq(t, []string{"daily", "weekly"}, read.Enumeration)
+
+		// After the commit the definition is out of the catalog, which is what
+		// the archive was for.
 		_, err := store.GetDefinition(t.Context(), env.reader(), testScope, created.ID)
 		test.ErrorIs(t, err, ErrDefinitionNotFound)
 	})
@@ -366,15 +379,10 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		created := mustCreate(t, env, store, testScope, boolDefinition("compact"))
 		mustArchive(t, env, store, testScope, created.ID)
 
-		// Archiving what is already archived is the guard matching nothing, and
-		// the read-back sees only rows the guard moved.
-		again, err := env.archive(t, store, testScope, created.ID)
-		test.ErrorIs(t, err, ErrDefinitionNotFound)
-		test.Nil(t, again)
-
-		absent, err := env.archive(t, store, testScope, "no-such-row")
-		test.ErrorIs(t, err, ErrDefinitionNotFound)
-		test.Nil(t, absent)
+		// Archiving what is already archived is the guard matching nothing. The
+		// archive returns no row to be nil, so what it owes is the sentinel.
+		test.ErrorIs(t, env.archive(t, store, testScope, created.ID), ErrDefinitionNotFound)
+		test.ErrorIs(t, env.archive(t, store, testScope, "no-such-row"), ErrDefinitionNotFound)
 
 		unedited, err := env.update(t, store, testScope,
 			&Definition{ID: "no-such-row", Name: "a", Kind: KindBool})
@@ -417,7 +425,6 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		_, err := env.archive(t, store, testScope, "no-such-row")
-		test.ErrorIs(t, err, ErrDefinitionNotFound)
+		test.ErrorIs(t, env.archive(t, store, testScope, "no-such-row"), ErrDefinitionNotFound)
 	})
 }

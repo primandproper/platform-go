@@ -151,7 +151,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 				return txErr
 			}
 
-			if _, txErr := store.ArchiveDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
+			if txErr := store.ArchiveDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
 				return txErr
 			}
 
@@ -209,7 +209,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 				return txErr
 			}
 
-			if _, txErr = store.ArchiveDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
+			if txErr = store.ArchiveDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
 				return txErr
 			}
 
@@ -305,7 +305,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		var (
 			updated  *Definition
-			archived *Definition
+			retiring *Definition
 			cleared  *Value
 		)
 
@@ -318,7 +318,15 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 				return txErr
 			}
 
-			if archived, txErr = store.ArchiveDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
+			// The archive returns nothing, so a caller that wants to record what
+			// it retired reads first — on this transaction, where the row is
+			// still live. That read is the whole of what the write would have
+			// handed back, minus the stamp, and it is made only here.
+			if retiring, txErr = store.GetDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
+				return txErr
+			}
+
+			if txErr = store.ArchiveDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
 				return txErr
 			}
 
@@ -331,8 +339,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 			// server, while the transaction that wrote it is still open.
 			test.EqOp(t, "layout.compact", updated.Name)
 			must.NotNil(t, updated.LastUpdatedAt)
-			must.NotNil(t, archived.ArchivedAt)
-			test.EqOp(t, "retention.days", archived.Name)
+			test.EqOp(t, "retention.days", retiring.Name)
 			must.NotNil(t, cleared.ArchivedAt)
 			test.EqOp(t, "daily", cleared.Raw)
 
@@ -346,7 +353,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		}))
 
 		// After the commit the edit is readable and the other two rows are not,
-		// which is the asymmetry the two read-backs exist for.
+		// which is the asymmetry the value's read-back exists for.
 		read, err := store.GetDefinition(t.Context(), env.reader(), testScope, edited.ID)
 		must.NoError(t, err)
 		test.EqOp(t, updated.Name, read.Name)
@@ -372,7 +379,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		_, err = store.UpdateDefinition(t.Context(), nil, testScope, stringDefinition("digest"))
 		test.ErrorIs(t, err, ErrNilExecutor)
 
-		_, err = store.ArchiveDefinition(t.Context(), nil, testScope, "whatever")
+		err = store.ArchiveDefinition(t.Context(), nil, testScope, "whatever")
 		test.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.GetDefinition(t.Context(), nil, testScope, "whatever")
@@ -455,8 +462,8 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 			collision.Name = taken.Name
 			_, takenUpdate = store.UpdateDefinition(t.Context(), tx, testScope, &collision)
 
-			_, absentArchive = store.ArchiveDefinition(t.Context(), tx, testScope, "def_never_written")
-			_, foreignArchive = store.ArchiveDefinition(t.Context(), tx, otherScope, taken.ID)
+			absentArchive = store.ArchiveDefinition(t.Context(), tx, testScope, "def_never_written")
+			foreignArchive = store.ArchiveDefinition(t.Context(), tx, otherScope, taken.ID)
 
 			_, unnamedSet = store.SetValue(t.Context(), tx, testScope, Subject{Type: SubjectUser}, "digest", "daily")
 			_, undefinedSet = store.SetValue(t.Context(), tx, testScope, testSubject, "never.defined", "daily")

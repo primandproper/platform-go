@@ -69,12 +69,13 @@ statements with more predicates rather than a second rendering of them:
   - the value read keyed on its natural key, and the two paged value lists —
     one per subject, one per definition
   - the batched option read, keyed on a whole set of definition ids at once
-  - the two read-backs an archive answers with — the definition
-    ArchiveDefinition retired and the value ClearValue took back. Each is
+  - the read-back ClearValue answers with, the value it took back. It is
     rendered from no column list either, and for the opposite half of the same
     reason: the archived predicate querygen would derive is exactly the one that
-    excludes the row these are called to describe, so each carries its
-    complement instead and sees only rows an archive moved.
+    excludes the row it is called to describe, so it carries the complement
+    instead and sees only rows a clearing moved. ArchiveDefinition has no
+    companion here, because the definition it retires is still the row its id
+    names and the live read still reaches it beforehand.
 
 What none of the batched forms can express is the empty batch, which is why the
 store answers that before it calls: see [querygen.Generator.SetReadQuery].

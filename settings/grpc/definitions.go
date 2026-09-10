@@ -242,11 +242,11 @@ func (s *Server) UpdateDefinition(
 // archiving is not erasure, and freeing the name would let a second definition
 // inherit rows written for the first.
 //
-// The store answers with the definition it retired and this response does not
-// carry it. That is the message's shape rather than an oversight: a retirement
-// names a row a client already asked for by id, and the row it wants back is the
-// one the store hands its in-process callers for the entry they write beside the
-// write. A client that wants the definition reads it before archiving.
+// This response carries nothing, and neither does the store's own return. The
+// two agree: a retirement names a row the client asked for by id, and the
+// definition behind it is still readable at that id right up to the moment this
+// transaction commits. A client that wants it reads it before archiving, and
+// pays for the read it asked for rather than for one every caller makes.
 func (s *Server) ArchiveDefinition(
 	ctx context.Context,
 	request *settingspb.ArchiveDefinitionRequest,
@@ -262,9 +262,7 @@ func (s *Server) ArchiveDefinition(
 	req.op.Set(definitionIDKey, id)
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		_, archiveErr := s.store.ArchiveDefinition(ctx, tx, req.scope, id)
-
-		return archiveErr
+		return s.store.ArchiveDefinition(ctx, tx, req.scope, id)
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "archiving setting definition %q", id)
