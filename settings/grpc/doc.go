@@ -97,9 +97,15 @@ response is resolving a row it has written and not yet committed. On a
 connection of its own it would answer with the value the subject had before the
 request, and nothing would report an error.
 
-UpdateDefinition reads the definition back for the plainer reason: the store's
-update answers with an error and nothing else, so a response assembled from the
-request would carry the epoch where last_updated_at belongs.
+UpdateDefinition owes the same read and no longer makes it: settings.Store's
+update returns the definition it wrote, read on the transaction that wrote it,
+so this handler sends that rather than assembling a response from the request —
+which would carry the epoch where last_updated_at belongs.
+
+ArchiveDefinition's response carries nothing, and the store's write returns
+nothing either. A client that archives by id already had the definition, and
+asking for it back is a read — one it can make on this surface, before the
+archive, rather than one every caller of the store is charged for.
 
 Every write here opens its own transaction with Client.WithTransaction, because
 settings.Store's writes take a database.Tx and an RPC handler is precisely the

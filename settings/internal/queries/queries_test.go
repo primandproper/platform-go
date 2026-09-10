@@ -112,6 +112,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"ListValuesForSubject", "ListValuesForSubjectDescending",
 		"ListValuesForDefinition", "ListValuesForDefinitionDescending",
 		"UpsertValue", "ArchiveValue",
+		"GetArchivedValue",
 		"DeleteValuesForSubject",
 	}
 
@@ -192,7 +193,7 @@ func TestRender_ScopeIsInEveryStatement(T *testing.T) {
 func TestRender_ValueStatementsKeyOnTheNaturalKey(T *testing.T) {
 	T.Parallel()
 
-	keyed := []string{"GetValue", "ArchiveValue"}
+	keyed := []string{"GetValue", "ArchiveValue", "GetArchivedValue"}
 
 	for _, d := range everyDialect {
 		T.Run(string(d), func(t *testing.T) {
@@ -258,8 +259,8 @@ func TestRender_ErasureReachesClearedValues(T *testing.T) {
 	}
 }
 
-// TestRender_NameCollisionCheckSeesArchivedRows pins the one read here rendered
-// from no column list at all.
+// TestRender_NameCollisionCheckSeesArchivedRows pins the read that has to see a
+// name an archived definition still holds.
 //
 // The unique index covers archived definitions — archiving one does not destroy
 // the values written under its name — so a check that skipped archived rows
@@ -288,6 +289,53 @@ func TestRender_NameCollisionCheckSeesArchivedRows(T *testing.T) {
 			// rows, because a value cannot be written against a retired setting.
 			byName := statementNamed(t, Render(d), "GetDefinitionByName")
 			test.StrContains(t, byName, querygen.ArchivedAtColumn+" IS NULL")
+		})
+	}
+}
+
+// TestRender_ArchivedValueReadBackSeesOnlyArchivedRows pins the one read a
+// clearing answers with.
+//
+// Every other single-row statement here filters archived_at IS NULL, which is
+// what makes a cleared answer absent from a resolution — so the read that
+// describes what a clearing just did is the one read that cannot make it. This
+// one carries the complement instead, which is the read-back asserting the
+// thing it was called to confirm: a row the guard did not move is not a row it
+// answers with.
+//
+// There is no companion for ArchiveDefinition, and the second half of this test
+// is what says so rather than leaving it to be noticed. A retired definition is
+// still the row its id names right up to the archive, so a caller that wants it
+// reads it with the live statement beforehand; a read-back here would have been
+// a statement every caller ran and most did not want.
+func TestRender_ArchivedValueReadBackSeesOnlyArchivedRows(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rendered := Render(d)
+
+			value := statementNamed(t, rendered, "GetArchivedValue")
+
+			test.StrContains(t, value, querygen.ArchivedAtColumn+" IS NOT NULL")
+			test.StrNotContains(t, value, querygen.ArchivedAtColumn+" IS NULL")
+			test.StrContains(t, value, ScopeColumn+" = ")
+
+			// It projects the whole row, because what a caller records about a
+			// clearing is the row rather than its key.
+			for _, column := range Values.Columns {
+				test.StrContains(t, value, querygen.Qualify(ValuesTable, column))
+			}
+
+			// No statement over the definitions table reaches an archived row.
+			// The archive guards on IS NULL so that a second one refuses, and
+			// nothing renders the complement — which is the shape that goes away
+			// when a write does not have to describe what it moved.
+			test.StrNotContains(t, rendered, "GetArchivedDefinition")
+			test.EqOp(t, 0, strings.Count(rendered,
+				querygen.Qualify(DefinitionsTable, querygen.ArchivedAtColumn)+" IS NOT NULL"))
 		})
 	}
 }

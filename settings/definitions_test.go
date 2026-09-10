@@ -3,6 +3,7 @@ package settings
 import (
 	"testing"
 
+	"github.com/primandproper/primitives-go/database"
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/filtering"
 	"github.com/primandproper/primitives-go/pointer"
@@ -89,7 +90,7 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		created := mustCreate(t, env, store, testScope, stringDefinition("digest"))
-		must.NoError(t, env.archive(t, store, testScope, created.ID))
+		mustArchive(t, env, store, testScope, created.ID)
 
 		_, err := store.GetDefinition(t.Context(), env.reader(), testScope, created.ID)
 		test.ErrorIs(t, err, ErrDefinitionNotFound)
@@ -149,7 +150,8 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		_, err := env.create(t, store, testScope, nil)
 		test.ErrorIs(t, err, ErrNilDefinition)
 
-		test.ErrorIs(t, env.update(t, store, testScope, nil), ErrNilDefinition)
+		_, err = env.update(t, store, testScope, nil)
+		test.ErrorIs(t, err, ErrNilDefinition)
 	})
 
 	t.Run("an unset scope reaches no statement", func(t *testing.T) {
@@ -170,7 +172,8 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		_, err = store.ListDefinitions(t.Context(), env.reader(), unset, nil)
 		test.ErrorIs(t, err, tenancy.ErrNoScope)
 
-		test.ErrorIs(t, env.archive(t, store, unset, "whatever"), tenancy.ErrNoScope)
+		err = env.archive(t, store, unset, "whatever")
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
 	})
 
 	t.Run("reads are keyed on the scope", func(t *testing.T) {
@@ -186,7 +189,8 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		_, err = store.GetDefinitionByName(t.Context(), env.reader(), otherScope, "digest")
 		test.ErrorIs(t, err, ErrDefinitionNotFound)
 
-		test.ErrorIs(t, env.archive(t, store, otherScope, created.ID), ErrDefinitionNotFound)
+		err = env.archive(t, store, otherScope, created.ID)
+		test.ErrorIs(t, err, ErrDefinitionNotFound)
 	})
 
 	t.Run("the catalog pages in both directions", func(t *testing.T) {
@@ -232,7 +236,7 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 
 		live := mustCreate(t, env, store, testScope, boolDefinition("live"))
 		retired := mustCreate(t, env, store, testScope, boolDefinition("retired"))
-		must.NoError(t, env.archive(t, store, testScope, retired.ID))
+		mustArchive(t, env, store, testScope, retired.ID)
 
 		page, err := store.ListDefinitions(t.Context(), env.reader(), testScope, nil)
 		must.NoError(t, err)
@@ -260,7 +264,7 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		created.AdminOnly = true
 		created.Enumeration = []string{"weekly", "daily", "never", "hourly"}
 
-		must.NoError(t, env.update(t, store, testScope, created))
+		mustUpdate(t, env, store, testScope, created)
 
 		read, err := store.GetDefinition(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
@@ -277,6 +281,115 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		test.NoError(t, err)
 	})
 
+	t.Run("an update answers with the definition it moved", func(t *testing.T) {
+		t.Parallel()
+
+		// The return is the point: a caller writing an audit entry beside the
+		// edit describes the row this statement left rather than the row a read
+		// a statement earlier found, and inside an uncommitted transaction there
+		// is no other way to read it back.
+		store := env.newStore(t)
+
+		created := mustCreate(t, env, store, testScope, stringDefinition("digest"))
+
+		edit := *created
+		edit.Name = "digest.frequency"
+		edit.Description = "reworded"
+		edit.Default = pointer.To("never")
+		edit.AdminOnly = true
+		edit.Enumeration = []string{"weekly", "daily", "never", "hourly"}
+
+		updated := mustUpdate(t, env, store, testScope, &edit)
+
+		test.EqOp(t, created.ID, updated.ID)
+		test.EqOp(t, "digest.frequency", updated.Name)
+		test.EqOp(t, "reworded", updated.Description)
+		test.EqOp(t, "never", pointer.Dereference(updated.Default))
+		test.True(t, updated.AdminOnly)
+		test.EqOp(t, testScope, updated.Scope)
+
+		// Sorted, because that is how the row comes back and how the next read
+		// will hand it over.
+		test.Eq(t, []string{"daily", "hourly", "never", "weekly"}, updated.Enumeration)
+
+		// The stamp is the server's, and it is the field a response assembled
+		// from the request would get wrong.
+		test.NotNil(t, updated.LastUpdatedAt)
+		test.Nil(t, updated.ArchivedAt)
+
+		// What the caller handed over is left alone. Returning the row and
+		// mutating the argument are two spellings of one guarantee, and this
+		// module writes the first.
+		test.Nil(t, edit.LastUpdatedAt)
+		test.Eq(t, []string{"weekly", "daily", "never", "hourly"}, edit.Enumeration)
+
+		// And it is the row a later read finds, rather than a value assembled on
+		// the way out.
+		read, err := store.GetDefinition(t.Context(), env.reader(), testScope, created.ID)
+		must.NoError(t, err)
+		test.EqOp(t, read.Name, updated.Name)
+		test.Eq(t, read.Enumeration, updated.Enumeration)
+	})
+
+	t.Run("an archive answers with an error alone, and the row is readable until it runs", func(t *testing.T) {
+		t.Parallel()
+
+		// The write that does not return, and the case that says why it does not
+		// have to: a caller recording what it retired reads the definition on
+		// the same transaction, before the archive, and gets everything a
+		// read-back here would have given it. What it does not get is the
+		// retirement stamp, which is the server's — and that is the trade, paid
+		// only by the callers who want the row.
+		store := env.newStore(t)
+
+		created := mustCreate(t, env, store, testScope,
+			&Definition{Name: "digest", Kind: KindString, Enumeration: []string{"daily", "weekly"}})
+
+		var read *Definition
+
+		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
+			var readErr error
+			if read, readErr = store.GetDefinition(t.Context(), tx, testScope, created.ID); readErr != nil {
+				return readErr
+			}
+
+			return store.ArchiveDefinition(t.Context(), tx, testScope, created.ID)
+		}))
+
+		must.NotNil(t, read)
+		test.EqOp(t, created.ID, read.ID)
+		test.EqOp(t, "digest", read.Name)
+		test.EqOp(t, KindString, read.Kind)
+		test.EqOp(t, testScope, read.Scope)
+		test.Eq(t, []string{"daily", "weekly"}, read.Enumeration)
+
+		// After the commit the definition is out of the catalog, which is what
+		// the archive was for.
+		_, err := store.GetDefinition(t.Context(), env.reader(), testScope, created.ID)
+		test.ErrorIs(t, err, ErrDefinitionNotFound)
+	})
+
+	t.Run("a refused write answers with no row at all", func(t *testing.T) {
+		t.Parallel()
+
+		// The row is returned only alongside a nil error, so nothing here has a
+		// state in which a caller holds half an answer.
+		store := env.newStore(t)
+
+		created := mustCreate(t, env, store, testScope, boolDefinition("compact"))
+		mustArchive(t, env, store, testScope, created.ID)
+
+		// Archiving what is already archived is the guard matching nothing. The
+		// archive returns no row to be nil, so what it owes is the sentinel.
+		test.ErrorIs(t, env.archive(t, store, testScope, created.ID), ErrDefinitionNotFound)
+		test.ErrorIs(t, env.archive(t, store, testScope, "no-such-row"), ErrDefinitionNotFound)
+
+		unedited, err := env.update(t, store, testScope,
+			&Definition{ID: "no-such-row", Name: "a", Kind: KindBool})
+		test.ErrorIs(t, err, ErrDefinitionNotFound)
+		test.Nil(t, unedited)
+	})
+
 	t.Run("an update refuses a name another definition holds", func(t *testing.T) {
 		t.Parallel()
 
@@ -286,11 +399,13 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		other := mustCreate(t, env, store, testScope, boolDefinition("free"))
 
 		other.Name = "taken"
-		test.ErrorIs(t, env.update(t, store, testScope, other), ErrDefinitionNameTaken)
+		_, err := env.update(t, store, testScope, other)
+		test.ErrorIs(t, err, ErrDefinitionNameTaken)
 
 		// Saving a definition under its own name is not a collision with itself.
 		other.Name = "free"
-		test.NoError(t, env.update(t, store, testScope, other))
+		_, err = env.update(t, store, testScope, other)
+		test.NoError(t, err)
 	})
 
 	t.Run("an update needs a definition to update", func(t *testing.T) {
@@ -298,11 +413,11 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		test.ErrorIs(t, env.update(t, store, testScope, &Definition{Name: "a", Kind: KindBool}),
-			platformerrors.ErrInvalidIDProvided)
+		_, err := env.update(t, store, testScope, &Definition{Name: "a", Kind: KindBool})
+		test.ErrorIs(t, err, platformerrors.ErrInvalidIDProvided)
 
-		test.ErrorIs(t, env.update(t, store, testScope,
-			&Definition{ID: "no-such-row", Name: "a", Kind: KindBool}), ErrDefinitionNotFound)
+		_, err = env.update(t, store, testScope, &Definition{ID: "no-such-row", Name: "a", Kind: KindBool})
+		test.ErrorIs(t, err, ErrDefinitionNotFound)
 	})
 
 	t.Run("an archive needs a definition to archive", func(t *testing.T) {

@@ -257,79 +257,99 @@ func (s *SQLStore) listDefinitions(
 // The walk is skipped where the edit cannot strand anything: renaming a setting,
 // rewording it, changing its default or its admin flag leaves every stored value
 // exactly as legal as it was.
+//
+// What comes back is the definition as the edit left it, read on tx after the
+// write. The caller's argument is not mutated and is not what is returned: the
+// row carries a last_updated_at the server stamped and this call never held, so
+// a value assembled from the argument would say a definition edited a moment ago
+// has never been edited. See [DefinitionStore.UpdateDefinition] for what an
+// audit entry beside the write does with it.
 func (s *SQLStore) UpdateDefinition(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	definition *Definition,
-) error {
+) (*Definition, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "updating setting definition")
+		return nil, op.Error(ErrNilExecutor, "updating setting definition")
 	}
 
 	if definition == nil {
-		return op.Error(ErrNilDefinition, "updating setting definition")
+		return nil, op.Error(ErrNilDefinition, "updating setting definition")
 	}
 
 	op.Set(definitionIDKey, definition.ID)
 	op.Set(definitionKey, definition.Name)
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "updating setting definition %q", definition.Name)
+		return nil, op.Error(err, "updating setting definition %q", definition.Name)
 	}
 
 	if definition.ID == "" {
-		return op.Error(platformerrors.ErrInvalidIDProvided, "updating setting definition %q", definition.Name)
+		return nil, op.Error(platformerrors.ErrInvalidIDProvided, "updating setting definition %q", definition.Name)
 	}
 
 	if err := definition.validate(); err != nil {
-		return op.Error(err, "updating setting definition %q", definition.Name)
+		return nil, op.Error(err, "updating setting definition %q", definition.Name)
 	}
 
 	updated := *definition
 	updated.Scope = scope
 	updated.Enumeration = sortedEnumeration(definition.Enumeration)
 
-	if err := s.rewriteDefinition(ctx, tx, scope, &updated); err != nil {
-		return op.Error(err, "updating setting definition %q", updated.Name)
+	edited, err := s.rewriteDefinition(ctx, tx, scope, &updated)
+	if err != nil {
+		return nil, op.Error(err, "updating setting definition %q", updated.Name)
 	}
 
-	return nil
+	return edited, nil
 }
 
 // rewriteDefinition is the statements the update runs: the read of what is
 // there, the name collision check, the stranded-value walk where the edit
-// reinterprets stored values, the row, and its enumeration.
+// reinterprets stored values, the row, its enumeration, and the read-back of
+// what all of that left.
+//
+// The read-back is the same read every caller of GetDefinition makes, on the
+// transaction the edit was written in — so it sees the row and the enumeration
+// this call has just written rather than the ones the last commit left, and the
+// definition it returns carries the stamp the server assigned. The edit leaves
+// the row live, so the read that describes it is the one every other caller
+// makes.
 func (s *SQLStore) rewriteDefinition(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
 	updated *Definition,
-) error {
+) (*Definition, error) {
 	existing, err := s.readDefinition(ctx, q, scope, updated.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err = s.refuseTakenName(ctx, q, scope, updated.Name, &updated.ID); err != nil {
-		return err
+		return nil, err
 	}
 
 	if reinterprets(existing, updated) {
 		if err = s.refuseStrandedValues(ctx, q, scope, updated); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	count, err := s.q.UpdateDefinition(ctx, q, updateDefinitionParams(updated, scope))
 	if err = guardCount(count, err, ErrDefinitionNotFound, "updating setting definition"); err != nil {
-		return err
+		return nil, err
 	}
 
-	return s.writeEnumeration(ctx, q, updated.ID, updated.Enumeration)
+	if err = s.writeEnumeration(ctx, q, updated.ID, updated.Enumeration); err != nil {
+		return nil, err
+	}
+
+	return s.readDefinition(ctx, q, scope, updated.ID)
 }
 
 // ArchiveDefinition retires one of the scope's settings, inside the caller's
@@ -339,6 +359,16 @@ func (s *SQLStore) rewriteDefinition(
 // writer of the store's own: retiring a setting is an administrative act with an
 // audit entry beside it, and the entry is worth what its atomicity with the
 // retirement is worth.
+//
+// It answers with an error and nothing else, which is where it parts company
+// with the four writes around it. Those return because the row they describe is
+// otherwise unreachable — [SQLStore.ClearValue]'s most sharply, since a cleared
+// answer is gone from every read on this interface once the transaction commits.
+// An archived definition is not gone: it is the row the caller named, still
+// there, and a caller that wants it reads it with GetDefinition before archiving
+// it, on the same transaction and at the same cost. Returning it here would have
+// meant two more statements — the archived row and its enumeration — charged to
+// every caller, including the ones that only wanted the setting retired.
 func (s *SQLStore) ArchiveDefinition(
 	ctx context.Context,
 	tx database.Tx,

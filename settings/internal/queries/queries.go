@@ -195,7 +195,7 @@ func Render(d dialect.Dialect) string {
 	rendered = append(rendered, optionWrites(g)...)
 	rendered = append(rendered, valueReads(g)...)
 	rendered = append(rendered, valueWrites(g)...)
-	rendered = append(rendered, valueErasure(g))
+	rendered = append(rendered, archivedValueReadBack(g), valueErasure(g))
 
 	return querygen.RenderFile(rendered)
 }
@@ -251,7 +251,8 @@ func keyedDefinitionReads(g *querygen.Generator) []*querygen.Query {
 // Two things about it are not the rest of this file's shape.
 //
 // It does not filter on archived_at, and that is the schema's requirement rather
-// than an omission. The unique index covers archived rows — archiving a
+// than an omission — the same trick archivedValueReadBack uses for the other
+// half of the same reason. The unique index covers archived rows — archiving a
 // definition does not destroy the values stored under its name, so freeing the
 // name would let a second definition claim rows written for the first — and a
 // check that skipped archived rows would report the name free and hand the write
@@ -391,6 +392,47 @@ func valueWrites(g *querygen.Generator) []*querygen.Query {
 		g.ArchiveQuery("ArchiveValue", ValuesTable, Values.KeyedColumns(),
 			scope, subjectType, subjectID, definition),
 	}
+}
+
+// archivedValueReadBack is the read ClearValue answers with: the value it took
+// back, on the transaction that took it.
+//
+// It exists because clearing is the one write over these tables whose result no
+// other read here can see. Every single-row statement filters archived_at IS
+// NULL — which is what makes a cleared answer resolve to the default rather
+// than to itself — so a store that archived a value and read it back through
+// one of those would find nothing, and once the transaction commits the answer
+// the subject gave is unreadable through this package entirely. The stamp is
+// the part that cannot be reconstructed either way: archived_at is
+// CURRENT_TIMESTAMP on the server, so a row assembled from what the caller
+// passed in says a clearing has not happened.
+//
+// There is deliberately no companion for ArchiveDefinition. A retired
+// definition is still the row its id names and GetDefinition still reaches it
+// before the archive runs, so a second statement here would have bought a
+// caller nothing it could not read for itself — and charged one to every
+// caller that only wanted the setting retired. The asymmetry is settings.Store's
+// and is argued there.
+//
+// It is rendered from no column list at all, for nameCollisionCheck's reason:
+// querygen derives the archived predicate from the columns it is handed, so a
+// read that must see archived rows is one keyed entirely on its matches. What
+// takes that predicate's place is its complement — archived_at IS NOT NULL —
+// which makes the read-back assert the thing it was called to confirm. A row
+// the clearing did not move is not a row it answers with, so a guard that
+// matched nothing cannot be read back as a success.
+//
+// It is not a caller-facing read and is not on settings.Store. It runs on the
+// transaction that did the archiving, by the key that transaction just wrote
+// under, and the row is visible to nothing outside it until it commits.
+func archivedValueReadBack(g *querygen.Generator) *querygen.Query {
+	return g.ReadQuery("GetArchivedValue", ValuesTable, nil,
+		querygen.Read{Projection: Values.Columns},
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: ValueSubjectTypeColumn},
+		querygen.Match{Column: ValueSubjectIDColumn},
+		querygen.Match{Column: ValueDefinitionColumn},
+		querygen.Match{Column: querygen.ArchivedAtColumn, Against: querygen.NoValue, Exclude: true})
 }
 
 // valueErasure is the one hard delete over the values table: everything one

@@ -54,6 +54,23 @@ WHERE scope = $1
 	AND subject_type = $2
 	AND subject_id = $3`
 
+const getArchivedValuePostgreSQL = `SELECT
+	{{prefix}}settings_values.id,
+	{{prefix}}settings_values.scope,
+	{{prefix}}settings_values.definition_id,
+	{{prefix}}settings_values.subject_type,
+	{{prefix}}settings_values.subject_id,
+	{{prefix}}settings_values.value,
+	{{prefix}}settings_values.created_at,
+	{{prefix}}settings_values.last_updated_at,
+	{{prefix}}settings_values.archived_at
+FROM {{prefix}}settings_values
+WHERE {{prefix}}settings_values.scope = $1
+	AND {{prefix}}settings_values.subject_type = $2
+	AND {{prefix}}settings_values.subject_id = $3
+	AND {{prefix}}settings_values.definition_id = $4
+	AND {{prefix}}settings_values.archived_at IS NOT NULL`
+
 const getDefinitionPostgreSQL = `SELECT
 	{{prefix}}settings_definitions.id,
 	{{prefix}}settings_definitions.scope,
@@ -482,6 +499,7 @@ type postgresqlQueries struct {
 	createDefinition                     string
 	deleteDefinitionOptions              string
 	deleteValuesForSubject               string
+	getArchivedValue                     string
 	getDefinition                        string
 	getDefinitionByName                  string
 	getDefinitionCreatedAt               string
@@ -508,6 +526,7 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		createDefinition:                     strings.ReplaceAll(createDefinitionPostgreSQL, prefixMarker, prefix),
 		deleteDefinitionOptions:              strings.ReplaceAll(deleteDefinitionOptionsPostgreSQL, prefixMarker, prefix),
 		deleteValuesForSubject:               strings.ReplaceAll(deleteValuesForSubjectPostgreSQL, prefixMarker, prefix),
+		getArchivedValue:                     strings.ReplaceAll(getArchivedValuePostgreSQL, prefixMarker, prefix),
 		getDefinition:                        strings.ReplaceAll(getDefinitionPostgreSQL, prefixMarker, prefix),
 		getDefinitionByName:                  strings.ReplaceAll(getDefinitionByNamePostgreSQL, prefixMarker, prefix),
 		getDefinitionCreatedAt:               strings.ReplaceAll(getDefinitionCreatedAtPostgreSQL, prefixMarker, prefix),
@@ -593,6 +612,32 @@ func (q *postgresqlQueries) DeleteValuesForSubject(ctx context.Context, db DBTX,
 	}
 
 	return result.RowsAffected()
+}
+
+// GetArchivedValue runs the :one query against postgresql.
+func (q *postgresqlQueries) GetArchivedValue(ctx context.Context, db DBTX, arg GetArchivedValueParams) (GetArchivedValueRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedValue,
+		arg.Scope,
+		arg.SubjectType,
+		arg.SubjectID,
+		arg.DefinitionID,
+	)
+
+	var i GetArchivedValueRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.DefinitionID,
+		&i.SubjectType,
+		&i.SubjectID,
+		&i.Value,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
 }
 
 // GetDefinition runs the :one query against postgresql.
@@ -1114,6 +1159,23 @@ var (
 		SubjectType string
 		SubjectID   string
 	}(DeleteValuesForSubjectParams{})
+	_ = struct {
+		Scope        tenancy.Scope
+		SubjectType  string
+		SubjectID    string
+		DefinitionID string
+	}(GetArchivedValueParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		DefinitionID  string
+		SubjectType   string
+		SubjectID     string
+		Value         string
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetArchivedValueRow{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope

@@ -54,6 +54,23 @@ WHERE scope = ?
 	AND subject_type = ?
 	AND subject_id = ?`
 
+const getArchivedValueMySQL = `SELECT
+	{{prefix}}settings_values.id,
+	{{prefix}}settings_values.scope,
+	{{prefix}}settings_values.definition_id,
+	{{prefix}}settings_values.subject_type,
+	{{prefix}}settings_values.subject_id,
+	{{prefix}}settings_values.value,
+	{{prefix}}settings_values.created_at,
+	{{prefix}}settings_values.last_updated_at,
+	{{prefix}}settings_values.archived_at
+FROM {{prefix}}settings_values
+WHERE {{prefix}}settings_values.scope = ?
+	AND {{prefix}}settings_values.subject_type = ?
+	AND {{prefix}}settings_values.subject_id = ?
+	AND {{prefix}}settings_values.definition_id = ?
+	AND {{prefix}}settings_values.archived_at IS NOT NULL`
+
 const getDefinitionMySQL = `SELECT
 	{{prefix}}settings_definitions.id,
 	{{prefix}}settings_definitions.scope,
@@ -482,6 +499,7 @@ type mysqlQueries struct {
 	createDefinition                     string
 	deleteDefinitionOptions              string
 	deleteValuesForSubject               string
+	getArchivedValue                     string
 	getDefinition                        string
 	getDefinitionByName                  string
 	getDefinitionCreatedAt               string
@@ -508,6 +526,7 @@ func newMySQL(prefix string) *mysqlQueries {
 		createDefinition:                     strings.ReplaceAll(createDefinitionMySQL, prefixMarker, prefix),
 		deleteDefinitionOptions:              strings.ReplaceAll(deleteDefinitionOptionsMySQL, prefixMarker, prefix),
 		deleteValuesForSubject:               strings.ReplaceAll(deleteValuesForSubjectMySQL, prefixMarker, prefix),
+		getArchivedValue:                     strings.ReplaceAll(getArchivedValueMySQL, prefixMarker, prefix),
 		getDefinition:                        strings.ReplaceAll(getDefinitionMySQL, prefixMarker, prefix),
 		getDefinitionByName:                  strings.ReplaceAll(getDefinitionByNameMySQL, prefixMarker, prefix),
 		getDefinitionCreatedAt:               strings.ReplaceAll(getDefinitionCreatedAtMySQL, prefixMarker, prefix),
@@ -593,6 +612,32 @@ func (q *mysqlQueries) DeleteValuesForSubject(ctx context.Context, db DBTX, arg 
 	}
 
 	return result.RowsAffected()
+}
+
+// GetArchivedValue runs the :one query against mysql.
+func (q *mysqlQueries) GetArchivedValue(ctx context.Context, db DBTX, arg GetArchivedValueParams) (GetArchivedValueRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedValue,
+		arg.Scope,
+		arg.SubjectType,
+		arg.SubjectID,
+		arg.DefinitionID,
+	)
+
+	var i GetArchivedValueRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.DefinitionID,
+		&i.SubjectType,
+		&i.SubjectID,
+		&i.Value,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
 }
 
 // GetDefinition runs the :one query against mysql.
@@ -1185,6 +1230,23 @@ var (
 		SubjectType string
 		SubjectID   string
 	}(DeleteValuesForSubjectParams{})
+	_ = struct {
+		Scope        tenancy.Scope
+		SubjectType  string
+		SubjectID    string
+		DefinitionID string
+	}(GetArchivedValueParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		DefinitionID  string
+		SubjectType   string
+		SubjectID     string
+		Value         string
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetArchivedValueRow{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope

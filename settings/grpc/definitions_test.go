@@ -214,11 +214,10 @@ func TestListDefinitionsPagesTheCallersCatalogAlone(T *testing.T) {
 
 // TestUpdateDefinitionAnswersWithTheRowItWrote is the read-back this RPC owes.
 //
-// settings.Store.UpdateDefinition answers with an error and nothing else, so a
-// response assembled from the request would carry the epoch where
-// last_updated_at belongs. The read runs inside the transaction that wrote,
-// which is what the store's reads taking an executor rather than a reader is
-// for.
+// A response assembled from the request would carry the epoch where
+// last_updated_at belongs. What answers it is the store's own return, read on
+// the transaction that wrote — which is what the store's reads taking an
+// executor rather than a reader is for.
 func TestUpdateDefinitionAnswersWithTheRowItWrote(T *testing.T) {
 	T.Parallel()
 

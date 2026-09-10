@@ -166,6 +166,11 @@ func (s *Server) GetValue(
 // third answer, that nobody has decided — and reading it back inside the
 // transaction that cleared the row is the only place that answer is the one the
 // caller just brought about.
+//
+// Which is why the value the store hands back — the answer that was cleared — is
+// discarded here rather than sent. It is what an audit entry beside the write is
+// about, and this surface writes none; what the client asked for is what the
+// setting says now.
 func (s *Server) ClearValue(
 	ctx context.Context,
 	request *settingspb.ClearValueRequest,
@@ -190,7 +195,7 @@ func (s *Server) ClearValue(
 	var resolution *settings.Resolution
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		if clearErr := s.store.ClearValue(ctx, tx, req.scope, subject, name); clearErr != nil {
+		if _, clearErr := s.store.ClearValue(ctx, tx, req.scope, subject, name); clearErr != nil {
 			return clearErr
 		}
 

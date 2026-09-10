@@ -48,6 +48,27 @@ type DeleteValuesForSubjectParams struct {
 	SubjectID   string
 }
 
+// GetArchivedValueParams are the arguments to GetArchivedValue.
+type GetArchivedValueParams struct {
+	Scope        tenancy.Scope
+	SubjectType  string
+	SubjectID    string
+	DefinitionID string
+}
+
+// GetArchivedValueRow is one row of GetArchivedValue's result.
+type GetArchivedValueRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	DefinitionID  string
+	SubjectType   string
+	SubjectID     string
+	Value         string
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+}
+
 // GetDefinitionParams are the arguments to GetDefinition.
 type GetDefinitionParams struct {
 	ID    string

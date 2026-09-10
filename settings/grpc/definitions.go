@@ -185,12 +185,11 @@ func (s *Server) ListDefinitions(
 // possible, and the message names them one at a time so there is always
 // something to do next.
 //
-// The row is read back inside the transaction that wrote it, which is what the
-// store's reads taking an executor rather than a reader is for: the store's
-// update answers with an error and nothing else, so a response assembled from
-// the request would carry the epoch where last_updated_at belongs, and one read
-// on Client.Reader() would be a read of a database that does not yet hold the
-// edit.
+// The row in the response is the store's own answer, read inside the transaction
+// that wrote it. A response assembled from the request would carry the epoch
+// where last_updated_at belongs, and a read on Client.Reader() would be a read
+// of a database that does not yet hold the edit — which is why this handler owns
+// neither read: settings.Store.UpdateDefinition returns what it wrote.
 func (s *Server) UpdateDefinition(
 	ctx context.Context,
 	request *settingspb.UpdateDefinitionRequest,
@@ -218,16 +217,12 @@ func (s *Server) UpdateDefinition(
 	var updated *settings.Definition
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		if updateErr := s.store.UpdateDefinition(ctx, tx, req.scope, definition); updateErr != nil {
+		edited, updateErr := s.store.UpdateDefinition(ctx, tx, req.scope, definition)
+		if updateErr != nil {
 			return updateErr
 		}
 
-		read, readErr := s.store.GetDefinition(ctx, tx, req.scope, id)
-		if readErr != nil {
-			return readErr
-		}
-
-		updated = read
+		updated = edited
 
 		return nil
 	}); err != nil {
@@ -246,6 +241,12 @@ func (s *Server) UpdateDefinition(
 // is settings.Store.ArchiveDefinition's own decision arriving on the wire:
 // archiving is not erasure, and freeing the name would let a second definition
 // inherit rows written for the first.
+//
+// This response carries nothing, and neither does the store's own return. The
+// two agree: a retirement names a row the client asked for by id, and the
+// definition behind it is still readable at that id right up to the moment this
+// transaction commits. A client that wants it reads it before archiving, and
+// pays for the read it asked for rather than for one every caller makes.
 func (s *Server) ArchiveDefinition(
 	ctx context.Context,
 	request *settingspb.ArchiveDefinitionRequest,
