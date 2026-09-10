@@ -8,29 +8,37 @@ import (
 	"github.com/primandproper/primitives-go/observability/tracing"
 )
 
-// StoreOption configures a SQL Store at construction.
-type StoreOption func(*SQLStore)
+// SQLStoreOption configures a SQLStore at construction.
+//
+// The name is the one every sibling SQL store in the module carries, so a
+// consumer assembling store options for more than one of them writes one
+// spelling rather than remembering which package chose which. The WithStoreX
+// constructors keep their infix: this package has five option families in one
+// file — store, service, start, worker and watcher — so the prefix is
+// disambiguating here where a sibling's bare WithTablePrefix has nothing to
+// disambiguate from.
+type SQLStoreOption func(*SQLStore)
 
 // WithStoreLogger attaches a logger to the store.
-func WithStoreLogger(logger logging.Logger) StoreOption {
+func WithStoreLogger(logger logging.Logger) SQLStoreOption {
 	return func(s *SQLStore) { s.logger = logger }
 }
 
 // WithStoreTracerProvider attaches a tracer provider to the store.
-func WithStoreTracerProvider(tracerProvider tracing.Provider) StoreOption {
+func WithStoreTracerProvider(tracerProvider tracing.Provider) SQLStoreOption {
 	return func(s *SQLStore) { s.tracerProvider = tracerProvider }
 }
 
 // WithStoreMetricsProvider attaches a metrics provider to the store. An absent
 // provider records nothing.
-func WithStoreMetricsProvider(metricsProvider metrics.Provider) StoreOption {
+func WithStoreMetricsProvider(metricsProvider metrics.Provider) SQLStoreOption {
 	return func(s *SQLStore) { s.metricsProvider = metricsProvider }
 }
 
 // WithStoreTablePrefix namespaces the operations table. It must match the
 // namespace the migrations were rendered with; nothing here can check that, and
 // a mismatch surfaces as a missing table on the first query.
-func WithStoreTablePrefix(prefix string) StoreOption {
+func WithStoreTablePrefix(prefix string) SQLStoreOption {
 	return func(s *SQLStore) { s.tablePrefix = prefix }
 }
 
@@ -41,7 +49,7 @@ func WithStoreTablePrefix(prefix string) StoreOption {
 // pgnotify.Listener on the same channel, whose Signal feeds WithWatcherWakeup.
 // Without it the watch path still delivers every state an operation passes
 // through, a poll interval late.
-func WithStoreNotifyChannel(channel string) StoreOption {
+func WithStoreNotifyChannel(channel string) SQLStoreOption {
 	return func(s *SQLStore) { s.notifyChannel = channel }
 }
 
