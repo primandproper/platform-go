@@ -49,7 +49,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		cfg := validConfig()
 		cfg.EnsureDefaults()
 
-		test.EqOp(t, uint(0), cfg.MaxAttempts)
+		test.EqOp(t, 0, cfg.MaxAttempts)
 		test.EqOp(t, 0, cfg.attemptCeiling())
 	})
 
@@ -76,6 +76,20 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		test.NoError(t, cfg.ValidateWithContext(t.Context()))
 	})
 
+	// Zero is unlimited rather than unset, so the rule that rejects a negative
+	// ceiling must not reject the default one along with it.
+	T.Run("accepts either spelling of a ceiling it can honor", func(t *testing.T) {
+		t.Parallel()
+
+		for name, attempts := range map[string]int{"unlimited": 0, "bounded": 5} {
+			cfg := validConfig()
+			cfg.EnsureDefaults()
+			cfg.MaxAttempts = attempts
+
+			test.NoError(t, cfg.ValidateWithContext(t.Context()), test.Sprintf("case %q", name))
+		}
+	})
+
 	T.Run("requires a name", func(t *testing.T) {
 		t.Parallel()
 
@@ -89,9 +103,10 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		t.Parallel()
 
 		for name, mutate := range map[string]func(*Config){
-			"sub-second retention": func(cfg *Config) { cfg.Retention = time.Millisecond },
-			"empty claim batch":    func(cfg *Config) { cfg.MaxClaimBatch = -1 },
-			"empty reap batch":     func(cfg *Config) { cfg.ReapBatchSize = -1 },
+			"sub-second retention":     func(cfg *Config) { cfg.Retention = time.Millisecond },
+			"negative attempt ceiling": func(cfg *Config) { cfg.MaxAttempts = -1 },
+			"empty claim batch":        func(cfg *Config) { cfg.MaxClaimBatch = -1 },
+			"empty reap batch":         func(cfg *Config) { cfg.ReapBatchSize = -1 },
 		} {
 			cfg := validConfig()
 			cfg.EnsureDefaults()
