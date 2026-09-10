@@ -199,7 +199,7 @@ func newHarnessAs(t *testing.T, principal identitygrpc.Principal, opts ...identi
 	svc, err := identity.NewService(db, store)
 	must.NoError(t, err)
 
-	srv, err := identitygrpc.NewServer(db, svc, store, extractPrincipal, opts...)
+	srv, err := identitygrpc.NewServer(svc, store, db, extractPrincipal, opts...)
 	must.NoError(t, err)
 
 	// The error-encoding interceptor is what puts a sentinel into the status

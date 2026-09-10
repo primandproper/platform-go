@@ -32,29 +32,48 @@ func TestNewServerRefusesItsMissingDependencies(T *testing.T) {
 
 	h := newHarness(T)
 
-	for name, build := range map[string]func() (*identitygrpc.Server, error){
-		"nil client": func() (*identitygrpc.Server, error) {
-			return identitygrpc.NewServer(nil, h.svc, h.store, extractPrincipal)
+	// Each case nils exactly one parameter and names the sentinel that
+	// parameter answers with, so the positions are pinned as well as the
+	// refusals: a constructor whose arguments were reordered under these calls
+	// would still refuse, but it would refuse with somebody else's error.
+	for name, tc := range map[string]struct {
+		build func() (*identitygrpc.Server, error)
+		want  error
+	}{
+		"nil service": {
+			build: func() (*identitygrpc.Server, error) {
+				return identitygrpc.NewServer(nil, h.store, h.db, extractPrincipal)
+			},
+			want: identitygrpc.ErrNilService,
 		},
-		"nil service": func() (*identitygrpc.Server, error) {
-			return identitygrpc.NewServer(h.db, nil, h.store, extractPrincipal)
+		"nil store": {
+			build: func() (*identitygrpc.Server, error) {
+				return identitygrpc.NewServer(h.svc, nil, h.db, extractPrincipal)
+			},
+			want: identitygrpc.ErrNilStore,
 		},
-		"nil store": func() (*identitygrpc.Server, error) {
-			return identitygrpc.NewServer(h.db, h.svc, nil, extractPrincipal)
+		"nil client": {
+			build: func() (*identitygrpc.Server, error) {
+				return identitygrpc.NewServer(h.svc, h.store, nil, extractPrincipal)
+			},
+			want: identitygrpc.ErrNilDatabaseClient,
 		},
 		// The one that would otherwise degrade rather than fail: a server with
 		// no way to resolve a caller would answer every read with the zero
 		// scope, which is a real directory rather than an empty one.
-		"nil principal extractor": func() (*identitygrpc.Server, error) {
-			return identitygrpc.NewServer(h.db, h.svc, h.store, nil)
+		"nil principal extractor": {
+			build: func() (*identitygrpc.Server, error) {
+				return identitygrpc.NewServer(h.svc, h.store, h.db, nil)
+			},
+			want: identitygrpc.ErrNilPrincipalExtractor,
 		},
 	} {
 		T.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			srv, err := build()
+			srv, err := tc.build()
 			test.Nil(t, srv)
-			test.Error(t, err)
+			must.ErrorIs(t, err, tc.want)
 		})
 	}
 }

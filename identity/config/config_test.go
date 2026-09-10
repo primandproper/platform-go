@@ -251,7 +251,7 @@ func TestNewServer(T *testing.T) {
 		svc, err := NewService(t.Context(), &Config{}, client, store)
 		must.NoError(t, err)
 
-		return NewServer(t.Context(), cfg, client, svc, store, principal, opts...)
+		return NewServer(t.Context(), cfg, svc, store, client, principal, opts...)
 	}
 
 	T.Run("builds a server", func(t *testing.T) {
@@ -276,7 +276,7 @@ func TestNewServer(T *testing.T) {
 		svc, err := NewService(t.Context(), &Config{}, client, store)
 		must.NoError(t, err)
 
-		srv, err := NewServer(t.Context(), &Config{}, client, svc, store, nil)
+		srv, err := NewServer(t.Context(), &Config{}, svc, store, client, nil)
 		test.Nil(t, srv)
 		must.Error(t, err)
 	})

@@ -107,9 +107,9 @@ func RegisterServer(i do.Injector) {
 		return NewServer(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
 			do.MustInvoke[*identity.Service](i),
 			do.MustInvoke[identity.Store](i),
+			do.MustInvoke[database.Client](i),
 			do.MustInvoke[identitygrpc.PrincipalExtractor](i),
 			WithPillars(pillars),
 		)

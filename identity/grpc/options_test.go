@@ -132,20 +132,20 @@ func TestNewServerRefusesADefaultTTLBeyondTheMaximum(T *testing.T) {
 
 	h := newHarness(T)
 
-	_, err := identitygrpc.NewServer(h.db, h.svc, h.store, extractPrincipal,
+	_, err := identitygrpc.NewServer(h.svc, h.store, h.db, extractPrincipal,
 		identitygrpc.WithMaxInvitationTTL(time.Hour),
 		identitygrpc.WithInvitationTTL(2*time.Hour),
 	)
 	test.ErrorIs(T, err, identitygrpc.ErrInvitationTTLExceedsMaximum)
 
-	_, err = identitygrpc.NewServer(h.db, h.svc, h.store, extractPrincipal,
+	_, err = identitygrpc.NewServer(h.svc, h.store, h.db, extractPrincipal,
 		identitygrpc.WithInvitationTTL(2*time.Hour),
 		identitygrpc.WithMaxInvitationTTL(time.Hour),
 	)
 	test.ErrorIs(T, err, identitygrpc.ErrInvitationTTLExceedsMaximum)
 
 	// A non-positive maximum is ignored the way a non-positive default is.
-	srv, err := identitygrpc.NewServer(h.db, h.svc, h.store, extractPrincipal,
+	srv, err := identitygrpc.NewServer(h.svc, h.store, h.db, extractPrincipal,
 		identitygrpc.WithMaxInvitationTTL(-time.Hour),
 	)
 	must.NoError(T, err)

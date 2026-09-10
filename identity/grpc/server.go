@@ -165,29 +165,32 @@ var _ identitypb.IdentityServiceServer = (*Server)(nil)
 
 // NewServer builds the gRPC surface over an identity service and store.
 //
-// The client is kept for its Reader: a read here runs outside any transaction,
-// on the reader handle, which is the executor half of the module's store
-// convention. The writes take none, because each is a Service call and the
-// Service opens its own.
+// The parameters read in the order every gRPC surface in this module takes
+// them: the domain dependencies first, then the database client, then the
+// principal extractor, then whatever authorizer the surface takes positionally
+// — none here, because this one defaults its [TargetAuthorizer] and takes the
+// replacement as [WithTargetAuthorizer]. A consumer mounting two of these
+// services writes the same shape twice rather than looking each one up.
 //
 // The store is taken alongside the service rather than read off it because the
 // two answer different halves — the Service owns the operations that are more
 // than one write, the Store owns the reads — and a server built on a consumer's
 // own Store implementation gets both.
 //
+// The client is kept for its Reader: a read here runs outside any transaction,
+// on the reader handle, which is the executor half of the module's store
+// convention. The writes take none, because each is a Service call and the
+// Service opens its own.
+//
 // The principal extractor is positional rather than an option for the reason
 // [ErrNilPrincipalExtractor] gives.
 func NewServer(
-	client database.Client,
 	svc *identity.Service,
 	store identity.Store,
+	client database.Client,
 	principals PrincipalExtractor,
 	opts ...Option,
 ) (*Server, error) {
-	if client == nil {
-		return nil, ErrNilDatabaseClient
-	}
-
 	if svc == nil {
 		return nil, ErrNilService
 	}
@@ -196,14 +199,18 @@ func NewServer(
 		return nil, ErrNilStore
 	}
 
+	if client == nil {
+		return nil, ErrNilDatabaseClient
+	}
+
 	if principals == nil {
 		return nil, ErrNilPrincipalExtractor
 	}
 
 	s := &Server{
-		client:           client,
 		svc:              svc,
 		store:            store,
+		client:           client,
 		principals:       principals,
 		mintToken:        defaultTokenMinter,
 		invitationTTL:    DefaultInvitationTTL,
