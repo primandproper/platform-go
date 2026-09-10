@@ -162,6 +162,21 @@ func reportFromRow(r *issuereportsdb.GetReportRow) *Report {
 	}
 }
 
+// reportFromArchivedRow converts the archive's read-back, which is the one row
+// shape here that casts rather than restating itself.
+//
+// It is sortedRows' reason rather than an exception to the preamble's rule.
+// GetArchivedReport projects the same list GetReport does — the table's columns,
+// in that order — and differs from it only in which rows it will look at, so the
+// two row types are one projection rendered twice. The conversion is therefore
+// the assertion: the day the two projections stop agreeing, in field name, type
+// or order, this stops building rather than filling the wrong fields.
+func reportFromArchivedRow(r *issuereportsdb.GetArchivedReportRow) *Report {
+	row := issuereportsdb.GetReportRow(*r)
+
+	return reportFromRow(&row)
+}
+
 // reportPageRow is the one conversion from a list row, and every list converts
 // through it.
 //

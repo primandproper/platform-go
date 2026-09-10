@@ -179,28 +179,72 @@ func (e *storeEnv) inTx(tb testing.TB, fn func(tx database.Tx) error) error {
 // instead, and they are in the transactions suite.
 func (e *storeEnv) reader() database.SQLQueryExecutor { return e.client.Reader() }
 
-// create files one report in a transaction of its own and reports what the write
-// returned.
+// create files one report in a transaction of its own, handing back the stored
+// row and what the write returned.
 //
 // The transaction is a detail here rather than the subject: these cases are about
 // what the write checks, and a consumer that has nothing to commit alongside
 // opens exactly this. What a report commits *with* is the transactions suite.
-func (e *storeEnv) create(tb testing.TB, store *SQLStore, scope tenancy.Scope, report *Report) error {
+func (e *storeEnv) create(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	report *Report,
+) (*Report, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.CreateReport(tb.Context(), tx, scope, report)
+	var created *Report
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		created, txErr = store.CreateReport(tb.Context(), tx, scope, report)
+
+		return txErr
 	})
+
+	return created, err
 }
 
-// update revises one report in a transaction of its own and reports what the
-// write returned.
-func (e *storeEnv) update(tb testing.TB, store *SQLStore, scope tenancy.Scope, report *Report) error {
+// createErr is create for the cases whose subject is the refusal rather than the
+// row, so a refused write reads as one expression.
+func (e *storeEnv) createErr(tb testing.TB, store *SQLStore, scope tenancy.Scope, report *Report) error {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.UpdateReport(tb.Context(), tx, scope, report)
+	_, err := e.create(tb, store, scope, report)
+
+	return err
+}
+
+// update revises one report in a transaction of its own, handing back the
+// revised row and what the write returned.
+func (e *storeEnv) update(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	report *Report,
+) (*Report, error) {
+	tb.Helper()
+
+	var revised *Report
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		revised, txErr = store.UpdateReport(tb.Context(), tx, scope, report)
+
+		return txErr
 	})
+
+	return revised, err
+}
+
+// updateErr is update for the cases whose subject is the refusal rather than the
+// row.
+func (e *storeEnv) updateErr(tb testing.TB, store *SQLStore, scope tenancy.Scope, report *Report) error {
+	tb.Helper()
+
+	_, err := e.update(tb, store, scope, report)
+
+	return err
 }
 
 // transition moves one report in a transaction of its own, handing back the
@@ -227,14 +271,36 @@ func (e *storeEnv) transition(
 	return moved, err
 }
 
-// archive takes one report out of the queue in a transaction of its own and
-// reports what the write returned.
-func (e *storeEnv) archive(tb testing.TB, store *SQLStore, scope tenancy.Scope, reportID string) error {
+// archive takes one report out of the queue in a transaction of its own, handing
+// back the hidden row and what the write returned.
+func (e *storeEnv) archive(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	reportID string,
+) (*Report, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ArchiveReport(tb.Context(), tx, scope, reportID)
+	var hidden *Report
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		hidden, txErr = store.ArchiveReport(tb.Context(), tx, scope, reportID)
+
+		return txErr
 	})
+
+	return hidden, err
+}
+
+// archiveErr is archive for the cases whose subject is the refusal rather than
+// the row.
+func (e *storeEnv) archiveErr(tb testing.TB, store *SQLStore, scope tenancy.Scope, reportID string) error {
+	tb.Helper()
+
+	_, err := e.archive(tb, store, scope, reportID)
+
+	return err
 }
 
 // erase destroys one reporter's reports in a transaction of its own, handing
@@ -267,13 +333,19 @@ func newReport(reporter, kind, details string) *Report {
 	}
 }
 
-// filed creates a report and returns it, for the tests whose subject is what
-// happens next rather than the creation. It files under the scope the report
-// carries, which is what a fixture means by naming one.
+// filed creates a report and returns the stored row, for the tests whose subject
+// is what happens next rather than the creation. It files under the scope the
+// report carries, which is what a fixture means by naming one.
+//
+// It hands back what the write answered with rather than the value it was given:
+// the create does not touch its argument, so the id and the creation time are on
+// the returned row alone, and a fixture that returned the input would be a
+// fixture whose ID is empty.
 func filed(tb testing.TB, e *storeEnv, store *SQLStore, report *Report) *Report {
 	tb.Helper()
 
-	must.NoError(tb, e.create(tb, store, report.Scope, report))
+	stored, err := e.create(tb, store, report.Scope, report)
+	must.NoError(tb, err)
 
-	return report
+	return stored
 }

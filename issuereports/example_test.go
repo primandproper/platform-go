@@ -45,13 +45,21 @@ func Example() {
 		SubjectID:   "recipe_1",
 	}
 
+	var filed *issuereports.Report
+
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		return store.CreateReport(ctx, tx, scope, report)
+		var txErr error
+		filed, txErr = store.CreateReport(ctx, tx, scope, report)
+
+		return txErr
 	}); err != nil {
 		panic(err)
 	}
 
-	fmt.Println("filed as:", report.Status)
+	// The write answers with the row it wrote: the id it minted, the status a
+	// report is born in, the creation time the database assigned. The value
+	// handed in is untouched.
+	fmt.Println("filed as:", filed.Status)
 
 	// The triage queue. The count beside the page is of everything open rather
 	// than of the page, so a console asking for ten reports still knows how many
@@ -70,7 +78,7 @@ func Example() {
 
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
 		var txErr error
-		resolved, txErr = store.TransitionReport(ctx, tx, scope, report.ID,
+		resolved, txErr = store.TransitionReport(ctx, tx, scope, filed.ID,
 			issuereports.StatusOpen, issuereports.StatusResolved, "fixed in 1.4")
 
 		return txErr
@@ -108,15 +116,20 @@ func ExampleStore_TransitionReport() {
 		Details:  "charged twice for one order",
 	}
 
+	var filed *issuereports.Report
+
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		return store.CreateReport(ctx, tx, scope, report)
+		var txErr error
+		filed, txErr = store.CreateReport(ctx, tx, scope, report)
+
+		return txErr
 	}); err != nil {
 		panic(err)
 	}
 
 	// Both triagers read the report while it was open.
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		_, txErr := store.TransitionReport(ctx, tx, scope, report.ID,
+		_, txErr := store.TransitionReport(ctx, tx, scope, filed.ID,
 			issuereports.StatusOpen, issuereports.StatusResolved, "refunded")
 
 		return txErr
@@ -125,7 +138,7 @@ func ExampleStore_TransitionReport() {
 	}
 
 	err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		_, txErr := store.TransitionReport(ctx, tx, scope, report.ID,
+		_, txErr := store.TransitionReport(ctx, tx, scope, filed.ID,
 			issuereports.StatusOpen, issuereports.StatusDeclined, "duplicate")
 
 		return txErr
@@ -133,7 +146,7 @@ func ExampleStore_TransitionReport() {
 
 	fmt.Println("second triager:", err != nil)
 
-	current, err := store.GetReport(ctx, client.Reader(), scope, report.ID)
+	current, err := store.GetReport(ctx, client.Reader(), scope, filed.ID)
 	if err != nil {
 		panic(err)
 	}
@@ -174,14 +187,19 @@ func ExampleStore_TransitionReport_withAnAuditEntry() {
 		Details:  "charged twice for one order",
 	}
 
+	var filed *issuereports.Report
+
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		return store.CreateReport(ctx, tx, scope, report)
+		var txErr error
+		filed, txErr = store.CreateReport(ctx, tx, scope, report)
+
+		return txErr
 	}); err != nil {
 		panic(err)
 	}
 
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		resolved, txErr := store.TransitionReport(ctx, tx, scope, report.ID,
+		resolved, txErr := store.TransitionReport(ctx, tx, scope, filed.ID,
 			issuereports.StatusOpen, issuereports.StatusResolved, "refunded")
 		if txErr != nil {
 			return txErr
@@ -202,7 +220,7 @@ func ExampleStore_TransitionReport_withAnAuditEntry() {
 
 	var actor, outcome string
 	if err = client.Reader().QueryRowContext(ctx,
-		`SELECT actor, outcome FROM audit_log WHERE report_id = ?`, report.ID).Scan(&actor, &outcome); err != nil {
+		`SELECT actor, outcome FROM audit_log WHERE report_id = ?`, filed.ID).Scan(&actor, &outcome); err != nil {
 		panic(err)
 	}
 

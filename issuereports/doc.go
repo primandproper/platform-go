@@ -35,8 +35,13 @@ own, and the type is what says so — only database.RunInTransaction produces on
 so the obligation is the compiler's rather than a doc comment's. A consumer with
 nothing to join writes:
 
+	var filed *issuereports.Report
+
 	err := client.WithTransaction(ctx, func(tx database.Tx) error {
-		return store.CreateReport(ctx, tx, scope, report)
+		var createErr error
+		filed, createErr = store.CreateReport(ctx, tx, scope, report)
+
+		return createErr
 	})
 
 The reason is that a report is rarely the only row a consumer writes. An audit
@@ -54,6 +59,13 @@ leaves a status change nobody can attribute. Its guard and the two reads around
 it run on the transaction as well, so a report filed and decided in one
 transaction resolves rather than reading as absent, and the row it hands back is
 the one the entry beside it describes.
+
+Every write that names one report hands its row back that way, on the caller's
+transaction and after the statement: the filing, the revision, the move and the
+archive. What the entry beside a write describes is the row the write left, not
+the one the caller read a statement earlier — and on the archive there is no
+earlier read to fall back on, because the row it hides is the one every keyed
+read here is written not to return.
 
 The reads take the wider database.SQLQueryExecutor, which is the asymmetry doing
 the work: a console paging the triage queue passes Client.Reader() and a caller

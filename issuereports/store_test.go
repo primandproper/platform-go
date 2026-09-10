@@ -75,19 +75,30 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		r := newReport(testReporter, "bug", "the button does nothing")
-		must.NoError(t, env.create(t, store, testScope, r))
+
+		created, err := env.create(t, store, testScope, r)
+		must.NoError(t, err)
+		must.NotNil(t, created)
 
 		// The id is minted here and the creation time is the database's, read
 		// back rather than left as a zero time a caller would serialize as a
 		// date in the year one.
-		test.NotEqOp(t, "", r.ID)
-		test.False(t, r.CreatedAt.IsZero())
-		test.EqOp(t, StatusOpen, r.Status)
-		test.Nil(t, r.ClosedAt)
+		test.NotEqOp(t, "", created.ID)
+		test.False(t, created.CreatedAt.IsZero())
+		test.EqOp(t, StatusOpen, created.Status)
+		test.Nil(t, created.ClosedAt)
+		test.EqOp(t, testScope, created.Scope)
 
-		read, err := store.GetReport(t.Context(), env.reader(), testScope, r.ID)
+		// And the value the caller handed over is untouched: everything the
+		// write settled is on what it answered with, so there is one place to
+		// read it from.
+		test.EqOp(t, "", r.ID)
+		test.True(t, r.CreatedAt.IsZero())
+		test.EqOp(t, Status(""), r.Status)
+
+		read, err := store.GetReport(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
-		test.EqOp(t, r.ID, read.ID)
+		test.EqOp(t, created.ID, read.ID)
 		test.EqOp(t, "bug", read.Kind)
 		test.EqOp(t, "the button does nothing", read.Details)
 		test.EqOp(t, "recipes", read.SubjectType)
@@ -103,7 +114,10 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 
 		r := newReport(testReporter, "bug", "details")
 		r.ID = "report_of_my_own"
-		must.NoError(t, env.create(t, store, testScope, r))
+
+		created, err := env.create(t, store, testScope, r)
+		must.NoError(t, err)
+		test.EqOp(t, "report_of_my_own", created.ID)
 
 		read, err := store.GetReport(t.Context(), env.reader(), testScope, "report_of_my_own")
 		must.NoError(t, err)
@@ -118,7 +132,7 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		r := newReport(testReporter, "bug", "details")
 		r.Status = StatusResolved
 
-		err := env.create(t, store, testScope, r)
+		err := env.createErr(t, store, testScope, r)
 		must.ErrorIs(t, err, ErrInvalidStatusTransition)
 	})
 
@@ -132,11 +146,12 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		r.Resolution = "already fixed"
 		r.ClosedAt = &closed
 
-		must.NoError(t, env.create(t, store, testScope, r))
-		test.EqOp(t, "", r.Resolution)
-		test.Nil(t, r.ClosedAt)
+		created, err := env.create(t, store, testScope, r)
+		must.NoError(t, err)
+		test.EqOp(t, "", created.Resolution)
+		test.Nil(t, created.ClosedAt)
 
-		read, err := store.GetReport(t.Context(), env.reader(), testScope, r.ID)
+		read, err := store.GetReport(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
 		test.EqOp(t, "", read.Resolution)
 		test.Nil(t, read.ClosedAt)
@@ -158,7 +173,7 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 				r := newReport(testReporter, "bug", "details")
 				mutate(r)
 
-				test.Error(t, env.create(t, store, testScope, r))
+				test.Error(t, env.createErr(t, store, testScope, r))
 			})
 		}
 	})
@@ -168,17 +183,17 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		must.ErrorIs(t, env.create(t, store, testScope, nil), ErrNilReport)
-		must.ErrorIs(t, env.update(t, store, testScope, nil), ErrNilReport)
+		must.ErrorIs(t, env.createErr(t, store, testScope, nil), ErrNilReport)
+		must.ErrorIs(t, env.updateErr(t, store, testScope, nil), ErrNilReport)
 
 		// The scope the write binds is the argument's, so the unset one that has
 		// to be refused is the argument. tenancy.Scope answers for that itself:
 		// an unset scope is a driver error rather than a wider write.
 		must.ErrorIs(t,
-			env.create(t, store, tenancy.Scope{}, newReport(testReporter, "bug", "details")),
+			env.createErr(t, store, tenancy.Scope{}, newReport(testReporter, "bug", "details")),
 			tenancy.ErrNoScope)
 		must.ErrorIs(t,
-			env.update(t, store, tenancy.Scope{}, newReport(testReporter, "bug", "details")),
+			env.updateErr(t, store, tenancy.Scope{}, newReport(testReporter, "bug", "details")),
 			tenancy.ErrNoScope)
 	})
 
@@ -192,7 +207,19 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		r.Details = "the label is misspelled"
 		r.SubjectType = "labels"
 		r.SubjectID = "label_9"
-		must.NoError(t, env.update(t, store, testScope, r))
+
+		revised, err := env.update(t, store, testScope, r)
+		must.NoError(t, err)
+		must.NotNil(t, revised)
+
+		// The row the write left, not the one the caller assembled:
+		// last_updated_at is the database's, and a value built from the argument
+		// would say the row was last touched at the epoch.
+		test.EqOp(t, "typo", revised.Kind)
+		test.EqOp(t, "the label is misspelled", revised.Details)
+		test.EqOp(t, "labels", revised.SubjectType)
+		test.EqOp(t, "label_9", revised.SubjectID)
+		must.NotNil(t, revised.LastUpdatedAt)
 
 		read, err := store.GetReport(t.Context(), env.reader(), testScope, r.ID)
 		must.NoError(t, err)
@@ -210,9 +237,14 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		r := filed(t, env, store, newReport(testReporter, "bug", "details"))
 
 		// The value carries a status the caller changed, and the statement's SET
-		// list does not name the column — so the row does not move.
+		// list does not name the column — so the row does not move. The row the
+		// write answers with is what makes that visible rather than assumed: it
+		// carries the status the table holds, not the one the argument named.
 		r.Status = StatusResolved
-		must.NoError(t, env.update(t, store, testScope, r))
+
+		revised, err := env.update(t, store, testScope, r)
+		must.NoError(t, err)
+		test.EqOp(t, StatusOpen, revised.Status)
 
 		read, err := store.GetReport(t.Context(), env.reader(), testScope, r.ID)
 		must.NoError(t, err)
@@ -229,8 +261,8 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		trespass.Scope = otherScope
 		trespass.Details = "rewritten by somebody else"
 
-		must.ErrorIs(t, env.update(t, store, otherScope, &trespass), ErrReportNotFound)
-		must.ErrorIs(t, env.archive(t, store, otherScope, r.ID), ErrReportNotFound)
+		must.ErrorIs(t, env.updateErr(t, store, otherScope, &trespass), ErrReportNotFound)
+		must.ErrorIs(t, env.archiveErr(t, store, otherScope, r.ID), ErrReportNotFound)
 
 		read, err := store.GetReport(t.Context(), env.reader(), testScope, r.ID)
 		must.NoError(t, err)
@@ -243,13 +275,22 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		r := filed(t, env, store, newReport(testReporter, "bug", "details"))
 
-		must.NoError(t, env.archive(t, store, testScope, r.ID))
+		hidden, err := env.archive(t, store, testScope, r.ID)
+		must.NoError(t, err)
+		must.NotNil(t, hidden)
 
-		_, err := store.GetReport(t.Context(), env.reader(), testScope, r.ID)
+		// The row the archive answers with is the one no read here can reach
+		// afterwards: it carries the stamp the write set and the words somebody
+		// filed, which is what a moderator's entry has to name.
+		test.EqOp(t, r.ID, hidden.ID)
+		test.EqOp(t, "details", hidden.Details)
+		must.NotNil(t, hidden.ArchivedAt)
+
+		_, err = store.GetReport(t.Context(), env.reader(), testScope, r.ID)
 		must.ErrorIs(t, err, ErrReportNotFound)
 
 		// A second archive addresses a report that is no longer in the queue.
-		must.ErrorIs(t, env.archive(t, store, testScope, r.ID), ErrReportNotFound)
+		must.ErrorIs(t, env.archiveErr(t, store, testScope, r.ID), ErrReportNotFound)
 	})
 
 	t.Run("an archived report is still readable through the filter", func(t *testing.T) {
@@ -257,7 +298,9 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 		r := filed(t, env, store, newReport(testReporter, "bug", "details"))
-		must.NoError(t, env.archive(t, store, testScope, r.ID))
+
+		_, err := env.archive(t, store, testScope, r.ID)
+		must.NoError(t, err)
 
 		filter := filtering.DefaultQueryFilter()
 		filter.IncludeArchived = pointer.To(true)
@@ -280,7 +323,7 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		elsewhere := newReport(testReporter, "bug", "filed by somebody next door")
 		elsewhere.Scope = otherScope
 
-		must.ErrorIs(t, env.create(t, store, testScope, elsewhere), ErrScopeMismatch)
+		must.ErrorIs(t, env.createErr(t, store, testScope, elsewhere), ErrScopeMismatch)
 
 		page, err := store.ListReportsByReporter(t.Context(), env.reader(), testScope, testReporter, nil)
 		must.NoError(t, err)
@@ -291,7 +334,7 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		mine := filed(t, env, store, newReport(testReporter, "bug", "details"))
 		mine.Scope = otherScope
 
-		must.ErrorIs(t, env.update(t, store, testScope, mine), ErrScopeMismatch)
+		must.ErrorIs(t, env.updateErr(t, store, testScope, mine), ErrScopeMismatch)
 	})
 
 	t.Run("a report that names no scope adopts the write's", func(t *testing.T) {
@@ -306,10 +349,16 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		fresh := newReport(testReporter, "bug", "no scope of its own")
 		fresh.Scope = tenancy.Scope{}
 
-		must.NoError(t, env.create(t, store, testScope, fresh))
-		test.EqOp(t, testScope, fresh.Scope)
+		created, err := env.create(t, store, testScope, fresh)
+		must.NoError(t, err)
+		test.EqOp(t, testScope, created.Scope)
 
-		read, err := store.GetReport(t.Context(), env.reader(), testScope, fresh.ID)
+		// The adoption lands on the row and on what the write answered with,
+		// never on the caller's value: an argument that named no scope still
+		// names none afterwards.
+		test.EqOp(t, tenancy.Scope{}, fresh.Scope)
+
+		read, err := store.GetReport(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
 		test.EqOp(t, testScope, read.Scope)
 	})
@@ -438,9 +487,11 @@ func runLifecycleSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 		r := filed(t, env, store, newReport(testReporter, "bug", "details"))
-		must.NoError(t, env.archive(t, store, testScope, r.ID))
 
-		_, err := env.transition(t, store, testScope, r.ID,
+		_, err := env.archive(t, store, testScope, r.ID)
+		must.NoError(t, err)
+
+		_, err = env.transition(t, store, testScope, r.ID,
 			StatusOpen, StatusResolved, "fixed")
 		must.ErrorIs(t, err, ErrReportNotFound)
 	})
@@ -631,7 +682,9 @@ func runErasureSuite(t *testing.T, env *storeEnv) {
 		// Archived and still theirs: an erasure has to reach what a soft delete
 		// hid, or a subject's data survives their own request.
 		archived := filed(t, env, store, newReport(testReporter, "bug", "archived but still mine"))
-		must.NoError(t, env.archive(t, store, testScope, archived.ID))
+
+		_, archiveErr := env.archive(t, store, testScope, archived.ID)
+		must.NoError(t, archiveErr)
 
 		theirs := filed(t, env, store, newReport(otherReporter, "bug", "theirs"))
 
@@ -706,12 +759,16 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// its own caller just wrote.
 		store := env.newStore(t)
 
-		created := newReport(testReporter, "bug", "filed and read on one executor")
+		var created *Report
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			if err := store.CreateReport(t.Context(), tx, testScope, created); err != nil {
+			filing, err := store.CreateReport(t.Context(), tx, testScope,
+				newReport(testReporter, "bug", "filed and read on one executor"))
+			if err != nil {
 				return err
 			}
+
+			created = filing
 
 			read, err := store.GetReport(t.Context(), tx, testScope, created.ID)
 			if err != nil {
@@ -753,48 +810,60 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		c := newStubClock()
 		store := env.newStore(t, WithClock(c))
 
-		created := newReport(testReporter, "bug", "written inside")
 		edited := filed(t, env, store, newReport(testReporter, "bug", "before the edit"))
 		decided := filed(t, env, store, newReport(testReporter, "bug", "to be resolved"))
 		doomed := filed(t, env, store, newReport(testReporter, "bug", "on the way out"))
 
-		var moved *Report
+		var created, revised, moved, hidden *Report
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			if err := store.CreateReport(t.Context(), tx, testScope, created); err != nil {
+			var err error
+			if created, err = store.CreateReport(t.Context(), tx, testScope,
+				newReport(testReporter, "bug", "written inside")); err != nil {
 				return err
 			}
 
 			edited.Details = "after the edit"
-			if err := store.UpdateReport(t.Context(), tx, testScope, edited); err != nil {
+			if revised, err = store.UpdateReport(t.Context(), tx, testScope, edited); err != nil {
 				return err
 			}
 
-			var err error
 			if moved, err = store.TransitionReport(t.Context(), tx, testScope, decided.ID,
 				StatusOpen, StatusResolved, "fixed in 1.4"); err != nil {
 				return err
 			}
 
-			return store.ArchiveReport(t.Context(), tx, testScope, doomed.ID)
+			hidden, err = store.ArchiveReport(t.Context(), tx, testScope, doomed.ID)
+
+			return err
 		}))
 
-		// The create reads its creation time back through the caller's executor,
-		// so the value the caller is handed is the row this transaction wrote
-		// rather than a zero time waiting on a commit.
+		// All four read their row back through the caller's executor, so each
+		// answers with the row this transaction wrote rather than with a value
+		// waiting on a commit. That is what a caller's audit entry describes,
+		// which is why they return the report rather than only an error.
+		must.NotNil(t, created)
 		test.NotEqOp(t, "", created.ID)
 		test.False(t, created.CreatedAt.IsZero())
 		test.EqOp(t, StatusOpen, created.Status)
 
-		// And the transition read its result back the same way, before the
-		// commit: the row as the transaction had it, stamp and note included.
-		// That value is what a caller's audit entry describes, which is why the
-		// move returns the report rather than only an error.
+		must.NotNil(t, revised)
+		test.EqOp(t, "after the edit", revised.Details)
+		must.NotNil(t, revised.LastUpdatedAt)
+
 		must.NotNil(t, moved)
 		test.EqOp(t, StatusResolved, moved.Status)
 		test.EqOp(t, "fixed in 1.4", moved.Resolution)
 		must.NotNil(t, moved.ClosedAt)
 		test.EqOp(t, baseTime, moved.ClosedAt.UTC())
+
+		// The archive's row is the one that could not have been read afterwards
+		// at all: every keyed read here filters it out, which is what archiving
+		// means.
+		must.NotNil(t, hidden)
+		test.EqOp(t, doomed.ID, hidden.ID)
+		test.EqOp(t, "on the way out", hidden.Details)
+		must.NotNil(t, hidden.ArchivedAt)
 
 		read, err := store.GetReport(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
@@ -821,27 +890,30 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// with it rather than surviving in a transaction it was never part of.
 		store := env.newStore(t)
 
-		created := newReport(testReporter, "bug", "never committed")
 		edited := filed(t, env, store, newReport(testReporter, "bug", "the original"))
 		decided := filed(t, env, store, newReport(testReporter, "bug", "still open"))
 		doomed := filed(t, env, store, newReport(testReporter, "bug", "still here"))
 
+		var created *Report
+
 		err := env.inTx(t, func(tx database.Tx) error {
-			if txErr := store.CreateReport(t.Context(), tx, testScope, created); txErr != nil {
+			var txErr error
+			if created, txErr = store.CreateReport(t.Context(), tx, testScope,
+				newReport(testReporter, "bug", "never committed")); txErr != nil {
 				return txErr
 			}
 
 			edited.Details = "the edit"
-			if txErr := store.UpdateReport(t.Context(), tx, testScope, edited); txErr != nil {
+			if _, txErr = store.UpdateReport(t.Context(), tx, testScope, edited); txErr != nil {
 				return txErr
 			}
 
-			if _, txErr := store.TransitionReport(t.Context(), tx, testScope, decided.ID,
+			if _, txErr = store.TransitionReport(t.Context(), tx, testScope, decided.ID,
 				StatusOpen, StatusDeclined, "duplicate"); txErr != nil {
 				return txErr
 			}
 
-			if txErr := store.ArchiveReport(t.Context(), tx, testScope, doomed.ID); txErr != nil {
+			if _, txErr = store.ArchiveReport(t.Context(), tx, testScope, doomed.ID); txErr != nil {
 				return txErr
 			}
 
@@ -849,8 +921,10 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		})
 		must.ErrorIs(t, err, errCompanionWrite)
 
-		// The id was minted onto the caller's value on the way through. Nothing
-		// undoes that, and nothing should: what rolled back is the row.
+		// The id was minted onto the value the write answered with, and that
+		// value still holds it: what rolled back is the row, not the answer the
+		// write gave before the companion failed.
+		must.NotNil(t, created)
 		test.NotEqOp(t, "", created.ID)
 
 		_, err = store.GetReport(t.Context(), env.reader(), testScope, created.ID)
@@ -906,29 +980,28 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// report absent.
 		store := env.newStore(t, WithClock(newStubClock()))
 
-		r := newReport(testReporter, "bug", "filed and decided at once")
-
-		var moved *Report
+		var filing, moved *Report
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			if err := store.CreateReport(t.Context(), tx, testScope, r); err != nil {
+			var err error
+			if filing, err = store.CreateReport(t.Context(), tx, testScope,
+				newReport(testReporter, "bug", "filed and decided at once")); err != nil {
 				return err
 			}
 
-			var err error
-			moved, err = store.TransitionReport(t.Context(), tx, testScope, r.ID,
+			moved, err = store.TransitionReport(t.Context(), tx, testScope, filing.ID,
 				StatusOpen, StatusDeclined, "working as intended")
 
 			return err
 		}))
 
 		must.NotNil(t, moved)
-		test.EqOp(t, r.ID, moved.ID)
+		test.EqOp(t, filing.ID, moved.ID)
 		test.EqOp(t, StatusDeclined, moved.Status)
 		test.EqOp(t, "working as intended", moved.Resolution)
 		must.NotNil(t, moved.ClosedAt)
 
-		read, err := store.GetReport(t.Context(), env.reader(), testScope, r.ID)
+		read, err := store.GetReport(t.Context(), env.reader(), testScope, filing.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StatusDeclined, read.Status)
 	})
@@ -941,17 +1014,18 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// anything but refuse would be reaching for something that is not there.
 		store := env.newStore(t)
 
-		must.ErrorIs(t,
-			store.CreateReport(t.Context(), nil, testScope, newReport(testReporter, "bug", "details")),
-			ErrNilExecutor)
-		must.ErrorIs(t,
-			store.UpdateReport(t.Context(), nil, testScope, newReport(testReporter, "bug", "details")),
-			ErrNilExecutor)
-		must.ErrorIs(t,
-			store.ArchiveReport(t.Context(), nil, testScope, "report_1"),
-			ErrNilExecutor)
+		_, err := store.CreateReport(t.Context(), nil, testScope,
+			newReport(testReporter, "bug", "details"))
+		must.ErrorIs(t, err, ErrNilExecutor)
 
-		_, err := store.TransitionReport(t.Context(), nil, testScope, "report_1",
+		_, err = store.UpdateReport(t.Context(), nil, testScope,
+			newReport(testReporter, "bug", "details"))
+		must.ErrorIs(t, err, ErrNilExecutor)
+
+		_, err = store.ArchiveReport(t.Context(), nil, testScope, "report_1")
+		must.ErrorIs(t, err, ErrNilExecutor)
+
+		_, err = store.TransitionReport(t.Context(), nil, testScope, "report_1",
 			StatusOpen, StatusResolved, "fixed")
 		must.ErrorIs(t, err, ErrNilExecutor)
 
@@ -1008,35 +1082,62 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 			missingArchive                                error
 		)
 
-		survivor := newReport(testReporter, "bug", "filed after all the refusals")
+		var survivor *Report
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			nilCreate = store.CreateReport(t.Context(), tx, testScope, nil)
-			mismatchedCreate = store.CreateReport(t.Context(), tx, testScope, elsewhere)
-			resolvedCreate = store.CreateReport(t.Context(), tx, testScope, bornResolved)
+			// The row each refusal answers with, checked as it is collected.
+			// A write that refused hands back nothing, which is the other half
+			// of the rule these signatures carry: the report comes back only
+			// alongside a nil error, so a caller who checked the error has
+			// nothing to guard against.
+			var refused *Report
 
-			nilUpdate = store.UpdateReport(t.Context(), tx, testScope, nil)
+			refused, nilCreate = store.CreateReport(t.Context(), tx, testScope, nil)
+			test.Nil(t, refused)
+
+			refused, mismatchedCreate = store.CreateReport(t.Context(), tx, testScope, elsewhere)
+			test.Nil(t, refused)
+
+			refused, resolvedCreate = store.CreateReport(t.Context(), tx, testScope, bornResolved)
+			test.Nil(t, refused)
+
+			refused, nilUpdate = store.UpdateReport(t.Context(), tx, testScope, nil)
+			test.Nil(t, refused)
 
 			silent := newReport(testReporter, "bug", "")
 			silent.ID = "report_never_written"
-			emptyDetails = store.UpdateReport(t.Context(), tx, testScope, silent)
+			refused, emptyDetails = store.UpdateReport(t.Context(), tx, testScope, silent)
+			test.Nil(t, refused)
 
 			absent := newReport(testReporter, "bug", "an edit to nothing")
 			absent.ID = "report_never_written"
-			missingUpdate = store.UpdateReport(t.Context(), tx, testScope, absent)
+			refused, missingUpdate = store.UpdateReport(t.Context(), tx, testScope, absent)
+			test.Nil(t, refused)
 
-			_, inadmissible = store.TransitionReport(t.Context(), tx, testScope, contested.ID,
+			refused, inadmissible = store.TransitionReport(t.Context(), tx, testScope, contested.ID,
 				StatusResolved, StatusAcknowledged, "")
-			_, unknown = store.TransitionReport(t.Context(), tx, testScope, contested.ID,
+			test.Nil(t, refused)
+
+			refused, unknown = store.TransitionReport(t.Context(), tx, testScope, contested.ID,
 				StatusOpen, Status("closed"), "")
-			_, missingMove = store.TransitionReport(t.Context(), tx, testScope, "report_never_written",
+			test.Nil(t, refused)
+
+			refused, missingMove = store.TransitionReport(t.Context(), tx, testScope, "report_never_written",
 				StatusOpen, StatusResolved, "fixed")
-			_, staleMove = store.TransitionReport(t.Context(), tx, testScope, contested.ID,
+			test.Nil(t, refused)
+
+			refused, staleMove = store.TransitionReport(t.Context(), tx, testScope, contested.ID,
 				StatusOpen, StatusDeclined, "duplicate")
+			test.Nil(t, refused)
 
-			missingArchive = store.ArchiveReport(t.Context(), tx, testScope, "report_never_written")
+			refused, missingArchive = store.ArchiveReport(t.Context(), tx, testScope, "report_never_written")
+			test.Nil(t, refused)
 
-			return store.CreateReport(t.Context(), tx, testScope, survivor)
+			var createErr error
+			survivor, createErr = store.CreateReport(t.Context(), tx, testScope,
+				newReport(testReporter, "bug", "filed after all the refusals"))
+
+			return createErr
 		}))
 
 		must.ErrorIs(t, nilCreate, ErrNilReport)
@@ -1059,6 +1160,8 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		// And the write after all of them committed, which is what "usable"
 		// means here.
+		must.NotNil(t, survivor)
+
 		read, err = store.GetReport(t.Context(), env.reader(), testScope, survivor.ID)
 		must.NoError(t, err)
 		test.EqOp(t, "filed after all the refusals", read.Details)

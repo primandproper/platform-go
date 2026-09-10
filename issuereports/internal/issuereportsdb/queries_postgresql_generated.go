@@ -48,6 +48,25 @@ const deleteReportsByReporterPostgreSQL = `DELETE FROM {{prefix}}issue_reports
 WHERE scope = $1
 	AND reporter = $2`
 
+const getArchivedReportPostgreSQL = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.id = $1
+	AND {{prefix}}issue_reports.scope = $2
+	AND {{prefix}}issue_reports.archived_at IS NOT NULL`
+
 const getReportPostgreSQL = `SELECT
 	{{prefix}}issue_reports.id,
 	{{prefix}}issue_reports.scope,
@@ -65,12 +84,6 @@ const getReportPostgreSQL = `SELECT
 FROM {{prefix}}issue_reports
 WHERE {{prefix}}issue_reports.archived_at IS NULL
 	AND {{prefix}}issue_reports.id = $1
-	AND {{prefix}}issue_reports.scope = $2`
-
-const getReportCreatedAtPostgreSQL = `SELECT
-	{{prefix}}issue_reports.created_at
-FROM {{prefix}}issue_reports
-WHERE {{prefix}}issue_reports.id = $1
 	AND {{prefix}}issue_reports.scope = $2`
 
 const listReportsPostgreSQL = `SELECT
@@ -658,8 +671,8 @@ type postgresqlQueries struct {
 	archiveReport                      string
 	createReport                       string
 	deleteReportsByReporter            string
+	getArchivedReport                  string
 	getReport                          string
-	getReportCreatedAt                 string
 	listReports                        string
 	listReportsByReporter              string
 	listReportsByReporterDescending    string
@@ -681,8 +694,8 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		archiveReport:                      strings.ReplaceAll(archiveReportPostgreSQL, prefixMarker, prefix),
 		createReport:                       strings.ReplaceAll(createReportPostgreSQL, prefixMarker, prefix),
 		deleteReportsByReporter:            strings.ReplaceAll(deleteReportsByReporterPostgreSQL, prefixMarker, prefix),
+		getArchivedReport:                  strings.ReplaceAll(getArchivedReportPostgreSQL, prefixMarker, prefix),
 		getReport:                          strings.ReplaceAll(getReportPostgreSQL, prefixMarker, prefix),
-		getReportCreatedAt:                 strings.ReplaceAll(getReportCreatedAtPostgreSQL, prefixMarker, prefix),
 		listReports:                        strings.ReplaceAll(listReportsPostgreSQL, prefixMarker, prefix),
 		listReportsByReporter:              strings.ReplaceAll(listReportsByReporterPostgreSQL, prefixMarker, prefix),
 		listReportsByReporterDescending:    strings.ReplaceAll(listReportsByReporterDescendingPostgreSQL, prefixMarker, prefix),
@@ -742,6 +755,34 @@ func (q *postgresqlQueries) DeleteReportsByReporter(ctx context.Context, db DBTX
 	return result.RowsAffected()
 }
 
+// GetArchivedReport runs the :one query against postgresql.
+func (q *postgresqlQueries) GetArchivedReport(ctx context.Context, db DBTX, arg GetArchivedReportParams) (GetArchivedReportRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedReport,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedReportRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Reporter,
+		&i.Kind,
+		&i.Details,
+		&i.SubjectType,
+		&i.SubjectID,
+		&i.Status,
+		&i.Resolution,
+		&i.ClosedAt,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
 // GetReport runs the :one query against postgresql.
 func (q *postgresqlQueries) GetReport(ctx context.Context, db DBTX, arg GetReportParams) (GetReportRow, error) {
 	row := db.QueryRowContext(ctx, q.getReport,
@@ -765,22 +806,6 @@ func (q *postgresqlQueries) GetReport(ctx context.Context, db DBTX, arg GetRepor
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
-	)
-
-	return i, err
-}
-
-// GetReportCreatedAt runs the :one query against postgresql.
-func (q *postgresqlQueries) GetReportCreatedAt(ctx context.Context, db DBTX, arg GetReportCreatedAtParams) (GetReportCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getReportCreatedAt,
-		arg.ID,
-		arg.Scope,
-	)
-
-	var i GetReportCreatedAtRow
-
-	err := row.Scan(
-		&i.CreatedAt,
 	)
 
 	return i, err
@@ -1390,6 +1415,25 @@ var (
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope
+	}(GetArchivedReportParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetArchivedReportRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
 	}(GetReportParams{})
 	_ = struct {
 		ID            string
@@ -1406,13 +1450,6 @@ var (
 		LastUpdatedAt *time.Time
 		ArchivedAt    *time.Time
 	}(GetReportRow{})
-	_ = struct {
-		ID    string
-		Scope tenancy.Scope
-	}(GetReportCreatedAtParams{})
-	_ = struct {
-		CreatedAt time.Time
-	}(GetReportCreatedAtRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
 		CreatedBefore   *time.Time

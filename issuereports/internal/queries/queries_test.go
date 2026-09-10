@@ -105,7 +105,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	// rather than by a bound argument.
 	want := []string{
 		"CreateReport", "UpdateReport", "TransitionReport", "ArchiveReport", "DeleteReportsByReporter",
-		"GetReport", "GetReportCreatedAt",
+		"GetReport", "GetArchivedReport",
 		"ListReports", "ListReportsDescending",
 		"ListReportsByStatus", "ListReportsByStatusDescending",
 		"ListReportsByReporter", "ListReportsByReporterDescending",
@@ -230,6 +230,57 @@ func TestRender_ErasureReachesArchivedRows(T *testing.T) {
 			test.StrContains(t, body, ReporterColumn+" =")
 			test.StrNotContains(t, body, querygen.ArchivedAtColumn,
 				test.Sprint("an erasure that skipped archived rows would leave the subject's words behind"))
+		})
+	}
+}
+
+// TestRender_TheArchiveReadBackSeesOnlyArchivedRows pins the complement, which
+// is the one statement in this corpus rendered from no column list and the only
+// one that carries archived_at IS NOT NULL.
+//
+// It is what makes the read-back an assertion rather than a second lookup: the
+// row the archive just moved is the one row every other single-row statement over
+// this table is written not to return, so a read-back carrying the ordinary
+// predicate would find nothing on the write it was called to describe. The
+// inverse matters as much — a read-back carrying no archived predicate at all
+// would answer a guard that matched nothing with a live row.
+func TestRender_TheArchiveReadBackSeesOnlyArchivedRows(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			readBack := statements(Render(d))["GetArchivedReport"]
+			must.NotEq(t, "", readBack)
+
+			must.StrContains(t, readBack, querygen.ArchivedAtColumn+" IS NOT NULL")
+			must.StrContains(t, readBack, ScopeColumn+" =")
+
+			// It projects the whole table, so the row it returns converts to the
+			// live read's rather than needing a converter of its own.
+			for _, column := range Reports.Columns {
+				test.StrContains(t, readBack, ReportsTable+"."+column,
+					test.Sprintf("the archive read-back omits %s", column))
+			}
+		})
+	}
+}
+
+// TestRender_EveryOtherKeyedReadSkipsArchivedRows is the other side of it: the
+// read-back is the exception, and it is one.
+func TestRender_EveryOtherKeyedReadSkipsArchivedRows(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			body := statements(Render(d))["GetReport"]
+			must.NotEq(t, "", body)
+
+			test.StrContains(t, body, querygen.ArchivedAtColumn+" IS NULL",
+				test.Sprint("a report the queue has let go is absent from a keyed read"))
 		})
 	}
 }

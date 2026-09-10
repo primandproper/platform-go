@@ -59,12 +59,21 @@ func (s *Server) CreateReport(
 		Set(subjectTypeKey, report.SubjectType).
 		Set(subjectIDKey, report.SubjectID)
 
-	// The store fills the identifier, the status and the creation time onto the
-	// value it was handed, so the response is the row that was written rather
-	// than the request that asked for it — which is why there is no read-back
-	// here and one in the revision below.
+	// The store answers with the row it wrote — the identifier it minted, the
+	// status a report is born in, the creation time the database assigned — so
+	// the response is what was stored rather than the request that asked for it,
+	// and this handler needs no read-back of its own.
+	var stored *issuereports.Report
+
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.store.CreateReport(ctx, tx, req.scope, report)
+		created, createErr := s.store.CreateReport(ctx, tx, req.scope, report)
+		if createErr != nil {
+			return createErr
+		}
+
+		stored = created
+
+		return nil
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "filing an issue report")
@@ -72,9 +81,9 @@ func (s *Server) CreateReport(
 		return nil, err
 	}
 
-	req.op.Set(reportIDKey, report.ID)
+	req.op.Set(reportIDKey, stored.ID)
 
-	return &issuereportspb.CreateReportResponse{Result: ReportToProto(report)}, nil
+	return &issuereportspb.CreateReportResponse{Result: ReportToProto(stored)}, nil
 }
 
 // GetReport reads one of the tenant's live reports.
@@ -124,13 +133,13 @@ func (s *Server) GetReport(
 // reason, and reserves the reporter because a revision does not change whose
 // words these were.
 //
-// Three statements inside one transaction, and each earns its round trip. The
-// read is what supplies the reporter the store validates against — the request
-// has none and must not — and it is what makes an absent report an absence
-// before anything is written. The revision is the write. The read-back is the
-// stored row, because last_updated_at is the database's and a response assembled
-// from the request would say the row was last touched at the epoch. All three
-// run on the transaction, so the read-back sees the write it follows.
+// Two calls inside one transaction, and each earns its round trip. The read is
+// what supplies the reporter the store validates against — the request has none
+// and must not — and it is what makes an absent report an absence before
+// anything is written. The revision is the write, and it answers with the stored
+// row, because last_updated_at is the database's and a response assembled from
+// the request would say the row was last touched at the epoch. Both run on the
+// transaction, so the row that comes back is the one the write just left.
 func (s *Server) UpdateReport(
 	ctx context.Context,
 	request *issuereportspb.UpdateReportRequest,
@@ -162,13 +171,9 @@ func (s *Server) UpdateReport(
 
 		applyUpdateInput(report, request.GetInput())
 
-		if updateErr := s.store.UpdateReport(ctx, tx, req.scope, report); updateErr != nil {
+		stored, updateErr := s.store.UpdateReport(ctx, tx, req.scope, report)
+		if updateErr != nil {
 			return updateErr
-		}
-
-		stored, readBackErr := s.store.GetReport(ctx, tx, req.scope, id)
-		if readBackErr != nil {
-			return readBackErr
 		}
 
 		revised = stored
@@ -263,8 +268,15 @@ func (s *Server) ArchiveReport(
 	id := request.GetReportId()
 	req.op.Set(reportIDKey, id)
 
+	// The store answers with the row it hid, and nothing here carries it:
+	// ArchiveReportResponse has no field for a report, because an archive on the
+	// wire says only that the report left the queue. The row is for a consumer
+	// writing an entry beside the write, which this handler is not — its
+	// transaction holds this one call and nothing to describe it to.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.store.ArchiveReport(ctx, tx, req.scope, id)
+		_, archiveErr := s.store.ArchiveReport(ctx, tx, req.scope, id)
+
+		return archiveErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "archiving issue report %q", id)

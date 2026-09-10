@@ -48,6 +48,25 @@ const deleteReportsByReporterMySQL = `DELETE FROM {{prefix}}issue_reports
 WHERE scope = ?
 	AND reporter = ?`
 
+const getArchivedReportMySQL = `SELECT
+	{{prefix}}issue_reports.id,
+	{{prefix}}issue_reports.scope,
+	{{prefix}}issue_reports.reporter,
+	{{prefix}}issue_reports.kind,
+	{{prefix}}issue_reports.details,
+	{{prefix}}issue_reports.subject_type,
+	{{prefix}}issue_reports.subject_id,
+	{{prefix}}issue_reports.status,
+	{{prefix}}issue_reports.resolution,
+	{{prefix}}issue_reports.closed_at,
+	{{prefix}}issue_reports.created_at,
+	{{prefix}}issue_reports.last_updated_at,
+	{{prefix}}issue_reports.archived_at
+FROM {{prefix}}issue_reports
+WHERE {{prefix}}issue_reports.id = ?
+	AND {{prefix}}issue_reports.scope = ?
+	AND {{prefix}}issue_reports.archived_at IS NOT NULL`
+
 const getReportMySQL = `SELECT
 	{{prefix}}issue_reports.id,
 	{{prefix}}issue_reports.scope,
@@ -65,12 +84,6 @@ const getReportMySQL = `SELECT
 FROM {{prefix}}issue_reports
 WHERE {{prefix}}issue_reports.archived_at IS NULL
 	AND {{prefix}}issue_reports.id = ?
-	AND {{prefix}}issue_reports.scope = ?`
-
-const getReportCreatedAtMySQL = `SELECT
-	{{prefix}}issue_reports.created_at
-FROM {{prefix}}issue_reports
-WHERE {{prefix}}issue_reports.id = ?
 	AND {{prefix}}issue_reports.scope = ?`
 
 const listReportsMySQL = `SELECT
@@ -658,8 +671,8 @@ type mysqlQueries struct {
 	archiveReport                      string
 	createReport                       string
 	deleteReportsByReporter            string
+	getArchivedReport                  string
 	getReport                          string
-	getReportCreatedAt                 string
 	listReports                        string
 	listReportsByReporter              string
 	listReportsByReporterDescending    string
@@ -681,8 +694,8 @@ func newMySQL(prefix string) *mysqlQueries {
 		archiveReport:                      strings.ReplaceAll(archiveReportMySQL, prefixMarker, prefix),
 		createReport:                       strings.ReplaceAll(createReportMySQL, prefixMarker, prefix),
 		deleteReportsByReporter:            strings.ReplaceAll(deleteReportsByReporterMySQL, prefixMarker, prefix),
+		getArchivedReport:                  strings.ReplaceAll(getArchivedReportMySQL, prefixMarker, prefix),
 		getReport:                          strings.ReplaceAll(getReportMySQL, prefixMarker, prefix),
-		getReportCreatedAt:                 strings.ReplaceAll(getReportCreatedAtMySQL, prefixMarker, prefix),
 		listReports:                        strings.ReplaceAll(listReportsMySQL, prefixMarker, prefix),
 		listReportsByReporter:              strings.ReplaceAll(listReportsByReporterMySQL, prefixMarker, prefix),
 		listReportsByReporterDescending:    strings.ReplaceAll(listReportsByReporterDescendingMySQL, prefixMarker, prefix),
@@ -742,6 +755,34 @@ func (q *mysqlQueries) DeleteReportsByReporter(ctx context.Context, db DBTX, arg
 	return result.RowsAffected()
 }
 
+// GetArchivedReport runs the :one query against mysql.
+func (q *mysqlQueries) GetArchivedReport(ctx context.Context, db DBTX, arg GetArchivedReportParams) (GetArchivedReportRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedReport,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedReportRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Reporter,
+		&i.Kind,
+		&i.Details,
+		&i.SubjectType,
+		&i.SubjectID,
+		&i.Status,
+		&i.Resolution,
+		&i.ClosedAt,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
 // GetReport runs the :one query against mysql.
 func (q *mysqlQueries) GetReport(ctx context.Context, db DBTX, arg GetReportParams) (GetReportRow, error) {
 	row := db.QueryRowContext(ctx, q.getReport,
@@ -765,22 +806,6 @@ func (q *mysqlQueries) GetReport(ctx context.Context, db DBTX, arg GetReportPara
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
-	)
-
-	return i, err
-}
-
-// GetReportCreatedAt runs the :one query against mysql.
-func (q *mysqlQueries) GetReportCreatedAt(ctx context.Context, db DBTX, arg GetReportCreatedAtParams) (GetReportCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getReportCreatedAt,
-		arg.ID,
-		arg.Scope,
-	)
-
-	var i GetReportCreatedAtRow
-
-	err := row.Scan(
-		&i.CreatedAt,
 	)
 
 	return i, err
@@ -1495,6 +1520,25 @@ var (
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope
+	}(GetArchivedReportParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Reporter      string
+		Kind          string
+		Details       string
+		SubjectType   string
+		SubjectID     string
+		Status        string
+		Resolution    string
+		ClosedAt      *time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetArchivedReportRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
 	}(GetReportParams{})
 	_ = struct {
 		ID            string
@@ -1511,13 +1555,6 @@ var (
 		LastUpdatedAt *time.Time
 		ArchivedAt    *time.Time
 	}(GetReportRow{})
-	_ = struct {
-		ID    string
-		Scope tenancy.Scope
-	}(GetReportCreatedAtParams{})
-	_ = struct {
-		CreatedAt time.Time
-	}(GetReportCreatedAtRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
 		CreatedBefore   *time.Time
