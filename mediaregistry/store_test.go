@@ -486,6 +486,34 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.Nil(t, byID[first.ID].ArchivedAt)
 	})
 
+	t.Run("answers an id named twice with one row", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		first := newObject("a.png", "user_1")
+		second := newObject("b.png", "user_1")
+
+		for _, object := range []*Object{first, second} {
+			must.NoError(t, env.record(t, store, testScope, object))
+		}
+
+		// The statement is an IN over a set, so what the read is about is the
+		// set rather than the sequence. A caller hydrating a page where two
+		// rows name one upload gets that upload once and joins it back onto
+		// both by id, which is what ListObjectsByIDsInBatches has to reproduce
+		// when it dedupes across batches.
+		read, err := store.ListObjectsByIDs(t.Context(), env.reader(), testScope,
+			[]string{first.ID, second.ID, first.ID, first.ID})
+		must.NoError(t, err)
+		must.SliceLen(t, 2, read)
+
+		want := []string{first.ID, second.ID}
+		slices.Sort(want)
+		test.EqOp(t, want[0], read[0].ID)
+		test.EqOp(t, want[1], read[1].ID)
+	})
+
 	t.Run("answers an empty set without a query", func(t *testing.T) {
 		t.Parallel()
 

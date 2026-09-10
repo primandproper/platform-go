@@ -125,6 +125,13 @@ type Store interface {
 	// holds the ids, so there is no window to walk and no cursor that would
 	// mean anything. A nil q is an error wrapping ErrNilExecutor.
 	//
+	// An id named twice is one row. The statement is an IN over a set, so the
+	// set is what the read is about rather than the sequence — a caller
+	// hydrating a page where two rows name one upload gets that upload once,
+	// and joins it back onto both by id. The result is therefore no longer than
+	// the set and is often shorter, which it would be anyway: the ids that name
+	// nothing in this scope are absent too.
+	//
 	// The set itself is bounded by MaxObjectIDsPerRead, and a larger one is
 	// ErrTooManyObjectIDs rather than a statement the dialect may or may not
 	// accept. ListObjectsByIDsInBatches reads a set of any size.
