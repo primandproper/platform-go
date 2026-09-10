@@ -273,7 +273,7 @@ type Product struct {
 	// external_product_id is the payment provider's identifier for the same
 	// product, empty for one that was never mirrored to a provider -- a free
 	// tier, or a plan that only exists to be comped.
-	ExternalProductId string `protobuf:"bytes,9,opt,name=external_product_id,json=externalProductId,proto3" json:"external_product_id,omitempty"`
+	ExternalProductId string `protobuf:"bytes,9,opt,name=external_product_id,json=externalProductID,proto3" json:"external_product_id,omitempty"`
 	// amount_cents is the price in the currency's minor unit: cents for USD,
 	// whole yen for JPY. It is 64-bit because a signed 32-bit count of cents runs
 	// out at about twenty-one million dollars.
@@ -424,11 +424,11 @@ type Subscription struct {
 	BelongsToAccount string `protobuf:"bytes,7,opt,name=belongs_to_account,json=belongsToAccount,proto3" json:"belongs_to_account,omitempty"`
 	// product_id is what was subscribed to. It is mutable at the store, because
 	// an upgrade is the same agreement pointed at a different product.
-	ProductId string `protobuf:"bytes,8,opt,name=product_id,json=productId,proto3" json:"product_id,omitempty"`
+	ProductId string `protobuf:"bytes,8,opt,name=product_id,json=productID,proto3" json:"product_id,omitempty"`
 	// external_subscription_id is the provider's identifier for the same
 	// agreement, empty for one granted by hand -- which is what grandfathering
 	// somebody looks like.
-	ExternalSubscriptionId string `protobuf:"bytes,9,opt,name=external_subscription_id,json=externalSubscriptionId,proto3" json:"external_subscription_id,omitempty"`
+	ExternalSubscriptionId string `protobuf:"bytes,9,opt,name=external_subscription_id,json=externalSubscriptionID,proto3" json:"external_subscription_id,omitempty"`
 	// status is where the agreement stands with the processor, in capitalism's
 	// vocabulary rather than a provider's words: "incomplete",
 	// "incomplete_expired", "trialing", "active", "past_due", "canceled",
@@ -564,10 +564,10 @@ type Purchase struct {
 	Id string `protobuf:"bytes,5,opt,name=id,proto3" json:"id,omitempty"`
 	// belongs_to_account is who bought it, and product_id is what they bought.
 	BelongsToAccount string `protobuf:"bytes,6,opt,name=belongs_to_account,json=belongsToAccount,proto3" json:"belongs_to_account,omitempty"`
-	ProductId        string `protobuf:"bytes,7,opt,name=product_id,json=productId,proto3" json:"product_id,omitempty"`
+	ProductId        string `protobuf:"bytes,7,opt,name=product_id,json=productID,proto3" json:"product_id,omitempty"`
 	// external_transaction_id is the provider's identifier for the payment, empty
 	// for a purchase granted without one.
-	ExternalTransactionId string `protobuf:"bytes,8,opt,name=external_transaction_id,json=externalTransactionId,proto3" json:"external_transaction_id,omitempty"`
+	ExternalTransactionId string `protobuf:"bytes,8,opt,name=external_transaction_id,json=externalTransactionID,proto3" json:"external_transaction_id,omitempty"`
 	// currency is the ISO 4217 code amount_cents is in, upper case.
 	Currency string `protobuf:"bytes,9,opt,name=currency,proto3" json:"currency,omitempty"`
 	// amount_cents is what was actually charged, in the currency's minor unit. It
@@ -700,14 +700,14 @@ type Transaction struct {
 	// other, and a row claiming both is one a reconciliation would count twice.
 	// Both empty is legal and means neither is still here, which is what a refund
 	// of something since removed looks like.
-	SubscriptionId string `protobuf:"bytes,6,opt,name=subscription_id,json=subscriptionId,proto3" json:"subscription_id,omitempty"`
-	PurchaseId     string `protobuf:"bytes,7,opt,name=purchase_id,json=purchaseId,proto3" json:"purchase_id,omitempty"`
+	SubscriptionId string `protobuf:"bytes,6,opt,name=subscription_id,json=subscriptionID,proto3" json:"subscription_id,omitempty"`
+	PurchaseId     string `protobuf:"bytes,7,opt,name=purchase_id,json=purchaseID,proto3" json:"purchase_id,omitempty"`
 	// external_transaction_id is the provider's identifier for the attempt, empty
 	// for a row with no provider behind it. It is the column that makes the
 	// ledger safe to write from a webhook: providers redeliver, and the unique
 	// index over it turns a second delivery into a refusal instead of a second
 	// row.
-	ExternalTransactionId string `protobuf:"bytes,8,opt,name=external_transaction_id,json=externalTransactionId,proto3" json:"external_transaction_id,omitempty"`
+	ExternalTransactionId string `protobuf:"bytes,8,opt,name=external_transaction_id,json=externalTransactionID,proto3" json:"external_transaction_id,omitempty"`
 	// status is what became of the attempt.
 	Status TransactionStatus `protobuf:"varint,9,opt,name=status,proto3,enum=primandproper.platform.billing.v1.TransactionStatus" json:"status,omitempty"`
 	// currency is the ISO 4217 code amount_cents is in, upper case.
@@ -835,7 +835,7 @@ type ProductCreationInput struct {
 	Description           string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
 	Kind                  ProductKind            `protobuf:"varint,3,opt,name=kind,proto3,enum=primandproper.platform.billing.v1.ProductKind" json:"kind,omitempty"`
 	Currency              string                 `protobuf:"bytes,4,opt,name=currency,proto3" json:"currency,omitempty"`
-	ExternalProductId     string                 `protobuf:"bytes,5,opt,name=external_product_id,json=externalProductId,proto3" json:"external_product_id,omitempty"`
+	ExternalProductId     string                 `protobuf:"bytes,5,opt,name=external_product_id,json=externalProductID,proto3" json:"external_product_id,omitempty"`
 	AmountCents           int64                  `protobuf:"varint,6,opt,name=amount_cents,json=amountCents,proto3" json:"amount_cents,omitempty"`
 	BillingIntervalMonths int64                  `protobuf:"varint,7,opt,name=billing_interval_months,json=billingIntervalMonths,proto3" json:"billing_interval_months,omitempty"`
 	unknownFields         protoimpl.UnknownFields
@@ -935,7 +935,7 @@ type ProductUpdateInput struct {
 	Description           string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
 	Kind                  ProductKind            `protobuf:"varint,3,opt,name=kind,proto3,enum=primandproper.platform.billing.v1.ProductKind" json:"kind,omitempty"`
 	Currency              string                 `protobuf:"bytes,4,opt,name=currency,proto3" json:"currency,omitempty"`
-	ExternalProductId     string                 `protobuf:"bytes,5,opt,name=external_product_id,json=externalProductId,proto3" json:"external_product_id,omitempty"`
+	ExternalProductId     string                 `protobuf:"bytes,5,opt,name=external_product_id,json=externalProductID,proto3" json:"external_product_id,omitempty"`
 	AmountCents           int64                  `protobuf:"varint,6,opt,name=amount_cents,json=amountCents,proto3" json:"amount_cents,omitempty"`
 	BillingIntervalMonths int64                  `protobuf:"varint,7,opt,name=billing_interval_months,json=billingIntervalMonths,proto3" json:"billing_interval_months,omitempty"`
 	unknownFields         protoimpl.UnknownFields
@@ -1111,7 +1111,7 @@ func (x *CreateProductResponse) GetResult() *Product {
 
 type GetProductRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProductId     string                 `protobuf:"bytes,1,opt,name=product_id,json=productId,proto3" json:"product_id,omitempty"`
+	ProductId     string                 `protobuf:"bytes,1,opt,name=product_id,json=productID,proto3" json:"product_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1295,7 +1295,7 @@ func (x *ListProductsResponse) GetResults() []*Product {
 
 type UpdateProductRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProductId     string                 `protobuf:"bytes,1,opt,name=product_id,json=productId,proto3" json:"product_id,omitempty"`
+	ProductId     string                 `protobuf:"bytes,1,opt,name=product_id,json=productID,proto3" json:"product_id,omitempty"`
 	Input         *ProductUpdateInput    `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1391,7 +1391,7 @@ func (x *UpdateProductResponse) GetResult() *Product {
 
 type ArchiveProductRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProductId     string                 `protobuf:"bytes,1,opt,name=product_id,json=productId,proto3" json:"product_id,omitempty"`
+	ProductId     string                 `protobuf:"bytes,1,opt,name=product_id,json=productID,proto3" json:"product_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1471,7 +1471,7 @@ func (*ArchiveProductResponse) Descriptor() ([]byte, []int) {
 
 type GetSubscriptionRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	SubscriptionId string                 `protobuf:"bytes,1,opt,name=subscription_id,json=subscriptionId,proto3" json:"subscription_id,omitempty"`
+	SubscriptionId string                 `protobuf:"bytes,1,opt,name=subscription_id,json=subscriptionID,proto3" json:"subscription_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1655,7 +1655,7 @@ func (x *ListSubscriptionsResponse) GetResults() []*Subscription {
 
 type ListSubscriptionsForAccountRequest struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
-	AccountId     string                   `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	AccountId     string                   `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1759,7 +1759,7 @@ func (x *ListSubscriptionsForAccountResponse) GetResults() []*Subscription {
 
 type ListCurrentSubscriptionsRequest struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
-	AccountId     string                   `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	AccountId     string                   `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1863,7 +1863,7 @@ func (x *ListCurrentSubscriptionsResponse) GetResults() []*Subscription {
 
 type ArchiveSubscriptionRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	SubscriptionId string                 `protobuf:"bytes,1,opt,name=subscription_id,json=subscriptionId,proto3" json:"subscription_id,omitempty"`
+	SubscriptionId string                 `protobuf:"bytes,1,opt,name=subscription_id,json=subscriptionID,proto3" json:"subscription_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1943,7 +1943,7 @@ func (*ArchiveSubscriptionResponse) Descriptor() ([]byte, []int) {
 
 type GetPurchaseRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PurchaseId    string                 `protobuf:"bytes,1,opt,name=purchase_id,json=purchaseId,proto3" json:"purchase_id,omitempty"`
+	PurchaseId    string                 `protobuf:"bytes,1,opt,name=purchase_id,json=purchaseID,proto3" json:"purchase_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2127,7 +2127,7 @@ func (x *ListPurchasesResponse) GetResults() []*Purchase {
 
 type ListPurchasesForAccountRequest struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
-	AccountId     string                   `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	AccountId     string                   `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2231,7 +2231,7 @@ func (x *ListPurchasesForAccountResponse) GetResults() []*Purchase {
 
 type ArchivePurchaseRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PurchaseId    string                 `protobuf:"bytes,1,opt,name=purchase_id,json=purchaseId,proto3" json:"purchase_id,omitempty"`
+	PurchaseId    string                 `protobuf:"bytes,1,opt,name=purchase_id,json=purchaseID,proto3" json:"purchase_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2311,7 +2311,7 @@ func (*ArchivePurchaseResponse) Descriptor() ([]byte, []int) {
 
 type GetTransactionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TransactionId string                 `protobuf:"bytes,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	TransactionId string                 `protobuf:"bytes,1,opt,name=transaction_id,json=transactionID,proto3" json:"transaction_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2495,7 +2495,7 @@ func (x *ListTransactionsResponse) GetResults() []*Transaction {
 
 type ListTransactionsForAccountRequest struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
-	AccountId     string                   `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	AccountId     string                   `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2599,7 +2599,7 @@ func (x *ListTransactionsForAccountResponse) GetResults() []*Transaction {
 
 type ArchiveTransactionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TransactionId string                 `protobuf:"bytes,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	TransactionId string                 `protobuf:"bytes,1,opt,name=transaction_id,json=transactionID,proto3" json:"transaction_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2693,7 +2693,7 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\vdescription\x18\x06 \x01(\tR\vdescription\x12B\n" +
 	"\x04kind\x18\a \x01(\x0e2..primandproper.platform.billing.v1.ProductKindR\x04kind\x12\x1a\n" +
 	"\bcurrency\x18\b \x01(\tR\bcurrency\x12.\n" +
-	"\x13external_product_id\x18\t \x01(\tR\x11externalProductId\x12!\n" +
+	"\x13external_product_id\x18\t \x01(\tR\x11externalProductID\x12!\n" +
 	"\famount_cents\x18\n" +
 	" \x01(\x03R\vamountCents\x126\n" +
 	"\x17billing_interval_months\x18\v \x01(\x03R\x15billingIntervalMonthsR\x05scope\"\x98\x04\n" +
@@ -2708,8 +2708,8 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\x02id\x18\x06 \x01(\tR\x02id\x12,\n" +
 	"\x12belongs_to_account\x18\a \x01(\tR\x10belongsToAccount\x12\x1d\n" +
 	"\n" +
-	"product_id\x18\b \x01(\tR\tproductId\x128\n" +
-	"\x18external_subscription_id\x18\t \x01(\tR\x16externalSubscriptionId\x12\x16\n" +
+	"product_id\x18\b \x01(\tR\tproductID\x128\n" +
+	"\x18external_subscription_id\x18\t \x01(\tR\x16externalSubscriptionID\x12\x16\n" +
 	"\x06status\x18\n" +
 	" \x01(\tR\x06statusR\x05scope\"\xe0\x03\n" +
 	"\bPurchase\x129\n" +
@@ -2722,8 +2722,8 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\x02id\x18\x05 \x01(\tR\x02id\x12,\n" +
 	"\x12belongs_to_account\x18\x06 \x01(\tR\x10belongsToAccount\x12\x1d\n" +
 	"\n" +
-	"product_id\x18\a \x01(\tR\tproductId\x126\n" +
-	"\x17external_transaction_id\x18\b \x01(\tR\x15externalTransactionId\x12\x1a\n" +
+	"product_id\x18\a \x01(\tR\tproductID\x126\n" +
+	"\x17external_transaction_id\x18\b \x01(\tR\x15externalTransactionID\x12\x1a\n" +
 	"\bcurrency\x18\t \x01(\tR\bcurrency\x12!\n" +
 	"\famount_cents\x18\n" +
 	" \x01(\x03R\vamountCentsR\x05scope\"\x9d\x04\n" +
@@ -2735,10 +2735,10 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"archivedAt\x12\x0e\n" +
 	"\x02id\x18\x04 \x01(\tR\x02id\x12,\n" +
 	"\x12belongs_to_account\x18\x05 \x01(\tR\x10belongsToAccount\x12'\n" +
-	"\x0fsubscription_id\x18\x06 \x01(\tR\x0esubscriptionId\x12\x1f\n" +
+	"\x0fsubscription_id\x18\x06 \x01(\tR\x0esubscriptionID\x12\x1f\n" +
 	"\vpurchase_id\x18\a \x01(\tR\n" +
-	"purchaseId\x126\n" +
-	"\x17external_transaction_id\x18\b \x01(\tR\x15externalTransactionId\x12L\n" +
+	"purchaseID\x126\n" +
+	"\x17external_transaction_id\x18\b \x01(\tR\x15externalTransactionID\x12L\n" +
 	"\x06status\x18\t \x01(\x0e24.primandproper.platform.billing.v1.TransactionStatusR\x06status\x12\x1a\n" +
 	"\bcurrency\x18\n" +
 	" \x01(\tR\bcurrency\x12!\n" +
@@ -2748,7 +2748,7 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12B\n" +
 	"\x04kind\x18\x03 \x01(\x0e2..primandproper.platform.billing.v1.ProductKindR\x04kind\x12\x1a\n" +
 	"\bcurrency\x18\x04 \x01(\tR\bcurrency\x12.\n" +
-	"\x13external_product_id\x18\x05 \x01(\tR\x11externalProductId\x12!\n" +
+	"\x13external_product_id\x18\x05 \x01(\tR\x11externalProductID\x12!\n" +
 	"\famount_cents\x18\x06 \x01(\x03R\vamountCents\x126\n" +
 	"\x17billing_interval_months\x18\a \x01(\x03R\x15billingIntervalMonthsR\x05scope\"\xbc\x02\n" +
 	"\x12ProductUpdateInput\x12\x12\n" +
@@ -2756,7 +2756,7 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12B\n" +
 	"\x04kind\x18\x03 \x01(\x0e2..primandproper.platform.billing.v1.ProductKindR\x04kind\x12\x1a\n" +
 	"\bcurrency\x18\x04 \x01(\tR\bcurrency\x12.\n" +
-	"\x13external_product_id\x18\x05 \x01(\tR\x11externalProductId\x12!\n" +
+	"\x13external_product_id\x18\x05 \x01(\tR\x11externalProductID\x12!\n" +
 	"\famount_cents\x18\x06 \x01(\x03R\vamountCents\x126\n" +
 	"\x17billing_interval_months\x18\a \x01(\x03R\x15billingIntervalMonthsR\x05scope\"l\n" +
 	"\x14CreateProductRequest\x12M\n" +
@@ -2765,7 +2765,7 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\x06result\x18\x01 \x01(\v2*.primandproper.platform.billing.v1.ProductR\x06resultR\x05scope\"9\n" +
 	"\x11GetProductRequest\x12\x1d\n" +
 	"\n" +
-	"product_id\x18\x01 \x01(\tR\tproductIdR\x05scope\"_\n" +
+	"product_id\x18\x01 \x01(\tR\tproductIDR\x05scope\"_\n" +
 	"\x12GetProductResponse\x12B\n" +
 	"\x06result\x18\x01 \x01(\v2*.primandproper.platform.billing.v1.ProductR\x06resultR\x05scope\"f\n" +
 	"\x13ListProductsRequest\x12H\n" +
@@ -2777,16 +2777,16 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\aresults\x18\x02 \x03(\v2*.primandproper.platform.billing.v1.ProductR\aresultsR\x05scope\"\x89\x01\n" +
 	"\x14UpdateProductRequest\x12\x1d\n" +
 	"\n" +
-	"product_id\x18\x01 \x01(\tR\tproductId\x12K\n" +
+	"product_id\x18\x01 \x01(\tR\tproductID\x12K\n" +
 	"\x05input\x18\x02 \x01(\v25.primandproper.platform.billing.v1.ProductUpdateInputR\x05inputR\x05scope\"b\n" +
 	"\x15UpdateProductResponse\x12B\n" +
 	"\x06result\x18\x01 \x01(\v2*.primandproper.platform.billing.v1.ProductR\x06resultR\x05scope\"=\n" +
 	"\x15ArchiveProductRequest\x12\x1d\n" +
 	"\n" +
-	"product_id\x18\x01 \x01(\tR\tproductIdR\x05scope\"\x1f\n" +
+	"product_id\x18\x01 \x01(\tR\tproductIDR\x05scope\"\x1f\n" +
 	"\x16ArchiveProductResponseR\x05scope\"H\n" +
 	"\x16GetSubscriptionRequest\x12'\n" +
-	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionIdR\x05scope\"i\n" +
+	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionIDR\x05scope\"i\n" +
 	"\x17GetSubscriptionResponse\x12G\n" +
 	"\x06result\x18\x01 \x01(\v2/.primandproper.platform.billing.v1.SubscriptionR\x06resultR\x05scope\"k\n" +
 	"\x18ListSubscriptionsRequest\x12H\n" +
@@ -2798,7 +2798,7 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\aresults\x18\x02 \x03(\v2/.primandproper.platform.billing.v1.SubscriptionR\aresultsR\x05scope\"\x94\x01\n" +
 	"\"ListSubscriptionsForAccountRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\x12H\n" +
+	"account_id\x18\x01 \x01(\tR\taccountID\x12H\n" +
 	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xc8\x01\n" +
 	"#ListSubscriptionsForAccountResponse\x12O\n" +
 	"\n" +
@@ -2807,7 +2807,7 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\aresults\x18\x02 \x03(\v2/.primandproper.platform.billing.v1.SubscriptionR\aresultsR\x05scope\"\x91\x01\n" +
 	"\x1fListCurrentSubscriptionsRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\x12H\n" +
+	"account_id\x18\x01 \x01(\tR\taccountID\x12H\n" +
 	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xc5\x01\n" +
 	" ListCurrentSubscriptionsResponse\x12O\n" +
 	"\n" +
@@ -2815,11 +2815,11 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"pagination\x12I\n" +
 	"\aresults\x18\x02 \x03(\v2/.primandproper.platform.billing.v1.SubscriptionR\aresultsR\x05scope\"L\n" +
 	"\x1aArchiveSubscriptionRequest\x12'\n" +
-	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionIdR\x05scope\"$\n" +
+	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionIDR\x05scope\"$\n" +
 	"\x1bArchiveSubscriptionResponseR\x05scope\"<\n" +
 	"\x12GetPurchaseRequest\x12\x1f\n" +
 	"\vpurchase_id\x18\x01 \x01(\tR\n" +
-	"purchaseIdR\x05scope\"a\n" +
+	"purchaseIDR\x05scope\"a\n" +
 	"\x13GetPurchaseResponse\x12C\n" +
 	"\x06result\x18\x01 \x01(\v2+.primandproper.platform.billing.v1.PurchaseR\x06resultR\x05scope\"g\n" +
 	"\x14ListPurchasesRequest\x12H\n" +
@@ -2831,7 +2831,7 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.billing.v1.PurchaseR\aresultsR\x05scope\"\x90\x01\n" +
 	"\x1eListPurchasesForAccountRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\x12H\n" +
+	"account_id\x18\x01 \x01(\tR\taccountID\x12H\n" +
 	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xc0\x01\n" +
 	"\x1fListPurchasesForAccountResponse\x12O\n" +
 	"\n" +
@@ -2840,10 +2840,10 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.billing.v1.PurchaseR\aresultsR\x05scope\"@\n" +
 	"\x16ArchivePurchaseRequest\x12\x1f\n" +
 	"\vpurchase_id\x18\x01 \x01(\tR\n" +
-	"purchaseIdR\x05scope\" \n" +
+	"purchaseIDR\x05scope\" \n" +
 	"\x17ArchivePurchaseResponseR\x05scope\"E\n" +
 	"\x15GetTransactionRequest\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionIdR\x05scope\"g\n" +
+	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionIDR\x05scope\"g\n" +
 	"\x16GetTransactionResponse\x12F\n" +
 	"\x06result\x18\x01 \x01(\v2..primandproper.platform.billing.v1.TransactionR\x06resultR\x05scope\"j\n" +
 	"\x17ListTransactionsRequest\x12H\n" +
@@ -2855,7 +2855,7 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"\aresults\x18\x02 \x03(\v2..primandproper.platform.billing.v1.TransactionR\aresultsR\x05scope\"\x93\x01\n" +
 	"!ListTransactionsForAccountRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\x12H\n" +
+	"account_id\x18\x01 \x01(\tR\taccountID\x12H\n" +
 	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xc6\x01\n" +
 	"\"ListTransactionsForAccountResponse\x12O\n" +
 	"\n" +
@@ -2863,7 +2863,7 @@ const file_primandproper_platform_billing_v1_billing_proto_rawDesc = "" +
 	"pagination\x12H\n" +
 	"\aresults\x18\x02 \x03(\v2..primandproper.platform.billing.v1.TransactionR\aresultsR\x05scope\"I\n" +
 	"\x19ArchiveTransactionRequest\x12%\n" +
-	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionIdR\x05scope\"#\n" +
+	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionIDR\x05scope\"#\n" +
 	"\x1aArchiveTransactionResponseR\x05scope*b\n" +
 	"\vProductKind\x12\x1c\n" +
 	"\x18PRODUCT_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +

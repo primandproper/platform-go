@@ -131,7 +131,7 @@ message Entry {
   string resource_type = 4;
 
   // resource_id identifies the instance acted on.
-  string resource_id = 5;
+  string resource_id = 5 [json_name = "resourceID"];
 
   // actor is who did it.
   Actor actor = 6;
@@ -172,14 +172,14 @@ message Entry {
 // wanting the union of two event types runs two reads.
 message EntryQuery {
   // actor_id restricts to one principal.
-  string actor_id = 1;
+  string actor_id = 1 [json_name = "actorID"];
 
   // actor_type restricts to one kind of principal.
   string actor_type = 2;
 
   // resource_id restricts to one instance. Pair it with resource_type:
   // instance ids are rarely unique across types.
-  string resource_id = 3;
+  string resource_id = 3 [json_name = "resourceID"];
 
   // resource_type restricts to one kind of resource.
   string resource_type = 4;
@@ -215,7 +215,7 @@ enum BreakReason {
 message Break {
   // entry_id is the entry the break was detected at. It is empty for
   // BREAK_REASON_MISSING_ENTRY, where the whole point is that there is no row.
-  string entry_id = 1;
+  string entry_id = 1 [json_name = "entryID"];
 
   // reason is what kind of break it is.
   BreakReason reason = 2;
@@ -259,7 +259,7 @@ message VerificationResult {
 }
 
 message GetEntryRequest {
-  string entry_id = 1;
+  string entry_id = 1 [json_name = "entryID"];
 
   reserved "scope";
 }

@@ -645,7 +645,7 @@ func (x *ListUnreadNotificationsResponse) GetResults() []*Notification {
 
 type GetNotificationRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	NotificationId string                 `protobuf:"bytes,1,opt,name=notification_id,json=notificationId,proto3" json:"notification_id,omitempty"`
+	NotificationId string                 `protobuf:"bytes,1,opt,name=notification_id,json=notificationID,proto3" json:"notification_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -733,7 +733,7 @@ func (x *GetNotificationResponse) GetResult() *Notification {
 
 type MarkNotificationReadRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	NotificationId string                 `protobuf:"bytes,1,opt,name=notification_id,json=notificationId,proto3" json:"notification_id,omitempty"`
+	NotificationId string                 `protobuf:"bytes,1,opt,name=notification_id,json=notificationID,proto3" json:"notification_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -896,7 +896,7 @@ func (x *MarkAllNotificationsReadResponse) GetMarked() int64 {
 
 type ArchiveNotificationRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	NotificationId string                 `protobuf:"bytes,1,opt,name=notification_id,json=notificationId,proto3" json:"notification_id,omitempty"`
+	NotificationId string                 `protobuf:"bytes,1,opt,name=notification_id,json=notificationID,proto3" json:"notification_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1160,7 +1160,7 @@ func (x *ListDevicesResponse) GetResults() []*Device {
 
 type RevokeDeviceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceID,proto3" json:"device_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1280,17 +1280,17 @@ const file_primandproper_platform_notifications_v1_notifications_proto_rawDesc =
 	"pagination\x12O\n" +
 	"\aresults\x18\x02 \x03(\v25.primandproper.platform.notifications.v1.NotificationR\aresults\"S\n" +
 	"\x16GetNotificationRequest\x12'\n" +
-	"\x0fnotification_id\x18\x01 \x01(\tR\x0enotificationIdR\x05scopeR\tprincipal\"h\n" +
+	"\x0fnotification_id\x18\x01 \x01(\tR\x0enotificationIDR\x05scopeR\tprincipal\"h\n" +
 	"\x17GetNotificationResponse\x12M\n" +
 	"\x06result\x18\x01 \x01(\v25.primandproper.platform.notifications.v1.NotificationR\x06result\"X\n" +
 	"\x1bMarkNotificationReadRequest\x12'\n" +
-	"\x0fnotification_id\x18\x01 \x01(\tR\x0enotificationIdR\x05scopeR\tprincipal\"\x1e\n" +
+	"\x0fnotification_id\x18\x01 \x01(\tR\x0enotificationIDR\x05scopeR\tprincipal\"\x1e\n" +
 	"\x1cMarkNotificationReadResponse\"3\n" +
 	"\x1fMarkAllNotificationsReadRequestR\x05scopeR\tprincipal\":\n" +
 	" MarkAllNotificationsReadResponse\x12\x16\n" +
 	"\x06marked\x18\x01 \x01(\x03R\x06marked\"W\n" +
 	"\x1aArchiveNotificationRequest\x12'\n" +
-	"\x0fnotification_id\x18\x01 \x01(\tR\x0enotificationIdR\x05scopeR\tprincipal\"\x1d\n" +
+	"\x0fnotification_id\x18\x01 \x01(\tR\x0enotificationIDR\x05scopeR\tprincipal\"\x1d\n" +
 	"\x1bArchiveNotificationResponse\"\x81\x01\n" +
 	"\x15RegisterDeviceRequest\x12V\n" +
 	"\x05input\x18\x01 \x01(\v2@.primandproper.platform.notifications.v1.DeviceRegistrationInputR\x05inputR\x05scopeR\tprincipal\"a\n" +
@@ -1304,7 +1304,7 @@ const file_primandproper_platform_notifications_v1_notifications_proto_rawDesc =
 	"pagination\x12I\n" +
 	"\aresults\x18\x02 \x03(\v2/.primandproper.platform.notifications.v1.DeviceR\aresults\"D\n" +
 	"\x13RevokeDeviceRequest\x12\x1b\n" +
-	"\tdevice_id\x18\x01 \x01(\tR\bdeviceIdR\x05scopeR\tprincipal\"\x16\n" +
+	"\tdevice_id\x18\x01 \x01(\tR\bdeviceIDR\x05scopeR\tprincipal\"\x16\n" +
 	"\x14RevokeDeviceResponse*g\n" +
 	"\x0eDevicePlatform\x12\x1f\n" +
 	"\x1bDEVICE_PLATFORM_UNSPECIFIED\x10\x00\x12\x17\n" +

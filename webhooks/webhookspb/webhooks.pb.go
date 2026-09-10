@@ -295,7 +295,7 @@ type WebhookSubscription struct {
 	// id is the row, and is what ArchiveSubscription names.
 	Id string `protobuf:"bytes,4,opt,name=id,proto3" json:"id,omitempty"`
 	// endpoint_id is the endpoint that subscribed.
-	EndpointId string `protobuf:"bytes,5,opt,name=endpoint_id,json=endpointId,proto3" json:"endpoint_id,omitempty"`
+	EndpointId string `protobuf:"bytes,5,opt,name=endpoint_id,json=endpointID,proto3" json:"endpoint_id,omitempty"`
 	// event_type is the catalog event type subscribed to, as an opaque string.
 	// See the file comment for why it is not an enum.
 	EventType     string `protobuf:"bytes,6,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
@@ -388,9 +388,9 @@ type WebhookAttempt struct {
 	// id is the row.
 	Id string `protobuf:"bytes,3,opt,name=id,proto3" json:"id,omitempty"`
 	// delivery_id is the delivery this attempted, and is what ListAttempts names.
-	DeliveryId string `protobuf:"bytes,4,opt,name=delivery_id,json=deliveryId,proto3" json:"delivery_id,omitempty"`
+	DeliveryId string `protobuf:"bytes,4,opt,name=delivery_id,json=deliveryID,proto3" json:"delivery_id,omitempty"`
 	// endpoint_id is the endpoint it was sent to.
-	EndpointId string `protobuf:"bytes,5,opt,name=endpoint_id,json=endpointId,proto3" json:"endpoint_id,omitempty"`
+	EndpointId string `protobuf:"bytes,5,opt,name=endpoint_id,json=endpointID,proto3" json:"endpoint_id,omitempty"`
 	// error is the transport or status error, rendered, and empty on success. It
 	// is a string because it is stored and read by a human rather than re-wrapped
 	// by a client.
@@ -771,7 +771,7 @@ func (x *SaveEndpointResponse) GetResult() *WebhookEndpoint {
 
 type GetEndpointRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	EndpointId    string                 `protobuf:"bytes,1,opt,name=endpoint_id,json=endpointId,proto3" json:"endpoint_id,omitempty"`
+	EndpointId    string                 `protobuf:"bytes,1,opt,name=endpoint_id,json=endpointID,proto3" json:"endpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -955,7 +955,7 @@ func (x *ListEndpointsResponse) GetResults() []*WebhookEndpoint {
 
 type ArchiveEndpointRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	EndpointId    string                 `protobuf:"bytes,1,opt,name=endpoint_id,json=endpointId,proto3" json:"endpoint_id,omitempty"`
+	EndpointId    string                 `protobuf:"bytes,1,opt,name=endpoint_id,json=endpointID,proto3" json:"endpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1035,7 +1035,7 @@ func (*ArchiveEndpointResponse) Descriptor() ([]byte, []int) {
 
 type AddSubscriptionRequest struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
-	EndpointId string                 `protobuf:"bytes,1,opt,name=endpoint_id,json=endpointId,proto3" json:"endpoint_id,omitempty"`
+	EndpointId string                 `protobuf:"bytes,1,opt,name=endpoint_id,json=endpointID,proto3" json:"endpoint_id,omitempty"`
 	// event_type must be in the consumer's catalog. It is idempotent on the
 	// (endpoint, event type) pair: subscribing to something the endpoint already
 	// subscribes to returns the existing row, and re-subscribing to something it
@@ -1135,7 +1135,7 @@ func (x *AddSubscriptionResponse) GetResult() *WebhookSubscription {
 
 type GetSubscriptionRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	SubscriptionId string                 `protobuf:"bytes,1,opt,name=subscription_id,json=subscriptionId,proto3" json:"subscription_id,omitempty"`
+	SubscriptionId string                 `protobuf:"bytes,1,opt,name=subscription_id,json=subscriptionID,proto3" json:"subscription_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1223,7 +1223,7 @@ func (x *GetSubscriptionResponse) GetResult() *WebhookSubscription {
 
 type ListSubscriptionsRequest struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
-	EndpointId    string                   `protobuf:"bytes,1,opt,name=endpoint_id,json=endpointId,proto3" json:"endpoint_id,omitempty"`
+	EndpointId    string                   `protobuf:"bytes,1,opt,name=endpoint_id,json=endpointID,proto3" json:"endpoint_id,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1327,7 +1327,7 @@ func (x *ListSubscriptionsResponse) GetResults() []*WebhookSubscription {
 
 type ArchiveSubscriptionRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	SubscriptionId string                 `protobuf:"bytes,1,opt,name=subscription_id,json=subscriptionId,proto3" json:"subscription_id,omitempty"`
+	SubscriptionId string                 `protobuf:"bytes,1,opt,name=subscription_id,json=subscriptionID,proto3" json:"subscription_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1407,7 +1407,7 @@ func (*ArchiveSubscriptionResponse) Descriptor() ([]byte, []int) {
 
 type ListAttemptsRequest struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
-	DeliveryId    string                   `protobuf:"bytes,1,opt,name=delivery_id,json=deliveryId,proto3" json:"delivery_id,omitempty"`
+	DeliveryId    string                   `protobuf:"bytes,1,opt,name=delivery_id,json=deliveryID,proto3" json:"delivery_id,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1541,7 +1541,7 @@ const file_primandproper_platform_webhooks_v1_webhooks_proto_rawDesc = "" +
 	"archivedAt\x12\x0e\n" +
 	"\x02id\x18\x04 \x01(\tR\x02id\x12\x1f\n" +
 	"\vendpoint_id\x18\x05 \x01(\tR\n" +
-	"endpointId\x12\x1d\n" +
+	"endpointID\x12\x1d\n" +
 	"\n" +
 	"event_type\x18\x06 \x01(\tR\teventTypeR\x05scope\"\xb7\x02\n" +
 	"\x0eWebhookAttempt\x129\n" +
@@ -1550,9 +1550,9 @@ const file_primandproper_platform_webhooks_v1_webhooks_proto_rawDesc = "" +
 	"\bduration\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\bduration\x12\x0e\n" +
 	"\x02id\x18\x03 \x01(\tR\x02id\x12\x1f\n" +
 	"\vdelivery_id\x18\x04 \x01(\tR\n" +
-	"deliveryId\x12\x1f\n" +
+	"deliveryID\x12\x1f\n" +
 	"\vendpoint_id\x18\x05 \x01(\tR\n" +
-	"endpointId\x12\x14\n" +
+	"endpointID\x12\x14\n" +
 	"\x05error\x18\x06 \x01(\tR\x05error\x12\x1f\n" +
 	"\vstatus_code\x18\a \x01(\x05R\n" +
 	"statusCode\x12#\n" +
@@ -1579,7 +1579,7 @@ const file_primandproper_platform_webhooks_v1_webhooks_proto_rawDesc = "" +
 	"\x06result\x18\x01 \x01(\v23.primandproper.platform.webhooks.v1.WebhookEndpointR\x06result\"<\n" +
 	"\x12GetEndpointRequest\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
-	"endpointIdR\x05scope\"b\n" +
+	"endpointIDR\x05scope\"b\n" +
 	"\x13GetEndpointResponse\x12K\n" +
 	"\x06result\x18\x01 \x01(\v23.primandproper.platform.webhooks.v1.WebhookEndpointR\x06result\"g\n" +
 	"\x14ListEndpointsRequest\x12H\n" +
@@ -1591,22 +1591,22 @@ const file_primandproper_platform_webhooks_v1_webhooks_proto_rawDesc = "" +
 	"\aresults\x18\x02 \x03(\v23.primandproper.platform.webhooks.v1.WebhookEndpointR\aresults\"@\n" +
 	"\x16ArchiveEndpointRequest\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
-	"endpointIdR\x05scope\"\x19\n" +
+	"endpointIDR\x05scope\"\x19\n" +
 	"\x17ArchiveEndpointResponse\"_\n" +
 	"\x16AddSubscriptionRequest\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
-	"endpointId\x12\x1d\n" +
+	"endpointID\x12\x1d\n" +
 	"\n" +
 	"event_type\x18\x02 \x01(\tR\teventTypeR\x05scope\"j\n" +
 	"\x17AddSubscriptionResponse\x12O\n" +
 	"\x06result\x18\x01 \x01(\v27.primandproper.platform.webhooks.v1.WebhookSubscriptionR\x06result\"H\n" +
 	"\x16GetSubscriptionRequest\x12'\n" +
-	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionIdR\x05scope\"j\n" +
+	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionIDR\x05scope\"j\n" +
 	"\x17GetSubscriptionResponse\x12O\n" +
 	"\x06result\x18\x01 \x01(\v27.primandproper.platform.webhooks.v1.WebhookSubscriptionR\x06result\"\x8c\x01\n" +
 	"\x18ListSubscriptionsRequest\x12\x1f\n" +
 	"\vendpoint_id\x18\x01 \x01(\tR\n" +
-	"endpointId\x12H\n" +
+	"endpointID\x12H\n" +
 	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xbf\x01\n" +
 	"\x19ListSubscriptionsResponse\x12O\n" +
 	"\n" +
@@ -1614,11 +1614,11 @@ const file_primandproper_platform_webhooks_v1_webhooks_proto_rawDesc = "" +
 	"pagination\x12Q\n" +
 	"\aresults\x18\x02 \x03(\v27.primandproper.platform.webhooks.v1.WebhookSubscriptionR\aresults\"L\n" +
 	"\x1aArchiveSubscriptionRequest\x12'\n" +
-	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionIdR\x05scope\"\x1d\n" +
+	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionIDR\x05scope\"\x1d\n" +
 	"\x1bArchiveSubscriptionResponse\"\x87\x01\n" +
 	"\x13ListAttemptsRequest\x12\x1f\n" +
 	"\vdelivery_id\x18\x01 \x01(\tR\n" +
-	"deliveryId\x12H\n" +
+	"deliveryID\x12H\n" +
 	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xb5\x01\n" +
 	"\x14ListAttemptsResponse\x12O\n" +
 	"\n" +

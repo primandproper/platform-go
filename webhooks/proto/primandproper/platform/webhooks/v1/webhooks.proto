@@ -184,7 +184,7 @@ message WebhookSubscription {
   string id = 4;
 
   // endpoint_id is the endpoint that subscribed.
-  string endpoint_id = 5;
+  string endpoint_id = 5 [json_name = "endpointID"];
 
   // event_type is the catalog event type subscribed to, as an opaque string.
   // See the file comment for why it is not an enum.
@@ -208,10 +208,10 @@ message WebhookAttempt {
   string id = 3;
 
   // delivery_id is the delivery this attempted, and is what ListAttempts names.
-  string delivery_id = 4;
+  string delivery_id = 4 [json_name = "deliveryID"];
 
   // endpoint_id is the endpoint it was sent to.
-  string endpoint_id = 5;
+  string endpoint_id = 5 [json_name = "endpointID"];
 
   // error is the transport or status error, rendered, and empty on success. It
   // is a string because it is stored and read by a human rather than re-wrapped
@@ -300,7 +300,7 @@ message SaveEndpointResponse { WebhookEndpoint result = 1; }
 message GetEndpointRequest {
   reserved "scope";
 
-  string endpoint_id = 1;
+  string endpoint_id = 1 [json_name = "endpointID"];
 }
 message GetEndpointResponse { WebhookEndpoint result = 1; }
 
@@ -317,14 +317,14 @@ message ListEndpointsResponse {
 message ArchiveEndpointRequest {
   reserved "scope";
 
-  string endpoint_id = 1;
+  string endpoint_id = 1 [json_name = "endpointID"];
 }
 message ArchiveEndpointResponse {}
 
 message AddSubscriptionRequest {
   reserved "scope";
 
-  string endpoint_id = 1;
+  string endpoint_id = 1 [json_name = "endpointID"];
 
   // event_type must be in the consumer's catalog. It is idempotent on the
   // (endpoint, event type) pair: subscribing to something the endpoint already
@@ -337,14 +337,14 @@ message AddSubscriptionResponse { WebhookSubscription result = 1; }
 message GetSubscriptionRequest {
   reserved "scope";
 
-  string subscription_id = 1;
+  string subscription_id = 1 [json_name = "subscriptionID"];
 }
 message GetSubscriptionResponse { WebhookSubscription result = 1; }
 
 message ListSubscriptionsRequest {
   reserved "scope";
 
-  string endpoint_id = 1;
+  string endpoint_id = 1 [json_name = "endpointID"];
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 message ListSubscriptionsResponse {
@@ -355,14 +355,14 @@ message ListSubscriptionsResponse {
 message ArchiveSubscriptionRequest {
   reserved "scope";
 
-  string subscription_id = 1;
+  string subscription_id = 1 [json_name = "subscriptionID"];
 }
 message ArchiveSubscriptionResponse {}
 
 message ListAttemptsRequest {
   reserved "scope";
 
-  string delivery_id = 1;
+  string delivery_id = 1 [json_name = "deliveryID"];
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 message ListAttemptsResponse {

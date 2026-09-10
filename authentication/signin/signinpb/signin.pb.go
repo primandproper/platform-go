@@ -128,7 +128,7 @@ type Credentials struct {
 	// the user's default account. An account the user is not a live member of is
 	// refused rather than honoured, which is the check that stops a client
 	// choosing whose data its token reaches.
-	ActiveAccountId string `protobuf:"bytes,5,opt,name=active_account_id,json=activeAccountId,proto3" json:"active_account_id,omitempty"`
+	ActiveAccountId string `protobuf:"bytes,5,opt,name=active_account_id,json=activeAccountID,proto3" json:"active_account_id,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -210,7 +210,7 @@ type IssuedToken struct {
 	Token string `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
 	// token_id is the issuer's "jti": the handle a revocation list names, and the
 	// one part of this message safe to record.
-	TokenId string `protobuf:"bytes,2,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"`
+	TokenId string `protobuf:"bytes,2,opt,name=token_id,json=tokenID,proto3" json:"token_id,omitempty"`
 	// expires_at is when the token stops being accepted, as the service asked for
 	// it.
 	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
@@ -218,7 +218,7 @@ type IssuedToken struct {
 	// request named, or the user's default. It is here as well as in the token's
 	// own claims so that a client which cannot parse the token still knows which
 	// account it is holding one for.
-	ActiveAccountId string `protobuf:"bytes,4,opt,name=active_account_id,json=activeAccountId,proto3" json:"active_account_id,omitempty"`
+	ActiveAccountId string `protobuf:"bytes,4,opt,name=active_account_id,json=activeAccountID,proto3" json:"active_account_id,omitempty"`
 	// administrative reports whether this token came through the administrative
 	// door, which typically means a shorter lifetime.
 	Administrative bool `protobuf:"varint,5,opt,name=administrative,proto3" json:"administrative,omitempty"`
@@ -298,9 +298,9 @@ type AuthStatus struct {
 	// user is the caller, redacted, exactly as identity returns them.
 	User *identitypb.User `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
 	// active_account_id is the account this caller's requests are against.
-	ActiveAccountId string `protobuf:"bytes,2,opt,name=active_account_id,json=activeAccountId,proto3" json:"active_account_id,omitempty"`
+	ActiveAccountId string `protobuf:"bytes,2,opt,name=active_account_id,json=activeAccountID,proto3" json:"active_account_id,omitempty"`
 	// account_ids is every account they are a live member of, default first.
-	AccountIds []string `protobuf:"bytes,3,rep,name=account_ids,json=accountIds,proto3" json:"account_ids,omitempty"`
+	AccountIds []string `protobuf:"bytes,3,rep,name=account_ids,json=accountIDs,proto3" json:"account_ids,omitempty"`
 	// has_password reports whether they hold a password credential at all. A
 	// passwordless user -- registered with a passkey, or federated -- reports
 	// false, and a client offering them a change-password form is offering them a
@@ -1079,20 +1079,20 @@ const file_primandproper_platform_signin_v1_signin_proto_rawDesc = "" +
 	"\remail_address\x18\x02 \x01(\tR\femailAddress\x12\x1a\n" +
 	"\bpassword\x18\x03 \x01(\tR\bpassword\x12\x1b\n" +
 	"\ttotp_code\x18\x04 \x01(\tR\btotpCode\x12*\n" +
-	"\x11active_account_id\x18\x05 \x01(\tR\x0factiveAccountIdR\x05scope\"\xd4\x01\n" +
+	"\x11active_account_id\x18\x05 \x01(\tR\x0factiveAccountIDR\x05scope\"\xd4\x01\n" +
 	"\vIssuedToken\x12\x14\n" +
 	"\x05token\x18\x01 \x01(\tR\x05token\x12\x19\n" +
-	"\btoken_id\x18\x02 \x01(\tR\atokenId\x129\n" +
+	"\btoken_id\x18\x02 \x01(\tR\atokenID\x129\n" +
 	"\n" +
 	"expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12*\n" +
-	"\x11active_account_id\x18\x04 \x01(\tR\x0factiveAccountId\x12&\n" +
+	"\x11active_account_id\x18\x04 \x01(\tR\x0factiveAccountID\x12&\n" +
 	"\x0eadministrative\x18\x05 \x01(\bR\x0eadministrativeR\x05scope\"\xe1\x02\n" +
 	"\n" +
 	"AuthStatus\x12<\n" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\x12*\n" +
-	"\x11active_account_id\x18\x02 \x01(\tR\x0factiveAccountId\x12\x1f\n" +
+	"\x11active_account_id\x18\x02 \x01(\tR\x0factiveAccountID\x12\x1f\n" +
 	"\vaccount_ids\x18\x03 \x03(\tR\n" +
-	"accountIds\x12!\n" +
+	"accountIDs\x12!\n" +
 	"\fhas_password\x18\x04 \x01(\bR\vhasPassword\x12.\n" +
 	"\x13two_factor_enrolled\x18\x05 \x01(\bR\x11twoFactorEnrolled\x128\n" +
 	"\x18requires_password_change\x18\x06 \x01(\bR\x16requiresPasswordChange\x124\n" +

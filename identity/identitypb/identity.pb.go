@@ -1736,7 +1736,7 @@ func (x *UpdateProfileResponse) GetUser() *User {
 
 type UpdateAccountRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	AccountId     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	AccountId     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
 	Input         *AccountUpdateInput    `protobuf:"bytes,2,opt,name=input,proto3" json:"input,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1922,7 +1922,7 @@ func (x *RecordAgreementResponse) GetUser() *User {
 
 type InviteRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
-	AccountId string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	AccountId string                 `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
 	ToEmail   string                 `protobuf:"bytes,2,opt,name=to_email,json=toEmail,proto3" json:"to_email,omitempty"`
 	ToName    string                 `protobuf:"bytes,3,opt,name=to_name,json=toName,proto3" json:"to_name,omitempty"`
 	// note is the sender's message to the recipient.
@@ -2061,7 +2061,7 @@ func (x *InviteResponse) GetInvitation() *Invitation {
 
 type AcceptInvitationRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
-	InvitationId string                 `protobuf:"bytes,1,opt,name=invitation_id,json=invitationId,proto3" json:"invitation_id,omitempty"`
+	InvitationId string                 `protobuf:"bytes,1,opt,name=invitation_id,json=invitationID,proto3" json:"invitation_id,omitempty"`
 	// token is what the link carried. It is checked against the invitation the id
 	// names, and an expired one is reported as expired rather than as absent, so
 	// the recipient can be told to ask for another.
@@ -2168,7 +2168,7 @@ func (x *AcceptInvitationResponse) GetAcceptance() *Acceptance {
 
 type RejectInvitationRequest struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
-	InvitationId string                 `protobuf:"bytes,1,opt,name=invitation_id,json=invitationId,proto3" json:"invitation_id,omitempty"`
+	InvitationId string                 `protobuf:"bytes,1,opt,name=invitation_id,json=invitationID,proto3" json:"invitation_id,omitempty"`
 	// token is required for the same reason it is on acceptance: a rejection
 	// arrives from whoever followed the link, and the link is the token. A status
 	// write addressed by id alone would let anybody holding an id answer it.
@@ -2277,7 +2277,7 @@ type CancelInvitationRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// No token: the sender never had one. They are looking at what they sent,
 	// addressed by id.
-	InvitationId  string `protobuf:"bytes,1,opt,name=invitation_id,json=invitationId,proto3" json:"invitation_id,omitempty"`
+	InvitationId  string `protobuf:"bytes,1,opt,name=invitation_id,json=invitationID,proto3" json:"invitation_id,omitempty"`
 	StatusNote    string `protobuf:"bytes,2,opt,name=status_note,json=statusNote,proto3" json:"status_note,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2373,8 +2373,8 @@ func (x *CancelInvitationResponse) GetInvitation() *Invitation {
 
 type TransferAccountOwnershipRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	AccountId      string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	NewOwnerUserId string                 `protobuf:"bytes,2,opt,name=new_owner_user_id,json=newOwnerUserId,proto3" json:"new_owner_user_id,omitempty"`
+	AccountId      string                 `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
+	NewOwnerUserId string                 `protobuf:"bytes,2,opt,name=new_owner_user_id,json=newOwnerUserID,proto3" json:"new_owner_user_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2471,7 +2471,7 @@ type SetDefaultAccountRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The user is the caller. Setting somebody else's landing account is not a
 	// thing this service does.
-	AccountId     string `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	AccountId     string `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2559,8 +2559,8 @@ func (x *SetDefaultAccountResponse) GetMembership() *Membership {
 
 type SetMembershipRolesRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
-	AccountId string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	UserId    string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	AccountId string                 `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
+	UserId    string                 `protobuf:"bytes,2,opt,name=user_id,json=userID,proto3" json:"user_id,omitempty"`
 	// roles replace rather than merge. A caller adding one reads the membership
 	// and sends the union; a merging setter cannot revoke.
 	Roles         []string `protobuf:"bytes,3,rep,name=roles,proto3" json:"roles,omitempty"`
@@ -2665,8 +2665,8 @@ func (x *SetMembershipRolesResponse) GetMembership() *Membership {
 
 type RemoveMembershipRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	AccountId     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
-	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	AccountId     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userID,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2762,7 +2762,7 @@ func (x *RemoveMembershipResponse) GetMembership() *Membership {
 
 type ArchiveUserRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userID,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2850,7 +2850,7 @@ func (x *ArchiveUserResponse) GetUser() *User {
 
 type UpdateUserAccountStatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userID,proto3" json:"user_id,omitempty"`
 	Status        AccountStatus          `protobuf:"varint,2,opt,name=status,proto3,enum=primandproper.platform.identity.v1.AccountStatus" json:"status,omitempty"`
 	Explanation   string                 `protobuf:"bytes,3,opt,name=explanation,proto3" json:"explanation,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2954,7 +2954,7 @@ func (x *UpdateUserAccountStatusResponse) GetUser() *User {
 
 type SetUserServiceRolesRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
-	UserId string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserId string                 `protobuf:"bytes,1,opt,name=user_id,json=userID,proto3" json:"user_id,omitempty"`
 	// roles replace rather than merge, for the reason SetMembershipRoles gives.
 	// This is the write that grants and withdraws operator access.
 	Roles         []string `protobuf:"bytes,2,rep,name=roles,proto3" json:"roles,omitempty"`
@@ -3055,7 +3055,7 @@ type GetPrincipalRequest struct {
 	// active_account_id names which of the caller's accounts this is about.
 	// Absent resolves to their default. An account they hold no live membership
 	// in is refused rather than answered.
-	ActiveAccountId *string `protobuf:"bytes,1,opt,name=active_account_id,json=activeAccountId,proto3,oneof" json:"active_account_id,omitempty"`
+	ActiveAccountId *string `protobuf:"bytes,1,opt,name=active_account_id,json=activeAccountID,proto3,oneof" json:"active_account_id,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -3143,7 +3143,7 @@ func (x *GetPrincipalResponse) GetPrincipal() *Principal {
 
 type GetUserRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userID,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3433,7 +3433,7 @@ func (x *SearchUsersByUsernameResponse) GetResults() []*User {
 
 type GetAccountRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	AccountId     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	AccountId     string                 `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3617,7 +3617,7 @@ func (x *ListAccountsResponse) GetResults() []*Account {
 
 type ListAccountsForUserRequest struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
-	UserId        string                   `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserId        string                   `protobuf:"bytes,1,opt,name=user_id,json=userID,proto3" json:"user_id,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3721,8 +3721,8 @@ func (x *ListAccountsForUserResponse) GetResults() []*Account {
 
 type GetMembershipRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	AccountId     string                 `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userID,proto3" json:"user_id,omitempty"`
+	AccountId     string                 `protobuf:"bytes,2,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3817,7 +3817,7 @@ func (x *GetMembershipResponse) GetMembership() *Membership {
 
 type ListMembershipsForUserRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userID,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3908,7 +3908,7 @@ func (x *ListMembershipsForUserResponse) GetResults() []*Membership {
 
 type ListAccountMembersRequest struct {
 	state         protoimpl.MessageState   `protogen:"open.v1"`
-	AccountId     string                   `protobuf:"bytes,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	AccountId     string                   `protobuf:"bytes,1,opt,name=account_id,json=accountID,proto3" json:"account_id,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -4012,7 +4012,7 @@ func (x *ListAccountMembersResponse) GetResults() []*MembershipWithUser {
 
 type GetInvitationRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	InvitationId  string                 `protobuf:"bytes,1,opt,name=invitation_id,json=invitationId,proto3" json:"invitation_id,omitempty"`
+	InvitationId  string                 `protobuf:"bytes,1,opt,name=invitation_id,json=invitationID,proto3" json:"invitation_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4446,7 +4446,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\x8a\x01\n" +
 	"\x14UpdateAccountRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\x12L\n" +
+	"account_id\x18\x01 \x01(\tR\taccountID\x12L\n" +
 	"\x05input\x18\x02 \x01(\v26.primandproper.platform.identity.v1.AccountUpdateInputR\x05inputR\x05scope\"^\n" +
 	"\x15UpdateAccountResponse\x12E\n" +
 	"\aaccount\x18\x01 \x01(\v2+.primandproper.platform.identity.v1.AccountR\aaccount\"n\n" +
@@ -4458,7 +4458,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\xce\x01\n" +
 	"\rInviteRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\x12\x19\n" +
+	"account_id\x18\x01 \x01(\tR\taccountID\x12\x19\n" +
 	"\bto_email\x18\x02 \x01(\tR\atoEmail\x12\x17\n" +
 	"\ato_name\x18\x03 \x01(\tR\x06toName\x12\x12\n" +
 	"\x04note\x18\x04 \x01(\tR\x04note\x12\x14\n" +
@@ -4470,7 +4470,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"invitation\x18\x01 \x01(\v2..primandproper.platform.identity.v1.InvitationR\n" +
 	"invitation\"|\n" +
 	"\x17AcceptInvitationRequest\x12#\n" +
-	"\rinvitation_id\x18\x01 \x01(\tR\finvitationId\x12\x14\n" +
+	"\rinvitation_id\x18\x01 \x01(\tR\finvitationID\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x1f\n" +
 	"\vstatus_note\x18\x03 \x01(\tR\n" +
 	"statusNoteR\x05scope\"j\n" +
@@ -4479,7 +4479,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"acceptance\x18\x01 \x01(\v2..primandproper.platform.identity.v1.AcceptanceR\n" +
 	"acceptance\"|\n" +
 	"\x17RejectInvitationRequest\x12#\n" +
-	"\rinvitation_id\x18\x01 \x01(\tR\finvitationId\x12\x14\n" +
+	"\rinvitation_id\x18\x01 \x01(\tR\finvitationID\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x1f\n" +
 	"\vstatus_note\x18\x03 \x01(\tR\n" +
 	"statusNoteR\x05scope\"j\n" +
@@ -4488,7 +4488,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"invitation\x18\x01 \x01(\v2..primandproper.platform.identity.v1.InvitationR\n" +
 	"invitation\"f\n" +
 	"\x17CancelInvitationRequest\x12#\n" +
-	"\rinvitation_id\x18\x01 \x01(\tR\finvitationId\x12\x1f\n" +
+	"\rinvitation_id\x18\x01 \x01(\tR\finvitationID\x12\x1f\n" +
 	"\vstatus_note\x18\x02 \x01(\tR\n" +
 	"statusNoteR\x05scope\"j\n" +
 	"\x18CancelInvitationResponse\x12N\n" +
@@ -4497,21 +4497,21 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"invitation\"r\n" +
 	"\x1fTransferAccountOwnershipRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\x12)\n" +
-	"\x11new_owner_user_id\x18\x02 \x01(\tR\x0enewOwnerUserIdR\x05scope\"i\n" +
+	"account_id\x18\x01 \x01(\tR\taccountID\x12)\n" +
+	"\x11new_owner_user_id\x18\x02 \x01(\tR\x0enewOwnerUserIDR\x05scope\"i\n" +
 	" TransferAccountOwnershipResponse\x12E\n" +
 	"\aaccount\x18\x01 \x01(\v2+.primandproper.platform.identity.v1.AccountR\aaccount\"@\n" +
 	"\x18SetDefaultAccountRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountIdR\x05scope\"k\n" +
+	"account_id\x18\x01 \x01(\tR\taccountIDR\x05scope\"k\n" +
 	"\x19SetDefaultAccountResponse\x12N\n" +
 	"\n" +
 	"membership\x18\x01 \x01(\v2..primandproper.platform.identity.v1.MembershipR\n" +
 	"membership\"p\n" +
 	"\x19SetMembershipRolesRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x14\n" +
+	"account_id\x18\x01 \x01(\tR\taccountID\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userID\x12\x14\n" +
 	"\x05roles\x18\x03 \x03(\tR\x05rolesR\x05scope\"l\n" +
 	"\x1aSetMembershipRolesResponse\x12N\n" +
 	"\n" +
@@ -4519,34 +4519,34 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"membership\"X\n" +
 	"\x17RemoveMembershipRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\x12\x17\n" +
-	"\auser_id\x18\x02 \x01(\tR\x06userIdR\x05scope\"j\n" +
+	"account_id\x18\x01 \x01(\tR\taccountID\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userIDR\x05scope\"j\n" +
 	"\x18RemoveMembershipResponse\x12N\n" +
 	"\n" +
 	"membership\x18\x01 \x01(\v2..primandproper.platform.identity.v1.MembershipR\n" +
 	"membership\"4\n" +
 	"\x12ArchiveUserRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userIdR\x05scope\"S\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userIDR\x05scope\"S\n" +
 	"\x13ArchiveUserResponse\x12<\n" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"\xad\x01\n" +
 	"\x1eUpdateUserAccountStatusRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userId\x12I\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userID\x12I\n" +
 	"\x06status\x18\x02 \x01(\x0e21.primandproper.platform.identity.v1.AccountStatusR\x06status\x12 \n" +
 	"\vexplanation\x18\x03 \x01(\tR\vexplanationR\x05scope\"_\n" +
 	"\x1fUpdateUserAccountStatusResponse\x12<\n" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"R\n" +
 	"\x1aSetUserServiceRolesRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userID\x12\x14\n" +
 	"\x05roles\x18\x02 \x03(\tR\x05rolesR\x05scope\"[\n" +
 	"\x1bSetUserServiceRolesResponse\x12<\n" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"c\n" +
 	"\x13GetPrincipalRequest\x12/\n" +
-	"\x11active_account_id\x18\x01 \x01(\tH\x00R\x0factiveAccountId\x88\x01\x01B\x14\n" +
+	"\x11active_account_id\x18\x01 \x01(\tH\x00R\x0factiveAccountID\x88\x01\x01B\x14\n" +
 	"\x12_active_account_idR\x05scope\"c\n" +
 	"\x14GetPrincipalResponse\x12K\n" +
 	"\tprincipal\x18\x01 \x01(\v2-.primandproper.platform.identity.v1.PrincipalR\tprincipal\"0\n" +
 	"\x0eGetUserRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userIdR\x05scope\"O\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userIDR\x05scope\"O\n" +
 	"\x0fGetUserResponse\x12<\n" +
 	"\x04user\x18\x01 \x01(\v2(.primandproper.platform.identity.v1.UserR\x04user\"c\n" +
 	"\x10ListUsersRequest\x12H\n" +
@@ -4566,7 +4566,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\aresults\x18\x02 \x03(\v2(.primandproper.platform.identity.v1.UserR\aresults\"9\n" +
 	"\x11GetAccountRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountIdR\x05scope\"[\n" +
+	"account_id\x18\x01 \x01(\tR\taccountIDR\x05scope\"[\n" +
 	"\x12GetAccountResponse\x12E\n" +
 	"\aaccount\x18\x01 \x01(\v2+.primandproper.platform.identity.v1.AccountR\aaccount\"f\n" +
 	"\x13ListAccountsRequest\x12H\n" +
@@ -4577,7 +4577,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"pagination\x12E\n" +
 	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.identity.v1.AccountR\aresults\"\x86\x01\n" +
 	"\x1aListAccountsForUserRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userId\x12H\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userID\x12H\n" +
 	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xb5\x01\n" +
 	"\x1bListAccountsForUserResponse\x12O\n" +
 	"\n" +
@@ -4585,20 +4585,20 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"pagination\x12E\n" +
 	"\aresults\x18\x02 \x03(\v2+.primandproper.platform.identity.v1.AccountR\aresults\"U\n" +
 	"\x14GetMembershipRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userID\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x02 \x01(\tR\taccountIdR\x05scope\"g\n" +
+	"account_id\x18\x02 \x01(\tR\taccountIDR\x05scope\"g\n" +
 	"\x15GetMembershipResponse\x12N\n" +
 	"\n" +
 	"membership\x18\x01 \x01(\v2..primandproper.platform.identity.v1.MembershipR\n" +
 	"membership\"?\n" +
 	"\x1dListMembershipsForUserRequest\x12\x17\n" +
-	"\auser_id\x18\x01 \x01(\tR\x06userIdR\x05scope\"j\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userIDR\x05scope\"j\n" +
 	"\x1eListMembershipsForUserResponse\x12H\n" +
 	"\aresults\x18\x01 \x03(\v2..primandproper.platform.identity.v1.MembershipR\aresults\"\x8b\x01\n" +
 	"\x19ListAccountMembersRequest\x12\x1d\n" +
 	"\n" +
-	"account_id\x18\x01 \x01(\tR\taccountId\x12H\n" +
+	"account_id\x18\x01 \x01(\tR\taccountID\x12H\n" +
 	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xbf\x01\n" +
 	"\x1aListAccountMembersResponse\x12O\n" +
 	"\n" +
@@ -4606,7 +4606,7 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"pagination\x12P\n" +
 	"\aresults\x18\x02 \x03(\v26.primandproper.platform.identity.v1.MembershipWithUserR\aresults\"B\n" +
 	"\x14GetInvitationRequest\x12#\n" +
-	"\rinvitation_id\x18\x01 \x01(\tR\finvitationIdR\x05scope\"g\n" +
+	"\rinvitation_id\x18\x01 \x01(\tR\finvitationIDR\x05scope\"g\n" +
 	"\x15GetInvitationResponse\x12N\n" +
 	"\n" +
 	"invitation\x18\x01 \x01(\v2..primandproper.platform.identity.v1.InvitationR\n" +

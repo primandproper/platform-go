@@ -182,6 +182,27 @@ covers every request message, the inputs a request is built from, and the
 messages a response is built from; the response wrappers hold nothing but those
 and reserve nothing.
 
+A field's JSON name is the name the Go type it renders beside already uses, which
+for an id field means pinning it. protobuf derives resourceId from resource_id
+and the Go types here tag that column `json:"resourceID"`, so a consumer serving
+one row over its own handlers and over gRPC-JSON — by grpc-gateway or protojson
+— emits two spellings of one field, and the client has to know which door it
+came through to know which one it got. It is the only place the two derivations
+disagree: resource_type is resourceType on both sides.
+
+Two of the eleven schemas pinned the overrides and nine pinned none, and the two
+were exactly the two whose grpc/ packages carry a conformance test matching Go
+tags against descriptors — which is to say the pinning was a side effect of
+being checked rather than a decision anybody took per file. The check that
+notices is not one a package can make about itself: the disagreement is between
+a Go tag in one package and a descriptor in another. internal/protoconvention is
+where all eleven are checked at once, as an equality rather than as "an id field
+carries some override", so a wrong spelling and a gratuitous one fail alongside
+a missing one. It had a deadline the reservation above did not: adding a
+json_name to a field that has shipped changes the wire spelling for every
+transcoding client, in every language a consumer generates into, and there is no
+Go major version that renames anything on the wire.
+
 A surface owes a mapper pair beside its sentinels, an entry in
 errormappers.Register, and rows in internal/sentinelmatrix, which reds until
 every exported Err in the package is recorded as mapped, platform or unhandled.

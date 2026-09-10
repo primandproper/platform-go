@@ -625,7 +625,7 @@ type SettingValue struct {
 	// is for is the cursor a page walks.
 	Id string `protobuf:"bytes,5,opt,name=id,proto3" json:"id,omitempty"`
 	// definition_id is the definition this answers.
-	DefinitionId string `protobuf:"bytes,6,opt,name=definition_id,json=definitionId,proto3" json:"definition_id,omitempty"`
+	DefinitionId string `protobuf:"bytes,6,opt,name=definition_id,json=definitionID,proto3" json:"definition_id,omitempty"`
 	// raw is the answer as it is stored. One column holds every kind.
 	Raw           string `protobuf:"bytes,7,opt,name=raw,proto3" json:"raw,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -979,7 +979,7 @@ func (x *CreateDefinitionResponse) GetResult() *SettingDefinition {
 
 type GetDefinitionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DefinitionId  string                 `protobuf:"bytes,1,opt,name=definition_id,json=definitionId,proto3" json:"definition_id,omitempty"`
+	DefinitionId  string                 `protobuf:"bytes,1,opt,name=definition_id,json=definitionID,proto3" json:"definition_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1254,7 +1254,7 @@ type UpdateDefinitionRequest struct {
 	// definition_id is the row to rewrite. It is a field of the request rather
 	// than of the input below, so there is no second place for a caller to name
 	// one and no way for the two to disagree.
-	DefinitionId  string                  `protobuf:"bytes,1,opt,name=definition_id,json=definitionId,proto3" json:"definition_id,omitempty"`
+	DefinitionId  string                  `protobuf:"bytes,1,opt,name=definition_id,json=definitionID,proto3" json:"definition_id,omitempty"`
 	Definition    *SettingDefinitionInput `protobuf:"bytes,2,opt,name=definition,proto3" json:"definition,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1353,7 +1353,7 @@ func (x *UpdateDefinitionResponse) GetResult() *SettingDefinition {
 
 type ArchiveDefinitionRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DefinitionId  string                 `protobuf:"bytes,1,opt,name=definition_id,json=definitionId,proto3" json:"definition_id,omitempty"`
+	DefinitionId  string                 `protobuf:"bytes,1,opt,name=definition_id,json=definitionID,proto3" json:"definition_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2186,7 +2186,7 @@ const file_primandproper_platform_settings_v1_settings_proto_rawDesc = "" +
 	"archivedAt\x12L\n" +
 	"\asubject\x18\x04 \x01(\v22.primandproper.platform.settings.v1.SettingSubjectR\asubject\x12\x0e\n" +
 	"\x02id\x18\x05 \x01(\tR\x02id\x12#\n" +
-	"\rdefinition_id\x18\x06 \x01(\tR\fdefinitionId\x12\x10\n" +
+	"\rdefinition_id\x18\x06 \x01(\tR\fdefinitionID\x12\x10\n" +
 	"\x03raw\x18\a \x01(\tR\x03rawR\x05scope\"\xd1\x02\n" +
 	"\x0fResolvedSetting\x12U\n" +
 	"\n" +
@@ -2212,7 +2212,7 @@ const file_primandproper_platform_settings_v1_settings_proto_rawDesc = "" +
 	"\x18CreateDefinitionResponse\x12M\n" +
 	"\x06result\x18\x01 \x01(\v25.primandproper.platform.settings.v1.SettingDefinitionR\x06result\"B\n" +
 	"\x14GetDefinitionRequest\x12#\n" +
-	"\rdefinition_id\x18\x01 \x01(\tR\fdefinitionIdR\x05scope\"f\n" +
+	"\rdefinition_id\x18\x01 \x01(\tR\fdefinitionIDR\x05scope\"f\n" +
 	"\x15GetDefinitionResponse\x12M\n" +
 	"\x06result\x18\x01 \x01(\v25.primandproper.platform.settings.v1.SettingDefinitionR\x06result\"7\n" +
 	"\x1aGetDefinitionByNameRequest\x12\x12\n" +
@@ -2227,14 +2227,14 @@ const file_primandproper_platform_settings_v1_settings_proto_rawDesc = "" +
 	"pagination\x12O\n" +
 	"\aresults\x18\x02 \x03(\v25.primandproper.platform.settings.v1.SettingDefinitionR\aresults\"\xa1\x01\n" +
 	"\x17UpdateDefinitionRequest\x12#\n" +
-	"\rdefinition_id\x18\x01 \x01(\tR\fdefinitionId\x12Z\n" +
+	"\rdefinition_id\x18\x01 \x01(\tR\fdefinitionID\x12Z\n" +
 	"\n" +
 	"definition\x18\x02 \x01(\v2:.primandproper.platform.settings.v1.SettingDefinitionInputR\n" +
 	"definitionR\x05scope\"i\n" +
 	"\x18UpdateDefinitionResponse\x12M\n" +
 	"\x06result\x18\x01 \x01(\v25.primandproper.platform.settings.v1.SettingDefinitionR\x06result\"F\n" +
 	"\x18ArchiveDefinitionRequest\x12#\n" +
-	"\rdefinition_id\x18\x01 \x01(\tR\fdefinitionIdR\x05scope\"\x1b\n" +
+	"\rdefinition_id\x18\x01 \x01(\tR\fdefinitionIDR\x05scope\"\x1b\n" +
 	"\x19ArchiveDefinitionResponse\"\x85\x01\n" +
 	"\x1eListValuesForDefinitionRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12H\n" +
