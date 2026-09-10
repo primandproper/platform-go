@@ -8,6 +8,8 @@ import (
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	auditgrpc "github.com/primandproper/platform-go/v14/audit/grpc"
 
+	"github.com/primandproper/primitives-go/tenancy"
+
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
@@ -24,7 +26,7 @@ func TestEntryRoundTrip(T *testing.T) {
 		EventType:    audit.EventUpdated,
 		ResourceType: "recipe",
 		ResourceID:   "recipe_1",
-		Scope:        "acct_ours",
+		Scope:        tenancy.Of("acct_ours"),
 		Actor:        audit.Actor{ID: "user_1", Type: audit.ActorUser, IP: "203.0.113.7"},
 		Changes: map[string]audit.Change{
 			"name":     {Old: "Soup", New: "Stew"},
@@ -60,7 +62,7 @@ func TestEntryRoundTrip(T *testing.T) {
 	// There is nothing on the message to read it from, so a client cannot be
 	// told whose log this is and a converter cannot be asked to honor a scope
 	// a request named.
-	test.EqOp(T, "", got.Scope)
+	test.EqOp(T, tenancy.Scope{}, got.Scope)
 }
 
 // TestEntryToProtoReportsAnUnrepresentableChange is the one conversion here that

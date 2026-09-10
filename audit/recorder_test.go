@@ -58,7 +58,7 @@ func TestRecorder_Record(T *testing.T) {
 		c := newStubClock()
 		r := newTestRecorder(t, c)
 
-		entry := entryFor("acct_1", "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		record(t, client, r, entry)
 
 		test.NotEq(t, "", entry.ID)
@@ -74,7 +74,7 @@ func TestRecorder_Record(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		first, second := entryFor("acct_1", "recipe_1"), entryFor("acct_1", "recipe_2")
+		first, second := entryFor(tenancy.Of("acct_1"), "recipe_1"), entryFor(tenancy.Of("acct_1"), "recipe_2")
 		record(t, client, r, first, second)
 
 		test.EqOp(t, int64(0), first.Seq)
@@ -89,7 +89,7 @@ func TestRecorder_Record(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		one, two := entryFor("acct_1", "recipe_1"), entryFor("acct_2", "recipe_2")
+		one, two := entryFor(tenancy.Of("acct_1"), "recipe_1"), entryFor(tenancy.Of("acct_2"), "recipe_2")
 		record(t, client, r, one, two)
 
 		// Both are the first entry in their own scope, so both start at zero
@@ -106,10 +106,10 @@ func TestRecorder_Record(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		first := entryFor("acct_1", "recipe_1")
+		first := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		record(t, client, r, first)
 
-		second := entryFor("acct_1", "recipe_2")
+		second := entryFor(tenancy.Of("acct_1"), "recipe_2")
 		record(t, client, r, second)
 
 		test.EqOp(t, int64(1), second.Seq)
@@ -125,7 +125,7 @@ func TestRecorder_Record(T *testing.T) {
 		boom := platformerrors.New("caller work failed")
 
 		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-			if recordErr := r.Record(t.Context(), q, entryFor("acct_1", "recipe_1")); recordErr != nil {
+			if recordErr := r.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "recipe_1")); recordErr != nil {
 				return recordErr
 			}
 
@@ -142,7 +142,7 @@ func TestRecorder_Record(T *testing.T) {
 
 		r := newTestRecorder(t, newStubClock())
 
-		test.ErrorIs(t, r.Record(t.Context(), nil, entryFor("acct_1", "recipe_1")), ErrNilExecutor)
+		test.ErrorIs(t, r.Record(t.Context(), nil, entryFor(tenancy.Of("acct_1"), "recipe_1")), ErrNilExecutor)
 	})
 
 	T.Run("accepts no entries", func(t *testing.T) {
@@ -180,6 +180,16 @@ func TestRecorder_Record(T *testing.T) {
 				entry:   &Entry{ResourceType: "recipe", EventType: EventCreated},
 				wantErr: ErrEmptyActor,
 			},
+			{
+				// The scope that names nobody. It is the entry a caller
+				// assembled from a lookup that came back empty, and recording
+				// it would file the event in the chain platform-level events
+				// belong to — an event about somebody, in the log about
+				// nobody, findable by no scoped read.
+				name:    "no scope",
+				entry:   &Entry{ResourceType: "recipe", EventType: EventCreated, Actor: Actor{ID: "u"}},
+				wantErr: tenancy.ErrNoScope,
+			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				t.Parallel()
@@ -187,7 +197,7 @@ func TestRecorder_Record(T *testing.T) {
 				client := newTestClient(t)
 				r := newTestRecorder(t, newStubClock())
 
-				good := entryFor("acct_1", "recipe_1")
+				good := entryFor(tenancy.Of("acct_1"), "recipe_1")
 
 				err := client.WithTransaction(t.Context(), func(q database.Tx) error {
 					return r.Record(t.Context(), q, good, tc.entry)
@@ -208,7 +218,7 @@ func TestRecorder_Record(T *testing.T) {
 		r := newTestRecorder(t, newStubClock())
 		reader := newTestReader(t, client)
 
-		entry := entryFor("acct_1", "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		entry.RecordedAt = time.Date(2026, time.July, 31, 12, 0, 0, 123456789, time.UTC)
 
 		record(t, client, r, entry)
@@ -237,7 +247,7 @@ func TestRecorder_Record(T *testing.T) {
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		entry := entryFor("acct_1", "recipe_1")
+		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		entry.ID = "entry_supplied"
 
 		record(t, client, r, entry)
@@ -260,7 +270,7 @@ func TestRecorder_Record(T *testing.T) {
 
 		entries := make([]*Entry, 0, count)
 		for i := range count {
-			entries = append(entries, entryFor("acct_1", fmt.Sprintf("recipe_%d", i)))
+			entries = append(entries, entryFor(tenancy.Of("acct_1"), fmt.Sprintf("recipe_%d", i)))
 		}
 
 		record(t, client, recorder, entries...)
@@ -274,13 +284,34 @@ func TestRecorder_Record(T *testing.T) {
 		test.EqOp(t, count, result.Checked)
 	})
 
+	T.Run("records the global scope as a chain of its own", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		r := newTestRecorder(t, newStubClock())
+
+		platform := entryFor(tenancy.Global(), "config_1")
+		tenant := entryFor(tenancy.Of("acct_1"), "recipe_1")
+
+		record(t, client, r, platform, tenant)
+
+		// Two chains rather than one, each starting at position zero: the
+		// global scope is a scope like any other and does not share the
+		// tenant's positions.
+		test.EqOp(t, int64(0), platform.Seq)
+		test.EqOp(t, int64(0), tenant.Seq)
+		test.EqOp(t, "", platform.PrevHash)
+		test.EqOp(t, 2, countRows(t, client, "audit_log_chains", "1=1"))
+		test.EqOp(t, 1, countRows(t, client, "audit_log_entries", "scope = ''"))
+	})
+
 	T.Run("refuses a duplicate position", func(t *testing.T) {
 		t.Parallel()
 
 		client := newTestClient(t)
 		r := newTestRecorder(t, newStubClock())
 
-		first := entryFor("acct_1", "recipe_1")
+		first := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		record(t, client, r, first)
 
 		// Simulating what a forked chain would have to write: the unique index

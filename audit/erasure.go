@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/primitives-go/database/ddl"
 	"github.com/primandproper/primitives-go/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Erasure is the audit log expressed as an erasure target: the two writes and
@@ -110,7 +111,13 @@ func (e *Erasure) Describe() string {
 // `IN ()` is a syntax error on two of the three dialects — so the caller
 // answers it, which is what "the subject owns no deletable scope" means: no
 // scopes, no statement, nothing deleted.
-func (e *Erasure) DeleteScopes(ctx context.Context, q database.SQLQueryExecutor, scopes []string) (int64, error) {
+//
+// A scope that names nobody is refused rather than skipped. The set is bound as
+// the identifiers its scopes name, and the identifier the zero Scope would
+// render is the one tenancy.Global names — so a resolver that lost a scope
+// somewhere in the middle of its list would delete the platform's own log
+// instead of dropping a member from a set.
+func (e *Erasure) DeleteScopes(ctx context.Context, q database.SQLQueryExecutor, scopes []tenancy.Scope) (int64, error) {
 	if q == nil {
 		return 0, ErrNilExecutor
 	}
@@ -119,18 +126,45 @@ func (e *Erasure) DeleteScopes(ctx context.Context, q database.SQLQueryExecutor,
 		return 0, nil
 	}
 
+	owners, err := scopeOwners(scopes)
+	if err != nil {
+		return 0, err
+	}
+
 	deleted, err := e.q.DeleteAuditLogEntriesInScopes(ctx, q,
-		auditdb.DeleteAuditLogEntriesInScopesParams{Scopes: scopes})
+		auditdb.DeleteAuditLogEntriesInScopesParams{Scopes: owners})
 	if err != nil {
 		return 0, platformerrors.Wrap(err, "deleting audit entries for subject scopes")
 	}
 
 	if err = e.q.DeleteAuditChainsInScopes(ctx, q,
-		auditdb.DeleteAuditChainsInScopesParams{Scopes: scopes}); err != nil {
+		auditdb.DeleteAuditChainsInScopesParams{Scopes: owners}); err != nil {
 		return 0, platformerrors.Wrap(err, "deleting audit chains for subject scopes")
 	}
 
 	return deleted, nil
+}
+
+// scopeOwners renders a set of scopes as the identifiers the column holds,
+// refusing one that names nobody.
+//
+// The set is a bound set rather than a column value, which is why it is not a
+// tenancy.Scope on the generated parameter: it is a membership test, and the
+// three dialects expand it into as many placeholders as there are members. The
+// check tenancy.Scope.Value would have made at the driver is made here instead,
+// once per member and before any statement is sent.
+func scopeOwners(scopes []tenancy.Scope) ([]string, error) {
+	owners := make([]string, 0, len(scopes))
+
+	for i, scope := range scopes {
+		if err := scope.Validate(); err != nil {
+			return nil, platformerrors.Wrapf(err, "audit scope %d of %d", i+1, len(scopes))
+		}
+
+		owners = append(owners, scope.Owner())
+	}
+
+	return owners, nil
 }
 
 // CountMentions counts the entries the chain will not let go of: the ones where

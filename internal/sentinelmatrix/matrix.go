@@ -191,11 +191,12 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyProductName":     {Err: billing.ErrEmptyProductName, Is: Platform},
 	},
 	dataPrivacyPkg: {
-		// A subject asking after their own export or erasure is a client. These five
+		// A subject asking after their own export or erasure is a client. These six
 		// are the answers they can act on: the ID is not one of theirs, the request
 		// is not in the state the call needs, or the request they sent is malformed.
 		"ErrArtifactUnavailable":     {Err: dataprivacy.ErrArtifactUnavailable, Is: Mapped},
 		"ErrEmptySubjectID":          {Err: dataprivacy.ErrEmptySubjectID, Is: Mapped},
+		"ErrGlobalSubjectScope":      {Err: dataprivacy.ErrGlobalSubjectScope, Is: Mapped},
 		"ErrNotAwaitingConfirmation": {Err: dataprivacy.ErrNotAwaitingConfirmation, Is: Mapped},
 		"ErrRequestNotFound":         {Err: dataprivacy.ErrRequestNotFound, Is: Mapped},
 		"ErrUnknownRequestType":      {Err: dataprivacy.ErrUnknownRequestType, Is: Mapped},

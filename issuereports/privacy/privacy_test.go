@@ -125,7 +125,7 @@ func TestRequestScope(T *testing.T) {
 		t.Parallel()
 
 		scopes, err := privacy.RequestScope(t.Context(),
-			dataprivacy.Subject{ID: "user_1", Scope: "acct_1"})
+			dataprivacy.Subject{ID: "user_1", Scope: tenancy.Of("acct_1")})
 		must.NoError(t, err)
 		test.Eq(t, []tenancy.Scope{tenancy.Of("acct_1")}, scopes)
 	})

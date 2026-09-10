@@ -69,7 +69,7 @@ func newAuditEnv(t *testing.T) *auditEnv {
 }
 
 // record appends one entry to a scope.
-func (e *auditEnv) record(t *testing.T, scope, actorID, resourceID string) {
+func (e *auditEnv) record(t *testing.T, scope tenancy.Scope, actorID, resourceID string) {
 	t.Helper()
 
 	must.NoError(t, e.client.WithTransaction(t.Context(), func(q database.Tx) error {
@@ -84,12 +84,12 @@ func (e *auditEnv) record(t *testing.T, scope, actorID, resourceID string) {
 }
 
 // countEntries reports how many entries survive in a scope.
-func (e *auditEnv) countEntries(t *testing.T, scope string) int64 {
+func (e *auditEnv) countEntries(t *testing.T, scope tenancy.Scope) int64 {
 	t.Helper()
 
 	var count int64
 	must.NoError(t, e.client.Reader().
-		QueryRowContext(t.Context(), "SELECT COUNT(*) FROM audit_log_entries WHERE scope = ?", scope).
+		QueryRowContext(t.Context(), "SELECT COUNT(*) FROM audit_log_entries WHERE scope = ?", scope.Owner()).
 		Scan(&count))
 
 	return count
@@ -131,8 +131,8 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, "user-1", "user-1", "recipe-1")
-		env.record(t, "user-1", "user-1", "recipe-2")
+		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-2")
 
 		eraser, err := New(dialect.SQLite)
 		must.NoError(t, err)
@@ -140,7 +140,7 @@ func TestEraser(T *testing.T) {
 		outcome := env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
 
 		test.EqOp(t, int64(2), outcome.Deleted)
-		test.EqOp(t, int64(0), env.countEntries(t, "user-1"))
+		test.EqOp(t, int64(0), env.countEntries(t, tenancy.Of("user-1")))
 
 		// The chain row goes with the entries. Leaving it would leave a scope
 		// whose recorded head is ahead of any surviving entry, and a later write
@@ -153,13 +153,13 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, "user-1", "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
 
 		// Three entries in somebody else's tenant, the middle one by the
 		// subject. Deleting that middle entry is what would break the chain.
-		env.record(t, "account-9", "user-7", "recipe-3")
-		env.record(t, "account-9", "user-1", "recipe-4")
-		env.record(t, "account-9", "user-7", "recipe-5")
+		env.record(t, tenancy.Of("account-9"), "user-7", "recipe-3")
+		env.record(t, tenancy.Of("account-9"), "user-1", "recipe-4")
+		env.record(t, tenancy.Of("account-9"), "user-7", "recipe-5")
 
 		eraser, err := New(dialect.SQLite)
 		must.NoError(t, err)
@@ -182,12 +182,12 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, "user-1", "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
 
 		// One where the subject acted inside somebody else's tenant, one where
 		// they were the thing acted on.
-		env.record(t, "account-9", "user-1", "recipe-2")
-		env.record(t, "account-9", "user-7", "user-1")
+		env.record(t, tenancy.Of("account-9"), "user-1", "recipe-2")
+		env.record(t, tenancy.Of("account-9"), "user-7", "user-1")
 
 		eraser, err := New(dialect.SQLite)
 		must.NoError(t, err)
@@ -209,7 +209,7 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, "user-1", "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
 
 		eraser, err := New(dialect.SQLite)
 		must.NoError(t, err)
@@ -225,12 +225,12 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, "tenant-a", "user-1", "recipe-1")
-		env.record(t, "tenant-b", "user-1", "recipe-2")
+		env.record(t, tenancy.Of("tenant-a"), "user-1", "recipe-1")
+		env.record(t, tenancy.Of("tenant-b"), "user-1", "recipe-2")
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(_ context.Context, s dataprivacy.Subject) ([]string, error) {
-				return []string{"tenant-a", "tenant-b"}, nil
+			WithScopeResolver(func(_ context.Context, s dataprivacy.Subject) ([]tenancy.Scope, error) {
+				return []tenancy.Scope{tenancy.Of("tenant-a"), tenancy.Of("tenant-b")}, nil
 			}))
 		must.NoError(t, err)
 
@@ -240,15 +240,62 @@ func TestEraser(T *testing.T) {
 		test.MapEmpty(t, outcome.Retained)
 	})
 
+	T.Run("the default resolver names the subject's own scope", func(t *testing.T) {
+		t.Parallel()
+
+		env := newAuditEnv(t)
+
+		env.record(t, tenancy.Global(), "user-1", "config-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
+
+		eraser, err := New(dialect.SQLite)
+		must.NoError(t, err)
+
+		outcome := env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
+
+		// The subject's own ID as a scope, and nothing else. It resolves to
+		// tenancy.Of rather than to the identifier, so a subject with no ID
+		// would name the scope that names nobody rather than the global one —
+		// which is what audit refuses instead of emptying the platform's chain.
+		test.EqOp(t, int64(1), outcome.Deleted)
+		test.EqOp(t, int64(0), env.countEntries(t, tenancy.Of("user-1")))
+		test.EqOp(t, int64(1), env.countEntries(t, tenancy.Global()))
+	})
+
+	T.Run("a resolver that lost a scope erases nothing", func(t *testing.T) {
+		t.Parallel()
+
+		env := newAuditEnv(t)
+
+		env.record(t, tenancy.Global(), "user-1", "config-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
+
+		eraser, err := New(dialect.SQLite,
+			WithScopeResolver(func(context.Context, dataprivacy.Subject) ([]tenancy.Scope, error) {
+				return []tenancy.Scope{tenancy.Of("user-1"), {}}, nil
+			}))
+		must.NoError(t, err)
+
+		erasureErr := env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+			_, eraseErr := eraser.Erase(t.Context(), q, dataprivacy.Subject{ID: "user-1"})
+
+			return eraseErr
+		})
+
+		test.ErrorIs(t, erasureErr, tenancy.ErrNoScope)
+		test.EqOp(t, int64(1), env.countEntries(t, tenancy.Of("user-1")))
+		test.EqOp(t, int64(1), env.countEntries(t, tenancy.Global()))
+	})
+
 	T.Run("resolving no scopes deletes nothing", func(t *testing.T) {
 		t.Parallel()
 
 		env := newAuditEnv(t)
 
-		env.record(t, "user-1", "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(context.Context, dataprivacy.Subject) ([]string, error) {
+			WithScopeResolver(func(context.Context, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return nil, nil
 			}))
 		must.NoError(t, err)
@@ -258,7 +305,7 @@ func TestEraser(T *testing.T) {
 		// Legitimate: it means nothing is deletable and everything is retained.
 		test.EqOp(t, int64(0), outcome.Deleted)
 		must.MapLen(t, 1, outcome.Retained)
-		test.EqOp(t, int64(1), env.countEntries(t, "user-1"))
+		test.EqOp(t, int64(1), env.countEntries(t, tenancy.Of("user-1")))
 	})
 
 	T.Run("the retention basis is overridable", func(t *testing.T) {
@@ -266,7 +313,7 @@ func TestEraser(T *testing.T) {
 
 		env := newAuditEnv(t)
 
-		env.record(t, "account-9", "user-1", "recipe-1")
+		env.record(t, tenancy.Of("account-9"), "user-1", "recipe-1")
 
 		eraser, err := New(dialect.SQLite,
 			WithRetentionBasis("kept under Article 17(3)(b)"))
@@ -340,7 +387,7 @@ func TestNew(T *testing.T) {
 		env := newAuditEnv(t)
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(context.Context, dataprivacy.Subject) ([]string, error) {
+			WithScopeResolver(func(context.Context, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return nil, platformerrors.New("tenant directory is down")
 			}))
 		must.NoError(t, err)
@@ -431,7 +478,7 @@ func TestEraser_PropagatesFailures(T *testing.T) {
 		t.Parallel()
 
 		env := newAuditEnv(t)
-		env.record(t, "user-1", "user-1", "recipe-1")
+		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
 
 		eraser, err := New(dialect.SQLite)
 		must.NoError(t, err)
@@ -454,7 +501,7 @@ func TestEraser_PropagatesFailures(T *testing.T) {
 		t.Parallel()
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(context.Context, dataprivacy.Subject) ([]string, error) {
+			WithScopeResolver(func(context.Context, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return nil, nil
 			}))
 		must.NoError(t, err)

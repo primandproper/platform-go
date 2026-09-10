@@ -55,8 +55,8 @@ success.
 # Scopes
 
 Every read and write in waitlists is scoped, and a subject access request may
-arrive without a scope — dataprivacy.Subject.Scope is empty for the plain "give
-me my data". So both halves take a [ScopeResolver]: the mapping from a subject
+arrive without a scope — dataprivacy.Subject.Scope names nobody for the plain
+"give me my data". So both halves take a [ScopeResolver]: the mapping from a subject
 to the scopes their signups may be in, which is a question about the consumer's
 tenancy model rather than about this table.
 
@@ -146,15 +146,18 @@ type ScopeResolver func(ctx context.Context, subject dataprivacy.Subject) ([]ten
 // where a privacy request always arrives scoped.
 //
 // A request that names none is ErrUnscopedRequest rather than the global scope.
-// The two are not the same thing and the difference is not recoverable later: an
+// The subject's scope is a tenancy.Scope, so the two are already distinct
+// values here and nothing has to reconstruct the difference; what a resolver
+// still cannot do is invent the scope a request declined to name. The
+// difference is not recoverable later: an
 // export that quietly covered only the global scope would be well-formed, would
 // have a section, and would be missing every signup the subject actually holds.
 func RequestScope(_ context.Context, subject dataprivacy.Subject) ([]tenancy.Scope, error) {
-	if subject.Scope == "" {
+	if subject.Scope.Validate() != nil {
 		return nil, platformerrors.Wrapf(ErrUnscopedRequest, "subject %q", subject.ID)
 	}
 
-	return []tenancy.Scope{tenancy.Of(subject.Scope)}, nil
+	return []tenancy.Scope{subject.Scope}, nil
 }
 
 // FixedScopes resolves every subject to the same scopes, for a deployment whose

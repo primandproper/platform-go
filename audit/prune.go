@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/primitives-go/database/ddl"
 	"github.com/primandproper/primitives-go/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -233,7 +234,7 @@ func (t PruneTarget) Sweep(
 	var (
 		page    = t.scopePageSize()
 		removed int64
-		cursor  *string
+		cursor  *tenancy.Scope
 	)
 
 	for removed < int64(limit) {
@@ -316,9 +317,9 @@ func (t PruneTarget) prunableScopes(
 	q database.SQLQueryExecutor,
 	querier auditdb.Querier,
 	cutoff time.Time,
-	after *string,
+	after *tenancy.Scope,
 	limit int,
-) ([]string, error) {
+) ([]tenancy.Scope, error) {
 	horizon := cutoff.UTC()
 
 	if after == nil {
@@ -330,21 +331,25 @@ func (t PruneTarget) prunableScopes(
 			return nil, platformerrors.Wrap(err, "querying prunable audit scopes")
 		}
 
-		return convertRows(rows, func(row *auditdb.ListPrunableAuditScopesRow) (string, error) {
+		return convertRows(rows, func(row *auditdb.ListPrunableAuditScopesRow) (tenancy.Scope, error) {
 			return row.Scope, nil
 		})
 	}
 
+	// The cursor binds as the identifier rather than as the Scope, because it is
+	// a keyset position — the last scope this walk handed out — and not the
+	// owner of anything. The statement compares it for order, and the argument
+	// it shares its name with in the paged entry listing is a position too.
 	rows, err := querier.ListPrunableAuditScopesAfter(ctx, q, auditdb.ListPrunableAuditScopesAfterParams{
 		Horizon:     horizon,
-		PageCursor:  *after,
+		PageCursor:  after.Owner(),
 		ResultLimit: int64(limit),
 	})
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "querying prunable audit scopes")
 	}
 
-	return convertRows(rows, func(row *auditdb.ListPrunableAuditScopesAfterRow) (string, error) {
+	return convertRows(rows, func(row *auditdb.ListPrunableAuditScopesAfterRow) (tenancy.Scope, error) {
 		return row.Scope, nil
 	})
 }
@@ -360,7 +365,7 @@ func (t PruneTarget) pruneScope(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	querier auditdb.Querier,
-	scope string,
+	scope tenancy.Scope,
 	cutoff time.Time,
 	budget int64,
 ) (int64, error) {
@@ -378,7 +383,7 @@ func (t PruneTarget) pruneScope(
 			return 0, nil
 		}
 
-		return 0, platformerrors.Wrapf(err, "reading audit prune target for scope %q", scope)
+		return 0, platformerrors.Wrapf(err, "reading audit prune target for scope %s", scope)
 	}
 
 	// Capped as well as bounded, and the cap cannot bite: positions are
@@ -399,7 +404,7 @@ func (t PruneTarget) pruneScope(
 		ResultLimit: budget,
 	})
 	if err != nil {
-		return 0, platformerrors.Wrapf(err, "deleting aged audit entries from scope %q", scope)
+		return 0, platformerrors.Wrapf(err, "deleting aged audit entries from scope %s", scope)
 	}
 
 	// The watermark is what keeps the chain verifiable across the gap the
@@ -410,7 +415,7 @@ func (t PruneTarget) pruneScope(
 		PrunedThroughHash: target.Hash,
 		Scope:             scope,
 	}); err != nil {
-		return 0, platformerrors.Wrapf(err, "recording audit prune watermark for scope %q", scope)
+		return 0, platformerrors.Wrapf(err, "recording audit prune watermark for scope %s", scope)
 	}
 
 	return pruned, nil
@@ -434,7 +439,7 @@ func (t PruneTarget) pruneBoundary(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	querier auditdb.Querier,
-	scope string,
+	scope tenancy.Scope,
 	cutoff time.Time,
 	budget int64,
 ) (boundary int64, ok bool, err error) {
@@ -443,7 +448,7 @@ func (t PruneTarget) pruneBoundary(
 		Scope:   scope,
 	})
 	if err != nil {
-		return 0, false, platformerrors.Wrapf(err, "reading audit prune bounds for scope %q", scope)
+		return 0, false, platformerrors.Wrapf(err, "reading audit prune bounds for scope %s", scope)
 	}
 
 	if bounds.OldestSeq == nil {

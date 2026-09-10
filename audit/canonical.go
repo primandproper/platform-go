@@ -45,13 +45,18 @@ var ErrMalformedHash = platformerrors.New("malformed audit hash")
 // RecordedAt contributes as microseconds since the epoch for the same reason in
 // a different disguise: an integer has no timezone, no layout, and no precision
 // left to lose on the way through a driver.
+//
+// The scope contributes as its owner identifier — the bytes the column holds —
+// and not as anything derived from the Scope's other state. A digest taken over
+// a rendering rather than over the stored value is a digest that moves when the
+// rendering does, and the whole point of this image is that it does not move.
 func canonicalImage(e *Entry, changes, metadata []byte) []byte {
 	fields := [][]byte{
 		[]byte(imageVersion),
 		[]byte(strconv.FormatInt(e.Seq, 10)),
 		[]byte(e.ID),
 		[]byte(strconv.FormatInt(e.RecordedAt.UTC().UnixMicro(), 10)),
-		[]byte(e.Scope),
+		[]byte(e.Scope.Owner()),
 		[]byte(e.ResourceType),
 		[]byte(e.ResourceID),
 		[]byte(e.EventType),

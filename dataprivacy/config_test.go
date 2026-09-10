@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 
 	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -139,6 +140,33 @@ func TestSubject(T *testing.T) {
 
 		test.ErrorIs(t, Subject{}.validate(), ErrEmptySubjectID)
 		test.NoError(t, Subject{ID: "user-1"}.validate())
+	})
+
+	T.Run("refuses a confinement to the global scope", func(t *testing.T) {
+		t.Parallel()
+
+		// The global scope is stored as the empty identifier, which is also how
+		// a request that named no scope is stored — so accepting this would
+		// write down a narrower request than the one that was made and read it
+		// back as the wider one.
+		test.ErrorIs(t,
+			Subject{ID: "user-1", Scope: tenancy.Global()}.validate(),
+			ErrGlobalSubjectScope)
+
+		// The two that do round trip: an owner, and no confinement at all.
+		test.NoError(t, Subject{ID: "user-1", Scope: tenancy.Of("account-1")}.validate())
+		test.NoError(t, Subject{ID: "user-1"}.validate())
+	})
+
+	T.Run("records an unconfined request's own events for no tenant", func(t *testing.T) {
+		t.Parallel()
+
+		// "Who asked for this person's data across every tenant they appear
+		// in" is not an event about any one of them, so it belongs to the chain
+		// platform-level events are recorded in — which is what the unconfined
+		// subject's scope used to be stored as before it had a type.
+		test.EqOp(t, tenancy.Global(), auditScope(tenancy.Scope{}))
+		test.EqOp(t, tenancy.Of("account-1"), auditScope(tenancy.Of("account-1")))
 	})
 }
 

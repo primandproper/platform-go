@@ -224,7 +224,7 @@ func entryFor(scope tenancy.Scope, resourceID string) *audit.Entry {
 		EventType:    audit.EventUpdated,
 		ResourceType: "recipe",
 		ResourceID:   resourceID,
-		Scope:        scope.Owner(),
+		Scope:        scope,
 		Actor:        audit.Actor{ID: "user_1", Type: audit.ActorUser, IP: "203.0.113.7"},
 		Changes:      map[string]audit.Change{"name": {Old: "Soup", New: "Stew"}},
 		Metadata:     map[string]string{"reason": "a typo"},

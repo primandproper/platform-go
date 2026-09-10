@@ -58,10 +58,17 @@ type Store interface {
 	// List pages through a subject's requests, ordered by ID in the direction
 	// the filter's SortBy asks for, under the rest of the filter's window.
 	//
-	// An empty Subject.Scope matches every scope rather than only the unscoped
-	// requests. A subject asking what has been requested in their name means all
-	// of it, and a listing that silently omitted the scoped requests would be
-	// the wrong answer to the one question this endpoint exists to answer.
+	// A Subject that names no scope matches every scope rather than only the
+	// unconfined requests. A subject asking what has been requested in their
+	// name means all of it, and a listing that silently omitted the scoped
+	// requests would be the wrong answer to the one question this endpoint
+	// exists to answer.
+	//
+	// That is the unset tenancy.Scope, and it is a reading rather than an
+	// accident: a confinement is optional on a Subject, so the scope that names
+	// nobody is the request that named none. tenancy.Global is not a spelling
+	// of it — a Subject refuses that outright, for the reason
+	// ErrGlobalSubjectScope gives.
 	List(ctx context.Context, subject Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Request], error)
 
 	// Confirm moves a request out of StatusAwaitingConfirmation and into

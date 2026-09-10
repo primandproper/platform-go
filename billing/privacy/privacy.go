@@ -142,8 +142,11 @@ func FixedAccounts(scope tenancy.Scope) AccountResolver {
 type Export struct {
 	// Account is which account these rows belong to.
 	Account string `json:"account"`
-	// Scope is the tenancy scope it is in, rendered as it is stored.
-	Scope string `json:"scope"`
+	// Scope is the tenancy scope it is in. It renders as the identifier the
+	// column holds — the empty string for the global scope — which is what
+	// tenancy.Scope's own JSON is, so an export says the same thing the rows
+	// behind it do.
+	Scope tenancy.Scope `json:"scope"`
 	// Subscriptions is every recurring agreement, current and lapsed.
 	Subscriptions []*billing.Subscription `json:"subscriptions"`
 	// Purchases is every one-time sale.
@@ -224,7 +227,7 @@ func (c *Collector) Collect(ctx context.Context, subject dataprivacy.Subject) (j
 
 // collectAccount walks the three tables for one account.
 func (c *Collector) collectAccount(ctx context.Context, account *Account) (Export, error) {
-	export := Export{Account: account.ID, Scope: account.Scope.String()}
+	export := Export{Account: account.ID, Scope: account.Scope}
 
 	subscriptions, err := drain(func(filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[billing.Subscription], error) {
 		return c.store.ListSubscriptionsForAccount(ctx, c.reader, account.Scope, account.ID, filter)

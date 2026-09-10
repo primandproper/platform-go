@@ -55,6 +55,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // DefaultKey is the registry key this eraser is normally registered under. It
@@ -92,8 +93,11 @@ var ErrInvalidTablePrefix = audit.ErrInvalidTablePrefix
 // tenant's audit log, so it is worth being exact.
 //
 // Returning no scopes is legitimate: it means nothing is deletable and
-// everything is reported as retained.
-type ScopeResolver func(ctx context.Context, subject dataprivacy.Subject) ([]string, error)
+// everything is reported as retained. Returning a scope that names nobody is
+// not, and audit.Erasure.DeleteScopes refuses the whole set rather than
+// deleting the platform's own chain in its place — a resolver whose own lookup
+// came back empty is a resolver that has not answered.
+type ScopeResolver func(ctx context.Context, subject dataprivacy.Subject) ([]tenancy.Scope, error)
 
 // Eraser removes a subject's audit scopes and reports what it could not remove.
 //
@@ -161,8 +165,8 @@ func New(d dialect.Dialect, opts ...Option) (*Eraser, error) {
 	e := &Eraser{
 		prefix: audit.DefaultTablePrefix,
 		basis:  DefaultRetentionBasis,
-		resolve: func(_ context.Context, subject dataprivacy.Subject) ([]string, error) {
-			return []string{subject.ID}, nil
+		resolve: func(_ context.Context, subject dataprivacy.Subject) ([]tenancy.Scope, error) {
+			return []tenancy.Scope{tenancy.Of(subject.ID)}, nil
 		},
 	}
 	for _, opt := range opts {

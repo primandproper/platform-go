@@ -30,6 +30,7 @@ import (
 	"github.com/primandproper/primitives-go/notifications/mobile"
 	"github.com/primandproper/primitives-go/notifications/mobile/apns"
 	mobilenotifcfg "github.com/primandproper/primitives-go/notifications/mobile/config"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/samber/do/v2"
@@ -167,6 +168,7 @@ func TestRegisterStores(T *testing.T) {
 		i := newInjector(t, cfg)
 		do.ProvideValue(i, []retention.Policy{{
 			Name:   "expired-oauth2-tokens",
+			Scope:  tenancy.Global(),
 			Target: retention.Table{Name: "oauth2_client_tokens", Column: "expires_at"},
 			Age:    24 * time.Hour,
 			Basis:  "an expired access token cannot authorize anything",

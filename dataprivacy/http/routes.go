@@ -418,17 +418,17 @@ func (h *Handlers) read(ctx context.Context, requestID string) (*dataprivacy.Req
 // owns reports whether a request is the resolved subject's.
 //
 // The scope is compared only where the caller names one, which is the rule
-// dataprivacy.Store.List already applies to a listing: an empty Subject.Scope
-// means every scope the subject appears in, because a subject asking what has
-// been requested in their name means all of it. Answering that differently for
-// one row than for a page of them would put a request in a listing and a 404 at
-// its own URL.
+// dataprivacy.Store.List already applies to a listing: a Subject that names no
+// scope means every scope the subject appears in, because a subject asking what
+// has been requested in their name means all of it. Answering that differently
+// for one row than for a page of them would put a request in a listing and a
+// 404 at its own URL.
 func owns(subject dataprivacy.Subject, req *dataprivacy.Request) bool {
 	if req == nil || subject.ID != req.Subject.ID {
 		return false
 	}
 
-	return subject.Scope == "" || subject.Scope == req.Subject.Scope
+	return subject.Scope.Validate() != nil || subject.Scope == req.Subject.Scope
 }
 
 // filterFrom builds the shared query filter from the endpoint's own parameters.

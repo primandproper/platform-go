@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/primitives-go/database/dialect"
 	"github.com/primandproper/primitives-go/filtering"
 	"github.com/primandproper/primitives-go/identifiers"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -623,7 +624,7 @@ func suiteList(t *testing.T, env *storeEnv) {
 		first := saveRequest(t, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
 		second := saveRequest(t, store, newRequest(identifiers.New(), RequestErasure, testSubject, baseTime))
 
-		other := Subject{ID: "user-2", Type: SubjectUser, Scope: "account-1"}
+		other := Subject{ID: "user-2", Type: SubjectUser, Scope: tenancy.Of("account-1")}
 		saveRequest(t, store, newRequest(identifiers.New(), RequestExport, other, baseTime))
 
 		// filtering.DefaultQueryFilter asks for ascending, and this package
@@ -647,15 +648,42 @@ func suiteList(t *testing.T, env *storeEnv) {
 		test.EqOp(t, first.ID, descending.Data[1].ID)
 	})
 
-	t.Run("an empty scope matches every scope", func(t *testing.T) {
+	t.Run("a confinement survives the round trip as itself", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		confined := newRequest(identifiers.New(), RequestExport,
+			Subject{ID: "user-9", Scope: tenancy.Of("account-9")}, baseTime)
+		unconfined := newRequest(identifiers.New(), RequestExport,
+			Subject{ID: "user-9"}, baseTime)
+
+		saveRequest(t, store, confined)
+		saveRequest(t, store, unconfined)
+
+		read, err := store.Get(t.Context(), confined.ID)
+		must.NoError(t, err)
+		test.EqOp(t, tenancy.Of("account-9"), read.Subject.Scope)
+
+		// The column holds two states and the type has three, so the one
+		// reading that has to survive is that a request which named no scope
+		// still names none once it has been read back — not the global scope,
+		// which would be a narrower request than the one that was made.
+		read, err = store.Get(t.Context(), unconfined.ID)
+		must.NoError(t, err)
+		test.ErrorIs(t, read.Subject.Scope.Validate(), tenancy.ErrNoScope)
+		test.False(t, read.Subject.Scope.IsGlobal())
+	})
+
+	t.Run("a subject that names no scope matches every scope", func(t *testing.T) {
 		t.Parallel()
 
 		store := env.newStore(t)
 
 		saveRequest(t, store, newRequest(identifiers.New(), RequestExport,
-			Subject{ID: "user-1", Scope: "account-1"}, baseTime))
+			Subject{ID: "user-1", Scope: tenancy.Of("account-1")}, baseTime))
 		saveRequest(t, store, newRequest(identifiers.New(), RequestExport,
-			Subject{ID: "user-1", Scope: "account-2"}, baseTime))
+			Subject{ID: "user-1", Scope: tenancy.Of("account-2")}, baseTime))
 
 		// A subject asking what has been requested in their name means all of
 		// it; omitting the scoped requests would be the wrong answer.

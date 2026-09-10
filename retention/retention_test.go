@@ -7,6 +7,7 @@ import (
 
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -58,7 +59,7 @@ func TestPolicy_validate(T *testing.T) {
 	T.Run("accepts a complete policy", func(t *testing.T) {
 		t.Parallel()
 
-		policy := Policy{Name: "widgets", Target: target, Age: 24 * time.Hour}
+		policy := Policy{Name: "widgets", Scope: tenancy.Global(), Target: target, Age: 24 * time.Hour}
 		must.NoError(t, policy.validate(dialect.SQLite))
 	})
 
@@ -68,7 +69,7 @@ func TestPolicy_validate(T *testing.T) {
 		// Zero is the correct age for a policy measured from an expires_at:
 		// the row was already dead at the instant in the column, and the age is
 		// the grace period after it.
-		policy := Policy{Name: "tokens", Target: Table{Name: "tokens", Column: "expires_at"}}
+		policy := Policy{Name: "tokens", Scope: tenancy.Global(), Target: Table{Name: "tokens", Column: "expires_at"}}
 		must.NoError(t, policy.validate(dialect.Postgres))
 	})
 
@@ -82,7 +83,7 @@ func TestPolicy_validate(T *testing.T) {
 	T.Run("rejects a policy with no target", func(t *testing.T) {
 		t.Parallel()
 
-		policy := Policy{Name: "widgets", Age: time.Hour}
+		policy := Policy{Name: "widgets", Scope: tenancy.Global(), Age: time.Hour}
 		test.ErrorIs(t, policy.validate(dialect.SQLite), ErrNilTarget)
 	})
 
@@ -90,9 +91,9 @@ func TestPolicy_validate(T *testing.T) {
 		t.Parallel()
 
 		for name, policy := range map[string]Policy{
-			"age":        {Name: "widgets", Target: target, Age: -time.Hour},
-			"batch size": {Name: "widgets", Target: target, BatchSize: -1},
-			"batch cap":  {Name: "widgets", Target: target, MaxBatches: -1},
+			"age":        {Name: "widgets", Scope: tenancy.Global(), Target: target, Age: -time.Hour},
+			"batch size": {Name: "widgets", Scope: tenancy.Global(), Target: target, BatchSize: -1},
+			"batch cap":  {Name: "widgets", Scope: tenancy.Global(), Target: target, MaxBatches: -1},
 		} {
 			test.ErrorIs(t, policy.validate(dialect.SQLite), ErrInvalidPolicy, test.Sprintf("negative %s", name))
 		}
@@ -101,10 +102,26 @@ func TestPolicy_validate(T *testing.T) {
 	T.Run("surfaces the target's own objection, named", func(t *testing.T) {
 		t.Parallel()
 
-		policy := Policy{Name: "widgets", Target: Table{Name: "not an identifier", Column: "created_at"}}
+		policy := Policy{Name: "widgets", Scope: tenancy.Global(), Target: Table{Name: "not an identifier", Column: "created_at"}}
 
 		err := policy.validate(dialect.SQLite)
 		test.ErrorIs(t, err, dialect.ErrInvalidIdentifier)
 		test.StrContains(t, err.Error(), `"widgets"`)
+	})
+
+	T.Run("requires a scope", func(t *testing.T) {
+		t.Parallel()
+
+		// A policy that named no scope validates, registers, sweeps, and then
+		// fails on the entry that accounts for what it deleted. The rows are
+		// gone by then. A fleet-wide sweep names tenancy.Global, which is a
+		// scope like any other and the one platform-level events are recorded
+		// in.
+		policy := Policy{Name: "widgets", Target: target, Age: time.Hour}
+
+		test.ErrorIs(t, policy.validate(dialect.SQLite), tenancy.ErrNoScope)
+
+		policy.Scope = tenancy.Global()
+		test.NoError(t, policy.validate(dialect.SQLite))
 	})
 }

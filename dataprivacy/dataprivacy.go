@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.
@@ -106,6 +107,21 @@ var (
 	// somebody, and a request about nobody would fan out over every collector
 	// asking for the empty string's data — which some of them will answer.
 	ErrEmptySubjectID = platformerrors.New("empty dataprivacy subject ID")
+
+	// ErrGlobalSubjectScope indicates a Subject confined to tenancy.Global.
+	//
+	// The confinement is stored in a column that holds two states where the type
+	// has three: an owner identifier, or the empty identifier for a request that
+	// named no scope. tenancy.Global is stored as that same empty identifier, so
+	// a globally confined request would be written down and read back as one
+	// that was never confined at all — a narrower request silently becoming a
+	// wider one, which is the direction that matters here.
+	//
+	// It is refused rather than reconciled because there is nothing behind it to
+	// reconcile with. The global scope holds the platform's own rows, and those
+	// are not held about a subject; a request that means "everything of mine"
+	// names no scope, which is a spelling this type already has.
+	ErrGlobalSubjectScope = platformerrors.New("dataprivacy subject confined to the global scope")
 
 	// ErrUnknownRequestType indicates a RequestType outside the two this package
 	// implements.
@@ -231,16 +247,23 @@ const (
 type Subject struct {
 	// ID identifies the subject. Required.
 	ID string `json:"id"`
-	// Scope is the account or tenant the request is confined to, when it is
-	// confined at all. Empty means the request spans every scope the subject
-	// appears in, which is what a plain "give me my data" asks for.
-	//
-	// It is one opaque string rather than a typed tenancy path for the same
-	// reason audit.Entry.Scope is: tenancy depth is an application's decision,
-	// and a two-level model cannot express one level or three.
-	Scope string `json:"scope,omitempty"`
 	// Type says what kind of subject it is.
 	Type SubjectType `json:"type,omitempty"`
+	// Scope is the account or tenant the request is confined to, when it is
+	// confined at all. The zero Scope is the request that is not confined: it
+	// spans every scope the subject appears in, which is what a plain "give me
+	// my data" asks for.
+	//
+	// That absence is the same one audit.Query.Scope's nil carries, in the shape
+	// each of the two needs. A Query narrows a column and needs a fourth
+	// reading — a caller who lost the scope they meant to narrow by — so it
+	// wraps the Scope in a pointer. A Subject describes the request, where
+	// naming no scope is a request a subject can actually make, so the Scope's
+	// own bit is the whole of it.
+	//
+	// tenancy.Global is not a confinement a request may name; see
+	// ErrGlobalSubjectScope.
+	Scope tenancy.Scope `json:"scope,omitzero"`
 }
 
 // validate reports whether the subject names anything.
@@ -249,7 +272,27 @@ func (s Subject) validate() error {
 		return ErrEmptySubjectID
 	}
 
+	if s.Scope.IsGlobal() {
+		return platformerrors.Wrapf(ErrGlobalSubjectScope, "dataprivacy subject %q", s.ID)
+	}
+
 	return nil
+}
+
+// auditScope is the chain a request's own audit entries are recorded in.
+//
+// A confined request's entries belong to the tenant it names. An unconfined one
+// is not a request about any single tenant, so its entries belong to none:
+// tenancy.Global is the chain platform-level events are recorded in, and "who
+// asked for this person's data across every tenant they appear in" is one of
+// them. The audit entry refuses a scope that names nobody, which is why this
+// mapping is made here rather than left to the caller of Record.
+func auditScope(scope tenancy.Scope) tenancy.Scope {
+	if scope.Validate() != nil {
+		return tenancy.Global()
+	}
+
+	return scope
 }
 
 // RequestType names what a request asks for.
@@ -429,14 +472,14 @@ type Request struct {
 	// last three years.
 	LastError string `json:"lastError,omitempty"`
 
-	// Subject is who the request is about.
-	Subject Subject `json:"subject"`
-
 	// Type is what was asked for.
 	Type RequestType `json:"type"`
 
 	// Status is where it got to.
 	Status Status `json:"status"`
+
+	// Subject is who the request is about.
+	Subject Subject `json:"subject"`
 
 	// ArtifactBytes is the stored size of the artifact, after compression and
 	// encryption. Zero for an erasure or an unfulfilled export.

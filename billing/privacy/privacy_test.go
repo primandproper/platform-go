@@ -138,10 +138,31 @@ func TestCollector_Collect(T *testing.T) {
 		must.SliceLen(t, 1, exports)
 
 		test.EqOp(t, testAccount, exports[0].Account)
-		test.EqOp(t, testScope.String(), exports[0].Scope)
+		test.EqOp(t, testScope, exports[0].Scope)
 		test.SliceLen(t, 1, exports[0].Subscriptions)
 		test.SliceLen(t, 1, exports[0].Purchases)
 		test.SliceLen(t, 1, exports[0].Transactions)
+	})
+
+	T.Run("renders the global scope as the identifier it is stored as", func(t *testing.T) {
+		t.Parallel()
+
+		collector, err := NewCollector(fullStore(), &testReader{}, FixedAccounts(tenancy.Global()))
+		must.NoError(t, err)
+
+		body, err := collector.Collect(t.Context(), testSubject)
+		must.NoError(t, err)
+
+		// The artifact goes to the subject and to whoever asks them for it, so
+		// what it says a row's scope is has to be what the column says. The
+		// global scope's identifier is the empty string; "<global>" is how a
+		// Scope reads in a log and is not a value anything is stored under.
+		test.StrContains(t, string(body), `"scope":""`)
+
+		var exports []Export
+		must.NoError(t, json.Unmarshal(body, &exports))
+		must.SliceLen(t, 1, exports)
+		test.True(t, exports[0].Scope.IsGlobal())
 	})
 
 	T.Run("reads through the executor it was built with", func(t *testing.T) {
