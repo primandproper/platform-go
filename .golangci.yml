@@ -223,21 +223,6 @@ linters:
           - mnd
         path: mock_?.*\.go
       - linters:
-          - forcetypeassert
-        path: encoding/mock
-      - linters:
-          - forcetypeassert
-        path: messagequeue/mock
-      - linters:
-          - forcetypeassert
-        path: routing/mock
-      - linters:
-          - forcetypeassert
-        path: uploads/mock
-      - linters:
-          - forcetypeassert
-        path: uploads/images/mock.go
-      - linters:
           - gocritic
         text: 'captLocal: `T'' should not be capitalized'
       - linters:
