@@ -96,6 +96,26 @@ func objectFromKeyRow(r *registrydb.GetObjectByKeyRow) *Object {
 	})
 }
 
+// objectFromBatchRow restates one row of the batched read.
+//
+// It carries no counts, unlike the page rows below: the set the caller bound is
+// what bounds the answer, so there is nothing to report a window against.
+func objectFromBatchRow(r *registrydb.ListObjectsByIDsRow) *Object {
+	return objectFromRow(&registrydb.GetObjectRow{
+		ID:            r.ID,
+		Scope:         r.Scope,
+		ObjectKey:     r.ObjectKey,
+		ContentType:   r.ContentType,
+		SizeBytes:     r.SizeBytes,
+		OwnerID:       r.OwnerID,
+		BelongsToType: r.BelongsToType,
+		BelongsToID:   r.BelongsToID,
+		CreatedAt:     r.CreatedAt,
+		LastUpdatedAt: r.LastUpdatedAt,
+		ArchivedAt:    r.ArchivedAt,
+	})
+}
+
 // pageRow is one row of a rendered list query: the value, and the two counts the
 // statement carries beside it.
 //

@@ -137,6 +137,24 @@ WHERE {{prefix}}uploads_objects.created_at > COALESCE($1, (SELECT CURRENT_TIMEST
 ORDER BY {{prefix}}uploads_objects.id ASC
 LIMIT COALESCE($8, 50)`
 
+const listObjectsByIDsPostgreSQL = `SELECT
+	{{prefix}}uploads_objects.id,
+	{{prefix}}uploads_objects.scope,
+	{{prefix}}uploads_objects.object_key,
+	{{prefix}}uploads_objects.content_type,
+	{{prefix}}uploads_objects.size_bytes,
+	{{prefix}}uploads_objects.owner_id,
+	{{prefix}}uploads_objects.belongs_to_type,
+	{{prefix}}uploads_objects.belongs_to_id,
+	{{prefix}}uploads_objects.created_at,
+	{{prefix}}uploads_objects.last_updated_at,
+	{{prefix}}uploads_objects.archived_at
+FROM {{prefix}}uploads_objects
+WHERE {{prefix}}uploads_objects.archived_at IS NULL
+	AND {{prefix}}uploads_objects.scope = $1
+	AND {{prefix}}uploads_objects.id = ANY($2::text[])
+ORDER BY {{prefix}}uploads_objects.id ASC`
+
 const listObjectsByOwnerPostgreSQL = `SELECT
 	{{prefix}}uploads_objects.id,
 	{{prefix}}uploads_objects.scope,
@@ -419,6 +437,7 @@ type postgresqlQueries struct {
 	getObjectCreatedAt             string
 	getObjectIdbyKey               string
 	listObjects                    string
+	listObjectsByIDs               string
 	listObjectsByOwner             string
 	listObjectsByOwnerDescending   string
 	listObjectsBySubject           string
@@ -437,6 +456,7 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		getObjectCreatedAt:             strings.ReplaceAll(getObjectCreatedAtPostgreSQL, prefixMarker, prefix),
 		getObjectIdbyKey:               strings.ReplaceAll(getObjectIdbyKeyPostgreSQL, prefixMarker, prefix),
 		listObjects:                    strings.ReplaceAll(listObjectsPostgreSQL, prefixMarker, prefix),
+		listObjectsByIDs:               strings.ReplaceAll(listObjectsByIDsPostgreSQL, prefixMarker, prefix),
 		listObjectsByOwner:             strings.ReplaceAll(listObjectsByOwnerPostgreSQL, prefixMarker, prefix),
 		listObjectsByOwnerDescending:   strings.ReplaceAll(listObjectsByOwnerDescendingPostgreSQL, prefixMarker, prefix),
 		listObjectsBySubject:           strings.ReplaceAll(listObjectsBySubjectPostgreSQL, prefixMarker, prefix),
@@ -595,6 +615,49 @@ func (q *postgresqlQueries) ListObjects(ctx context.Context, db DBTX, arg ListOb
 			&i.ArchivedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListObjectsByIDs runs the :many query against postgresql.
+func (q *postgresqlQueries) ListObjectsByIDs(ctx context.Context, db DBTX, arg ListObjectsByIDsParams) ([]ListObjectsByIDsRow, error) {
+	rows, err := db.QueryContext(ctx, q.listObjectsByIDs,
+		arg.Scope,
+		arg.IDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListObjectsByIDsRow
+
+	for rows.Next() {
+		var i ListObjectsByIDsRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.ObjectKey,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.OwnerID,
+			&i.BelongsToType,
+			&i.BelongsToID,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -964,6 +1027,23 @@ var (
 		FilteredCount int64
 		TotalCount    int64
 	}(ListObjectsRow{})
+	_ = struct {
+		Scope tenancy.Scope
+		IDs   []string
+	}(ListObjectsByIDsParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		ObjectKey     string
+		ContentType   string
+		SizeBytes     int64
+		OwnerID       string
+		BelongsToType string
+		BelongsToID   string
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(ListObjectsByIDsRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
 		CreatedBefore   *time.Time

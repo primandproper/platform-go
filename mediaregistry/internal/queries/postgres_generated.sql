@@ -407,3 +407,22 @@ SELECT
 FROM uploads_objects
 WHERE uploads_objects.id = sqlc.arg(id)
 	AND uploads_objects.scope = sqlc.arg(scope);
+
+-- name: ListObjectsByIDs :many
+SELECT
+	uploads_objects.id,
+	uploads_objects.scope,
+	uploads_objects.object_key,
+	uploads_objects.content_type,
+	uploads_objects.size_bytes,
+	uploads_objects.owner_id,
+	uploads_objects.belongs_to_type,
+	uploads_objects.belongs_to_id,
+	uploads_objects.created_at,
+	uploads_objects.last_updated_at,
+	uploads_objects.archived_at
+FROM uploads_objects
+WHERE uploads_objects.archived_at IS NULL
+	AND uploads_objects.scope = sqlc.arg(scope)
+	AND uploads_objects.id = ANY(sqlc.arg(ids)::text[])
+ORDER BY uploads_objects.id ASC;
