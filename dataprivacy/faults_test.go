@@ -86,11 +86,27 @@ func newFailingClient(t *testing.T) *failingClient {
 	return &failingClient{closed: db}
 }
 
-func newFailingStore(t *testing.T) Store {
+// newFailingStore returns the store and the client behind it. The client is
+// returned rather than kept because Store no longer opens transactions of its
+// own, so a test that wants a write's failure has to open one the way a caller
+// does.
+func newFailingStore(t *testing.T) (database.Client, Store) {
 	t.Helper()
 
-	store, err := NewSQLStore(newFailingClient(t))
+	client := newFailingClient(t)
+
+	store, err := NewSQLStore(client)
 	must.NoError(t, err)
+
+	return client, store
+}
+
+// failingStore is newFailingStore for the machinery methods, which take neither
+// an executor nor a scope and so need no client.
+func failingStore(t *testing.T) Store {
+	t.Helper()
+
+	_, store := newFailingStore(t)
 
 	return store
 }
@@ -104,10 +120,10 @@ func TestSQLStore_PropagatesFailures(T *testing.T) {
 	T.Run("Save", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFailingStore(t)
+		client, store := newFailingStore(t)
 
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.Save(t.Context(), q, newRequest("r", RequestExport, testSubject, baseTime))
+		err := client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.Save(t.Context(), tx, newRequest("r", RequestExport, testSubject, baseTime))
 		})
 		test.ErrorIs(t, err, errDatabase)
 	})
@@ -115,24 +131,29 @@ func TestSQLStore_PropagatesFailures(T *testing.T) {
 	T.Run("Get", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newFailingStore(t).Get(t.Context(), "r")
+		client, store := newFailingStore(t)
+
+		_, err := store.Get(t.Context(), client.Reader(), testScopePtr, "r")
 		test.Error(t, err)
 	})
 
 	T.Run("List", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newFailingStore(t).List(t.Context(), testSubject, filtering.DefaultQueryFilter())
+		client, store := newFailingStore(t)
+
+		_, err := store.List(t.Context(), client.Reader(), testScopePtr, testSubject,
+			filtering.DefaultQueryFilter())
 		test.ErrorIs(t, err, errDatabase)
 	})
 
 	T.Run("Confirm", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFailingStore(t)
+		client, store := newFailingStore(t)
 
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			_, txErr := store.Confirm(t.Context(), q, "r", "op-1")
+		err := client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, txErr := store.Confirm(t.Context(), tx, "r", "op-1")
 
 			return txErr
 		})
@@ -142,10 +163,10 @@ func TestSQLStore_PropagatesFailures(T *testing.T) {
 	T.Run("Cancel", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFailingStore(t)
+		client, store := newFailingStore(t)
 
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			_, txErr := store.Cancel(t.Context(), q, "r", StatusInProgress, baseTime)
+		err := client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, txErr := store.Cancel(t.Context(), tx, "r", StatusInProgress, baseTime)
 
 			return txErr
 		})
@@ -155,10 +176,10 @@ func TestSQLStore_PropagatesFailures(T *testing.T) {
 	T.Run("CompleteExport", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFailingStore(t)
+		client, store := newFailingStore(t)
 
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.CompleteExport(t.Context(), q, newRequest("r", RequestExport, testSubject, baseTime), baseTime)
+		err := client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.CompleteExport(t.Context(), tx, newRequest("r", RequestExport, testSubject, baseTime), baseTime)
 		})
 		test.ErrorIs(t, err, errDatabase)
 	})
@@ -166,10 +187,10 @@ func TestSQLStore_PropagatesFailures(T *testing.T) {
 	T.Run("CompleteErasure", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFailingStore(t)
+		client, store := newFailingStore(t)
 
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
-			return store.CompleteErasure(t.Context(), q, newRequest("r", RequestErasure, testSubject, baseTime), baseTime)
+		err := client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			return store.CompleteErasure(t.Context(), tx, newRequest("r", RequestErasure, testSubject, baseTime), baseTime)
 		})
 		test.ErrorIs(t, err, errDatabase)
 	})
@@ -177,27 +198,27 @@ func TestSQLStore_PropagatesFailures(T *testing.T) {
 	T.Run("Fail", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newFailingStore(t).Fail(t.Context(), "r", "boom", baseTime)
+		_, err := failingStore(t).Fail(t.Context(), "r", "boom", baseTime)
 		test.ErrorIs(t, err, errDatabase)
 	})
 
 	T.Run("ExpiringArtifacts", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newFailingStore(t).ExpiringArtifacts(t.Context(), baseTime, 10)
+		_, err := failingStore(t).ExpiringArtifacts(t.Context(), baseTime, 10)
 		test.ErrorIs(t, err, errDatabase)
 	})
 
 	T.Run("MarkExpired", func(t *testing.T) {
 		t.Parallel()
 
-		test.ErrorIs(t, newFailingStore(t).MarkExpired(t.Context(), "r", baseTime), errDatabase)
+		test.ErrorIs(t, failingStore(t).MarkExpired(t.Context(), "r", baseTime), errDatabase)
 	})
 
 	T.Run("LapseUnconfirmed", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newFailingStore(t).LapseUnconfirmed(t.Context(), baseTime, 10)
+		_, err := failingStore(t).LapseUnconfirmed(t.Context(), baseTime, 10)
 		test.ErrorIs(t, err, errDatabase)
 	})
 
@@ -209,14 +230,14 @@ func TestSQLStore_PropagatesFailures(T *testing.T) {
 		// sentinel — see failingExecutor.QueryRowContext. What matters is the
 		// same either way: the gauge reports the failure instead of publishing
 		// a zero that reads as "nobody is owed anything".
-		_, err := newFailingStore(t).CountOverdue(t.Context(), baseTime)
+		_, err := failingStore(t).CountOverdue(t.Context(), baseTime)
 		test.Error(t, err)
 	})
 
 	T.Run("Reap", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newFailingStore(t).Reap(t.Context(), baseTime, 10)
+		_, err := failingStore(t).Reap(t.Context(), baseTime, 10)
 		test.ErrorIs(t, err, errDatabase)
 	})
 }
@@ -231,7 +252,7 @@ func TestSQLStore_NonPositiveLimits(T *testing.T) {
 	T.Run("do no work", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFailingStore(t)
+		store := failingStore(t)
 
 		expiring, err := store.ExpiringArtifacts(t.Context(), baseTime, 0)
 		test.NoError(t, err)
@@ -253,7 +274,7 @@ func TestSQLStore_RejectsNilArguments(T *testing.T) {
 	T.Run("nil requests and executors", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFailingStore(t)
+		store := failingStore(t)
 
 		test.ErrorIs(t, store.Save(t.Context(), database.NewTxForTesting(&failingExecutor{}), nil), ErrNilRequest)
 		test.ErrorIs(t, store.CompleteExport(t.Context(), database.NewTxForTesting(&failingExecutor{}), nil, baseTime), ErrNilRequest)
@@ -284,7 +305,7 @@ func TestSweeper_PropagatesStoreFailures(T *testing.T) {
 	T.Run("a failing store fails the sweep", func(t *testing.T) {
 		t.Parallel()
 
-		sweeper, err := NewSweeper(t.Context(), &SweeperConfig{}, newFailingStore(t),
+		sweeper, err := NewSweeper(t.Context(), &SweeperConfig{}, failingStore(t),
 			WithSweeperUploadManager(newMemoryUploader()),
 			WithSweeperClock(newStubClock()),
 		)

@@ -117,6 +117,7 @@ func Render(d dialect.Dialect) string {
 	rendered := g.StandardCRUD(ObjectsTable, ObjectColumns, options()...)
 	rendered = append(rendered, keyedLists(g)...)
 	rendered = append(rendered, keyedReads(g)...)
+	rendered = append(rendered, batchedRead(g))
 
 	return querygen.RenderFile(rendered)
 }
@@ -199,6 +200,31 @@ func keyedReads(g *querygen.Generator) []*querygen.Query {
 			querygen.Match{Column: querygen.IDColumn}, scope,
 			querygen.Match{Column: querygen.ArchivedAtColumn, Against: querygen.NoValue, Exclude: true}),
 	}
+}
+
+// batchedRead is the read that answers for a whole set of ids at once.
+//
+// It is the shape every N+1 read collapses into, and the loop it replaces is a
+// real one: a page of rows each naming an attachment, hydrated one GetObject at
+// a time, is one round trip per row. The set binds last — after the scope —
+// because on MySQL and SQLite it is a sqlc.slice expansion of one bare marker
+// per element, and SQLite numbers a bare marker one past the highest index it
+// has seen, so an argument bound after the expansion would silently collide
+// with one of its elements.
+//
+// The column list is the whole table, archived_at included, so the statement
+// carries the archived predicate — unlike identity's hydration read, which
+// leaves it off. The difference is what each read is for. identity hydrates
+// references its caller already holds, where hiding a departed colleague turns
+// "created by them" into "created by nobody"; this one answers the same
+// question GetObject answers, and a batch whose per-id answer disagreed with
+// the single read's would be a trap rather than a convenience. An archived
+// object reads as absent either way round.
+func batchedRead(g *querygen.Generator) *querygen.Query {
+	return g.SetReadQuery("ListObjectsByIDs", ObjectsTable, ObjectColumns,
+		querygen.Read{},
+		querygen.SetKey{Column: querygen.IDColumn},
+		querygen.Match{Column: ScopeColumn})
 }
 
 // FileName is what the rendered corpus for a dialect is committed as.

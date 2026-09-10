@@ -81,7 +81,7 @@ func TestFulfiller_InstrumentFailures(T *testing.T) {
 			registry := NewRegistry()
 			must.NoError(t, registry.RegisterEraser("identity", countingEraser(0, 0, nil, nil)))
 
-			_, err := NewFulfiller(t.Context(), &FulfillerConfig{}, env.newStore(t), registry,
+			_, err := NewFulfiller(t.Context(), &FulfillerConfig{}, env.client, env.newStore(t), registry,
 				WithFulfillerMetricsProvider(failingInstrumentProvider(instrument)))
 
 			must.ErrorIs(t, err, errInstrument)
@@ -106,7 +106,7 @@ func TestService_InstrumentFailures(T *testing.T) {
 
 			env := newSQLiteEnv(t)
 
-			_, err := NewService(t.Context(), &ServiceConfig{}, env.newStore(t), newStubOperations(),
+			_, err := NewService(t.Context(), &ServiceConfig{}, env.client, env.newStore(t), newStubOperations(),
 				WithServiceMetricsProvider(failingInstrumentProvider(instrument)))
 
 			must.ErrorIs(t, err, errInstrument)

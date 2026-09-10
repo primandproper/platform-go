@@ -10,7 +10,9 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 
 	"github.com/primandproper/primitives-go/database"
+	databasemock "github.com/primandproper/primitives-go/database/mock"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 	uploadsnoop "github.com/primandproper/primitives-go/uploads/noop"
 )
 
@@ -18,7 +20,11 @@ import (
 // The library never looks inside it, which is what lets a domain be added by
 // registration rather than by editing a shared type.
 func ExampleCollector() {
-	identity := dataprivacy.CollectorFunc(func(_ context.Context, subject dataprivacy.Subject) (json.RawMessage, error) {
+	identity := dataprivacy.CollectorFunc(func(
+		_ context.Context,
+		_ tenancy.Scope,
+		subject dataprivacy.Subject,
+	) (json.RawMessage, error) {
 		// In a real collector this is a query against the domain's own tables.
 		return json.Marshal(map[string]string{
 			"id":    subject.ID,
@@ -26,7 +32,8 @@ func ExampleCollector() {
 		})
 	})
 
-	fragment, err := identity.Collect(context.Background(), dataprivacy.Subject{ID: "user-1"})
+	fragment, err := identity.Collect(context.Background(), tenancy.Of("account-1"),
+		dataprivacy.Subject{ID: "user-1"})
 	if err != nil {
 		panic(err)
 	}
@@ -40,7 +47,7 @@ func ExampleCollector() {
 // semantics, so a domain supplies only its own read.
 func ExampleCollectorFor() {
 	// In a real collector this is the domain's repository method.
-	list := func(_ context.Context, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[exampleWebhook], error) {
+	list := func(_ context.Context, _ tenancy.Scope, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[exampleWebhook], error) {
 		return filtering.NewQueryFilteredResult(
 			[]*exampleWebhook{{ID: "webhook-1", Owner: subject.ID}},
 			1, 1,
@@ -51,7 +58,8 @@ func ExampleCollectorFor() {
 
 	collector := dataprivacy.CollectorFor(list)
 
-	fragment, err := collector.Collect(context.Background(), dataprivacy.Subject{ID: "user-1"})
+	fragment, err := collector.Collect(context.Background(), tenancy.Of("account-1"),
+		dataprivacy.Subject{ID: "user-1"})
 	if err != nil {
 		panic(err)
 	}
@@ -98,6 +106,7 @@ func ExampleEraser() {
 	billing := dataprivacy.EraserFunc(func(
 		_ context.Context,
 		_ database.Tx,
+		_ tenancy.Scope,
 		_ dataprivacy.Subject,
 	) (dataprivacy.ErasureOutcome, error) {
 		return dataprivacy.ErasureOutcome{
@@ -109,7 +118,8 @@ func ExampleEraser() {
 		}, nil
 	})
 
-	outcome, err := billing.Erase(context.Background(), nil, dataprivacy.Subject{ID: "user-1"})
+	outcome, err := billing.Erase(context.Background(), nil, tenancy.Of("account-1"),
+		dataprivacy.Subject{ID: "user-1"})
 	if err != nil {
 		panic(err)
 	}
@@ -128,7 +138,7 @@ func ExampleRegistry() {
 
 	for _, key := range []string{"identity", "billing", "webhooks"} {
 		if err := registry.RegisterCollector(key, dataprivacy.CollectorFunc(
-			func(context.Context, dataprivacy.Subject) (json.RawMessage, error) {
+			func(context.Context, tenancy.Scope, dataprivacy.Subject) (json.RawMessage, error) {
 				return json.RawMessage(`{}`), nil
 			},
 		)); err != nil {
@@ -171,7 +181,7 @@ func ExampleFulfiller_Register() {
 	domains := dataprivacy.NewRegistry()
 
 	if err := domains.RegisterCollector("identity", dataprivacy.CollectorFunc(
-		func(context.Context, dataprivacy.Subject) (json.RawMessage, error) {
+		func(context.Context, tenancy.Scope, dataprivacy.Subject) (json.RawMessage, error) {
 			return json.RawMessage(`{}`), nil
 		},
 	)); err != nil {
@@ -179,7 +189,7 @@ func ExampleFulfiller_Register() {
 	}
 
 	if err := domains.RegisterEraser("identity", dataprivacy.EraserFunc(
-		func(context.Context, database.Tx, dataprivacy.Subject) (dataprivacy.ErasureOutcome, error) {
+		func(context.Context, database.Tx, tenancy.Scope, dataprivacy.Subject) (dataprivacy.ErasureOutcome, error) {
 			return dataprivacy.ErasureOutcome{}, nil
 		},
 	)); err != nil {
@@ -190,7 +200,8 @@ func ExampleFulfiller_Register() {
 	// is real storage; the registration below is the whole of the wiring this
 	// example is about.
 	fulfiller, err := dataprivacy.NewFulfiller(
-		context.Background(), &dataprivacy.FulfillerConfig{}, &dataprivacymock.StoreMock{}, domains,
+		context.Background(), &dataprivacy.FulfillerConfig{},
+		&databasemock.ClientMock{}, &dataprivacymock.StoreMock{}, domains,
 		dataprivacy.WithFulfillerUploadManager(uploadsnoop.NewUploadManager()),
 	)
 	if err != nil {

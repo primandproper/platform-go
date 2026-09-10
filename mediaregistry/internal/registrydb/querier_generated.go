@@ -26,6 +26,21 @@ import (
 // correct on two engines and wrong on the third. Either give it a predicate
 // that discriminates, or set clientFoundRows=true in the MySQL DSN, which
 // switches MySQL to matched semantics.
+//
+// # A note on empty lists
+//
+// A list parameter that is empty matches nothing, on every dialect: Postgres
+// binds an empty array to `= ANY`, and the other two expand to `IN (NULL)` because
+// `IN ()` is a syntax error there. Asking for the rows whose key is in an empty
+// set gets no rows back, which is what the empty set says, so a caller does not
+// have to guard the call.
+//
+// The negation is where they part company, and nothing below can warn you. An
+// empty list makes `NOT IN (NULL)` never true, so it matches nothing, while
+// Postgres's empty `<> ALL` is true and matches everything. Both readings are
+// defensible and no shared signature can say which was meant — so test
+// membership rather than its negation, and let the caller decide what an empty
+// set means before it calls.
 type Querier interface {
 	// ArchiveObject runs the :execrows query.
 	//
@@ -44,6 +59,8 @@ type Querier interface {
 	GetObjectIDByKey(ctx context.Context, db DBTX, arg GetObjectIDByKeyParams) (GetObjectIDByKeyRow, error)
 	// ListObjects runs the :many query.
 	ListObjects(ctx context.Context, db DBTX, arg ListObjectsParams) ([]ListObjectsRow, error)
+	// ListObjectsByIDs runs the :many query.
+	ListObjectsByIDs(ctx context.Context, db DBTX, arg ListObjectsByIDsParams) ([]ListObjectsByIDsRow, error)
 	// ListObjectsByOwner runs the :many query.
 	ListObjectsByOwner(ctx context.Context, db DBTX, arg ListObjectsByOwnerParams) ([]ListObjectsByOwnerRow, error)
 	// ListObjectsByOwnerDescending runs the :many query.

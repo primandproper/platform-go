@@ -112,7 +112,37 @@ func RegisterWorker(i do.Injector) {
 // Like the Worker, its Run blocks and the injector will not call it — but unlike
 // the Worker, nothing works without it: a Watcher whose Run is not started
 // delivers each subscriber its first snapshot and then nothing. Start it beside
-// the rest of your background work.
+// the rest of your background work, which for a service composed by
+// service.Register is already done: service.New resolves the Watcher into its
+// runner list and Run starts it.
+//
+// # The registered watcher polls
+//
+// It is built without WithWatcherWakeup, as the registered queue is built
+// without WithQueueWakeup, and for the same reason: a wake channel is a value
+// the caller owns and do.Provide has nowhere to take one from. The two loops
+// want different signals — one fires when work is enqueued, the other when an
+// operation row moves — so a bare channel resolved from the injector would be
+// one key answering two questions.
+//
+// WatcherConfig.Poll is therefore the whole of the latency here. The wake is a
+// Postgres LISTEN/NOTIFY optimisation on top rather than the thing that makes
+// the watch path work — see WithWatcherWakeup for what it does and does not
+// change — and a consumer who wants it builds the Watcher with NewWatcher,
+// pairs it with WithStoreNotifyChannel on the writing side, and joins it
+// through service.WithRunners instead of through this registration.
+//
+// # A hand-built watcher is now a second one
+//
+// Before service.Register called this, a consumer who wanted the watch path
+// built one themselves. That still works and is no longer the only one: the
+// registration is lazy, but service.New resolves it, so a process that starts
+// its own Watcher and also composes itself from a service.Config with an
+// Operations section runs two loops polling one table. No subscriber is lost —
+// a subscription reaches only the Watcher whose Watch returned it — but the
+// second ticker does nothing the first is not already doing. Pass the
+// hand-built one through service.WithRunners and let this registration be the
+// only one, or keep it and compose the rest by hand.
 func RegisterWatcher(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*operations.Watcher, error) {
 		pillars, err := observability.InvokePillars(i)

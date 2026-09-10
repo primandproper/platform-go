@@ -54,4 +54,20 @@ var (
 	// standalone upload in the scope as though they were one thing's
 	// attachments.
 	ErrUnattachedSubject = platformerrors.New("belongs-to subject names nothing")
+
+	// ErrTooManyObjectIDs indicates a batched read handed more ids than
+	// MaxObjectIDsPerRead.
+	//
+	// It is a refusal rather than a truncation, and rather than the driver error
+	// the set would otherwise become: on SQLite and MySQL each id is a bound
+	// placeholder and both engines have a ceiling on how many a statement may
+	// carry, while Postgres binds the whole set as one array and has no ceiling
+	// worth reaching. So an unbounded set is a read that works on one dialect
+	// and fails on the other two, which is the failure this module least wants
+	// to ship: the one whose symptom depends on which database the deployment
+	// happens to run.
+	//
+	// A caller holding more ids than that is not doing anything wrong, and
+	// ListObjectsByIDsInBatches is the supported way to read them.
+	ErrTooManyObjectIDs = platformerrors.New("too many object ids for one batched read")
 )

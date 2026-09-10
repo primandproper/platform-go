@@ -132,6 +132,27 @@ type ListObjectsRow struct {
 	TotalCount    int64
 }
 
+// ListObjectsByIDsParams are the arguments to ListObjectsByIDs.
+type ListObjectsByIDsParams struct {
+	Scope tenancy.Scope
+	IDs   []string
+}
+
+// ListObjectsByIDsRow is one row of ListObjectsByIDs's result.
+type ListObjectsByIDsRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	ObjectKey     string
+	ContentType   string
+	SizeBytes     int64
+	OwnerID       string
+	BelongsToType string
+	BelongsToID   string
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+}
+
 // ListObjectsByOwnerParams are the arguments to ListObjectsByOwner.
 type ListObjectsByOwnerParams struct {
 	CreatedAfter    *time.Time

@@ -183,8 +183,9 @@ func Render(d dialect.Dialect) string {
 
 	rendered := []*querygen.Query{
 		createRequest(g),
-		getRequest(g),
 	}
+
+	rendered = append(rendered, singleReads(g)...)
 
 	rendered = append(rendered, subjectLists(g)...)
 	rendered = append(rendered, transitions(g)...)
@@ -204,9 +205,26 @@ func createRequest(g *querygen.Generator) *querygen.Query {
 	return g.InsertQuery("CreateRequest", RequestsTable, InsertColumns(), Nullable)
 }
 
-// getRequest is the single-request read, keyed on the id.
-func getRequest(g *querygen.Generator) *querygen.Query {
-	return g.GetQuery("GetRequest", RequestsTable, Columns)
+// singleReads is the single-request read, in both readings of a scope.
+//
+// It is a pair for the same reason subjectLists is, and the reason is worth
+// restating where a reader will meet it: an equality on the confinement answers
+// "this request, if it is in that scope", and there is no bound value that
+// turns that equality into "any scope". A caller who names a confinement means
+// that one; a caller who names none — a subject asking after their own
+// request — means whichever one it was recorded under. Rendering both keeps the
+// second from being a predicate somebody has to remember to leave off.
+//
+// The scoped half declines the id-keyed shape's derived predicate on nothing:
+// both are keyed on the id, and the scoped one adds the confinement to it, so a
+// request that exists in another scope matches no row and is reported as absent
+// rather than as forbidden.
+func singleReads(g *querygen.Generator) []*querygen.Query {
+	return []*querygen.Query{
+		g.GetQuery("GetRequest", RequestsTable, Columns),
+		g.GetQuery("GetRequestInScope", RequestsTable, Columns,
+			querygen.Match{Column: SubjectScopeColumn}),
+	}
 }
 
 // subjectLists is a subject's request history, in both directions and in both

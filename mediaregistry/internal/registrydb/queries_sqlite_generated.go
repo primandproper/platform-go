@@ -148,6 +148,24 @@ WHERE {{prefix}}uploads_objects.created_at > COALESCE(?1, (SELECT datetime(CURRE
 ORDER BY {{prefix}}uploads_objects.id ASC
 LIMIT COALESCE(?8, 50)`
 
+const listObjectsByIDsSQLite = `SELECT
+	{{prefix}}uploads_objects.id,
+	{{prefix}}uploads_objects.scope,
+	{{prefix}}uploads_objects.object_key,
+	{{prefix}}uploads_objects.content_type,
+	{{prefix}}uploads_objects.size_bytes,
+	{{prefix}}uploads_objects.owner_id,
+	{{prefix}}uploads_objects.belongs_to_type,
+	{{prefix}}uploads_objects.belongs_to_id,
+	{{prefix}}uploads_objects.created_at,
+	{{prefix}}uploads_objects.last_updated_at,
+	{{prefix}}uploads_objects.archived_at
+FROM {{prefix}}uploads_objects
+WHERE {{prefix}}uploads_objects.archived_at IS NULL
+	AND {{prefix}}uploads_objects.scope = ?1
+	AND {{prefix}}uploads_objects.id IN (/*SLICE:ids*/?)
+ORDER BY {{prefix}}uploads_objects.id ASC`
+
 const listObjectsByOwnerSQLite = `SELECT
 	{{prefix}}uploads_objects.id,
 	{{prefix}}uploads_objects.scope,
@@ -430,6 +448,7 @@ type sqliteQueries struct {
 	getObjectByKey                 string
 	getObjectIdbyKey               string
 	listObjects                    string
+	listObjectsByIDs               string
 	listObjectsByOwner             string
 	listObjectsByOwnerDescending   string
 	listObjectsBySubject           string
@@ -448,6 +467,7 @@ func newSQLite(prefix string) *sqliteQueries {
 		getObjectByKey:                 strings.ReplaceAll(getObjectByKeySQLite, prefixMarker, prefix),
 		getObjectIdbyKey:               strings.ReplaceAll(getObjectIdbyKeySQLite, prefixMarker, prefix),
 		listObjects:                    strings.ReplaceAll(listObjectsSQLite, prefixMarker, prefix),
+		listObjectsByIDs:               strings.ReplaceAll(listObjectsByIDsSQLite, prefixMarker, prefix),
 		listObjectsByOwner:             strings.ReplaceAll(listObjectsByOwnerSQLite, prefixMarker, prefix),
 		listObjectsByOwnerDescending:   strings.ReplaceAll(listObjectsByOwnerDescendingSQLite, prefixMarker, prefix),
 		listObjectsBySubject:           strings.ReplaceAll(listObjectsBySubjectSQLite, prefixMarker, prefix),
@@ -646,6 +666,58 @@ func (q *sqliteQueries) ListObjects(ctx context.Context, db DBTX, arg ListObject
 			&i.ArchivedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// ListObjectsByIDs runs the :many query against sqlite.
+func (q *sqliteQueries) ListObjectsByIDs(ctx context.Context, db DBTX, arg ListObjectsByIDsParams) ([]ListObjectsByIDsRow, error) {
+	query := q.listObjectsByIDs
+
+	args := make([]any, 0, 1+len(arg.IDs))
+
+	args = append(args, arg.Scope)
+
+	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
+
+	for _, v := range arg.IDs {
+		args = append(args, v)
+	}
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListObjectsByIDsRow
+
+	for rows.Next() {
+		var i ListObjectsByIDsRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.ObjectKey,
+			&i.ContentType,
+			&i.SizeBytes,
+			&i.OwnerID,
+			&i.BelongsToType,
+			&i.BelongsToID,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.ArchivedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1025,6 +1097,23 @@ var (
 		FilteredCount int64
 		TotalCount    int64
 	}(ListObjectsRow{})
+	_ = struct {
+		Scope tenancy.Scope
+		IDs   []string
+	}(ListObjectsByIDsParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		ObjectKey     string
+		ContentType   string
+		SizeBytes     int64
+		OwnerID       string
+		BelongsToType string
+		BelongsToID   string
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(ListObjectsByIDsRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
 		CreatedBefore   *time.Time

@@ -97,7 +97,17 @@ var ErrInvalidTablePrefix = audit.ErrInvalidTablePrefix
 // not, and audit.Erasure.DeleteScopes refuses the whole set rather than
 // deleting the platform's own chain in its place — a resolver whose own lookup
 // came back empty is a resolver that has not answered.
-type ScopeResolver func(ctx context.Context, subject dataprivacy.Subject) ([]tenancy.Scope, error)
+//
+// requestScope is the confinement the privacy request named, handed over beside
+// the subject. The default ignores it, because a subject's own chain is theirs
+// whichever tenant asked; a deployment whose audit scopes are tenants reads it
+// as the instruction to delete inside that one, and one whose requests never
+// name a confinement will only ever see the zero Scope.
+type ScopeResolver func(
+	ctx context.Context,
+	requestScope tenancy.Scope,
+	subject dataprivacy.Subject,
+) ([]tenancy.Scope, error)
 
 // Eraser removes a subject's audit scopes and reports what it could not remove.
 //
@@ -165,7 +175,7 @@ func New(d dialect.Dialect, opts ...Option) (*Eraser, error) {
 	e := &Eraser{
 		prefix: audit.DefaultTablePrefix,
 		basis:  DefaultRetentionBasis,
-		resolve: func(_ context.Context, subject dataprivacy.Subject) ([]tenancy.Scope, error) {
+		resolve: func(_ context.Context, _ tenancy.Scope, subject dataprivacy.Subject) ([]tenancy.Scope, error) {
 			return []tenancy.Scope{tenancy.Of(subject.ID)}, nil
 		},
 	}
@@ -196,27 +206,28 @@ func New(d dialect.Dialect, opts ...Option) (*Eraser, error) {
 // erasure would be a record of something that did not happen.
 func (e *Eraser) Erase(
 	ctx context.Context,
-	q database.Tx,
+	tx database.Tx,
+	requestScope tenancy.Scope,
 	subject dataprivacy.Subject,
 ) (dataprivacy.ErasureOutcome, error) {
-	if q == nil {
+	if tx == nil {
 		return dataprivacy.ErasureOutcome{}, platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil query executor")
 	}
 
-	scopes, err := e.resolve(ctx, subject)
+	scopes, err := e.resolve(ctx, requestScope, subject)
 	if err != nil {
 		return dataprivacy.ErasureOutcome{}, platformerrors.Wrap(err, "resolving audit scopes for subject")
 	}
 
 	outcome := dataprivacy.ErasureOutcome{Retained: map[string]string{}}
 
-	if outcome.Deleted, err = e.erasure.DeleteScopes(ctx, q, scopes); err != nil {
+	if outcome.Deleted, err = e.erasure.DeleteScopes(ctx, tx, scopes); err != nil {
 		return dataprivacy.ErasureOutcome{}, err
 	}
 
 	// Counted after the scope deletion, so entries that were just removed are
 	// not also reported as retained.
-	remaining, err := e.erasure.CountMentions(ctx, q, subject.ID)
+	remaining, err := e.erasure.CountMentions(ctx, tx, subject.ID)
 	if err != nil {
 		return dataprivacy.ErasureOutcome{}, err
 	}

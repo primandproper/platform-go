@@ -152,6 +152,33 @@ FROM {{prefix}}dataprivacy_requests
 WHERE {{prefix}}dataprivacy_requests.archived_at IS NULL
 	AND {{prefix}}dataprivacy_requests.id = ?`
 
+const getRequestInScopeMySQL = `SELECT
+	{{prefix}}dataprivacy_requests.id,
+	{{prefix}}dataprivacy_requests.request_type,
+	{{prefix}}dataprivacy_requests.status,
+	{{prefix}}dataprivacy_requests.operation_id,
+	{{prefix}}dataprivacy_requests.subject_id,
+	{{prefix}}dataprivacy_requests.subject_type,
+	{{prefix}}dataprivacy_requests.subject_scope,
+	{{prefix}}dataprivacy_requests.created_at,
+	{{prefix}}dataprivacy_requests.last_updated_at,
+	{{prefix}}dataprivacy_requests.archived_at,
+	{{prefix}}dataprivacy_requests.due_at,
+	{{prefix}}dataprivacy_requests.expires_at,
+	{{prefix}}dataprivacy_requests.completed_at,
+	{{prefix}}dataprivacy_requests.artifact_ref,
+	{{prefix}}dataprivacy_requests.artifact_bytes,
+	{{prefix}}dataprivacy_requests.deleted_rows,
+	{{prefix}}dataprivacy_requests.anonymized_rows,
+	{{prefix}}dataprivacy_requests.failures,
+	{{prefix}}dataprivacy_requests.retained,
+	{{prefix}}dataprivacy_requests.last_error,
+	{{prefix}}dataprivacy_requests.key_shredded_at
+FROM {{prefix}}dataprivacy_requests
+WHERE {{prefix}}dataprivacy_requests.archived_at IS NULL
+	AND {{prefix}}dataprivacy_requests.id = ?
+	AND {{prefix}}dataprivacy_requests.subject_scope = ?`
+
 const lapseUnconfirmedRequestsMySQL = `UPDATE {{prefix}}dataprivacy_requests SET
 	status = ?,
 	completed_at = ?,
@@ -486,6 +513,7 @@ type mysqlQueries struct {
 	expireArtifact                             string
 	failRequest                                string
 	getRequest                                 string
+	getRequestInScope                          string
 	lapseUnconfirmedRequests                   string
 	listExpiringArtifacts                      string
 	listRequestsForSubject                     string
@@ -509,6 +537,7 @@ func newMySQL(prefix string) *mysqlQueries {
 		expireArtifact:                   strings.ReplaceAll(expireArtifactMySQL, prefixMarker, prefix),
 		failRequest:                      strings.ReplaceAll(failRequestMySQL, prefixMarker, prefix),
 		getRequest:                       strings.ReplaceAll(getRequestMySQL, prefixMarker, prefix),
+		getRequestInScope:                strings.ReplaceAll(getRequestInScopeMySQL, prefixMarker, prefix),
 		lapseUnconfirmedRequests:         strings.ReplaceAll(lapseUnconfirmedRequestsMySQL, prefixMarker, prefix),
 		listExpiringArtifacts:            strings.ReplaceAll(listExpiringArtifactsMySQL, prefixMarker, prefix),
 		listRequestsForSubject:           strings.ReplaceAll(listRequestsForSubjectMySQL, prefixMarker, prefix),
@@ -677,6 +706,42 @@ func (q *mysqlQueries) GetRequest(ctx context.Context, db DBTX, arg GetRequestPa
 	)
 
 	var i GetRequestRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.RequestType,
+		&i.Status,
+		&i.OperationID,
+		&i.SubjectID,
+		&i.SubjectType,
+		&i.SubjectScope,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+		&i.DueAt,
+		&i.ExpiresAt,
+		&i.CompletedAt,
+		&i.ArtifactRef,
+		&i.ArtifactBytes,
+		&i.DeletedRows,
+		&i.AnonymizedRows,
+		&i.Failures,
+		&i.Retained,
+		&i.LastError,
+		&i.KeyShreddedAt,
+	)
+
+	return i, err
+}
+
+// GetRequestInScope runs the :one query against mysql.
+func (q *mysqlQueries) GetRequestInScope(ctx context.Context, db DBTX, arg GetRequestInScopeParams) (GetRequestInScopeRow, error) {
+	row := db.QueryRowContext(ctx, q.getRequestInScope,
+		arg.ID,
+		arg.SubjectScope,
+	)
+
+	var i GetRequestInScopeRow
 
 	err := row.Scan(
 		&i.ID,
@@ -1200,6 +1265,33 @@ var (
 		LastError      *string
 		KeyShreddedAt  *time.Time
 	}(GetRequestRow{})
+	_ = struct {
+		ID           string
+		SubjectScope string
+	}(GetRequestInScopeParams{})
+	_ = struct {
+		ID             string
+		RequestType    string
+		Status         string
+		OperationID    string
+		SubjectID      string
+		SubjectType    string
+		SubjectScope   string
+		CreatedAt      time.Time
+		LastUpdatedAt  *time.Time
+		ArchivedAt     *time.Time
+		DueAt          time.Time
+		ExpiresAt      *time.Time
+		CompletedAt    *time.Time
+		ArtifactRef    string
+		ArtifactBytes  int64
+		DeletedRows    int64
+		AnonymizedRows int64
+		Failures       []byte
+		Retained       []byte
+		LastError      *string
+		KeyShreddedAt  *time.Time
+	}(GetRequestInScopeRow{})
 	_ = struct {
 		Status        string
 		CompletedAt   *time.Time

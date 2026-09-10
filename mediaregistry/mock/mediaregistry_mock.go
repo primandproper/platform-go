@@ -36,6 +36,9 @@ var _ mediaregistry.Store = &StoreMock{}
 //			ListObjectsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[mediaregistry.Object], error) {
 //				panic("mock out the ListObjects method")
 //			},
+//			ListObjectsByIDsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, objectIDs []string) ([]*mediaregistry.Object, error) {
+//				panic("mock out the ListObjectsByIDs method")
+//			},
 //			ListObjectsByOwnerFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, ownerID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[mediaregistry.Object], error) {
 //				panic("mock out the ListObjectsByOwner method")
 //			},
@@ -63,6 +66,9 @@ type StoreMock struct {
 
 	// ListObjectsFunc mocks the ListObjects method.
 	ListObjectsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[mediaregistry.Object], error)
+
+	// ListObjectsByIDsFunc mocks the ListObjectsByIDs method.
+	ListObjectsByIDsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, objectIDs []string) ([]*mediaregistry.Object, error)
 
 	// ListObjectsByOwnerFunc mocks the ListObjectsByOwner method.
 	ListObjectsByOwnerFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, ownerID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[mediaregistry.Object], error)
@@ -119,6 +125,17 @@ type StoreMock struct {
 			// Filter is the filter argument value.
 			Filter *filtering.QueryFilter
 		}
+		// ListObjectsByIDs holds details about calls to the ListObjectsByIDs method.
+		ListObjectsByIDs []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// ObjectIDs is the objectIDs argument value.
+			ObjectIDs []string
+		}
 		// ListObjectsByOwner holds details about calls to the ListObjectsByOwner method.
 		ListObjectsByOwner []struct {
 			// Ctx is the ctx argument value.
@@ -161,6 +178,7 @@ type StoreMock struct {
 	lockGetObject            sync.RWMutex
 	lockGetObjectByKey       sync.RWMutex
 	lockListObjects          sync.RWMutex
+	lockListObjectsByIDs     sync.RWMutex
 	lockListObjectsByOwner   sync.RWMutex
 	lockListObjectsBySubject sync.RWMutex
 	lockRecordObject         sync.RWMutex
@@ -339,6 +357,50 @@ func (mock *StoreMock) ListObjectsCalls() []struct {
 	mock.lockListObjects.RLock()
 	calls = mock.calls.ListObjects
 	mock.lockListObjects.RUnlock()
+	return calls
+}
+
+// ListObjectsByIDs calls ListObjectsByIDsFunc.
+func (mock *StoreMock) ListObjectsByIDs(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, objectIDs []string) ([]*mediaregistry.Object, error) {
+	if mock.ListObjectsByIDsFunc == nil {
+		panic("StoreMock.ListObjectsByIDsFunc: method is nil but Store.ListObjectsByIDs was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     tenancy.Scope
+		ObjectIDs []string
+	}{
+		Ctx:       ctx,
+		Q:         q,
+		Scope:     scope,
+		ObjectIDs: objectIDs,
+	}
+	mock.lockListObjectsByIDs.Lock()
+	mock.calls.ListObjectsByIDs = append(mock.calls.ListObjectsByIDs, callInfo)
+	mock.lockListObjectsByIDs.Unlock()
+	return mock.ListObjectsByIDsFunc(ctx, q, scope, objectIDs)
+}
+
+// ListObjectsByIDsCalls gets all the calls that were made to ListObjectsByIDs.
+// Check the length with:
+//
+//	len(mockedStore.ListObjectsByIDsCalls())
+func (mock *StoreMock) ListObjectsByIDsCalls() []struct {
+	Ctx       context.Context
+	Q         database.SQLQueryExecutor
+	Scope     tenancy.Scope
+	ObjectIDs []string
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     tenancy.Scope
+		ObjectIDs []string
+	}
+	mock.lockListObjectsByIDs.RLock()
+	calls = mock.calls.ListObjectsByIDs
+	mock.lockListObjectsByIDs.RUnlock()
 	return calls
 }
 

@@ -151,6 +151,38 @@ type Store interface {
 	// scope. The subject must name something — see ErrUnattachedSubject.
 	ListObjectsBySubject(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subject Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Object], error)
 
+	// ListObjectsByIDs reads a bounded set of the scope's objects in one query,
+	// in id order. An id that names nothing in this scope is simply absent from
+	// the result rather than an error, and an empty set is an empty result
+	// without a query.
+	//
+	// It exists because the alternative is a loop around GetObject, and every
+	// consumer that stores a reference to an upload has the read that needs it:
+	// a page of rows each naming an attachment, hydrated one round trip at a
+	// time. A partial answer is what makes it a replacement for that loop — the
+	// caller was already skipping the ids that named nothing, and an error for
+	// one missing object would empty a page over a single archived avatar.
+	//
+	// Archived objects are absent, exactly as they are from GetObject. A batch
+	// whose per-id answer disagreed with the single read's would be a trap
+	// rather than a convenience.
+	//
+	// The result is unpaged, and the set is what bounds it: the caller already
+	// holds the ids, so there is no window to walk and no cursor that would
+	// mean anything. A nil q is an error wrapping ErrNilExecutor.
+	//
+	// An id named twice is one row. The statement is an IN over a set, so the
+	// set is what the read is about rather than the sequence — a caller
+	// hydrating a page where two rows name one upload gets that upload once,
+	// and joins it back onto both by id. The result is therefore no longer than
+	// the set and is often shorter, which it would be anyway: the ids that name
+	// nothing in this scope are absent too.
+	//
+	// The set itself is bounded by MaxObjectIDsPerRead, and a larger one is
+	// ErrTooManyObjectIDs rather than a statement the dialect may or may not
+	// accept. ListObjectsByIDsInBatches reads a set of any size.
+	ListObjectsByIDs(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, objectIDs []string) ([]*Object, error)
+
 	// ArchiveObject soft-deletes the row through the caller's transaction, so
 	// the row leaves and whatever the caller records about it — the audit entry
 	// naming who removed the attachment, the reference it hung off — commit

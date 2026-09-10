@@ -62,7 +62,7 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 		return httperrors.ErrResourceConflict, "privacy request has no downloadable artifact", true
 	case errors.Is(err, ErrEmptySubjectID):
 		return httperrors.ErrValidatingRequestInput, "privacy request requires a subject", true
-	case errors.Is(err, ErrGlobalSubjectScope):
+	case errors.Is(err, ErrGlobalRequestScope):
 		return httperrors.ErrValidatingRequestInput, "privacy request cannot be confined to the global scope", true
 	case errors.Is(err, ErrUnknownRequestType):
 		return httperrors.ErrValidatingRequestInput, "unknown privacy request type", true
@@ -87,7 +87,7 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 		errors.Is(err, ErrArtifactUnavailable):
 		return codes.FailedPrecondition, true
 	case errors.Is(err, ErrEmptySubjectID),
-		errors.Is(err, ErrGlobalSubjectScope),
+		errors.Is(err, ErrGlobalRequestScope),
 		errors.Is(err, ErrUnknownRequestType):
 		return codes.InvalidArgument, true
 	default:

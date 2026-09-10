@@ -146,7 +146,7 @@ func TestFulfiller_StoreFailurePaths(T *testing.T) {
 			must.NoError(t, r.RegisterCollector("identity", staticCollector(`{"ok":true}`)))
 		})
 
-		req := saveRequest(t, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
+		req := saveRequest(t, env.client, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
 
 		env.fulfiller.store = &failingCompletionStore{Store: env.store}
 
@@ -168,7 +168,7 @@ func TestFulfiller_StoreFailurePaths(T *testing.T) {
 			must.NoError(t, r.RegisterCollector("identity", failingCollector(platformerrors.New("down"))))
 		})
 
-		req := saveRequest(t, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
+		req := saveRequest(t, env.client, env.store, newRequest(identifiers.New(), RequestExport, testSubject, env.clock.read()))
 
 		// The operation records the failure on its own row regardless, so what
 		// is lost is only this package's copy of it. What must not happen is a
@@ -218,7 +218,7 @@ func TestSQLStore_CursorPagination(T *testing.T) {
 
 		var ids []string
 		for range 5 {
-			req := saveRequest(t, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
+			req := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
 			ids = append(ids, req.ID)
 		}
 
@@ -228,7 +228,7 @@ func TestSQLStore_CursorPagination(T *testing.T) {
 		var seen []string
 
 		for range 3 {
-			page, err := store.List(t.Context(), testSubject, filter)
+			page, err := store.List(t.Context(), env.client.Reader(), testScopePtr, testSubject, filter)
 			must.NoError(t, err)
 
 			for _, req := range page.Data {
@@ -256,7 +256,7 @@ func TestSQLStore_CursorPagination(T *testing.T) {
 
 		var ids []string
 		for range 4 {
-			req := saveRequest(t, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
+			req := saveRequest(t, env.client, store, newRequest(identifiers.New(), RequestExport, testSubject, baseTime))
 			ids = append(ids, req.ID)
 		}
 
@@ -264,7 +264,7 @@ func TestSQLStore_CursorPagination(T *testing.T) {
 		filter.SortBy = filtering.SortDescending
 		filter.MaxResponseSize = new(uint16(2))
 
-		first, err := store.List(t.Context(), testSubject, filter)
+		first, err := store.List(t.Context(), env.client.Reader(), testScopePtr, testSubject, filter)
 		must.NoError(t, err)
 		must.SliceLen(t, 2, first.Data)
 
@@ -273,7 +273,7 @@ func TestSQLStore_CursorPagination(T *testing.T) {
 
 		filter.Cursor = &first.Cursor
 
-		second, err := store.List(t.Context(), testSubject, filter)
+		second, err := store.List(t.Context(), env.client.Reader(), testScopePtr, testSubject, filter)
 		must.NoError(t, err)
 		must.SliceLen(t, 2, second.Data)
 
@@ -324,19 +324,25 @@ func TestRegistry_EraserValidation(T *testing.T) {
 func TestNewFulfiller_NilArguments(T *testing.T) {
 	T.Parallel()
 
-	T.Run("refuses a nil config, store, and registry", func(t *testing.T) {
+	T.Run("refuses a nil config, client, store, and registry", func(t *testing.T) {
 		t.Parallel()
 
 		env := newSQLiteEnv(t)
 		store := env.newStore(t)
 
-		_, err := NewFulfiller(t.Context(), nil, store, NewRegistry())
+		_, err := NewFulfiller(t.Context(), nil, env.client, store, NewRegistry())
 		test.Error(t, err)
 
-		_, err = NewFulfiller(t.Context(), &FulfillerConfig{}, nil, NewRegistry())
+		// The client is required because the fulfiller opens the erasure's
+		// transaction itself: the Store no longer offers a WithTransaction to
+		// borrow one from.
+		_, err = NewFulfiller(t.Context(), &FulfillerConfig{}, nil, store, NewRegistry())
+		test.ErrorIs(t, err, ErrNilDatabaseClient)
+
+		_, err = NewFulfiller(t.Context(), &FulfillerConfig{}, env.client, nil, NewRegistry())
 		test.ErrorIs(t, err, ErrNilStore)
 
-		_, err = NewFulfiller(t.Context(), &FulfillerConfig{}, store, nil)
+		_, err = NewFulfiller(t.Context(), &FulfillerConfig{}, env.client, store, nil)
 		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
 	})
 

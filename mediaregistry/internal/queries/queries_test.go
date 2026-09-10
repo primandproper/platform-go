@@ -136,6 +136,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"ListObjectsByOwner", "ListObjectsByOwnerDescending",
 		"ListObjectsBySubject", "ListObjectsBySubjectDescending",
 		"GetObjectByKey", "GetObjectIDByKey", "GetArchivedObject",
+		"ListObjectsByIDs",
 	}
 
 	for _, d := range everyDialect {
@@ -205,12 +206,7 @@ func TestRender_UniquenessCheckReadsArchivedRows(T *testing.T) {
 		T.Run(string(d), func(t *testing.T) {
 			t.Parallel()
 
-			statements := map[string]string{}
-			for statement := range strings.SplitSeq(Render(d), "-- name: ") {
-				if name, body, ok := strings.Cut(statement, "\n"); ok {
-					statements[strings.Fields(name)[0]] = body
-				}
-			}
+			statements := statementsOf(Render(d))
 
 			check := statements["GetObjectIDByKey"]
 			must.StrContains(t, check, ObjectKeyColumn)
@@ -222,6 +218,51 @@ func TestRender_UniquenessCheckReadsArchivedRows(T *testing.T) {
 			test.StrContains(t, read, "archived_at IS NULL")
 		})
 	}
+}
+
+// TestRender_BatchedReadBindsTheSetLast pins the one ordering constraint in
+// this corpus that no dialect reports when it is violated.
+//
+// On MySQL and SQLite the set is a sqlc.slice expansion — one bare marker per
+// element — and SQLite numbers a bare marker one past the highest index it has
+// seen. An argument bound after the expansion therefore collides with one of
+// its elements, matches nothing, and reports no error: the read would come back
+// empty, or come back with another tenant's rows, and the statement would look
+// right on Postgres the whole time.
+func TestRender_BatchedReadBindsTheSetLast(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			batch := statementsOf(Render(d))["ListObjectsByIDs"]
+			must.StrContains(t, batch, ScopeColumn)
+
+			scope := strings.Index(batch, "."+ScopeColumn+" =")
+			set := strings.Index(batch, "."+querygen.IDColumn+" ")
+			must.Positive(t, scope)
+			must.Positive(t, set)
+			test.Less(t, set, scope, test.Sprintf("the scope binds after the set:\n%s", batch))
+
+			// The batch answers what GetObject answers, one id at a time, so an
+			// archived row is absent from it for the same reason.
+			test.StrContains(t, batch, "archived_at IS NULL")
+		})
+	}
+}
+
+// statementsOf indexes a rendered corpus by statement name.
+func statementsOf(rendered string) map[string]string {
+	statements := map[string]string{}
+
+	for statement := range strings.SplitSeq(rendered, "-- name: ") {
+		if name, body, ok := strings.Cut(statement, "\n"); ok {
+			statements[strings.Fields(name)[0]] = body
+		}
+	}
+
+	return statements
 }
 
 // TestRender_InsertLeavesTheConventionTimestampsToTheDatabase pins that the

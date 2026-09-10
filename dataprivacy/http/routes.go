@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/primitives-go/filtering"
 	"github.com/primandproper/primitives-go/observability"
 	"github.com/primandproper/primitives-go/routing"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // o11yName scopes this package's spans and logger.
@@ -64,10 +65,47 @@ const (
 // read everything, it has failed to say who is asking.
 type SubjectResolver func(ctx context.Context) (dataprivacy.Subject, error)
 
+// ScopeResolver derives the confinement a call is about.
+//
+// It is separate from SubjectResolver because the two answer different
+// questions and a deployment answers them from different places: who is asking
+// comes off the session, and which tenant they are asking about comes off the
+// route, the host, or the membership the session was established under. They
+// used to be one value, and a subject carrying the scope its own reads were
+// narrowed by is how a listing ends up scoped by whatever assembled the struct.
+//
+// A nil scope narrows nothing: every confinement the subject appears in, which
+// is what a person asking after their own privacy requests means. A non-nil one
+// naming nobody is refused by the store rather than widened — see
+// dataprivacy.Store.List, whose three readings this pointer is.
+//
+// On a submission there is no third reading, and nil is the request that names
+// no confinement.
+type ScopeResolver func(ctx context.Context) (*tenancy.Scope, error)
+
+// UnconfinedRequests is the ScopeResolver a surface uses when a consumer names
+// none: every call is unconfined, so a submission records no confinement and a
+// read narrows by none.
+//
+// This one has a default where the subject resolver does not, and the asymmetry
+// is the point rather than an oversight. A surface that does not know who is
+// asking serves one person's export to another, which is the failure this
+// package exists to prevent. A surface that does not know which tenant is being
+// asked about serves a subject their own requests across all of them — which is
+// the right answer for a single-tenant deployment and for the ordinary "give me
+// my data", and never crosses to another person. Every route here is already
+// narrowed to the resolved subject, so the widest thing this default can do is
+// show somebody all of their own history.
+func UnconfinedRequests(context.Context) (*tenancy.Scope, error) {
+	//nolint:nilnil // nil is the answer here, not an absent one: it is the scope that narrows nothing.
+	return nil, nil
+}
+
 // Handlers is the mountable data-privacy request surface.
 type Handlers struct {
 	svc      dataprivacy.Service
 	resolver SubjectResolver
+	scopes   ScopeResolver
 	o11y     observability.Observer
 
 	basePath       string
@@ -99,6 +137,7 @@ func New(svc dataprivacy.Service, opts ...Option) (*Handlers, error) {
 	return &Handlers{
 		svc:            svc,
 		resolver:       o.resolver,
+		scopes:         o.scopes,
 		basePath:       o.basePath,
 		operationsPath: o.operationsPath,
 		tags:           o.tags,
@@ -283,14 +322,22 @@ func (h *Handlers) submit(ctx context.Context, in submitInput) (*Receipt, error)
 	ctx, span := h.o11y.Begin(ctx, observability.WithValue(requestTypeKey, in.Type))
 	defer span.End()
 
-	subject, err := h.subject(ctx)
+	subject, scope, err := h.caller(ctx)
 	if err != nil {
 		return nil, span.Error(err, "submitting dataprivacy request")
 	}
 
 	span.Set(subjectIDKey, subject.ID)
 
-	req, err := h.svc.Submit(ctx, subject, dataprivacy.RequestType(in.Type))
+	// A nil scope is the submission that names no confinement, which is the
+	// zero tenancy.Scope. The read paths keep the pointer because they have a
+	// third reading to tell apart; a write does not.
+	var confinement tenancy.Scope
+	if scope != nil {
+		confinement = *scope
+	}
+
+	req, err := h.svc.Submit(ctx, confinement, subject, dataprivacy.RequestType(in.Type))
 	if err != nil {
 		return nil, span.Error(err, "submitting dataprivacy request")
 	}
@@ -307,14 +354,14 @@ func (h *Handlers) list(
 	ctx, span := h.o11y.Begin(ctx)
 	defer span.End()
 
-	subject, err := h.subject(ctx)
+	subject, scope, err := h.caller(ctx)
 	if err != nil {
 		return nil, span.Error(err, "listing dataprivacy requests")
 	}
 
 	span.Set(subjectIDKey, subject.ID)
 
-	results, err := h.svc.List(ctx, subject, filterFrom(in))
+	results, err := h.svc.List(ctx, scope, subject, filterFrom(in))
 	if err != nil {
 		return nil, span.Error(err, "listing dataprivacy requests")
 	}
@@ -326,7 +373,7 @@ func (h *Handlers) get(ctx context.Context, in requestInput) (*Receipt, error) {
 	ctx, span := h.o11y.Begin(ctx, observability.WithValue(requestIDKey, in.ID))
 	defer span.End()
 
-	req, err := h.read(ctx, in.ID)
+	req, _, err := h.read(ctx, in.ID)
 	if err != nil {
 		return nil, span.Error(err, "reading dataprivacy request")
 	}
@@ -338,11 +385,12 @@ func (h *Handlers) confirm(ctx context.Context, in requestInput) (*Receipt, erro
 	ctx, span := h.o11y.Begin(ctx, observability.WithValue(requestIDKey, in.ID))
 	defer span.End()
 
-	if _, err := h.read(ctx, in.ID); err != nil {
+	_, scope, err := h.read(ctx, in.ID)
+	if err != nil {
 		return nil, span.Error(err, "confirming dataprivacy request")
 	}
 
-	req, err := h.svc.Confirm(ctx, in.ID)
+	req, err := h.svc.Confirm(ctx, scope, in.ID)
 	if err != nil {
 		return nil, span.Error(err, "confirming dataprivacy request")
 	}
@@ -356,11 +404,12 @@ func (h *Handlers) cancel(ctx context.Context, in requestInput) (*Receipt, error
 	ctx, span := h.o11y.Begin(ctx, observability.WithValue(requestIDKey, in.ID))
 	defer span.End()
 
-	if _, err := h.read(ctx, in.ID); err != nil {
+	_, scope, err := h.read(ctx, in.ID)
+	if err != nil {
 		return nil, span.Error(err, "cancelling dataprivacy request")
 	}
 
-	req, err := h.svc.Cancel(ctx, in.ID)
+	req, err := h.svc.Cancel(ctx, scope, in.ID)
 	if err != nil {
 		return nil, span.Error(err, "cancelling dataprivacy request")
 	}
@@ -386,49 +435,60 @@ func (h *Handlers) subject(ctx context.Context) (dataprivacy.Subject, error) {
 	return subject, nil
 }
 
-// read fetches a request and enforces that it is the caller's.
+// read fetches a request, enforces that it is the caller's, and hands back the
+// scope its writes should run under.
 //
-// It stands in front of the two writes as well as the read, which is normally
-// not a check at all: an ownership guard reads through one connection what the
-// write will act on through another, and the owner belongs in the statement.
-// What makes it one here is that the fact being checked cannot change. A
-// request's subject is written once, by the insert — dataprivacy.Store.Save does
-// not update, and none of the statements that move a request between statuses
-// touches the subject — so there is no interleaving in which the second
-// connection sees a different answer. The guard the writes genuinely need is the
-// status one, and that is bound into their own statements a layer down.
-func (h *Handlers) read(ctx context.Context, requestID string) (*dataprivacy.Request, error) {
-	subject, err := h.subject(ctx)
+// The confinement is no longer compared here: it is bound into the statement,
+// because dataprivacy.Store.Get takes the scope it selects by and a request in
+// another tenant is reported absent rather than fetched and rejected. What is
+// still compared here is the subject, which no store method narrows by — a
+// request names one person, and this surface serves each person their own.
+//
+// That comparison is an ownership guard standing in front of two writes as well
+// as a read, which is normally not a check at all: it reads through one
+// connection what the write will act on through another. What makes it one here
+// is that the fact being checked cannot change. A request's subject is written
+// once, by the insert — dataprivacy.Store.Save does not update, and none of the
+// statements that move a request between statuses touches the subject — so
+// there is no interleaving in which the second connection sees a different
+// answer. The guard the writes genuinely need is the status one, and that is
+// bound into their own statements a layer down.
+func (h *Handlers) read(ctx context.Context, requestID string) (*dataprivacy.Request, *tenancy.Scope, error) {
+	subject, scope, err := h.caller(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	req, err := h.svc.Get(ctx, requestID)
+	req, err := h.svc.Get(ctx, scope, requestID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	if !owns(subject, req) {
-		return nil, platformerrors.Wrapf(dataprivacy.ErrRequestNotFound, "dataprivacy request %q", requestID)
+	if req == nil || subject.ID != req.Subject.ID {
+		return nil, nil, platformerrors.Wrapf(dataprivacy.ErrRequestNotFound, "dataprivacy request %q", requestID)
 	}
 
-	return req, nil
+	return req, scope, nil
 }
 
-// owns reports whether a request is the resolved subject's.
+// caller resolves who is asking and which confinement they are asking about.
 //
-// The scope is compared only where the caller names one, which is the rule
-// dataprivacy.Store.List already applies to a listing: a Subject that names no
-// scope means every scope the subject appears in, because a subject asking what
-// has been requested in their name means all of it. Answering that differently
-// for one row than for a page of them would put a request in a listing and a
-// 404 at its own URL.
-func owns(subject dataprivacy.Subject, req *dataprivacy.Request) bool {
-	if req == nil || subject.ID != req.Subject.ID {
-		return false
+// The two are resolved together because every route needs both and neither is
+// derivable from the other. A failure in either fails the request: a surface
+// that could not decide whose data this is has not decided that everyone may
+// read everything.
+func (h *Handlers) caller(ctx context.Context) (dataprivacy.Subject, *tenancy.Scope, error) {
+	subject, err := h.subject(ctx)
+	if err != nil {
+		return dataprivacy.Subject{}, nil, err
 	}
 
-	return subject.Scope.Validate() != nil || subject.Scope == req.Subject.Scope
+	scope, err := h.scopes(ctx)
+	if err != nil {
+		return dataprivacy.Subject{}, nil, platformerrors.Wrap(err, "resolving the dataprivacy scope of a request")
+	}
+
+	return subject, scope, nil
 }
 
 // filterFrom builds the shared query filter from the endpoint's own parameters.

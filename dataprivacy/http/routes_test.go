@@ -76,7 +76,7 @@ func TestHandlers_submit(T *testing.T) {
 		t.Parallel()
 
 		svc := &dataprivacymock.ServiceMock{}
-		svc.SubmitFunc = func(_ context.Context, subject dataprivacy.Subject, requestType dataprivacy.RequestType) (*dataprivacy.Request, error) {
+		svc.SubmitFunc = func(_ context.Context, _ tenancy.Scope, subject dataprivacy.Subject, requestType dataprivacy.RequestType) (*dataprivacy.Request, error) {
 			req := requestFor("req_1", subject, dataprivacy.StatusInProgress, "op_1")
 			req.Type = requestType
 
@@ -101,7 +101,7 @@ func TestHandlers_submit(T *testing.T) {
 		var seen dataprivacy.Subject
 
 		svc := &dataprivacymock.ServiceMock{}
-		svc.SubmitFunc = func(_ context.Context, subject dataprivacy.Subject, _ dataprivacy.RequestType) (*dataprivacy.Request, error) {
+		svc.SubmitFunc = func(_ context.Context, _ tenancy.Scope, subject dataprivacy.Subject, _ dataprivacy.RequestType) (*dataprivacy.Request, error) {
 			seen = subject
 
 			return requestFor("req_1", subject, dataprivacy.StatusInProgress, "op_1"), nil
@@ -121,7 +121,7 @@ func TestHandlers_submit(T *testing.T) {
 		t.Parallel()
 
 		svc := &dataprivacymock.ServiceMock{}
-		svc.SubmitFunc = func(_ context.Context, _ dataprivacy.Subject, _ dataprivacy.RequestType) (*dataprivacy.Request, error) {
+		svc.SubmitFunc = func(_ context.Context, _ tenancy.Scope, _ dataprivacy.Subject, _ dataprivacy.RequestType) (*dataprivacy.Request, error) {
 			t.Error("submitted a request whose body named a subject")
 
 			return nil, nil
@@ -141,7 +141,7 @@ func TestHandlers_submit(T *testing.T) {
 		t.Parallel()
 
 		svc := &dataprivacymock.ServiceMock{}
-		svc.SubmitFunc = func(_ context.Context, subject dataprivacy.Subject, _ dataprivacy.RequestType) (*dataprivacy.Request, error) {
+		svc.SubmitFunc = func(_ context.Context, _ tenancy.Scope, subject dataprivacy.Subject, _ dataprivacy.RequestType) (*dataprivacy.Request, error) {
 			return requestFor("req_1", subject, dataprivacy.StatusAwaitingConfirmation, ""), nil
 		}
 
@@ -159,7 +159,7 @@ func TestHandlers_submit(T *testing.T) {
 		t.Parallel()
 
 		svc := &dataprivacymock.ServiceMock{}
-		svc.SubmitFunc = func(_ context.Context, _ dataprivacy.Subject, requestType dataprivacy.RequestType) (*dataprivacy.Request, error) {
+		svc.SubmitFunc = func(_ context.Context, _ tenancy.Scope, _ dataprivacy.Subject, requestType dataprivacy.RequestType) (*dataprivacy.Request, error) {
 			return nil, platformerrors.Wrapf(dataprivacy.ErrUnknownRequestType, "dataprivacy request type %q", requestType)
 		}
 
@@ -172,7 +172,7 @@ func TestHandlers_submit(T *testing.T) {
 		t.Parallel()
 
 		svc := &dataprivacymock.ServiceMock{}
-		svc.SubmitFunc = func(_ context.Context, _ dataprivacy.Subject, _ dataprivacy.RequestType) (*dataprivacy.Request, error) {
+		svc.SubmitFunc = func(_ context.Context, _ tenancy.Scope, _ dataprivacy.Subject, _ dataprivacy.RequestType) (*dataprivacy.Request, error) {
 			t.Error("the service was called without a subject")
 
 			return nil, nil
@@ -194,7 +194,7 @@ func TestHandlers_submit(T *testing.T) {
 		t.Parallel()
 
 		svc := &dataprivacymock.ServiceMock{}
-		svc.SubmitFunc = func(_ context.Context, _ dataprivacy.Subject, _ dataprivacy.RequestType) (*dataprivacy.Request, error) {
+		svc.SubmitFunc = func(_ context.Context, _ tenancy.Scope, _ dataprivacy.Subject, _ dataprivacy.RequestType) (*dataprivacy.Request, error) {
 			t.Error("the service was called for an empty subject")
 
 			return nil, nil
@@ -217,6 +217,7 @@ func TestHandlers_list(T *testing.T) {
 		svc := &dataprivacymock.ServiceMock{}
 		svc.ListFunc = func(
 			_ context.Context,
+			_ *tenancy.Scope,
 			subject dataprivacy.Subject,
 			_ *filtering.QueryFilter,
 		) (*filtering.QueryFilteredResult[dataprivacy.Request], error) {
@@ -242,6 +243,7 @@ func TestHandlers_list(T *testing.T) {
 		svc := &dataprivacymock.ServiceMock{}
 		svc.ListFunc = func(
 			_ context.Context,
+			_ *tenancy.Scope,
 			subject dataprivacy.Subject,
 			filter *filtering.QueryFilter,
 		) (*filtering.QueryFilteredResult[dataprivacy.Request], error) {
@@ -306,32 +308,78 @@ func TestHandlers_get(T *testing.T) {
 		test.EqOp(t, theirs.Body.String(), missing.Body.String())
 	})
 
-	// The read of one row applies the listing's own rule: a caller who names no
-	// scope is asking about everything requested in their name.
-	T.Run("an unscoped subject reads their scoped request", func(t *testing.T) {
+	// The confinement is no longer compared here — it is bound into the
+	// statement a layer down — so what this surface owes is that whatever the
+	// resolver decided reaches the service unaltered.
+	T.Run("the resolved scope reaches the service", func(t *testing.T) {
 		t.Parallel()
 
-		scoped := dataprivacy.Subject{ID: theSubject.ID, Scope: tenancy.Of("account_1"), Type: dataprivacy.SubjectUser}
-		req := requestFor("req_1", scoped, dataprivacy.StatusCompleted, "op_1")
+		scope := tenancy.Of("account_1")
 
-		res := do(t, mount(t, serviceReturning(req), theSubject), nethttp.MethodGet, BasePath+"/req_1", "")
+		var seen *tenancy.Scope
+
+		req := requestFor("req_1", theSubject, dataprivacy.StatusCompleted, "op_1")
+
+		svc := serviceReturning(req)
+		inner := svc.GetFunc
+		svc.GetFunc = func(ctx context.Context, s *tenancy.Scope, id string) (*dataprivacy.Request, error) {
+			seen = s
+
+			return inner(ctx, s, id)
+		}
+
+		handler := mount(t, svc, theSubject, WithScopeResolver(
+			func(context.Context) (*tenancy.Scope, error) { return &scope, nil },
+		))
+
+		res := do(t, handler, nethttp.MethodGet, BasePath+"/req_1", "")
 
 		test.EqOp(t, nethttp.StatusOK, res.Code)
+		must.NotNil(t, seen)
+		test.EqOp(t, scope, *seen)
 	})
 
-	// The other direction does not hold: a caller confined to one scope does not
-	// read another's row, even about themselves.
-	T.Run("a scoped subject does not read another scope's request", func(t *testing.T) {
+	// UnconfinedRequests is the default, and its nil is "every confinement this
+	// subject appears in" rather than "the requests that named none".
+	T.Run("without a scope resolver the read narrows by nothing", func(t *testing.T) {
 		t.Parallel()
 
-		other := dataprivacy.Subject{ID: theSubject.ID, Scope: tenancy.Of("account_2"), Type: dataprivacy.SubjectUser}
-		req := requestFor("req_1", other, dataprivacy.StatusCompleted, "op_1")
+		var called bool
 
-		caller := dataprivacy.Subject{ID: theSubject.ID, Scope: tenancy.Of("account_1"), Type: dataprivacy.SubjectUser}
+		req := requestFor("req_1", theSubject, dataprivacy.StatusCompleted, "op_1")
 
-		res := do(t, mount(t, serviceReturning(req), caller), nethttp.MethodGet, BasePath+"/req_1", "")
+		svc := serviceReturning(req)
+		inner := svc.GetFunc
+		svc.GetFunc = func(ctx context.Context, s *tenancy.Scope, id string) (*dataprivacy.Request, error) {
+			called = true
 
-		test.EqOp(t, nethttp.StatusNotFound, res.Code)
+			test.Nil(t, s)
+
+			return inner(ctx, s, id)
+		}
+
+		res := do(t, mount(t, svc, theSubject), nethttp.MethodGet, BasePath+"/req_1", "")
+
+		test.EqOp(t, nethttp.StatusOK, res.Code)
+		test.True(t, called)
+	})
+
+	// A resolver that cannot decide fails the request rather than falling back
+	// to the widest reading.
+	T.Run("a failing scope resolver fails the request", func(t *testing.T) {
+		t.Parallel()
+
+		req := requestFor("req_1", theSubject, dataprivacy.StatusCompleted, "op_1")
+
+		handler := mount(t, serviceReturning(req), theSubject, WithScopeResolver(
+			func(context.Context) (*tenancy.Scope, error) {
+				return nil, platformerrors.New("tenant directory is down")
+			},
+		))
+
+		res := do(t, handler, nethttp.MethodGet, BasePath+"/req_1", "")
+
+		test.NotEqOp(t, nethttp.StatusOK, res.Code)
 	})
 }
 
@@ -345,7 +393,7 @@ func TestHandlers_confirm(T *testing.T) {
 		req := requestFor("req_1", theSubject, dataprivacy.StatusAwaitingConfirmation, "")
 
 		svc := serviceReturning(req)
-		svc.ConfirmFunc = func(_ context.Context, requestID string) (*dataprivacy.Request, error) {
+		svc.ConfirmFunc = func(_ context.Context, _ *tenancy.Scope, requestID string) (*dataprivacy.Request, error) {
 			return requestFor(requestID, theSubject, dataprivacy.StatusInProgress, "op_1"), nil
 		}
 
@@ -364,7 +412,7 @@ func TestHandlers_confirm(T *testing.T) {
 		req := requestFor("req_1", theSubject, dataprivacy.StatusInProgress, "op_1")
 
 		svc := serviceReturning(req)
-		svc.ConfirmFunc = func(_ context.Context, requestID string) (*dataprivacy.Request, error) {
+		svc.ConfirmFunc = func(_ context.Context, _ *tenancy.Scope, requestID string) (*dataprivacy.Request, error) {
 			return nil, platformerrors.Wrapf(dataprivacy.ErrNotAwaitingConfirmation, "dataprivacy request %q", requestID)
 		}
 
@@ -381,7 +429,7 @@ func TestHandlers_confirm(T *testing.T) {
 		req := requestFor("req_1", theSubject, dataprivacy.StatusAwaitingConfirmation, "")
 
 		svc := serviceReturning(req)
-		svc.ConfirmFunc = func(_ context.Context, _ string) (*dataprivacy.Request, error) {
+		svc.ConfirmFunc = func(_ context.Context, _ *tenancy.Scope, _ string) (*dataprivacy.Request, error) {
 			t.Error("confirmed somebody else's request")
 
 			return nil, nil
@@ -404,7 +452,7 @@ func TestHandlers_cancel(T *testing.T) {
 		req := requestFor("req_1", theSubject, dataprivacy.StatusAwaitingConfirmation, "")
 
 		svc := serviceReturning(req)
-		svc.CancelFunc = func(_ context.Context, requestID string) (*dataprivacy.Request, error) {
+		svc.CancelFunc = func(_ context.Context, _ *tenancy.Scope, requestID string) (*dataprivacy.Request, error) {
 			return requestFor(requestID, theSubject, dataprivacy.StatusCancelled, ""), nil
 		}
 
@@ -425,7 +473,7 @@ func TestHandlers_cancel(T *testing.T) {
 		req := requestFor("req_1", theSubject, dataprivacy.StatusInProgress, "op_1")
 
 		svc := serviceReturning(req)
-		svc.CancelFunc = func(_ context.Context, _ string) (*dataprivacy.Request, error) {
+		svc.CancelFunc = func(_ context.Context, _ *tenancy.Scope, _ string) (*dataprivacy.Request, error) {
 			return req, nil
 		}
 
@@ -445,7 +493,7 @@ func TestHandlers_cancel(T *testing.T) {
 		req := requestFor("req_1", theSubject, dataprivacy.StatusInProgress, "op_1")
 
 		svc := serviceReturning(req)
-		svc.CancelFunc = func(_ context.Context, _ string) (*dataprivacy.Request, error) {
+		svc.CancelFunc = func(_ context.Context, _ *tenancy.Scope, _ string) (*dataprivacy.Request, error) {
 			t.Error("cancelled somebody else's request")
 
 			return nil, nil
@@ -551,29 +599,18 @@ func TestHandlers_receipt(T *testing.T) {
 	})
 }
 
-func TestOwns(T *testing.T) {
+func TestUnconfinedRequests(T *testing.T) {
 	T.Parallel()
 
-	req := requestFor("req_1", dataprivacy.Subject{ID: "subject_1", Scope: tenancy.Of("account_1")}, dataprivacy.StatusCompleted, "op_1")
+	T.Run("narrows nothing", func(t *testing.T) {
+		t.Parallel()
 
-	cases := map[string]struct {
-		req     *dataprivacy.Request
-		subject dataprivacy.Subject
-		want    bool
-	}{
-		"same subject, no scope named":  {subject: dataprivacy.Subject{ID: "subject_1"}, req: req, want: true},
-		"same subject, same scope":      {subject: dataprivacy.Subject{ID: "subject_1", Scope: tenancy.Of("account_1")}, req: req, want: true},
-		"same subject, other scope":     {subject: dataprivacy.Subject{ID: "subject_1", Scope: tenancy.Of("account_2")}, req: req, want: false},
-		"different subject":             {subject: dataprivacy.Subject{ID: "subject_2"}, req: req, want: false},
-		"no request":                    {subject: dataprivacy.Subject{ID: "subject_1"}, req: nil, want: false},
-		"empty subject matches nothing": {subject: dataprivacy.Subject{}, req: req, want: false},
-	}
-
-	for name, testCase := range cases {
-		T.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			test.EqOp(t, testCase.want, owns(testCase.subject, testCase.req))
-		})
-	}
+		// nil is the surface's default and it is the widest reading — every
+		// confinement the resolved subject appears in. It is safe as a default
+		// only because every route here is already narrowed to that subject, so
+		// the most it can show somebody is all of their own history.
+		scope, err := UnconfinedRequests(t.Context())
+		test.NoError(t, err)
+		test.Nil(t, scope)
+	})
 }

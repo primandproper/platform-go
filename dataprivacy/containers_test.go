@@ -21,6 +21,7 @@ import (
 	"github.com/primandproper/primitives-go/database/mysql"
 	"github.com/primandproper/primitives-go/database/postgres"
 	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 	"github.com/primandproper/primitives-go/testutils/containers/mysqltest"
 	"github.com/primandproper/primitives-go/testutils/containers/pgtest"
 
@@ -169,7 +170,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 				must.NoError(t, r.RegisterCollector("webhooks", staticCollector(`{"hooks":[]}`)))
 			})
 
-			req, err := env.svc.Submit(t.Context(), testSubject, RequestExport)
+			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 			must.NoError(t, err)
 			must.StrNotEqFold(t, "", req.OperationID)
 
@@ -206,7 +207,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 			test.Greater(t, int64(0), summary.Bytes)
 
 			// And the request row is the statutory record, pointing at both.
-			read, err := env.svc.Get(t.Context(), req.ID)
+			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
 			must.NoError(t, err)
 			test.EqOp(t, StatusCompleted, read.Status)
 			test.EqOp(t, op.ID, read.OperationID)
@@ -215,7 +216,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 
 			// Delivered, and readable: Open reverses whatever packaging the
 			// fulfiller applied, which is the path that works everywhere.
-			artifact, err := env.svc.Open(t.Context(), req.ID)
+			artifact, err := env.svc.Open(t.Context(), testScopePtr, req.ID)
 			must.NoError(t, err)
 
 			t.Cleanup(func() { _ = artifact.Close() })
@@ -239,7 +240,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 				must.NoError(t, r.RegisterCollector("billing", failingCollector(platformerrors.New("billing is down"))))
 			})
 
-			req, err := env.svc.Submit(t.Context(), testSubject, RequestExport)
+			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 			must.NoError(t, err)
 
 			op := env.drain(t, req.OperationID)
@@ -255,7 +256,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 			must.MapLen(t, 1, summary.Failures)
 			test.StrContains(t, summary.Failures["billing"], "billing is down")
 
-			read, err := env.svc.Get(t.Context(), req.ID)
+			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
 			must.NoError(t, err)
 			test.EqOp(t, StatusCompleted, read.Status)
 			test.True(t, read.Partial())
@@ -273,7 +274,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 					countingEraser(2, 0, map[string]string{"invoices": "tax law"}, nil)))
 			}, WithFulfillerConfirmationWindow(72*time.Hour))
 
-			req, err := env.svc.Submit(t.Context(), testSubject, RequestErasure)
+			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestErasure)
 			must.NoError(t, err)
 
 			// Nothing runs and nothing is queued: until somebody confirms it,
@@ -281,7 +282,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 			test.EqOp(t, StatusAwaitingConfirmation, req.Status)
 			test.EqOp(t, "", req.OperationID)
 
-			confirmed, err := env.svc.Confirm(t.Context(), req.ID)
+			confirmed, err := env.svc.Confirm(t.Context(), testScopePtr, req.ID)
 			must.NoError(t, err)
 			must.StrNotEqFold(t, "", confirmed.OperationID)
 
@@ -303,7 +304,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 			test.EqOp(t, int64(1), summary.Anonymized)
 			test.EqOp(t, "tax law", summary.Retained["billing.invoices"])
 
-			read, err := env.svc.Get(t.Context(), req.ID)
+			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
 			must.NoError(t, err)
 			test.EqOp(t, StatusCompleted, read.Status)
 			test.EqOp(t, int64(7), read.Deleted)
@@ -320,7 +321,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 				must.NoError(t, r.RegisterCollector("identity", failingCollector(platformerrors.New("down"))))
 			})
 
-			req, err := env.svc.Submit(t.Context(), testSubject, RequestExport)
+			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 			must.NoError(t, err)
 
 			op := env.drain(t, req.OperationID)
@@ -337,7 +338,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 
 			// The row is marked on the final attempt and not before, which is
 			// the only moment at which "nobody is getting an answer" is true.
-			read, err := env.svc.Get(t.Context(), req.ID)
+			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
 			must.NoError(t, err)
 			test.EqOp(t, StatusFailed, read.Status)
 			test.StrContains(t, read.LastError, "no dataprivacy collector succeeded")
@@ -360,7 +361,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 				must.NoError(t, r.RegisterCollector("identity", collector))
 			})
 
-			req, err := env.svc.Submit(t.Context(), testSubject, RequestExport)
+			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 			must.NoError(t, err)
 
 			// The second attempt is held inside the collector, so what follows
@@ -368,7 +369,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 			// a request that happens to have succeeded.
 			collector.awaitEntry(t)
 
-			mid, err := env.svc.Get(t.Context(), req.ID)
+			mid, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
 			must.NoError(t, err)
 
 			// This is the row a subject's status page reads between a failure
@@ -397,7 +398,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 
 			// And the transient failure left no residue on the record that
 			// outlives the operation by years.
-			read, err := env.svc.Get(t.Context(), req.ID)
+			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
 			must.NoError(t, err)
 			test.EqOp(t, StatusCompleted, read.Status)
 			test.EqOp(t, "", read.LastError)
@@ -412,7 +413,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 					staticCollector(`{"padding":"aaaaaaaaaaaaaaaaaaaa"}`)))
 			}, WithFulfillerMaxDocumentBytes(8))
 
-			req, err := env.svc.Submit(t.Context(), testSubject, RequestExport)
+			req, err := env.svc.Submit(t.Context(), testScope, testSubject, RequestExport)
 			must.NoError(t, err)
 
 			op := env.drain(t, req.OperationID)
@@ -426,7 +427,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 			must.NotNil(t, op.Error)
 			test.False(t, op.Error.Retryable)
 
-			read, err := env.svc.Get(t.Context(), req.ID)
+			read, err := env.svc.Get(t.Context(), testScopePtr, req.ID)
 			must.NoError(t, err)
 			test.EqOp(t, StatusFailed, read.Status)
 			test.StrContains(t, read.LastError, "exceeds configured maximum")
@@ -519,7 +520,7 @@ func newFulfillmentEnv(
 		opt(configs)
 	}
 
-	fulfiller, err := NewFulfiller(t.Context(), &configs.fulfiller, store, domains,
+	fulfiller, err := NewFulfiller(t.Context(), &configs.fulfiller, client, store, domains,
 		WithFulfillerUploadManager(uploader))
 	must.NoError(t, err)
 
@@ -558,7 +559,7 @@ func newFulfillmentEnv(
 	}, opsStore, queue, kinds)
 	must.NoError(t, err)
 
-	svc, err := NewService(t.Context(), &configs.svc, store, opsSvc, WithServiceUploadManager(uploader))
+	svc, err := NewService(t.Context(), &configs.svc, client, store, opsSvc, WithServiceUploadManager(uploader))
 	must.NoError(t, err)
 
 	// The real loop, stopped by cancelling its context — which is how an
@@ -598,7 +599,7 @@ func newGatedCollector(fragment string, failures int64) *gatedCollector {
 }
 
 // Collect implements Collector.
-func (c *gatedCollector) Collect(ctx context.Context, _ Subject) (json.RawMessage, error) {
+func (c *gatedCollector) Collect(ctx context.Context, _ tenancy.Scope, _ Subject) (json.RawMessage, error) {
 	// A whole-export failure rather than one section's: this is the only
 	// collector registered, and an export where every collector failed is a
 	// retryable failure of the export itself.

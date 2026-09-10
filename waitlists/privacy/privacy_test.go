@@ -29,6 +29,10 @@ import (
 var (
 	firstScope  = tenancy.Of("acct_1")
 	secondScope = tenancy.Of("acct_2")
+
+	// testScope is the confinement a request arrives with, which the fulfiller
+	// hands the collector and the eraser beside the subject.
+	testScope = firstScope
 )
 
 // subject is the person these tests are about, and who is the same person as
@@ -144,8 +148,7 @@ func TestRequestScope(T *testing.T) {
 	T.Run("resolves the scope the request names", func(t *testing.T) {
 		t.Parallel()
 
-		scopes, err := privacy.RequestScope(t.Context(),
-			dataprivacy.Subject{ID: "user_1", Scope: tenancy.Of("acct_1")})
+		scopes, err := privacy.RequestScope(t.Context(), tenancy.Of("acct_1"), subject)
 		must.NoError(t, err)
 		test.Eq(t, []tenancy.Scope{tenancy.Of("acct_1")}, scopes)
 	})
@@ -156,7 +159,7 @@ func TestRequestScope(T *testing.T) {
 		// Not the global scope. An export that quietly covered only the global
 		// scope would be well-formed, would have a section, and would be missing
 		// every signup the subject actually holds.
-		_, err := privacy.RequestScope(t.Context(), subject)
+		_, err := privacy.RequestScope(t.Context(), tenancy.Scope{}, subject)
 		must.ErrorIs(t, err, privacy.ErrUnscopedRequest)
 	})
 }
@@ -167,7 +170,7 @@ func TestFixedScopes(T *testing.T) {
 	T.Run("resolves every subject to the same scopes", func(t *testing.T) {
 		t.Parallel()
 
-		scopes, err := privacy.FixedScopes(tenancy.Global())(t.Context(), subject)
+		scopes, err := privacy.FixedScopes(tenancy.Global())(t.Context(), testScope, subject)
 		must.NoError(t, err)
 		test.Eq(t, []tenancy.Scope{tenancy.Global()}, scopes)
 	})
@@ -181,7 +184,7 @@ func TestFixedScopes(T *testing.T) {
 		resolve := privacy.FixedScopes(given...)
 		given[0] = tenancy.Of("somebody_else")
 
-		scopes, err := resolve(t.Context(), subject)
+		scopes, err := resolve(t.Context(), testScope, subject)
 		must.NoError(t, err)
 		test.Eq(t, []tenancy.Scope{firstScope, secondScope}, scopes)
 	})
@@ -242,7 +245,7 @@ func TestCollector_Collect(T *testing.T) {
 		collector, err := privacy.NewCollector(store, reader, privacy.FixedScopes(firstScope, secondScope))
 		must.NoError(t, err)
 
-		fragment, err := collector.Collect(t.Context(), subject)
+		fragment, err := collector.Collect(t.Context(), testScope, subject)
 		must.NoError(t, err)
 
 		var collected []waitlists.Signup
@@ -273,7 +276,7 @@ func TestCollector_Collect(T *testing.T) {
 		collector, err := privacy.NewCollector(store, reader, privacy.FixedScopes(firstScope))
 		must.NoError(t, err)
 
-		fragment, err := collector.Collect(t.Context(), subject)
+		fragment, err := collector.Collect(t.Context(), testScope, subject)
 		must.NoError(t, err)
 		test.Nil(t, fragment)
 	})
@@ -286,7 +289,7 @@ func TestCollector_Collect(T *testing.T) {
 		collector, err := privacy.NewCollector(store, reader, privacy.FixedScopes())
 		must.NoError(t, err)
 
-		fragment, err := collector.Collect(t.Context(), subject)
+		fragment, err := collector.Collect(t.Context(), testScope, subject)
 		must.NoError(t, err)
 		test.Nil(t, fragment)
 		test.SliceEmpty(t, store.ListSignupsForSubjectCalls())
@@ -298,7 +301,9 @@ func TestCollector_Collect(T *testing.T) {
 		collector, err := privacy.NewCollector(&waitlistsmock.SignupStoreMock{}, reader, privacy.RequestScope)
 		must.NoError(t, err)
 
-		_, err = collector.Collect(t.Context(), subject)
+		// The confinement is the argument now, so the request that named none
+		// is the zero Scope rather than a subject with an empty field.
+		_, err = collector.Collect(t.Context(), tenancy.Scope{}, subject)
 		must.ErrorIs(t, err, privacy.ErrUnscopedRequest)
 	})
 
@@ -323,7 +328,7 @@ func TestCollector_Collect(T *testing.T) {
 		collector, err := privacy.NewCollector(store, reader, privacy.FixedScopes(firstScope))
 		must.NoError(t, err)
 
-		fragment, err := collector.Collect(t.Context(), subject)
+		fragment, err := collector.Collect(t.Context(), testScope, subject)
 		must.ErrorIs(t, err, errStoreUnavailable)
 		test.Nil(t, fragment)
 	})
@@ -370,7 +375,7 @@ func TestEraser_Erase(T *testing.T) {
 		must.NoError(t, err)
 
 		withTx(t, func(q database.Tx) {
-			outcome, eraseErr := eraser.Erase(t.Context(), q, subject)
+			outcome, eraseErr := eraser.Erase(t.Context(), q, testScope, subject)
 			must.NoError(t, eraseErr)
 
 			// Withdrawn rows are anonymized in place, not destroyed: the row
@@ -401,7 +406,7 @@ func TestEraser_Erase(T *testing.T) {
 		must.NoError(t, err)
 
 		withTx(t, func(q database.Tx) {
-			outcome, eraseErr := eraser.Erase(t.Context(), q, subject)
+			outcome, eraseErr := eraser.Erase(t.Context(), q, testScope, subject)
 			must.NoError(t, eraseErr)
 			test.EqOp(t, int64(0), outcome.Anonymized)
 
@@ -417,7 +422,7 @@ func TestEraser_Erase(T *testing.T) {
 		eraser, err := privacy.NewEraser(&waitlistsmock.SignupStoreMock{}, privacy.FixedScopes(firstScope))
 		must.NoError(t, err)
 
-		_, err = eraser.Erase(t.Context(), nil, subject)
+		_, err = eraser.Erase(t.Context(), nil, testScope, subject)
 		must.ErrorIs(t, err, privacy.ErrNilExecutor)
 
 		// And it wraps the module-wide sentinel, so a caller checking for a nil
@@ -432,7 +437,7 @@ func TestEraser_Erase(T *testing.T) {
 		must.NoError(t, err)
 
 		withTx(t, func(q database.Tx) {
-			_, eraseErr := eraser.Erase(t.Context(), q, subject)
+			_, eraseErr := eraser.Erase(t.Context(), q, tenancy.Scope{}, subject)
 			must.ErrorIs(t, eraseErr, privacy.ErrUnscopedRequest)
 		})
 	})
@@ -456,7 +461,7 @@ func TestEraser_Erase(T *testing.T) {
 		must.NoError(t, err)
 
 		withTx(t, func(q database.Tx) {
-			outcome, eraseErr := eraser.Erase(t.Context(), q, subject)
+			outcome, eraseErr := eraser.Erase(t.Context(), q, testScope, subject)
 			must.ErrorIs(t, eraseErr, errStoreUnavailable)
 			test.EqOp(t, int64(0), outcome.Anonymized)
 			test.MapEmpty(t, outcome.Retained)

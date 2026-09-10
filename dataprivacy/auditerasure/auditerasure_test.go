@@ -72,8 +72,8 @@ func newAuditEnv(t *testing.T) *auditEnv {
 func (e *auditEnv) record(t *testing.T, scope tenancy.Scope, actorID, resourceID string) {
 	t.Helper()
 
-	must.NoError(t, e.client.WithTransaction(t.Context(), func(q database.Tx) error {
-		return e.recorder.Record(t.Context(), q, &audit.Entry{
+	must.NoError(t, e.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+		return e.recorder.Record(t.Context(), tx, &audit.Entry{
 			EventType:    audit.EventUpdated,
 			ResourceType: "recipe",
 			ResourceID:   resourceID,
@@ -108,14 +108,18 @@ func (e *auditEnv) countChains(t *testing.T, scope string) int64 {
 }
 
 // erase runs the eraser inside a transaction, as the dataprivacy Worker does.
+//
+// The request names no confinement, which is the ordinary "forget me entirely"
+// and what the default resolver is written for — it reads the subject's own ID
+// as their chain and ignores the confinement entirely.
 func (e *auditEnv) erase(t *testing.T, eraser *Eraser, subject dataprivacy.Subject) dataprivacy.ErasureOutcome {
 	t.Helper()
 
 	var outcome dataprivacy.ErasureOutcome
 
-	must.NoError(t, e.client.WithTransaction(t.Context(), func(q database.Tx) error {
+	must.NoError(t, e.client.WithTransaction(t.Context(), func(tx database.Tx) error {
 		var err error
-		outcome, err = eraser.Erase(t.Context(), q, subject)
+		outcome, err = eraser.Erase(t.Context(), tx, tenancy.Scope{}, subject)
 
 		return err
 	}))
@@ -229,7 +233,7 @@ func TestEraser(T *testing.T) {
 		env.record(t, tenancy.Of("tenant-b"), "user-1", "recipe-2")
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(_ context.Context, s dataprivacy.Subject) ([]tenancy.Scope, error) {
+			WithScopeResolver(func(_ context.Context, _ tenancy.Scope, s dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return []tenancy.Scope{tenancy.Of("tenant-a"), tenancy.Of("tenant-b")}, nil
 			}))
 		must.NoError(t, err)
@@ -271,13 +275,13 @@ func TestEraser(T *testing.T) {
 		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(context.Context, dataprivacy.Subject) ([]tenancy.Scope, error) {
+			WithScopeResolver(func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return []tenancy.Scope{tenancy.Of("user-1"), {}}, nil
 			}))
 		must.NoError(t, err)
 
-		erasureErr := env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			_, eraseErr := eraser.Erase(t.Context(), q, dataprivacy.Subject{ID: "user-1"})
+		erasureErr := env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, eraseErr := eraser.Erase(t.Context(), tx, tenancy.Scope{}, dataprivacy.Subject{ID: "user-1"})
 
 			return eraseErr
 		})
@@ -295,7 +299,7 @@ func TestEraser(T *testing.T) {
 		env.record(t, tenancy.Of("user-1"), "user-1", "recipe-1")
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(context.Context, dataprivacy.Subject) ([]tenancy.Scope, error) {
+			WithScopeResolver(func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return nil, nil
 			}))
 		must.NoError(t, err)
@@ -330,7 +334,7 @@ func TestEraser(T *testing.T) {
 		eraser, err := New(dialect.SQLite)
 		must.NoError(t, err)
 
-		_, err = eraser.Erase(t.Context(), nil, dataprivacy.Subject{ID: "user-1"})
+		_, err = eraser.Erase(t.Context(), nil, tenancy.Scope{}, dataprivacy.Subject{ID: "user-1"})
 		test.Error(t, err)
 	})
 }
@@ -387,13 +391,13 @@ func TestNew(T *testing.T) {
 		env := newAuditEnv(t)
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(context.Context, dataprivacy.Subject) ([]tenancy.Scope, error) {
+			WithScopeResolver(func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return nil, platformerrors.New("tenant directory is down")
 			}))
 		must.NoError(t, err)
 
-		err = env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			_, eraseErr := eraser.Erase(t.Context(), q, dataprivacy.Subject{ID: "user-1"})
+		err = env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, eraseErr := eraser.Erase(t.Context(), tx, tenancy.Scope{}, dataprivacy.Subject{ID: "user-1"})
 
 			return eraseErr
 		})
@@ -468,7 +472,7 @@ func TestEraser_PropagatesFailures(T *testing.T) {
 		must.NoError(t, err)
 
 		_, err = eraser.Erase(t.Context(), database.NewTxForTesting(&failingExecutor{closed: newClosedPool(t)}),
-			dataprivacy.Subject{ID: "user-1"})
+			tenancy.Scope{}, dataprivacy.Subject{ID: "user-1"})
 
 		must.ErrorIs(t, err, errDatabase)
 		test.StrContains(t, err.Error(), "deleting audit entries")
@@ -485,10 +489,10 @@ func TestEraser_PropagatesFailures(T *testing.T) {
 
 		closed := newClosedPool(t)
 
-		err = env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+		err = env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
 			_, eraseErr := eraser.Erase(t.Context(),
-				database.NewTxForTesting(&countOnlyExecutor{SQLQueryExecutor: q, closed: closed}),
-				dataprivacy.Subject{ID: "user-1"})
+				database.NewTxForTesting(&countOnlyExecutor{SQLQueryExecutor: tx, closed: closed}),
+				tenancy.Scope{}, dataprivacy.Subject{ID: "user-1"})
 
 			return eraseErr
 		})
@@ -501,7 +505,7 @@ func TestEraser_PropagatesFailures(T *testing.T) {
 		t.Parallel()
 
 		eraser, err := New(dialect.SQLite,
-			WithScopeResolver(func(context.Context, dataprivacy.Subject) ([]tenancy.Scope, error) {
+			WithScopeResolver(func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
 				return nil, nil
 			}))
 		must.NoError(t, err)
@@ -509,7 +513,7 @@ func TestEraser_PropagatesFailures(T *testing.T) {
 		// The delete is skipped entirely, so the only statement is the count —
 		// and its failure still has to surface.
 		_, err = eraser.Erase(t.Context(), database.NewTxForTesting(&failingExecutor{closed: newClosedPool(t)}),
-			dataprivacy.Subject{ID: "user-1"})
+			tenancy.Scope{}, dataprivacy.Subject{ID: "user-1"})
 
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "counting retained audit entries")

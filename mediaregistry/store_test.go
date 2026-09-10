@@ -1,6 +1,7 @@
 package mediaregistry
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/primandproper/primitives-go/database"
@@ -450,6 +451,152 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		must.ErrorIs(t, err, ErrUnattachedSubject)
 	})
 
+	t.Run("reads a set of ids in one query", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		// The rows rather than the inputs: the write mints the id and reports it
+		// only on what it returns, so the ids this read is about come from the
+		// writes themselves.
+		first := env.mustRecord(t, store, testScope, newInput("a.png", "user_1"))
+		env.mustRecord(t, store, testScope, newInput("b.png", "user_2"))
+		third := env.mustRecord(t, store, testScope, newInput("c.png", "user_1"))
+
+		read, err := store.ListObjectsByIDs(t.Context(), env.reader(), testScope,
+			[]string{first.ID, third.ID})
+		must.NoError(t, err)
+		must.SliceLen(t, 2, read)
+
+		// The ids come back in id order rather than in the order they were
+		// asked for, which is what the statement's ORDER BY says and what a
+		// caller grouping the rows relies on.
+		want := []string{first.ID, third.ID}
+		slices.Sort(want)
+		test.EqOp(t, want[0], read[0].ID)
+		test.EqOp(t, want[1], read[1].ID)
+
+		// The whole row, not a narrowed projection: this replaces a loop around
+		// GetObject, so it has to answer everything GetObject answered.
+		byID := map[string]*Object{read[0].ID: read[0], read[1].ID: read[1]}
+		test.EqOp(t, "a.png", byID[first.ID].Key)
+		test.EqOp(t, "user_1", byID[first.ID].OwnerID)
+		test.EqOp(t, "image/png", byID[first.ID].ContentType)
+		test.EqOp(t, int64(1024), byID[first.ID].Size)
+		test.EqOp(t, testScope, byID[first.ID].Scope)
+		test.False(t, byID[first.ID].CreatedAt.IsZero())
+		test.Nil(t, byID[first.ID].ArchivedAt)
+	})
+
+	t.Run("answers an id named twice with one row", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		first := env.mustRecord(t, store, testScope, newInput("a.png", "user_1"))
+		second := env.mustRecord(t, store, testScope, newInput("b.png", "user_1"))
+
+		// The statement is an IN over a set, so what the read is about is the
+		// set rather than the sequence. A caller hydrating a page where two
+		// rows name one upload gets that upload once and joins it back onto
+		// both by id, which is what ListObjectsByIDsInBatches has to reproduce
+		// when it dedupes across batches.
+		read, err := store.ListObjectsByIDs(t.Context(), env.reader(), testScope,
+			[]string{first.ID, second.ID, first.ID, first.ID})
+		must.NoError(t, err)
+		must.SliceLen(t, 2, read)
+
+		want := []string{first.ID, second.ID}
+		slices.Sort(want)
+		test.EqOp(t, want[0], read[0].ID)
+		test.EqOp(t, want[1], read[1].ID)
+	})
+
+	t.Run("answers an empty set without a query", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		env.mustRecord(t, store, testScope, newInput("a.png", "user_1"))
+
+		// Empty rather than nil, and no error: the corpus has no rendering of
+		// an empty set, so the store answers it rather than sending a round
+		// trip whose answer was known before it left.
+		read, err := store.ListObjectsByIDs(t.Context(), env.reader(), testScope, nil)
+		must.NoError(t, err)
+		must.NotNil(t, read)
+		test.SliceEmpty(t, read)
+
+		read, err = store.ListObjectsByIDs(t.Context(), env.reader(), testScope, []string{})
+		must.NoError(t, err)
+		test.SliceEmpty(t, read)
+	})
+
+	t.Run("leaves out the ids it has no row for", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		present := env.mustRecord(t, store, testScope, newInput("a.png", "user_1"))
+		archived := env.mustRecord(t, store, testScope, newInput("b.png", "user_1"))
+		elsewhere := env.mustRecord(t, store, otherScope, newInput("c.png", "user_1"))
+
+		env.mustArchive(t, store, testScope, archived.ID)
+
+		// A missing id, an archived row and another tenant's row are all simply
+		// absent — the three answers a loop around GetObject was already
+		// skipping — and a partial answer rather than an error is what makes
+		// this a replacement for that loop.
+		read, err := store.ListObjectsByIDs(t.Context(), env.reader(), testScope,
+			[]string{present.ID, archived.ID, elsewhere.ID, identifiers.New()})
+		must.NoError(t, err)
+		must.SliceLen(t, 1, read)
+		test.EqOp(t, present.ID, read[0].ID)
+
+		// And the scope is the whole of what separates the two tenants here: the
+		// same set read under the neighbor's scope answers with the neighbor's
+		// row alone.
+		read, err = store.ListObjectsByIDs(t.Context(), env.reader(), otherScope,
+			[]string{present.ID, elsewhere.ID})
+		must.NoError(t, err)
+		must.SliceLen(t, 1, read)
+		test.EqOp(t, elsewhere.ID, read[0].ID)
+
+		// A set naming nothing this scope holds is an empty answer rather than
+		// an error, for the same reason.
+		read, err = store.ListObjectsByIDs(t.Context(), env.reader(), testScope,
+			[]string{elsewhere.ID})
+		must.NoError(t, err)
+		test.SliceEmpty(t, read)
+	})
+
+	t.Run("refuses a set larger than one statement should carry", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		set := make([]string, MaxObjectIDsPerRead+1)
+		for i := range set {
+			set[i] = identifiers.New()
+		}
+
+		// Refused before the statement, so the answer is the same on every
+		// dialect. Left to the engine it would not be: SQLite and MySQL bind a
+		// placeholder per id against ceilings of their own, and Postgres binds
+		// the set as one array and has none.
+		_, err := store.ListObjectsByIDs(t.Context(), env.reader(), testScope, set)
+		must.ErrorIs(t, err, ErrTooManyObjectIDs)
+
+		// And the largest set it accepts really is accepted — which is the
+		// assertion that checks the limit against the engines rather than
+		// against itself. Running here on all three is what says
+		// MaxObjectIDsPerRead sits under every real ceiling, so the refusal
+		// above is this module's judgment and never a driver's.
+		read, err := store.ListObjectsByIDs(t.Context(), env.reader(), testScope, set[:MaxObjectIDsPerRead])
+		must.NoError(t, err)
+		test.SliceEmpty(t, read)
+	})
+
 	t.Run("refuses an unset scope on every method", func(t *testing.T) {
 		t.Parallel()
 
@@ -471,6 +618,15 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		_, err = store.ListObjectsBySubject(t.Context(), env.reader(), unset,
 			Subject{Type: "invoice", ID: "invoice_1"}, nil)
+		must.Error(t, err)
+
+		// Including the batched read, and before the empty-set shortcut: a
+		// caller who named no scope and no ids is refused rather than handed the
+		// empty answer, which would read as "this tenant has none of them".
+		_, err = store.ListObjectsByIDs(t.Context(), env.reader(), unset, nil)
+		must.Error(t, err)
+
+		_, err = store.ListObjectsByIDs(t.Context(), env.reader(), unset, []string{"obj_1"})
 		must.Error(t, err)
 
 		_, err = env.archive(t, store, unset, "obj_1")
@@ -559,6 +715,14 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 			test.EqOp(t, recorded.ID, byKey.ID)
 
+			batch, err := store.ListObjectsByIDs(t.Context(), tx, testScope, []string{recorded.ID})
+			if err != nil {
+				return err
+			}
+
+			must.SliceLen(t, 1, batch)
+			test.EqOp(t, object.Key, batch[0].Key)
+
 			page, err := store.ListObjects(t.Context(), tx, testScope, nil)
 			if err != nil {
 				return err
@@ -575,6 +739,14 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 			}
 
 			test.SliceEmpty(t, outside.Data)
+
+			outsideBatch, err := store.ListObjectsByIDs(t.Context(), env.reader(), testScope,
+				[]string{recorded.ID})
+			if err != nil {
+				return err
+			}
+
+			test.SliceEmpty(t, outsideBatch)
 
 			return nil
 		}))
@@ -703,7 +875,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 	t.Run("every method refuses a nil executor", func(t *testing.T) {
 		t.Parallel()
 
-		// Every one of the seven, not a representative one. There is no
+		// Every one of the eight, not a representative one. There is no
 		// connection of the store's own to fall back to, so a method that did
 		// anything but refuse would be reaching for something that is not there.
 		store := env.newStore(t)
@@ -728,6 +900,14 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		_, err = store.ListObjectsBySubject(t.Context(), nil, testScope,
 			Subject{Type: "invoice", ID: "invoice_1"}, nil)
+		must.ErrorIs(t, err, ErrNilExecutor)
+
+		// The batched read checks before it shortcuts an empty set, so a nil
+		// executor is reported rather than answered.
+		_, err = store.ListObjectsByIDs(t.Context(), nil, testScope, nil)
+		must.ErrorIs(t, err, ErrNilExecutor)
+
+		_, err = store.ListObjectsByIDs(t.Context(), nil, testScope, []string{"obj_1"})
 		must.ErrorIs(t, err, ErrNilExecutor)
 	})
 

@@ -28,17 +28,19 @@ type recordingShredder struct {
 
 var _ shredding.Shredder = (*recordingShredder)(nil)
 
-// unscopedSubject is the shape a "forget me entirely" request carries. The
-// suite's testSubject is confined to one account, which is precisely the case a
-// shred cannot serve — see TestFulfiller_ShredScoped.
+// unscopedSubject is who a "forget me entirely" request is about. The
+// confinement that makes such a request unshreddable is now the request's
+// rather than the subject's, and it is passed to runErasureFor — see
+// TestFulfiller_ShredScoped.
 var unscopedSubject = Subject{ID: "user-1", Type: SubjectUser}
 
-// runErasureFor saves an erasure for the subject and runs one attempt at it.
-func runErasureFor(t *testing.T, env *fulfillerEnv, subject Subject) *Request {
+// runErasureFor saves an erasure under the given confinement and runs one
+// attempt at it. The zero Scope is the request that named none.
+func runErasureFor(t *testing.T, env *fulfillerEnv, scope tenancy.Scope, subject Subject) *Request {
 	t.Helper()
 
-	req := saveRequest(t, env.store,
-		newRequest(identifiers.New(), RequestErasure, subject, env.clock.read()))
+	req := saveRequest(t, env.client, env.store,
+		newRequestInScope(identifiers.New(), RequestErasure, scope, subject, env.clock.read()))
 
 	// The error is deliberately ignored: what these tests assert is the row the
 	// attempt left behind, and half of them are about attempts that fail.
@@ -72,7 +74,7 @@ func TestFulfiller_Shred(T *testing.T) {
 			must.NoError(t, r.RegisterEraser("identity", countingEraser(3, 0, nil, &ran)))
 		}, WithFulfillerShredder(shredder))
 
-		req := runErasureFor(t, env, unscopedSubject)
+		req := runErasureFor(t, env, tenancy.Scope{}, unscopedSubject)
 
 		test.EqOp(t, StatusCompleted, req.Status)
 		must.NotNil(t, req.KeyShreddedAt)
@@ -109,14 +111,14 @@ func TestFulfiller_Shred(T *testing.T) {
 		shredder := &recordingShredder{}
 		env := newFulfillerEnv(t, func(r *Registry) {
 			must.NoError(t, r.RegisterEraser("identity",
-				EraserFunc(func(context.Context, database.Tx, Subject) (ErasureOutcome, error) {
+				EraserFunc(func(context.Context, database.Tx, tenancy.Scope, Subject) (ErasureOutcome, error) {
 					shreddedFirst.Store(shredder.at.Load() == 1)
 
 					return ErasureOutcome{Deleted: 1}, nil
 				})))
 		}, WithFulfillerShredder(shredder))
 
-		runErasureFor(t, env, unscopedSubject)
+		runErasureFor(t, env, tenancy.Scope{}, unscopedSubject)
 
 		// Erase-then-fail-to-shred would leave the rows gone and every backup
 		// readable until a retry succeeded, which is the gap this feature
@@ -134,8 +136,9 @@ func TestFulfiller_Shred(T *testing.T) {
 			must.NoError(t, r.RegisterEraser("identity", countingEraser(3, 0, nil, &ran)))
 		}, WithFulfillerShredder(shredder))
 
-		req := saveRequest(t, env.store,
-			newRequest(identifiers.New(), RequestErasure, unscopedSubject, env.clock.read()))
+		req := saveRequest(t, env.client, env.store,
+			newRequestInScope(identifiers.New(), RequestErasure, tenancy.Scope{}, unscopedSubject,
+				env.clock.read()))
 
 		// Run as the final attempt, because a shred that cannot reach the KMS is
 		// retryable — and it is the row's account of the last one that matters.
@@ -159,12 +162,12 @@ func TestFulfiller_Shred(T *testing.T) {
 		shredder := &recordingShredder{}
 		env := newFulfillerEnv(t, func(r *Registry) {
 			must.NoError(t, r.RegisterEraser("identity",
-				EraserFunc(func(context.Context, database.Tx, Subject) (ErasureOutcome, error) {
+				EraserFunc(func(context.Context, database.Tx, tenancy.Scope, Subject) (ErasureOutcome, error) {
 					return ErasureOutcome{}, platformerrors.New("the ninth domain timed out")
 				})))
 		}, WithFulfillerShredder(shredder))
 
-		req := runErasureFor(t, env, unscopedSubject)
+		req := runErasureFor(t, env, tenancy.Scope{}, unscopedSubject)
 
 		test.EqOp(t, StatusInProgress, req.Status)
 
@@ -184,7 +187,7 @@ func TestFulfiller_Shred(T *testing.T) {
 		shredder := &recordingShredder{}
 		env := newFulfillerEnv(t, func(r *Registry) {
 			must.NoError(t, r.RegisterEraser("identity",
-				EraserFunc(func(context.Context, database.Tx, Subject) (ErasureOutcome, error) {
+				EraserFunc(func(context.Context, database.Tx, tenancy.Scope, Subject) (ErasureOutcome, error) {
 					if attempts.Add(1) == 1 {
 						return ErasureOutcome{}, platformerrors.New("the ninth domain timed out")
 					}
@@ -193,7 +196,7 @@ func TestFulfiller_Shred(T *testing.T) {
 				})))
 		}, WithFulfillerShredder(shredder))
 
-		req := runErasureFor(t, env, unscopedSubject)
+		req := runErasureFor(t, env, tenancy.Scope{}, unscopedSubject)
 		must.EqOp(t, StatusInProgress, req.Status)
 
 		// The retry re-shreds and is told the original destruction time. The
@@ -221,7 +224,7 @@ func TestFulfiller_Shred(T *testing.T) {
 			must.NoError(t, r.RegisterEraser("identity", countingEraser(3, 0, nil, &ran)))
 		})
 
-		req := runErasureFor(t, env, unscopedSubject)
+		req := runErasureFor(t, env, tenancy.Scope{}, unscopedSubject)
 
 		test.EqOp(t, StatusCompleted, req.Status)
 		test.Nil(t, req.KeyShreddedAt)
@@ -243,7 +246,7 @@ func TestFulfiller_ShredScoped(T *testing.T) {
 		// Scope confines an erasure to one tenant; a data key covers every
 		// scope its subject appears in. Destroying it would erase that person's
 		// data inside tenants nobody asked about.
-		read := runErasureFor(t, env, Subject{ID: "user-1", Type: SubjectUser, Scope: tenancy.Of("account-1")})
+		read := runErasureFor(t, env, tenancy.Of("account-1"), unscopedSubject)
 
 		test.EqOp(t, StatusCompleted, read.Status)
 		test.SliceEmpty(t, shredder.subjects)

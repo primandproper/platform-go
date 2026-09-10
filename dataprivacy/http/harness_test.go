@@ -16,6 +16,7 @@ import (
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/routing"
 	"github.com/primandproper/primitives-go/routing/backends/chi"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test/must"
 )
@@ -109,7 +110,7 @@ func requestFor(id string, subject dataprivacy.Subject, status dataprivacy.Statu
 func serviceReturning(req *dataprivacy.Request) *dataprivacymock.ServiceMock {
 	svc := &dataprivacymock.ServiceMock{}
 
-	svc.GetFunc = func(_ context.Context, id string) (*dataprivacy.Request, error) {
+	svc.GetFunc = func(_ context.Context, _ *tenancy.Scope, id string) (*dataprivacy.Request, error) {
 		if req != nil && req.ID == id {
 			return req, nil
 		}

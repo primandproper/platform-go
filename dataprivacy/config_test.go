@@ -149,13 +149,11 @@ func TestSubject(T *testing.T) {
 		// a request that named no scope is stored — so accepting this would
 		// write down a narrower request than the one that was made and read it
 		// back as the wider one.
-		test.ErrorIs(t,
-			Subject{ID: "user-1", Scope: tenancy.Global()}.validate(),
-			ErrGlobalSubjectScope)
+		test.ErrorIs(t, validateScope(tenancy.Global(), "user-1"), ErrGlobalRequestScope)
 
 		// The two that do round trip: an owner, and no confinement at all.
-		test.NoError(t, Subject{ID: "user-1", Scope: tenancy.Of("account-1")}.validate())
-		test.NoError(t, Subject{ID: "user-1"}.validate())
+		test.NoError(t, validateScope(tenancy.Of("account-1"), "user-1"))
+		test.NoError(t, validateScope(tenancy.Scope{}, "user-1"))
 	})
 
 	T.Run("records an unconfined request's own events for no tenant", func(t *testing.T) {

@@ -206,6 +206,7 @@ func NewStore(
 func NewService(
 	ctx context.Context,
 	cfg *Config,
+	client database.Client,
 	store dataprivacy.Store,
 	ops operations.Service,
 	opts ...Option,
@@ -228,7 +229,7 @@ func NewService(
 		base = append(base, dataprivacy.WithServiceMetricsProvider(metricsProvider))
 	}
 
-	svc, err := dataprivacy.NewService(ctx, &cfg.Service, store, ops, append(base, o.service...)...)
+	svc, err := dataprivacy.NewService(ctx, &cfg.Service, client, store, ops, append(base, o.service...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -254,6 +255,7 @@ func NewService(
 func NewFulfiller(
 	ctx context.Context,
 	cfg *Config,
+	client database.Client,
 	store dataprivacy.Store,
 	domains *dataprivacy.Registry,
 	registry *operations.Registry,
@@ -291,7 +293,8 @@ func NewFulfiller(
 		base = append(base, dataprivacy.WithFulfillerMetricsProvider(metricsProvider))
 	}
 
-	fulfiller, err := dataprivacy.NewFulfiller(ctx, &cfg.Fulfiller, store, domains, append(base, o.fulfiller...)...)
+	fulfiller, err := dataprivacy.NewFulfiller(ctx, &cfg.Fulfiller, client, store, domains,
+		append(base, o.fulfiller...)...)
 	if err != nil {
 		return nil, err
 	}

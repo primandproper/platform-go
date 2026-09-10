@@ -130,7 +130,7 @@ func TestCollector_Collect(T *testing.T) {
 		collector, err := NewCollector(fullStore(), &testReader{}, FixedAccounts(testScope))
 		must.NoError(t, err)
 
-		body, err := collector.Collect(t.Context(), testSubject)
+		body, err := collector.Collect(t.Context(), testScope, testSubject)
 		must.NoError(t, err)
 
 		var exports []Export
@@ -150,7 +150,7 @@ func TestCollector_Collect(T *testing.T) {
 		collector, err := NewCollector(fullStore(), &testReader{}, FixedAccounts(tenancy.Global()))
 		must.NoError(t, err)
 
-		body, err := collector.Collect(t.Context(), testSubject)
+		body, err := collector.Collect(t.Context(), testScope, testSubject)
 		must.NoError(t, err)
 
 		// The artifact goes to the subject and to whoever asks them for it, so
@@ -190,7 +190,7 @@ func TestCollector_Collect(T *testing.T) {
 		collector, err := NewCollector(store, reader, FixedAccounts(testScope))
 		must.NoError(t, err)
 
-		_, err = collector.Collect(t.Context(), testSubject)
+		_, err = collector.Collect(t.Context(), testScope, testSubject)
 		must.NoError(t, err)
 
 		// The executor the collector was built with is the one that reaches the
@@ -220,7 +220,7 @@ func TestCollector_Collect(T *testing.T) {
 		collector, err := NewCollector(store, &testReader{}, FixedAccounts(testScope))
 		must.NoError(t, err)
 
-		_, err = collector.Collect(t.Context(), testSubject)
+		_, err = collector.Collect(t.Context(), testScope, testSubject)
 		must.NoError(t, err)
 
 		// An archived subscription is still something the subject was sold, and
@@ -232,7 +232,7 @@ func TestCollector_Collect(T *testing.T) {
 	T.Run("exports every account the resolver names", func(t *testing.T) {
 		t.Parallel()
 
-		resolve := func(context.Context, dataprivacy.Subject) ([]Account, error) {
+		resolve := func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]Account, error) {
 			return []Account{
 				{Scope: testScope, ID: "account-1"},
 				{Scope: tenancy.Of("other"), ID: "account-2"},
@@ -242,7 +242,7 @@ func TestCollector_Collect(T *testing.T) {
 		collector, err := NewCollector(fullStore(), &testReader{}, resolve)
 		must.NoError(t, err)
 
-		body, err := collector.Collect(t.Context(), testSubject)
+		body, err := collector.Collect(t.Context(), testScope, testSubject)
 		must.NoError(t, err)
 
 		var exports []Export
@@ -253,14 +253,14 @@ func TestCollector_Collect(T *testing.T) {
 	T.Run("exports nothing for a subject who has bought nothing", func(t *testing.T) {
 		t.Parallel()
 
-		resolve := func(context.Context, dataprivacy.Subject) ([]Account, error) {
+		resolve := func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]Account, error) {
 			return nil, nil
 		}
 
 		collector, err := NewCollector(fullStore(), &testReader{}, resolve)
 		must.NoError(t, err)
 
-		body, err := collector.Collect(t.Context(), testSubject)
+		body, err := collector.Collect(t.Context(), testScope, testSubject)
 		must.NoError(t, err)
 
 		var exports []Export
@@ -274,10 +274,10 @@ func TestCollector_Collect(T *testing.T) {
 		boom := platformerrors.New("no directory")
 
 		collector, err := NewCollector(fullStore(), &testReader{},
-			func(context.Context, dataprivacy.Subject) ([]Account, error) { return nil, boom })
+			func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]Account, error) { return nil, boom })
 		must.NoError(t, err)
 
-		_, err = collector.Collect(t.Context(), testSubject)
+		_, err = collector.Collect(t.Context(), testScope, testSubject)
 		test.ErrorIs(t, err, boom)
 	})
 
@@ -296,7 +296,7 @@ func TestCollector_Collect(T *testing.T) {
 		collector, err := NewCollector(store, &testReader{}, FixedAccounts(testScope))
 		must.NoError(t, err)
 
-		_, err = collector.Collect(t.Context(), testSubject)
+		_, err = collector.Collect(t.Context(), testScope, testSubject)
 		test.ErrorIs(t, err, boom)
 	})
 }

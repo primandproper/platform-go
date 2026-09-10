@@ -58,8 +58,8 @@ reads as a form rather than an answer.
 Both are here rather than inferred per consumer:
 
 	registry.RegisterCollector("webhooks", dataprivacy.CollectorFor(
-	    func(ctx context.Context, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[webhooks.Webhook], error) {
-	        return repo.ListWebhooksForUser(ctx, subject.ID, filter)
+	    func(ctx context.Context, scope tenancy.Scope, subject dataprivacy.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[webhooks.Webhook], error) {
+	        return repo.ListWebhooksForUser(ctx, scope, subject.ID, filter)
 	    },
 	))
 
@@ -78,7 +78,7 @@ be anonymized in place rather than deleted, because a foreign key still points
 at it. Only the domain knows which of the three applies to each of its tables, so
 Eraser is registered separately and reports what it kept:
 
-	func (e identityEraser) Erase(ctx context.Context, q database.Tx, s dataprivacy.Subject) (dataprivacy.ErasureOutcome, error) {
+	func (e identityEraser) Erase(ctx context.Context, tx database.Tx, scope tenancy.Scope, s dataprivacy.Subject) (dataprivacy.ErasureOutcome, error) {
 	    // ...
 	    return dataprivacy.ErasureOutcome{
 	        Deleted:    rows,
@@ -246,6 +246,31 @@ the operation's progress flush writes to the operations table beside it. Both
 draw from the same connection pool, so a pool without spare capacity deadlocks:
 size it for the operations worker's concurrency plus one connection per running
 operation, not for its concurrency alone.
+
+# Who a request is about, and whose tenant it is in
+
+Those are two questions, and this package holds them in two values.
+
+Subject names the person: an ID and a kind. Request.Scope names the confinement
+— the account or tenant a request is limited to, when it is limited at all —
+and the zero Scope is the ordinary "give me my data", which spans every scope
+its subject appears in.
+
+The confinement used to live on Subject, and moving it is the whole of what
+changed. A field on the subject is a fact somebody assembled elsewhere, and
+while the store read its scope off one, "which tenant is this listing for" was
+answerable only by going and finding the struct. Now every store method that
+selects rows takes the scope it selects by as an argument, so a call that did
+not decide cannot compile into one that quietly means all of them. Store records
+the three readings a read's scope has and why they need a pointer to hold them.
+
+The fan-out follows the same rule: Collector.Collect and Eraser.Erase are handed
+the confinement beside the subject, so a domain that scopes its rows narrows by
+a value it was passed rather than one it dug out. The privacy adapters this
+module ships — comments/privacy, issuereports/privacy, waitlists/privacy,
+billing/privacy and dataprivacy/auditerasure — each take a resolver that turns
+that confinement into the scopes their own tables use, because what a tenant
+means is the consumer's model rather than this package's.
 
 # Asking after a request
 
