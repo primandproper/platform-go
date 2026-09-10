@@ -49,18 +49,18 @@ var ErrFlusherPanicked = platformerrors.New("metering flush panicked")
 // FlushResult is what one pass did.
 type FlushResult struct {
 	// Claimed is how many totals the pass leased.
-	Claimed int
+	Claimed int64
 
 	// Flushed is how many were posted to the provider and settled.
-	Flushed int
+	Flushed int64
 
 	// Skipped is how many had no provider ref and were settled without a post
 	// — a subject on a plan that does not bill for that meter. Not a failure; see
 	// ErrNoProviderRef.
-	Skipped int
+	Skipped int64
 
 	// Failed is how many could not be posted and were returned for retry.
-	Failed int
+	Failed int64
 
 	// Quantity is the total usage posted, summed across every successful flush.
 	Quantity int64
@@ -256,7 +256,7 @@ func (f *Flusher) Flush(ctx context.Context) (*FlushResult, error) {
 	if err != nil {
 		errs = append(errs, platformerrors.Wrap(err, "claiming flushable metering totals"))
 	} else {
-		result.Claimed = len(claimed)
+		result.Claimed = int64(len(claimed))
 		f.post(ctx, claimed, result)
 	}
 
@@ -265,7 +265,7 @@ func (f *Flusher) Flush(ctx context.Context) (*FlushResult, error) {
 	// revenue that is not being invoiced, and no counter of successful flushes can
 	// distinguish "flushing steadily" from "flushing steadily while a queue builds
 	// behind it".
-	f.backlogGauge.Record(ctx, int64(result.Claimed-result.Flushed-result.Skipped))
+	f.backlogGauge.Record(ctx, result.Claimed-result.Flushed-result.Skipped)
 
 	if !f.cfg.DisableReap {
 		reaped, reapErr := f.store.ReapEvents(ctx, now.Add(-f.cfg.EventRetention), f.cfg.ReapBatchSize)
