@@ -90,7 +90,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		object := newObject("avatars/grace/original.png", "user_1")
+		object := newInput("avatars/grace/original.png", "user_1")
 		recorded := env.mustRecord(t, store, testScope, object)
 
 		// The id is minted by the write, the creation time comes back from the
@@ -113,25 +113,25 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, recorded.CreatedAt.UTC(), read.CreatedAt)
 	})
 
-	t.Run("leaves the object it was handed alone", func(t *testing.T) {
+	t.Run("leaves the input it was handed alone", func(t *testing.T) {
 		t.Parallel()
 
 		// The other half of the sentence above, and the one a consumer notices:
 		// everything the write settled is on the value it returned, so an
 		// argument a caller assembled and still holds is the argument they
-		// assembled. A store that wrote the id and the stamp back onto it would
-		// deliver the same facts and leave two places to read them from.
+		// assembled. The input is taken by value, so there is no version of this
+		// that reaches back — what the assertion below is really about is the
+		// id, which the write mints and does not report anywhere else.
 		store := env.newStore(t)
 
-		object := newObject("avatars/ada/original.png", "user_1")
+		object := newInput("avatars/ada/original.png", "user_1")
 		recorded := env.mustRecord(t, store, testScope, object)
 
 		test.EqOp(t, "", object.ID)
-		test.True(t, object.CreatedAt.IsZero())
-		test.EqOp(t, tenancy.Scope{}, object.Scope)
 
 		test.NotEq(t, "", recorded.ID)
 		test.EqOp(t, testScope, recorded.Scope)
+		test.False(t, recorded.CreatedAt.IsZero())
 	})
 
 	t.Run("keeps a caller-supplied id", func(t *testing.T) {
@@ -143,7 +143,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		// row a consumer is writing in the same request can name it.
 		id := identifiers.New()
 
-		object := newObject("receipts/"+id+".pdf", "user_1")
+		object := newInput("receipts/"+id+".pdf", "user_1")
 		object.ID = id
 
 		recorded := env.mustRecord(t, store, testScope, object)
@@ -159,7 +159,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		object := newObject("receipts/january.pdf", "user_1")
+		object := newInput("receipts/january.pdf", "user_1")
 		object.BelongsTo = Subject{Type: "invoice", ID: "invoice_1"}
 
 		recorded := env.mustRecord(t, store, testScope, object)
@@ -178,15 +178,15 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		key := "avatars/grace/original.png"
-		env.mustRecord(t, store, testScope, newObject(key, "user_1"))
+		env.mustRecord(t, store, testScope, newInput(key, "user_1"))
 
-		collided, err := env.record(t, store, testScope, newObject(key, "user_2"))
+		collided, err := env.record(t, store, testScope, newInput(key, "user_2"))
 		must.ErrorIs(t, err, ErrObjectKeyTaken)
 		test.Nil(t, collided)
 
 		// The same key in another tenant is another object, and registering it
 		// is not a collision.
-		env.mustRecord(t, store, otherScope, newObject(key, "user_3"))
+		env.mustRecord(t, store, otherScope, newInput(key, "user_3"))
 	})
 
 	t.Run("keeps a key taken after the row is archived", func(t *testing.T) {
@@ -196,12 +196,12 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		key := "receipts/january.pdf"
 
-		recorded := env.mustRecord(t, store, testScope, newObject(key, "user_1"))
+		recorded := env.mustRecord(t, store, testScope, newInput(key, "user_1"))
 		env.mustArchive(t, store, testScope, recorded.ID)
 
 		// Archival is metadata-only and the bytes are still in the bucket, so a
 		// second row for the same key would be two rows describing one object.
-		_, err := env.record(t, store, testScope, newObject(key, "user_1"))
+		_, err := env.record(t, store, testScope, newInput(key, "user_1"))
 		must.ErrorIs(t, err, ErrObjectKeyTaken)
 	})
 
@@ -210,56 +210,18 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		nilObject, err := env.record(t, store, testScope, nil)
-		must.ErrorIs(t, err, ErrNilObject)
-		test.Nil(t, nilObject)
-
-		noKey := newObject("", "user_1")
-		_, err = env.record(t, store, testScope, noKey)
+		noKey := newInput("", "user_1")
+		_, err := env.record(t, store, testScope, noKey)
 		must.Error(t, err)
 
-		noOwner := newObject("avatars/nobody.png", "")
+		noOwner := newInput("avatars/nobody.png", "")
 		_, err = env.record(t, store, testScope, noOwner)
 		must.Error(t, err)
 
-		halfSubject := newObject("avatars/half.png", "user_1")
+		halfSubject := newInput("avatars/half.png", "user_1")
 		halfSubject.BelongsTo = Subject{Type: "invoice"}
 		_, err = env.record(t, store, testScope, halfSubject)
 		must.ErrorIs(t, err, ErrPartialSubject)
-	})
-
-	t.Run("refuses an object that names a different tenant than the write", func(t *testing.T) {
-		t.Parallel()
-
-		store := env.newStore(t)
-
-		// The write binds the argument, so an object carrying another tenant's
-		// scope is a caller holding a stale value or a mix-up. Neither is a
-		// thing to guess at, and the row that would be written is one tenant's
-		// object filed under another's.
-		elsewhere := newObject("avatars/grace/original.png", "user_1")
-		elsewhere.Scope = otherScope
-
-		mismatched, err := env.record(t, store, testScope, elsewhere)
-		must.ErrorIs(t, err, ErrScopeMismatch)
-		test.Nil(t, mismatched)
-
-		// Nothing was written under either scope: the check runs before any
-		// statement the write would send.
-		_, err = store.GetObjectByKey(t.Context(), env.reader(), testScope, elsewhere.Key)
-		must.ErrorIs(t, err, ErrObjectNotFound)
-
-		_, err = store.GetObjectByKey(t.Context(), env.reader(), otherScope, elsewhere.Key)
-		must.ErrorIs(t, err, ErrObjectNotFound)
-
-		// An object naming the same scope as the write is not a mismatch, and
-		// one naming none adopts it.
-		agreeing := newObject("avatars/ada/original.png", "user_1")
-		agreeing.Scope = testScope
-		test.EqOp(t, testScope, env.mustRecord(t, store, testScope, agreeing).Scope)
-
-		silent := newObject("avatars/hopper/original.png", "user_1")
-		test.EqOp(t, testScope, env.mustRecord(t, store, testScope, silent).Scope)
 	})
 
 	t.Run("reads by the key the bytes live at", func(t *testing.T) {
@@ -268,7 +230,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		key := "avatars/grace/original.png"
-		recorded := env.mustRecord(t, store, testScope, newObject(key, "user_1"))
+		recorded := env.mustRecord(t, store, testScope, newInput(key, "user_1"))
 
 		read, err := store.GetObjectByKey(t.Context(), env.reader(), testScope, key)
 		must.NoError(t, err)
@@ -289,7 +251,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		recorded := env.mustRecord(t, store, testScope, newObject("avatars/grace/original.png", "user_1"))
+		recorded := env.mustRecord(t, store, testScope, newInput("avatars/grace/original.png", "user_1"))
 
 		_, err := store.GetObject(t.Context(), env.reader(), otherScope, recorded.ID)
 		must.ErrorIs(t, err, ErrObjectNotFound)
@@ -303,7 +265,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		recorded := env.mustRecord(t, store, testScope, newObject("receipts/january.pdf", "user_1"))
+		recorded := env.mustRecord(t, store, testScope, newInput("receipts/january.pdf", "user_1"))
 
 		// Another tenant cannot archive it, and the refusal reads as absence
 		// rather than as a permission error, which is the answer that does not
@@ -342,16 +304,16 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		first := newObject("a.png", "user_1")
+		first := newInput("a.png", "user_1")
 		first.ID = "obj_1"
 		env.mustRecord(t, store, testScope, first)
 
-		second := newObject("b.png", "user_1")
+		second := newInput("b.png", "user_1")
 		second.ID = "obj_2"
 		env.mustRecord(t, store, testScope, second)
 
 		// A neighbor's row must never appear in this tenant's page.
-		env.mustRecord(t, store, otherScope, newObject("c.png", "user_9"))
+		env.mustRecord(t, store, otherScope, newInput("c.png", "user_9"))
 
 		page, err := store.ListObjects(t.Context(), env.reader(), testScope, nil)
 		must.NoError(t, err)
@@ -378,7 +340,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		for _, id := range []string{"obj_1", "obj_2", "obj_3"} {
-			object := newObject(id+".png", "user_1")
+			object := newInput(id+".png", "user_1")
 			object.ID = id
 			env.mustRecord(t, store, testScope, object)
 		}
@@ -409,8 +371,8 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		recorded := env.mustRecord(t, store, testScope, newObject("a.png", "user_1"))
-		env.mustRecord(t, store, testScope, newObject("b.png", "user_1"))
+		recorded := env.mustRecord(t, store, testScope, newInput("a.png", "user_1"))
+		env.mustRecord(t, store, testScope, newInput("b.png", "user_1"))
 		env.mustArchive(t, store, testScope, recorded.ID)
 
 		live, err := store.ListObjects(t.Context(), env.reader(), testScope, nil)
@@ -436,9 +398,9 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		mine := env.mustRecord(t, store, testScope, newObject("a.png", "user_1"))
-		env.mustRecord(t, store, testScope, newObject("b.png", "user_2"))
-		env.mustRecord(t, store, otherScope, newObject("c.png", "user_1"))
+		mine := env.mustRecord(t, store, testScope, newInput("a.png", "user_1"))
+		env.mustRecord(t, store, testScope, newInput("b.png", "user_2"))
+		env.mustRecord(t, store, otherScope, newInput("c.png", "user_1"))
 
 		page, err := store.ListObjectsByOwner(t.Context(), env.reader(), testScope, "user_1", nil)
 		must.NoError(t, err)
@@ -462,18 +424,18 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		invoice := newObject("receipts/january.pdf", "user_1")
+		invoice := newInput("receipts/january.pdf", "user_1")
 		invoice.BelongsTo = Subject{Type: "invoice", ID: "invoice_1"}
 		recorded := env.mustRecord(t, store, testScope, invoice)
 
 		// Same id, different type: an id without its type names something else
 		// in another one of the consumer's tables.
-		ticket := newObject("tickets/screenshot.png", "user_1")
+		ticket := newInput("tickets/screenshot.png", "user_1")
 		ticket.BelongsTo = Subject{Type: "ticket", ID: "invoice_1"}
 		env.mustRecord(t, store, testScope, ticket)
 
 		// And a standalone upload, attached to nothing.
-		env.mustRecord(t, store, testScope, newObject("loose.png", "user_1"))
+		env.mustRecord(t, store, testScope, newInput("loose.png", "user_1"))
 
 		page, err := store.ListObjectsBySubject(t.Context(), env.reader(), testScope,
 			Subject{Type: "invoice", ID: "invoice_1"}, nil)
@@ -516,7 +478,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		// The write is refused for the same reason and by the same call, now
 		// that the scope is its argument rather than a field on the row.
-		_, err = env.record(t, store, unset, newObject("a.png", "user_1"))
+		_, err = env.record(t, store, unset, newInput("a.png", "user_1"))
 		must.Error(t, err)
 	})
 
@@ -528,7 +490,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		// A single-tenant application passes tenancy.Global() everywhere and
 		// gets exactly what it would have had without the column — including
 		// the fact that the global scope matches only itself.
-		recorded := env.mustRecord(t, store, tenancy.Global(), newObject("a.png", "user_1"))
+		recorded := env.mustRecord(t, store, tenancy.Global(), newInput("a.png", "user_1"))
 		test.True(t, recorded.Scope.IsGlobal())
 
 		read, err := store.GetObject(t.Context(), env.reader(), tenancy.Global(), recorded.ID)
@@ -573,7 +535,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		var recordedID string
 
-		object := newObject("avatars/grace/original.png", "user_1")
+		object := newInput("avatars/grace/original.png", "user_1")
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
 			recorded, err := store.RecordObject(t.Context(), tx, testScope, object)
@@ -629,7 +591,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		doomed := env.mustRecord(t, store, testScope, newObject("receipts/january.pdf", "user_1"))
+		doomed := env.mustRecord(t, store, testScope, newInput("receipts/january.pdf", "user_1"))
 
 		var (
 			recorded *Object
@@ -639,7 +601,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
 			var err error
 			if recorded, err = store.RecordObject(t.Context(), tx, testScope,
-				newObject("avatars/grace/original.png", "user_1")); err != nil {
+				newInput("avatars/grace/original.png", "user_1")); err != nil {
 				return err
 			}
 
@@ -676,14 +638,14 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		key := "avatars/grace/original.png"
-		doomed := env.mustRecord(t, store, testScope, newObject("receipts/january.pdf", "user_1"))
+		doomed := env.mustRecord(t, store, testScope, newInput("receipts/january.pdf", "user_1"))
 
 		var recorded *Object
 
 		err := env.inTx(t, func(tx database.Tx) error {
 			var txErr error
 			if recorded, txErr = store.RecordObject(t.Context(), tx, testScope,
-				newObject(key, "user_1")); txErr != nil {
+				newInput(key, "user_1")); txErr != nil {
 				return txErr
 			}
 
@@ -711,7 +673,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		// And the key the rolled-back registration took is free again, which it
 		// would not be had the write committed on its own.
-		env.mustRecord(t, store, testScope, newObject(key, "user_2"))
+		env.mustRecord(t, store, testScope, newInput(key, "user_2"))
 	})
 
 	t.Run("the collision check sees a key registered in the same transaction", func(t *testing.T) {
@@ -727,11 +689,11 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		key := "avatars/grace/original.png"
 
 		err := env.inTx(t, func(tx database.Tx) error {
-			if _, txErr := store.RecordObject(t.Context(), tx, testScope, newObject(key, "user_1")); txErr != nil {
+			if _, txErr := store.RecordObject(t.Context(), tx, testScope, newInput(key, "user_1")); txErr != nil {
 				return txErr
 			}
 
-			_, txErr := store.RecordObject(t.Context(), tx, testScope, newObject(key, "user_2"))
+			_, txErr := store.RecordObject(t.Context(), tx, testScope, newInput(key, "user_2"))
 
 			return txErr
 		})
@@ -746,7 +708,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// anything but refuse would be reaching for something that is not there.
 		store := env.newStore(t)
 
-		_, err := store.RecordObject(t.Context(), nil, testScope, newObject("a.png", "user_1"))
+		_, err := store.RecordObject(t.Context(), nil, testScope, newInput("a.png", "user_1"))
 		must.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.ArchiveObject(t.Context(), nil, testScope, "obj_1")
@@ -778,15 +740,15 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// to carry on in, which is what lets the good write below commit.
 		store := env.newStore(t)
 
-		elsewhere := newObject("avatars/ada/original.png", "user_1")
-		elsewhere.Scope = otherScope
+		unattached := newInput("avatars/ada/original.png", "user_1")
+		unattached.BelongsTo = Subject{Type: "invoice"}
 
 		var survivor *Object
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			mismatched, mismatch := store.RecordObject(t.Context(), tx, testScope, elsewhere)
-			must.ErrorIs(t, mismatch, ErrScopeMismatch)
-			must.Nil(t, mismatched)
+			refused, refusal := store.RecordObject(t.Context(), tx, testScope, unattached)
+			must.ErrorIs(t, refusal, ErrPartialSubject)
+			must.Nil(t, refused)
 
 			gone, missing := store.ArchiveObject(t.Context(), tx, testScope, identifiers.New())
 			must.ErrorIs(t, missing, ErrObjectNotFound)
@@ -794,7 +756,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 			var txErr error
 			survivor, txErr = store.RecordObject(t.Context(), tx, testScope,
-				newObject("avatars/grace/original.png", "user_1"))
+				newInput("avatars/grace/original.png", "user_1"))
 
 			return txErr
 		}))

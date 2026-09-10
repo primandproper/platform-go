@@ -1,10 +1,9 @@
 package mediaregistry
 
 import (
+	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -43,12 +42,14 @@ func TestSubject(T *testing.T) {
 	})
 }
 
-func TestObject_ValidateWithContext(T *testing.T) {
+func TestObjectInput_ValidateWithContext(T *testing.T) {
 	T.Parallel()
 
-	valid := func() *Object {
-		return &Object{
-			Scope:       tenancy.Of("tenant_1"),
+	// No Scope among these, and that is the type rather than the fixture: the
+	// scope of a write is the argument the write is called with, and an input
+	// has nowhere to carry a second copy of it.
+	valid := func() *ObjectInput {
+		return &ObjectInput{
 			Key:         "avatars/grace/original.png",
 			ContentType: "image/png",
 			OwnerID:     "user_1",
@@ -118,4 +119,38 @@ func TestAttributeKeys(t *testing.T) {
 
 	test.EqOp(t, objectIDKey, ObjectAttributeKey)
 	test.True(t, strings.HasPrefix(ObjectAttributeKey, serviceName+"."))
+}
+
+// TestObjectInput_CarriesNothingTheWriteSettles is the guard on the distinction
+// ObjectInput exists to make.
+//
+// While the argument and the row were one type, a caller that kept using its own
+// argument after the write — handing it to a response, an audit entry, a cache —
+// compiled cleanly and shipped a zero CreatedAt and a zero Size. Every field
+// named here is one the write settles and the row reports, and a field of that
+// name reappearing on the input would make that mistake representable again
+// without anything else in the suite noticing.
+func TestObjectInput_CarriesNothingTheWriteSettles(t *testing.T) {
+	t.Parallel()
+
+	input := reflect.TypeFor[ObjectInput]()
+
+	for _, settled := range []string{"CreatedAt", "LastUpdatedAt", "ArchivedAt", "Scope"} {
+		_, found := input.FieldByName(settled)
+		test.False(t, found, test.Sprintf(
+			"ObjectInput.%s is a field the write settles, and an input that carries one is an "+
+				"argument a caller can mistake for the row", settled))
+
+		// And each is genuinely on the row, so this test fails if the field was
+		// renamed rather than if the distinction was lost.
+		_, onRow := reflect.TypeFor[Object]().FieldByName(settled)
+		test.True(t, onRow, test.Sprintf("Object.%s is where the write reports it", settled))
+	}
+
+	// The other half: what a caller does supply is here, so the input is not
+	// merely smaller but is the whole of the write's question.
+	for _, supplied := range []string{"ID", "Key", "ContentType", "OwnerID", "BelongsTo", "Size"} {
+		_, found := input.FieldByName(supplied)
+		test.True(t, found, test.Sprintf("ObjectInput.%s is the caller's to set", supplied))
+	}
 }

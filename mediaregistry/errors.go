@@ -12,24 +12,11 @@ var (
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil upload registry database client")
 
-	// ErrNilObject indicates a nil *Object where one was required.
-	ErrNilObject = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil object")
-
 	// ErrNilExecutor indicates a nil executor. Every method on the Store runs on
 	// one the caller supplies — a database.Tx for a write, an executor for a
 	// read — so there is no method that can fall back to a connection of the
 	// store's own.
 	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil upload registry query executor")
-
-	// ErrScopeMismatch indicates a write whose Object.Scope names a different
-	// tenant than the scope the call named.
-	//
-	// The argument is what the statement binds, so the two disagreeing is a
-	// caller holding one tenant's object and registering it into another —
-	// either a stale value or a mix-up, and neither is a thing to guess at. An
-	// Object that names no scope adopts the argument; one that names a
-	// different scope is refused rather than corrected.
-	ErrScopeMismatch = platformerrors.New("object names a different scope than the write")
 
 	// ErrNilUploadManager indicates a nil uploads.UploadManager handed to
 	// StoreAndRecord.

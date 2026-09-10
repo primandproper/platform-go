@@ -41,29 +41,28 @@ func utcPtr(t *time.Time) *time.Time {
 	return &utc
 }
 
-// createObjectParams renders an Object, under the scope the write named and the
-// id it settled on, as the create's arguments.
+// createObjectParams renders an ObjectInput, under the scope the write named and
+// the id it settled on, as the create's arguments.
 //
 // The three convention timestamps are absent because the database owns them —
-// see mediaregistry/internal/queries — and the scope binds as the Scope the
-// call passed rather than a string derived from it or a field read off the
-// object, so an unset scope is a driver error instead of a row silently written
-// into the global tenant.
+// see mediaregistry/internal/queries — and the scope binds as the Scope the call
+// passed rather than a string derived from it, so an unset scope is a driver
+// error instead of a row silently written into the global tenant. The input
+// carries no scope of its own to read instead.
 //
-// The id is an argument for the same reason the scope is one rather than a
-// weaker version of it: RecordObject mints it where the object carries none, and
-// the object it was handed is not the store's to write to. What the write
-// settled is on the row it reads back.
-func createObjectParams(scope tenancy.Scope, id string, o *Object) registrydb.CreateObjectParams {
+// The id is an argument rather than a field for the same reason: RecordObject
+// mints it where the input carries none, and what the write settled belongs on
+// the row it reads back rather than anywhere the caller can see it.
+func createObjectParams(scope tenancy.Scope, id string, in ObjectInput) registrydb.CreateObjectParams { //nolint:gocritic // hugeParam: by value on purpose — see ObjectInput, and the call does a round trip
 	return registrydb.CreateObjectParams{
 		ID:            id,
 		Scope:         scope,
-		ObjectKey:     o.Key,
-		ContentType:   o.ContentType,
-		SizeBytes:     o.Size,
-		OwnerID:       o.OwnerID,
-		BelongsToType: o.BelongsTo.Type,
-		BelongsToID:   o.BelongsTo.ID,
+		ObjectKey:     in.Key,
+		ContentType:   in.ContentType,
+		SizeBytes:     in.Size,
+		OwnerID:       in.OwnerID,
+		BelongsToType: in.BelongsTo.Type,
+		BelongsToID:   in.BelongsTo.ID,
 	}
 }
 

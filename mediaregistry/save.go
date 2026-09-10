@@ -33,11 +33,11 @@ import (
 // caller's, which is [Store.RecordObject]'s rule applied one level up: what this
 // call settled is on the row it hands back.
 //
-// object.Key must be set — it is where the bytes go — and object.ContentType, if
-// set, is what the object is stored with, so the row and the stored object agree
-// about the type. Everything else about the object is the caller's: the owner,
-// the subject it hangs off. The scope is the argument's, and an object naming a
-// different one is [ErrScopeMismatch] — see [Store.RecordObject].
+// in.Key must be set — it is where the bytes go — and in.ContentType, if set, is
+// what the object is stored with, so the row and the stored object agree about
+// the type. Everything else is the caller's: the owner, the subject it hangs
+// off. The scope is the argument's, and an [ObjectInput] carries none of its own
+// to disagree with it.
 //
 // The order is deliberate and it is the one that fails safe. The bytes go first,
 // so a failure to register leaves an object with no row — invisible to every
@@ -61,7 +61,7 @@ func StoreAndRecord(
 	scope tenancy.Scope,
 	manager uploads.UploadManager,
 	store Store,
-	object *Object,
+	in ObjectInput, //nolint:gocritic // hugeParam: by value on purpose — see ObjectInput, and the call does a round trip
 	r io.Reader,
 	opts ...uploads.SaveOption,
 ) (*Object, error) {
@@ -72,8 +72,6 @@ func StoreAndRecord(
 		return nil, ErrNilUploadManager
 	case store == nil:
 		return nil, ErrNilStore
-	case object == nil:
-		return nil, ErrNilObject
 	case r == nil:
 		return nil, ErrNilReader
 	}
@@ -90,20 +88,22 @@ func StoreAndRecord(
 	// stored object and its row agree. An empty one is left alone: the providers
 	// sniff it from the content, and naming it explicitly as "" would replace a
 	// sniffed answer with none.
-	if object.ContentType != "" {
-		opts = append(opts, uploads.WithContentType(object.ContentType))
+	if in.ContentType != "" {
+		opts = append(opts, uploads.WithContentType(in.ContentType))
 	}
 
 	counted := &countingReader{r: r}
 
-	if err := manager.Save(ctx, object.Key, counted, opts...); err != nil {
+	if err := manager.Save(ctx, in.Key, counted, opts...); err != nil {
 		return nil, err
 	}
 
-	recorded := *object
-	recorded.Size = counted.n
+	// Assigned onto the parameter, which is this function's own copy: the input
+	// is taken by value, so there is no version of this that reaches back into
+	// what the caller still holds. What the call settled is on the row returned.
+	in.Size = counted.n
 
-	return store.RecordObject(ctx, tx, scope, &recorded)
+	return store.RecordObject(ctx, tx, scope, in)
 }
 
 // countingReader counts the bytes that pass through it.

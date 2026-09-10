@@ -173,7 +173,7 @@ func (s *SQLStore) RecordObject(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
-	object *Object,
+	in ObjectInput, //nolint:gocritic // hugeParam: by value on purpose — see ObjectInput, and the call does a round trip
 ) (*Object, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
@@ -185,11 +185,7 @@ func (s *SQLStore) RecordObject(
 		return nil, s.failed(ctx, op.Error(ErrNilExecutor, "recording uploaded object"))
 	}
 
-	if object == nil {
-		return nil, s.failed(ctx, op.Error(ErrNilObject, "recording uploaded object"))
-	}
-
-	if err := object.ValidateWithContext(ctx); err != nil {
+	if err := in.ValidateWithContext(ctx); err != nil {
 		return nil, s.failed(ctx, op.Error(err, "recording uploaded object"))
 	}
 
@@ -197,20 +193,16 @@ func (s *SQLStore) RecordObject(
 		return nil, s.failed(ctx, op.Error(err, "recording uploaded object"))
 	}
 
-	if err := checkScope(scope, object); err != nil {
-		return nil, s.failed(ctx, op.Error(err, "recording uploaded object"))
-	}
-
-	id := newID(object.ID)
+	id := newID(in.ID)
 
 	op.Set(objectIDKey, id).
-		Set(objectKeyKey, object.Key)
+		Set(objectKeyKey, in.Key)
 
-	if err := s.ensureKeyFree(ctx, tx, scope, object.Key); err != nil {
+	if err := s.ensureKeyFree(ctx, tx, scope, in.Key); err != nil {
 		return nil, s.failed(ctx, op.Error(err, "recording uploaded object"))
 	}
 
-	if err := s.q.CreateObject(ctx, tx, createObjectParams(scope, id, object)); err != nil {
+	if err := s.q.CreateObject(ctx, tx, createObjectParams(scope, id, in)); err != nil {
 		return nil, s.failed(ctx, op.Error(err, "writing the uploads registry row"))
 	}
 
@@ -220,27 +212,6 @@ func (s *SQLStore) RecordObject(
 	}
 
 	return objectFromRow(&row), nil
-}
-
-// checkScope refuses a write whose object names a tenant other than the one the
-// call named.
-//
-// The scope the call named is the one the statement binds, so an object that
-// names a different one is refused rather than corrected: the two disagreeing is
-// a caller holding one tenant's object and registering it into another, which is
-// a stale value or a mix-up and is not a thing to guess at. An object that names
-// none adopts the argument — which it does by the write binding the argument and
-// the read-back reporting it, rather than by this function writing to a struct
-// the caller still holds. tenancy.Scope tells the zero value apart from
-// Global(), so "unset" here is genuinely unset rather than the global scope
-// spelled shortly.
-func checkScope(scope tenancy.Scope, object *Object) error {
-	if object.Scope != (tenancy.Scope{}) && object.Scope != scope {
-		return platformerrors.Wrapf(ErrScopeMismatch,
-			"object names %q, the write names %q", object.Scope, scope)
-	}
-
-	return nil
 }
 
 // ensureKeyFree is the collision check the create runs before it writes, so a

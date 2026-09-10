@@ -31,9 +31,11 @@ func Example() {
 	// application has, behaving exactly as it would without the column.
 	scope := tenancy.Global()
 
-	// No Scope on the value: the write's argument is what the row is filed
-	// under, and the row the write hands back is where it appears.
-	object := &mediaregistry.Object{
+	// An ObjectInput rather than an Object: what a caller supplies, with no
+	// Scope and no stamps on it. The write's argument is what the row is filed
+	// under, and the row the write hands back is where everything it settled
+	// appears.
+	input := mediaregistry.ObjectInput{
 		Key:         "avatars/ada/original.png",
 		ContentType: "image/png",
 		OwnerID:     "user_ada",
@@ -49,7 +51,7 @@ func Example() {
 
 	if err := client.WithTransaction(ctx, func(tx database.Tx) error {
 		var txErr error
-		recorded, txErr = mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, object,
+		recorded, txErr = mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, input,
 			strings.NewReader("\x89PNG not really"))
 
 		return txErr
@@ -121,7 +123,7 @@ func ExampleStore_listObjectsBySubject() {
 	invoice := mediaregistry.Subject{Type: "invoice", ID: "invoice_2026_01"}
 
 	for _, name := range []string{"january-receipt.pdf", "january-statement.pdf"} {
-		object := &mediaregistry.Object{
+		input := mediaregistry.ObjectInput{
 			Key:         "invoices/" + name,
 			ContentType: "application/pdf",
 			OwnerID:     "user_ada",
@@ -129,7 +131,7 @@ func ExampleStore_listObjectsBySubject() {
 		}
 
 		if err := client.WithTransaction(ctx, func(tx database.Tx) error {
-			_, txErr := mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, object, strings.NewReader(name))
+			_, txErr := mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, input, strings.NewReader(name))
 
 			return txErr
 		}); err != nil {

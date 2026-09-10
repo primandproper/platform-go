@@ -123,14 +123,14 @@ func (e *storeEnv) reader() database.SQLQueryExecutor { return e.client.Reader()
 // The row is captured inside the callback rather than returned through
 // RunInTransaction, which carries an error and nothing else. It is left nil on
 // the refusals, which is the same answer the write gave.
-func (e *storeEnv) record(tb testing.TB, store *SQLStore, scope tenancy.Scope, object *Object) (*Object, error) {
+func (e *storeEnv) record(tb testing.TB, store *SQLStore, scope tenancy.Scope, in ObjectInput) (*Object, error) { //nolint:gocritic // hugeParam: by value on purpose — see ObjectInput, and the call does a round trip
 	tb.Helper()
 
 	var recorded *Object
 
 	err := e.inTx(tb, func(tx database.Tx) error {
 		var txErr error
-		recorded, txErr = store.RecordObject(tb.Context(), tx, scope, object)
+		recorded, txErr = store.RecordObject(tb.Context(), tx, scope, in)
 
 		return txErr
 	})
@@ -162,10 +162,10 @@ func (e *storeEnv) archive(tb testing.TB, store *SQLStore, scope tenancy.Scope, 
 // They are what the suite reaches for most, because the row is now the only
 // place the id, the stamps and the bound scope appear — the argument is not
 // written to, so a case that needs the id needs the answer.
-func (e *storeEnv) mustRecord(tb testing.TB, store *SQLStore, scope tenancy.Scope, object *Object) *Object {
+func (e *storeEnv) mustRecord(tb testing.TB, store *SQLStore, scope tenancy.Scope, in ObjectInput) *Object { //nolint:gocritic // hugeParam: by value on purpose — see ObjectInput, and the call does a round trip
 	tb.Helper()
 
-	recorded, err := e.record(tb, store, scope, object)
+	recorded, err := e.record(tb, store, scope, in)
 	must.NoError(tb, err)
 	must.NotNil(tb, recorded)
 
@@ -188,8 +188,8 @@ func (e *storeEnv) mustArchive(tb testing.TB, store *SQLStore, scope tenancy.Sco
 // It names no scope: the write's argument is what decides the tenant, and a
 // fixture that carried one would be asserting the field the port removed from
 // the write path. The cases about a scope-carrying object set it themselves.
-func newObject(key, ownerID string) *Object {
-	return &Object{
+func newInput(key, ownerID string) ObjectInput {
+	return ObjectInput{
 		Key:         key,
 		ContentType: "image/png",
 		OwnerID:     ownerID,

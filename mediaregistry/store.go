@@ -45,23 +45,24 @@ import (
 // passes tenancy.Global() everywhere and gets exactly the behavior it would
 // have had without the column.
 //
-// That includes [Store.RecordObject], which takes a whole [Object] that already
-// carries a Scope. It reads the scope off the argument rather than off
-// Object.Scope, and the alternative — letting an entity that carries a scope
-// supply its own, so the explicit argument appears only where there is no
-// entity — was considered and rejected. The module's rule is that a scope goes
-// into the query bound as a tenancy.Scope rather than derived from some other
-// value, and an entity field is exactly the derivation that rule exists to rule
-// out: it makes "which tenant is this write for" answerable only by reading a
-// struct the caller assembled somewhere else. An Object.Scope that disagrees
-// with the argument is [ErrScopeMismatch] rather than either value quietly
-// winning; an unset one adopts the argument.
+// That includes [Store.RecordObject]. It used to take a whole [Object], which
+// carries a Scope of its own, and the two had to be reconciled: the argument won,
+// a disagreement was refused, and there was a sentinel for the refusal. The
+// module's rule is that a scope goes into the query bound as a tenancy.Scope
+// rather than derived from some other value, and an entity field is exactly the
+// derivation that rule exists to rule out — it makes "which tenant is this write
+// for" answerable only by reading a struct the caller assembled somewhere else.
+//
+// [ObjectInput] settles it by not having the field. There is one scope in the
+// call, it is the argument, and there is no disagreement left to have a sentinel
+// for.
 //
 // # Both writes hand back the row they moved
 //
 // [Store.RecordObject] answers with what it registered and [Store.ArchiveObject]
 // with what it hid, each read on the caller's transaction after the statement
-// ran. Neither modifies the [Object] it was handed.
+// ran. Neither writes to anything the caller still holds: the create takes an
+// [ObjectInput] by value, and the archive takes an id.
 //
 // It is not a convenience, and the reason is the transaction. A caller inside an
 // uncommitted transaction has no other way to read the row back — the stamps on
@@ -88,6 +89,13 @@ import (
 // also works for a write that takes an id rather than an entity, which is what
 // made it the module's answer rather than this package's.
 //
+// Returning alone would not have been enough here, though, and that is why
+// [ObjectInput] exists. While the argument and the row were one type, a caller
+// that kept using the argument — handing it to a response, an audit entry, a
+// cache — compiled cleanly and shipped a zero CreatedAt and a zero Size. The
+// return value is where the answer is; the input type is what makes reading it
+// from anywhere else fail to build.
+//
 // # Nothing here touches bytes
 //
 // The Store writes and reads rows; uploads.UploadManager writes and reads
@@ -98,10 +106,16 @@ import (
 type Store interface {
 	// RecordObject writes the row for an object in storage through the caller's
 	// transaction, so the row commits with whatever references it, and answers
-	// with the row it wrote: the ID it assigned when the object carried none,
-	// the CreatedAt the database stamped, and the scope the call named. The
-	// object handed in is not modified. A nil tx is an error wrapping
-	// ErrNilExecutor, and a failed write answers with a nil Object.
+	// with the row it wrote: the ID it assigned when the input carried none, the
+	// CreatedAt the database stamped, and the scope the call named. A nil tx is
+	// an error wrapping ErrNilExecutor, and a failed write answers with a nil
+	// Object.
+	//
+	// It takes an ObjectInput rather than an Object, and the returned row is the
+	// only place what this call settled can be read. That is a type distinction
+	// rather than a naming one: an input has no CreatedAt and no Scope, so a
+	// caller cannot pass its own argument where the row belongs and get a
+	// zero-valued answer that compiles.
 	//
 	// The key must be free within the scope, archived rows included: a key
 	// already registered is ErrObjectKeyTaken. The collision check, the insert
@@ -114,7 +128,7 @@ type Store interface {
 	// than what guarantees uniqueness — the unique index is that. Two
 	// registrations racing for one key reach the index, and the loser gets the
 	// driver's error rather than ErrObjectKeyTaken.
-	RecordObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, object *Object) (*Object, error)
+	RecordObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, in ObjectInput) (*Object, error)
 
 	// GetObject reads one of the scope's objects by row id, on the caller's
 	// executor. An archived object reads as absent. A nil q is an error wrapping

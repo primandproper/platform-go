@@ -51,17 +51,18 @@ Every read is scoped and there is no unscoped variant of any of them. The scope
 is a column — TEXT NOT NULL with deliberately no DEFAULT, since the empty string
 is tenancy.Global() rather than "unset" — it is bound as a tenancy.Scope rather
 than a string derived from one, and no read path omits it. It is an argument on
-every method, [Store.RecordObject] included, rather than read off the Object the
-write is handed; see the Store documentation for why, and for what happens when
-the two disagree. An application with a single tenant passes tenancy.Global()
-everywhere and behaves exactly as it would have without the column.
+every method, [Store.RecordObject] included. A write takes an [ObjectInput],
+which carries no scope of its own for the argument to disagree with; see the
+Store documentation for why the row and the write's question are separate types.
+An application with a single tenant passes tenancy.Global() everywhere and
+behaves exactly as it would have without the column.
 
 # Usage
 
 	store, err := mediaregistry.NewSQLStore(client)
 	// ...
 
-	object := &mediaregistry.Object{
+	input := mediaregistry.ObjectInput{
 		Key:       "avatars/" + userID + "/original.png",
 		OwnerID:   userID,
 		BelongsTo: mediaregistry.Subject{Type: "user", ID: userID},
@@ -72,7 +73,7 @@ everywhere and behaves exactly as it would have without the column.
 	// and the stamps an audit entry records come from the write itself rather
 	// than from a read beside it.
 	err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		recorded, txErr := mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, object, upload)
+		recorded, txErr := mediaregistry.StoreAndRecord(ctx, tx, scope, manager, store, input, upload)
 		if txErr != nil {
 			return txErr
 		}
