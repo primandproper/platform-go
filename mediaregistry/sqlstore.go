@@ -491,6 +491,62 @@ func (s *SQLStore) ListObjectsBySubject(
 	return filtering.Drain(rows, pageValue, pageCounts, objectID, filter), nil
 }
 
+// ListObjectsByIDs reads a bounded set of the scope's objects in one query, on
+// the caller's executor.
+//
+// The read is the collapse of a loop around GetObject, and it keeps that loop's
+// answers: an id in another scope, an id that names nothing, and an id whose row
+// is archived are all simply absent, exactly as GetObject reports each of them.
+// What changes is the number of round trips, not what the caller learns.
+func (s *SQLStore) ListObjectsByIDs(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	objectIDs []string,
+) ([]*Object, error) {
+	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
+	defer op.End()
+	defer op.Time(ctx, nil, s.instruments.Latency)()
+
+	s.instruments.Attempt(ctx)
+
+	if q == nil {
+		return nil, s.failed(ctx, op.Error(ErrNilExecutor, "reading uploaded objects by id"))
+	}
+
+	if err := scope.Validate(); err != nil {
+		return nil, s.failed(ctx, op.Error(err, "reading uploaded objects by id"))
+	}
+
+	// An empty set is an empty answer without a query. The corpus has no
+	// rendering of an empty set — `IN ()` is a syntax error on two of the three
+	// dialects — so what a generator emits for one is a NULL that matches
+	// nothing, and sending it is a round trip whose answer was known before it
+	// left. On a read that exists to save round trips, that is the one the
+	// caller should not have to make. See querygen.Generator.SetReadQuery, whose
+	// contract this keeps.
+	if len(objectIDs) == 0 {
+		return []*Object{}, nil
+	}
+
+	rows, err := s.q.ListObjectsByIDs(ctx, q, registrydb.ListObjectsByIDsParams{
+		Scope: scope,
+		IDs:   objectIDs,
+	})
+	if err != nil {
+		return nil, s.failed(ctx, op.Error(err, "reading uploaded objects by id"))
+	}
+
+	objects := make([]*Object, 0, len(rows))
+	for i := range rows {
+		objects = append(objects, objectFromBatchRow(&rows[i]))
+	}
+
+	op.SpanOnly(countKey, len(objects))
+
+	return objects, nil
+}
+
 // ArchiveObject soft-deletes the row through the caller's transaction. The
 // object stays in the bucket.
 func (s *SQLStore) ArchiveObject(
