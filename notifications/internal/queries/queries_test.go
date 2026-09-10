@@ -96,6 +96,11 @@ func TestRender_MatchesTheCommittedFiles(T *testing.T) {
 // TestRender_EmitsTheStatementsTheStoreExecutes pins the set, since a query
 // emitted here and not executed is SQL nobody checks the other way round: sqlc
 // would be reading a statement the store does not run.
+//
+// Two of the single-row reads answer a write rather than a consumer.
+// GetArchivedNotification is the archive's read-back and is the one statement
+// here that asks for an archived row; GetDevice is the revocation's, and it runs
+// before its write because the row will not be there afterwards.
 func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	T.Parallel()
 
@@ -106,11 +111,11 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	// with a single entry, because it takes no filter to carry a direction.
 	want := []string{
 		"CreateNotification", "MarkNotificationRead", "MarkAllNotificationsRead", "ArchiveNotification",
-		"GetNotification", "GetNotificationCreatedAt",
+		"GetNotification", "GetArchivedNotification",
 		"ListNotifications", "ListNotificationsDescending",
 		"ListUnreadNotifications", "ListUnreadNotificationsDescending",
 		"RegisterDevice", "RevokeDevice", "DeleteDeviceToken",
-		"GetDeviceByToken", "ListDevices", "ListDevicesDescending", "ListDevicesByPrincipals",
+		"GetDevice", "GetDeviceByToken", "ListDevices", "ListDevicesDescending", "ListDevicesByPrincipals",
 	}
 
 	slices.Sort(want)

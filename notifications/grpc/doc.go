@@ -75,7 +75,17 @@ line, written once here instead of once per consumer.
 RegisterDevice reads its row back inside that transaction, which is what the
 store's reads taking a database.SQLQueryExecutor rather than a reader is for. A
 re-registration answers with the original id and creation time, and without the
-transaction it would answer with whatever was committed before the write.
+transaction it would answer with whatever was committed before the write. What
+this handler puts on the wire is that row — the value the store returned, not the
+registration the request described, since those differ exactly when the write
+converged on a token somebody had already registered.
+
+The other three writes discard the rows their store methods return, because
+their responses have no field to carry one. Each of those rows is still readable
+by the caller a moment later or, for the revocation, was never readable by
+anybody but the transaction that removed it; the store returns them for the
+consumer writing beside the write rather than for a handler about to end a
+request. See inbox.go and devices.go, which say so where the discard is.
 
 # Errors
 

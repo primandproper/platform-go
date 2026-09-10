@@ -54,12 +54,14 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	DeleteDeviceToken(ctx context.Context, db DBTX, arg DeleteDeviceTokenParams) (int64, error)
+	// GetArchivedNotification runs the :one query.
+	GetArchivedNotification(ctx context.Context, db DBTX, arg GetArchivedNotificationParams) (GetArchivedNotificationRow, error)
+	// GetDevice runs the :one query.
+	GetDevice(ctx context.Context, db DBTX, arg GetDeviceParams) (GetDeviceRow, error)
 	// GetDeviceByToken runs the :one query.
 	GetDeviceByToken(ctx context.Context, db DBTX, arg GetDeviceByTokenParams) (GetDeviceByTokenRow, error)
 	// GetNotification runs the :one query.
 	GetNotification(ctx context.Context, db DBTX, arg GetNotificationParams) (GetNotificationRow, error)
-	// GetNotificationCreatedAt runs the :one query.
-	GetNotificationCreatedAt(ctx context.Context, db DBTX, arg GetNotificationCreatedAtParams) (GetNotificationCreatedAtRow, error)
 	// ListDevices runs the :many query.
 	ListDevices(ctx context.Context, db DBTX, arg ListDevicesParams) ([]ListDevicesRow, error)
 	// ListDevicesByPrincipals runs the :many query.

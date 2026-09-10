@@ -63,25 +63,51 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		n := newNotification(testPrincipal, "order.shipped", "Your order shipped")
-		must.NoError(t, env.create(t, store, testScope, n))
+		filed := env.mustCreate(t, store, testScope, n)
 
 		// The id is minted here and the creation time is the database's, read
 		// back rather than left as a zero time a caller would serialize as a
-		// date in the year one.
-		test.NotEqOp(t, "", n.ID)
-		test.False(t, n.CreatedAt.IsZero())
-		test.Nil(t, n.ReadAt)
+		// date in the year one. Both are on the row the write answered with.
+		test.NotEqOp(t, "", filed.ID)
+		test.False(t, filed.CreatedAt.IsZero())
+		test.EqOp(t, testScope, filed.Scope)
+		test.Nil(t, filed.ReadAt)
+		test.Nil(t, filed.ArchivedAt)
 
-		read, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, n.ID)
+		read, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, filed.ID)
 		must.NoError(t, err)
 
-		test.EqOp(t, n.ID, read.ID)
+		test.EqOp(t, filed.ID, read.ID)
+		test.EqOp(t, filed.CreatedAt, read.CreatedAt)
 		test.EqOp(t, "order.shipped", read.Topic)
 		test.EqOp(t, "Your order shipped", read.Title)
 		test.EqOp(t, "the body", read.Body)
 		test.EqOp(t, "/orders/1", read.Link)
 		test.EqOp(t, testScope, read.Scope)
 		test.False(t, read.Read())
+	})
+
+	t.Run("the create leaves the caller's notification alone", func(t *testing.T) {
+		t.Parallel()
+
+		// The other half of returning the row: the argument is the caller's, and
+		// what this call settled is on the value it handed back. A store that
+		// wrote both would have two spellings of the answer, and the module has
+		// one.
+		store := env.newStore(t)
+
+		n := newNotification(testPrincipal, "order.shipped", "Your order shipped")
+		n.Scope = tenancy.Scope{}
+
+		filed := env.mustCreate(t, store, testScope, n)
+
+		test.EqOp(t, "", n.ID)
+		test.True(t, n.CreatedAt.IsZero())
+		test.EqOp(t, tenancy.Scope{}, n.Scope)
+
+		test.NotEqOp(t, "", filed.ID)
+		test.False(t, filed.CreatedAt.IsZero())
+		test.EqOp(t, testScope, filed.Scope)
 	})
 
 	t.Run("an id the caller supplied is the id that is stored", func(t *testing.T) {
@@ -91,7 +117,9 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 
 		n := newNotification(testPrincipal, "invite.received", "You were invited")
 		n.ID = "notif_supplied"
-		must.NoError(t, env.create(t, store, testScope, n))
+
+		filed := env.mustCreate(t, store, testScope, n)
+		test.EqOp(t, "notif_supplied", filed.ID)
 
 		read, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, "notif_supplied")
 		must.NoError(t, err)
@@ -105,8 +133,8 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 		// one member of an account another member's inbox row by id.
 		store := env.newStore(t)
 
-		n := newNotification(otherPrincipal, "order.shipped", "Their order shipped")
-		must.NoError(t, env.create(t, store, testScope, n))
+		n := env.mustCreate(t, store, testScope,
+			newNotification(otherPrincipal, "order.shipped", "Their order shipped"))
 
 		_, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, n.ID)
 		test.ErrorIs(t, err, ErrNotificationNotFound)
@@ -117,9 +145,10 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		n := newNotification(testPrincipal, "order.shipped", "Somebody else's tenant")
-		n.Scope = otherScope
-		must.NoError(t, env.create(t, store, otherScope, n))
+		elsewhere := newNotification(testPrincipal, "order.shipped", "Somebody else's tenant")
+		elsewhere.Scope = otherScope
+
+		n := env.mustCreate(t, store, otherScope, elsewhere)
 
 		_, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, n.ID)
 		test.ErrorIs(t, err, ErrNotificationNotFound)
@@ -132,13 +161,12 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 
 		mine := make([]string, 0, 3)
 		for _, title := range []string{"first", "second", "third"} {
-			n := newNotification(testPrincipal, "order.shipped", title)
-			must.NoError(t, env.create(t, store, testScope, n))
-			mine = append(mine, n.ID)
+			filed := env.mustCreate(t, store, testScope,
+				newNotification(testPrincipal, "order.shipped", title))
+			mine = append(mine, filed.ID)
 		}
 
-		theirs := newNotification(otherPrincipal, "order.shipped", "not yours")
-		must.NoError(t, env.create(t, store, testScope, theirs))
+		env.mustCreate(t, store, testScope, newNotification(otherPrincipal, "order.shipped", "not yours"))
 
 		ascending, err := store.ListNotifications(t.Context(), env.reader(), testScope, testPrincipal, nil)
 		must.NoError(t, err)
@@ -168,12 +196,13 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 
 		ids := make([]string, 0, 3)
 		for _, title := range []string{"first", "second", "third"} {
-			n := newNotification(testPrincipal, "order.shipped", title)
-			must.NoError(t, env.create(t, store, testScope, n))
-			ids = append(ids, n.ID)
+			filed := env.mustCreate(t, store, testScope,
+				newNotification(testPrincipal, "order.shipped", title))
+			ids = append(ids, filed.ID)
 		}
 
-		must.NoError(t, env.markRead(t, store, testScope, testPrincipal, ids[0]))
+		_, err := env.markRead(t, store, testScope, testPrincipal, ids[0])
+		must.NoError(t, err)
 
 		// One page of one, and the count is still of everything unread rather
 		// than of what came back — which is the whole reason this schema needs no
@@ -193,10 +222,19 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 		c := newStubClock()
 		store := env.newStore(t, WithClock(c))
 
-		n := newNotification(testPrincipal, "order.shipped", "Your order shipped")
-		must.NoError(t, env.create(t, store, testScope, n))
+		n := env.mustCreate(t, store, testScope,
+			newNotification(testPrincipal, "order.shipped", "Your order shipped"))
 
-		must.NoError(t, env.markRead(t, store, testScope, testPrincipal, n.ID))
+		// The write answers with the row it stamped, so the stamp is readable
+		// without a second statement — which is the whole point for a consumer
+		// writing an audit entry beside the mark, inside the same transaction.
+		marked, err := env.markRead(t, store, testScope, testPrincipal, n.ID)
+		must.NoError(t, err)
+		must.NotNil(t, marked)
+		must.NotNil(t, marked.ReadAt)
+		test.EqOp(t, baseTime, marked.ReadAt.UTC())
+		test.EqOp(t, n.ID, marked.ID)
+		test.True(t, marked.Read())
 
 		read, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, n.ID)
 		must.NoError(t, err)
@@ -205,9 +243,15 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 
 		// A second mark is a success that changes nothing. Moving the stamp is
 		// what turns "read last Tuesday" into "read on every list refresh", and
-		// it is the reason the statement guards on the column being absent.
+		// it is the reason the statement guards on the column being absent. The
+		// row it answers with says so: the stamp is the first one, an hour ago.
 		c.advance(time.Hour)
-		must.NoError(t, env.markRead(t, store, testScope, testPrincipal, n.ID))
+
+		remarked, err := env.markRead(t, store, testScope, testPrincipal, n.ID)
+		must.NoError(t, err)
+		must.NotNil(t, remarked)
+		must.NotNil(t, remarked.ReadAt)
+		test.EqOp(t, baseTime, remarked.ReadAt.UTC())
 
 		reread, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, n.ID)
 		must.NoError(t, err)
@@ -221,15 +265,18 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		// Zero rows means two things — already read, or not there — and this is
-		// the half that must not be reported as success.
-		err := env.markRead(t, store, testScope, testPrincipal, "notif_nonexistent")
+		// the half that must not be reported as success. The row is nil with it:
+		// a caller matching on the error must never find a value beside it.
+		marked, err := env.markRead(t, store, testScope, testPrincipal, "notif_nonexistent")
 		test.ErrorIs(t, err, ErrNotificationNotFound)
+		test.Nil(t, marked)
 
-		theirs := newNotification(otherPrincipal, "order.shipped", "not yours")
-		must.NoError(t, env.create(t, store, testScope, theirs))
+		theirs := env.mustCreate(t, store, testScope,
+			newNotification(otherPrincipal, "order.shipped", "not yours"))
 
-		err = env.markRead(t, store, testScope, testPrincipal, theirs.ID)
+		marked, err = env.markRead(t, store, testScope, testPrincipal, theirs.ID)
 		test.ErrorIs(t, err, ErrNotificationNotFound)
+		test.Nil(t, marked)
 	})
 
 	t.Run("marking everything read counts what was unread", func(t *testing.T) {
@@ -238,12 +285,11 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		for _, title := range []string{"first", "second", "third"} {
-			n := newNotification(testPrincipal, "order.shipped", title)
-			must.NoError(t, env.create(t, store, testScope, n))
+			env.mustCreate(t, store, testScope, newNotification(testPrincipal, "order.shipped", title))
 		}
 
-		theirs := newNotification(otherPrincipal, "order.shipped", "not yours")
-		must.NoError(t, env.create(t, store, testScope, theirs))
+		theirs := env.mustCreate(t, store, testScope,
+			newNotification(otherPrincipal, "order.shipped", "not yours"))
 
 		count, err := env.markAllRead(t, store, testScope, testPrincipal)
 		must.NoError(t, err)
@@ -264,32 +310,44 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 	t.Run("archiving takes it out of the inbox and keeps the row", func(t *testing.T) {
 		t.Parallel()
 
-		store := env.newStore(t)
+		c := newStubClock()
+		store := env.newStore(t, WithClock(c))
 
-		n := newNotification(testPrincipal, "order.shipped", "Your order shipped")
-		must.NoError(t, env.create(t, store, testScope, n))
+		n := env.mustCreate(t, store, testScope,
+			newNotification(testPrincipal, "order.shipped", "Your order shipped"))
 
-		must.NoError(t, env.archive(t, store, testScope, testPrincipal, n.ID))
+		// The row the archive answers with is the one this write hid, carrying
+		// the stamp that hid it — and it is the only place a caller can read
+		// that, because every single-row read here is written not to see it.
+		dismissed, err := env.archive(t, store, testScope, testPrincipal, n.ID)
+		must.NoError(t, err)
+		must.NotNil(t, dismissed)
+		test.EqOp(t, n.ID, dismissed.ID)
+		test.EqOp(t, n.CreatedAt, dismissed.CreatedAt)
+		must.NotNil(t, dismissed.ArchivedAt)
 
-		_, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, n.ID)
+		_, err = store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, n.ID)
 		test.ErrorIs(t, err, ErrNotificationNotFound)
 
 		live, err := store.ListNotifications(t.Context(), env.reader(), testScope, testPrincipal, nil)
 		must.NoError(t, err)
 		test.SliceEmpty(t, live.Data)
 
-		// The row is still there for whoever asks later what somebody was told.
+		// The row is still there for whoever asks later what somebody was told,
+		// and the stamp on it is the one the write handed back.
 		archived, err := store.ListNotifications(t.Context(), env.reader(), testScope, testPrincipal,
 			&filtering.QueryFilter{IncludeArchived: pointer.To(true)})
 		must.NoError(t, err)
 		must.SliceLen(t, 1, archived.Data)
-		test.NotNil(t, archived.Data[0].ArchivedAt)
+		must.NotNil(t, archived.Data[0].ArchivedAt)
+		test.EqOp(t, dismissed.ArchivedAt.UTC(), archived.Data[0].ArchivedAt.UTC())
 
 		// Archiving it again finds nothing, because an archived notification is
-		// not in the inbox and this addresses the inbox.
-		test.ErrorIs(t,
-			env.archive(t, store, testScope, testPrincipal, n.ID),
-			ErrNotificationNotFound)
+		// not in the inbox and this addresses the inbox. The guard refuses before
+		// the read-back runs, so there is no row beside the error.
+		reArchived, err := env.archive(t, store, testScope, testPrincipal, n.ID)
+		test.ErrorIs(t, err, ErrNotificationNotFound)
+		test.Nil(t, reArchived)
 	})
 
 	t.Run("refuses a notification nobody could read", func(t *testing.T) {
@@ -297,37 +355,44 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		test.ErrorIs(t, env.create(t, store, testScope, nil), ErrNilNotification)
+		// Every refusal answers with a nil row beside its error, which is what
+		// keeps "the row is returned only alongside a nil error" a property
+		// rather than a habit.
+		refused := func(n *Notification, scope tenancy.Scope, sentinel error) {
+			t.Helper()
+
+			filed, err := env.create(t, store, scope, n)
+			test.ErrorIs(t, err, sentinel)
+			test.Nil(t, filed)
+		}
+
+		refused(nil, testScope, ErrNilNotification)
 
 		// The scope is the write's rather than the row's, so an unset one is an
 		// unset argument. A notification carrying none adopts what the write
 		// names, which is the reading that lets a caller pass the value they were
 		// handed without restating it.
-		test.ErrorIs(t,
-			env.create(t, store, tenancy.Scope{},
-				newNotification(testPrincipal, "order.shipped", "Your order shipped")),
-			tenancy.ErrNoScope)
+		refused(newNotification(testPrincipal, "order.shipped", "Your order shipped"),
+			tenancy.Scope{}, tenancy.ErrNoScope)
 
 		adopting := newNotification(testPrincipal, "order.shipped", "Your order shipped")
 		adopting.Scope = tenancy.Scope{}
-		must.NoError(t, env.create(t, store, testScope, adopting))
-		test.EqOp(t, testScope, adopting.Scope)
+		test.EqOp(t, testScope, env.mustCreate(t, store, testScope, adopting).Scope)
 
 		// One that names a different one is refused rather than corrected: a
 		// caller holding one tenant's notification and filing it into another is
 		// a mix-up, not a thing to guess at.
 		elsewhere := newNotification(testPrincipal, "order.shipped", "Your order shipped")
 		elsewhere.Scope = otherScope
-		test.ErrorIs(t, env.create(t, store, testScope, elsewhere), ErrScopeMismatch)
+		refused(elsewhere, testScope, ErrScopeMismatch)
 
-		unaddressed := newNotification("", "order.shipped", "Your order shipped")
-		test.ErrorIs(t, env.create(t, store, testScope, unaddressed), ErrEmptyPrincipal)
+		refused(newNotification("", "order.shipped", "Your order shipped"), testScope, ErrEmptyPrincipal)
+		refused(newNotification(testPrincipal, "", "Your order shipped"), testScope, ErrEmptyTopic)
 
-		untopiced := newNotification(testPrincipal, "", "Your order shipped")
-		test.ErrorIs(t, env.create(t, store, testScope, untopiced), ErrEmptyTopic)
-
-		untitled := newNotification(testPrincipal, "order.shipped", "")
-		test.Error(t, env.create(t, store, testScope, untitled))
+		untitled, err := env.create(t, store, testScope,
+			newNotification(testPrincipal, "order.shipped", ""))
+		test.Error(t, err)
+		test.Nil(t, untitled)
 	})
 
 	t.Run("refuses a read that names no scope or no principal", func(t *testing.T) {
@@ -347,10 +412,13 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 		_, err = env.markAllRead(t, store, testScope, "")
 		test.ErrorIs(t, err, ErrEmptyPrincipal)
 
-		test.ErrorIs(t,
-			env.markRead(t, store, testScope, "", "notif_1"), ErrEmptyPrincipal)
-		test.ErrorIs(t,
-			env.archive(t, store, testScope, "", "notif_1"), ErrEmptyPrincipal)
+		marked, err := env.markRead(t, store, testScope, "", "notif_1")
+		test.ErrorIs(t, err, ErrEmptyPrincipal)
+		test.Nil(t, marked)
+
+		archived, err := env.archive(t, store, testScope, "", "notif_1")
+		test.ErrorIs(t, err, ErrEmptyPrincipal)
+		test.Nil(t, archived)
 	})
 }
 
@@ -364,12 +432,19 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t, WithClock(c))
 
 		d := newDevice(testPrincipal, PlatformIOS, "token-a")
-		must.NoError(t, env.register(t, store, testScope, d))
+		registered := env.mustRegister(t, store, testScope, d)
 
-		test.NotEqOp(t, "", d.ID)
-		test.False(t, d.CreatedAt.IsZero())
-		test.EqOp(t, baseTime, d.LastSeenAt.UTC())
-		test.EqOp(t, PlatformIOS, d.Platform)
+		test.NotEqOp(t, "", registered.ID)
+		test.False(t, registered.CreatedAt.IsZero())
+		test.EqOp(t, baseTime, registered.LastSeenAt.UTC())
+		test.EqOp(t, PlatformIOS, registered.Platform)
+		test.EqOp(t, testScope, registered.Scope)
+
+		// And the Device the caller handed over is untouched: the write answers
+		// with the row, and that is the one spelling.
+		test.EqOp(t, "", d.ID)
+		test.True(t, d.CreatedAt.IsZero())
+		test.True(t, d.LastSeenAt.IsZero())
 	})
 
 	t.Run("re-registering the same handset keeps its identity", func(t *testing.T) {
@@ -378,17 +453,16 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 		c := newStubClock()
 		store := env.newStore(t, WithClock(c))
 
-		first := newDevice(testPrincipal, PlatformIOS, "token-a")
-		must.NoError(t, env.register(t, store, testScope, first))
+		first := env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
 
 		c.advance(time.Hour)
 
 		// A fresh value, as a client that has forgotten its registration id would
-		// send: same token, new id. The row it converges on keeps the id the
-		// first registration minted, and the caller is told so — otherwise they
-		// would hold an id no row has and revoke nothing on sign-out.
-		again := newDevice(testPrincipal, PlatformIOS, "token-a")
-		must.NoError(t, env.register(t, store, testScope, again))
+		// send: same token, and an id this call mints for itself. The row it
+		// converges on keeps the id the first registration minted, and the caller
+		// is told so on the value handed back — otherwise they would hold an id
+		// no row has and revoke nothing on sign-out.
+		again := env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
 
 		test.EqOp(t, first.ID, again.ID)
 		test.EqOp(t, first.CreatedAt, again.CreatedAt)
@@ -404,13 +478,14 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		first := newDevice(testPrincipal, PlatformIOS, "token-a")
-		must.NoError(t, env.register(t, store, testScope, first))
+		first := env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
 
 		// Somebody else signs in on the same phone. Two rows here would deliver
-		// the previous owner's notifications to the new one.
-		second := newDevice(otherPrincipal, PlatformIOS, "token-a")
-		must.NoError(t, env.register(t, store, testScope, second))
+		// the previous owner's notifications to the new one, and the row this
+		// answers with is the moved one: same id, new owner.
+		second := env.mustRegister(t, store, testScope, newDevice(otherPrincipal, PlatformIOS, "token-a"))
+		test.EqOp(t, first.ID, second.ID)
+		test.EqOp(t, otherPrincipal, second.Principal)
 
 		gone, err := store.ListDevices(t.Context(), env.reader(), testScope, testPrincipal, nil)
 		must.NoError(t, err)
@@ -429,8 +504,8 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 		// half the key rather than a label on it.
 		store := env.newStore(t)
 
-		must.NoError(t, env.register(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a")))
-		must.NoError(t, env.register(t, store, testScope, newDevice(testPrincipal, PlatformAndroid, "token-a")))
+		env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
+		env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformAndroid, "token-a"))
 
 		devices, err := store.ListDevices(t.Context(), env.reader(), testScope, testPrincipal, nil)
 		must.NoError(t, err)
@@ -442,13 +517,13 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		must.NoError(t, env.register(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a")))
-		must.NoError(t, env.register(t, store, testScope, newDevice(testPrincipal, PlatformAndroid, "token-b")))
-		must.NoError(t, env.register(t, store, testScope, newDevice(otherPrincipal, PlatformIOS, "token-c")))
+		env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
+		env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformAndroid, "token-b"))
+		env.mustRegister(t, store, testScope, newDevice(otherPrincipal, PlatformIOS, "token-c"))
 
 		elsewhere := newDevice(testPrincipal, PlatformIOS, "token-d")
 		elsewhere.Scope = otherScope
-		must.NoError(t, env.register(t, store, otherScope, elsewhere))
+		env.mustRegister(t, store, otherScope, elsewhere)
 
 		devices, err := store.ListDevicesByPrincipals(t.Context(), env.reader(), testScope,
 			[]string{testPrincipal, otherPrincipal})
@@ -467,17 +542,30 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		d := newDevice(testPrincipal, PlatformIOS, "token-a")
-		must.NoError(t, env.register(t, store, testScope, d))
+		d := env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
 
-		must.NoError(t, env.revoke(t, store, testScope, testPrincipal, d.ID))
+		// The registration comes back on its way out, which is the whole of why
+		// this write answers with anything: the row is gone the moment the
+		// transaction commits, so nothing can be read from it afterwards. The
+		// token is on it, which is what a consumer telling a provider to stop
+		// needs and what no later read could supply.
+		revoked, err := env.revoke(t, store, testScope, testPrincipal, d.ID)
+		must.NoError(t, err)
+		must.NotNil(t, revoked)
+		test.EqOp(t, d.ID, revoked.ID)
+		test.EqOp(t, "token-a", revoked.Token)
+		test.EqOp(t, PlatformIOS, revoked.Platform)
+		test.EqOp(t, testPrincipal, revoked.Principal)
+		test.EqOp(t, testScope, revoked.Scope)
+		test.EqOp(t, d.CreatedAt, revoked.CreatedAt)
 
 		devices, err := store.ListDevices(t.Context(), env.reader(), testScope, testPrincipal, nil)
 		must.NoError(t, err)
 		test.SliceEmpty(t, devices.Data)
 
-		test.ErrorIs(t,
-			env.revoke(t, store, testScope, testPrincipal, d.ID), ErrDeviceNotFound)
+		gone, err := env.revoke(t, store, testScope, testPrincipal, d.ID)
+		test.ErrorIs(t, err, ErrDeviceNotFound)
+		test.Nil(t, gone)
 	})
 
 	t.Run("another principal cannot revoke this one's device", func(t *testing.T) {
@@ -485,13 +573,24 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		d := newDevice(testPrincipal, PlatformIOS, "token-a")
-		must.NoError(t, env.register(t, store, testScope, d))
+		d := env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
 
-		test.ErrorIs(t,
-			env.revoke(t, store, testScope, otherPrincipal, d.ID), ErrDeviceNotFound)
-		test.ErrorIs(t,
-			env.revoke(t, store, otherScope, testPrincipal, d.ID), ErrDeviceNotFound)
+		// The read that answers this write is keyed on the scope and the
+		// principal as well as the id, so neither of these reaches the row — and
+		// neither is handed one.
+		theirs, err := env.revoke(t, store, testScope, otherPrincipal, d.ID)
+		test.ErrorIs(t, err, ErrDeviceNotFound)
+		test.Nil(t, theirs)
+
+		elsewhere, err := env.revoke(t, store, otherScope, testPrincipal, d.ID)
+		test.ErrorIs(t, err, ErrDeviceNotFound)
+		test.Nil(t, elsewhere)
+
+		// And the row is still there, which is what makes those refusals rather
+		// than deletions that reported an error.
+		devices, err := store.ListDevices(t.Context(), env.reader(), testScope, testPrincipal, nil)
+		must.NoError(t, err)
+		test.SliceLen(t, 1, devices.Data)
 	})
 
 	t.Run("the provider hook prunes across every scope and is idempotent", func(t *testing.T) {
@@ -503,7 +602,7 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 		// answering a push names a token and nothing else.
 		elsewhere := newDevice(testPrincipal, PlatformIOS, "token-dead")
 		elsewhere.Scope = otherScope
-		must.NoError(t, env.register(t, store, otherScope, elsewhere))
+		env.mustRegister(t, store, otherScope, elsewhere)
 
 		must.NoError(t, store.InvalidateDeviceToken(t.Context(), "ios", "token-dead"))
 
@@ -521,7 +620,7 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		must.NoError(t, env.register(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a")))
+		env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-a"))
 
 		// A mobile client's spelling, which is what reaches a sender.
 		must.NoError(t, store.InvalidateDeviceToken(t.Context(), " iOS ", "token-a"))
@@ -549,30 +648,29 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		test.ErrorIs(t, env.register(t, store, testScope, nil), ErrNilDevice)
+		// A refusal answers with a nil row, here as on the inbox.
+		refused := func(d *Device, scope tenancy.Scope, sentinel error) {
+			t.Helper()
 
-		test.ErrorIs(t,
-			env.register(t, store, tenancy.Scope{},
-				newDevice(testPrincipal, PlatformIOS, "token-a")),
-			tenancy.ErrNoScope)
+			registered, err := env.register(t, store, scope, d)
+			test.ErrorIs(t, err, sentinel)
+			test.Nil(t, registered)
+		}
+
+		refused(nil, testScope, ErrNilDevice)
+		refused(newDevice(testPrincipal, PlatformIOS, "token-a"), tenancy.Scope{}, tenancy.ErrNoScope)
 
 		adopting := newDevice(testPrincipal, PlatformIOS, "token-adopting")
 		adopting.Scope = tenancy.Scope{}
-		must.NoError(t, env.register(t, store, testScope, adopting))
-		test.EqOp(t, testScope, adopting.Scope)
+		test.EqOp(t, testScope, env.mustRegister(t, store, testScope, adopting).Scope)
 
 		mismatched := newDevice(testPrincipal, PlatformIOS, "token-mismatched")
 		mismatched.Scope = otherScope
-		test.ErrorIs(t, env.register(t, store, testScope, mismatched), ErrScopeMismatch)
+		refused(mismatched, testScope, ErrScopeMismatch)
 
-		unaddressed := newDevice("", PlatformIOS, "token-a")
-		test.ErrorIs(t, env.register(t, store, testScope, unaddressed), ErrEmptyPrincipal)
-
-		unroutable := newDevice(testPrincipal, Platform("blackberry"), "token-a")
-		test.ErrorIs(t, env.register(t, store, testScope, unroutable), ErrUnknownPlatform)
-
-		tokenless := newDevice(testPrincipal, PlatformIOS, "")
-		test.ErrorIs(t, env.register(t, store, testScope, tokenless), ErrEmptyToken)
+		refused(newDevice("", PlatformIOS, "token-a"), testScope, ErrEmptyPrincipal)
+		refused(newDevice(testPrincipal, Platform("blackberry"), "token-a"), testScope, ErrUnknownPlatform)
+		refused(newDevice(testPrincipal, PlatformIOS, ""), testScope, ErrEmptyToken)
 	})
 
 	t.Run("refuses a read that names no scope or no principal", func(t *testing.T) {
@@ -589,8 +687,9 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 		_, err = store.ListDevicesByPrincipals(t.Context(), env.reader(), tenancy.Scope{}, []string{testPrincipal})
 		test.ErrorIs(t, err, tenancy.ErrNoScope)
 
-		test.ErrorIs(t,
-			env.revoke(t, store, testScope, "", "device_1"), ErrEmptyPrincipal)
+		revoked, err := env.revoke(t, store, testScope, "", "device_1")
+		test.ErrorIs(t, err, ErrEmptyPrincipal)
+		test.Nil(t, revoked)
 	})
 }
 
@@ -609,12 +708,17 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		n := newNotification(testPrincipal, "order.shipped", "written and read on one executor")
 
+		var filed *Notification
+
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			if err := store.CreateNotification(t.Context(), tx, testScope, n); err != nil {
-				return err
+			var createErr error
+
+			filed, createErr = store.CreateNotification(t.Context(), tx, testScope, n)
+			if createErr != nil {
+				return createErr
 			}
 
-			read, err := store.GetNotification(t.Context(), tx, testScope, testPrincipal, n.ID)
+			read, err := store.GetNotification(t.Context(), tx, testScope, testPrincipal, filed.ID)
 			if err != nil {
 				return err
 			}
@@ -627,7 +731,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 			}
 
 			must.SliceLen(t, 1, unread.Data)
-			test.EqOp(t, n.ID, unread.Data[0].ID)
+			test.EqOp(t, filed.ID, unread.Data[0].ID)
 
 			// And the same read, on the client, cannot see it: the transaction
 			// has not committed, so this is the other half of the same fact
@@ -644,9 +748,9 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		// After the commit both executors agree, which is what makes the reading
 		// above about visibility rather than about two different rows.
-		read, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, n.ID)
+		read, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, filed.ID)
 		must.NoError(t, err)
-		test.EqOp(t, n.ID, read.ID)
+		test.EqOp(t, filed.ID, read.ID)
 	})
 
 	t.Run("a notification created in a rolled-back transaction is never visible", func(t *testing.T) {
@@ -661,8 +765,12 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		n := newNotification(testPrincipal, "order.shipped", "an order that never happened")
 
+		var filed *Notification
+
 		err := env.inTx(t, func(tx database.Tx) error {
-			if txErr := store.CreateNotification(t.Context(), tx, testScope, n); txErr != nil {
+			var txErr error
+
+			if filed, txErr = store.CreateNotification(t.Context(), tx, testScope, n); txErr != nil {
 				return txErr
 			}
 
@@ -672,11 +780,17 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		})
 		must.ErrorIs(t, err, errCompanionWrite)
 
-		// The id was minted onto the caller's value on the way through. Nothing
-		// undoes that, and nothing should: what rolled back is the row.
-		test.NotEqOp(t, "", n.ID)
+		// The write answered before the rollback, so the caller is holding a row
+		// describing something that never committed. Nothing undoes that, and
+		// nothing should: what rolled back is the row, not the value the write
+		// handed back before anybody knew it would.
+		must.NotNil(t, filed)
+		test.NotEqOp(t, "", filed.ID)
 
-		_, err = store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, n.ID)
+		// And the argument the caller passed is untouched either way.
+		test.EqOp(t, "", n.ID)
+
+		_, err = store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, filed.ID)
 		must.ErrorIs(t, err, ErrNotificationNotFound)
 
 		// And the badge stays at nothing, which is what the person would have
@@ -692,31 +806,43 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		created := newNotification(testPrincipal, "order.shipped", "written inside")
+		marked := env.mustCreate(t, store, testScope,
+			newNotification(testPrincipal, "invite.received", "to be read"))
+		doomed := env.mustCreate(t, store, testScope,
+			newNotification(testPrincipal, "order.shipped", "on the way out"))
 
-		marked := newNotification(testPrincipal, "invite.received", "to be read")
-		must.NoError(t, env.create(t, store, testScope, marked))
-
-		doomed := newNotification(testPrincipal, "order.shipped", "on the way out")
-		must.NoError(t, env.create(t, store, testScope, doomed))
+		var (
+			created   *Notification
+			stamped   *Notification
+			dismissed *Notification
+		)
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			if err := store.CreateNotification(t.Context(), tx, testScope, created); err != nil {
+			var err error
+
+			if created, err = store.CreateNotification(t.Context(), tx, testScope,
+				newNotification(testPrincipal, "order.shipped", "written inside")); err != nil {
 				return err
 			}
 
-			if err := store.MarkNotificationRead(t.Context(), tx, testScope, testPrincipal, marked.ID); err != nil {
+			if stamped, err = store.MarkNotificationRead(t.Context(), tx, testScope,
+				testPrincipal, marked.ID); err != nil {
 				return err
 			}
 
-			return store.ArchiveNotification(t.Context(), tx, testScope, testPrincipal, doomed.ID)
+			dismissed, err = store.ArchiveNotification(t.Context(), tx, testScope, testPrincipal, doomed.ID)
+
+			return err
 		}))
 
-		// The create reads its creation time back through the caller's executor,
-		// so the value the caller is handed is the row this transaction wrote
-		// rather than a zero time waiting on a commit.
+		// Each of the three read its row back through the caller's executor, so
+		// what the caller holds is what this transaction wrote rather than what a
+		// commit later made visible — which is the property the whole port is
+		// about, now readable on the return value rather than only in the table.
 		test.NotEqOp(t, "", created.ID)
 		test.False(t, created.CreatedAt.IsZero())
+		must.NotNil(t, stamped.ReadAt)
+		must.NotNil(t, dismissed.ArchivedAt)
 
 		read, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, created.ID)
 		must.NoError(t, err)
@@ -735,18 +861,19 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		marked := newNotification(testPrincipal, "invite.received", "still unread afterwards")
-		must.NoError(t, env.create(t, store, testScope, marked))
-
-		survivor := newNotification(testPrincipal, "order.shipped", "still in the inbox")
-		must.NoError(t, env.create(t, store, testScope, survivor))
+		marked := env.mustCreate(t, store, testScope,
+			newNotification(testPrincipal, "invite.received", "still unread afterwards"))
+		survivor := env.mustCreate(t, store, testScope,
+			newNotification(testPrincipal, "order.shipped", "still in the inbox"))
 
 		err := env.inTx(t, func(tx database.Tx) error {
-			if txErr := store.MarkNotificationRead(t.Context(), tx, testScope, testPrincipal, marked.ID); txErr != nil {
+			if _, txErr := store.MarkNotificationRead(t.Context(), tx, testScope,
+				testPrincipal, marked.ID); txErr != nil {
 				return txErr
 			}
 
-			if txErr := store.ArchiveNotification(t.Context(), tx, testScope, testPrincipal, survivor.ID); txErr != nil {
+			if _, txErr := store.ArchiveNotification(t.Context(), tx, testScope,
+				testPrincipal, survivor.ID); txErr != nil {
 				return txErr
 			}
 
@@ -778,13 +905,12 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// that joins them.
 		store := env.newStore(t)
 
-		revoked := newDevice(testPrincipal, PlatformIOS, "token-signed-out")
-		must.NoError(t, env.register(t, store, testScope, revoked))
-
-		registered := newDevice(testPrincipal, PlatformAndroid, "token-never-committed")
+		revoked := env.mustRegister(t, store, testScope,
+			newDevice(testPrincipal, PlatformIOS, "token-signed-out"))
 
 		err := env.inTx(t, func(tx database.Tx) error {
-			if txErr := store.RegisterDevice(t.Context(), tx, testScope, registered); txErr != nil {
+			if _, txErr := store.RegisterDevice(t.Context(), tx, testScope,
+				newDevice(testPrincipal, PlatformAndroid, "token-never-committed")); txErr != nil {
 				return txErr
 			}
 
@@ -797,7 +923,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 			test.SliceLen(t, 2, devices)
 
-			if txErr = store.RevokeDevice(t.Context(), tx, testScope, testPrincipal, revoked.ID); txErr != nil {
+			if _, txErr = store.RevokeDevice(t.Context(), tx, testScope, testPrincipal, revoked.ID); txErr != nil {
 				return txErr
 			}
 
@@ -822,24 +948,29 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// that is not there.
 		store := env.newStore(t)
 
-		must.ErrorIs(t,
-			store.CreateNotification(t.Context(), nil, testScope,
-				newNotification(testPrincipal, "order.shipped", "words")),
-			ErrNilExecutor)
-		must.ErrorIs(t,
-			store.MarkNotificationRead(t.Context(), nil, testScope, testPrincipal, "notif_1"),
-			ErrNilExecutor)
-		must.ErrorIs(t,
-			store.ArchiveNotification(t.Context(), nil, testScope, testPrincipal, "notif_1"),
-			ErrNilExecutor)
-		must.ErrorIs(t,
-			store.RegisterDevice(t.Context(), nil, testScope, newDevice(testPrincipal, PlatformIOS, "token-a")),
-			ErrNilExecutor)
-		must.ErrorIs(t,
-			store.RevokeDevice(t.Context(), nil, testScope, testPrincipal, "device_1"),
-			ErrNilExecutor)
+		filed, err := store.CreateNotification(t.Context(), nil, testScope,
+			newNotification(testPrincipal, "order.shipped", "words"))
+		must.ErrorIs(t, err, ErrNilExecutor)
+		test.Nil(t, filed)
 
-		_, err := store.MarkAllNotificationsRead(t.Context(), nil, testScope, testPrincipal)
+		marked, err := store.MarkNotificationRead(t.Context(), nil, testScope, testPrincipal, "notif_1")
+		must.ErrorIs(t, err, ErrNilExecutor)
+		test.Nil(t, marked)
+
+		archived, err := store.ArchiveNotification(t.Context(), nil, testScope, testPrincipal, "notif_1")
+		must.ErrorIs(t, err, ErrNilExecutor)
+		test.Nil(t, archived)
+
+		registered, err := store.RegisterDevice(t.Context(), nil, testScope,
+			newDevice(testPrincipal, PlatformIOS, "token-a"))
+		must.ErrorIs(t, err, ErrNilExecutor)
+		test.Nil(t, registered)
+
+		revoked, err := store.RevokeDevice(t.Context(), nil, testScope, testPrincipal, "device_1")
+		must.ErrorIs(t, err, ErrNilExecutor)
+		test.Nil(t, revoked)
+
+		_, err = store.MarkAllNotificationsRead(t.Context(), nil, testScope, testPrincipal)
 		must.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.GetNotification(t.Context(), nil, testScope, testPrincipal, "notif_1")

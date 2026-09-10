@@ -49,13 +49,29 @@ describes. A refused order that has already told somebody it shipped is a
 failure running in the direction the user can see, which is the one direction
 worth spending a signature on.
 
+	var filed *notifications.Notification
+
 	err := client.WithTransaction(ctx, func(tx database.Tx) error {
 		if err := orders.Place(ctx, tx, scope, order); err != nil {
 			return err
 		}
 
-		return store.CreateNotification(ctx, tx, scope, notification)
+		var createErr error
+
+		filed, createErr = store.CreateNotification(ctx, tx, scope, notification)
+
+		return createErr
 	})
+
+The write answers with the row it wrote rather than filling in the value it was
+handed, and the value it was handed is left untouched. That is the module's one
+spelling of what a write did, and it matters most inside a transaction: the id
+this call minted and the creation time the database stamped are readable nowhere
+else until the commit, which is exactly when the audit entry describing the write
+is being assembled. Five of the seven writes here answer that way;
+[Inbox.MarkAllNotificationsRead] reports a count because it moves a set rather
+than a row, and [Registry.InvalidateDeviceToken] reports nothing because a token
+already gone is the state its caller asked for.
 
 The reads take the wider type so one method serves both moments: a client
 polling its inbox passes Client.Reader(), and a service that has just filed a

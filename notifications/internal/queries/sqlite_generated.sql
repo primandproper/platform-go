@@ -67,13 +67,24 @@ WHERE notifications_inbox.archived_at IS NULL
 	AND notifications_inbox.scope = sqlc.arg(scope)
 	AND notifications_inbox.principal = sqlc.arg(principal);
 
--- name: GetNotificationCreatedAt :one
+-- name: GetArchivedNotification :one
 SELECT
-	notifications_inbox.created_at
+	notifications_inbox.id,
+	notifications_inbox.scope,
+	notifications_inbox.principal,
+	notifications_inbox.topic,
+	notifications_inbox.title,
+	notifications_inbox.body,
+	notifications_inbox.link,
+	notifications_inbox.read_at,
+	notifications_inbox.created_at,
+	notifications_inbox.last_updated_at,
+	notifications_inbox.archived_at
 FROM notifications_inbox
 WHERE notifications_inbox.id = sqlc.arg(id)
 	AND notifications_inbox.scope = sqlc.arg(scope)
-	AND notifications_inbox.principal = sqlc.arg(principal);
+	AND notifications_inbox.principal = sqlc.arg(principal)
+	AND notifications_inbox.archived_at IS NOT NULL;
 
 -- name: ListNotifications :many
 SELECT
@@ -346,6 +357,20 @@ FROM notifications_devices
 WHERE notifications_devices.scope = sqlc.arg(scope)
 	AND notifications_devices.platform = sqlc.arg(platform)
 	AND notifications_devices.token = sqlc.arg(token);
+
+-- name: GetDevice :one
+SELECT
+	notifications_devices.id,
+	notifications_devices.scope,
+	notifications_devices.principal,
+	notifications_devices.platform,
+	notifications_devices.token,
+	notifications_devices.last_seen_at,
+	notifications_devices.created_at
+FROM notifications_devices
+WHERE notifications_devices.id = sqlc.arg(id)
+	AND notifications_devices.scope = sqlc.arg(scope)
+	AND notifications_devices.principal = sqlc.arg(principal);
 
 -- name: ListDevices :many
 SELECT

@@ -16,73 +16,81 @@ import (
 var _ Registry = (*SQLStore)(nil)
 
 // RegisterDevice records a device token through the caller's transaction and
-// fills the value with the row that is there afterwards.
+// answers with the row that is there afterwards.
 //
 // The write converges on (platform, token) — see notifications/internal/queries
 // — so a handset re-registering keeps the id and the creation time it already
 // had, and the value the caller was holding names neither. That is why this
-// reads back rather than trusting what it wrote: a caller that minted an id for
-// a token already registered would otherwise be holding an id no row has, and
-// would revoke nothing when the user signs out. The read-back runs on tx, so it
-// is the row this transaction just converged on.
+// reads back rather than answering with what it wrote: a caller that minted an
+// id for a token already registered would otherwise be holding an id no row has,
+// and would revoke nothing when the user signs out. The read-back runs on tx, so
+// it is the row this transaction just converged on.
+//
+// The caller's Device is never written to. The id this may mint, the last-seen
+// stamp it may take from the clock, and the identity the row turned out to have
+// are all on the value returned; see [Registry].
 func (s *SQLStore) RegisterDevice(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	device *Device,
-) error {
+) (*Device, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "registering device")
+		return nil, op.Error(ErrNilExecutor, "registering device")
 	}
 
 	if device == nil {
-		return op.Error(ErrNilDevice, "registering device")
+		return nil, op.Error(ErrNilDevice, "registering device")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "registering device")
+		return nil, op.Error(err, "registering device")
 	}
 
-	if err := adoptScope(scope, &device.Scope); err != nil {
-		return op.Error(err, "registering device")
+	// A copy, for CreateNotification's reason: what this call settles belongs on
+	// the row it returns rather than on a value the caller still holds.
+	registered := *device
+
+	if err := adoptScope(scope, &registered.Scope); err != nil {
+		return nil, op.Error(err, "registering device")
 	}
 
-	op.Set(principalKey, device.Principal).
-		Set(platformKey, device.Platform.String())
+	op.Set(principalKey, registered.Principal).
+		Set(platformKey, registered.Platform.String())
 
-	if err := validDevice(device); err != nil {
-		return op.Error(err, "registering device")
+	if err := validDevice(&registered); err != nil {
+		return nil, op.Error(err, "registering device")
 	}
 
-	if device.ID == "" {
-		device.ID = identifiers.New()
+	if registered.ID == "" {
+		registered.ID = identifiers.New()
 	}
 
-	if device.LastSeenAt.IsZero() {
-		device.LastSeenAt = s.now()
+	if registered.LastSeenAt.IsZero() {
+		registered.LastSeenAt = s.now()
 	}
 
-	if err := s.q.RegisterDevice(ctx, tx, registerDeviceParams(scope, device)); err != nil {
-		return op.Error(err, "registering device")
+	if err := s.q.RegisterDevice(ctx, tx, registerDeviceParams(scope, &registered)); err != nil {
+		return nil, op.Error(err, "registering device")
 	}
 
 	row, err := s.q.GetDeviceByToken(ctx, tx, notificationsdb.GetDeviceByTokenParams{
 		Scope:    scope,
-		Platform: device.Platform.String(),
-		Token:    device.Token,
+		Platform: registered.Platform.String(),
+		Token:    registered.Token,
 	})
 	if err != nil {
-		return op.Error(notFound(err, ErrDeviceNotFound), "reading back the registered device")
+		return nil, op.Error(notFound(err, ErrDeviceNotFound), "reading back the registered device")
 	}
 
-	*device = *deviceFromRow(&row)
+	stored := deviceFromRow(&row)
 
-	op.Set(deviceIDKey, device.ID)
+	op.Set(deviceIDKey, stored.ID)
 
-	return nil
+	return stored, nil
 }
 
 // ListDevices pages the principal's registered devices.
@@ -186,13 +194,22 @@ func (s *SQLStore) ListDevicesByPrincipals(
 
 // RevokeDevice removes one of the principal's registrations through the
 // caller's transaction, so the handset stops being addressable with whatever
-// else a sign-out writes.
+// else a sign-out writes, and answers with the registration it removed.
+//
+// The read comes first, which is the one ordering a deletion allows: after the
+// statement there is no row anywhere to describe what went, and a consumer
+// recording which handset stopped being addressable has nowhere else to read it
+// from. That is a read-then-write, and it is safe because the write that follows
+// is guarded — it keys on the same scope, principal and id, and zero rows is
+// ErrDeviceNotFound. A row that moved between the two is therefore a refusal
+// rather than a value handed back for a deletion that did not happen. Both
+// statements run on tx, so the row read is the row this transaction deletes.
 func (s *SQLStore) RevokeDevice(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	principal, deviceID string,
-) error {
+) (*Device, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(principalKey, principal),
@@ -201,15 +218,24 @@ func (s *SQLStore) RevokeDevice(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "revoking device %q", deviceID)
+		return nil, op.Error(ErrNilExecutor, "revoking device %q", deviceID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "revoking device %q", deviceID)
+		return nil, op.Error(err, "revoking device %q", deviceID)
 	}
 
 	if principal == "" {
-		return op.Error(ErrEmptyPrincipal, "revoking device %q", deviceID)
+		return nil, op.Error(ErrEmptyPrincipal, "revoking device %q", deviceID)
+	}
+
+	row, err := s.q.GetDevice(ctx, tx, notificationsdb.GetDeviceParams{
+		ID:        deviceID,
+		Scope:     scope,
+		Principal: principal,
+	})
+	if err != nil {
+		return nil, op.Error(notFound(err, ErrDeviceNotFound), "revoking device %q", deviceID)
 	}
 
 	count, err := s.q.RevokeDevice(ctx, tx, notificationsdb.RevokeDeviceParams{
@@ -217,10 +243,11 @@ func (s *SQLStore) RevokeDevice(
 		Scope:     scope,
 		Principal: principal,
 	})
+	if guardErr := guardCount(count, err, ErrDeviceNotFound, "revoking the device"); guardErr != nil {
+		return nil, op.Error(guardErr, "revoking device %q", deviceID)
+	}
 
-	return op.Error(
-		guardCount(count, err, ErrDeviceNotFound, "revoking the device"),
-		"revoking device %q", deviceID)
+	return deviceFromGetRow(&row), nil
 }
 
 // InvalidateDeviceToken removes a token the provider has permanently rejected.

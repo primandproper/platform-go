@@ -47,22 +47,36 @@ func Example() {
 		Link:      "/orders/1",
 	}
 
+	// Both writes answer with the row they wrote, read on this transaction. The
+	// values passed in are left alone, so the id the create minted and the
+	// creation time the database stamped are on what comes back and nowhere
+	// else.
+	var filed *notifications.Notification
+
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		if createErr := store.CreateNotification(ctx, tx, scope, notification); createErr != nil {
+		var createErr error
+
+		if filed, createErr = store.CreateNotification(ctx, tx, scope, notification); createErr != nil {
 			return createErr
 		}
 
 		// The handsets. A device registers itself on every app launch, and the
 		// write converges on the token, so this is the same call whether it is
-		// the first registration or the thousandth.
-		return store.RegisterDevice(ctx, tx, scope, &notifications.Device{
+		// the first registration or the thousandth — and the row it hands back is
+		// the registration the token has now, which for a re-registration is the
+		// one that was already there.
+		_, registerErr := store.RegisterDevice(ctx, tx, scope, &notifications.Device{
 			Principal: "user_1",
 			Platform:  notifications.PlatformIOS,
 			Token:     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		})
+
+		return registerErr
 	}); err != nil {
 		panic(err)
 	}
+
+	fmt.Println("filed with a creation time:", !filed.CreatedAt.IsZero())
 
 	// The reads take the wider executor, so this one runs on the client now that
 	// the transaction has committed. Passed the tx above, it would have seen the
@@ -82,6 +96,7 @@ func Example() {
 	fmt.Println("badge count:", unread.FilteredCount)
 
 	// Output:
+	// filed with a creation time: true
 	// devices to push to: 1
 	// badge count: 1
 }
@@ -103,11 +118,13 @@ func ExampleRegistry_InvalidateDeviceToken() {
 	scope := tenancy.Of("acct_1")
 
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		return store.RegisterDevice(ctx, tx, scope, &notifications.Device{
+		_, registerErr := store.RegisterDevice(ctx, tx, scope, &notifications.Device{
 			Principal: "user_1",
 			Platform:  notifications.PlatformAndroid,
 			Token:     "a-token-the-app-was-uninstalled-from",
 		})
+
+		return registerErr
 	}); err != nil {
 		panic(err)
 	}
