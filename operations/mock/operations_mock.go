@@ -12,6 +12,7 @@ import (
 
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // Ensure, that StoreMock does implement operations.Store.
@@ -30,16 +31,16 @@ var _ operations.Store = &StoreMock{}
 //			FinishFunc: func(ctx context.Context, id string, state operations.State, result *operations.Result, opErr *operations.Error, unitsAllDone bool) error {
 //				panic("mock out the Finish method")
 //			},
-//			GetFunc: func(ctx context.Context, id string) (*operations.Operation, error) {
+//			GetFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string) (*operations.Operation, error) {
 //				panic("mock out the Get method")
 //			},
-//			GetManyFunc: func(ctx context.Context, ids []string) ([]*operations.Operation, error) {
+//			GetManyFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, ids []string) ([]*operations.Operation, error) {
 //				panic("mock out the GetMany method")
 //			},
-//			InsertFunc: func(ctx context.Context, q database.Tx, op *operations.Operation) (*operations.Operation, error) {
+//			InsertFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, op *operations.Operation) (*operations.Operation, error) {
 //				panic("mock out the Insert method")
 //			},
-//			ListFunc: func(ctx context.Context, scope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error) {
+//			ListFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, listScope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error) {
 //				panic("mock out the List method")
 //			},
 //			ProgressFunc: func(ctx context.Context, id string, progress operations.Progress, lease time.Duration) (operations.Ack, error) {
@@ -57,9 +58,6 @@ var _ operations.Store = &StoreMock{}
 //			StrandedFunc: func(ctx context.Context, grace time.Duration, limit int) ([]*operations.Operation, error) {
 //				panic("mock out the Stranded method")
 //			},
-//			WithTransactionFunc: func(ctx context.Context, fn func(q database.Tx) error) error {
-//				panic("mock out the WithTransaction method")
-//			},
 //		}
 //
 //		// use mockedStore in code that requires operations.Store
@@ -74,16 +72,16 @@ type StoreMock struct {
 	FinishFunc func(ctx context.Context, id string, state operations.State, result *operations.Result, opErr *operations.Error, unitsAllDone bool) error
 
 	// GetFunc mocks the Get method.
-	GetFunc func(ctx context.Context, id string) (*operations.Operation, error)
+	GetFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string) (*operations.Operation, error)
 
 	// GetManyFunc mocks the GetMany method.
-	GetManyFunc func(ctx context.Context, ids []string) ([]*operations.Operation, error)
+	GetManyFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, ids []string) ([]*operations.Operation, error)
 
 	// InsertFunc mocks the Insert method.
-	InsertFunc func(ctx context.Context, q database.Tx, op *operations.Operation) (*operations.Operation, error)
+	InsertFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, op *operations.Operation) (*operations.Operation, error)
 
 	// ListFunc mocks the List method.
-	ListFunc func(ctx context.Context, scope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error)
+	ListFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, listScope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error)
 
 	// ProgressFunc mocks the Progress method.
 	ProgressFunc func(ctx context.Context, id string, progress operations.Progress, lease time.Duration) (operations.Ack, error)
@@ -99,9 +97,6 @@ type StoreMock struct {
 
 	// StrandedFunc mocks the Stranded method.
 	StrandedFunc func(ctx context.Context, grace time.Duration, limit int) ([]*operations.Operation, error)
-
-	// WithTransactionFunc mocks the WithTransaction method.
-	WithTransactionFunc func(ctx context.Context, fn func(q database.Tx) error) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -135,6 +130,10 @@ type StoreMock struct {
 		Get []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
 			// ID is the id argument value.
 			ID string
 		}
@@ -142,6 +141,10 @@ type StoreMock struct {
 		GetMany []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
 			// Ids is the ids argument value.
 			Ids []string
 		}
@@ -149,8 +152,10 @@ type StoreMock struct {
 		Insert []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Q is the q argument value.
-			Q database.Tx
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
 			// Op is the op argument value.
 			Op *operations.Operation
 		}
@@ -158,8 +163,12 @@ type StoreMock struct {
 		List []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
 			// Scope is the scope argument value.
-			Scope *operations.ListScope
+			Scope tenancy.Scope
+			// ListScope is the listScope argument value.
+			ListScope *operations.ListScope
 			// Filter is the filter argument value.
 			Filter *filtering.QueryFilter
 		}
@@ -208,26 +217,18 @@ type StoreMock struct {
 			// Limit is the limit argument value.
 			Limit int
 		}
-		// WithTransaction holds details about calls to the WithTransaction method.
-		WithTransaction []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// Fn is the fn argument value.
-			Fn func(q database.Tx) error
-		}
 	}
-	lockBegin           sync.RWMutex
-	lockFinish          sync.RWMutex
-	lockGet             sync.RWMutex
-	lockGetMany         sync.RWMutex
-	lockInsert          sync.RWMutex
-	lockList            sync.RWMutex
-	lockProgress        sync.RWMutex
-	lockReap            sync.RWMutex
-	lockRelease         sync.RWMutex
-	lockRequestCancel   sync.RWMutex
-	lockStranded        sync.RWMutex
-	lockWithTransaction sync.RWMutex
+	lockBegin         sync.RWMutex
+	lockFinish        sync.RWMutex
+	lockGet           sync.RWMutex
+	lockGetMany       sync.RWMutex
+	lockInsert        sync.RWMutex
+	lockList          sync.RWMutex
+	lockProgress      sync.RWMutex
+	lockReap          sync.RWMutex
+	lockRelease       sync.RWMutex
+	lockRequestCancel sync.RWMutex
+	lockStranded      sync.RWMutex
 }
 
 // Begin calls BeginFunc.
@@ -327,21 +328,25 @@ func (mock *StoreMock) FinishCalls() []struct {
 }
 
 // Get calls GetFunc.
-func (mock *StoreMock) Get(ctx context.Context, id string) (*operations.Operation, error) {
+func (mock *StoreMock) Get(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string) (*operations.Operation, error) {
 	if mock.GetFunc == nil {
 		panic("StoreMock.GetFunc: method is nil but Store.Get was just called")
 	}
 	callInfo := struct {
-		Ctx context.Context
-		ID  string
+		Ctx   context.Context
+		Q     database.SQLQueryExecutor
+		Scope tenancy.Scope
+		ID    string
 	}{
-		Ctx: ctx,
-		ID:  id,
+		Ctx:   ctx,
+		Q:     q,
+		Scope: scope,
+		ID:    id,
 	}
 	mock.lockGet.Lock()
 	mock.calls.Get = append(mock.calls.Get, callInfo)
 	mock.lockGet.Unlock()
-	return mock.GetFunc(ctx, id)
+	return mock.GetFunc(ctx, q, scope, id)
 }
 
 // GetCalls gets all the calls that were made to Get.
@@ -349,12 +354,16 @@ func (mock *StoreMock) Get(ctx context.Context, id string) (*operations.Operatio
 //
 //	len(mockedStore.GetCalls())
 func (mock *StoreMock) GetCalls() []struct {
-	Ctx context.Context
-	ID  string
+	Ctx   context.Context
+	Q     database.SQLQueryExecutor
+	Scope tenancy.Scope
+	ID    string
 } {
 	var calls []struct {
-		Ctx context.Context
-		ID  string
+		Ctx   context.Context
+		Q     database.SQLQueryExecutor
+		Scope tenancy.Scope
+		ID    string
 	}
 	mock.lockGet.RLock()
 	calls = mock.calls.Get
@@ -363,21 +372,25 @@ func (mock *StoreMock) GetCalls() []struct {
 }
 
 // GetMany calls GetManyFunc.
-func (mock *StoreMock) GetMany(ctx context.Context, ids []string) ([]*operations.Operation, error) {
+func (mock *StoreMock) GetMany(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, ids []string) ([]*operations.Operation, error) {
 	if mock.GetManyFunc == nil {
 		panic("StoreMock.GetManyFunc: method is nil but Store.GetMany was just called")
 	}
 	callInfo := struct {
-		Ctx context.Context
-		Ids []string
+		Ctx   context.Context
+		Q     database.SQLQueryExecutor
+		Scope tenancy.Scope
+		Ids   []string
 	}{
-		Ctx: ctx,
-		Ids: ids,
+		Ctx:   ctx,
+		Q:     q,
+		Scope: scope,
+		Ids:   ids,
 	}
 	mock.lockGetMany.Lock()
 	mock.calls.GetMany = append(mock.calls.GetMany, callInfo)
 	mock.lockGetMany.Unlock()
-	return mock.GetManyFunc(ctx, ids)
+	return mock.GetManyFunc(ctx, q, scope, ids)
 }
 
 // GetManyCalls gets all the calls that were made to GetMany.
@@ -385,12 +398,16 @@ func (mock *StoreMock) GetMany(ctx context.Context, ids []string) ([]*operations
 //
 //	len(mockedStore.GetManyCalls())
 func (mock *StoreMock) GetManyCalls() []struct {
-	Ctx context.Context
-	Ids []string
+	Ctx   context.Context
+	Q     database.SQLQueryExecutor
+	Scope tenancy.Scope
+	Ids   []string
 } {
 	var calls []struct {
-		Ctx context.Context
-		Ids []string
+		Ctx   context.Context
+		Q     database.SQLQueryExecutor
+		Scope tenancy.Scope
+		Ids   []string
 	}
 	mock.lockGetMany.RLock()
 	calls = mock.calls.GetMany
@@ -399,23 +416,25 @@ func (mock *StoreMock) GetManyCalls() []struct {
 }
 
 // Insert calls InsertFunc.
-func (mock *StoreMock) Insert(ctx context.Context, q database.Tx, op *operations.Operation) (*operations.Operation, error) {
+func (mock *StoreMock) Insert(ctx context.Context, tx database.Tx, scope tenancy.Scope, op *operations.Operation) (*operations.Operation, error) {
 	if mock.InsertFunc == nil {
 		panic("StoreMock.InsertFunc: method is nil but Store.Insert was just called")
 	}
 	callInfo := struct {
-		Ctx context.Context
-		Q   database.Tx
-		Op  *operations.Operation
+		Ctx   context.Context
+		Tx    database.Tx
+		Scope tenancy.Scope
+		Op    *operations.Operation
 	}{
-		Ctx: ctx,
-		Q:   q,
-		Op:  op,
+		Ctx:   ctx,
+		Tx:    tx,
+		Scope: scope,
+		Op:    op,
 	}
 	mock.lockInsert.Lock()
 	mock.calls.Insert = append(mock.calls.Insert, callInfo)
 	mock.lockInsert.Unlock()
-	return mock.InsertFunc(ctx, q, op)
+	return mock.InsertFunc(ctx, tx, scope, op)
 }
 
 // InsertCalls gets all the calls that were made to Insert.
@@ -423,14 +442,16 @@ func (mock *StoreMock) Insert(ctx context.Context, q database.Tx, op *operations
 //
 //	len(mockedStore.InsertCalls())
 func (mock *StoreMock) InsertCalls() []struct {
-	Ctx context.Context
-	Q   database.Tx
-	Op  *operations.Operation
+	Ctx   context.Context
+	Tx    database.Tx
+	Scope tenancy.Scope
+	Op    *operations.Operation
 } {
 	var calls []struct {
-		Ctx context.Context
-		Q   database.Tx
-		Op  *operations.Operation
+		Ctx   context.Context
+		Tx    database.Tx
+		Scope tenancy.Scope
+		Op    *operations.Operation
 	}
 	mock.lockInsert.RLock()
 	calls = mock.calls.Insert
@@ -439,23 +460,27 @@ func (mock *StoreMock) InsertCalls() []struct {
 }
 
 // List calls ListFunc.
-func (mock *StoreMock) List(ctx context.Context, scope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error) {
+func (mock *StoreMock) List(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, listScope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error) {
 	if mock.ListFunc == nil {
 		panic("StoreMock.ListFunc: method is nil but Store.List was just called")
 	}
 	callInfo := struct {
-		Ctx    context.Context
-		Scope  *operations.ListScope
-		Filter *filtering.QueryFilter
+		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     tenancy.Scope
+		ListScope *operations.ListScope
+		Filter    *filtering.QueryFilter
 	}{
-		Ctx:    ctx,
-		Scope:  scope,
-		Filter: filter,
+		Ctx:       ctx,
+		Q:         q,
+		Scope:     scope,
+		ListScope: listScope,
+		Filter:    filter,
 	}
 	mock.lockList.Lock()
 	mock.calls.List = append(mock.calls.List, callInfo)
 	mock.lockList.Unlock()
-	return mock.ListFunc(ctx, scope, filter)
+	return mock.ListFunc(ctx, q, scope, listScope, filter)
 }
 
 // ListCalls gets all the calls that were made to List.
@@ -463,14 +488,18 @@ func (mock *StoreMock) List(ctx context.Context, scope *operations.ListScope, fi
 //
 //	len(mockedStore.ListCalls())
 func (mock *StoreMock) ListCalls() []struct {
-	Ctx    context.Context
-	Scope  *operations.ListScope
-	Filter *filtering.QueryFilter
+	Ctx       context.Context
+	Q         database.SQLQueryExecutor
+	Scope     tenancy.Scope
+	ListScope *operations.ListScope
+	Filter    *filtering.QueryFilter
 } {
 	var calls []struct {
-		Ctx    context.Context
-		Scope  *operations.ListScope
-		Filter *filtering.QueryFilter
+		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     tenancy.Scope
+		ListScope *operations.ListScope
+		Filter    *filtering.QueryFilter
 	}
 	mock.lockList.RLock()
 	calls = mock.calls.List
@@ -678,42 +707,6 @@ func (mock *StoreMock) StrandedCalls() []struct {
 	return calls
 }
 
-// WithTransaction calls WithTransactionFunc.
-func (mock *StoreMock) WithTransaction(ctx context.Context, fn func(q database.Tx) error) error {
-	if mock.WithTransactionFunc == nil {
-		panic("StoreMock.WithTransactionFunc: method is nil but Store.WithTransaction was just called")
-	}
-	callInfo := struct {
-		Ctx context.Context
-		Fn  func(q database.Tx) error
-	}{
-		Ctx: ctx,
-		Fn:  fn,
-	}
-	mock.lockWithTransaction.Lock()
-	mock.calls.WithTransaction = append(mock.calls.WithTransaction, callInfo)
-	mock.lockWithTransaction.Unlock()
-	return mock.WithTransactionFunc(ctx, fn)
-}
-
-// WithTransactionCalls gets all the calls that were made to WithTransaction.
-// Check the length with:
-//
-//	len(mockedStore.WithTransactionCalls())
-func (mock *StoreMock) WithTransactionCalls() []struct {
-	Ctx context.Context
-	Fn  func(q database.Tx) error
-} {
-	var calls []struct {
-		Ctx context.Context
-		Fn  func(q database.Tx) error
-	}
-	mock.lockWithTransaction.RLock()
-	calls = mock.calls.WithTransaction
-	mock.lockWithTransaction.RUnlock()
-	return calls
-}
-
 // Ensure, that ServiceMock does implement operations.Service.
 // If this is not the case, regenerate this file with moq.
 var _ operations.Service = &ServiceMock{}
@@ -730,10 +723,10 @@ var _ operations.Service = &ServiceMock{}
 //			EnqueueFunc: func(ctx context.Context, id string, opts ...operations.StartOption) error {
 //				panic("mock out the Enqueue method")
 //			},
-//			GetFunc: func(ctx context.Context, id string) (*operations.Operation, error) {
+//			GetFunc: func(ctx context.Context, scope tenancy.Scope, id string) (*operations.Operation, error) {
 //				panic("mock out the Get method")
 //			},
-//			ListFunc: func(ctx context.Context, scope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error) {
+//			ListFunc: func(ctx context.Context, scope tenancy.Scope, listScope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error) {
 //				panic("mock out the List method")
 //			},
 //			ReapFunc: func(ctx context.Context) (int64, error) {
@@ -745,7 +738,7 @@ var _ operations.Service = &ServiceMock{}
 //			StartFunc: func(ctx context.Context, kind string, request any, opts ...operations.StartOption) (*operations.Operation, error) {
 //				panic("mock out the Start method")
 //			},
-//			StartInTransactionFunc: func(ctx context.Context, q database.Tx, kind string, request any, opts ...operations.StartOption) (*operations.Operation, error) {
+//			StartInTransactionFunc: func(ctx context.Context, tx database.Tx, kind string, request any, opts ...operations.StartOption) (*operations.Operation, error) {
 //				panic("mock out the StartInTransaction method")
 //			},
 //		}
@@ -762,10 +755,10 @@ type ServiceMock struct {
 	EnqueueFunc func(ctx context.Context, id string, opts ...operations.StartOption) error
 
 	// GetFunc mocks the Get method.
-	GetFunc func(ctx context.Context, id string) (*operations.Operation, error)
+	GetFunc func(ctx context.Context, scope tenancy.Scope, id string) (*operations.Operation, error)
 
 	// ListFunc mocks the List method.
-	ListFunc func(ctx context.Context, scope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error)
+	ListFunc func(ctx context.Context, scope tenancy.Scope, listScope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error)
 
 	// ReapFunc mocks the Reap method.
 	ReapFunc func(ctx context.Context) (int64, error)
@@ -777,7 +770,7 @@ type ServiceMock struct {
 	StartFunc func(ctx context.Context, kind string, request any, opts ...operations.StartOption) (*operations.Operation, error)
 
 	// StartInTransactionFunc mocks the StartInTransaction method.
-	StartInTransactionFunc func(ctx context.Context, q database.Tx, kind string, request any, opts ...operations.StartOption) (*operations.Operation, error)
+	StartInTransactionFunc func(ctx context.Context, tx database.Tx, kind string, request any, opts ...operations.StartOption) (*operations.Operation, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -801,6 +794,8 @@ type ServiceMock struct {
 		Get []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
 			// ID is the id argument value.
 			ID string
 		}
@@ -809,7 +804,9 @@ type ServiceMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Scope is the scope argument value.
-			Scope *operations.ListScope
+			Scope tenancy.Scope
+			// ListScope is the listScope argument value.
+			ListScope *operations.ListScope
 			// Filter is the filter argument value.
 			Filter *filtering.QueryFilter
 		}
@@ -838,8 +835,8 @@ type ServiceMock struct {
 		StartInTransaction []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
-			// Q is the q argument value.
-			Q database.Tx
+			// Tx is the tx argument value.
+			Tx database.Tx
 			// Kind is the kind argument value.
 			Kind string
 			// Request is the request argument value.
@@ -935,21 +932,23 @@ func (mock *ServiceMock) EnqueueCalls() []struct {
 }
 
 // Get calls GetFunc.
-func (mock *ServiceMock) Get(ctx context.Context, id string) (*operations.Operation, error) {
+func (mock *ServiceMock) Get(ctx context.Context, scope tenancy.Scope, id string) (*operations.Operation, error) {
 	if mock.GetFunc == nil {
 		panic("ServiceMock.GetFunc: method is nil but Service.Get was just called")
 	}
 	callInfo := struct {
-		Ctx context.Context
-		ID  string
+		Ctx   context.Context
+		Scope tenancy.Scope
+		ID    string
 	}{
-		Ctx: ctx,
-		ID:  id,
+		Ctx:   ctx,
+		Scope: scope,
+		ID:    id,
 	}
 	mock.lockGet.Lock()
 	mock.calls.Get = append(mock.calls.Get, callInfo)
 	mock.lockGet.Unlock()
-	return mock.GetFunc(ctx, id)
+	return mock.GetFunc(ctx, scope, id)
 }
 
 // GetCalls gets all the calls that were made to Get.
@@ -957,12 +956,14 @@ func (mock *ServiceMock) Get(ctx context.Context, id string) (*operations.Operat
 //
 //	len(mockedService.GetCalls())
 func (mock *ServiceMock) GetCalls() []struct {
-	Ctx context.Context
-	ID  string
+	Ctx   context.Context
+	Scope tenancy.Scope
+	ID    string
 } {
 	var calls []struct {
-		Ctx context.Context
-		ID  string
+		Ctx   context.Context
+		Scope tenancy.Scope
+		ID    string
 	}
 	mock.lockGet.RLock()
 	calls = mock.calls.Get
@@ -971,23 +972,25 @@ func (mock *ServiceMock) GetCalls() []struct {
 }
 
 // List calls ListFunc.
-func (mock *ServiceMock) List(ctx context.Context, scope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error) {
+func (mock *ServiceMock) List(ctx context.Context, scope tenancy.Scope, listScope *operations.ListScope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[operations.Operation], error) {
 	if mock.ListFunc == nil {
 		panic("ServiceMock.ListFunc: method is nil but Service.List was just called")
 	}
 	callInfo := struct {
-		Ctx    context.Context
-		Scope  *operations.ListScope
-		Filter *filtering.QueryFilter
+		Ctx       context.Context
+		Scope     tenancy.Scope
+		ListScope *operations.ListScope
+		Filter    *filtering.QueryFilter
 	}{
-		Ctx:    ctx,
-		Scope:  scope,
-		Filter: filter,
+		Ctx:       ctx,
+		Scope:     scope,
+		ListScope: listScope,
+		Filter:    filter,
 	}
 	mock.lockList.Lock()
 	mock.calls.List = append(mock.calls.List, callInfo)
 	mock.lockList.Unlock()
-	return mock.ListFunc(ctx, scope, filter)
+	return mock.ListFunc(ctx, scope, listScope, filter)
 }
 
 // ListCalls gets all the calls that were made to List.
@@ -995,14 +998,16 @@ func (mock *ServiceMock) List(ctx context.Context, scope *operations.ListScope, 
 //
 //	len(mockedService.ListCalls())
 func (mock *ServiceMock) ListCalls() []struct {
-	Ctx    context.Context
-	Scope  *operations.ListScope
-	Filter *filtering.QueryFilter
+	Ctx       context.Context
+	Scope     tenancy.Scope
+	ListScope *operations.ListScope
+	Filter    *filtering.QueryFilter
 } {
 	var calls []struct {
-		Ctx    context.Context
-		Scope  *operations.ListScope
-		Filter *filtering.QueryFilter
+		Ctx       context.Context
+		Scope     tenancy.Scope
+		ListScope *operations.ListScope
+		Filter    *filtering.QueryFilter
 	}
 	mock.lockList.RLock()
 	calls = mock.calls.List
@@ -1119,19 +1124,19 @@ func (mock *ServiceMock) StartCalls() []struct {
 }
 
 // StartInTransaction calls StartInTransactionFunc.
-func (mock *ServiceMock) StartInTransaction(ctx context.Context, q database.Tx, kind string, request any, opts ...operations.StartOption) (*operations.Operation, error) {
+func (mock *ServiceMock) StartInTransaction(ctx context.Context, tx database.Tx, kind string, request any, opts ...operations.StartOption) (*operations.Operation, error) {
 	if mock.StartInTransactionFunc == nil {
 		panic("ServiceMock.StartInTransactionFunc: method is nil but Service.StartInTransaction was just called")
 	}
 	callInfo := struct {
 		Ctx     context.Context
-		Q       database.Tx
+		Tx      database.Tx
 		Kind    string
 		Request any
 		Opts    []operations.StartOption
 	}{
 		Ctx:     ctx,
-		Q:       q,
+		Tx:      tx,
 		Kind:    kind,
 		Request: request,
 		Opts:    opts,
@@ -1139,7 +1144,7 @@ func (mock *ServiceMock) StartInTransaction(ctx context.Context, q database.Tx, 
 	mock.lockStartInTransaction.Lock()
 	mock.calls.StartInTransaction = append(mock.calls.StartInTransaction, callInfo)
 	mock.lockStartInTransaction.Unlock()
-	return mock.StartInTransactionFunc(ctx, q, kind, request, opts...)
+	return mock.StartInTransactionFunc(ctx, tx, kind, request, opts...)
 }
 
 // StartInTransactionCalls gets all the calls that were made to StartInTransaction.
@@ -1148,14 +1153,14 @@ func (mock *ServiceMock) StartInTransaction(ctx context.Context, q database.Tx, 
 //	len(mockedService.StartInTransactionCalls())
 func (mock *ServiceMock) StartInTransactionCalls() []struct {
 	Ctx     context.Context
-	Q       database.Tx
+	Tx      database.Tx
 	Kind    string
 	Request any
 	Opts    []operations.StartOption
 } {
 	var calls []struct {
 		Ctx     context.Context
-		Q       database.Tx
+		Tx      database.Tx
 		Kind    string
 		Request any
 		Opts    []operations.StartOption

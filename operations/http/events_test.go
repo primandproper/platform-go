@@ -80,7 +80,7 @@ func (failingCodec) ContentType() string { return "application/json" }
 func testHandlers(t *testing.T, opts ...Option) *Handlers {
 	t.Helper()
 
-	h, err := New(&operationsmock.ServiceMock{}, append([]Option{WithOwnerResolver(Unscoped)}, opts...)...)
+	h, err := New(&operationsmock.ServiceMock{}, append([]Option{WithOwnerResolver(GlobalOwner)}, opts...)...)
 	must.NoError(t, err)
 
 	return h

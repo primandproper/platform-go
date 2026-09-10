@@ -7,6 +7,7 @@ import (
 
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.
@@ -303,14 +304,26 @@ type Operation struct {
 	// State is where the operation got to. Done is derived from it.
 	State State `json:"state"`
 
-	// Owner scopes the operation to whoever it belongs to — a user ID, an
-	// account ID, a tenant. It is opaque: this package never parses it, and
-	// compares it only for equality.
+	// Owner scopes the operation to whoever it belongs to — a user, an account,
+	// a tenant. It is opaque: this package never parses it, and compares it only
+	// for equality.
 	//
 	// It exists because the read paths are listable. An operations endpoint with
 	// no notion of ownership serves every tenant's export status to whoever
-	// asks, and that is a bug that gets discovered from the outside.
-	Owner string `json:"owner,omitempty"`
+	// asks, and that is a bug that gets discovered from the outside. So it is
+	// not merely a field: Store.Get, Store.GetMany and Store.List each take the
+	// scope and bind it into the statement, and a row belonging to somebody else
+	// is one the query does not return rather than one a handler is trusted to
+	// compare afterwards.
+	//
+	// It is a tenancy.Scope rather than a string because the two describe the
+	// same thing and only one of them can say "nobody named an owner". An
+	// operation started without WithOwner is in tenancy.Global(), which is a
+	// scope like any other and matches only itself; the zero Scope is the caller
+	// who forgot, and it reaches no statement — Value refuses to bind it.
+	//
+	// The column behind it is spelled scope; see operations/internal/queries.
+	Owner tenancy.Scope `json:"owner"`
 
 	// Request is the input the Runner was started with, still encoded.
 	//
@@ -365,14 +378,13 @@ func (o *Operation) Terminal() bool {
 	return o != nil && o.State.Terminal()
 }
 
-// ListScope narrows a listing. A nil *ListScope, or one with every field empty,
-// lists everything — which is an operator's query, not an API handler's.
+// ListScope narrows a listing within one owner's operations.
+//
+// A nil *ListScope, or one with every field empty, narrows nothing further —
+// which is every operation the scope the read was given owns, and never more
+// than that. The owner is not here: it is List's own argument, because a
+// narrowing a caller may leave off is exactly what a tenancy scope must not be.
 type ListScope struct {
-	// Owner narrows to one owner. Empty means all of them.
-	//
-	// An HTTP surface must always set this. See Operation.Owner.
-	Owner string `json:"owner,omitempty"`
-
 	// Kind narrows to one kind of work. Empty means all of them.
 	Kind string `json:"kind,omitempty"`
 
@@ -413,7 +425,7 @@ type Service interface {
 	// the recovery sweep.
 	StartInTransaction(
 		ctx context.Context,
-		q database.Tx,
+		tx database.Tx,
 		kind string,
 		request any,
 		opts ...StartOption,
@@ -433,15 +445,24 @@ type Service interface {
 	// the sweep's slow path.
 	Enqueue(ctx context.Context, id string, opts ...StartOption) error
 
-	// Get reads one operation. It returns an error wrapping ErrOperationNotFound
-	// when there is no such operation.
-	Get(ctx context.Context, id string) (*Operation, error)
+	// Get reads one operation belonging to scope.
+	//
+	// It returns an error wrapping ErrOperationNotFound when there is no such
+	// operation — and equally when there is one that somebody else owns, which
+	// is the same answer on purpose: a caller told "that exists but is not
+	// yours" has been told which of their guesses are real.
+	Get(ctx context.Context, scope tenancy.Scope, id string) (*Operation, error)
 
-	// List pages through operations. Pass a scope with an Owner for anything
-	// reachable from an API.
+	// List pages through the operations scope owns, narrowed further by
+	// listScope.
+	//
+	// The scope is an argument rather than a field on listScope because
+	// everything on listScope may be left off, and this may not. Pass
+	// tenancy.Global() only where global is what is meant.
 	List(
 		ctx context.Context,
-		scope *ListScope,
+		scope tenancy.Scope,
+		listScope *ListScope,
 		filter *filtering.QueryFilter,
 	) (*filtering.QueryFilteredResult[Operation], error)
 

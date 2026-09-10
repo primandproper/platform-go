@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/primitives-go/observability/logging"
 	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
 	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -39,7 +40,7 @@ func TestOptions(T *testing.T) {
 		tracerProvider := tracingnoop.NewTracerProvider()
 
 		o := newOptions([]Option{
-			WithOwnerResolver(Unscoped),
+			WithOwnerResolver(GlobalOwner),
 			WithBasePath("/jobs"),
 			WithTags("jobs", "async"),
 			WithLogger(logger),
@@ -87,7 +88,7 @@ func TestOptions(T *testing.T) {
 		// The option is only observable through the spec, which is the whole
 		// reason it exists.
 		handlers, err := New(&operationsmock.ServiceMock{},
-			WithOwnerResolver(Unscoped),
+			WithOwnerResolver(GlobalOwner),
 			WithTags("jobs"))
 		must.NoError(t, err)
 
@@ -149,6 +150,7 @@ func TestHandlers_listPaging(T *testing.T) {
 
 		svc.ListFunc = func(
 			_ context.Context,
+			_ tenancy.Scope,
 			_ *operations.ListScope,
 			filter *filtering.QueryFilter,
 		) (*filtering.QueryFilteredResult[operations.Operation], error) {
@@ -160,7 +162,7 @@ func TestHandlers_listPaging(T *testing.T) {
 			), nil
 		}
 
-		handler := mount(t, svc, "u1")
+		handler := mount(t, svc, tenancy.Of("u1"))
 
 		res := httptest.NewRecorder()
 		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(),

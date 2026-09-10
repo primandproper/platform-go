@@ -6,9 +6,40 @@ import (
 	"time"
 
 	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
+
+// testScope is the scope the in-package tests write and read under, so that a
+// read which lost its scope reads nothing rather than everything.
+var testScope = tenancy.Of("u1")
+
+// fakeClient is the database.Client the in-package tests hand the constructors
+// that now take one.
+//
+// It runs a transaction closure with a nil Tx and hands back a nil executor,
+// which is exactly enough: fakeStore ignores both, and what these tests exercise
+// is the service and the watcher rather than any statement. A test that needs
+// real SQL is in containers_test.go.
+type fakeClient struct{}
+
+var _ database.Client = (*fakeClient)(nil)
+
+func (*fakeClient) Dialect() dialect.Dialect { return dialect.Postgres }
+
+func (*fakeClient) Reader() database.SQLQueryExecutor { return nil }
+
+func (*fakeClient) Writer() database.SQLQueryExecutor { return nil }
+
+func (*fakeClient) WithTransaction(_ context.Context, fn func(tx database.Tx) error) error {
+	return fn(nil)
+}
+
+func (*fakeClient) Close() error { return nil }
+
+func (*fakeClient) CurrentTime() time.Time { return time.Now().UTC() }
 
 // fakeStore is a Store the in-package tests drive by hand.
 //
@@ -119,7 +150,16 @@ func (s *fakeStore) releases() []string {
 	return append([]string(nil), s.released...)
 }
 
-func (s *fakeStore) Insert(_ context.Context, _ database.Tx, op *Operation) (*Operation, error) {
+func (s *fakeStore) Insert(
+	_ context.Context,
+	_ database.Tx,
+	scope tenancy.Scope,
+	op *Operation,
+) (*Operation, error) {
+	if err := adoptScope(scope, op); err != nil {
+		return nil, err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -136,7 +176,12 @@ func (s *fakeStore) Insert(_ context.Context, _ database.Tx, op *Operation) (*Op
 	return &inserted, nil
 }
 
-func (s *fakeStore) Get(_ context.Context, id string) (*Operation, error) {
+func (s *fakeStore) Get(
+	_ context.Context,
+	_ database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	id string,
+) (*Operation, error) {
 	s.mu.Lock()
 	getErr := s.getErr
 	s.mu.Unlock()
@@ -145,14 +190,21 @@ func (s *fakeStore) Get(_ context.Context, id string) (*Operation, error) {
 		return nil, getErr
 	}
 
-	if op := s.snapshot(id); op != nil {
+	// The scope narrows the way the statement does: a row in another scope is
+	// not a refusal, it is a row this read does not have.
+	if op := s.snapshot(id); op != nil && op.Owner == scope {
 		return op, nil
 	}
 
 	return nil, platformerrors.Wrapf(ErrOperationNotFound, "operation %q", id)
 }
 
-func (s *fakeStore) GetMany(_ context.Context, ids []string) ([]*Operation, error) {
+func (s *fakeStore) GetMany(
+	_ context.Context,
+	_ database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	ids []string,
+) ([]*Operation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -163,7 +215,7 @@ func (s *fakeStore) GetMany(_ context.Context, ids []string) ([]*Operation, erro
 	out := make([]*Operation, 0, len(ids))
 
 	for _, id := range ids {
-		if op, ok := s.ops[id]; ok {
+		if op, ok := s.ops[id]; ok && op.Owner == scope {
 			clone := *op
 			out = append(out, &clone)
 		}
@@ -174,6 +226,8 @@ func (s *fakeStore) GetMany(_ context.Context, ids []string) ([]*Operation, erro
 
 func (s *fakeStore) List(
 	_ context.Context,
+	_ database.SQLQueryExecutor,
+	scope tenancy.Scope,
 	_ *ListScope,
 	filter *filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[Operation], error) {
@@ -181,7 +235,12 @@ func (s *fakeStore) List(
 	defer s.mu.Unlock()
 
 	out := make([]*Operation, 0, len(s.ops))
+
 	for _, op := range s.ops {
+		if op.Owner != scope {
+			continue
+		}
+
 		clone := *op
 		out = append(out, &clone)
 	}
@@ -275,7 +334,7 @@ func (s *fakeStore) Release(_ context.Context, id string, _ *Error) error {
 	return nil
 }
 
-func (s *fakeStore) RequestCancel(ctx context.Context, id string) (*Operation, error) {
+func (s *fakeStore) RequestCancel(_ context.Context, id string) (*Operation, error) {
 	s.mu.Lock()
 
 	op, ok := s.ops[id]
@@ -291,7 +350,13 @@ func (s *fakeStore) RequestCancel(ctx context.Context, id string) (*Operation, e
 
 	s.mu.Unlock()
 
-	return s.Get(ctx, id)
+	// Unscoped, like the statement: RequestCancel is machinery and holds no
+	// scope, so its read-back is the row as it stands.
+	if cancelled := s.snapshot(id); cancelled != nil {
+		return cancelled, nil
+	}
+
+	return nil, platformerrors.Wrapf(ErrOperationNotFound, "operation %q", id)
 }
 
 func (s *fakeStore) Stranded(_ context.Context, _ time.Duration, limit int) ([]*Operation, error) {
@@ -329,8 +394,4 @@ func (s *fakeStore) Reap(_ context.Context, _ time.Duration, _ int) (int64, erro
 	}
 
 	return reaped, nil
-}
-
-func (s *fakeStore) WithTransaction(_ context.Context, fn func(q database.Tx) error) error {
-	return fn(nil)
 }

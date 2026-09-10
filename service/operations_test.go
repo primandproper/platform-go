@@ -9,7 +9,10 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
 
+	"github.com/primandproper/primitives-go/database"
+	databasemock "github.com/primandproper/primitives-go/database/mock"
 	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -199,12 +202,20 @@ func TestNewWatcherRunner(T *testing.T) {
 		t.Helper()
 
 		store := &operationsmock.StoreMock{
-			GetFunc: func(context.Context, string) (*operations.Operation, error) {
+			GetFunc: func(
+				context.Context,
+				database.SQLQueryExecutor,
+				tenancy.Scope,
+				string,
+			) (*operations.Operation, error) {
 				return &operations.Operation{ID: "op-1", State: operations.StateRunning, Revision: 1}, nil
 			},
 		}
 
-		watcher, err := operations.NewWatcher(t.Context(), &operations.WatcherConfig{}, store)
+		watcher, err := operations.NewWatcher(t.Context(), &operations.WatcherConfig{},
+			&databasemock.ClientMock{
+				ReaderFunc: func() database.SQLQueryExecutor { return nil },
+			}, store)
 		must.NoError(t, err)
 
 		return watcher
@@ -218,7 +229,7 @@ func TestNewWatcherRunner(T *testing.T) {
 
 		go runner.Run()
 
-		updates, err := watcher.Watch(t.Context(), "op-1")
+		updates, err := watcher.Watch(t.Context(), tenancy.Global(), "op-1")
 		must.NoError(t, err)
 
 		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -247,7 +258,7 @@ func TestNewWatcherRunner(T *testing.T) {
 		// And the other half of Watcher.Close: a subscriber arriving after
 		// shutdown is told so rather than handed a channel nothing will ever
 		// write to.
-		_, err = watcher.Watch(t.Context(), "op-1")
+		_, err = watcher.Watch(t.Context(), tenancy.Global(), "op-1")
 		test.ErrorIs(t, err, operations.ErrWatcherClosed)
 	})
 

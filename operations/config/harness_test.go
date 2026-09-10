@@ -8,6 +8,7 @@ import (
 
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // stubStore satisfies operations.Store and does nothing.
@@ -22,17 +23,34 @@ var _ operations.Store = stubStore{}
 func (stubStore) Insert(
 	context.Context,
 	database.Tx,
+	tenancy.Scope,
 	*operations.Operation,
 ) (*operations.Operation, error) {
 	return nil, nil
 }
 
-func (stubStore) Get(context.Context, string) (*operations.Operation, error) { return nil, nil }
+func (stubStore) Get(
+	context.Context,
+	database.SQLQueryExecutor,
+	tenancy.Scope,
+	string,
+) (*operations.Operation, error) {
+	return nil, nil
+}
 
-func (stubStore) GetMany(context.Context, []string) ([]*operations.Operation, error) { return nil, nil }
+func (stubStore) GetMany(
+	context.Context,
+	database.SQLQueryExecutor,
+	tenancy.Scope,
+	[]string,
+) ([]*operations.Operation, error) {
+	return nil, nil
+}
 
 func (stubStore) List(
 	context.Context,
+	database.SQLQueryExecutor,
+	tenancy.Scope,
 	*operations.ListScope,
 	*filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[operations.Operation], error) {
@@ -74,7 +92,3 @@ func (stubStore) Stranded(context.Context, time.Duration, int) ([]*operations.Op
 }
 
 func (stubStore) Reap(context.Context, time.Duration, int) (int64, error) { return 0, nil }
-
-func (stubStore) WithTransaction(_ context.Context, fn func(database.Tx) error) error {
-	return fn(nil)
-}

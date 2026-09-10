@@ -68,6 +68,17 @@ var (
 	// ErrNilOperation indicates a nil operation record.
 	ErrNilOperation = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil operation")
 
+	// ErrScopeMismatch indicates an Insert whose Operation.Owner names a
+	// different tenant than the scope the call named.
+	//
+	// The argument is what the statement binds, so the two disagreeing is a
+	// caller holding one tenant's operation and recording it under another —
+	// either a stale value or a mix-up, and neither is a thing to guess at. An
+	// operation whose Owner is the zero Scope adopts the argument instead, which
+	// is a distinction tenancy.Scope can make and a string could not: unset is
+	// genuinely unset rather than tenancy.Global() spelled shortly.
+	ErrScopeMismatch = platformerrors.New("operation names a different scope than the write")
+
 	// ErrNilService indicates a nil Service.
 	ErrNilService = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil operations service")
 

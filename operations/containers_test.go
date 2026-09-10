@@ -17,6 +17,7 @@ import (
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/filtering"
 	"github.com/primandproper/primitives-go/pointer"
+	"github.com/primandproper/primitives-go/tenancy"
 	"github.com/primandproper/primitives-go/testutils/containers/pgtest"
 
 	"github.com/shoenig/test"
@@ -137,7 +138,7 @@ func newHarnessIn(t *testing.T, client database.Client, prefix string, register 
 
 	cfg := &Config{QueueName: name, TablePrefix: prefix, RecoverAfter: time.Second}
 
-	svc, err := NewService(t.Context(), cfg, store, queue, registry)
+	svc, err := NewService(t.Context(), cfg, client, store, queue, registry)
 	must.NoError(t, err)
 
 	workerCfg := &WorkerConfig{
@@ -158,7 +159,11 @@ func newHarnessIn(t *testing.T, client database.Client, prefix string, register 
 // drain runs worker passes until the operation reaches a terminal state, or the
 // test gives up. It is a loop rather than a running Worker so that a subtest
 // controls exactly how many passes happen.
-func (h *harness) drain(t *testing.T, id string) *Operation {
+//
+// The scope is an argument because the read is: an operation started under an
+// owner is one only that owner's read finds, and a helper that assumed the
+// global scope would report every owned operation as never having finished.
+func (h *harness) drain(t *testing.T, scope tenancy.Scope, id string) *Operation {
 	t.Helper()
 
 	deadline := time.Now().Add(30 * time.Second)
@@ -168,7 +173,7 @@ func (h *harness) drain(t *testing.T, id string) *Operation {
 			t.Fatalf("running a worker pass: %v", err)
 		}
 
-		op, err := h.svc.Get(t.Context(), id)
+		op, err := h.svc.Get(t.Context(), scope, id)
 		must.NoError(t, err)
 
 		if op.Terminal() {
@@ -237,7 +242,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		// which is the thing under test.
 		deadline := time.Now().Add(30 * time.Second)
 		for time.Now().Before(deadline) {
-			current, getErr := h.svc.Get(t.Context(), op.ID)
+			current, getErr := h.svc.Get(t.Context(), tenancy.Global(), op.ID)
 			must.NoError(t, getErr)
 
 			if current.Terminal() {
@@ -292,7 +297,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		op, err := h.svc.Start(t.Context(), "export", exportRequest{SubjectID: "subject-1"})
 		must.NoError(t, err)
 
-		finished := h.drain(t, op.ID)
+		finished := h.drain(t, tenancy.Global(), op.ID)
 		test.EqOp(t, StateSucceeded, finished.State)
 		must.EqOp(t, uint64(1), runs.Load())
 
@@ -325,7 +330,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		// Held back an hour, so the pass that follows must not see it.
 		must.NoError(t, h.svc.Enqueue(t.Context(), op.ID, WithPriority(9), WithDelay(time.Hour)))
 
-		test.EqOp(t, StatePending, mustGet(t, h, op.ID).State)
+		test.EqOp(t, StatePending, mustGet(t, h, tenancy.Global(), op.ID).State)
 	})
 
 	// The whole promise, end to end: a handler starts work, a worker somewhere
@@ -351,14 +356,15 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 			}))
 		})
 
-		started, err := h.svc.Start(t.Context(), "export", exportRequest{SubjectID: "s1"}, WithOwner("u1"))
+		started, err := h.svc.Start(t.Context(), "export", exportRequest{SubjectID: "s1"},
+			WithOwner(tenancy.Of("u1")))
 		must.NoError(t, err)
 		test.EqOp(t, StatePending, started.State)
 		test.False(t, started.Done)
-		test.EqOp(t, "u1", started.Owner)
+		test.EqOp(t, tenancy.Of("u1"), started.Owner)
 		test.EqOp(t, "records", started.Progress.CountLabel)
 
-		finished := h.drain(t, started.ID)
+		finished := h.drain(t, tenancy.Of("u1"), started.ID)
 
 		test.EqOp(t, StateSucceeded, finished.State)
 		test.True(t, finished.Done)
@@ -403,7 +409,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		started, err := h.svc.Start(t.Context(), "collect", exportRequest{})
 		must.NoError(t, err)
 
-		finished := h.drain(t, started.ID)
+		finished := h.drain(t, tenancy.Global(), started.ID)
 
 		test.EqOp(t, StateSucceeded, finished.State)
 		test.EqOp(t, int64(4300), finished.Progress.Count)
@@ -432,7 +438,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		started, err := h.svc.Start(t.Context(), "flaky", exportRequest{})
 		must.NoError(t, err)
 
-		finished := h.drain(t, started.ID)
+		finished := h.drain(t, tenancy.Global(), started.ID)
 
 		// MaxAttempts is 2 in this harness. The promise is that it terminates,
 		// and the code says why rather than repeating the symptom as the reason.
@@ -463,7 +469,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		started, err := h.svc.Start(t.Context(), "rejected", exportRequest{})
 		must.NoError(t, err)
 
-		finished := h.drain(t, started.ID)
+		finished := h.drain(t, tenancy.Global(), started.ID)
 
 		test.EqOp(t, StateFailed, finished.State)
 		test.EqOp(t, int64(1), attempts.Load())
@@ -490,7 +496,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 			"UPDATE operations SET kind = 'gone' WHERE id = $1", started.ID)
 		must.NoError(t, err)
 
-		finished := h.drain(t, started.ID)
+		finished := h.drain(t, tenancy.Global(), started.ID)
 
 		test.EqOp(t, StateFailed, finished.State)
 		must.NotNil(t, finished.Error)
@@ -527,7 +533,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 
 		test.False(t, ran.Load())
 
-		after, err := h.svc.Get(t.Context(), started.ID)
+		after, err := h.svc.Get(t.Context(), tenancy.Global(), started.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StateCancelled, after.State)
 	})
@@ -576,7 +582,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 
 		<-done
 
-		finished, err := h.svc.Get(t.Context(), started.ID)
+		finished, err := h.svc.Get(t.Context(), tenancy.Global(), started.ID)
 		must.NoError(t, err)
 
 		// Cancellation beats the clean return: the Runner stopped early, so the
@@ -683,7 +689,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		must.NoError(t, err)
 		test.False(t, ack.Held)
 
-		after, err := h.svc.Get(t.Context(), started.ID)
+		after, err := h.svc.Get(t.Context(), tenancy.Global(), started.ID)
 		must.NoError(t, err)
 		test.EqOp(t, int64(0), after.Progress.Count)
 	})
@@ -709,7 +715,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		_, err = h.store.Progress(t.Context(), started.ID, Progress{Count: 12, UnitsDone: 1}, time.Minute)
 		must.NoError(t, err)
 
-		after, err := h.svc.Get(t.Context(), started.ID)
+		after, err := h.svc.Get(t.Context(), tenancy.Global(), started.ID)
 		must.NoError(t, err)
 		test.EqOp(t, int64(5000), after.Progress.Count)
 		test.EqOp(t, 3, after.Progress.UnitsDone)
@@ -770,7 +776,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		must.NoError(t, err)
 		test.Greater(t, 0, recovered)
 
-		finished := h.drain(t, started.ID)
+		finished := h.drain(t, tenancy.Global(), started.ID)
 
 		test.EqOp(t, StateSucceeded, finished.State)
 		test.True(t, ran.Load())
@@ -826,23 +832,105 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 			must.NoError(t, Register(r, Definition[exportRequest]{Kind: "listed", Run: noopRun[exportRequest]}))
 		})
 
-		owner := fmt.Sprintf("owner%d", queueCounter.Add(1))
+		owner := tenancy.Of(fmt.Sprintf("owner%d", queueCounter.Add(1)))
 
 		for range 3 {
 			_, err := h.svc.Start(t.Context(), "listed", exportRequest{}, WithOwner(owner))
 			must.NoError(t, err)
 		}
 
-		_, err := h.svc.Start(t.Context(), "listed", exportRequest{}, WithOwner("somebody-else"))
+		_, err := h.svc.Start(t.Context(), "listed", exportRequest{}, WithOwner(tenancy.Of("somebody-else")))
 		must.NoError(t, err)
 
-		results, err := h.svc.List(t.Context(), &ListScope{Owner: owner}, nil)
+		results, err := h.svc.List(t.Context(), owner, nil, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 3, results.Data)
 
 		for _, op := range results.Data {
 			test.EqOp(t, owner, op.Owner)
 		}
+	})
+
+	// The read that used to be a comparison. Nothing above the store can tell a
+	// statement that filtered by tenant from one that returned everything and had
+	// its answer discarded afterwards, so this is the only place the difference
+	// is checkable — and the difference is the whole ticket.
+	t.Run("a read is confined by the statement rather than by a comparison", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, client, func(r *Registry) {
+			must.NoError(t, Register(r, Definition[exportRequest]{Kind: "confined", Run: noopRun[exportRequest]}))
+		})
+
+		mine := tenancy.Of(fmt.Sprintf("owner%d", queueCounter.Add(1)))
+		theirs := tenancy.Of(fmt.Sprintf("owner%d", queueCounter.Add(1)))
+
+		started, err := h.svc.Start(t.Context(), "confined", exportRequest{}, WithOwner(mine))
+		must.NoError(t, err)
+
+		// The owner reads it.
+		read, err := h.svc.Get(t.Context(), mine, started.ID)
+		must.NoError(t, err)
+		test.EqOp(t, mine, read.Owner)
+
+		// Anybody else is told it is not there, holding its exact ID — the same
+		// answer an ID nobody ever minted gets, so the endpoint confirms
+		// nothing about which guesses are real.
+		_, err = h.svc.Get(t.Context(), theirs, started.ID)
+		test.ErrorIs(t, err, ErrOperationNotFound)
+
+		_, err = h.svc.Get(t.Context(), theirs, "no-such-operation")
+		test.ErrorIs(t, err, ErrOperationNotFound)
+
+		// And the global scope is a scope like any other rather than a skeleton
+		// key: it matches only itself.
+		_, err = h.svc.Get(t.Context(), tenancy.Global(), started.ID)
+		test.ErrorIs(t, err, ErrOperationNotFound)
+
+		theirPage, err := h.svc.List(t.Context(), theirs, nil, nil)
+		must.NoError(t, err)
+		test.SliceEmpty(t, theirPage.Data)
+
+		// The batched read the watcher runs takes the same narrowing, so an id
+		// in another tenant is a gap rather than a row.
+		absent, err := h.store.GetMany(t.Context(), client.Reader(), theirs, []string{started.ID})
+		must.NoError(t, err)
+		test.SliceEmpty(t, absent)
+
+		present, err := h.store.GetMany(t.Context(), client.Reader(), mine, []string{started.ID})
+		must.NoError(t, err)
+		must.SliceLen(t, 1, present)
+		test.EqOp(t, started.ID, present[0].ID)
+	})
+
+	// The column has no DEFAULT — see internal/scopeddl — so what keeps a row
+	// out of the scope that matches nobody is the write binding one. A Scope
+	// that names nobody refuses to bind at the driver rather than arriving as
+	// the empty identifier.
+	t.Run("a write cannot lose its scope", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, client, nil)
+
+		err := client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, insertErr := h.store.Insert(t.Context(), tx, tenancy.Scope{},
+				&Operation{ID: "unscoped", Kind: "confined", State: StatePending})
+
+			return insertErr
+		})
+
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+
+		// And an entity whose own scope disagrees with the write's is refused
+		// rather than corrected, because the caller is holding both halves.
+		err = client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			_, insertErr := h.store.Insert(t.Context(), tx, tenancy.Of("u1"),
+				&Operation{ID: "mismatched", Kind: "confined", State: StatePending, Owner: tenancy.Of("u2")})
+
+			return insertErr
+		})
+
+		test.ErrorIs(t, err, ErrScopeMismatch)
 	})
 
 	// sortBy is promised on the wire and the corpus carries both directions of
@@ -856,7 +944,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 			must.NoError(t, Register(r, Definition[exportRequest]{Kind: "sorted", Run: noopRun[exportRequest]}))
 		})
 
-		owner := fmt.Sprintf("owner%d", queueCounter.Add(1))
+		owner := tenancy.Of(fmt.Sprintf("owner%d", queueCounter.Add(1)))
 
 		var started []string
 
@@ -867,11 +955,11 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 			started = append(started, op.ID)
 		}
 
-		ascending, err := h.svc.List(t.Context(), &ListScope{Owner: owner}, filtering.DefaultQueryFilter())
+		ascending, err := h.svc.List(t.Context(), owner, nil, filtering.DefaultQueryFilter())
 		must.NoError(t, err)
 		must.SliceLen(t, len(started), ascending.Data)
 
-		descending, err := h.svc.List(t.Context(), &ListScope{Owner: owner}, descendingFilter())
+		descending, err := h.svc.List(t.Context(), owner, nil, descendingFilter())
 		must.NoError(t, err)
 		must.SliceLen(t, len(started), descending.Data)
 
@@ -893,7 +981,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 			must.NoError(t, Register(r, Definition[exportRequest]{Kind: "unnarrowed", Run: noopRun[exportRequest]}))
 		})
 
-		owner := fmt.Sprintf("owner%d", queueCounter.Add(1))
+		owner := tenancy.Of(fmt.Sprintf("owner%d", queueCounter.Add(1)))
 
 		wanted, err := h.svc.Start(t.Context(), "narrowed", exportRequest{}, WithOwner(owner))
 		must.NoError(t, err)
@@ -901,24 +989,24 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		_, err = h.svc.Start(t.Context(), "unnarrowed", exportRequest{}, WithOwner(owner))
 		must.NoError(t, err)
 
-		byKind, err := h.svc.List(t.Context(), &ListScope{Owner: owner, Kind: "narrowed"}, nil)
+		byKind, err := h.svc.List(t.Context(), owner, &ListScope{Kind: "narrowed"}, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, byKind.Data)
 		test.EqOp(t, wanted.ID, byKind.Data[0].ID)
 
 		// Both rows are pending and neither is terminal, so one set finds them
 		// both and the other finds neither.
-		pending, err := h.svc.List(t.Context(), &ListScope{Owner: owner, States: []State{StatePending}}, nil)
+		pending, err := h.svc.List(t.Context(), owner, &ListScope{States: []State{StatePending}}, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 2, pending.Data)
 
-		terminal, err := h.svc.List(t.Context(),
-			&ListScope{Owner: owner, States: []State{StateSucceeded, StateFailed}}, nil)
+		terminal, err := h.svc.List(t.Context(), owner,
+			&ListScope{States: []State{StateSucceeded, StateFailed}}, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 0, terminal.Data)
 
 		// An unnarrowed listing is every state rather than none of them.
-		all, err := h.svc.List(t.Context(), &ListScope{Owner: owner}, nil)
+		all, err := h.svc.List(t.Context(), owner, nil, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 2, all.Data)
 	})
@@ -932,7 +1020,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 			must.NoError(t, Register(r, Definition[exportRequest]{Kind: "windowed", Run: noopRun[exportRequest]}))
 		})
 
-		owner := fmt.Sprintf("owner%d", queueCounter.Add(1))
+		owner := tenancy.Of(fmt.Sprintf("owner%d", queueCounter.Add(1)))
 
 		op, err := h.svc.Start(t.Context(), "windowed", exportRequest{}, WithOwner(owner))
 		must.NoError(t, err)
@@ -940,14 +1028,14 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		before := filtering.DefaultQueryFilter()
 		before.CreatedBefore = &op.CreatedAt
 
-		excluded, err := h.svc.List(t.Context(), &ListScope{Owner: owner}, before)
+		excluded, err := h.svc.List(t.Context(), owner, nil, before)
 		must.NoError(t, err)
 		test.SliceLen(t, 0, excluded.Data)
 
 		after := filtering.DefaultQueryFilter()
 		after.CreatedAfter = pointer.To(op.CreatedAt.Add(-time.Minute))
 
-		included, err := h.svc.List(t.Context(), &ListScope{Owner: owner}, after)
+		included, err := h.svc.List(t.Context(), owner, nil, after)
 		must.NoError(t, err)
 		test.SliceLen(t, 1, included.Data)
 	})
@@ -966,7 +1054,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		started, err := h.svc.Start(t.Context(), "reaped", exportRequest{})
 		must.NoError(t, err)
 
-		finished := h.drain(t, started.ID)
+		finished := h.drain(t, tenancy.Global(), started.ID)
 		must.True(t, finished.Terminal())
 
 		pending, err := h.svc.Start(t.Context(), "reaped", exportRequest{})
@@ -978,10 +1066,10 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		must.NoError(t, err)
 		test.Greater(t, int64(0), reaped)
 
-		_, err = h.svc.Get(t.Context(), started.ID)
+		_, err = h.svc.Get(t.Context(), tenancy.Global(), started.ID)
 		test.ErrorIs(t, err, ErrOperationNotFound)
 
-		_, err = h.svc.Get(t.Context(), pending.ID)
+		_, err = h.svc.Get(t.Context(), tenancy.Global(), pending.ID)
 		test.NoError(t, err)
 	})
 
@@ -1016,7 +1104,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		watcher, err := NewWatcher(t.Context(), &WatcherConfig{
 			Poll:            100 * time.Millisecond,
 			MinReadInterval: time.Millisecond,
-		}, h.store)
+		}, client, h.store)
 		must.NoError(t, err)
 
 		t.Cleanup(func() { _ = watcher.Close() })
@@ -1026,7 +1114,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		started, err := h.svc.Start(t.Context(), "watched", exportRequest{})
 		must.NoError(t, err)
 
-		snapshots, err := watcher.Watch(t.Context(), started.ID)
+		snapshots, err := watcher.Watch(t.Context(), tenancy.Global(), started.ID)
 		must.NoError(t, err)
 
 		workerDone := make(chan struct{})
@@ -1068,10 +1156,10 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 
 // mustGet reads an operation through the service and fails the test if it is
 // not there.
-func mustGet(t *testing.T, h *harness, id string) *Operation {
+func mustGet(t *testing.T, h *harness, scope tenancy.Scope, id string) *Operation {
 	t.Helper()
 
-	op, err := h.svc.Get(t.Context(), id)
+	op, err := h.svc.Get(t.Context(), scope, id)
 	must.NoError(t, err)
 
 	return op

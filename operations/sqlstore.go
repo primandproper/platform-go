@@ -21,6 +21,7 @@ import (
 	"github.com/primandproper/primitives-go/observability/logging"
 	"github.com/primandproper/primitives-go/observability/metrics"
 	"github.com/primandproper/primitives-go/observability/tracing"
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // storeName scopes the store's spans and logger. It is deliberately not
@@ -143,11 +144,16 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 	return s, nil
 }
 
-func (s *SQLStore) Insert(ctx context.Context, q database.Tx, op *Operation) (*Operation, error) {
-	ctx, span := s.o11y.Begin(ctx)
+func (s *SQLStore) Insert(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	op *Operation,
+) (*Operation, error) {
+	ctx, span := s.o11y.Begin(ctx, observability.WithValue(ownerKey, scope.String()))
 	defer span.End()
 
-	if q == nil {
+	if tx == nil {
 		return nil, span.Error(ErrNilExecutor, "inserting operation")
 	}
 
@@ -155,13 +161,16 @@ func (s *SQLStore) Insert(ctx context.Context, q database.Tx, op *Operation) (*O
 		return nil, span.Error(ErrNilOperation, "inserting operation")
 	}
 
+	if err := adoptScope(scope, op); err != nil {
+		return nil, span.Error(err, "inserting operation")
+	}
+
 	span.SetValues(map[string]any{
 		operationIDKey: op.ID,
 		kindKey:        op.Kind,
-		ownerKey:       op.Owner,
 	})
 
-	row, err := s.q.CreateOperation(ctx, q, createParams(op))
+	row, err := s.q.CreateOperation(ctx, tx, createParams(op))
 	if err != nil {
 		if stderrors.Is(err, sql.ErrNoRows) {
 			// No rows means the conflict clause absorbed a collision, which
@@ -187,17 +196,30 @@ func (s *SQLStore) Insert(ctx context.Context, q database.Tx, op *Operation) (*O
 	return operationFromRow(&shared), nil
 }
 
-func (s *SQLStore) Get(ctx context.Context, id string) (*Operation, error) {
-	ctx, span := s.o11y.Begin(ctx, observability.WithValue(operationIDKey, id))
+func (s *SQLStore) Get(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	id string,
+) (*Operation, error) {
+	ctx, span := s.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		operationIDKey: id,
+		ownerKey:       scope.String(),
+	}))
 	defer span.End()
 
-	row, err := s.q.GetOperation(ctx, s.client.Reader(), operationsdb.GetOperationParams{ID: id})
+	if q == nil {
+		return nil, span.Error(ErrNilExecutor, "reading operation")
+	}
+
+	row, err := s.q.GetOperationInScope(ctx, q, operationsdb.GetOperationInScopeParams{ID: id, Scope: scope})
 	if err != nil {
 		if stderrors.Is(err, sql.ErrNoRows) {
 			// Attached to the span but not logged as an error. An operation ID
-			// that is not in the table is a 404 somebody is owed, not a fault of
-			// this process, and painting the trace red for it buries the ones
-			// that are.
+			// that is not in the table, and one that is in somebody else's
+			// scope, are both a 404 somebody is owed rather than a fault of this
+			// process, and painting the trace red for them buries the ones that
+			// are.
 			span.Set(guardMissedKey, true)
 
 			return nil, platformerrors.Wrapf(ErrOperationNotFound, "operation %q", id)
@@ -206,16 +228,46 @@ func (s *SQLStore) Get(ctx context.Context, id string) (*Operation, error) {
 		return nil, span.Error(err, "reading operation")
 	}
 
-	op := operationFromRow(&row)
+	shared := operationsdb.GetOperationRow(row)
+	op := operationFromRow(&shared)
 
 	span.Set(stateKey, string(op.State)).Set(kindKey, op.Kind).Set(revisionKey, op.Revision)
 
 	return op, nil
 }
 
-func (s *SQLStore) GetMany(ctx context.Context, ids []string) ([]*Operation, error) {
-	ctx, span := s.o11y.Begin(ctx, observability.WithValue(batchKey, len(ids)))
+// unscopedRow is the read-back RequestCancel makes, on an id it has just
+// written and with no scope to hold. It is the whole of what the unscoped
+// statement in the corpus is for; see Store on the seven methods that take
+// neither, and why this is not a variant a consumer read may reach for.
+func (s *SQLStore) unscopedRow(ctx context.Context, id string) (*Operation, error) {
+	row, err := s.q.GetOperation(ctx, s.client.Reader(), operationsdb.GetOperationParams{ID: id})
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return nil, platformerrors.Wrapf(ErrOperationNotFound, "operation %q", id)
+		}
+
+		return nil, err
+	}
+
+	return operationFromRow(&row), nil
+}
+
+func (s *SQLStore) GetMany(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	ids []string,
+) ([]*Operation, error) {
+	ctx, span := s.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		batchKey: len(ids),
+		ownerKey: scope.String(),
+	}))
 	defer span.End()
+
+	if q == nil {
+		return nil, span.Error(ErrNilExecutor, "reading operations")
+	}
 
 	// An empty batch is an empty answer without a query: the statement the
 	// corpus carries has no rendering of an empty set, and sending one anyway is
@@ -225,7 +277,7 @@ func (s *SQLStore) GetMany(ctx context.Context, ids []string) ([]*Operation, err
 		return nil, nil
 	}
 
-	rows, err := s.q.GetOperations(ctx, s.client.Reader(), operationsdb.GetOperationsParams{IDs: ids})
+	rows, err := s.q.GetOperations(ctx, q, operationsdb.GetOperationsParams{Scope: scope, IDs: ids})
 	if err != nil {
 		return nil, span.Error(err, "reading operations")
 	}
@@ -241,17 +293,22 @@ func (s *SQLStore) GetMany(ctx context.Context, ids []string) ([]*Operation, err
 
 func (s *SQLStore) List(
 	ctx context.Context,
-	scope *ListScope,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	listScope *ListScope,
 	filter *filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[Operation], error) {
-	ctx, span := s.o11y.Begin(ctx)
+	ctx, span := s.o11y.Begin(ctx, observability.WithValue(ownerKey, scope.String()))
 	defer span.End()
 
-	if scope != nil {
+	if q == nil {
+		return nil, span.Error(ErrNilExecutor, "listing operations")
+	}
+
+	if listScope != nil {
 		span.SetValues(map[string]any{
-			ownerKey: scope.Owner,
-			kindKey:  scope.Kind,
-			stateKey: strings.Join(stateStrings(scope.States), ","),
+			kindKey:  listScope.Kind,
+			stateKey: strings.Join(stateStrings(listScope.States), ","),
 		})
 	}
 
@@ -277,11 +334,11 @@ func (s *SQLStore) List(
 	// cannot come to differ from the generated statements about what "desc" is.
 	listRows, err := sortedRows(filter,
 		func() ([]operationsdb.ListOperationsRow, error) {
-			return s.q.ListOperations(ctx, s.client.Reader(), listParams(scope, filter))
+			return s.q.ListOperations(ctx, q, listParams(scope, listScope, filter))
 		},
 		func() ([]operationsdb.ListOperationsDescendingRow, error) {
-			return s.q.ListOperationsDescending(ctx, s.client.Reader(),
-				operationsdb.ListOperationsDescendingParams(listParams(scope, filter)))
+			return s.q.ListOperationsDescending(ctx, q,
+				operationsdb.ListOperationsDescendingParams(listParams(scope, listScope, filter)))
 		},
 		func(r operationsdb.ListOperationsDescendingRow) operationsdb.ListOperationsRow {
 			return operationsdb.ListOperationsRow(r)
@@ -502,9 +559,14 @@ func (s *SQLStore) RequestCancel(ctx context.Context, id string) (*Operation, er
 
 	// Read back either way. Zero rows means the operation was already terminal,
 	// which is not a failure — the caller wanted it not running and it is not
-	// running — so the answer is the row as it stands, and Get is what reports a
-	// genuinely absent operation.
-	return s.Get(ctx, id)
+	// running — so the answer is the row as it stands, and the read-back is what
+	// reports a genuinely absent operation.
+	op, err := s.unscopedRow(ctx, id)
+	if err != nil {
+		return nil, span.Error(err, "reading cancelled operation")
+	}
+
+	return op, nil
 }
 
 func (s *SQLStore) Stranded(ctx context.Context, grace time.Duration, limit int) ([]*Operation, error) {
@@ -554,13 +616,6 @@ func (s *SQLStore) Reap(ctx context.Context, retention time.Duration, limit int)
 	span.Set(rowsAffectedKey, affected)
 
 	return affected, nil
-}
-
-// WithTransaction delegates to the client, which begins its own span for the
-// transaction. Wrapping it here would nest a second span around the first and
-// say nothing the client's does not.
-func (s *SQLStore) WithTransaction(ctx context.Context, fn func(q database.Tx) error) error {
-	return s.client.WithTransaction(ctx, fn)
 }
 
 // notify wakes whatever is watching, after the row has landed.
