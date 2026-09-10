@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/platform-go/v14/cryptography/shredding"
 	"github.com/primandproper/platform-go/v14/operations"
+	"github.com/primandproper/platform-go/v14/shredding"
 
 	"github.com/primandproper/primitives-go/database"
 	platformerrors "github.com/primandproper/primitives-go/errors"

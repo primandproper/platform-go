@@ -2,10 +2,8 @@ package service
 
 import (
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
-	authzdbcfg "github.com/primandproper/platform-go/v14/authorization/database/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
-	shreddingcfg "github.com/primandproper/platform-go/v14/cryptography/shredding/config"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	"github.com/primandproper/platform-go/v14/errormappers"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
@@ -15,9 +13,11 @@ import (
 	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
+	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
 	retentioncfg "github.com/primandproper/platform-go/v14/retention/config"
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
 	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
+	shreddingcfg "github.com/primandproper/platform-go/v14/shredding/config"
 	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
 	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
 
@@ -203,7 +203,7 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 
 	if cfg.Authorization != nil {
 		do.ProvideValue(i, cfg.Authorization)
-		authzdbcfg.RegisterPolicyResolver(i)
+		rbaccfg.RegisterPolicyResolver(i)
 	}
 
 	if cfg.Capitalism != nil {

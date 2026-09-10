@@ -46,18 +46,27 @@ answer. That is what makes a new subpackage classified by construction —
 `links/database/internal/linksdb` is a domain because the store it belongs to is
 one, without anybody having to add a row for it.
 
-Nine entries name a path whose parent is not in this module at all.
-`authentication/passwordreset` is one: `authentication` hashes passwords and
-issues tokens in primitives-go, and the table of reset tokens under it is a
-product's. Those are the straddles the split left standing, and each says why,
-because a directory here under a primitives-go path is the one shape a reader
-will not predict. A top-level package's tier is the README's to explain, so an
-entry that agrees with its path carries no reason.
+Five entries name a path whose parent is not in this module at all, and all five
+are under `authentication`. `authentication/passwordreset` is one:
+`authentication` hashes passwords and issues tokens in primitives-go, and the
+table of reset tokens under it is a product's. Those are the straddles the split
+left standing, and each says why, because a directory here under a primitives-go
+path is the one shape a reader will not predict. A top-level package's tier is
+the README's to explain, so an entry that agrees with its path carries no reason.
 
-Two directions are checked, as sqltier checks its own roster in both: a package
-nobody classified fails, and a roster entry naming a directory that no longer
-exists fails. A third test reads the README's table and requires that it and this
-file say the same thing, so the prose a reader is pointed at cannot drift from
-the enumeration a build enforces.
+`authentication` is the only such parent left because it is the only one that
+groups. Six others held no Go files and exactly one child apiece — a name a
+reader walked through to reach the package, naming a parent this repository does
+not hold — and were flattened inside the /v14 major, which is what a package
+rename costs before a tag and not after. A seventh cannot appear quietly:
+TestNoParentDirectoryOnlyIndirects fails any directory in that shape.
+
+Two directions are checked on the roster, as sqltier checks its own in both: a
+package nobody classified fails, and a roster entry naming a directory that no
+longer exists fails. A third test reads the README's table and requires that it
+and this file say the same thing, so the prose a reader is pointed at cannot
+drift from the enumeration a build enforces. The fourth is the shape check above,
+which is about the tree rather than the roster and lives here because the
+straddles are what made the shape worth ruling on.
 */
 package tiercheck

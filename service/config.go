@@ -53,10 +53,8 @@ import (
 	"time"
 
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
-	authzdbcfg "github.com/primandproper/platform-go/v14/authorization/database/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
-	shreddingcfg "github.com/primandproper/platform-go/v14/cryptography/shredding/config"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
@@ -65,9 +63,11 @@ import (
 	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
+	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
 	retentioncfg "github.com/primandproper/platform-go/v14/retention/config"
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
 	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
+	shreddingcfg "github.com/primandproper/platform-go/v14/shredding/config"
 	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
 	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
 
@@ -131,7 +131,7 @@ type Config struct {
 	Analytics            *analyticscfg.Config       `env:",init" envPrefix:"ANALYTICS_"              json:"analytics,omitempty"            yaml:"analytics,omitempty"`
 	AsyncNotifications   *asyncnotifcfg.Config      `env:",init" envPrefix:"ASYNC_NOTIFICATIONS_"    json:"asyncNotifications,omitempty"   yaml:"asyncNotifications,omitempty"`
 	Audit                *auditcfg.Config           `env:",init" envPrefix:"AUDIT_"                  json:"audit,omitempty"                yaml:"audit,omitempty"`
-	Authorization        *authzdbcfg.Config         `env:",init" envPrefix:"AUTHORIZATION_"          json:"authorization,omitempty"        yaml:"authorization,omitempty"`
+	Authorization        *rbaccfg.Config            `env:",init" envPrefix:"AUTHORIZATION_"          json:"authorization,omitempty"        yaml:"authorization,omitempty"`
 	Billing              *billingcfg.Config         `env:",init" envPrefix:"BILLING_"                json:"billing,omitempty"              yaml:"billing,omitempty"`
 	Capitalism           *capitalismcfg.Config      `env:",init" envPrefix:"CAPITALISM_"             json:"capitalism,omitempty"           yaml:"capitalism,omitempty"`
 	CircuitBreaking      *circuitbreakingcfg.Config `env:",init" envPrefix:"CIRCUIT_BREAKING_"       json:"circuitBreaking,omitempty"      yaml:"circuitBreaking,omitempty"`

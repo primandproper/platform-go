@@ -21,7 +21,7 @@ Statements is the same DDL split into individually executable statements, for
 callers running it some other way — a different migration tool, or a test that
 just wants the table.
 
-This is not the authorization server's schema. authentication/oauth2server/database
+This is not the authorization server's schema. authentication/oauth2serverstore
 ships four tables of its own, one of which is called oauth2_clients, and a
 deployment running both runs both migrations. The two are named differently on
 purpose; oauth2clients' package documentation says why.

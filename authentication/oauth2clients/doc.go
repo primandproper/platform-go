@@ -70,7 +70,7 @@ is a grant its policy names.
 # Two tables, deliberately
 
 This package's table is oauth2_registered_clients, and
-authentication/oauth2server/database's is oauth2_clients. A deployment runs both
+authentication/oauth2serverstore's is oauth2_clients. A deployment runs both
 migrations, so they cannot share a name: both are CREATE TABLE IF NOT EXISTS,
 and the second would be a silent no-op followed by a store selecting columns
 that are not there. dinnerdonebetter hit exactly this and worked around it by

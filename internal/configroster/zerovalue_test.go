@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
-	authzdbcfg "github.com/primandproper/platform-go/v14/authorization/database/config"
-	shreddingcfg "github.com/primandproper/platform-go/v14/cryptography/shredding/config"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	entitlementscfg "github.com/primandproper/platform-go/v14/entitlements/config"
 	linkscfg "github.com/primandproper/platform-go/v14/links/config"
@@ -14,9 +12,11 @@ import (
 	asyncnotifcfg "github.com/primandproper/platform-go/v14/notifications/async/config"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
+	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
 	retentioncfg "github.com/primandproper/platform-go/v14/retention/config"
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
 	sessionscfg "github.com/primandproper/platform-go/v14/sessions/config"
+	shreddingcfg "github.com/primandproper/platform-go/v14/shredding/config"
 	timerscfg "github.com/primandproper/platform-go/v14/timers/config"
 	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
 
@@ -101,13 +101,13 @@ func TestZeroValueConfigIsDecisive(T *testing.T) {
 		{name: "analytics", cfg: &analyticscfg.Config{}, needs: "provider"},
 		{name: "audit", cfg: &auditcfg.Config{}, needs: "dialect"},
 		{name: "authentication/tokens", cfg: &tokenscfg.Config{}, needs: "provider"},
-		{name: "authorization", cfg: &authzdbcfg.Config{}, why: "the static resolver needs no infrastructure and grants nothing"},
+		{name: "rbac", cfg: &rbaccfg.Config{}, why: "the static resolver needs no infrastructure and grants nothing"},
 		{name: "cache", cfg: &cachecfg.Config{}, needs: "provider"},
 		{name: "capitalism", cfg: &capitalismcfg.Config{}, needs: "provider"},
 		{name: "circuitbreaking", cfg: &circuitbreakingcfg.Config{}, why: "every threshold has a default"},
 		{name: "circuitbreaking/partitioned", cfg: &partitionedcfg.Config{}, why: "it is the base breaker's defaults, per key"},
 		{name: "cryptography/encryption", cfg: &encryptioncfg.Config{}, needs: "provider"},
-		{name: "cryptography/shredding", cfg: &shreddingcfg.Config{}, why: "shredding defaults to the key store it is handed"},
+		{name: "shredding", cfg: &shreddingcfg.Config{}, why: "shredding defaults to the key store it is handed"},
 		{name: "database", cfg: &databasecfg.Config{}, needs: "hostname"},
 		{name: "dataprivacy", cfg: &dataprivacycfg.Config{}, needs: "dialect"},
 		{name: "distributedlock", cfg: &distributedlockcfg.Config{}, needs: "provider"},

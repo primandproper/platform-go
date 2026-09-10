@@ -63,7 +63,7 @@ func TestTableNames_AreTheTablesTheDDLCreates(t *testing.T) {
 // TestRegisteredClientsTable_IsNotTheAuthorizationServersTable is the collision
 // this package's whole naming decision exists to avoid.
 //
-// authentication/oauth2server/database creates a table called oauth2_clients for
+// authentication/oauth2serverstore creates a table called oauth2_clients for
 // the anonymous RFC 7591 registrations its /register endpoint writes. A
 // deployment runs both schemas, both are CREATE TABLE IF NOT EXISTS, and two
 // tables of one name would leave the second migration a silent no-op followed by

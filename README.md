@@ -57,16 +57,16 @@ dialect, [SQL Dialect Support](#sql-dialect-support) is the full matrix and the
 reasons behind the three exceptions.
 
 ### Identity & access
-| Package                                | Purpose                                                                    | Implementations         |
-|----------------------------------------|----------------------------------------------------------------------------|-------------------------|
-| `identity`                             | Users, accounts, memberships and invitations, and the lifecycle over them   | postgres, mysql, sqlite (+ grpc) |
-| `authentication/signin`                | Sign-in: the order the engines and the directory are used in, owning no table | — (+ grpc)            |
-| `authentication/passwordreset`         | Password reset tokens: digest at rest, single use enforced by the store     | postgres, mysql, sqlite |
-| `authentication/webauthn/database`     | Passkey ceremony state that outlives one replica                           | postgres, mysql, sqlite |
-| `authentication/oauth2clients`         | An administered OAuth2 client registry                                     | postgres, mysql, sqlite (+ grpc) |
-| `authentication/oauth2server/database` | The OAuth2 server's client and token tables                                | postgres, mysql, sqlite |
-| `authorization/database`               | Roles and permissions as rows, behind the policy interface                 | postgres, mysql, sqlite |
-| `sessions`                             | Server-side sessions over cookies                                          | cache, database (+ http) |
+| Package                              | Purpose                                                                       | Implementations                  |
+|--------------------------------------|-------------------------------------------------------------------------------|----------------------------------|
+| `identity`                           | Users, accounts, memberships and invitations, and the lifecycle over them     | postgres, mysql, sqlite (+ grpc) |
+| `authentication/signin`              | Sign-in: the order the engines and the directory are used in, owning no table | — (+ grpc)                       |
+| `authentication/passwordreset`       | Password reset tokens: digest at rest, single use enforced by the store       | postgres, mysql, sqlite          |
+| `authentication/webauthncredentials` | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
+| `authentication/oauth2clients`       | An administered OAuth2 client registry                                        | postgres, mysql, sqlite (+ grpc) |
+| `authentication/oauth2serverstore`   | The OAuth2 server's client and token tables                                   | postgres, mysql, sqlite          |
+| `rbac`                               | Roles and permissions as rows, behind the policy interface                    | postgres, mysql, sqlite          |
+| `sessions`                           | Server-side sessions over cookies                                             | cache, database (+ http)         |
 
 ### Product & commerce
 | Package        | Purpose                                                                                          | Implementations         |
@@ -81,25 +81,25 @@ reasons behind the three exceptions.
 | `links`        | Signed, expiring, single-use action links                                                        | postgres, mysql, sqlite |
 
 ### Records, privacy & retention
-| Package                  | Purpose                                              | Implementations         |
-|--------------------------|------------------------------------------------------|-------------------------|
-| `audit`                  | Tamper-evident audit log                             | postgres, mysql, sqlite (+ grpc) |
-| `dataprivacy`            | Subject access & erasure requests                    | postgres, mysql, sqlite |
-| `cryptography/shredding` | Per-subject data keys that can be destroyed          | postgres, mysql, sqlite |
-| `retention`              | Policy-driven expiry deletion                        | postgres, mysql, sqlite |
-| `uploads/registry`       | Object metadata rows over an object store            | postgres, mysql, sqlite |
+| Package         | Purpose                                     | Implementations                  |
+|-----------------|---------------------------------------------|----------------------------------|
+| `audit`         | Tamper-evident audit log                    | postgres, mysql, sqlite (+ grpc) |
+| `dataprivacy`   | Subject access & erasure requests           | postgres, mysql, sqlite          |
+| `shredding`     | Per-subject data keys that can be destroyed | postgres, mysql, sqlite          |
+| `retention`     | Policy-driven expiry deletion               | postgres, mysql, sqlite          |
+| `mediaregistry` | Object metadata rows over an object store   | postgres, mysql, sqlite          |
 
 ### Coordination & delivery
-| Package         | Purpose                                                                             | Implementations         |
-|-----------------|--------------------------------------------------------------------------------------|-------------------------|
-| `outbox`        | Transactional outbox                                                                | postgres, mysql, sqlite |
-| `workqueue`     | Leased work queue (`SKIP LOCKED` claim/complete/expire)                             | postgres                |
-| `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres                |
-| `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres (+ http)       |
-| `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite |
-| `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite |
+| Package         | Purpose                                                                             | Implementations                         |
+|-----------------|-------------------------------------------------------------------------------------|-----------------------------------------|
+| `outbox`        | Transactional outbox                                                                | postgres, mysql, sqlite                 |
+| `workqueue`     | Leased work queue (`SKIP LOCKED` claim/complete/expire)                             | postgres                                |
+| `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres                                |
+| `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres (+ http)                       |
+| `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite                 |
+| `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite                 |
 | `notifications` | User notifications                                                                  | postgres, mysql, sqlite (+ async, grpc) |
-| `search/sync`   | Reindexing worker driven by the outbox                                              | —                       |
+| `searchsync`    | Reindexing worker driven by the outbox                                              | —                                       |
 
 ### The composition root
 | Package        | Purpose                                                                       |
@@ -136,11 +136,11 @@ answer and is not meant to be: what the primitives are is
 to list, and a copy of that list here would be a second answer with nothing
 checking it.
 
-| What it is                                     | Packages |
-|------------------------------------------------|----------|
-| a noun with a table, and what it owes          | `audit`, `authentication/oauth2clients`, `authentication/oauth2server/database`, `authentication/passwordreset`, `authentication/webauthn/database`, `authorization/database`, `billing`, `comments`, `cryptography/shredding`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `metering`, `notifications`, `operations`, `outbox`, `retention`, `saga`, `search/sync`, `sessions`, `settings`, `timers`, `uploads/registry`, `waitlists`, `webhooks`, `workqueue` |
-| a domain flow over another domain's tables     | `authentication/signin` |
-| the composition root that registers both tiers | `errormappers`, `service` |
+| What it is                                     | Packages                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+|------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| a noun with a table, and what it owes          | `audit`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passwordreset`, `authentication/webauthncredentials`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
+| a domain flow over another domain's tables     | `authentication/signin`                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| the composition root that registers both tiers | `errormappers`, `service`                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 The second row is the one the rule's own wording anticipates when it asks whether
 a package owns a table *or drives one*. `authentication/signin` owns no schema
@@ -152,26 +152,35 @@ refusals it collapses are a product decision rather than a mechanism. A package
 like it is the shape to expect as more domains arrive: the flows over the nouns,
 after the nouns.
 
-Nine of the paths above sit under a directory this module does not own the root
-of, and each is a straddle the split left standing. Six are a primitive with a
+Five of the paths above sit under a directory this module does not own the root
+of, and every one of them is under `authentication/`. Four are a primitive with a
 store nested inside it — `authentication` hashes passwords and issues tokens in
 primitives-go, and `authentication/passwordreset` owns a table of them;
-`authentication/oauth2clients`, `authentication/oauth2server/database`,
-`authentication/webauthn/database`, `authorization/database`,
-`cryptography/shredding` and `uploads/registry` split the same way. `search/sync`
-is the reindexing worker driven by the outbox, under two search indexes that are
-primitives. The ninth is `authentication/signin`, which is neither: it is a
-domain flow under a primitive's path, there because sign-in is what those engines
-are for and a `signin` at the root would hide that.
+`authentication/oauth2clients`, `authentication/oauth2serverstore` and
+`authentication/webauthncredentials` split the same way. The fifth is
+`authentication/signin`, which is neither: it is a domain flow under a
+primitive's path, there because sign-in is what those engines are for and a
+`signin` at the root would hide that.
 
-The nested stores are self-contained, and Go is content with a parent directory
-holding no `.go` files — `authentication/`, `authorization/`, `cryptography/`,
-`search/` and `uploads/` are now exactly that here, and hold the engines in the
-other module. What was not self-contained was the *configuration*: a `config`
-subpackage that picked a store by dispatching on a provider string named every
-package it might build from, so three of them named a table. The rule that
-predicts it is worth stating once, because it is what any future straddle will be
-measured against:
+`authentication/` is the one straddle parent that groups rather than indirects —
+five related domain packages under a name a reader wants — which is why it is the
+one that stayed. Go is content with a parent directory holding no `.go` files,
+and six of them were exactly that: `uploads/`, `authorization/`, `cryptography/`
+and `search/` each held one child and no source, as did
+`authentication/oauth2server/` and `authentication/webauthn/`. A directory in
+that shape shows a relationship to a package this repository does not hold —
+`cryptography` has never existed here — and a package path is the most breaking
+thing in Go, so the six were flattened inside the `/v14` major rather than bought
+as a `/v15` later. The children carry the relationship in their own names now:
+`mediaregistry`, `rbac`, `shredding` and `searchsync` at the root, and
+`authentication/oauth2serverstore` and `authentication/webauthncredentials` into
+the parent that stayed.
+
+The nested stores are self-contained. What was not self-contained was the
+*configuration*: a `config` subpackage that picked a store by dispatching on a
+provider string named every package it might build from, so three of them named a
+table. The rule that predicts it is worth stating once, because it is what any
+future straddle will be measured against:
 
 > **A config that takes a store as a parameter is clean; a config that builds one
 > by dispatching on a provider string is stuck.** The provider string exists
@@ -182,11 +191,11 @@ So `authorization/config`, `authentication/webauthn/config` and
 `authentication/oauth2server/config` kept everything that needs no table and went
 to primitives-go, and the provider string, the store's own config block and the
 dispatch moved to a `config` subpackage beside the store, which stayed here:
-`authorization/database/config`, `authentication/webauthn/database/config`,
-`authentication/oauth2server/database/config`. The domain half embeds the
-primitive half's `Config` with no `env` tag on the embed, so every environment
-variable an operator sets resolves at the name it always did, and each package's
-`doc.go` records the decision and the two alternatives that were refused.
+`rbac/config`, `authentication/webauthncredentials/config` and
+`authentication/oauth2serverstore/config`. The domain half embeds the primitive
+half's `Config` with no `env` tag on the embed, so every environment variable an
+operator sets resolves at the name it always did, and each package's `doc.go`
+records the decision and the two alternatives that were refused.
 
 `notifications/mobile` was the mirror and needed no split at all: it named
 `notifications` only to spell a DI key, for a one-method interface it already
@@ -196,8 +205,11 @@ providers left with the other primitives.
 None of this is enforced by prose. `internal/tiercheck` is the roster: every
 package in the tree is named, checked against this table in both directions, and
 a package ruled a primitive fails there, because a primitive is a package this
-repository does not hold. The direction the split bought — primitives-go imports
-platform-go from nowhere, ever — is checked on the other side, by primitives-go's
+repository does not hold. It checks the shape of the tree as well as the ruling
+on it — a directory holding no Go files and exactly one Go-bearing child fails,
+so a seventh indirecting parent cannot appear quietly and be discovered a tag
+too late. The direction the split bought — primitives-go imports platform-go from
+nowhere, ever — is checked on the other side, by primitives-go's
 `internal/tierguard`, which needs no roster because the answer is the same for
 every package in that module.
 
@@ -446,8 +458,8 @@ the whole list.
 <!-- readmegen:transports -->
 | Transport                           | Kind             | Whose shape it is                                                                                         |
 |-------------------------------------|------------------|-----------------------------------------------------------------------------------------------------------|
+| `mediaregistry/http`                | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                                 |
 | `sessions/http`                     | binding          | a signed cookie, whose security properties are ours                                                       |
-| `uploads/registry/http`             | binding          | an object's bytes, guarded by the row rather than by knowledge of the key                                 |
 | `audit/grpc`                        | resource surface | reading the audit log and verifying its chain — over `audit.Reader`                                       |
 | `authentication/oauth2clients/grpc` | resource surface | an administered OAuth2 client registry — over `oauth2clients.Service` and `oauth2clients.Store`           |
 | `authentication/signin/grpc`        | resource surface | sign-in and the credentials a person changes about themselves — over `signin.Service`                     |
@@ -468,7 +480,7 @@ cookie, and a cookie's signing, encryption, `HttpOnly`, `Secure` and `SameSite`
 are security decisions this module already made — there is no resource of yours
 in it.
 
-`uploads/registry/http` makes the same claim about an object's bytes. Its store's
+`mediaregistry/http` makes the same claim about an object's bytes. Its store's
 documentation heads a section *"Why the row is the access control"* — whether
 this caller may read this object is answered from the owner and the scope on the
 row, not from the bucket — and then declines to act on it, because nothing in
@@ -524,33 +536,33 @@ against it. Everything unticked returns `dialect.ErrUnsupported` at
 construction, never a partial store or a migration that creates nothing.
 
 <!-- readmegen:dialects -->
-| Package                                | Postgres | MySQL | SQLite |
-|----------------------------------------|----------|-------|--------|
-| `audit`                                | ✓        | ✓     | ✓      |
-| `authentication/oauth2clients`         | ✓        | ✓     | ✓      |
-| `authentication/oauth2server/database` | ✓        | ✓     | ✓      |
-| `authentication/passwordreset`         | ✓        | ✓     | ✓      |
-| `authentication/webauthn/database`     | ✓        | ✓     | ✓      |
-| `authorization/database`               | ✓        | ✓     | ✓      |
-| `billing`                              | ✓        | ✓     | ✓      |
-| `comments`                             | ✓        | ✓     | ✓      |
-| `cryptography/shredding`               | ✓        | ✓     | ✓      |
-| `dataprivacy`                          | ✓        | ✓     | ✓      |
-| `identity`                             | ✓        | ✓     | ✓      |
-| `issuereports`                         | ✓        | ✓     | ✓      |
-| `links/database`                       | ✓        | ✓     | ✓      |
-| `metering`                             | ✓        | ✓     | ✓      |
-| `notifications`                        | ✓        | ✓     | ✓      |
-| `operations`                           | ✓        | —     | —      |
-| `outbox`                               | ✓        | ✓     | ✓      |
-| `saga`                                 | ✓        | ✓     | ✓      |
-| `sessions/database`                    | ✓        | ✓     | ✓      |
-| `settings`                             | ✓        | ✓     | ✓      |
-| `timers`                               | ✓        | —     | —      |
-| `uploads/registry`                     | ✓        | ✓     | ✓      |
-| `waitlists`                            | ✓        | ✓     | ✓      |
-| `webhooks`                             | ✓        | ✓     | ✓      |
-| `workqueue`                            | ✓        | —     | —      |
+| Package                              | Postgres | MySQL | SQLite |
+|--------------------------------------|----------|-------|--------|
+| `audit`                              | ✓        | ✓     | ✓      |
+| `authentication/oauth2clients`       | ✓        | ✓     | ✓      |
+| `authentication/oauth2serverstore`   | ✓        | ✓     | ✓      |
+| `authentication/passwordreset`       | ✓        | ✓     | ✓      |
+| `authentication/webauthncredentials` | ✓        | ✓     | ✓      |
+| `billing`                            | ✓        | ✓     | ✓      |
+| `comments`                           | ✓        | ✓     | ✓      |
+| `dataprivacy`                        | ✓        | ✓     | ✓      |
+| `identity`                           | ✓        | ✓     | ✓      |
+| `issuereports`                       | ✓        | ✓     | ✓      |
+| `links/database`                     | ✓        | ✓     | ✓      |
+| `mediaregistry`                      | ✓        | ✓     | ✓      |
+| `metering`                           | ✓        | ✓     | ✓      |
+| `notifications`                      | ✓        | ✓     | ✓      |
+| `operations`                         | ✓        | —     | —      |
+| `outbox`                             | ✓        | ✓     | ✓      |
+| `rbac`                               | ✓        | ✓     | ✓      |
+| `saga`                               | ✓        | ✓     | ✓      |
+| `sessions/database`                  | ✓        | ✓     | ✓      |
+| `settings`                           | ✓        | ✓     | ✓      |
+| `shredding`                          | ✓        | ✓     | ✓      |
+| `timers`                             | ✓        | —     | —      |
+| `waitlists`                          | ✓        | ✓     | ✓      |
+| `webhooks`                           | ✓        | ✓     | ✓      |
+| `workqueue`                          | ✓        | —     | —      |
 <!-- /readmegen:dialects -->
 
 ### Why the three narrow

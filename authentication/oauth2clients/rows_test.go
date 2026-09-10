@@ -14,7 +14,7 @@ import (
 
 // TestEncodeStringsAndDecodeStringsRoundTrip pins the pair as a pair.
 //
-// They are a private encoding shared with authentication/oauth2server/database,
+// They are a private encoding shared with authentication/oauth2serverstore,
 // so what matters is that a value written here reads back as itself — a
 // half-fixed pair is two columns holding two different shapes with nothing
 // saying so.

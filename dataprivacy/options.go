@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/audit"
-	"github.com/primandproper/platform-go/v14/cryptography/shredding"
+	"github.com/primandproper/platform-go/v14/shredding"
 
 	"github.com/primandproper/primitives-go/clock"
 	"github.com/primandproper/primitives-go/compression"

@@ -10,7 +10,7 @@ import (
 // rendering starts from.
 //
 // It is oauth2_registered_clients and not oauth2_clients, and the second name
-// was not available: authentication/oauth2server/database already creates a
+// was not available: authentication/oauth2serverstore already creates a
 // table called that, for the anonymous RFC 7591 registrations its /register
 // endpoint writes. A deployment runs both schemas, both are CREATE TABLE IF NOT
 // EXISTS, and two tables of one name would leave the second migration a silent
@@ -145,7 +145,7 @@ func Render(d dialect.Dialect) string {
 // rows rather than as a raised constraint.
 //
 // It is an insert-ignore rather than the standard set's plain INSERT for the
-// reason authentication/oauth2server/database gives about its own client table:
+// reason authentication/oauth2serverstore gives about its own client table:
 // the alternative is every caller parsing a dialect's SQLSTATE to tell "this
 // identifier is taken" from "the database is broken", and the three engines
 // spell that three ways. Zero affected rows says it once, portably.

@@ -68,7 +68,7 @@ changed nothing.
 
 The outbox never looks inside a Payload, so what an effect can derive from is
 the application's own message type, which the application asserts back out.
-search/sync's documentation works the index event through end to end.
+searchsync's documentation works the index event through end to end.
 
 # Where the SQL comes from
 

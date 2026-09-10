@@ -297,9 +297,9 @@ of DELETE reaches a snapshot, because the media is not writable.
 WithFulfillerShredder closes that, by destroying the subject's data key rather
 than only their rows: every column encrypted under that key becomes noise at
 once, in the live database and in every backup that already shipped. See
-cryptography/shredding, and read what it says about where the keys table lives
-before wiring it, because a keys table backed up alongside the data it protects
-hands everything back on the first restore.
+shredding, and read what it says about where the keys table lives before wiring
+it, because a keys table backed up alongside the data it protects hands
+everything back on the first restore.
 
 The shred runs before the erasers and outside their transaction. Both are
 deliberate and both are explained at Fulfiller.erase. A scoped request does not

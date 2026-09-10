@@ -2,7 +2,7 @@
 -- on purpose, as opposed to one an anonymous caller minted at /register.
 --
 -- The distinction is why this table exists beside
--- authentication/oauth2server/database's oauth2_clients rather than inside it.
+-- authentication/oauth2serverstore's oauth2_clients rather than inside it.
 -- That one is RFC 7591 dynamic registration: written by anonymous callers,
 -- bounded by an expiry, and never listed. This one is administered — created
 -- through a permissioned RPC, paged, revised, soft-deleted and audited — and

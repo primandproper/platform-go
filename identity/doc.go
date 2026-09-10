@@ -69,7 +69,7 @@ and each is consumed by exactly one engine. Their home is beside that engine —
 the same rule that put the password hash here, applied to a fact that is not a
 column. Sessions live in [github.com/primandproper/platform-go/v14/sessions],
 WebAuthn credentials and ceremonies in
-[github.com/primandproper/platform-go/v14/authentication/webauthn/database], and
+[github.com/primandproper/platform-go/v14/authentication/webauthncredentials], and
 password reset tokens in
 [github.com/primandproper/platform-go/v14/authentication/passwordreset], which
 also owns the two properties a consumer writing that table by hand gets wrong:

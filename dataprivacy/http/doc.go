@@ -129,8 +129,8 @@ No download route. The artifact reaches the subject as the expiring URL in the
 notification, and dataprivacy.Service.Download and Open remain in-process calls
 for a consumer's own route to make. Serving the bytes is a different kind of
 endpoint from the five here — a content type, a range request, a stream — and
-the module's Transports section files that kind under uploads/registry rather
-than under a domain's resource surface.
+the module's Transports section files that kind under mediaregistry rather than
+under a domain's resource surface.
 
 No cancellation that pretends to have stopped anything. Cancel on a request that
 is already in progress asks its operation to stop and returns the request still
