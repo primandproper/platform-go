@@ -43,6 +43,36 @@ import (
 // transaction — a statement about how Fulfiller is wired, which is where it now
 // lives.
 //
+// # Why the writes take no scope
+//
+// Every other store in this module binds one on every write, entity-carrying
+// creates included: comments.Store.CreateComment takes the scope beside a
+// Comment that already names one, and issuereports.Store.TransitionReport takes
+// it beside the id it moves. Save, Confirm, Cancel, CompleteExport and
+// CompleteErasure take none, and what makes them the exception is the column
+// rather than an exemption anybody claimed.
+//
+// A tenancy column elsewhere holds an owner or the empty identifier Global
+// stores as, and the zero Scope is not among the values it may hold — which is
+// what gives "the entity names none, so adopt the argument" something to key
+// on. This confinement is nullable. The zero Scope is a request that named no
+// tenant, which is an answer the column really stores, and Global is refused
+// outright; so there is no unset state here to tell an unconfined one from. A
+// scope argument beside Request.Scope could refuse a disagreement between the
+// two and could adopt nothing, which leaves the caller passing the confinement
+// twice and keeping the copies in step — the derivation the read side has just
+// stopped making, handed back to whoever calls.
+//
+// What guards the transitions is the predicate they already carry. Confirm,
+// Cancel and the two completions are conditional writes matching on the id and
+// on the status the request has to be in, which is the guard that matters for a
+// row two workers and a sweeper may all be reaching for. The confinement is
+// guarded a layer up: StoreService reads the request under the caller's scope
+// before it transitions anything, and a request outside that scope is absent
+// there rather than forbidden. A consumer holding this interface directly
+// rather than through StoreService owns that read, and owes itself the same
+// one.
+//
 // # The seven that take neither
 //
 // MarkKeyShredded, Fail, ExpiringArtifacts, MarkExpired, LapseUnconfirmed,
@@ -82,9 +112,10 @@ type Store interface {
 	// entry that can commit while the request it describes rolls back — or the
 	// reverse — is not a record of anything.
 	//
-	// It takes no scope. The confinement is Request.Scope — a fact the insert
-	// records rather than a narrowing it selects by — and an insert selects no
-	// rows for a scope to narrow. tenancy.Global is refused with
+	// It takes no scope, which puts it at odds with every other create in the
+	// module and is argued above under "Why the writes take no scope": the
+	// confinement is Request.Scope, and a nullable one has no unset state for a
+	// scope argument to adopt. tenancy.Global is refused with
 	// ErrGlobalRequestScope, for the reason that sentinel gives.
 	Save(ctx context.Context, tx database.Tx, req *Request) error
 

@@ -657,6 +657,7 @@ type ErasureSummary struct {
 // would be silently wrong in the direction that matters. An application whose
 // jurisdiction or dispute posture needs that guarantee has to implement it in
 // its collectors, and know that it has.
+//
 // The scope is the request's confinement, passed beside the subject rather than
 // carried inside it. A domain whose rows are scoped needs both — who, and
 // whose tenant — and taking the second off the first was how this package used
@@ -755,6 +756,7 @@ type Service interface {
 	// An erasure submitted to a Service with a confirmation window returns
 	// StatusAwaitingConfirmation and an empty OperationID, and nothing runs
 	// until Confirm.
+	//
 	// scope is the confinement the request is recorded under and nothing
 	// narrows: the zero Scope submits a request that spans every scope its
 	// subject appears in. tenancy.Global is refused with ErrGlobalRequestScope.
