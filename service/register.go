@@ -368,6 +368,11 @@ func registerDurableWorkflows(i do.Injector, cfg *Config) {
 	// subscribed to reads no rows on a tick. That is what makes "inert for a
 	// process that serves no streaming endpoint" true of the loop and not only
 	// of the settings.
+	//
+	// What it costs a process that already built its own watcher is a second
+	// ticker, and what the registered one is built without is a wake channel.
+	// Both are consequences of the registration rather than of this walk, and
+	// operationscfg.RegisterWatcher is where they are argued.
 	if cfg.Operations != nil {
 		do.ProvideValue(i, cfg.Operations)
 		operationscfg.RegisterStore(i)
