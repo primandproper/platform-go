@@ -36,11 +36,30 @@ was free to fix only while none of the nine had shipped in a tag.
 
 # What is checked
 
-Every field of every message, nested messages included and map entries excluded,
-in all eleven files. The rule is asserted as an equality rather than as "an id
-field carries some override", so it holds in both directions: an id field that
-pins nothing fails, and so does one that pins the wrong spelling or a field that
-pins a name protoc would have derived anyway.
+Two sweeps, one per description, because the rule is an agreement between them
+and either alone can be right while they disagree.
+
+The first is over the schemas: every field of every message, nested messages
+included and map entries excluded, in all eleven files. The rule is asserted as
+an equality rather than as "an id field carries some override", so it holds in
+both directions: an id field that pins nothing fails, and so does one that pins
+the wrong spelling or a field that pins a name protoc would have derived anyway.
+
+The second is over this module's Go source: every json struct tag in the tree,
+held to the same sentence read backwards. On its own the schema sweep is a
+statement about protobuf and none at all about Go — a module whose descriptors
+every one said "resourceID" while its structs said `json:"resourceId"` would pass
+it and still emit two spellings — so the tags are swept too, and the two
+descriptions agree because each conforms to one rule rather than because
+something compared them pair by pair.
+
+Pairing is what identity/grpc and waitlists/grpc do, and it is the stronger check
+where it exists: it knows which field corresponds to which. It does not
+generalize to eleven schemas cheaply, because most of their messages are requests
+and responses with no Go type to pair with, and a roster naming both halves of
+every pair is a roster that goes stale in the direction nobody notices. The
+two-sided rule covers every tag in the module instead, including the ones no
+message renders.
 
 "All eleven" is a claim, and a claim about a set is only checkable against an
 enumeration of it. The roster in the test names each file by the path it sits at
