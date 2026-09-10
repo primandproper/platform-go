@@ -189,7 +189,7 @@ type VerificationResult struct {
 	// Scope is the chain that was walked.
 	Scope tenancy.Scope
 	// Checked is how many entries were walked.
-	Checked int
+	Checked int64
 }
 
 // Intact reports whether the verified range held together. It is a method
@@ -483,7 +483,7 @@ func (r *SQLReader) Verify(ctx context.Context, scope tenancy.Scope, from, to ti
 		return nil, op.Error(err, "reading audit chain for scope %s", scope)
 	}
 
-	result := &VerificationResult{Scope: scope, From: from, To: to, Checked: len(stored)}
+	result := &VerificationResult{Scope: scope, From: from, To: to, Checked: int64(len(stored))}
 
 	if len(stored) > 0 {
 		var anchor *anchorState

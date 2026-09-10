@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -561,4 +562,47 @@ func TestVerificationResult_Intact(T *testing.T) {
 		var result *VerificationResult
 		test.False(t, result.Intact())
 	})
+}
+
+// TestVerificationResult_CountsAreWide pins the width of the integers a
+// verification reports.
+//
+// A count's type is exported API in the one way its value never shows: nothing
+// a caller writes against Checked reads differently at int than at int64, so
+// the narrowing is invisible right up until the day the field has to widen —
+// and widening an exported field is a major bump, not a patch. Every other
+// result count in the module already answers in int64, and the proto this one
+// crosses on always did, which is what the converters were quietly bridging.
+func TestVerificationResult_CountsAreWide(t *testing.T) {
+	t.Parallel()
+
+	for name, rt := range map[string]reflect.Type{
+		"VerificationResult": reflect.TypeFor[VerificationResult](),
+		"Break":              reflect.TypeFor[Break](),
+	} {
+		for field := range rt.Fields() {
+			if !field.IsExported() {
+				continue
+			}
+
+			test.False(t, narrowIntegerKinds[field.Type.Kind()],
+				test.Sprintf("%s.%s counts, so it is int64 like every other result count in the module", name, field.Name))
+		}
+	}
+}
+
+// narrowIntegerKinds are the integer kinds an exported count may not have. It
+// lists the disallowed ones rather than asserting int64 outright so that a
+// field which is not an integer at all — a time, a scope, a break — is left
+// alone.
+var narrowIntegerKinds = map[reflect.Kind]bool{
+	reflect.Int:    true,
+	reflect.Int8:   true,
+	reflect.Int16:  true,
+	reflect.Int32:  true,
+	reflect.Uint:   true,
+	reflect.Uint8:  true,
+	reflect.Uint16: true,
+	reflect.Uint32: true,
+	reflect.Uint64: true,
 }
