@@ -73,7 +73,7 @@ type SQLStore struct {
 //
 // Observability is optional and defaults to nothing: an unconfigured store logs
 // to a noop logger, traces to a noop provider, and counts into a noop meter.
-func NewSQLStore(client database.Client, opts ...StoreOption) (*SQLStore, error) {
+func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, error) {
 	if client == nil {
 		return nil, ErrNilDatabaseClient
 	}

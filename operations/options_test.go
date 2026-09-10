@@ -21,10 +21,10 @@ func pillars() (logger logging.Logger, tracerProvider tracing.Provider, metricsP
 	return loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider()
 }
 
-func TestStoreOptions(T *testing.T) {
+func TestSQLStoreOptions(T *testing.T) {
 	T.Parallel()
 
-	apply := func(opts ...StoreOption) *SQLStore {
+	apply := func(opts ...SQLStoreOption) *SQLStore {
 		s := &SQLStore{}
 		for _, opt := range opts {
 			opt(s)

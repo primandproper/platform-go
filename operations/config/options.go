@@ -34,7 +34,7 @@ type options struct {
 	queueWakeup   <-chan struct{}
 	watcherWakeup <-chan struct{}
 
-	store   []operations.StoreOption
+	store   []operations.SQLStoreOption
 	service []operations.ServiceOption
 	worker  []operations.WorkerOption
 	watcher []operations.WatcherOption
@@ -103,7 +103,7 @@ func WithWatcherWakeup(wakeup <-chan struct{}) Option {
 
 // WithStoreOptions passes opts to the store, applied after the options derived
 // from configuration — so a caller can override anything.
-func WithStoreOptions(opts ...operations.StoreOption) Option {
+func WithStoreOptions(opts ...operations.SQLStoreOption) Option {
 	return func(o *options) { o.store = append(o.store, opts...) }
 }
 
