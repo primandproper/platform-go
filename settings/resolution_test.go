@@ -40,7 +40,7 @@ func runResolutionSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, "daily", chosen.Value.Raw)
 
 		// Clearing puts them back on the default.
-		must.NoError(t, env.clear(t, store, testScope, testSubject, "digest"))
+		mustClear(t, env, store, testScope, testSubject, "digest")
 
 		cleared, err := store.Resolve(t.Context(), env.reader(), testScope, testSubject, "digest")
 		must.NoError(t, err)
@@ -159,7 +159,7 @@ func runResolutionSuite(t *testing.T, env *storeEnv) {
 
 		// An archived definition is out of the catalog, so it is out of this.
 		retired := mustCreate(t, env, store, testScope, boolDefinition("d.retired"))
-		must.NoError(t, env.archive(t, store, testScope, retired.ID))
+		mustArchive(t, env, store, testScope, retired.ID)
 
 		after, err := store.ResolveAll(t.Context(), env.reader(), testScope, testSubject)
 		must.NoError(t, err)

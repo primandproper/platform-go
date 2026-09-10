@@ -257,94 +257,119 @@ func (s *SQLStore) listDefinitions(
 // The walk is skipped where the edit cannot strand anything: renaming a setting,
 // rewording it, changing its default or its admin flag leaves every stored value
 // exactly as legal as it was.
+//
+// What comes back is the definition as the edit left it, read on tx after the
+// write. The caller's argument is not mutated and is not what is returned: the
+// row carries a last_updated_at the server stamped and this call never held, so
+// a value assembled from the argument would say a definition edited a moment ago
+// has never been edited. See [DefinitionStore.UpdateDefinition] for what an
+// audit entry beside the write does with it.
 func (s *SQLStore) UpdateDefinition(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	definition *Definition,
-) error {
+) (*Definition, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "updating setting definition")
+		return nil, op.Error(ErrNilExecutor, "updating setting definition")
 	}
 
 	if definition == nil {
-		return op.Error(ErrNilDefinition, "updating setting definition")
+		return nil, op.Error(ErrNilDefinition, "updating setting definition")
 	}
 
 	op.Set(definitionIDKey, definition.ID)
 	op.Set(definitionKey, definition.Name)
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "updating setting definition %q", definition.Name)
+		return nil, op.Error(err, "updating setting definition %q", definition.Name)
 	}
 
 	if definition.ID == "" {
-		return op.Error(platformerrors.ErrInvalidIDProvided, "updating setting definition %q", definition.Name)
+		return nil, op.Error(platformerrors.ErrInvalidIDProvided, "updating setting definition %q", definition.Name)
 	}
 
 	if err := definition.validate(); err != nil {
-		return op.Error(err, "updating setting definition %q", definition.Name)
+		return nil, op.Error(err, "updating setting definition %q", definition.Name)
 	}
 
 	updated := *definition
 	updated.Scope = scope
 	updated.Enumeration = sortedEnumeration(definition.Enumeration)
 
-	if err := s.rewriteDefinition(ctx, tx, scope, &updated); err != nil {
-		return op.Error(err, "updating setting definition %q", updated.Name)
+	edited, err := s.rewriteDefinition(ctx, tx, scope, &updated)
+	if err != nil {
+		return nil, op.Error(err, "updating setting definition %q", updated.Name)
 	}
 
-	return nil
+	return edited, nil
 }
 
 // rewriteDefinition is the statements the update runs: the read of what is
 // there, the name collision check, the stranded-value walk where the edit
-// reinterprets stored values, the row, and its enumeration.
+// reinterprets stored values, the row, its enumeration, and the read-back of
+// what all of that left.
+//
+// The read-back is the same read every caller of GetDefinition makes, on the
+// transaction the edit was written in — so it sees the row and the enumeration
+// this call has just written rather than the ones the last commit left, and the
+// definition it returns carries the stamp the server assigned. The edit is not
+// archived, so it is the live read rather than readArchivedDefinition.
 func (s *SQLStore) rewriteDefinition(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
 	updated *Definition,
-) error {
+) (*Definition, error) {
 	existing, err := s.readDefinition(ctx, q, scope, updated.ID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err = s.refuseTakenName(ctx, q, scope, updated.Name, &updated.ID); err != nil {
-		return err
+		return nil, err
 	}
 
 	if reinterprets(existing, updated) {
 		if err = s.refuseStrandedValues(ctx, q, scope, updated); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	count, err := s.q.UpdateDefinition(ctx, q, updateDefinitionParams(updated, scope))
 	if err = guardCount(count, err, ErrDefinitionNotFound, "updating setting definition"); err != nil {
-		return err
+		return nil, err
 	}
 
-	return s.writeEnumeration(ctx, q, updated.ID, updated.Enumeration)
+	if err = s.writeEnumeration(ctx, q, updated.ID, updated.Enumeration); err != nil {
+		return nil, err
+	}
+
+	return s.readDefinition(ctx, q, scope, updated.ID)
 }
 
 // ArchiveDefinition retires one of the scope's settings, inside the caller's
-// transaction.
+// transaction, and answers with the definition it retired.
 //
-// It is one statement, and it still takes the caller's transaction rather than a
-// writer of the store's own: retiring a setting is an administrative act with an
-// audit entry beside it, and the entry is worth what its atomicity with the
-// retirement is worth.
+// It takes the caller's transaction rather than a writer of the store's own:
+// retiring a setting is an administrative act with an audit entry beside it, and
+// the entry is worth what its atomicity with the retirement is worth. The row it
+// hands back is what that entry describes — the name, the kind and the
+// enumeration a caller holding only an id never had, and the retirement stamp
+// nothing outside the server could supply.
+//
+// Two statements rather than one, and the second cannot be the read every other
+// caller makes: the row this one just archived is exactly the row a live read
+// excludes. See readArchivedDefinition.
 func (s *SQLStore) ArchiveDefinition(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	definitionID string,
-) error {
+) (*Definition, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(definitionIDKey, definitionID),
@@ -352,19 +377,24 @@ func (s *SQLStore) ArchiveDefinition(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving setting definition %q", definitionID)
+		return nil, op.Error(ErrNilExecutor, "archiving setting definition %q", definitionID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving setting definition %q", definitionID)
+		return nil, op.Error(err, "archiving setting definition %q", definitionID)
 	}
 
 	count, err := s.q.ArchiveDefinition(ctx, tx, settingsdb.ArchiveDefinitionParams{ID: definitionID, Scope: scope})
 	if err = guardCount(count, err, ErrDefinitionNotFound, "archiving setting definition"); err != nil {
-		return op.Error(err, "archiving setting definition %q", definitionID)
+		return nil, op.Error(err, "archiving setting definition %q", definitionID)
 	}
 
-	return nil
+	archived, err := s.readArchivedDefinition(ctx, tx, scope, definitionID)
+	if err != nil {
+		return nil, op.Error(err, "reading back the archived setting definition %q", definitionID)
+	}
+
+	return archived, nil
 }
 
 // readDefinition is the read by id, through whatever executor the caller is
@@ -381,6 +411,47 @@ func (s *SQLStore) readDefinition(
 	}
 
 	definition := definitionFromRow(&row)
+
+	if err = s.hydrateEnumerations(ctx, q, []*Definition{definition}); err != nil {
+		return nil, err
+	}
+
+	return definition, nil
+}
+
+// readArchivedDefinition is the archive's read-back: the row ArchiveDefinition
+// has just retired, on the transaction that retired it.
+//
+// It is a second statement rather than readDefinition because the two ask
+// opposite questions. Every live read here filters archived_at IS NULL, which is
+// what makes a retired setting absent from a catalog, so the read that would
+// describe what an archive did is the one read that cannot see it. The statement
+// this runs carries the complement — see settings/internal/queries — so a row
+// the archive did not move is not a row it answers with either.
+//
+// The enumeration is attached the same way every other definition read attaches
+// it. Archiving a definition leaves its options alone, and a caller recording
+// what was retired wants the values it admitted.
+func (s *SQLStore) readArchivedDefinition(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	definitionID string,
+) (*Definition, error) {
+	row, err := s.q.GetArchivedDefinition(ctx, q,
+		settingsdb.GetArchivedDefinitionParams{ID: definitionID, Scope: scope})
+	if err != nil {
+		return nil, notFound(err, ErrDefinitionNotFound)
+	}
+
+	// The two statements project the same columns in the same order, so the
+	// conversion is the whole of what they have to say to each other. A second
+	// hand-written converter beside definitionFromRow could assign a field wrong
+	// and nothing would report it; this fails to compile the day the projections
+	// diverge.
+	live := settingsdb.GetDefinitionRow(row)
+
+	definition := definitionFromRow(&live)
 
 	if err = s.hydrateEnumerations(ctx, q, []*Definition{definition}); err != nil {
 		return nil, err

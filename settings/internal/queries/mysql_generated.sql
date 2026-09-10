@@ -475,6 +475,41 @@ WHERE archived_at IS NULL
 	AND subject_id = sqlc.arg(subject_id)
 	AND definition_id = sqlc.arg(definition_id);
 
+-- name: GetArchivedDefinition :one
+SELECT
+	settings_definitions.id,
+	settings_definitions.scope,
+	settings_definitions.name,
+	settings_definitions.description,
+	settings_definitions.kind,
+	settings_definitions.default_value,
+	settings_definitions.admin_only,
+	settings_definitions.created_at,
+	settings_definitions.last_updated_at,
+	settings_definitions.archived_at
+FROM settings_definitions
+WHERE settings_definitions.id = sqlc.arg(id)
+	AND settings_definitions.scope = sqlc.arg(scope)
+	AND settings_definitions.archived_at IS NOT NULL;
+
+-- name: GetArchivedValue :one
+SELECT
+	settings_values.id,
+	settings_values.scope,
+	settings_values.definition_id,
+	settings_values.subject_type,
+	settings_values.subject_id,
+	settings_values.value,
+	settings_values.created_at,
+	settings_values.last_updated_at,
+	settings_values.archived_at
+FROM settings_values
+WHERE settings_values.scope = sqlc.arg(scope)
+	AND settings_values.subject_type = sqlc.arg(subject_type)
+	AND settings_values.subject_id = sqlc.arg(subject_id)
+	AND settings_values.definition_id = sqlc.arg(definition_id)
+	AND settings_values.archived_at IS NOT NULL;
+
 -- name: DeleteValuesForSubject :execrows
 DELETE FROM settings_values
 WHERE scope = sqlc.arg(scope)

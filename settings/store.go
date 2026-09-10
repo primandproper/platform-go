@@ -41,6 +41,31 @@ import (
 // caller assembled somewhere else; comments.Store settled it for the module and
 // this store follows.
 //
+// # Every write hands back what it wrote
+//
+// The five writes here return the row they wrote, read on the caller's
+// transaction after the statement: CreateDefinition and SetValue return what was
+// stored, UpdateDefinition and ArchiveDefinition the definition they moved, and
+// ClearValue the answer it took back.
+//
+// It is not a convenience, and the reason is the transaction. A caller inside an
+// uncommitted transaction has no other way to read the row back — the stamps on
+// it are the server's clock, not anything the caller could assemble — and the
+// entry describing the write is written beside the write, from the row. Without
+// this the caller reads first and writes second, and its record then describes
+// the row as it stood a statement earlier rather than as the statement left it.
+// ClearValue is the case where reading first does not merely mislead: the answer
+// is gone from every read on this interface once the row is archived, so the
+// value it hands back is the last place that fact exists.
+//
+// The rejected spelling was mutating the caller's argument in place, which
+// delivers the same guarantee — comments.Store.CreateComment does exactly that.
+// Neither is wrong; one module wants one of them, and more of this one already
+// returns.
+//
+// DeleteValuesForSubject is the exception and answers with a count. It is not a
+// write over one row, and the rows it destroys are destroyed rather than moved.
+//
 // # Thirteen of these are on the wire and one is not
 //
 // settings/grpc serves both halves of this interface: the catalog, which is an
@@ -101,7 +126,8 @@ type DefinitionStore interface {
 	ListDefinitions(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Definition], error)
 
 	// UpdateDefinition rewrites a definition, enumeration included, inside the
-	// caller's transaction. A nil tx is an error wrapping ErrNilExecutor.
+	// caller's transaction, and returns it as stored. A nil tx is an error
+	// wrapping ErrNilExecutor.
 	//
 	// It refuses an edit that some stored value no longer satisfies —
 	// ErrStrandedValues, naming the subject and the value — which is the rule
@@ -117,17 +143,34 @@ type DefinitionStore interface {
 	// clears what it excludes with neither landing without the other. It is the
 	// same rule, applied to the values as the transaction sees them rather than
 	// as the last commit left them.
-	UpdateDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *Definition) error
+	//
+	// The definition it hands back is read on tx after the write, so it carries
+	// the last_updated_at the server stamped. The caller's argument is left
+	// alone — a write that mutates what it was handed and a write that returns
+	// what it wrote deliver the same guarantee, and this module spells it the
+	// second way. See [Store] on what returning the row is for.
+	UpdateDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *Definition) (*Definition, error)
 
-	// ArchiveDefinition retires a setting inside the caller's transaction. A nil
-	// tx is an error wrapping ErrNilExecutor.
+	// ArchiveDefinition retires a setting inside the caller's transaction and
+	// returns the definition it retired. A nil tx is an error wrapping
+	// ErrNilExecutor.
 	//
 	// The values stored against it are left alone and the name stays claimed:
 	// archiving is not erasure, and freeing the name would let a second
 	// definition inherit rows written for the first. A catalog that genuinely
 	// wants the name back deletes the definition, which takes its values with
 	// it through the schema's cascade.
-	ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error
+	//
+	// The row comes back because a caller of this holds an id and nothing else,
+	// and the entry recording a retirement is about the name, the kind and the
+	// enumeration that id stood for. It is read on tx after the write, through
+	// one of the two statements here that reach an archived row — the other is
+	// [ValueStore.ClearValue]'s — so it carries the retirement stamp as well,
+	// which no caller can reconstruct because archived_at is the server's clock.
+	//
+	// A definition that was already archived, or that is not in this scope, is
+	// ErrDefinitionNotFound and a nil row.
+	ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*Definition, error)
 }
 
 // ValueStore is the request path: what one subject answered, and what a setting
@@ -162,12 +205,28 @@ type ValueStore interface {
 	GetValue(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subject Subject, name string) (*Value, error)
 
 	// ClearValue takes a subject's answer back inside the caller's transaction,
-	// leaving them on the definition's default. A nil tx is an error wrapping
-	// ErrNilExecutor.
+	// leaving them on the definition's default, and returns the answer it
+	// cleared. A nil tx is an error wrapping ErrNilExecutor.
 	//
 	// See [DefinitionStore.UpdateDefinition] for what clearing a value in the
 	// same transaction as an edit to its definition buys.
-	ClearValue(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject Subject, name string) error
+	//
+	// What comes back is the value as the clearing left it: the raw answer, the
+	// creation time recording when the subject first gave it, and the stamp
+	// saying when it was taken back. It is the one return here that is not a
+	// convenience. The row is archived rather than deleted, but no read on this
+	// interface reaches an archived row, so once this commits the answer a
+	// subject had is unreadable through this package — and it is exactly what an
+	// audit entry recording the change is about. A caller reading it first
+	// through GetValue would be describing the row a statement earlier rather
+	// than the row this statement moved.
+	//
+	// The row is non-nil exactly when the error is nil, and there is no third
+	// case: clearing an answer the subject does not have is ErrValueNotFound
+	// rather than a no-op, so a nil row never arrives beside a nil error.
+	// Clearing an already-cleared answer is the same refusal, because a cleared
+	// row is not a live one.
+	ClearValue(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject Subject, name string) (*Value, error)
 
 	// DeleteValuesForSubject destroys everything one subject answered within
 	// the scope — cleared answers included — and reports how many rows that

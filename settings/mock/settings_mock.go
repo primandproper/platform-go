@@ -24,10 +24,10 @@ var _ settings.Store = &StoreMock{}
 //
 //		// make and configure a mocked settings.Store
 //		mockedStore := &StoreMock{
-//			ArchiveDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error {
+//			ArchiveDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error) {
 //				panic("mock out the ArchiveDefinition method")
 //			},
-//			ClearValueFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) error {
+//			ClearValueFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) (*settings.Value, error) {
 //				panic("mock out the ClearValue method")
 //			},
 //			CreateDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error) {
@@ -63,7 +63,7 @@ var _ settings.Store = &StoreMock{}
 //			SetValueFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string, raw string) (*settings.Value, error) {
 //				panic("mock out the SetValue method")
 //			},
-//			UpdateDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error {
+//			UpdateDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error) {
 //				panic("mock out the UpdateDefinition method")
 //			},
 //		}
@@ -74,10 +74,10 @@ var _ settings.Store = &StoreMock{}
 //	}
 type StoreMock struct {
 	// ArchiveDefinitionFunc mocks the ArchiveDefinition method.
-	ArchiveDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error
+	ArchiveDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error)
 
 	// ClearValueFunc mocks the ClearValue method.
-	ClearValueFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) error
+	ClearValueFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) (*settings.Value, error)
 
 	// CreateDefinitionFunc mocks the CreateDefinition method.
 	CreateDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error)
@@ -113,7 +113,7 @@ type StoreMock struct {
 	SetValueFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string, raw string) (*settings.Value, error)
 
 	// UpdateDefinitionFunc mocks the UpdateDefinition method.
-	UpdateDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error
+	UpdateDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -303,7 +303,7 @@ type StoreMock struct {
 }
 
 // ArchiveDefinition calls ArchiveDefinitionFunc.
-func (mock *StoreMock) ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error {
+func (mock *StoreMock) ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error) {
 	if mock.ArchiveDefinitionFunc == nil {
 		panic("StoreMock.ArchiveDefinitionFunc: method is nil but Store.ArchiveDefinition was just called")
 	}
@@ -347,7 +347,7 @@ func (mock *StoreMock) ArchiveDefinitionCalls() []struct {
 }
 
 // ClearValue calls ClearValueFunc.
-func (mock *StoreMock) ClearValue(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) error {
+func (mock *StoreMock) ClearValue(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) (*settings.Value, error) {
 	if mock.ClearValueFunc == nil {
 		panic("StoreMock.ClearValueFunc: method is nil but Store.ClearValue was just called")
 	}
@@ -903,7 +903,7 @@ func (mock *StoreMock) SetValueCalls() []struct {
 }
 
 // UpdateDefinition calls UpdateDefinitionFunc.
-func (mock *StoreMock) UpdateDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error {
+func (mock *StoreMock) UpdateDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error) {
 	if mock.UpdateDefinitionFunc == nil {
 		panic("StoreMock.UpdateDefinitionFunc: method is nil but Store.UpdateDefinition was just called")
 	}
@@ -956,7 +956,7 @@ var _ settings.DefinitionStore = &DefinitionStoreMock{}
 //
 //		// make and configure a mocked settings.DefinitionStore
 //		mockedDefinitionStore := &DefinitionStoreMock{
-//			ArchiveDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error {
+//			ArchiveDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error) {
 //				panic("mock out the ArchiveDefinition method")
 //			},
 //			CreateDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error) {
@@ -971,7 +971,7 @@ var _ settings.DefinitionStore = &DefinitionStoreMock{}
 //			ListDefinitionsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[settings.Definition], error) {
 //				panic("mock out the ListDefinitions method")
 //			},
-//			UpdateDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error {
+//			UpdateDefinitionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error) {
 //				panic("mock out the UpdateDefinition method")
 //			},
 //		}
@@ -982,7 +982,7 @@ var _ settings.DefinitionStore = &DefinitionStoreMock{}
 //	}
 type DefinitionStoreMock struct {
 	// ArchiveDefinitionFunc mocks the ArchiveDefinition method.
-	ArchiveDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error
+	ArchiveDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error)
 
 	// CreateDefinitionFunc mocks the CreateDefinition method.
 	CreateDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error)
@@ -997,7 +997,7 @@ type DefinitionStoreMock struct {
 	ListDefinitionsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[settings.Definition], error)
 
 	// UpdateDefinitionFunc mocks the UpdateDefinition method.
-	UpdateDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error
+	UpdateDefinitionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -1077,7 +1077,7 @@ type DefinitionStoreMock struct {
 }
 
 // ArchiveDefinition calls ArchiveDefinitionFunc.
-func (mock *DefinitionStoreMock) ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) error {
+func (mock *DefinitionStoreMock) ArchiveDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definitionID string) (*settings.Definition, error) {
 	if mock.ArchiveDefinitionFunc == nil {
 		panic("DefinitionStoreMock.ArchiveDefinitionFunc: method is nil but DefinitionStore.ArchiveDefinition was just called")
 	}
@@ -1297,7 +1297,7 @@ func (mock *DefinitionStoreMock) ListDefinitionsCalls() []struct {
 }
 
 // UpdateDefinition calls UpdateDefinitionFunc.
-func (mock *DefinitionStoreMock) UpdateDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) error {
+func (mock *DefinitionStoreMock) UpdateDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *settings.Definition) (*settings.Definition, error) {
 	if mock.UpdateDefinitionFunc == nil {
 		panic("DefinitionStoreMock.UpdateDefinitionFunc: method is nil but DefinitionStore.UpdateDefinition was just called")
 	}
@@ -1350,7 +1350,7 @@ var _ settings.ValueStore = &ValueStoreMock{}
 //
 //		// make and configure a mocked settings.ValueStore
 //		mockedValueStore := &ValueStoreMock{
-//			ClearValueFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) error {
+//			ClearValueFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) (*settings.Value, error) {
 //				panic("mock out the ClearValue method")
 //			},
 //			DeleteValuesForSubjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject) (int64, error) {
@@ -1382,7 +1382,7 @@ var _ settings.ValueStore = &ValueStoreMock{}
 //	}
 type ValueStoreMock struct {
 	// ClearValueFunc mocks the ClearValue method.
-	ClearValueFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) error
+	ClearValueFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) (*settings.Value, error)
 
 	// DeleteValuesForSubjectFunc mocks the DeleteValuesForSubject method.
 	DeleteValuesForSubjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject) (int64, error)
@@ -1521,7 +1521,7 @@ type ValueStoreMock struct {
 }
 
 // ClearValue calls ClearValueFunc.
-func (mock *ValueStoreMock) ClearValue(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) error {
+func (mock *ValueStoreMock) ClearValue(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject settings.Subject, name string) (*settings.Value, error) {
 	if mock.ClearValueFunc == nil {
 		panic("ValueStoreMock.ClearValueFunc: method is nil but ValueStore.ClearValue was just called")
 	}

@@ -138,6 +138,16 @@ against it can be written in one transaction, and so can a clearance and the
 narrowing that would otherwise have been refused on its account —
 [Store.UpdateDefinition] says what that changes.
 
+It is also why every write here hands back the row it wrote, read on that same
+transaction after the statement. The companion the paragraph above is about is an
+entry describing the write, and the row it describes has not committed — so a
+caller that had to read it first would be recording the row as it stood a
+statement earlier, and the stamps on it are the server's clock rather than
+anything the caller could assemble. [Store.ClearValue] is the case where reading
+first does not merely mislead: no read on this interface reaches a cleared
+answer, so the value it returns is the last place that answer exists. See [Store]
+for the shape and its one exception.
+
 # The reads take the wider executor
 
 A read takes a database.SQLQueryExecutor, which a database.Tx satisfies. A caller

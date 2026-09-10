@@ -62,13 +62,19 @@ statements with more predicates rather than a second rendering of them:
   - the definition read keyed on the name application code spells, which is the
     read every value-side method begins with
   - the name collision check, keyed on the name and excluding the row being
-    updated — the one statement here rendered from no column list at all,
-    because the unique index covers archived rows and so must the read
+    updated — rendered from no column list at all, because the unique index
+    covers archived rows and so must the read
   - the read-back of created_at, which the create does not carry because the
     database owns the column
   - the value read keyed on its natural key, and the two paged value lists —
     one per subject, one per definition
   - the batched option read, keyed on a whole set of definition ids at once
+  - the two read-backs an archive answers with — the definition
+    ArchiveDefinition retired and the value ClearValue took back. Each is
+    rendered from no column list either, and for the opposite half of the same
+    reason: the archived predicate querygen would derive is exactly the one that
+    excludes the row these are called to describe, so each carries its
+    complement instead and sees only rows an archive moved.
 
 What none of the batched forms can express is the empty batch, which is why the
 store answers that before it calls: see [querygen.Generator.SetReadQuery].

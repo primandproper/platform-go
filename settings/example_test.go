@@ -234,6 +234,105 @@ func exampleWiring(ctx context.Context) (database.Client, settings.Store) {
 }
 
 // exampleDatabase is a throwaway SQLite database with the settings tables in it.
+// ExampleStore_ClearValue shows the reason a clearing answers with a row.
+//
+// The audit entry beside the write is about the answer that was taken back, and
+// after the archive there is nowhere left to read it: every read here reaches
+// live rows only, so a resolution says "weekly (default)" and GetValue says the
+// subject has not answered. Reading it before the write instead would describe
+// the row a statement earlier, and would not be inside the guard that decides
+// whether the clearing happened at all.
+func ExampleStore_ClearValue() {
+	ctx := context.Background()
+	client := exampleDatabase(ctx)
+	scope := tenancy.Global()
+
+	// The consumer's own table, standing in for whatever a real application
+	// writes beside a setting.
+	if _, err := client.Writer().ExecContext(ctx,
+		`CREATE TABLE audit_log (subject_id TEXT NOT NULL, setting TEXT NOT NULL, value TEXT NOT NULL)`); err != nil {
+		panic(err)
+	}
+
+	store, err := settings.NewSQLStore(client)
+	if err != nil {
+		panic(err)
+	}
+
+	ada := settings.Subject{Type: settings.SubjectUser, ID: "user-ada"}
+
+	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
+		if _, txErr := store.CreateDefinition(ctx, tx, scope, &settings.Definition{
+			Name:        "notifications.digest",
+			Kind:        settings.KindString,
+			Default:     pointer.To("weekly"),
+			Enumeration: []string{"daily", "weekly", "never"},
+		}); txErr != nil {
+			return txErr
+		}
+
+		_, txErr := store.SetValue(ctx, tx, scope, ada, "notifications.digest", "daily")
+
+		return txErr
+	}); err != nil {
+		panic(err)
+	}
+
+	var effective string
+
+	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
+		cleared, txErr := store.ClearValue(ctx, tx, scope, ada, "notifications.digest")
+		if txErr != nil {
+			return txErr
+		}
+
+		// What the subject had chosen, from the row the statement moved. The
+		// entry and the clearing land together or not at all.
+		if _, txErr = tx.ExecContext(ctx,
+			`INSERT INTO audit_log (subject_id, setting, value) VALUES (?, ?, ?)`,
+			cleared.Subject.ID, "notifications.digest", cleared.Raw); txErr != nil {
+			return txErr
+		}
+
+		resolved, txErr := store.Resolve(ctx, tx, scope, ada, "notifications.digest")
+		if txErr != nil {
+			return txErr
+		}
+
+		effective = fmt.Sprintf("%s (%s)", resolved.Raw, resolved.Source)
+
+		return nil
+	}); err != nil {
+		panic(err)
+	}
+
+	// And the answer is unreadable through this package now, which is why the
+	// return above was the last place it existed.
+	_, err = store.GetValue(ctx, client.Reader(), scope, ada, "notifications.digest")
+
+	fmt.Println("audited:", exampleAudited(ctx, client, ada))
+	fmt.Println("effective:", effective)
+	fmt.Println("readable:", !errors.Is(err, settings.ErrValueNotFound))
+
+	// Output:
+	// audited: daily
+	// effective: weekly (default)
+	// readable: false
+}
+
+// exampleAudited reads back the one row the example above wrote beside the
+// clearing.
+func exampleAudited(ctx context.Context, client database.Client, subject settings.Subject) string {
+	var audited string
+
+	if err := client.Reader().QueryRowContext(ctx,
+		`SELECT value FROM audit_log WHERE subject_id = ?`, subject.ID).Scan(&audited); err != nil {
+		panic(err)
+	}
+
+	return audited
+}
+
 func exampleDatabase(ctx context.Context) database.Client {
 	dir, err := os.MkdirTemp("", "settings-example")
 	if err != nil {

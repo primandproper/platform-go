@@ -71,14 +71,15 @@ func runValueSuite(t *testing.T, env *storeEnv) {
 		first, err := env.set(t, store, testScope, testSubject, "digest", "daily")
 		must.NoError(t, err)
 
-		must.NoError(t, env.clear(t, store, testScope, testSubject, "digest"))
+		mustClear(t, env, store, testScope, testSubject, "digest")
 
 		_, err = store.GetValue(t.Context(), env.reader(), testScope, testSubject, "digest")
 		test.ErrorIs(t, err, ErrValueNotFound)
 
 		// Clearing twice is not a second clearance: the row is already archived,
 		// so the guarded write touches nothing and says so.
-		test.ErrorIs(t, env.clear(t, store, testScope, testSubject, "digest"), ErrValueNotFound)
+		_, err = env.clear(t, store, testScope, testSubject, "digest")
+		test.ErrorIs(t, err, ErrValueNotFound)
 
 		revived, err := env.set(t, store, testScope, testSubject, "digest", "weekly")
 		must.NoError(t, err)
@@ -86,6 +87,69 @@ func runValueSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, first.CreatedAt, revived.CreatedAt)
 		test.Nil(t, revived.ArchivedAt)
 		test.EqOp(t, "weekly", revived.Raw)
+	})
+
+	t.Run("clearing answers with the answer it took back", func(t *testing.T) {
+		t.Parallel()
+
+		// This is the return that is not a convenience. The row is archived
+		// rather than deleted, but no read on this interface reaches an archived
+		// row — so once the transaction commits, what the subject had chosen is
+		// unreadable through this package, and it is the one fact an audit entry
+		// recording the clearing is about.
+		store := env.newStore(t)
+		mustCreate(t, env, store, testScope, stringDefinition("digest"))
+
+		set, err := env.set(t, store, testScope, testSubject, "digest", "daily")
+		must.NoError(t, err)
+
+		cleared := mustClear(t, env, store, testScope, testSubject, "digest")
+
+		test.EqOp(t, set.ID, cleared.ID)
+		test.EqOp(t, "daily", cleared.Raw)
+		test.EqOp(t, testSubject, cleared.Subject)
+		test.EqOp(t, set.DefinitionID, cleared.DefinitionID)
+		test.EqOp(t, testScope, cleared.Scope)
+
+		// The creation time is when the subject first answered, which the
+		// clearing does not disturb, and the stamp is the server's.
+		test.EqOp(t, set.CreatedAt, cleared.CreatedAt)
+		test.NotNil(t, cleared.ArchivedAt)
+
+		// And there is nowhere else left to read it from.
+		_, err = store.GetValue(t.Context(), env.reader(), testScope, testSubject, "digest")
+		test.ErrorIs(t, err, ErrValueNotFound)
+	})
+
+	t.Run("a clearing that moves nothing answers with no row", func(t *testing.T) {
+		t.Parallel()
+
+		// The row comes back only beside a nil error. Clearing an answer the
+		// subject does not have is a refusal rather than a no-op, so there is no
+		// case in which a caller holds a nil row and a nil error and has to
+		// decide what that meant.
+		store := env.newStore(t)
+		mustCreate(t, env, store, testScope, stringDefinition("digest"))
+
+		unanswered, err := env.clear(t, store, testScope, testSubject, "digest")
+		test.ErrorIs(t, err, ErrValueNotFound)
+		test.Nil(t, unanswered)
+
+		mustSet(t, env, store, testScope, testSubject, "digest", "daily")
+		mustClear(t, env, store, testScope, testSubject, "digest")
+
+		// Clearing an already-cleared answer is the same refusal, because a
+		// cleared row is not a live one — and the read-back sees only rows the
+		// guard moved, so it cannot answer with the earlier clearing's row.
+		again, err := env.clear(t, store, testScope, testSubject, "digest")
+		test.ErrorIs(t, err, ErrValueNotFound)
+		test.Nil(t, again)
+
+		// Another tenant's clearing reaches nothing either, and reports the
+		// absence rather than a row.
+		foreign, err := env.clear(t, store, otherScope, testSubject, "digest")
+		test.ErrorIs(t, err, ErrDefinitionNotFound)
+		test.Nil(t, foreign)
 	})
 
 	t.Run("a value is checked against its definition", func(t *testing.T) {
@@ -122,12 +186,13 @@ func runValueSuite(t *testing.T, env *storeEnv) {
 		_, err = store.GetValue(t.Context(), env.reader(), testScope, testSubject, "never.defined")
 		test.ErrorIs(t, err, ErrDefinitionNotFound)
 
-		test.ErrorIs(t, env.clear(t, store, testScope, testSubject, "never.defined"), ErrDefinitionNotFound)
+		_, err = env.clear(t, store, testScope, testSubject, "never.defined")
+		test.ErrorIs(t, err, ErrDefinitionNotFound)
 
 		// An archived definition is not a definition a value can be written
 		// against: the read that every write begins with excludes it.
 		archived := mustCreate(t, env, store, testScope, boolDefinition("retired"))
-		must.NoError(t, env.archive(t, store, testScope, archived.ID))
+		mustArchive(t, env, store, testScope, archived.ID)
 
 		_, err = env.set(t, store, testScope, testSubject, "retired", "true")
 		test.ErrorIs(t, err, ErrDefinitionNotFound)
@@ -212,7 +277,7 @@ func runValueSuite(t *testing.T, env *storeEnv) {
 
 		// A cleared answer leaves the page, which is what makes the page the set
 		// of live overrides rather than the set of rows.
-		must.NoError(t, env.clear(t, store, testScope, second, "digest"))
+		mustClear(t, env, store, testScope, second, "digest")
 
 		live, err := store.ListValuesForDefinition(t.Context(), env.reader(), testScope, "digest", nil)
 		must.NoError(t, err)
@@ -239,7 +304,7 @@ func runValueSuite(t *testing.T, env *storeEnv) {
 		narrowed := *definition
 		narrowed.Enumeration = []string{"weekly", "never"}
 
-		err = env.update(t, store, testScope, &narrowed)
+		_, err = env.update(t, store, testScope, &narrowed)
 		test.ErrorIs(t, err, ErrStrandedValues)
 
 		// The refusal names the subject and the value, because clearing or
@@ -259,21 +324,24 @@ func runValueSuite(t *testing.T, env *storeEnv) {
 		retyped.Default = nil
 		retyped.Enumeration = nil
 
-		test.ErrorIs(t, env.update(t, store, testScope, &retyped), ErrStrandedValues)
+		_, err = env.update(t, store, testScope, &retyped)
+		test.ErrorIs(t, err, ErrStrandedValues)
 
 		// Widening is not stranding, and neither is an edit that leaves the kind
 		// and the enumeration alone.
 		widened := *definition
 		widened.Enumeration = []string{"weekly", "daily", "never", "hourly"}
-		test.NoError(t, env.update(t, store, testScope, &widened))
+		_, err = env.update(t, store, testScope, &widened)
+		test.NoError(t, err)
 
 		// Once the value is cleared, the narrowing goes through: a cleared value
 		// resolves to the default rather than to itself.
-		must.NoError(t, env.clear(t, store, testScope, testSubject, "digest"))
+		mustClear(t, env, store, testScope, testSubject, "digest")
 
 		narrowedAgain := *definition
 		narrowedAgain.Enumeration = []string{"weekly", "never"}
-		test.NoError(t, env.update(t, store, testScope, &narrowedAgain))
+		_, err = env.update(t, store, testScope, &narrowedAgain)
+		test.NoError(t, err)
 	})
 
 	t.Run("another scope's values do not block an edit", func(t *testing.T) {
@@ -291,11 +359,13 @@ func runValueSuite(t *testing.T, env *storeEnv) {
 		// other tenant's answer is not a reason to refuse this tenant's edit.
 		narrowed := *mine
 		narrowed.Enumeration = []string{"weekly", "never"}
-		test.NoError(t, env.update(t, store, testScope, &narrowed))
+		_, err = env.update(t, store, testScope, &narrowed)
+		test.NoError(t, err)
 
 		// And the other tenant's own edit is still refused by their own value.
 		theirNarrowed := *theirs
 		theirNarrowed.Enumeration = []string{"weekly", "never"}
-		test.ErrorIs(t, env.update(t, store, otherScope, &theirNarrowed), ErrStrandedValues)
+		_, err = env.update(t, store, otherScope, &theirNarrowed)
+		test.ErrorIs(t, err, ErrStrandedValues)
 	})
 }

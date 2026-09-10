@@ -147,15 +147,17 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 			edit := *renamed
 			edit.Name = "layout.compact"
-			if txErr := store.UpdateDefinition(t.Context(), tx, testScope, &edit); txErr != nil {
+			if _, txErr := store.UpdateDefinition(t.Context(), tx, testScope, &edit); txErr != nil {
 				return txErr
 			}
 
-			if txErr := store.ArchiveDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
+			if _, txErr := store.ArchiveDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
 				return txErr
 			}
 
-			return store.ClearValue(t.Context(), tx, testScope, testSubject, answered.Name)
+			_, txErr := store.ClearValue(t.Context(), tx, testScope, testSubject, answered.Name)
+
+			return txErr
 		}))
 
 		read, err := store.GetValue(t.Context(), env.reader(), testScope, testSubject, "theme")
@@ -203,15 +205,15 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 			edit := *renamed
 			edit.Name = "layout.compact"
-			if txErr = store.UpdateDefinition(t.Context(), tx, testScope, &edit); txErr != nil {
+			if _, txErr = store.UpdateDefinition(t.Context(), tx, testScope, &edit); txErr != nil {
 				return txErr
 			}
 
-			if txErr = store.ArchiveDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
+			if _, txErr = store.ArchiveDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
 				return txErr
 			}
 
-			if txErr = store.ClearValue(t.Context(), tx, testScope, testSubject, answered.Name); txErr != nil {
+			if _, txErr = store.ClearValue(t.Context(), tx, testScope, testSubject, answered.Name); txErr != nil {
 				return txErr
 			}
 
@@ -260,18 +262,20 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		// Without the clearance the edit is refused, and the refusal names the
 		// value.
-		err := env.update(t, store, testScope, &narrowed)
+		_, err := env.update(t, store, testScope, &narrowed)
 		must.ErrorIs(t, err, ErrStrandedValues)
 		test.StrContains(t, err.Error(), "daily")
 
 		// With it, the walk sees the cleared row as cleared, and the edit goes
 		// through.
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			if txErr := store.ClearValue(t.Context(), tx, testScope, testSubject, "digest"); txErr != nil {
+			if _, txErr := store.ClearValue(t.Context(), tx, testScope, testSubject, "digest"); txErr != nil {
 				return txErr
 			}
 
-			return store.UpdateDefinition(t.Context(), tx, testScope, &narrowed)
+			_, txErr := store.UpdateDefinition(t.Context(), tx, testScope, &narrowed)
+
+			return txErr
 		}))
 
 		read, err := store.GetDefinition(t.Context(), env.reader(), testScope, definition.ID)
@@ -279,6 +283,78 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		test.Eq(t, []string{"never", "weekly"}, read.Enumeration)
 
 		_, err = store.GetValue(t.Context(), env.reader(), testScope, testSubject, "digest")
+		test.ErrorIs(t, err, ErrValueNotFound)
+	})
+
+	t.Run("the three moving writes answer from inside the uncommitted transaction", func(t *testing.T) {
+		t.Parallel()
+
+		// This is what returning the row buys, seen from the caller the
+		// signature is for. A consumer's audit entry is written beside the write,
+		// inside the same transaction, and the row it describes has not
+		// committed — so the only reading of it available is the one the write
+		// hands over. Before the transaction ends, nothing outside it can see any
+		// of these rows at all.
+		store := env.newStore(t)
+
+		edited := mustCreate(t, env, store, testScope, boolDefinition("compact"))
+		retired := mustCreate(t, env, store, testScope, intDefinition("retention.days"))
+		answered := mustCreate(t, env, store, testScope, stringDefinition("digest"))
+
+		mustSet(t, env, store, testScope, testSubject, answered.Name, "daily")
+
+		var (
+			updated  *Definition
+			archived *Definition
+			cleared  *Value
+		)
+
+		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
+			edit := *edited
+			edit.Name = "layout.compact"
+
+			var txErr error
+			if updated, txErr = store.UpdateDefinition(t.Context(), tx, testScope, &edit); txErr != nil {
+				return txErr
+			}
+
+			if archived, txErr = store.ArchiveDefinition(t.Context(), tx, testScope, retired.ID); txErr != nil {
+				return txErr
+			}
+
+			cleared, txErr = store.ClearValue(t.Context(), tx, testScope, testSubject, answered.Name)
+			if txErr != nil {
+				return txErr
+			}
+
+			// Each row is the one the statement just wrote, stamped by the
+			// server, while the transaction that wrote it is still open.
+			test.EqOp(t, "layout.compact", updated.Name)
+			must.NotNil(t, updated.LastUpdatedAt)
+			must.NotNil(t, archived.ArchivedAt)
+			test.EqOp(t, "retention.days", archived.Name)
+			must.NotNil(t, cleared.ArchivedAt)
+			test.EqOp(t, "daily", cleared.Raw)
+
+			// And a reader outside the transaction has none of it yet, which is
+			// why a caller inside one has nowhere else to read them from.
+			outside, readErr := store.GetDefinition(t.Context(), env.reader(), testScope, edited.ID)
+			must.NoError(t, readErr)
+			test.EqOp(t, "compact", outside.Name)
+
+			return nil
+		}))
+
+		// After the commit the edit is readable and the other two rows are not,
+		// which is the asymmetry the two read-backs exist for.
+		read, err := store.GetDefinition(t.Context(), env.reader(), testScope, edited.ID)
+		must.NoError(t, err)
+		test.EqOp(t, updated.Name, read.Name)
+
+		_, err = store.GetDefinition(t.Context(), env.reader(), testScope, retired.ID)
+		test.ErrorIs(t, err, ErrDefinitionNotFound)
+
+		_, err = store.GetValue(t.Context(), env.reader(), testScope, testSubject, answered.Name)
 		test.ErrorIs(t, err, ErrValueNotFound)
 	})
 
@@ -293,8 +369,11 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		_, err := store.CreateDefinition(t.Context(), nil, testScope, stringDefinition("digest"))
 		test.ErrorIs(t, err, ErrNilExecutor)
 
-		test.ErrorIs(t, store.UpdateDefinition(t.Context(), nil, testScope, stringDefinition("digest")), ErrNilExecutor)
-		test.ErrorIs(t, store.ArchiveDefinition(t.Context(), nil, testScope, "whatever"), ErrNilExecutor)
+		_, err = store.UpdateDefinition(t.Context(), nil, testScope, stringDefinition("digest"))
+		test.ErrorIs(t, err, ErrNilExecutor)
+
+		_, err = store.ArchiveDefinition(t.Context(), nil, testScope, "whatever")
+		test.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.GetDefinition(t.Context(), nil, testScope, "whatever")
 		test.ErrorIs(t, err, ErrNilExecutor)
@@ -308,7 +387,8 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		_, err = store.SetValue(t.Context(), nil, testScope, testSubject, "digest", "daily")
 		test.ErrorIs(t, err, ErrNilExecutor)
 
-		test.ErrorIs(t, store.ClearValue(t.Context(), nil, testScope, testSubject, "digest"), ErrNilExecutor)
+		_, err = store.ClearValue(t.Context(), nil, testScope, testSubject, "digest")
+		test.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.DeleteValuesForSubject(t.Context(), nil, testScope, testSubject)
 		test.ErrorIs(t, err, ErrNilExecutor)
@@ -364,27 +444,27 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 			malformed.Default = pointer.To("hourly")
 			_, malformedCreate = store.CreateDefinition(t.Context(), tx, testScope, malformed)
 
-			nilUpdate = store.UpdateDefinition(t.Context(), tx, testScope, nil)
-			unidentifiedUpdate = store.UpdateDefinition(t.Context(), tx, testScope, stringDefinition("digest"))
+			_, nilUpdate = store.UpdateDefinition(t.Context(), tx, testScope, nil)
+			_, unidentifiedUpdate = store.UpdateDefinition(t.Context(), tx, testScope, stringDefinition("digest"))
 
 			absent := stringDefinition("digest")
 			absent.ID = "def_never_written"
-			absentUpdate = store.UpdateDefinition(t.Context(), tx, testScope, absent)
+			_, absentUpdate = store.UpdateDefinition(t.Context(), tx, testScope, absent)
 
 			collision := *other
 			collision.Name = taken.Name
-			takenUpdate = store.UpdateDefinition(t.Context(), tx, testScope, &collision)
+			_, takenUpdate = store.UpdateDefinition(t.Context(), tx, testScope, &collision)
 
-			absentArchive = store.ArchiveDefinition(t.Context(), tx, testScope, "def_never_written")
-			foreignArchive = store.ArchiveDefinition(t.Context(), tx, otherScope, taken.ID)
+			_, absentArchive = store.ArchiveDefinition(t.Context(), tx, testScope, "def_never_written")
+			_, foreignArchive = store.ArchiveDefinition(t.Context(), tx, otherScope, taken.ID)
 
 			_, unnamedSet = store.SetValue(t.Context(), tx, testScope, Subject{Type: SubjectUser}, "digest", "daily")
 			_, undefinedSet = store.SetValue(t.Context(), tx, testScope, testSubject, "never.defined", "daily")
 			_, unenumeratedSet = store.SetValue(t.Context(), tx, testScope, testSubject, "digest", "hourly")
 
-			unnamedClear = store.ClearValue(t.Context(), tx, testScope, Subject{ID: "user-1"}, "digest")
-			undefinedClear = store.ClearValue(t.Context(), tx, testScope, testSubject, "never.defined")
-			unansweredClear = store.ClearValue(t.Context(), tx, testScope, testSubject, "digest")
+			_, unnamedClear = store.ClearValue(t.Context(), tx, testScope, Subject{ID: "user-1"}, "digest")
+			_, undefinedClear = store.ClearValue(t.Context(), tx, testScope, testSubject, "never.defined")
+			_, unansweredClear = store.ClearValue(t.Context(), tx, testScope, testSubject, "digest")
 
 			return nil
 		}))
@@ -440,7 +520,7 @@ func runErasureSuite(t *testing.T, env *storeEnv) {
 		// reach and a clearance does not.
 		mustSet(t, env, store, testScope, testSubject, "digest", "daily")
 		mustSet(t, env, store, testScope, testSubject, "compact", "true")
-		must.NoError(t, env.clear(t, store, testScope, testSubject, "compact"))
+		mustClear(t, env, store, testScope, testSubject, "compact")
 
 		// And two rows the erasure must not touch: another subject's in this
 		// scope, and this subject's in another.

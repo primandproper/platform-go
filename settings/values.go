@@ -125,20 +125,27 @@ func (s *SQLStore) GetValue(
 }
 
 // ClearValue takes a subject's answer back inside the caller's transaction,
-// leaving them on the definition's default.
+// leaving them on the definition's default, and answers with the answer it took
+// back.
 //
 // The row is archived rather than deleted. What a subject answered is worth
 // keeping — it is what a later restore restores and what an audit of a
 // preference change reads — and the row is the thing the unique key is about, so
 // archiving leaves the key claimed and the next write converging on the same
 // row.
+//
+// Which is also why the cleared value is what this returns rather than nothing.
+// The row survives, but every read a caller has reaches only live rows, so after
+// this commits the answer that was cleared is unreadable through this package —
+// and it is the one fact an audit entry recording the clearing is about. See
+// [ValueStore.ClearValue] on what a nil row means, which is only ever an error.
 func (s *SQLStore) ClearValue(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	subject Subject,
 	name string,
-) error {
+) (*Value, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(definitionKey, name),
@@ -148,16 +155,16 @@ func (s *SQLStore) ClearValue(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "clearing setting %q", name)
+		return nil, op.Error(ErrNilExecutor, "clearing setting %q", name)
 	}
 
 	if err := s.addressable(scope, subject); err != nil {
-		return op.Error(err, "clearing setting %q", name)
+		return nil, op.Error(err, "clearing setting %q", name)
 	}
 
 	definition, err := s.readDefinitionByName(ctx, tx, scope, name)
 	if err != nil {
-		return op.Error(err, "clearing setting %q", name)
+		return nil, op.Error(err, "clearing setting %q", name)
 	}
 
 	count, err := s.q.ArchiveValue(ctx, tx, settingsdb.ArchiveValueParams{
@@ -167,10 +174,15 @@ func (s *SQLStore) ClearValue(
 		DefinitionID: definition.ID,
 	})
 	if err = guardCount(count, err, ErrValueNotFound, "clearing setting value"); err != nil {
-		return op.Error(err, "clearing setting %q", name)
+		return nil, op.Error(err, "clearing setting %q", name)
 	}
 
-	return nil
+	cleared, err := s.readArchivedValue(ctx, tx, scope, subject, definition.ID)
+	if err != nil {
+		return nil, op.Error(err, "reading back the cleared value of setting %q", name)
+	}
+
+	return cleared, nil
 }
 
 // DeleteValuesForSubject destroys everything one subject answered within the
@@ -454,6 +466,39 @@ func (s *SQLStore) readValue(
 	}
 
 	return valueFromRow(&row), nil
+}
+
+// readArchivedValue is the clearing's read-back: the row ClearValue has just
+// archived, on the transaction that archived it.
+//
+// It is a second statement rather than readValue for the reason
+// readArchivedDefinition is one. GetValue filters archived_at IS NULL — which is
+// what makes a cleared answer resolve to the default rather than to itself — so
+// the read that would describe what a clearing did is the one read that cannot
+// see it, and the statement here carries the complement instead.
+func (s *SQLStore) readArchivedValue(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	subject Subject,
+	definitionID string,
+) (*Value, error) {
+	row, err := s.q.GetArchivedValue(ctx, q, settingsdb.GetArchivedValueParams{
+		Scope:        scope,
+		SubjectType:  string(subject.Type),
+		SubjectID:    subject.ID,
+		DefinitionID: definitionID,
+	})
+	if err != nil {
+		return nil, notFound(err, ErrValueNotFound)
+	}
+
+	// Same projection, same order, so the conversion says all there is to say
+	// between the two rows — and stops being legal the day they diverge, which a
+	// second hand-written converter would not.
+	live := settingsdb.GetValueRow(row)
+
+	return valueFromRow(&live), nil
 }
 
 // listValuesForSubject is the paged read behind the exported method and behind

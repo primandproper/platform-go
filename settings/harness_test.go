@@ -151,22 +151,46 @@ func (e *storeEnv) create(tb testing.TB, store *SQLStore, scope tenancy.Scope, d
 
 // update rewrites one definition in a transaction of its own and reports what
 // the write returned.
-func (e *storeEnv) update(tb testing.TB, store *SQLStore, scope tenancy.Scope, definition *Definition) error {
+func (e *storeEnv) update(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	definition *Definition,
+) (*Definition, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.UpdateDefinition(tb.Context(), tx, scope, definition)
+	var updated *Definition
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		updated, txErr = store.UpdateDefinition(tb.Context(), tx, scope, definition)
+
+		return txErr
 	})
+
+	return updated, err
 }
 
 // archive retires one definition in a transaction of its own and reports what
 // the write returned.
-func (e *storeEnv) archive(tb testing.TB, store *SQLStore, scope tenancy.Scope, definitionID string) error {
+func (e *storeEnv) archive(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	definitionID string,
+) (*Definition, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ArchiveDefinition(tb.Context(), tx, scope, definitionID)
+	var archived *Definition
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		archived, txErr = store.ArchiveDefinition(tb.Context(), tx, scope, definitionID)
+
+		return txErr
 	})
+
+	return archived, err
 }
 
 // set stores one subject's answer in a transaction of its own and reports what
@@ -188,12 +212,25 @@ func (e *storeEnv) set(tb testing.TB, store *SQLStore, scope tenancy.Scope, subj
 
 // clear takes one subject's answer back in a transaction of its own and reports
 // what the write returned.
-func (e *storeEnv) clear(tb testing.TB, store *SQLStore, scope tenancy.Scope, subject Subject, name string) error {
+func (e *storeEnv) clear(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	subject Subject,
+	name string,
+) (*Value, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ClearValue(tb.Context(), tx, scope, subject, name)
+	var cleared *Value
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		cleared, txErr = store.ClearValue(tb.Context(), tx, scope, subject, name)
+
+		return txErr
 	})
+
+	return cleared, err
 }
 
 // erase runs DeleteValuesForSubject in a transaction of its own and returns the
@@ -255,4 +292,37 @@ func mustSet(tb testing.TB, e *storeEnv, store *SQLStore, scope tenancy.Scope, s
 	must.NotNil(tb, value)
 
 	return value
+}
+
+// mustUpdate rewrites a definition and fails the test if the edit is refused.
+func mustUpdate(tb testing.TB, e *storeEnv, store *SQLStore, scope tenancy.Scope, definition *Definition) *Definition {
+	tb.Helper()
+
+	updated, err := e.update(tb, store, scope, definition)
+	must.NoError(tb, err)
+	must.NotNil(tb, updated)
+
+	return updated
+}
+
+// mustArchive retires a definition and fails the test if it will not retire.
+func mustArchive(tb testing.TB, e *storeEnv, store *SQLStore, scope tenancy.Scope, definitionID string) *Definition {
+	tb.Helper()
+
+	archived, err := e.archive(tb, store, scope, definitionID)
+	must.NoError(tb, err)
+	must.NotNil(tb, archived)
+
+	return archived
+}
+
+// mustClear takes a subject's answer back and fails the test if there was none.
+func mustClear(tb testing.TB, e *storeEnv, store *SQLStore, scope tenancy.Scope, subject Subject, name string) *Value {
+	tb.Helper()
+
+	cleared, err := e.clear(tb, store, scope, subject, name)
+	must.NoError(tb, err)
+	must.NotNil(tb, cleared)
+
+	return cleared
 }
