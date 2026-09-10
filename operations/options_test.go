@@ -21,10 +21,10 @@ func pillars() (logger logging.Logger, tracerProvider tracing.Provider, metricsP
 	return loggingnoop.NewLogger(), tracingnoop.NewTracerProvider(), metricsnoop.NewMetricsProvider()
 }
 
-func TestStoreOptions(T *testing.T) {
+func TestSQLStoreOptions(T *testing.T) {
 	T.Parallel()
 
-	apply := func(opts ...StoreOption) *SQLStore {
+	apply := func(opts ...SQLStoreOption) *SQLStore {
 		s := &SQLStore{}
 		for _, opt := range opts {
 			opt(s)
@@ -62,6 +62,30 @@ func TestStoreOptions(T *testing.T) {
 		test.Nil(t, s.tracerProvider)
 		test.Nil(t, s.metricsProvider)
 		test.EqOp(t, "", s.notifyChannel)
+	})
+
+	T.Run("every store option is one type, so a caller can collect them", func(t *testing.T) {
+		t.Parallel()
+
+		// The name this type carries is the one every sibling SQL store
+		// carries, and what it buys is this: a caller assembling store options
+		// conditionally writes the slice once, and the config subpackage's
+		// WithStoreOptions takes the same thing the constructor does.
+		logger, tracerProvider, metricsProvider := pillars()
+
+		collected := []SQLStoreOption{
+			WithStoreLogger(logger),
+			WithStoreTracerProvider(tracerProvider),
+			WithStoreMetricsProvider(metricsProvider),
+			WithStoreTablePrefix("ops_"),
+			WithStoreNotifyChannel("operations_changed"),
+		}
+
+		s := apply(collected...)
+
+		test.Eq(t, logger, s.logger)
+		test.EqOp(t, "ops_", s.tablePrefix)
+		test.EqOp(t, "operations_changed", s.notifyChannel)
 	})
 
 	T.Run("the notify channel is what turns the watch path from a poll into a push", func(t *testing.T) {

@@ -86,7 +86,7 @@ func NewStore(cfg *Config, client database.Client, opts ...Option) (operations.S
 
 	o := newOptions(opts)
 
-	base := []operations.StoreOption{
+	base := []operations.SQLStoreOption{
 		operations.WithStoreTablePrefix(cfg.Operations.TablePrefix),
 		operations.WithStoreNotifyChannel(cfg.Operations.NotifyChannel),
 	}
