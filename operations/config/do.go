@@ -14,8 +14,10 @@ import (
 
 // RegisterStore registers an operations.Store with the injector.
 //
-// Prerequisites: *Config and database.Client must be registered before the store
-// is invoked.
+// Prerequisites: context.Context, *Config and database.Client must be registered
+// before the store is invoked. The context is the one NewStore validates the
+// configuration under, and is the same key every other registration here
+// resolves.
 func RegisterStore(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (operations.Store, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -24,6 +26,7 @@ func RegisterStore(i do.Injector) {
 		}
 
 		return NewStore(
+			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
 			do.MustInvoke[database.Client](i),
 			WithPillars(pillars),

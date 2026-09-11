@@ -3,6 +3,7 @@ package operationscfg
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/workqueue"
@@ -47,7 +48,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("builds a store over a Postgres client", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(&Config{}, postgresClient())
+		store, err := NewStore(t.Context(), &Config{}, postgresClient())
 		must.NoError(t, err)
 		test.NotNil(t, store)
 	})
@@ -55,7 +56,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("a nil config is refused", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(nil, postgresClient())
+		store, err := NewStore(t.Context(), nil, postgresClient())
 		test.ErrorIs(t, err, operations.ErrNilConfig)
 		test.Nil(t, store)
 	})
@@ -63,7 +64,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("a nil client is refused", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(&Config{}, nil)
+		store, err := NewStore(t.Context(), &Config{}, nil)
 		test.ErrorIs(t, err, operations.ErrNilDatabaseClient)
 		test.Nil(t, store)
 	})
@@ -74,7 +75,7 @@ func TestNewStore(T *testing.T) {
 
 			// This package's SQL is written against Postgres rather than reduced
 			// to a portable subset, so the refusal belongs at construction.
-			store, err := NewStore(&Config{}, clientFor(d))
+			store, err := NewStore(t.Context(), &Config{}, clientFor(d))
 			test.ErrorIs(t, err, dialect.ErrUnsupported)
 			test.Nil(t, store)
 		})
@@ -83,7 +84,7 @@ func TestNewStore(T *testing.T) {
 	T.Run("the pillars reach the store", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(&Config{}, postgresClient(), WithPillars(allPillars()))
+		store, err := NewStore(t.Context(), &Config{}, postgresClient(), WithPillars(allPillars()))
 		must.NoError(t, err)
 		test.NotNil(t, store)
 	})
@@ -94,7 +95,7 @@ func TestNewStore(T *testing.T) {
 		cfg := &Config{}
 		cfg.Operations.TablePrefix = "no-hyphens-allowed"
 
-		store, err := NewStore(cfg, postgresClient())
+		store, err := NewStore(t.Context(), cfg, postgresClient())
 		must.Error(t, err)
 		test.Nil(t, store)
 	})
@@ -108,7 +109,7 @@ func TestNewStore(T *testing.T) {
 		cfg := &Config{}
 		cfg.Operations.TablePrefix = "bad-prefix"
 
-		store, err := NewStore(cfg, postgresClient(),
+		store, err := NewStore(t.Context(), cfg, postgresClient(),
 			WithStoreOptions(operations.WithStoreTablePrefix("good_prefix")))
 		must.NoError(t, err)
 		test.NotNil(t, store)
@@ -378,10 +379,18 @@ func TestWithTracerProvider(T *testing.T) {
 func container(t *testing.T, client database.Client) do.Injector {
 	t.Helper()
 
+	return containerWith(t, client, &Config{})
+}
+
+// containerWith is container over a named config, so a registration can be
+// pointed at one that will not validate.
+func containerWith(t *testing.T, client database.Client, cfg *Config) do.Injector {
+	t.Helper()
+
 	i := do.New()
 	do.ProvideValue[context.Context](i, t.Context())
 	do.ProvideValue[database.Client](i, client)
-	do.ProvideValue(i, &Config{})
+	do.ProvideValue(i, cfg)
 
 	return i
 }
@@ -594,4 +603,162 @@ func TestRegister_failingObservabilityIsAnError(T *testing.T) {
 			test.ErrorIs(t, tc.invoke(i), errBuild)
 		})
 	}
+}
+
+// invalidConfig returns a Config that survives EnsureDefaults and then fails
+// ValidateWithContext.
+//
+// Retention is the knob it fails on because it is the kind that can reach the
+// validator at all: EnsureDefaults replaces a retention that is zero or
+// negative, so only a positive one it leaves alone is still there to be
+// rejected. A second is positive and an order of magnitude under the minute
+// operations.Config requires.
+func invalidConfig() *Config {
+	cfg := &Config{}
+	cfg.Operations.Retention = time.Second
+
+	return cfg
+}
+
+// TestConstructors_refuseAnInvalidConfig pins the order every constructor here
+// owes its configuration: defaults first, then validation, before anything is
+// built. An unset field with a documented default is not a validation failure,
+// and validating first would turn the common case into one.
+//
+// Each of them validates the whole Config rather than the half it is about to
+// build from, which is why one bad retention refuses all five: the halves are
+// derived from each other, and a process building only a store still wants to
+// hear at boot that the queue its operations will be enqueued onto is
+// misconfigured.
+func TestConstructors_refuseAnInvalidConfig(T *testing.T) {
+	T.Parallel()
+
+	for _, tc := range []struct {
+		// queue is built from a config that does validate, so a constructor
+		// taking one is refused by the validation rather than by a nil-argument
+		// check that would have fired whether the validation ran or not.
+		build func(ctx context.Context, queue *workqueue.Queue[string]) error
+		name  string
+	}{
+		{
+			name: "NewStore",
+			build: func(ctx context.Context, _ *workqueue.Queue[string]) error {
+				_, err := NewStore(ctx, invalidConfig(), postgresClient())
+
+				return err
+			},
+		},
+		{
+			name: "NewQueue",
+			build: func(ctx context.Context, _ *workqueue.Queue[string]) error {
+				_, err := NewQueue(ctx, invalidConfig(), postgresClient())
+
+				return err
+			},
+		},
+		{
+			name: "NewService",
+			build: func(ctx context.Context, _ *workqueue.Queue[string]) error {
+				_, _, err := NewService(ctx, invalidConfig(), postgresClient(), operations.NewRegistry())
+
+				return err
+			},
+		},
+		{
+			name: "NewWorker",
+			build: func(ctx context.Context, queue *workqueue.Queue[string]) error {
+				_, err := NewWorker(ctx, invalidConfig(), stubStore{}, queue, operations.NewRegistry())
+
+				return err
+			},
+		},
+		{
+			name: "NewWatcher",
+			build: func(ctx context.Context, _ *workqueue.Queue[string]) error {
+				_, err := NewWatcher(ctx, invalidConfig(), stubStore{})
+
+				return err
+			},
+		},
+	} {
+		T.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			queue, err := NewQueue(t.Context(), &Config{}, postgresClient())
+			must.NoError(t, err)
+			t.Cleanup(func() { _ = queue.Close(t.Context()) })
+
+			err = tc.build(t.Context(), queue)
+			must.Error(t, err)
+
+			// Asserted on the field rather than merely that something failed: a
+			// nil argument or an unsupported dialect would also produce an
+			// error, and neither would exercise the validation.
+			test.ErrorContains(t, err, "retention")
+		})
+	}
+}
+
+// TestRegister_refuseAnInvalidConfig is the same pinning one seam out, through
+// the registrations, since a container is where a config assembled from the
+// environment actually arrives.
+func TestRegister_refuseAnInvalidConfig(T *testing.T) {
+	T.Parallel()
+
+	T.Run("RegisterStore", func(t *testing.T) {
+		t.Parallel()
+
+		i := containerWith(t, postgresClient(), invalidConfig())
+		RegisterStore(i)
+
+		_, err := do.Invoke[operations.Store](i)
+		must.Error(t, err)
+		test.ErrorContains(t, err, "retention")
+	})
+
+	T.Run("RegisterQueue", func(t *testing.T) {
+		t.Parallel()
+
+		i := containerWith(t, postgresClient(), invalidConfig())
+		RegisterQueue(i)
+
+		_, err := do.Invoke[*workqueue.Queue[string]](i)
+		must.Error(t, err)
+		test.ErrorContains(t, err, "retention")
+	})
+
+	// The worker and the watcher are handed a store and a queue rather than
+	// resolving the registered ones, so the refusal under test is their own
+	// constructor's and not one propagated from the store's.
+	T.Run("RegisterWorker", func(t *testing.T) {
+		t.Parallel()
+
+		i := containerWith(t, postgresClient(), invalidConfig())
+		do.ProvideValue[operations.Store](i, stubStore{})
+		do.ProvideValue(i, operations.NewRegistry())
+
+		queue, err := NewQueue(t.Context(), &Config{}, postgresClient())
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = queue.Close(t.Context()) })
+		do.ProvideValue(i, queue)
+
+		RegisterWorker(i)
+
+		_, err = do.Invoke[*operations.Worker](i)
+		must.Error(t, err)
+		test.ErrorContains(t, err, "retention")
+	})
+
+	T.Run("RegisterWatcher", func(t *testing.T) {
+		t.Parallel()
+
+		i := containerWith(t, postgresClient(), invalidConfig())
+		do.ProvideValue[operations.Store](i, stubStore{})
+
+		RegisterWatcher(i)
+
+		_, err := do.Invoke[*operations.Watcher](i)
+		must.Error(t, err)
+		test.ErrorContains(t, err, "retention")
+	})
 }

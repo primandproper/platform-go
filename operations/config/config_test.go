@@ -79,7 +79,7 @@ func TestConfig_Validate(T *testing.T) {
 func TestConstructors_nilConfig(T *testing.T) {
 	T.Parallel()
 
-	_, err := NewStore(nil, nil)
+	_, err := NewStore(T.Context(), nil, nil)
 	test.ErrorIs(T, err, operations.ErrNilConfig)
 
 	_, err = NewQueue(T.Context(), nil, nil)
