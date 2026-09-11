@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/uploads"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/uploads"
 )
 
 // The two dispositions, spelled once because the rule below returns one of them

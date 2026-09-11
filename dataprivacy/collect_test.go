@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"testing"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/tenancy"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

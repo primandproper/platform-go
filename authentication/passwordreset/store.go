@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Store is the persistence seam for password reset tokens.

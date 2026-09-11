@@ -7,11 +7,13 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
-	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/v2/clock"
+	clockmock "github.com/primandproper/primitives-go/v2/clock/mock"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
+	tracingnoop "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
 
 	"github.com/shoenig/test/must"
 )
@@ -90,4 +92,13 @@ func newTestStore(t *testing.T, opts ...Option) *Store {
 	must.NoError(t, err)
 
 	return store
+}
+
+// stoppedAt is a Clock that always reads at.
+//
+// Sweep takes no horizon, so this is how a test says "sweep as of then": build
+// the store against a clock stopped there. Only Now is set, which is every
+// method a store without a sweeper reaches.
+func stoppedAt(at time.Time) clock.Clock {
+	return &clockmock.ClockMock{NowFunc: func() time.Time { return at }}
 }

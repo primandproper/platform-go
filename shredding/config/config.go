@@ -22,10 +22,10 @@ import (
 
 	"github.com/primandproper/platform-go/v14/shredding"
 
-	"github.com/primandproper/primitives-go/cryptography/encryption"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/messagequeue"
+	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/messagequeue"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

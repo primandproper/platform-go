@@ -16,14 +16,14 @@ import (
 	"github.com/primandproper/platform-go/v14/workqueue"
 	workqueuemigrations "github.com/primandproper/platform-go/v14/workqueue/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/mysql"
-	"github.com/primandproper/primitives-go/database/postgres"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/tenancy"
-	"github.com/primandproper/primitives-go/testutils/containers/mysqltest"
-	"github.com/primandproper/primitives-go/testutils/containers/pgtest"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/mysql"
+	"github.com/primandproper/primitives-go/v2/database/postgres"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
+	"github.com/primandproper/primitives-go/v2/testutils/containers/mysqltest"
+	"github.com/primandproper/primitives-go/v2/testutils/containers/pgtest"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -181,7 +181,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 
 			// The operation's owner is the subject, which is what lets
 			// operations/http scope a status read to the person it is about.
-			test.EqOp(t, testSubject.ID, op.Owner)
+			test.EqOp(t, tenancy.Of(testSubject.ID), op.Owner)
 			test.EqOp(t, KindExport, op.Kind)
 
 			// The domains are the unit denominator, for free: the registry
@@ -380,7 +380,7 @@ func TestFulfillment_Postgres(T *testing.T) {
 			test.EqOp(t, "", mid.LastError)
 			test.Nil(t, mid.CompletedAt)
 
-			inFlight, err := env.ops.Get(t.Context(), req.OperationID)
+			inFlight, err := env.ops.Get(t.Context(), tenancy.Of(testSubject.ID), req.OperationID)
 			must.NoError(t, err)
 
 			// Charged on claim, so the second attempt is already counted while
@@ -538,7 +538,7 @@ func newFulfillmentEnv(
 
 	opsCfg := &operations.Config{QueueName: prefix, TablePrefix: prefix}
 
-	opsSvc, err := operations.NewService(t.Context(), opsCfg, opsStore, queue, kinds)
+	opsSvc, err := operations.NewService(t.Context(), opsCfg, client, opsStore, queue, kinds)
 	must.NoError(t, err)
 
 	worker, err := operations.NewWorker(t.Context(), &operations.WorkerConfig{
@@ -647,7 +647,7 @@ func (e *fulfillmentEnv) drain(t *testing.T, operationID string) *operations.Ope
 	deadline := time.Now().Add(30 * time.Second)
 
 	for time.Now().Before(deadline) {
-		op, err := e.ops.Get(t.Context(), operationID)
+		op, err := e.ops.Get(t.Context(), tenancy.Of(testSubject.ID), operationID)
 		must.NoError(t, err)
 
 		if op.Terminal() {
@@ -657,7 +657,7 @@ func (e *fulfillmentEnv) drain(t *testing.T, operationID string) *operations.Ope
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	op, err := e.ops.Get(t.Context(), operationID)
+	op, err := e.ops.Get(t.Context(), tenancy.Of(testSubject.ID), operationID)
 	must.NoError(t, err)
 
 	t.Fatalf("operation %q never reached a terminal state: %+v", operationID, op)

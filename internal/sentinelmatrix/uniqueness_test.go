@@ -335,4 +335,4 @@ func primitivesPath(t *testing.T, root string) string {
 
 // primitivesModule is the primitives module without a major-version suffix,
 // which is the prefix every major of it shares.
-const primitivesModule = "github.com/primandproper/primitives-go"
+const primitivesModule = "github.com/primandproper/primitives-go/v2"

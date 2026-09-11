@@ -5,9 +5,11 @@ import (
 	"sync"
 	"time"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // watcherName scopes the watcher's spans and logger.
@@ -31,6 +33,11 @@ type subscription struct {
 
 	id string
 
+	// scope is the tenant this subscription was established under, held so the
+	// watch loop's re-read is the same scoped read Watch made. It is fixed at
+	// subscribe time because nothing moves an operation between scopes.
+	scope tenancy.Scope
+
 	// sent is the revision most recently delivered, so an unchanged row costs
 	// nothing after the re-read.
 	sent int64
@@ -42,9 +49,10 @@ type subscription struct {
 	mu sync.Mutex
 }
 
-func newSubscription(id string) *subscription {
+func newSubscription(scope tenancy.Scope, id string) *subscription {
 	return &subscription{
 		id:      id,
+		scope:   scope,
 		out:     make(chan *Operation, 1),
 		retired: make(chan struct{}),
 	}
@@ -126,19 +134,22 @@ func (s *subscription) finish() {
 // written, so it is either delivered or sitting in the buffer when the channel
 // closes, and a receiver draining a closed channel gets it either way.
 //
-// # One query per wake
+// # One query per wake, per scope
 //
 // A notification carries no payload — see database/postgres/pgnotify on why
 // nothing may depend on one that is allowed to be lost — so a wake says only
-// "something changed". The loop re-reads every operation it is following in a
-// single statement and compares revisions. That is one query per wake regardless
-// of how many subscribers there are, which is the property that lets a watcher
-// be shared by a whole process.
+// "something changed". The loop re-reads every operation it is following and
+// compares revisions, in one statement per scope it is following anything in.
+// That is what makes the cost of a wake independent of how many subscribers
+// there are, which is the property that lets a watcher be shared by a whole
+// process; what it is not independent of is how many tenants are being watched
+// at once, because the batched read binds one scope. See sweep.
 //
 // A Watcher owns a goroutine and must be Closed.
 type Watcher struct {
-	store Store
-	o11y  observability.Observer
+	client database.Client
+	store  Store
+	o11y   observability.Observer
 
 	subscriptions map[string][]*subscription
 
@@ -164,9 +175,22 @@ type Watcher struct {
 // implementation rather than a degraded one — see the Watcher documentation on
 // snapshots. With one, a change is delivered in about as long as it takes
 // Postgres to deliver a notification.
-func NewWatcher(ctx context.Context, cfg *WatcherConfig, store Store, opts ...WatcherOption) (*Watcher, error) {
+//
+// The client is what the watcher's reads run against: every one of them is a
+// consumer read, made outside any transaction, so it holds a database.Client for
+// Reader() the way Store's own documentation says a caller of a read must.
+func NewWatcher(
+	ctx context.Context,
+	cfg *WatcherConfig,
+	client database.Client,
+	store Store,
+	opts ...WatcherOption,
+) (*Watcher, error) {
 	if cfg == nil {
 		return nil, ErrNilConfig
+	}
+	if client == nil {
+		return nil, ErrNilDatabaseClient
 	}
 	if store == nil {
 		return nil, ErrNilStore
@@ -182,6 +206,7 @@ func NewWatcher(ctx context.Context, cfg *WatcherConfig, store Store, opts ...Wa
 
 	w := &Watcher{
 		cfg:           *cfg,
+		client:        client,
 		store:         store,
 		wakeup:        o.wakeup,
 		subscriptions: map[string][]*subscription{},
@@ -225,19 +250,30 @@ func NewWatcher(ctx context.Context, cfg *WatcherConfig, store Store, opts ...Wa
 // why ctx should be the request's.
 //
 // It returns an error wrapping ErrOperationNotFound for an operation that is not
-// in the table, and ErrTooManyWatchers past WatcherConfig.MaxSubscriptions.
-func (w *Watcher) Watch(ctx context.Context, id string) (<-chan *Operation, error) {
-	ctx, span := w.o11y.Begin(ctx, observability.WithValue(operationIDKey, id))
+// in the table — and for one that is, in another scope, which is the same answer
+// for the reason Store.Get gives — and ErrTooManyWatchers past
+// WatcherConfig.MaxSubscriptions.
+//
+// The scope is what makes the subscription this caller's rather than anyone's.
+// It is checked once, here, by the scoped read below, and then held on the
+// subscription so that every re-read the loop makes is the same scoped read: a
+// subscription is a standing permission to see one row, and it is granted by a
+// statement rather than by a comparison somebody remembered to make.
+func (w *Watcher) Watch(ctx context.Context, scope tenancy.Scope, id string) (<-chan *Operation, error) {
+	ctx, span := w.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		operationIDKey: id,
+		ownerKey:       scope.String(),
+	}))
 	defer span.End()
 
 	// Read before subscribing, so an unknown ID is an error the caller can
 	// render rather than a channel that closes for no stated reason.
-	op, err := w.store.Get(ctx, id)
+	op, err := w.store.Get(ctx, w.client.Reader(), scope, id)
 	if err != nil {
 		return nil, span.Error(err, "watching operation")
 	}
 
-	sub := newSubscription(id)
+	sub := newSubscription(scope, id)
 
 	if err = w.subscribe(sub); err != nil {
 		return nil, span.Error(err, "watching operation")
@@ -373,31 +409,47 @@ func (w *Watcher) Run(ctx context.Context) error {
 }
 
 // sweep re-reads every subscribed operation and delivers what changed.
+//
+// It is one statement per scope with a live subscription rather than one
+// statement flat, because the batched read is scoped like every other consumer
+// read and a scope is one bound value beside a set of ids. A single-tenant
+// deployment — everything under tenancy.Global() — is unchanged at one; a
+// multi-tenant one pays a statement per tenant currently being watched, which is
+// bounded by WatcherConfig.MaxSubscriptions and is the price of the alternative
+// being a read through which any id resolves to a row.
+//
+// A failed read for one scope does not stop the others. The loop is the only
+// thing delivering to anybody, and a tenant whose statement failed is served by
+// the next tick a couple of seconds later.
 func (w *Watcher) sweep(ctx context.Context) {
-	ids := w.watchedIDs()
-	if len(ids) == 0 {
+	watched := w.watchedByScope()
+	if len(watched) == 0 {
 		return
 	}
 
-	w.readCounter.Add(ctx, 1)
 	w.subscriptionsGauge.Record(ctx, int64(w.total()))
 
-	ops, err := w.store.GetMany(ctx, ids)
-	if err != nil {
-		// Logged and slept off. A watcher that returned here would stop
-		// delivering to every subscriber because one read failed, and the next
-		// tick is a couple of seconds away.
-		w.o11y.Logger().Error("re-reading watched operations", err)
+	for scope, ids := range watched {
+		w.readCounter.Add(ctx, 1)
 
-		return
-	}
+		ops, err := w.store.GetMany(ctx, w.client.Reader(), scope, ids)
+		if err != nil {
+			// Logged and slept off. A watcher that returned here would stop
+			// delivering to every subscriber because one read failed, and the
+			// next tick is a couple of seconds away.
+			w.o11y.Logger().WithValue(ownerKey, scope.String()).
+				Error("re-reading watched operations", err)
 
-	for _, op := range ops {
-		for _, sub := range w.subscribersOf(op.ID) {
-			w.push(ctx, sub, op)
+			continue
+		}
 
-			if op.Terminal() {
-				w.retire(sub)
+		for _, op := range ops {
+			for _, sub := range w.subscribersOf(op.ID) {
+				w.push(ctx, sub, op)
+
+				if op.Terminal() {
+					w.retire(sub)
+				}
 			}
 		}
 	}
@@ -410,17 +462,27 @@ func (w *Watcher) push(ctx context.Context, sub *subscription, op *Operation) {
 	}
 }
 
-// watchedIDs snapshots the subscribed IDs.
-func (w *Watcher) watchedIDs() []string {
+// watchedByScope snapshots the subscribed IDs, grouped by the scope they were
+// subscribed under — which is the shape the batched read takes.
+func (w *Watcher) watchedByScope() map[tenancy.Scope][]string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	ids := make([]string, 0, len(w.subscriptions))
-	for id := range w.subscriptions {
-		ids = append(ids, id)
+	watched := map[tenancy.Scope][]string{}
+
+	for id, subs := range w.subscriptions {
+		if len(subs) == 0 {
+			continue
+		}
+
+		// Every subscription to one id holds the same scope: each was granted
+		// by a scoped read of that row, and a row has one scope. So the first is
+		// the id's scope and the rest agree by construction.
+		scope := subs[0].scope
+		watched[scope] = append(watched[scope], id)
 	}
 
-	return ids
+	return watched
 }
 
 // total reports the subscription count for the gauge.

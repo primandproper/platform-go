@@ -15,13 +15,13 @@ import (
 	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
 	"github.com/primandproper/platform-go/v14/notifications/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	databasecfg "github.com/primandproper/primitives-go/database/config"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/notifications/mobile"
-	"github.com/primandproper/primitives-go/notifications/mobile/apns"
-	mobilecfg "github.com/primandproper/primitives-go/notifications/mobile/config"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/notifications/mobile"
+	"github.com/primandproper/primitives-go/v2/notifications/mobile/apns"
+	mobilecfg "github.com/primandproper/primitives-go/v2/notifications/mobile/config"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -88,7 +88,7 @@ func TestBothHalvesCloseTheFeedbackLoop(t *testing.T) {
 	do.ProvideValue[context.Context](i, t.Context())
 	do.ProvideValue[database.Client](i, client)
 	do.ProvideValue(i, &notificationscfg.Config{TablePrefix: wiringPrefix})
-	do.ProvideValue(i, mobilecfg.Config{Provider: mobilecfg.ProviderAPNs, APNs: apnsConfig(t)})
+	do.ProvideValue(i, &mobilecfg.Config{Provider: mobilecfg.ProviderAPNs, APNs: apnsConfig(t)})
 
 	notificationscfg.RegisterStore(i)
 	mobilecfg.RegisterPushSender(i)
@@ -147,7 +147,7 @@ func TestMobileAloneIsUnchanged(t *testing.T) {
 	// an error; nothing prunes.
 	i := do.New()
 	do.ProvideValue[context.Context](i, t.Context())
-	do.ProvideValue(i, mobilecfg.Config{Provider: mobilecfg.ProviderAPNs, APNs: apnsConfig(t)})
+	do.ProvideValue(i, &mobilecfg.Config{Provider: mobilecfg.ProviderAPNs, APNs: apnsConfig(t)})
 
 	mobilecfg.RegisterPushSender(i)
 

@@ -3,8 +3,8 @@ package grpc
 import (
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 
-	"github.com/primandproper/primitives-go/authorization"
-	authzgrpc "github.com/primandproper/primitives-go/authorization/grpc"
+	"github.com/primandproper/primitives-go/v2/authorization"
+	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 )
 
 // The permissions this service's methods require, in authorization's

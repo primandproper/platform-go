@@ -6,7 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/saga"
 
-	"github.com/primandproper/primitives-go/retry"
+	"github.com/primandproper/primitives-go/v2/retry"
 )
 
 // Booking is the state one order-placement saga carries between its steps.

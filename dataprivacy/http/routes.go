@@ -8,11 +8,11 @@ import (
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/routing"
-	"github.com/primandproper/primitives-go/tenancy"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/routing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // o11yName scopes this package's spans and logger.

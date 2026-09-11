@@ -1,8 +1,8 @@
 package oauth2clients
 
 import (
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/tenancy"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Admits reports whether this registration may be used to authorize the named

@@ -15,9 +15,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/outbox"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/errors"
-	messagequeuecfg "github.com/primandproper/primitives-go/messagequeue/config"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/errors"
+	messagequeuecfg "github.com/primandproper/primitives-go/v2/messagequeue/config"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

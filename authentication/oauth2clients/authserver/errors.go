@@ -1,7 +1,7 @@
 package authserver
 
 import (
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // ErrClientNotRegistered is an authorization request naming a client this

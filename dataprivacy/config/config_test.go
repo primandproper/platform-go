@@ -16,12 +16,12 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
 
-	"github.com/primandproper/primitives-go/compression"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	"github.com/primandproper/primitives-go/tenancy"
-	"github.com/primandproper/primitives-go/uploads/noop"
+	"github.com/primandproper/primitives-go/v2/compression"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/tenancy"
+	"github.com/primandproper/primitives-go/v2/uploads/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -6,7 +6,7 @@ import (
 
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 
 	"google.golang.org/grpc/codes"
 )

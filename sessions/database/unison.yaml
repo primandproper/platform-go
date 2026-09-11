@@ -25,4 +25,4 @@ options:
     # The scope is bound as the Scope itself rather than as a string derived
     # from it, so an unset scope is a driver error instead of a wider result
     # set. See the tenancy package.
-    - {column: "*.scope", go_type: github.com/primandproper/primitives-go/tenancy.Scope}
+    - {column: "*.scope", go_type: github.com/primandproper/primitives-go/v2/tenancy.Scope}

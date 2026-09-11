@@ -15,11 +15,11 @@ import (
 	identityclient "github.com/primandproper/platform-go/v14/identity/grpc/client"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc"
@@ -273,14 +273,17 @@ func (h *harness) as(p identitygrpc.Principal) context.Context {
 func (h *harness) seedUser(t *testing.T, scope tenancy.Scope, username string) *identity.User {
 	t.Helper()
 
-	user := &identity.User{
-		Username:      username,
-		EmailAddress:  username + "@example.com",
-		AccountStatus: identity.StatusGood,
-	}
+	var user *identity.User
 
 	must.NoError(t, h.db.WithTransaction(t.Context(), func(tx database.Tx) error {
-		return h.store.CreateUser(t.Context(), tx, scope, user)
+		created, err := h.store.CreateUser(t.Context(), tx, scope, &identity.User{
+			Username:      username,
+			EmailAddress:  username + "@example.com",
+			AccountStatus: identity.StatusGood,
+		})
+		user = created
+
+		return err
 	}))
 
 	return user
@@ -312,14 +315,17 @@ func (h *harness) seedMembership(
 ) *identity.Membership {
 	t.Helper()
 
-	membership := &identity.Membership{
-		BelongsToUser:    userID,
-		BelongsToAccount: accountID,
-		Roles:            roles,
-	}
+	var membership *identity.Membership
 
 	must.NoError(t, h.db.WithTransaction(t.Context(), func(tx database.Tx) error {
-		return h.store.CreateMembership(t.Context(), tx, scope, membership)
+		created, err := h.store.CreateMembership(t.Context(), tx, scope, &identity.Membership{
+			BelongsToUser:    userID,
+			BelongsToAccount: accountID,
+			Roles:            roles,
+		})
+		membership = created
+
+		return err
 	}))
 
 	return membership

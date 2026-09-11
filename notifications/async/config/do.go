@@ -5,7 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/notifications/async"
 
-	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/v2/observability"
 
 	"github.com/samber/do/v2"
 )

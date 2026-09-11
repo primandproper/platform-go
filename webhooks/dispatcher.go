@@ -3,15 +3,15 @@ package webhooks
 import (
 	"context"
 
-	"github.com/primandproper/primitives-go/clock"
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/identifiers"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/logging"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	"github.com/primandproper/primitives-go/observability/tracing"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Dispatcher is the write side: it turns an application event into per-endpoint
@@ -23,10 +23,14 @@ import (
 // transaction argument is what lets the two commit together. Replay is the
 // exception and says why on its own doc comment.
 type Dispatcher interface {
-	// Dispatch fans an event out to every endpoint in the delivery's scope that is
-	// subscribed to it, writing through the caller's transaction so the deliveries
-	// commit with the state change that caused them.
-	Dispatch(ctx context.Context, tx database.Tx, delivery *Delivery) error
+	// Dispatch fans an event out to every endpoint in scope that is subscribed to
+	// it, writing through the caller's transaction so the deliveries commit with
+	// the state change that caused them.
+	//
+	// The scope is the argument rather than Delivery.Scope: a delivery that names
+	// a different tenant is ErrScopeMismatch, and one that names none adopts the
+	// argument.
+	Dispatch(ctx context.Context, tx database.Tx, scope tenancy.Scope, delivery *Delivery) error
 	// Replay re-drives a specific past delivery to a specific one of the scope's
 	// endpoints, for operator recovery. It takes no transaction; see
 	// StoreDispatcher.Replay.
@@ -277,7 +281,7 @@ func (d *StoreDispatcher) Unsubscribe(ctx context.Context, tx database.Tx, scope
 //			return err
 //		}
 //
-//		return dispatcher.Dispatch(ctx, tx, &webhooks.Delivery{
+//		return dispatcher.Dispatch(ctx, tx, tenancy.Of(accountID), &webhooks.Delivery{
 //			EventType:   OrderUpdated,
 //			OrderingKey: order.ID,
 //			Payload:     body,
@@ -292,13 +296,22 @@ func (d *StoreDispatcher) Unsubscribe(ctx context.Context, tx database.Tx, scope
 // common case for most event types most of the time, and making it an error
 // would have every publisher branch on it.
 //
-// The fan-out is bounded by the delivery's Scope: subscribers are resolved within
-// it, so an endpoint registered by one account never receives another account's
-// copy of the same event type. A delivery with no scope is refused rather than
-// fanned out to everybody — see Delivery.Scope. An application whose events are
-// global says tenancy.Global() and gets what it had before the dimension existed.
-func (d *StoreDispatcher) Dispatch(ctx context.Context, tx database.Tx, delivery *Delivery) error {
-	ctx, op := d.o11y.Begin(ctx)
+// The fan-out is bounded by scope: subscribers are resolved within it, so an
+// endpoint registered by one account never receives another account's copy of
+// the same event type. An unset scope is refused rather than fanned out to
+// everybody — see Delivery.Scope. An application whose events are global says
+// tenancy.Global() and gets what it had before the dimension existed.
+//
+// The scope is the argument and not Delivery.Scope, the same way Register's is
+// the argument and not Endpoint.Scope. The scope the call names is what
+// EndpointsForEvent binds and what the delivery row stores, so a delivery
+// carrying a different one is ErrScopeMismatch rather than either value quietly
+// winning — that is a caller holding one tenant's event and fanning it out in
+// another, which is a stale value or a mix-up and not a thing to guess at. A
+// delivery that names none adopts the argument, which is what the example above
+// relies on. Store.Enqueue keeps the shorter signature and says why.
+func (d *StoreDispatcher) Dispatch(ctx context.Context, tx database.Tx, scope tenancy.Scope, delivery *Delivery) error {
+	ctx, op := d.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
@@ -309,7 +322,14 @@ func (d *StoreDispatcher) Dispatch(ctx context.Context, tx database.Tx, delivery
 		return op.Error(ErrNilDelivery, "dispatching webhook delivery")
 	}
 
-	if err := delivery.Scope.Validate(); err != nil {
+	if err := scope.Validate(); err != nil {
+		return op.Error(err, "dispatching webhook delivery")
+	}
+
+	// Settled before the catalog and payload checks rather than after, so that a
+	// delivery carrying somebody else's scope is refused as the mix-up it is
+	// instead of being validated as though it were this caller's.
+	if err := adoptDeliveryScope(scope, delivery); err != nil {
 		return op.Error(err, "dispatching webhook delivery")
 	}
 
@@ -332,14 +352,13 @@ func (d *StoreDispatcher) Dispatch(ctx context.Context, tx database.Tx, delivery
 	}
 
 	op.Set(deliveryIDKey, delivery.ID).
-		Set(scopeKey, delivery.Scope.String()).
 		Set(eventTypeKey, delivery.EventType.String())
 
 	if delivery.OrderingKey != "" {
 		op.Set(orderingKeyKey, delivery.OrderingKey)
 	}
 
-	endpoints, err := d.store.EndpointsForEvent(ctx, tx, delivery.Scope, delivery.EventType)
+	endpoints, err := d.store.EndpointsForEvent(ctx, tx, scope, delivery.EventType)
 	if err != nil {
 		return op.Error(err, "resolving webhook endpoints for event %q", delivery.EventType)
 	}

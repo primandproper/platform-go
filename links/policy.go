@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // ActionPolicy is everything a Minter needs to know about one kind of link:

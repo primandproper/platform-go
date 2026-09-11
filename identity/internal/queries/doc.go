@@ -86,13 +86,18 @@ the standard statements with more predicates rather than a second rendering of
 them:
 
   - the two paged invitation reads, keyed on the sender or the addressee
-  - the read-back of created_at, one per emitted table
+  - the read-back of created_at, for the one create that still wants a stamp
+    rather than the row it wrote — see [Stamped]
+  - the two archival read-backs, each keyed on the id and the scope and carrying
+    the archived predicate's complement, because the row an archival stamps is
+    the one row every other single-row statement here is written not to return
   - the three single-user reads keyed on a username, an email address, or a
     verification token
   - the two collision checks, keyed on a username or an email address and
-    excluding the row being updated — see uniquenessChecks, which is the one
-    pair here rendered from no column list at all, because the unique indexes
-    cover archived rows and so must the read
+    excluding the row being updated — see uniquenessChecks, rendered from no
+    column list at all because the unique indexes cover archived rows and so
+    must the read, which is the same trick the archival read-backs above play
+    for the opposite half of its reason
   - the three membership reads, all keyed on the (user, account) pair
   - the four batched reads, each keyed on a whole set of keys at once
 

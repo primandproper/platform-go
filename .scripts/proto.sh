@@ -107,7 +107,7 @@ module_path="$(cd "${PROJECT_ROOT}" && go list -m)"
 # the two plugins above and nothing else. Downloading it here is the same
 # bargain the pinned protoc above makes: this script fetches what it needs
 # rather than requiring the tree to have been prepared for it.
-primitives_module="github.com/primandproper/primitives-go"
+primitives_module="github.com/primandproper/primitives-go/v2"
 (cd "${PROJECT_ROOT}" && go mod download "${primitives_module}")
 primitives_dir="$(cd "${PROJECT_ROOT}" && go list -m -f '{{.Dir}}' "${primitives_module}")"
 

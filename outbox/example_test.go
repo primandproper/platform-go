@@ -11,11 +11,11 @@ import (
 	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/outbox/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/migrate"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/migrate"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 type order struct {

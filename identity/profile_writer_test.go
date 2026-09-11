@@ -3,7 +3,7 @@ package identity
 import (
 	"testing"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -30,7 +30,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		test.False(t, principal.User.HasPassword())
 
 		principal.User.FirstName = "Augusta"
-		must.NoError(t, env.updateUser(t, store, principal.User.Scope, principal.User))
+		must.NoError(t, env.updateUserErr(t, store, principal.User.Scope, principal.User))
 
 		read, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
@@ -48,7 +48,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		test.False(t, listed[0].HasPassword())
 
 		listed[0].LastName = "King"
-		must.NoError(t, env.updateUser(t, store, listed[0].Scope, listed[0]))
+		must.NoError(t, env.updateUserErr(t, store, listed[0].Scope, listed[0]))
 
 		again, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
@@ -72,7 +72,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		test.False(t, stored.HasPassword())
 
 		passkeyOnly.FirstName = "Grace"
-		must.NoError(t, env.updateUser(t, store, passkeyOnly.Scope, passkeyOnly))
+		must.NoError(t, env.updateUserErr(t, store, passkeyOnly.Scope, passkeyOnly))
 
 		read, err := store.GetUser(t.Context(), env.reader(), testScope, passkeyOnly.ID)
 		must.NoError(t, err)
@@ -104,7 +104,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		// profile lands; the stale hash does not.
 		user.FirstName = "Augusta"
 		user.HashedPassword = "argon2$stale"
-		must.NoError(t, env.updateUser(t, store, user.Scope, user))
+		must.NoError(t, env.updateUserErr(t, store, user.Scope, user))
 
 		read, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
@@ -124,7 +124,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
 
 		user.EmailAddress = "moved@example.com"
-		must.NoError(t, env.updateUser(t, store, user.Scope, user))
+		must.NoError(t, env.updateUserErr(t, store, user.Scope, user))
 
 		read, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
@@ -132,7 +132,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 
 		// Saving again without changing the address must not re-clear anything
 		// it did not have to.
-		must.NoError(t, env.updateUser(t, store, user.Scope, user))
+		must.NoError(t, env.updateUserErr(t, store, user.Scope, user))
 	})
 
 	// The other half of the rule, and the half the port had to move out of the
@@ -151,7 +151,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
 
 		user.FirstName = "Augusta"
-		must.NoError(t, env.updateUser(t, store, user.Scope, user))
+		must.NoError(t, env.updateUserErr(t, store, user.Scope, user))
 
 		read, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
@@ -173,7 +173,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "mailed-to-ada"))
 
 		user.EmailAddress = "unproven@example.com"
-		must.NoError(t, env.updateUser(t, store, user.Scope, user))
+		must.NoError(t, env.updateUserErr(t, store, user.Scope, user))
 
 		// The link is dead at both ends: nothing reads back by it, and
 		// presenting it writes nothing.
@@ -210,7 +210,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, "", user.EmailAddressVerificationToken)
 
 		user.FirstName = "Augusta"
-		must.NoError(t, env.updateUser(t, store, user.Scope, user))
+		must.NoError(t, env.updateUserErr(t, store, user.Scope, user))
 
 		found, err := store.GetUserByEmailVerificationToken(t.Context(), env.reader(), testScope, "still-good")
 		must.NoError(t, err)
@@ -231,7 +231,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		user := seedUser(t, env, store, newUser("ada"))
 
 		user.FirstName = "Augusta"
-		must.NoError(t, env.updateUser(t, store, user.Scope, user))
+		must.NoError(t, env.updateUserErr(t, store, user.Scope, user))
 	})
 
 	t.Run("refuses an update onto somebody else's handle", func(t *testing.T) {
@@ -242,7 +242,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		grace := seedUser(t, env, store, newUser("grace"))
 
 		grace.Username = "ada"
-		must.ErrorIs(t, env.updateUser(t, store, grace.Scope, grace), ErrUsernameTaken)
+		must.ErrorIs(t, env.updateUserErr(t, store, grace.Scope, grace), ErrUsernameTaken)
 	})
 
 	t.Run("records agreements", func(t *testing.T) {
@@ -337,7 +337,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		account.BillingStatus = BillingUnpaid
 		account.OwnerUserID = other.ID
 
-		must.NoError(t, env.updateAccount(t, store, account.Scope, account))
+		must.NoError(t, env.updateAccountErr(t, store, account.Scope, account))
 
 		read, err := store.GetAccount(t.Context(), env.reader(), testScope, account.ID)
 		must.NoError(t, err)
@@ -359,7 +359,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, "", account.TimeZone)
 
 		account.TimeZone = "America/Chicago"
-		must.NoError(t, env.updateAccount(t, store, account.Scope, account))
+		must.NoError(t, env.updateAccountErr(t, store, account.Scope, account))
 
 		read, err := store.GetAccount(t.Context(), env.reader(), testScope, account.ID)
 		must.NoError(t, err)
@@ -370,6 +370,82 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, "America/Chicago", loc.String())
 	})
 
+	t.Run("each update answers with the row it left behind", func(t *testing.T) {
+		t.Parallel()
+
+		// The read a caller was making for itself a statement later. What comes
+		// back carries the two columns UpdateUser decides rather than accepts —
+		// so a caller who moved the address can see the proof go with it — and
+		// the columns UpdateAccount does not assign at all.
+		store := env.newStore(t)
+
+		user := newUser("ada")
+		user.EmailAddressVerificationToken = "verify-me"
+		seedUser(t, env, store, user)
+
+		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
+		must.NoError(t, env.setUserServiceRoles(t, store, testScope, user.ID, []string{"service_admin"}))
+
+		moved := *user
+		moved.EmailAddress = "moved@example.com"
+		moved.FirstName = "Augusta"
+
+		updated, err := env.updateUser(t, store, testScope, &moved)
+		must.NoError(t, err)
+
+		test.EqOp(t, "moved@example.com", updated.EmailAddress)
+		test.EqOp(t, "Augusta", updated.FirstName)
+
+		// Neither verification column was a parameter, and both are on the row
+		// that came back.
+		test.False(t, updated.EmailAddressVerified())
+		test.EqOp(t, "", updated.EmailAddressVerificationToken)
+
+		// The roles this write did not touch come back with it, so what the
+		// caller holds is a whole user rather than one missing its grants.
+		test.Eq(t, []string{"service_admin"}, updated.ServiceRoles)
+
+		owner := seedUser(t, env, store, newUser("grace"))
+		account := seedAccountFor(t, env, store, owner, "Acme")
+
+		must.NoError(t, env.setAccountBillingStatus(t, store, testScope, account.ID, BillingPaid))
+
+		renamed := *account
+		renamed.Name = "Acme Ltd"
+		renamed.BillingStatus = BillingUnpaid
+
+		saved, err := env.updateAccount(t, store, testScope, &renamed)
+		must.NoError(t, err)
+
+		test.EqOp(t, "Acme Ltd", saved.Name)
+
+		// The standing the webhook wrote, not the stale one the argument
+		// carried: this write assigns neither the billing state nor the owner.
+		test.EqOp(t, BillingPaid, saved.BillingStatus)
+		test.EqOp(t, owner.ID, saved.OwnerUserID)
+	})
+
+	t.Run("a refused update answers with no row", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		seedUser(t, env, store, newUser("ada"))
+		grace := seedUser(t, env, store, newUser("grace"))
+
+		colliding := *grace
+		colliding.Username = "ada"
+
+		updated, err := env.updateUser(t, store, testScope, &colliding)
+		must.ErrorIs(t, err, ErrUsernameTaken)
+		test.Nil(t, updated)
+
+		absent := newAccount("Nowhere", grace.ID)
+
+		saved, err := env.updateAccount(t, store, testScope, absent)
+		must.ErrorIs(t, err, ErrAccountNotFound)
+		test.Nil(t, saved)
+	})
+
 	t.Run("refuses a nil user and a nil account", func(t *testing.T) {
 		t.Parallel()
 
@@ -377,7 +453,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 
 		// Both writes read the scope off the value they were handed, so a nil
 		// one has to be refused rather than dereferenced for a predicate.
-		must.ErrorIs(t, env.updateUser(t, store, testScope, nil), ErrNilUser)
-		must.ErrorIs(t, env.updateAccount(t, store, testScope, nil), ErrNilAccount)
+		must.ErrorIs(t, env.updateUserErr(t, store, testScope, nil), ErrNilUser)
+		must.ErrorIs(t, env.updateAccountErr(t, store, testScope, nil), ErrNilAccount)
 	})
 }

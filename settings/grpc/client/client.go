@@ -47,8 +47,8 @@ package client
 import (
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 
 	"google.golang.org/grpc"
 )

@@ -3,7 +3,7 @@ package grpc
 import (
 	"context"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Principal is who is calling, as the consumer's authentication interceptor put

@@ -6,14 +6,14 @@ import (
 
 	"github.com/primandproper/platform-go/v14/metering"
 
-	"github.com/primandproper/primitives-go/authorization"
-	"github.com/primandproper/primitives-go/cache"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/featureflags"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/logging"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	"github.com/primandproper/primitives-go/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/authorization"
+	"github.com/primandproper/primitives-go/v2/cache"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/featureflags"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/observability/tracing"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"

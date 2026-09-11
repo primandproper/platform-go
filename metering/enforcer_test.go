@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/cache"
-	cachemock "github.com/primandproper/primitives-go/cache/mock"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/observability/logging"
+	"github.com/primandproper/primitives-go/v2/cache"
+	cachemock "github.com/primandproper/primitives-go/v2/cache/mock"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

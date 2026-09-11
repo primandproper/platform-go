@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/authentication/webauthn"
-	"github.com/primandproper/primitives-go/authentication/webauthn/webauthntest"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/encoding"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
+	"github.com/primandproper/primitives-go/v2/authentication/webauthn/webauthntest"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/encoding"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

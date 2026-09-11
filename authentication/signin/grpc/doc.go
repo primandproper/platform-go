@@ -2,7 +2,7 @@
 Package grpc serves the sign-in service over gRPC.
 
 It is imported as signingrpc, and it is seven RPCs over
-[github.com/primandproper/primitives-go/authentication/signin.Service]: two
+[github.com/primandproper/primitives-go/v2/authentication/signin.Service]: two
 doors, two reads and three credential writes. Each method converts, calls one
 thing, and converts back. There is no orchestration here — anything that had to
 happen in a transaction happened one layer down, where the transaction is.
@@ -16,7 +16,7 @@ that by definition do not: a caller signing in has not signed in yet.
 So the scope — whose directory this is — comes off a [ScopeResolver] the
 consumer supplies, which reads it from the connection: a host header, a piece of
 metadata, a subdomain, or nothing at all. The default resolves
-[github.com/primandproper/primitives-go/tenancy.Global], which is exactly what
+[github.com/primandproper/primitives-go/v2/tenancy.Global], which is exactly what
 a single-tenant deployment wants and is a directory with no users in it for a
 multi-tenant one that forgot — a sign-in that refuses everybody rather than one
 that signs them into somebody else's tenant.

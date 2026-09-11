@@ -8,7 +8,7 @@ import (
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 
-	authzgrpc "github.com/primandproper/primitives-go/authorization/grpc"
+	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

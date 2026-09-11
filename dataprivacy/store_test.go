@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/identifiers"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -9,18 +9,18 @@ import (
 	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
-	"github.com/primandproper/primitives-go/clock"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/ddl"
-	"github.com/primandproper/primitives-go/database/dialect"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/identifiers"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/logging"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	"github.com/primandproper/primitives-go/observability/tracing"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/ddl"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -631,57 +631,70 @@ func (s *SQLStore) requireMembershipEndpoints(
 	return nil
 }
 
-// writeMembership upserts the membership row, resolves the ID and creation time
-// the row actually carries, and replaces its roles.
+// writeMembership upserts the membership row, replaces its roles, and answers
+// with the row the database now holds.
 //
 // Both endpoints are read in the membership's scope before anything is written;
 // see requireMembershipEndpoints for why the foreign keys are not enough.
 //
-// The ID and the creation time are read back rather than assumed, because
-// neither is what this process sent. The upsert converges on the (user,
-// account) pair, so a user rejoining an account revives the archived membership
-// and it keeps the ID it was created with — writing the roles against the ID
-// the caller generated would attach them to a membership that does not exist.
-// And created_at is database-owned here as everywhere else in this schema, so
-// the inserting branch stores the server's clock rather than the one the caller
-// was handed.
-func (s *SQLStore) writeMembership(ctx context.Context, q database.SQLQueryExecutor, membership *Membership) error {
+// The row is read back rather than assumed, because what the upsert settled is
+// not what this process sent. It converges on the (user, account) pair, so a
+// user rejoining an account revives the archived membership and it keeps the ID
+// it was created with — writing the roles against the ID the caller generated
+// would attach them to a membership that does not exist — and created_at is
+// database-owned here as everywhere else in this schema, so even the inserting
+// branch stores the server's clock rather than the one the caller was handed.
+//
+// The roles are the set this call just wrote rather than a second read of the
+// table it wrote them to. readMembership does not attach roles either: a grant
+// lives in its own table and is read for a whole page at once, so the read-back
+// that carried them would be one round trip to be told what the statement
+// before it had just said.
+//
+// The Membership it is handed is read and not written to, which is what lets
+// every caller of it answer with a row rather than with their own argument.
+func (s *SQLStore) writeMembership(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	membership *Membership,
+) (*Membership, error) {
 	if err := s.requireMembershipEndpoints(
 		ctx, q, membership.Scope, membership.BelongsToUser, membership.BelongsToAccount,
 	); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := s.q.UpsertMembership(ctx, q, upsertMembershipParams(membership)); err != nil {
-		return platformerrors.Wrap(err, "writing identity membership")
+		return nil, platformerrors.Wrap(err, "writing identity membership")
 	}
 
-	// The read-back wants two facts the upsert decided rather than took: the
-	// id the row carries — a rejoin converges on the row that is already
-	// there, which keeps the id its roles hang off — and the creation time the
-	// database stamped, which even the inserting branch owns. The full keyed
-	// read carries both.
 	row, readErr := s.q.GetMembershipByUserAndAccount(ctx, q, identitydb.GetMembershipByUserAndAccountParams{
 		Scope:            membership.Scope,
 		BelongsToUser:    membership.BelongsToUser,
 		BelongsToAccount: membership.BelongsToAccount,
 	})
 	if readErr != nil {
-		return platformerrors.Wrap(readErr, "reading back identity membership")
+		return nil, platformerrors.Wrap(readErr, "reading back identity membership")
 	}
 
-	membership.ID = row.ID
-	membership.CreatedAt = row.CreatedAt.UTC()
+	written := membershipFromRow(&row)
+	written.Roles = membership.Roles
 
-	if err := s.replaceRoles(ctx, q, s.membershipRoleWrites(), membership.ID, membership.Roles); err != nil {
-		return err
+	if err := s.replaceRoles(ctx, q, s.membershipRoleWrites(), written.ID, written.Roles); err != nil {
+		return nil, err
 	}
 
-	if !membership.DefaultAccount {
-		return nil
+	if !written.DefaultAccount {
+		return written, nil
 	}
 
-	return s.clearDefaultAccountsForUser(ctx, q, membership.Scope, membership.BelongsToUser, membership.BelongsToAccount)
+	if err := s.clearDefaultAccountsForUser(
+		ctx, q, written.Scope, written.BelongsToUser, written.BelongsToAccount,
+	); err != nil {
+		return nil, err
+	}
+
+	return written, nil
 }
 
 // clearDefaultAccountsForUser takes the default flag off every live membership

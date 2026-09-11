@@ -3,7 +3,7 @@ package passwordreset
 import (
 	"time"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Token is the record of one issued reset token.

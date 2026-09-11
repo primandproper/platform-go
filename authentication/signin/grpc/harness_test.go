@@ -17,13 +17,13 @@ import (
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
-	"github.com/primandproper/primitives-go/authentication/argon2"
-	"github.com/primandproper/primitives-go/authentication/totp"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/authentication/argon2"
+	"github.com/primandproper/primitives-go/v2/authentication/totp"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	pquernatotp "github.com/pquerna/otp/totp"
 	"github.com/shoenig/test/must"
@@ -272,7 +272,9 @@ func (h *harness) enrollTOTP(t *testing.T) string {
 			return err
 		}
 
-		return h.store.MarkUserTwoFactorSecretVerified(t.Context(), tx, testScope, h.user.ID)
+		_, err = h.store.MarkUserTwoFactorSecretVerified(t.Context(), tx, testScope, h.user.ID)
+
+		return err
 	}))
 
 	return enrollment.Secret

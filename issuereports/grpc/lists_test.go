@@ -77,7 +77,7 @@ func TestListReportsByStatus(T *testing.T) {
 		h.move(t, testScope, resolved.ID, issuereports.StatusOpen, issuereports.StatusResolved, "done")
 
 		res, err := h.server.ListReportsByStatus(h.ctx(t, triager),
-			&issuereportspb.ListReportsByStatusRequest{Status: issuereportspb.Status_STATUS_OPEN})
+			&issuereportspb.ListReportsByStatusRequest{Status: issuereportspb.ReportStatus_REPORT_STATUS_OPEN})
 		must.NoError(t, err)
 
 		ids := idsOf(res.GetResults())
@@ -282,7 +282,7 @@ func TestEveryListIsAnonymousToNobody(T *testing.T) {
 		},
 		"ListReportsByStatus": func() error {
 			_, err := h.server.ListReportsByStatus(T.Context(),
-				&issuereportspb.ListReportsByStatusRequest{Status: issuereportspb.Status_STATUS_OPEN})
+				&issuereportspb.ListReportsByStatusRequest{Status: issuereportspb.ReportStatus_REPORT_STATUS_OPEN})
 
 			return err
 		},

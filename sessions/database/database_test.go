@@ -7,9 +7,9 @@ import (
 	"github.com/primandproper/platform-go/v14/sessions"
 	"github.com/primandproper/platform-go/v14/sessions/database/internal/sessionsdb"
 
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/encoding"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/encoding"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

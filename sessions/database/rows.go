@@ -7,7 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/sessions"
 	"github.com/primandproper/platform-go/v14/sessions/database/internal/sessionsdb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // row is one record's worth of bound parameters, with the payload already

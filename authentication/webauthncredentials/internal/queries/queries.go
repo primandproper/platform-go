@@ -1,8 +1,8 @@
 package queries
 
 import (
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/querygen"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/querygen"
 )
 
 // SessionsTable is the ceremony session table at its canonical, unprefixed

@@ -5,12 +5,12 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2serverstore"
 
-	"github.com/primandproper/primitives-go/authentication/oauth2server"
-	oauth2servercfg "github.com/primandproper/primitives-go/authentication/oauth2server/config"
-	"github.com/primandproper/primitives-go/config/cfgnorm"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/pointer"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	oauth2servercfg "github.com/primandproper/primitives-go/v2/authentication/oauth2server/config"
+	"github.com/primandproper/primitives-go/v2/config/cfgnorm"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/pointer"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

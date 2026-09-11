@@ -7,7 +7,7 @@ import (
 	settingsgrpc "github.com/primandproper/platform-go/v14/settings/grpc"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 
-	"github.com/primandproper/primitives-go/pointer"
+	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

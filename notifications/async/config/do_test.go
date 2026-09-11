@@ -5,9 +5,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/notifications/async"
 
-	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	tracingnoop "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

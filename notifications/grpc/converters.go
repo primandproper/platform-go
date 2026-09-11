@@ -4,7 +4,7 @@ import (
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

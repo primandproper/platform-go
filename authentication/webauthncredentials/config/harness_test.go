@@ -7,11 +7,11 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/webauthncredentials/migrations"
 
-	"github.com/primandproper/primitives-go/authentication/webauthn"
-	cachecfg "github.com/primandproper/primitives-go/cache/config"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
+	cachecfg "github.com/primandproper/primitives-go/v2/cache/config"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
 
 	"github.com/shoenig/test/must"
 )

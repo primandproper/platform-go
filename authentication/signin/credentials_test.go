@@ -6,7 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/identity"
 
-	"github.com/primandproper/primitives-go/authentication/argon2"
+	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -231,6 +231,18 @@ func TestService_VerifyTOTPSecret(T *testing.T) {
 
 		must.NoError(t, e.svc.VerifyTOTPSecret(t.Context(), testScope, e.user.ID, code(t, enrollment.Secret)))
 		test.EqOp(t, 1, e.hooks.verifications)
+
+		// The hook is handed the row the directory's write answered with, so
+		// the stamp a consumer records is the one this call made rather than
+		// nothing at all — the copy read a statement earlier carried no proof,
+		// which is what the call was for.
+		must.NotNil(t, e.hooks.verified)
+		must.NotNil(t, e.hooks.verified.TwoFactorSecretVerifiedAt)
+		test.EqOp(t, e.user.ID, e.hooks.verified.ID)
+
+		// Redacted, like every user this service hands a hook.
+		test.EqOp(t, "", e.hooks.verified.HashedPassword)
+		test.EqOp(t, "", e.hooks.verified.TwoFactorSecret)
 
 		status, err := e.svc.GetAuthStatus(t.Context(), testScope, e.user.ID, "")
 		must.NoError(t, err)

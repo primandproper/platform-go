@@ -4,12 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/observability/logging"
-	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	metricsnoop "github.com/primandproper/primitives-go/observability/metrics/noop"
-	"github.com/primandproper/primitives-go/observability/tracing"
-	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	metricsnoop "github.com/primandproper/primitives-go/v2/observability/metrics/noop"
+	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	tracingnoop "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -183,13 +184,13 @@ func TestStartOptions(T *testing.T) {
 		t.Parallel()
 
 		o := newStartOptions([]StartOption{
-			WithOwner("user-1"),
+			WithOwner(tenancy.Of("user-1")),
 			WithPriority(9),
 			WithDelay(time.Hour),
 			WithID("op-1"),
 		})
 
-		test.EqOp(t, "user-1", o.owner)
+		test.EqOp(t, tenancy.Of("user-1"), o.owner)
 		test.EqOp(t, 9, o.priority)
 		test.EqOp(t, time.Hour, o.delay)
 		test.EqOp(t, "op-1", o.id)
@@ -200,9 +201,13 @@ func TestStartOptions(T *testing.T) {
 
 		// Every Start being a new operation is the right default; WithID is what
 		// a handler behind a retrying client reaches for instead.
+		//
+		// The owner is the one that is not zero, and deliberately: the zero
+		// Scope reaches no statement, so a Start that names no owner has to mean
+		// something a query accepts, and "belongs to no tenant" is that meaning.
 		o := newStartOptions(nil)
 
-		test.EqOp(t, "", o.owner)
+		test.EqOp(t, tenancy.Global(), o.owner)
 		test.EqOp(t, 0, o.priority)
 		test.EqOp(t, time.Duration(0), o.delay)
 		test.EqOp(t, "", o.id)
@@ -211,9 +216,9 @@ func TestStartOptions(T *testing.T) {
 	T.Run("nil options are ignored", func(t *testing.T) {
 		t.Parallel()
 
-		o := newStartOptions([]StartOption{nil, WithOwner("user-1"), nil})
+		o := newStartOptions([]StartOption{nil, WithOwner(tenancy.Of("user-1")), nil})
 
-		test.EqOp(t, "user-1", o.owner)
+		test.EqOp(t, tenancy.Of("user-1"), o.owner)
 	})
 
 	T.Run("a later option wins", func(t *testing.T) {

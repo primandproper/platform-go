@@ -4,8 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 
-	"github.com/primandproper/primitives-go/authentication/oauth2server"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // The byte lengths of the two credentials this package mints.

@@ -40,9 +40,9 @@ package client
 import (
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	idempotencygrpc "github.com/primandproper/primitives-go/idempotency/grpc"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	idempotencygrpc "github.com/primandproper/primitives-go/v2/idempotency/grpc"
 
 	"google.golang.org/grpc"
 )

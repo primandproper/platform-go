@@ -10,9 +10,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/webhooks"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Ensure, that StoreMock does implement webhooks.Store.
@@ -1157,7 +1157,7 @@ var _ webhooks.Dispatcher = &DispatcherMock{}
 //
 //		// make and configure a mocked webhooks.Dispatcher
 //		mockedDispatcher := &DispatcherMock{
-//			DispatchFunc: func(ctx context.Context, tx database.Tx, delivery *webhooks.Delivery) error {
+//			DispatchFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, delivery *webhooks.Delivery) error {
 //				panic("mock out the Dispatch method")
 //			},
 //			RegisterFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) error {
@@ -1180,7 +1180,7 @@ var _ webhooks.Dispatcher = &DispatcherMock{}
 //	}
 type DispatcherMock struct {
 	// DispatchFunc mocks the Dispatch method.
-	DispatchFunc func(ctx context.Context, tx database.Tx, delivery *webhooks.Delivery) error
+	DispatchFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, delivery *webhooks.Delivery) error
 
 	// RegisterFunc mocks the Register method.
 	RegisterFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) error
@@ -1202,6 +1202,8 @@ type DispatcherMock struct {
 			Ctx context.Context
 			// Tx is the tx argument value.
 			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
 			// Delivery is the delivery argument value.
 			Delivery *webhooks.Delivery
 		}
@@ -1260,23 +1262,25 @@ type DispatcherMock struct {
 }
 
 // Dispatch calls DispatchFunc.
-func (mock *DispatcherMock) Dispatch(ctx context.Context, tx database.Tx, delivery *webhooks.Delivery) error {
+func (mock *DispatcherMock) Dispatch(ctx context.Context, tx database.Tx, scope tenancy.Scope, delivery *webhooks.Delivery) error {
 	if mock.DispatchFunc == nil {
 		panic("DispatcherMock.DispatchFunc: method is nil but Dispatcher.Dispatch was just called")
 	}
 	callInfo := struct {
 		Ctx      context.Context
 		Tx       database.Tx
+		Scope    tenancy.Scope
 		Delivery *webhooks.Delivery
 	}{
 		Ctx:      ctx,
 		Tx:       tx,
+		Scope:    scope,
 		Delivery: delivery,
 	}
 	mock.lockDispatch.Lock()
 	mock.calls.Dispatch = append(mock.calls.Dispatch, callInfo)
 	mock.lockDispatch.Unlock()
-	return mock.DispatchFunc(ctx, tx, delivery)
+	return mock.DispatchFunc(ctx, tx, scope, delivery)
 }
 
 // DispatchCalls gets all the calls that were made to Dispatch.
@@ -1286,11 +1290,13 @@ func (mock *DispatcherMock) Dispatch(ctx context.Context, tx database.Tx, delive
 func (mock *DispatcherMock) DispatchCalls() []struct {
 	Ctx      context.Context
 	Tx       database.Tx
+	Scope    tenancy.Scope
 	Delivery *webhooks.Delivery
 } {
 	var calls []struct {
 		Ctx      context.Context
 		Tx       database.Tx
+		Scope    tenancy.Scope
 		Delivery *webhooks.Delivery
 	}
 	mock.lockDispatch.RLock()

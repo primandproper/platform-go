@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/capitalism"
-	capitalismnoop "github.com/primandproper/primitives-go/capitalism/noop"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/jobs"
-	"github.com/primandproper/primitives-go/observability/logging"
-	retrycfg "github.com/primandproper/primitives-go/retry/config"
+	"github.com/primandproper/primitives-go/v2/capitalism"
+	capitalismnoop "github.com/primandproper/primitives-go/v2/capitalism/noop"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/jobs"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	retrycfg "github.com/primandproper/primitives-go/v2/retry/config"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -5,8 +5,8 @@ import (
 
 	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
 
-	"github.com/primandproper/primitives-go/observability/logging"
-	"github.com/primandproper/primitives-go/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/tracing"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

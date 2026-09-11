@@ -5,9 +5,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/webhooks"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	httperrors "github.com/primandproper/primitives-go/errors/http"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -72,7 +72,7 @@ func TestMappers(T *testing.T) {
 		"an endpoint written into a scope it does not name": {
 			err:      webhooks.ErrScopeMismatch,
 			httpCode: httperrors.ErrValidatingRequestInput,
-			httpMsg:  "the endpoint does not belong to that scope",
+			httpMsg:  "the endpoint or event does not belong to that scope",
 			grpcCode: codes.InvalidArgument,
 		},
 		"an identifier another tenant holds": {

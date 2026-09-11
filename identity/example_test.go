@@ -11,11 +11,11 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	"github.com/primandproper/primitives-go/identifiers"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Example_registration shows the flow this package exists for, written against
@@ -66,25 +66,30 @@ func Example_registration() {
 	}
 
 	err := client.WithTransaction(ctx, func(tx database.Tx) error {
-		// CreateUser fills in the ID and CreatedAt, so the account below can
-		// name its owner.
-		if err := store.CreateUser(ctx, tx, scope, user); err != nil {
+		// Each write answers with the row it wrote and leaves the value it was
+		// handed alone, so the ID the account below names its owner by comes
+		// off what CreateUser returned.
+		registered, err := store.CreateUser(ctx, tx, scope, user)
+		if err != nil {
 			return err
 		}
 
-		account.OwnerUserID = user.ID
+		account.OwnerUserID = registered.ID
 
-		if err := store.CreateAccount(ctx, tx, scope, account); err != nil {
+		created, err := store.CreateAccount(ctx, tx, scope, account)
+		if err != nil {
 			return err
 		}
 
 		// The first membership becomes the default whatever this says, because
 		// a user with memberships and no default has nowhere to land.
-		return store.CreateMembership(ctx, tx, scope, &identity.Membership{
-			BelongsToUser:    user.ID,
-			BelongsToAccount: account.ID,
+		_, err = store.CreateMembership(ctx, tx, scope, &identity.Membership{
+			BelongsToUser:    registered.ID,
+			BelongsToAccount: created.ID,
 			Roles:            []string{"account_admin"},
 		})
+
+		return err
 	})
 
 	switch {
@@ -102,11 +107,13 @@ func Example_registration() {
 	// caller can act on, rather than a driver's constraint violation they would
 	// have to parse a SQLSTATE out of.
 	err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		return store.CreateUser(ctx, tx, scope, &identity.User{
+		_, createErr := store.CreateUser(ctx, tx, scope, &identity.User{
 			Username:       "ada",
 			EmailAddress:   "someone-else@example.com",
 			HashedPassword: hashedPassword,
 		})
+
+		return createErr
 	})
 	fmt.Println(errors.Is(err, identity.ErrUsernameTaken))
 
@@ -264,7 +271,9 @@ func Example_signIn() {
 	// The verification is a write, so it runs in a transaction — the one a
 	// consumer would already be holding for the audit entry beside it.
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		return store.MarkUserTwoFactorSecretVerified(ctx, tx, scope, user.ID)
+		_, verifyErr := store.MarkUserTwoFactorSecretVerified(ctx, tx, scope, user.ID)
+
+		return verifyErr
 	}); err != nil {
 		fmt.Println(err)
 
@@ -337,9 +346,14 @@ func Example_invitation() {
 	}
 
 	err := client.WithTransaction(ctx, func(tx database.Tx) error {
-		if createErr := store.CreateUser(ctx, tx, scope, newcomer); createErr != nil {
+		registered, createErr := store.CreateUser(ctx, tx, scope, newcomer)
+		if createErr != nil {
 			return createErr
 		}
+
+		// The write answers with the row rather than filling in the value it
+		// was handed, so the id the acceptance names comes off what it returned.
+		newcomer = registered
 
 		// Both halves of the link. Naming the row and then comparing the token
 		// keeps the secret out of an index.
@@ -437,21 +451,28 @@ func exampleRegister(
 	account := &identity.Account{Name: accountName}
 
 	if err := client.WithTransaction(ctx, func(tx database.Tx) error {
-		if err := store.CreateUser(ctx, tx, scope, user); err != nil {
+		registered, err := store.CreateUser(ctx, tx, scope, user)
+		if err != nil {
 			return err
 		}
 
-		account.OwnerUserID = user.ID
+		user = registered
+		account.OwnerUserID = registered.ID
 
-		if err := store.CreateAccount(ctx, tx, scope, account); err != nil {
+		created, err := store.CreateAccount(ctx, tx, scope, account)
+		if err != nil {
 			return err
 		}
 
-		return store.CreateMembership(ctx, tx, scope, &identity.Membership{
-			BelongsToUser:    user.ID,
-			BelongsToAccount: account.ID,
+		account = created
+
+		_, err = store.CreateMembership(ctx, tx, scope, &identity.Membership{
+			BelongsToUser:    registered.ID,
+			BelongsToAccount: created.ID,
 			Roles:            []string{"account_admin"},
 		})
+
+		return err
 	}); err != nil {
 		panic(err)
 	}

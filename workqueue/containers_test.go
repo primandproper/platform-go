@@ -11,11 +11,11 @@ import (
 
 	"github.com/primandproper/platform-go/v14/workqueue/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/postgres"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/testutils/containers/pgtest"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/postgres"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/testutils/containers/pgtest"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

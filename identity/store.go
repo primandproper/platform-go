@@ -3,9 +3,9 @@ package identity
 import (
 	"context"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Agreement names a document a user can accept.
@@ -155,26 +155,27 @@ type Registrar interface {
 	// adopts it; one naming a different directory is ErrScopeMismatch rather
 	// than being moved into this one — see Store.
 	//
-	// The ID is generated if the user carries none, and both it and CreatedAt
-	// are written back onto the value. A username or email address already
-	// registered in this scope returns an error wrapping ErrUsernameTaken or
-	// ErrEmailAddressTaken rather than a driver's constraint violation — the
+	// The ID is generated if the user carries none. A username or email address
+	// already registered in this scope returns an error wrapping ErrUsernameTaken
+	// or ErrEmailAddressTaken rather than a driver's constraint violation — the
 	// caller's next move differs, and asking them to parse a SQLSTATE to find
 	// out is how that check gets skipped.
 	//
-	// CreatedAt is the database's rather than the Store's clock: the column is
-	// not in the insert and the schema defaults it, so that a row's creation
-	// time and the filter window comparing against it come from one clock
-	// rather than from however many application instances are writing. The
-	// create reads it back, so the value the caller is holding is the value in
-	// the row — a caller that serialized the struct straight into a response
-	// would otherwise be rendering the zero time as a date.
-	CreateUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *User) error
+	// The user handed back is the row, read on the caller's transaction after
+	// the write. The User passed in is read and not written to: what a caller
+	// wants afterwards is what the database holds, which is not what they
+	// assembled — CreatedAt is the database's clock rather than this Store's,
+	// since the column is not in the insert and the schema defaults it, so that
+	// a row's creation time and the filter window comparing against it come from
+	// one clock rather than from however many application instances are writing.
+	// A caller that serialized the argument straight into a response would be
+	// rendering the zero time as a date.
+	CreateUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *User) (*User, error)
 
-	// CreateAccount writes a new account through the caller's transaction. The
-	// ID is generated if the account carries none, and CreatedAt is read back
-	// from the row — see CreateUser.
-	CreateAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *Account) error
+	// CreateAccount writes a new account through the caller's transaction and
+	// answers with the row. The ID is generated if the account carries none, and
+	// the Account passed in is left alone — see CreateUser.
+	CreateAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *Account) (*Account, error)
 
 	// CreateMembership puts a user in an account through the caller's transaction.
 	//
@@ -189,7 +190,18 @@ type Registrar interface {
 	// ErrAccountNotFound. The foreign keys prove that the ids exist somewhere,
 	// which for a multi-directory deployment is not the question being asked —
 	// a membership across two directories puts a stranger on a roster.
-	CreateMembership(ctx context.Context, tx database.Tx, scope tenancy.Scope, membership *Membership) error
+	//
+	// The membership handed back is the row, and here that matters more than it
+	// does for the other two creates: the write converges on the (user, account)
+	// pair, so a user rejoining an account revives the membership they had, and
+	// it keeps the ID it was created with and the moment it was first created.
+	// Neither is the value the caller assembled, and the roles hang off that ID.
+	CreateMembership(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		membership *Membership,
+	) (*Membership, error)
 }
 
 // CredentialStore is where the authentication engines put what they produce.
@@ -245,8 +257,18 @@ type CredentialStore interface {
 	) error
 
 	// MarkUserTwoFactorSecretVerified records that the user proved possession of
-	// the secret they hold.
-	MarkUserTwoFactorSecretVerified(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error
+	// the secret they hold, and answers with the user it moved.
+	//
+	// The stamp on the row that comes back is the one this statement wrote,
+	// which is what an entry recording who enrolled a second factor and when is
+	// written from. A replay matches nothing and reports ErrUserNotFound with a
+	// nil user; the row comes back only beside a nil error.
+	MarkUserTwoFactorSecretVerified(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		userID string,
+	) (*User, error)
 
 	// SetUserEmailAddressVerificationToken stores the token a verification link
 	// will carry, replacing any outstanding one — so re-sending a verification
@@ -288,7 +310,16 @@ type CredentialStore interface {
 	// safe direction, and an unverify that raced another one has still left the
 	// row where both callers wanted it. Any outstanding link survives, since it
 	// was minted for this address and the address has not moved.
-	MarkUserEmailAddressUnverified(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error
+	//
+	// It answers with the user it moved, and the address on that row is the fact
+	// worth having: the column this write clears says only that something was
+	// proven, never which address the proof was for.
+	MarkUserEmailAddressUnverified(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		userID string,
+	) (*User, error)
 }
 
 // SignInReader is the read side of authenticating a request.
@@ -508,8 +539,15 @@ type ProfileWriter interface {
 	// a caller therefore needs neither a password hash nor a status to save a
 	// display name.
 	//
-	// The scope is the argument rather than User.Scope, as it is at creation.
-	UpdateUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *User) error
+	// The scope is the argument rather than User.Scope, as it is at creation,
+	// and the User passed in is read and not written to.
+	//
+	// It answers with the row, read on the caller's transaction after the write.
+	// That row carries the two verification columns this method decides rather
+	// than accepts, so a caller who changed the address can see that the proof
+	// went with it — which is the read they were making for themselves a
+	// statement later.
+	UpdateUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *User) (*User, error)
 
 	// UpdateAccount writes the account's name and billing address.
 	//
@@ -518,7 +556,10 @@ type ProfileWriter interface {
 	// hold the rest of the account, and a read-modify-write over them loses
 	// whatever a processor webhook or an ownership transfer did in between. See
 	// BillingWriter and TransferAccountOwnership.
-	UpdateAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *Account) error
+	//
+	// It answers with the row, which carries the billing state and the owner as
+	// the account holds them rather than as the argument did — see UpdateUser.
+	UpdateAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *Account) (*Account, error)
 
 	// RecordAgreement stamps the user's acceptance of one or more documents, as
 	// of the Store's clock.
@@ -675,7 +716,14 @@ type AdminWriter interface {
 	// a user every scoped read now reports as absent, and the ownership checks
 	// that resolve through it fail somewhere else entirely. Transfer the account
 	// or archive it first.
-	ArchiveUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error
+	//
+	// It answers with the user it hid, read through a statement of its own on
+	// the transaction that hid them. That row is reachable through no other read
+	// here once this commits — every single-row statement over the table
+	// excludes archived rows — so this is the last moment anything can say who
+	// was removed. The memberships it ended are not on it: a consumer that needs
+	// the rosters the subject just left reads them before calling.
+	ArchiveUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*User, error)
 
 	// EraseUser destroys the user row through the caller's transaction, returning
 	// how many rows went.
@@ -705,7 +753,11 @@ type AdminWriter interface {
 	// everybody at once, and neither leaves a user with memberships and nowhere
 	// to land. A member who belonged to nothing else keeps no default, because
 	// there is no membership left to point at.
-	ArchiveAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) error
+	//
+	// It answers with the account it hid, for the reason ArchiveUser answers with
+	// the user: the row is the record of what the account was called and who
+	// owned it, and no read here reaches it afterwards.
+	ArchiveAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*Account, error)
 }
 
 // BillingWriter is what a payment processor's webhook handler needs, and
@@ -783,7 +835,16 @@ type BillingWriter interface {
 	// the Store's clock. It is the write a reconciler owes the next run: without
 	// it, an account that has been current for a year is indistinguishable from
 	// one nobody has looked at since.
-	MarkAccountBillingSynced(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) error
+	//
+	// It answers with the account, whose stamp is the whole content of the
+	// write: a reconciler that has to read the account again to learn when it
+	// last reconciled pays for that answer twice.
+	MarkAccountBillingSynced(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		accountID string,
+	) (*Account, error)
 }
 
 // InvitationStore covers an invitation's whole life: issued, looked up,
@@ -980,6 +1041,39 @@ type InvitationStore interface {
 // A Store that is not a SQL store still takes these types; an implementation
 // with no transaction of its own ignores the executor, and the seam stays one
 // signature rather than one per backing.
+//
+// # Ten writes answer with what they wrote
+//
+// The three creates, the two whole-entity updates, the two archivals and the
+// three stamps hand back a row, read on the caller's transaction after the
+// write. None of them touches the value it was handed: mutating the argument
+// and returning deliver the same guarantee, and returning is the one spelling
+// available to a write addressed by an id rather than by an entity, so it is
+// the one this module uses.
+//
+// What they have in common is that the answer is not something the caller could
+// have assembled. A create settles an id and a creation time the database
+// stamped — and a membership create settles which row it converged on, since a
+// rejoin revives the membership a user already had. An update leaves columns it
+// deliberately does not assign, and decides two it refuses to accept. An
+// archival puts the row beyond every read here, so the moment it returns is the
+// last one at which anything can say who was removed. And a stamp's whole
+// content is a read of this Store's clock, which is the one value a caller
+// cannot name — a write that answered with nothing left "when" reconstructible
+// only by reading the row again.
+//
+// A refused write answers with a nil row. The sentinels are unchanged, and none
+// of them arrives beside a value: the row comes back only alongside a nil error.
+//
+// EraseUser is the one write here that could answer with what it destroyed and
+// does not. It returns how many rows went, because nothing describes them at any
+// distance afterwards and the rows are the subject's own data — handing them back
+// would be handing back what the erasure exists to remove.
+//
+// The field writes keep their error. Each of them assigns one fact the caller
+// already holds, to a row every read here still reaches on the transaction that
+// wrote it, so a caller who wants the whole row afterwards is one read away and
+// the callers who do not are not made to pay for one.
 //
 // # The scope is an argument, on every method
 //

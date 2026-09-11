@@ -12,8 +12,8 @@ import (
 	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
 	sessionshttp "github.com/primandproper/platform-go/v14/sessions/http"
 
-	"github.com/primandproper/primitives-go/cache/memory"
-	"github.com/primandproper/primitives-go/cookies"
+	"github.com/primandproper/primitives-go/v2/cache/memory"
+	"github.com/primandproper/primitives-go/v2/cookies"
 )
 
 // Principal is what a session carries.

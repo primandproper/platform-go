@@ -4,7 +4,7 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks"
 	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
