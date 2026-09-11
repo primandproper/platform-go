@@ -103,6 +103,61 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		test.Eq(t, []string{"service_admin"}, read.ServiceRoles)
 	})
 
+	t.Run("each archival answers with the row it hid", func(t *testing.T) {
+		t.Parallel()
+
+		// The last moment anything can say who was removed. Once the write
+		// commits, the subject is absent from every read this package has, so
+		// the row the archival returns is what a consumer's entry is written
+		// from — and it carries the stamp the write just made rather than
+		// describing the user as they stood a statement earlier.
+		store := env.newStore(t)
+		owner := seedUser(t, env, store, newUser("ada"))
+		account := seedAccountFor(t, env, store, owner, "Acme")
+		member := seedUserInto(t, env, store, newUser("brian"), account.ID)
+
+		must.NoError(t, env.setUserServiceRoles(t, store, testScope, member.ID, []string{"service_support"}))
+
+		archived, err := env.archiveUser(t, store, testScope, member.ID)
+		must.NoError(t, err)
+
+		test.EqOp(t, member.ID, archived.ID)
+		test.EqOp(t, "brian", archived.Username)
+		test.True(t, archived.Archived())
+		must.NotNil(t, archived.ArchivedAt)
+
+		// A grant is not archived with its owner — the role tables carry no
+		// archived column — so the roles the subject held are on the row, and a
+		// consumer recording what was withdrawn can name them.
+		test.Eq(t, []string{"service_support"}, archived.ServiceRoles)
+
+		// And the read that would have described it is the one that cannot.
+		_, err = store.GetUser(t.Context(), env.reader(), testScope, member.ID)
+		must.ErrorIs(t, err, ErrUserNotFound)
+
+		// A refusal answers with no row, on both of the two doors this write
+		// closes: a subject already archived, and one who still owns an account.
+		replayed, err := env.archiveUser(t, store, testScope, member.ID)
+		must.ErrorIs(t, err, ErrUserNotFound)
+		test.Nil(t, replayed)
+
+		refused, err := env.archiveUser(t, store, testScope, owner.ID)
+		must.ErrorIs(t, err, ErrLastAccountOwner)
+		test.Nil(t, refused)
+
+		closed, err := env.archiveAccount(t, store, testScope, account.ID)
+		must.NoError(t, err)
+
+		test.EqOp(t, account.ID, closed.ID)
+		test.EqOp(t, "Acme", closed.Name)
+		test.EqOp(t, owner.ID, closed.OwnerUserID)
+		test.True(t, closed.Archived())
+
+		gone, err := env.archiveAccount(t, store, testScope, account.ID)
+		must.ErrorIs(t, err, ErrAccountNotFound)
+		test.Nil(t, gone)
+	})
+
 	t.Run("ends memberships when a user is archived", func(t *testing.T) {
 		t.Parallel()
 
@@ -112,7 +167,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 
 		member := seedUserInto(t, env, store, newUser("brian"), account.ID)
 
-		must.NoError(t, env.archiveUser(t, store, testScope, member.ID))
+		must.NoError(t, env.archiveUserErr(t, store, testScope, member.ID))
 
 		// A user archived with live memberships is still on the rosters of the
 		// accounts they belonged to, which is what an application discovers when
@@ -122,7 +177,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 
 		// Archiving twice must not move the timestamp and lose when it first
 		// happened.
-		must.ErrorIs(t, env.archiveUser(t, store, testScope, member.ID), ErrUserNotFound)
+		must.ErrorIs(t, env.archiveUserErr(t, store, testScope, member.ID), ErrUserNotFound)
 	})
 
 	t.Run("ends only the archived user's memberships", func(t *testing.T) {
@@ -141,14 +196,16 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		staying := seedUserInto(t, env, store, newUser("carol"), first.ID)
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			_, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    leaving.ID,
 				BelongsToAccount: second.ID,
 				Roles:            []string{"account_member"},
 			})
+
+			return err
 		}))
 
-		must.NoError(t, env.archiveUser(t, store, testScope, leaving.ID))
+		must.NoError(t, env.archiveUserErr(t, store, testScope, leaving.ID))
 
 		gone, err := store.ListMembershipsForUser(t.Context(), env.reader(), testScope, leaving.ID)
 		must.NoError(t, err)
@@ -177,7 +234,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		// The same failure RemoveMembership refuses, reached through the other
 		// door: an account left live and answering to a user every scoped read
 		// now reports as absent.
-		err := env.archiveUser(t, store, testScope, owner.ID)
+		err := env.archiveUserErr(t, store, testScope, owner.ID)
 		must.ErrorIs(t, err, ErrLastAccountOwner)
 
 		// The refusal names the account that has to move first, which is the
@@ -199,13 +256,13 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		// the account.
 		successor := seedUserInto(t, env, store, newUser("grace"), account.ID)
 		must.NoError(t, env.transferAccountOwnership(t, store, testScope, account.ID, successor.ID))
-		must.NoError(t, env.archiveUser(t, store, testScope, owner.ID))
+		must.NoError(t, env.archiveUserErr(t, store, testScope, owner.ID))
 
 		// Archiving the account is the other, and it unblocks the new owner —
 		// an archived account is not one whose ownership has to move.
-		must.ErrorIs(t, env.archiveUser(t, store, testScope, successor.ID), ErrLastAccountOwner)
-		must.NoError(t, env.archiveAccount(t, store, testScope, account.ID))
-		must.NoError(t, env.archiveUser(t, store, testScope, successor.ID))
+		must.ErrorIs(t, env.archiveUserErr(t, store, testScope, successor.ID), ErrLastAccountOwner)
+		must.NoError(t, env.archiveAccountErr(t, store, testScope, account.ID))
+		must.NoError(t, env.archiveUserErr(t, store, testScope, successor.ID))
 	})
 
 	t.Run("refuses to archive an owner named by another directory's account", func(t *testing.T) {
@@ -219,7 +276,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		// directory's accounts neither block an archive nor are consulted by
 		// one — and the archive of a user who is not in this directory is still
 		// the missing user it always was.
-		must.ErrorIs(t, env.archiveUser(t, store, otherScope, owner.ID), ErrUserNotFound)
+		must.ErrorIs(t, env.archiveUserErr(t, store, otherScope, owner.ID), ErrUserNotFound)
 	})
 
 	t.Run("erases a user and everything keyed to them", func(t *testing.T) {
@@ -267,7 +324,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		user := seedUser(t, env, store, newUser("ada"))
 
-		must.NoError(t, env.archiveUser(t, store, testScope, user.ID))
+		must.NoError(t, env.archiveUserErr(t, store, testScope, user.ID))
 
 		var erased int64
 
@@ -349,7 +406,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		account := seedAccountFor(t, env, store, owner, "Acme")
 		member := seedUserInto(t, env, store, newUser("brian"), account.ID)
 
-		must.NoError(t, env.archiveAccount(t, store, testScope, account.ID))
+		must.NoError(t, env.archiveAccountErr(t, store, testScope, account.ID))
 
 		// The read by id excludes it, as every read by id now does.
 		_, err := store.GetAccount(t.Context(), env.reader(), testScope, account.ID)
@@ -378,7 +435,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		test.SliceEmpty(t, mine.Data)
 
-		must.ErrorIs(t, env.archiveAccount(t, store, testScope, account.ID), ErrAccountNotFound)
+		must.ErrorIs(t, env.archiveAccountErr(t, store, testScope, account.ID), ErrAccountNotFound)
 	})
 
 	t.Run("ends only the archived account's memberships", func(t *testing.T) {
@@ -396,11 +453,13 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		member := seedUserInto(t, env, store, newUser("brian"), closing.ID)
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			_, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    member.ID,
 				BelongsToAccount: surviving.ID,
 				Roles:            []string{"account_member"},
 			})
+
+			return err
 		}))
 
 		// The first membership is the default; the second is not.
@@ -410,7 +469,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, closing.ID, before[0].BelongsToAccount)
 		test.True(t, before[0].DefaultAccount)
 
-		must.NoError(t, env.archiveAccount(t, store, testScope, closing.ID))
+		must.NoError(t, env.archiveAccountErr(t, store, testScope, closing.ID))
 
 		// The surviving membership is still there, and it is now the default:
 		// closing an account is RemoveMembership performed on every member at
@@ -446,7 +505,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		closing := seedAccountFor(t, env, store, owner, "Closing")
 		member := seedUserInto(t, env, store, newUser("brian"), closing.ID)
 
-		must.NoError(t, env.archiveAccount(t, store, testScope, closing.ID))
+		must.NoError(t, env.archiveAccountErr(t, store, testScope, closing.ID))
 
 		after, err := store.ListMembershipsForUser(t.Context(), env.reader(), testScope, member.ID)
 		must.NoError(t, err)
@@ -474,7 +533,7 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		settledHome := seedAccountFor(t, env, store, settled, "Cleo's")
 		must.NoError(t, env.setDefaultAccount(t, store, testScope, settled.ID, settledHome.ID))
 
-		must.NoError(t, env.archiveAccount(t, store, testScope, closing.ID))
+		must.NoError(t, env.archiveAccountErr(t, store, testScope, closing.ID))
 
 		strandedLanding, err := store.GetPrincipal(t.Context(), env.reader(), testScope, stranded.ID, "")
 		must.NoError(t, err)

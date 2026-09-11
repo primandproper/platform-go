@@ -217,14 +217,17 @@ func (s *Service) VerifyTOTPSecret(
 		return op.Error(ErrInvalidCredentials, "verifying a second-factor secret")
 	}
 
-	redacted := user.Redacted()
-
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		if txErr := s.directory.MarkUserTwoFactorSecretVerified(ctx, tx, scope, userID); txErr != nil {
+		verified, txErr := s.directory.MarkUserTwoFactorSecretVerified(ctx, tx, scope, userID)
+		if txErr != nil {
 			return txErr
 		}
 
-		return s.hooks.AfterVerifyTOTPSecret(ctx, tx, scope, redacted)
+		// The user the write answered with rather than the one read before it,
+		// which is the same row a moment earlier and without the stamp this
+		// call exists to make. The other two credential writes still hand over
+		// the copy they read, because neither answers with anything.
+		return s.hooks.AfterVerifyTOTPSecret(ctx, tx, scope, verified.Redacted())
 	}); err != nil {
 		return op.Error(err, "marking a second-factor secret verified")
 	}

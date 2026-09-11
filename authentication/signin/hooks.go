@@ -193,6 +193,9 @@ type Hooks interface {
 
 	// AfterVerifyTOTPSecret is called with the user who proved possession of the
 	// secret they hold, redacted, in the transaction that marked it verified.
+	//
+	// It is the row the write answered with, so TwoFactorSecretVerifiedAt holds
+	// the moment being recorded rather than whatever it held before the call.
 	AfterVerifyTOTPSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error
 }
 

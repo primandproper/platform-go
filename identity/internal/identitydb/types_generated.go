@@ -185,14 +185,63 @@ type GetAccountRow struct {
 	ArchivedAt                  *time.Time
 }
 
-// GetAccountCreatedAtParams are the arguments to GetAccountCreatedAt.
-type GetAccountCreatedAtParams struct {
-	ID string
+// GetArchivedAccountParams are the arguments to GetArchivedAccount.
+type GetArchivedAccountParams struct {
+	ID    string
+	Scope tenancy.Scope
 }
 
-// GetAccountCreatedAtRow is one row of GetAccountCreatedAt's result.
-type GetAccountCreatedAtRow struct {
-	CreatedAt time.Time
+// GetArchivedAccountRow is one row of GetArchivedAccount's result.
+type GetArchivedAccountRow struct {
+	ID                          string
+	Scope                       tenancy.Scope
+	Name                        string
+	OwnerUserID                 string
+	BillingStatus               string
+	SubscriptionPlanID          *string
+	PaymentProcessorCustomerID  string
+	LastPaymentProviderSyncedAt *time.Time
+	AddressLine1                string
+	AddressLine2                string
+	AddressCity                 string
+	AddressState                string
+	AddressPostalCode           string
+	AddressCountry              string
+	AddressPhone                string
+	TimeZone                    string
+	CreatedAt                   time.Time
+	LastUpdatedAt               *time.Time
+	ArchivedAt                  *time.Time
+}
+
+// GetArchivedUserParams are the arguments to GetArchivedUser.
+type GetArchivedUserParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetArchivedUserRow is one row of GetArchivedUser's result.
+type GetArchivedUserRow struct {
+	ID                            string
+	Scope                         tenancy.Scope
+	Username                      string
+	EmailAddress                  string
+	FirstName                     string
+	LastName                      string
+	HashedPassword                string
+	RequiresPasswordChange        bool
+	PasswordLastChangedAt         *time.Time
+	TwoFactorSecret               string
+	TwoFactorSecretVerifiedAt     *time.Time
+	EmailAddressVerifiedAt        *time.Time
+	EmailAddressVerificationToken string
+	AccountStatus                 string
+	AccountStatusExplanation      string
+	LastAcceptedTermsOfService    *time.Time
+	LastAcceptedPrivacyPolicy     *time.Time
+	CreatedAt                     time.Time
+	LastUpdatedAt                 *time.Time
+	ArchivedAt                    *time.Time
 }
 
 // GetInvitationParams are the arguments to GetInvitation.
@@ -413,16 +462,6 @@ type GetUserByUsernameRow struct {
 	CreatedAt                     time.Time
 	LastUpdatedAt                 *time.Time
 	ArchivedAt                    *time.Time
-}
-
-// GetUserCreatedAtParams are the arguments to GetUserCreatedAt.
-type GetUserCreatedAtParams struct {
-	ID string
-}
-
-// GetUserCreatedAtRow is one row of GetUserCreatedAt's result.
-type GetUserCreatedAtRow struct {
-	CreatedAt time.Time
 }
 
 // GetUserIDByEmailAddressParams are the arguments to GetUserIDByEmailAddress.

@@ -266,7 +266,7 @@ func (s *SQLStore) MarkAccountBillingSynced(
 	tx database.Tx,
 	scope tenancy.Scope,
 	accountID string,
-) error {
+) (*Account, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(accountIDKey, accountID),
@@ -274,11 +274,11 @@ func (s *SQLStore) MarkAccountBillingSynced(
 	defer op.End()
 
 	if err := requireExecutor(tx); err != nil {
-		return op.Error(err, "marking identity account billing synced")
+		return nil, op.Error(err, "marking identity account billing synced")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "marking identity account billing synced")
+		return nil, op.Error(err, "marking identity account billing synced")
 	}
 
 	count, err := s.q.MarkAccountBillingSynced(ctx, tx, identitydb.MarkAccountBillingSyncedParams{
@@ -287,8 +287,17 @@ func (s *SQLStore) MarkAccountBillingSynced(
 		LastPaymentProviderSyncedAt: pointer.To(s.now()),
 	})
 	if err = s.guardCount(ctx, count, err, ErrAccountNotFound, "marking identity account billing synced"); err != nil {
-		return op.Error(err, "marking identity account billing synced")
+		return nil, op.Error(err, "marking identity account billing synced")
 	}
 
-	return nil
+	// The stamp this statement wrote, read back on the transaction that wrote
+	// it. It is the whole content of the write, and a reconciler that has to
+	// read the account again to learn when it last reconciled is a reconciler
+	// paying for the answer twice.
+	synced, err := s.readAccount(ctx, tx, scope, accountID)
+	if err != nil {
+		return nil, op.Error(err, "marking identity account billing synced")
+	}
+
+	return synced, nil
 }

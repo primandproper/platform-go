@@ -329,6 +329,35 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, registration, hooks.registration)
 	})
 
+	t.Run("a registration answers with the rows and leaves the caller's values alone", func(t *testing.T) {
+		t.Parallel()
+
+		// The three writes stopped writing to what they are handed, so the
+		// Registration is where a caller reads what landed. Nothing about the
+		// values passed in changes, which is what makes them safe to hold on to
+		// — and what makes reading an id off one a mistake the compiler cannot
+		// catch but this pins.
+		service, _ := env.newService(t, &recordingHooks{})
+
+		user := newUser("ada")
+		user.ID = ""
+
+		account := newAccount("Ada's account", "")
+		account.ID = ""
+
+		registration, err := service.Register(t.Context(), testScope, user, account, []string{"account_admin"})
+		must.NoError(t, err)
+
+		test.NotEq(t, "", registration.User.ID)
+		test.NotEq(t, "", registration.Account.ID)
+		test.EqOp(t, registration.User.ID, registration.Account.OwnerUserID)
+
+		test.EqOp(t, "", user.ID)
+		test.EqOp(t, "", account.ID)
+		test.EqOp(t, "", account.OwnerUserID)
+		test.True(t, user.CreatedAt.IsZero())
+	})
+
 	t.Run("the register hook reads the writes it is committing with", func(t *testing.T) {
 		t.Parallel()
 
@@ -685,10 +714,14 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		archived, err := service.ArchiveUser(t.Context(), testScope, member.ID)
 		must.NoError(t, err)
 
-		// Read back by the Service, and so redacted — an archival's audit
-		// entry has no business carrying a password hash.
+		// The row the store's archival answered with, redacted — an archival's
+		// audit entry has no business carrying a password hash — and stamped,
+		// which is what the Service's own read before the write could not have
+		// said. It is the same value the hook is handed.
 		test.EqOp(t, "", archived.HashedPassword)
 		test.EqOp(t, "grace", archived.Username)
+		test.True(t, archived.Archived())
+		test.EqOp(t, archived, hooks.user)
 
 		test.EqOp(t, 1, hooks.ran("archive"))
 		must.SliceLen(t, 1, hooks.endedMemberships)
@@ -1064,11 +1097,13 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		// Put the joiner on the owner's account, so there is a membership to end
 		// that is not somebody's last standing as an owner.
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			_, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    joiner.User.ID,
 				BelongsToAccount: owner.Account.ID,
 				Roles:            []string{"member"},
 			})
+
+			return err
 		}))
 
 		removed, err := service.RemoveMembership(t.Context(), testScope, joiner.User.ID, owner.Account.ID)
@@ -1098,16 +1133,20 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		// A user who owns nothing, so that the membership being removed is not
 		// somebody's last standing as an owner — which RemoveMembership refuses
 		// outright, and which every registered user's own account makes them.
-		joiner := &User{Username: "carol", EmailAddress: "carol@example.com"}
+		var joiner *User
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
-			if err := store.CreateUser(t.Context(), tx, testScope, joiner); err != nil {
+			created, err := store.CreateUser(t.Context(), tx, testScope,
+				&User{Username: "carol", EmailAddress: "carol@example.com"})
+			if err != nil {
 				return err
 			}
 
+			joiner = created
+
 			// The first membership a user holds anywhere becomes their default,
 			// so this is the one whose removal has to move it.
-			if err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			if _, err = store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    joiner.ID,
 				BelongsToAccount: first.Account.ID,
 				Roles:            []string{"member"},
@@ -1115,11 +1154,13 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 				return err
 			}
 
-			return store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			_, err = store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    joiner.ID,
 				BelongsToAccount: second.Account.ID,
 				Roles:            []string{"member"},
 			})
+
+			return err
 		}))
 
 		removed, err := service.RemoveMembership(t.Context(), testScope, joiner.ID, first.Account.ID)

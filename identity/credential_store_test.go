@@ -91,7 +91,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, "SECRET", enrolled.TwoFactorSecret)
 		test.False(t, enrolled.TwoFactorEnabled())
 
-		must.NoError(t, env.markUserTwoFactorSecretVerified(t, store, testScope, user.ID))
+		must.NoError(t, env.markUserTwoFactorSecretVerifiedErr(t, store, testScope, user.ID))
 
 		verified, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
@@ -99,7 +99,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 
 		// Verifying twice is either a replay or a flow that lost track of
 		// itself, and either is worth surfacing.
-		must.ErrorIs(t, env.markUserTwoFactorSecretVerified(t, store, testScope, user.ID), ErrUserNotFound)
+		must.ErrorIs(t, env.markUserTwoFactorSecretVerifiedErr(t, store, testScope, user.ID), ErrUserNotFound)
 
 		// Re-enrolling drops the proof with the secret.
 		must.NoError(t, env.updateUserTwoFactorSecret(t, store, testScope, user.ID, "ROTATED"))
@@ -107,6 +107,52 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		rotated, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
 		test.False(t, rotated.TwoFactorEnabled())
+	})
+
+	t.Run("the two marks answer with the user they moved", func(t *testing.T) {
+		t.Parallel()
+
+		// Both stamps are reads of this Store's clock, which is the one value a
+		// caller cannot name — so a consumer recording who proved a second
+		// factor, or whose address stopped being proven, reads it off the row
+		// the write answered with rather than out of a second read.
+		store := env.newStore(t)
+
+		user := newUser("ada")
+		user.EmailAddressVerificationToken = "verify-me"
+		seedUser(t, env, store, user)
+
+		must.NoError(t, env.updateUserTwoFactorSecret(t, store, testScope, user.ID, "SECRET"))
+
+		verified, err := env.markUserTwoFactorSecretVerified(t, store, testScope, user.ID)
+		must.NoError(t, err)
+		must.NotNil(t, verified.TwoFactorSecretVerifiedAt)
+		test.True(t, verified.TwoFactorEnabled())
+
+		stored, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
+		must.NoError(t, err)
+		test.EqOp(t, *stored.TwoFactorSecretVerifiedAt, *verified.TwoFactorSecretVerifiedAt)
+
+		// A replay matches nothing, and a refusal answers with no user at all:
+		// the row comes back only beside a nil error.
+		replayed, err := env.markUserTwoFactorSecretVerified(t, store, testScope, user.ID)
+		must.ErrorIs(t, err, ErrUserNotFound)
+		test.Nil(t, replayed)
+
+		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
+
+		unverified, err := env.markUserEmailAddressUnverified(t, store, testScope, user.ID)
+		must.NoError(t, err)
+
+		// The address the proof was withdrawn from is on the row, which is the
+		// fact worth recording — the column this write clears says only that
+		// something was proven, never what.
+		test.False(t, unverified.EmailAddressVerified())
+		test.EqOp(t, user.EmailAddress, unverified.EmailAddress)
+
+		absent, err := env.markUserEmailAddressUnverified(t, store, testScope, identifiers.New())
+		must.ErrorIs(t, err, ErrUserNotFound)
+		test.Nil(t, absent)
 	})
 
 	t.Run("refuses to verify a second factor nobody enrolled", func(t *testing.T) {
@@ -121,7 +167,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		user := seedUser(t, env, store, newUser("ada"))
 
-		must.ErrorIs(t, env.markUserTwoFactorSecretVerified(t, store, testScope, user.ID), ErrUserNotFound)
+		must.ErrorIs(t, env.markUserTwoFactorSecretVerifiedErr(t, store, testScope, user.ID), ErrUserNotFound)
 
 		unenrolled, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
@@ -212,7 +258,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 
 		// A bounce, a support decision, a deliverability sweep: the address is
 		// the one the user chose and stays that way, and only the proof goes.
-		must.NoError(t, env.markUserEmailAddressUnverified(t, store, testScope, user.ID))
+		must.NoError(t, env.markUserEmailAddressUnverifiedErr(t, store, testScope, user.ID))
 
 		read, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
@@ -221,7 +267,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 
 		// Unguarded, so unlike the three writes that name a value the row must
 		// still hold, a second call is not a lost race — it is the same row.
-		must.NoError(t, env.markUserEmailAddressUnverified(t, store, testScope, user.ID))
+		must.NoError(t, env.markUserEmailAddressUnverifiedErr(t, store, testScope, user.ID))
 
 		// A fresh link and the proof it earns still work afterwards, which is
 		// what makes this an unverify rather than a lockout.
@@ -240,7 +286,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		user := seedUser(t, env, store, newUser("ada"))
 
 		must.NoError(t, env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "in-the-inbox"))
-		must.NoError(t, env.markUserEmailAddressUnverified(t, store, testScope, user.ID))
+		must.NoError(t, env.markUserEmailAddressUnverifiedErr(t, store, testScope, user.ID))
 
 		// The link was minted for this address and the address has not moved,
 		// so burning it would cost the user a round trip to prove the address
@@ -259,17 +305,17 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		// The scope is in the predicate, so the neighbor's directory reaches
 		// nobody, and an unknown user is a miss rather than a silent no-op.
 		must.ErrorIs(t,
-			env.markUserEmailAddressUnverified(t, store, otherScope, user.ID),
+			env.markUserEmailAddressUnverifiedErr(t, store, otherScope, user.ID),
 			ErrUserNotFound,
 		)
 
 		must.ErrorIs(t,
-			env.markUserEmailAddressUnverified(t, store, testScope, identifiers.New()),
+			env.markUserEmailAddressUnverifiedErr(t, store, testScope, identifiers.New()),
 			ErrUserNotFound,
 		)
 
 		must.ErrorIs(t,
-			env.markUserEmailAddressUnverified(t, store, tenancy.Scope{}, user.ID),
+			env.markUserEmailAddressUnverifiedErr(t, store, tenancy.Scope{}, user.ID),
 			tenancy.ErrNoScope,
 		)
 	})
