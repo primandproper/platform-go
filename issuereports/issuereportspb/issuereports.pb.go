@@ -39,9 +39,10 @@
 //
 // # Why status is an enum and kind is not
 //
-// [Status] is a closed set this module owns and validates every write against,
-// so a value outside the enum is a row the store would have refused; the
-// generated constant is exactly as complete as the column, in every language.
+// [ReportStatus] is a closed set this module owns and validates every write
+// against, so a value outside the enum is a row the store would have refused;
+// the generated constant is exactly as complete as the column, in every
+// language.
 //
 // [IssueReport.kind] and [IssueReport.subject_type] are strings, and they are
 // the borrowed vocabulary in this file. What a report is *about*, and what
@@ -107,73 +108,79 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Status is where a report stands. It is this module's own closed set: four
-// states, and a table of which moves between them are admitted.
-type Status int32
+// ReportStatus is where a report stands. It is this module's own closed set:
+// four states, and a table of which moves between them are admitted.
+//
+// The name carries the noun the way every other enum in this module's schemas
+// does -- AccountStatus, SignupStatus, TransactionStatus. A bare Status is a
+// name a consumer generates into a language with one flat namespace and finds
+// already taken.
+type ReportStatus int32
 
 const (
-	// STATUS_UNSPECIFIED is a request that named no status. It is not a stored
-	// value -- every report carries one of the four below -- and a call that
-	// leaves it here is refused rather than defaulted, because every default is a
-	// queue somebody did not mean to name.
-	Status_STATUS_UNSPECIFIED Status = 0
-	// STATUS_OPEN is a report nobody has picked up. Every report is born here, and
-	// a reopened one returns here.
-	Status_STATUS_OPEN Status = 1
-	// STATUS_ACKNOWLEDGED is a report somebody has picked up and not yet finished
-	// with. It cannot go back to open: somebody has seen it, and a status that
-	// could un-see it would not be a fact anybody can act on.
-	Status_STATUS_ACKNOWLEDGED Status = 2
-	// STATUS_RESOLVED is a report that has been dealt with.
-	Status_STATUS_RESOLVED Status = 3
-	// STATUS_DECLINED is a report that will not be dealt with: a duplicate, a
-	// misunderstanding, working as intended. It is distinct from resolved because
-	// the difference is what a reporter is told and what a product learns.
-	Status_STATUS_DECLINED Status = 4
+	// REPORT_STATUS_UNSPECIFIED is a request that named no status. It is not a
+	// stored value -- every report carries one of the four below -- and a call
+	// that leaves it here is refused rather than defaulted, because every default
+	// is a queue somebody did not mean to name.
+	ReportStatus_REPORT_STATUS_UNSPECIFIED ReportStatus = 0
+	// REPORT_STATUS_OPEN is a report nobody has picked up. Every report is born
+	// here, and a reopened one returns here.
+	ReportStatus_REPORT_STATUS_OPEN ReportStatus = 1
+	// REPORT_STATUS_ACKNOWLEDGED is a report somebody has picked up and not yet
+	// finished with. It cannot go back to open: somebody has seen it, and a
+	// status that could un-see it would not be a fact anybody can act on.
+	ReportStatus_REPORT_STATUS_ACKNOWLEDGED ReportStatus = 2
+	// REPORT_STATUS_RESOLVED is a report that has been dealt with.
+	ReportStatus_REPORT_STATUS_RESOLVED ReportStatus = 3
+	// REPORT_STATUS_DECLINED is a report that will not be dealt with: a
+	// duplicate, a misunderstanding, working as intended. It is distinct from
+	// resolved because the difference is what a reporter is told and what a
+	// product learns.
+	ReportStatus_REPORT_STATUS_DECLINED ReportStatus = 4
 )
 
-// Enum value maps for Status.
+// Enum value maps for ReportStatus.
 var (
-	Status_name = map[int32]string{
-		0: "STATUS_UNSPECIFIED",
-		1: "STATUS_OPEN",
-		2: "STATUS_ACKNOWLEDGED",
-		3: "STATUS_RESOLVED",
-		4: "STATUS_DECLINED",
+	ReportStatus_name = map[int32]string{
+		0: "REPORT_STATUS_UNSPECIFIED",
+		1: "REPORT_STATUS_OPEN",
+		2: "REPORT_STATUS_ACKNOWLEDGED",
+		3: "REPORT_STATUS_RESOLVED",
+		4: "REPORT_STATUS_DECLINED",
 	}
-	Status_value = map[string]int32{
-		"STATUS_UNSPECIFIED":  0,
-		"STATUS_OPEN":         1,
-		"STATUS_ACKNOWLEDGED": 2,
-		"STATUS_RESOLVED":     3,
-		"STATUS_DECLINED":     4,
+	ReportStatus_value = map[string]int32{
+		"REPORT_STATUS_UNSPECIFIED":  0,
+		"REPORT_STATUS_OPEN":         1,
+		"REPORT_STATUS_ACKNOWLEDGED": 2,
+		"REPORT_STATUS_RESOLVED":     3,
+		"REPORT_STATUS_DECLINED":     4,
 	}
 )
 
-func (x Status) Enum() *Status {
-	p := new(Status)
+func (x ReportStatus) Enum() *ReportStatus {
+	p := new(ReportStatus)
 	*p = x
 	return p
 }
 
-func (x Status) String() string {
+func (x ReportStatus) String() string {
 	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
 }
 
-func (Status) Descriptor() protoreflect.EnumDescriptor {
+func (ReportStatus) Descriptor() protoreflect.EnumDescriptor {
 	return file_primandproper_platform_issuereports_v1_issuereports_proto_enumTypes[0].Descriptor()
 }
 
-func (Status) Type() protoreflect.EnumType {
+func (ReportStatus) Type() protoreflect.EnumType {
 	return &file_primandproper_platform_issuereports_v1_issuereports_proto_enumTypes[0]
 }
 
-func (x Status) Number() protoreflect.EnumNumber {
+func (x ReportStatus) Number() protoreflect.EnumNumber {
 	return protoreflect.EnumNumber(x)
 }
 
-// Deprecated: Use Status.Descriptor instead.
-func (Status) EnumDescriptor() ([]byte, []int) {
+// Deprecated: Use ReportStatus.Descriptor instead.
+func (ReportStatus) EnumDescriptor() ([]byte, []int) {
 	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{0}
 }
 
@@ -217,7 +224,7 @@ type IssueReport struct {
 	// about one of them.
 	SubjectId string `protobuf:"bytes,10,opt,name=subject_id,json=subjectID,proto3" json:"subject_id,omitempty"`
 	// status is where the report stands.
-	Status Status `protobuf:"varint,11,opt,name=status,proto3,enum=primandproper.platform.issuereports.v1.Status" json:"status,omitempty"`
+	Status ReportStatus `protobuf:"varint,11,opt,name=status,proto3,enum=primandproper.platform.issuereports.v1.ReportStatus" json:"status,omitempty"`
 	// resolution is why the report is in the terminal status it is in -- the note
 	// a triager left when they resolved or declined it. A reopen clears it, since
 	// a reason that no longer holds is worse than none.
@@ -326,11 +333,11 @@ func (x *IssueReport) GetSubjectId() string {
 	return ""
 }
 
-func (x *IssueReport) GetStatus() Status {
+func (x *IssueReport) GetStatus() ReportStatus {
 	if x != nil {
 		return x.Status
 	}
-	return Status_STATUS_UNSPECIFIED
+	return ReportStatus_REPORT_STATUS_UNSPECIFIED
 }
 
 func (x *IssueReport) GetResolution() string {
@@ -768,10 +775,10 @@ func (x *ListReportsResponse) GetResults() []*IssueReport {
 
 type ListReportsByStatusRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// status is the queue to page. STATUS_UNSPECIFIED is refused rather than
-	// treated as "any": an empty page is what a queue that has been quietly
+	// status is the queue to page. REPORT_STATUS_UNSPECIFIED is refused rather
+	// than treated as "any": an empty page is what a queue that has been quietly
 	// misspelled looks like.
-	Status        Status                   `protobuf:"varint,1,opt,name=status,proto3,enum=primandproper.platform.issuereports.v1.Status" json:"status,omitempty"`
+	Status        ReportStatus             `protobuf:"varint,1,opt,name=status,proto3,enum=primandproper.platform.issuereports.v1.ReportStatus" json:"status,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -807,11 +814,11 @@ func (*ListReportsByStatusRequest) Descriptor() ([]byte, []int) {
 	return file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *ListReportsByStatusRequest) GetStatus() Status {
+func (x *ListReportsByStatusRequest) GetStatus() ReportStatus {
 	if x != nil {
 		return x.Status
 	}
-	return Status_STATUS_UNSPECIFIED
+	return ReportStatus_REPORT_STATUS_UNSPECIFIED
 }
 
 func (x *ListReportsByStatusRequest) GetFilter() *filteringpb.QueryFilter {
@@ -1309,10 +1316,10 @@ type TransitionReportRequest struct {
 	// The statement requires the row to still hold it, so a report that moved
 	// between the read this decision was made from and this call is refused rather
 	// than overwritten -- see the file comment.
-	ExpectedStatus Status `protobuf:"varint,2,opt,name=expected_status,json=expectedStatus,proto3,enum=primandproper.platform.issuereports.v1.Status" json:"expected_status,omitempty"`
+	ExpectedStatus ReportStatus `protobuf:"varint,2,opt,name=expected_status,json=expectedStatus,proto3,enum=primandproper.platform.issuereports.v1.ReportStatus" json:"expected_status,omitempty"`
 	// target_status is where it should go. A move the lifecycle does not admit is
 	// refused before anything is written.
-	TargetStatus Status `protobuf:"varint,3,opt,name=target_status,json=targetStatus,proto3,enum=primandproper.platform.issuereports.v1.Status" json:"target_status,omitempty"`
+	TargetStatus ReportStatus `protobuf:"varint,3,opt,name=target_status,json=targetStatus,proto3,enum=primandproper.platform.issuereports.v1.ReportStatus" json:"target_status,omitempty"`
 	// resolution is the note a triager leaves. A move into a terminal status
 	// stores it and stamps closed_at; a move out of one clears both, because a
 	// reason that no longer holds is worse than none.
@@ -1358,18 +1365,18 @@ func (x *TransitionReportRequest) GetReportId() string {
 	return ""
 }
 
-func (x *TransitionReportRequest) GetExpectedStatus() Status {
+func (x *TransitionReportRequest) GetExpectedStatus() ReportStatus {
 	if x != nil {
 		return x.ExpectedStatus
 	}
-	return Status_STATUS_UNSPECIFIED
+	return ReportStatus_REPORT_STATUS_UNSPECIFIED
 }
 
-func (x *TransitionReportRequest) GetTargetStatus() Status {
+func (x *TransitionReportRequest) GetTargetStatus() ReportStatus {
 	if x != nil {
 		return x.TargetStatus
 	}
-	return Status_STATUS_UNSPECIFIED
+	return ReportStatus_REPORT_STATUS_UNSPECIFIED
 }
 
 func (x *TransitionReportRequest) GetResolution() string {
@@ -1509,7 +1516,7 @@ var File_primandproper_platform_issuereports_v1_issuereports_proto protoreflect.
 
 const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "" +
 	"\n" +
-	"9primandproper/platform/issuereports/v1/issuereports.proto\x12&primandproper.platform.issuereports.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\"\x8d\x04\n" +
+	"9primandproper/platform/issuereports/v1/issuereports.proto\x12&primandproper.platform.issuereports.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\"\x93\x04\n" +
 	"\vIssueReport\x129\n" +
 	"\n" +
 	"created_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12B\n" +
@@ -1524,8 +1531,8 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\fsubject_type\x18\t \x01(\tR\vsubjectType\x12\x1d\n" +
 	"\n" +
 	"subject_id\x18\n" +
-	" \x01(\tR\tsubjectID\x12F\n" +
-	"\x06status\x18\v \x01(\x0e2..primandproper.platform.issuereports.v1.StatusR\x06status\x12\x1e\n" +
+	" \x01(\tR\tsubjectID\x12L\n" +
+	"\x06status\x18\v \x01(\x0e24.primandproper.platform.issuereports.v1.ReportStatusR\x06status\x12\x1e\n" +
 	"\n" +
 	"resolution\x18\f \x01(\tR\n" +
 	"resolutionR\x05scope\"\xa3\x01\n" +
@@ -1556,9 +1563,9 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12M\n" +
-	"\aresults\x18\x02 \x03(\v23.primandproper.platform.issuereports.v1.IssueReportR\aresultsR\x05scope\"\xb5\x01\n" +
-	"\x1aListReportsByStatusRequest\x12F\n" +
-	"\x06status\x18\x01 \x01(\x0e2..primandproper.platform.issuereports.v1.StatusR\x06status\x12H\n" +
+	"\aresults\x18\x02 \x03(\v23.primandproper.platform.issuereports.v1.IssueReportR\aresultsR\x05scope\"\xbb\x01\n" +
+	"\x1aListReportsByStatusRequest\x12L\n" +
+	"\x06status\x18\x01 \x01(\x0e24.primandproper.platform.issuereports.v1.ReportStatusR\x06status\x12H\n" +
 	"\x06filter\x18\x02 \x01(\v20.primandproper.platform.filtering.v1.QueryFilterR\x06filterR\x05scope\"\xc4\x01\n" +
 	"\x1bListReportsByStatusResponse\x12O\n" +
 	"\n" +
@@ -1595,11 +1602,11 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\treport_id\x18\x01 \x01(\tR\breportID\x12T\n" +
 	"\x05input\x18\x02 \x01(\v2>.primandproper.platform.issuereports.v1.IssueReportUpdateInputR\x05inputR\x05scopeR\breporter\"j\n" +
 	"\x14UpdateReportResponse\x12K\n" +
-	"\x06result\x18\x01 \x01(\v23.primandproper.platform.issuereports.v1.IssueReportR\x06resultR\x05scope\"\x8b\x02\n" +
+	"\x06result\x18\x01 \x01(\v23.primandproper.platform.issuereports.v1.IssueReportR\x06resultR\x05scope\"\x97\x02\n" +
 	"\x17TransitionReportRequest\x12\x1b\n" +
-	"\treport_id\x18\x01 \x01(\tR\breportID\x12W\n" +
-	"\x0fexpected_status\x18\x02 \x01(\x0e2..primandproper.platform.issuereports.v1.StatusR\x0eexpectedStatus\x12S\n" +
-	"\rtarget_status\x18\x03 \x01(\x0e2..primandproper.platform.issuereports.v1.StatusR\ftargetStatus\x12\x1e\n" +
+	"\treport_id\x18\x01 \x01(\tR\breportID\x12]\n" +
+	"\x0fexpected_status\x18\x02 \x01(\x0e24.primandproper.platform.issuereports.v1.ReportStatusR\x0eexpectedStatus\x12Y\n" +
+	"\rtarget_status\x18\x03 \x01(\x0e24.primandproper.platform.issuereports.v1.ReportStatusR\ftargetStatus\x12\x1e\n" +
 	"\n" +
 	"resolution\x18\x04 \x01(\tR\n" +
 	"resolutionR\x05scope\"n\n" +
@@ -1607,13 +1614,13 @@ const file_primandproper_platform_issuereports_v1_issuereports_proto_rawDesc = "
 	"\x06result\x18\x01 \x01(\v23.primandproper.platform.issuereports.v1.IssueReportR\x06resultR\x05scope\":\n" +
 	"\x14ArchiveReportRequest\x12\x1b\n" +
 	"\treport_id\x18\x01 \x01(\tR\breportIDR\x05scope\"\x17\n" +
-	"\x15ArchiveReportResponse*t\n" +
-	"\x06Status\x12\x16\n" +
-	"\x12STATUS_UNSPECIFIED\x10\x00\x12\x0f\n" +
-	"\vSTATUS_OPEN\x10\x01\x12\x17\n" +
-	"\x13STATUS_ACKNOWLEDGED\x10\x02\x12\x13\n" +
-	"\x0fSTATUS_RESOLVED\x10\x03\x12\x13\n" +
-	"\x0fSTATUS_DECLINED\x10\x042\xff\v\n" +
+	"\x15ArchiveReportResponse*\x9d\x01\n" +
+	"\fReportStatus\x12\x1d\n" +
+	"\x19REPORT_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12REPORT_STATUS_OPEN\x10\x01\x12\x1e\n" +
+	"\x1aREPORT_STATUS_ACKNOWLEDGED\x10\x02\x12\x1a\n" +
+	"\x16REPORT_STATUS_RESOLVED\x10\x03\x12\x1a\n" +
+	"\x16REPORT_STATUS_DECLINED\x10\x042\xff\v\n" +
 	"\x13IssueReportsService\x12\x89\x01\n" +
 	"\fCreateReport\x12;.primandproper.platform.issuereports.v1.CreateReportRequest\x1a<.primandproper.platform.issuereports.v1.CreateReportResponse\x12\x80\x01\n" +
 	"\tGetReport\x128.primandproper.platform.issuereports.v1.GetReportRequest\x1a9.primandproper.platform.issuereports.v1.GetReportResponse\x12\x86\x01\n" +
@@ -1641,7 +1648,7 @@ func file_primandproper_platform_issuereports_v1_issuereports_proto_rawDescGZIP(
 var file_primandproper_platform_issuereports_v1_issuereports_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_primandproper_platform_issuereports_v1_issuereports_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_primandproper_platform_issuereports_v1_issuereports_proto_goTypes = []any{
-	(Status)(0),                              // 0: primandproper.platform.issuereports.v1.Status
+	(ReportStatus)(0),                        // 0: primandproper.platform.issuereports.v1.ReportStatus
 	(*IssueReport)(nil),                      // 1: primandproper.platform.issuereports.v1.IssueReport
 	(*IssueReportCreationInput)(nil),         // 2: primandproper.platform.issuereports.v1.IssueReportCreationInput
 	(*IssueReportUpdateInput)(nil),           // 3: primandproper.platform.issuereports.v1.IssueReportUpdateInput
@@ -1674,14 +1681,14 @@ var file_primandproper_platform_issuereports_v1_issuereports_proto_depIdxs = []i
 	24, // 1: primandproper.platform.issuereports.v1.IssueReport.last_updated_at:type_name -> google.protobuf.Timestamp
 	24, // 2: primandproper.platform.issuereports.v1.IssueReport.archived_at:type_name -> google.protobuf.Timestamp
 	24, // 3: primandproper.platform.issuereports.v1.IssueReport.closed_at:type_name -> google.protobuf.Timestamp
-	0,  // 4: primandproper.platform.issuereports.v1.IssueReport.status:type_name -> primandproper.platform.issuereports.v1.Status
+	0,  // 4: primandproper.platform.issuereports.v1.IssueReport.status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
 	2,  // 5: primandproper.platform.issuereports.v1.CreateReportRequest.input:type_name -> primandproper.platform.issuereports.v1.IssueReportCreationInput
 	1,  // 6: primandproper.platform.issuereports.v1.CreateReportResponse.result:type_name -> primandproper.platform.issuereports.v1.IssueReport
 	1,  // 7: primandproper.platform.issuereports.v1.GetReportResponse.result:type_name -> primandproper.platform.issuereports.v1.IssueReport
 	25, // 8: primandproper.platform.issuereports.v1.ListReportsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
 	26, // 9: primandproper.platform.issuereports.v1.ListReportsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	1,  // 10: primandproper.platform.issuereports.v1.ListReportsResponse.results:type_name -> primandproper.platform.issuereports.v1.IssueReport
-	0,  // 11: primandproper.platform.issuereports.v1.ListReportsByStatusRequest.status:type_name -> primandproper.platform.issuereports.v1.Status
+	0,  // 11: primandproper.platform.issuereports.v1.ListReportsByStatusRequest.status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
 	25, // 12: primandproper.platform.issuereports.v1.ListReportsByStatusRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
 	26, // 13: primandproper.platform.issuereports.v1.ListReportsByStatusResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	1,  // 14: primandproper.platform.issuereports.v1.ListReportsByStatusResponse.results:type_name -> primandproper.platform.issuereports.v1.IssueReport
@@ -1696,8 +1703,8 @@ var file_primandproper_platform_issuereports_v1_issuereports_proto_depIdxs = []i
 	1,  // 23: primandproper.platform.issuereports.v1.ListReportsForSubjectResponse.results:type_name -> primandproper.platform.issuereports.v1.IssueReport
 	3,  // 24: primandproper.platform.issuereports.v1.UpdateReportRequest.input:type_name -> primandproper.platform.issuereports.v1.IssueReportUpdateInput
 	1,  // 25: primandproper.platform.issuereports.v1.UpdateReportResponse.result:type_name -> primandproper.platform.issuereports.v1.IssueReport
-	0,  // 26: primandproper.platform.issuereports.v1.TransitionReportRequest.expected_status:type_name -> primandproper.platform.issuereports.v1.Status
-	0,  // 27: primandproper.platform.issuereports.v1.TransitionReportRequest.target_status:type_name -> primandproper.platform.issuereports.v1.Status
+	0,  // 26: primandproper.platform.issuereports.v1.TransitionReportRequest.expected_status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
+	0,  // 27: primandproper.platform.issuereports.v1.TransitionReportRequest.target_status:type_name -> primandproper.platform.issuereports.v1.ReportStatus
 	1,  // 28: primandproper.platform.issuereports.v1.TransitionReportResponse.result:type_name -> primandproper.platform.issuereports.v1.IssueReport
 	4,  // 29: primandproper.platform.issuereports.v1.IssueReportsService.CreateReport:input_type -> primandproper.platform.issuereports.v1.CreateReportRequest
 	6,  // 30: primandproper.platform.issuereports.v1.IssueReportsService.GetReport:input_type -> primandproper.platform.issuereports.v1.GetReportRequest
