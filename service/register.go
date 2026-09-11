@@ -318,9 +318,8 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 		notificationscfg.RegisterStore(i)
 	}
 
-	// The push sender resolves its config by value, not by pointer.
 	if cfg.MobileNotifications != nil {
-		do.ProvideValue(i, *cfg.MobileNotifications)
+		do.ProvideValue(i, cfg.MobileNotifications)
 		mobilenotifcfg.RegisterPushSender(i)
 	}
 

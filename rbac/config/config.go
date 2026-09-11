@@ -143,7 +143,7 @@ func NewPolicyResolver(
 			return nil, resolverErr
 		}
 
-		return authorizationcfg.NewCachedResolver(&cfg.Config, resolver, c, inner...)
+		return authorizationcfg.NewCachedResolver(ctx, &cfg.Config, resolver, c, inner...)
 	case ProviderStatic, "":
 		// The primitive half owns the static resolver and the caching decorator
 		// alike, so this branch is a delegation rather than a second assembly.

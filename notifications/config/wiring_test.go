@@ -88,7 +88,7 @@ func TestBothHalvesCloseTheFeedbackLoop(t *testing.T) {
 	do.ProvideValue[context.Context](i, t.Context())
 	do.ProvideValue[database.Client](i, client)
 	do.ProvideValue(i, &notificationscfg.Config{TablePrefix: wiringPrefix})
-	do.ProvideValue(i, mobilecfg.Config{Provider: mobilecfg.ProviderAPNs, APNs: apnsConfig(t)})
+	do.ProvideValue(i, &mobilecfg.Config{Provider: mobilecfg.ProviderAPNs, APNs: apnsConfig(t)})
 
 	notificationscfg.RegisterStore(i)
 	mobilecfg.RegisterPushSender(i)
@@ -147,7 +147,7 @@ func TestMobileAloneIsUnchanged(t *testing.T) {
 	// an error; nothing prunes.
 	i := do.New()
 	do.ProvideValue[context.Context](i, t.Context())
-	do.ProvideValue(i, mobilecfg.Config{Provider: mobilecfg.ProviderAPNs, APNs: apnsConfig(t)})
+	do.ProvideValue(i, &mobilecfg.Config{Provider: mobilecfg.ProviderAPNs, APNs: apnsConfig(t)})
 
 	mobilecfg.RegisterPushSender(i)
 

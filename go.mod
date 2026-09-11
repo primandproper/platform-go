@@ -11,7 +11,7 @@ require (
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pquerna/otp v1.5.0
-	github.com/primandproper/primitives-go/v2 v2.0.0-20260911190821-fdeaab899394
+	github.com/primandproper/primitives-go/v2 v2.0.0
 	github.com/pusher/pusher-http-go/v5 v5.1.1
 	github.com/samber/do/v2 v2.0.0
 	github.com/shoenig/test v1.12.2
