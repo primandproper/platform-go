@@ -269,6 +269,11 @@ var Matrix = map[string]map[string]Decision{
 		"ErrOperationNotFound": {Err: operations.ErrOperationNotFound, Is: Mapped},
 		"ErrTooManyWatchers":   {Err: operations.ErrTooManyWatchers, Is: Mapped},
 
+		// An Insert whose entity names a different tenant than the call did. The
+		// two halves of the request disagreed, which is a bad request rather
+		// than a refusal on authority.
+		"ErrScopeMismatch": {Err: operations.ErrScopeMismatch, Is: Mapped},
+
 		// The nil-argument sentinels, which wrap errors.ErrNilInputParameter.
 		"ErrNilConfig":         {Err: operations.ErrNilConfig, Is: Platform},
 		"ErrNilDatabaseClient": {Err: operations.ErrNilDatabaseClient, Is: Platform},

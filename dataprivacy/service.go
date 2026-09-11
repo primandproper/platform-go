@@ -252,6 +252,12 @@ func (s *StoreService) Submit(
 // The operation's request payload is a Job carrying the request ID and nothing
 // else — see Job — and its owner is the subject, which is what lets
 // operations/http scope a status read to the person it is about.
+//
+// The subject rather than Request.Scope, and the two are different questions. The
+// confinement says which tenant's rows the request covers and may name none at
+// all; the operation's owner says who may read its status, and that is the person
+// who asked. A subject ID is never empty here — Submit refuses one that is — so
+// tenancy.Of always names an owner.
 func (s *StoreService) start(
 	ctx context.Context,
 	q database.Tx,
@@ -263,7 +269,7 @@ func (s *StoreService) start(
 	}
 
 	started, err := s.operations.StartInTransaction(ctx, q, kind, Job{RequestID: req.ID},
-		operations.WithOwner(req.Subject.ID))
+		operations.WithOwner(tenancy.Of(req.Subject.ID)))
 	if err != nil {
 		return nil, platformerrors.Wrapf(err, "starting the %s operation", kind)
 	}

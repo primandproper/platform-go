@@ -7,6 +7,8 @@ package operationsdb
 
 import (
 	"time"
+
+	"github.com/primandproper/primitives-go/tenancy"
 )
 
 // BeginOperationParams are the arguments to BeginOperation.
@@ -23,7 +25,7 @@ type BeginOperationRow struct {
 	ID              string
 	Kind            string
 	State           string
-	Owner           string
+	Scope           tenancy.Scope
 	Request         []byte
 	UnitsTotal      *int64
 	UnitsDone       int64
@@ -50,7 +52,7 @@ type CreateOperationParams struct {
 	ID         string
 	Kind       string
 	State      string
-	Owner      string
+	Scope      tenancy.Scope
 	Request    []byte
 	CountLabel string
 }
@@ -60,7 +62,7 @@ type CreateOperationRow struct {
 	ID              string
 	Kind            string
 	State           string
-	Owner           string
+	Scope           tenancy.Scope
 	Request         []byte
 	UnitsTotal      *int64
 	UnitsDone       int64
@@ -116,7 +118,40 @@ type GetOperationRow struct {
 	ID              string
 	Kind            string
 	State           string
-	Owner           string
+	Scope           tenancy.Scope
+	Request         []byte
+	UnitsTotal      *int64
+	UnitsDone       int64
+	ProgressUnit    string
+	ProgressCount   int64
+	CountLabel      string
+	ProgressMessage string
+	ResultURI       string
+	ResultDetail    []byte
+	ErrorCode       string
+	ErrorMessage    string
+	ErrorRetryable  bool
+	Revision        int64
+	Attempts        int64
+	CancelRequested bool
+	CreatedAt       time.Time
+	LastUpdatedAt   *time.Time
+	StartedAt       *time.Time
+	FinishedAt      *time.Time
+}
+
+// GetOperationInScopeParams are the arguments to GetOperationInScope.
+type GetOperationInScopeParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetOperationInScopeRow is one row of GetOperationInScope's result.
+type GetOperationInScopeRow struct {
+	ID              string
+	Kind            string
+	State           string
+	Scope           tenancy.Scope
 	Request         []byte
 	UnitsTotal      *int64
 	UnitsDone       int64
@@ -140,7 +175,8 @@ type GetOperationRow struct {
 
 // GetOperationsParams are the arguments to GetOperations.
 type GetOperationsParams struct {
-	IDs []string
+	Scope tenancy.Scope
+	IDs   []string
 }
 
 // GetOperationsRow is one row of GetOperations's result.
@@ -148,7 +184,7 @@ type GetOperationsRow struct {
 	ID              string
 	Kind            string
 	State           string
-	Owner           string
+	Scope           tenancy.Scope
 	Request         []byte
 	UnitsTotal      *int64
 	UnitsDone       int64
@@ -176,7 +212,7 @@ type ListOperationsParams struct {
 	CreatedBefore *time.Time
 	UpdatedAfter  *time.Time
 	UpdatedBefore *time.Time
-	Owner         *string
+	Scope         tenancy.Scope
 	Kind          *string
 	States        []string
 	PageCursor    *string
@@ -188,7 +224,7 @@ type ListOperationsRow struct {
 	ID              string
 	Kind            string
 	State           string
-	Owner           string
+	Scope           tenancy.Scope
 	Request         []byte
 	UnitsTotal      *int64
 	UnitsDone       int64
@@ -218,7 +254,7 @@ type ListOperationsDescendingParams struct {
 	CreatedBefore *time.Time
 	UpdatedAfter  *time.Time
 	UpdatedBefore *time.Time
-	Owner         *string
+	Scope         tenancy.Scope
 	Kind          *string
 	States        []string
 	PageCursor    *string
@@ -230,7 +266,7 @@ type ListOperationsDescendingRow struct {
 	ID              string
 	Kind            string
 	State           string
-	Owner           string
+	Scope           tenancy.Scope
 	Request         []byte
 	UnitsTotal      *int64
 	UnitsDone       int64
@@ -267,7 +303,7 @@ type ListStrandedOperationsRow struct {
 	ID              string
 	Kind            string
 	State           string
-	Owner           string
+	Scope           tenancy.Scope
 	Request         []byte
 	UnitsTotal      *int64
 	UnitsDone       int64

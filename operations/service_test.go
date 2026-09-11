@@ -7,6 +7,7 @@ import (
 	platformerrors "github.com/primandproper/primitives-go/errors"
 	"github.com/primandproper/primitives-go/observability"
 	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -23,22 +24,29 @@ func TestNewService(T *testing.T) {
 	T.Run("rejects what it cannot work without", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewService(t.Context(), nil, newFakeStore(), nil, NewRegistry())
+		client := &fakeClient{}
+
+		_, err := NewService(t.Context(), nil, client, newFakeStore(), nil, NewRegistry())
 		test.ErrorIs(t, err, ErrNilConfig)
 
-		_, err = NewService(t.Context(), &Config{}, nil, nil, NewRegistry())
+		// The client is what Start opens its own transaction on. Without one
+		// there is no way in: Store has no WithTransaction of its own.
+		_, err = NewService(t.Context(), &Config{}, nil, newFakeStore(), nil, NewRegistry())
+		test.ErrorIs(t, err, ErrNilDatabaseClient)
+
+		_, err = NewService(t.Context(), &Config{}, client, nil, nil, NewRegistry())
 		test.ErrorIs(t, err, ErrNilStore)
 
 		// The registry is required even on a process that runs nothing: Start
 		// encodes through it, and refusing an unregistered kind is what keeps an
 		// unrunnable operation out of the table.
-		_, err = NewService(t.Context(), &Config{}, newFakeStore(), nil, nil)
+		_, err = NewService(t.Context(), &Config{}, client, newFakeStore(), nil, nil)
 		test.ErrorIs(t, err, ErrNilRegistry)
 
 		// A service without a queue records operations that nothing ever runs,
 		// which looks exactly like a working service until somebody waits for a
 		// result.
-		_, err = NewService(t.Context(), &Config{}, newFakeStore(), nil, NewRegistry())
+		_, err = NewService(t.Context(), &Config{}, client, newFakeStore(), nil, NewRegistry())
 		test.ErrorIs(t, err, ErrNilQueue)
 	})
 }
@@ -53,6 +61,7 @@ func newTestService(t *testing.T, store Store, registry *Registry) *StoreService
 
 	s := &StoreService{
 		cfg:      *cfg,
+		client:   &fakeClient{},
 		store:    store,
 		registry: registry,
 		o11y:     observability.NewObserverForTest("operations_test"),
@@ -79,14 +88,23 @@ func newTestService(t *testing.T, store Store, registry *Registry) *StoreService
 func TestService_Get(T *testing.T) {
 	T.Parallel()
 
-	store := newFakeStore(&Operation{ID: "op1", Kind: "export", State: StateRunning})
+	store := newFakeStore(
+		&Operation{ID: "op1", Kind: "export", State: StateRunning, Owner: testScope},
+		&Operation{ID: "op2", Kind: "export", State: StateRunning, Owner: tenancy.Of("u2")},
+	)
 	svc := newTestService(T, store, NewRegistry())
 
-	op, err := svc.Get(T.Context(), "op1")
+	op, err := svc.Get(T.Context(), testScope, "op1")
 	must.NoError(T, err)
 	test.EqOp(T, "op1", op.ID)
 
-	_, err = svc.Get(T.Context(), "nope")
+	_, err = svc.Get(T.Context(), testScope, "nope")
+	test.ErrorIs(T, err, ErrOperationNotFound)
+
+	// Another tenant's operation reads as absent rather than as a refusal. The
+	// two being one answer is what stops a status endpoint confirming which
+	// guessed IDs are real.
+	_, err = svc.Get(T.Context(), testScope, "op2")
 	test.ErrorIs(T, err, ErrOperationNotFound)
 }
 
@@ -151,9 +169,9 @@ func TestService_Reap(T *testing.T) {
 	T.Parallel()
 
 	store := newFakeStore(
-		&Operation{ID: "op1", State: StateSucceeded},
-		&Operation{ID: "op2", State: StateFailed},
-		&Operation{ID: "op3", State: StateRunning},
+		&Operation{ID: "op1", State: StateSucceeded, Owner: testScope},
+		&Operation{ID: "op2", State: StateFailed, Owner: testScope},
+		&Operation{ID: "op3", State: StateRunning, Owner: testScope},
 	)
 	svc := newTestService(T, store, NewRegistry())
 
@@ -164,7 +182,7 @@ func TestService_Reap(T *testing.T) {
 
 	// The running one is untouched: a reap that could delete an in-flight
 	// operation would lose the only record that it is in flight.
-	_, err = svc.Get(T.Context(), "op3")
+	_, err = svc.Get(T.Context(), testScope, "op3")
 	test.NoError(T, err)
 }
 
@@ -172,15 +190,19 @@ func TestService_List(T *testing.T) {
 	T.Parallel()
 
 	store := newFakeStore(
-		&Operation{ID: "op1", Owner: "u1", State: StateRunning},
-		&Operation{ID: "op2", Owner: "u2", State: StateRunning},
+		&Operation{ID: "op1", Owner: testScope, State: StateRunning},
+		&Operation{ID: "op2", Owner: tenancy.Of("u2"), State: StateRunning},
 	)
 	svc := newTestService(T, store, NewRegistry())
 
-	results, err := svc.List(T.Context(), &ListScope{Owner: "u1"}, nil)
+	// The scope is List's own argument and there is no field on ListScope that
+	// can widen past it, which is the whole reason the two are separate.
+	results, err := svc.List(T.Context(), testScope, nil, nil)
 
 	must.NoError(T, err)
 	must.NotNil(T, results)
+	must.SliceLen(T, 1, results.Data)
+	test.EqOp(T, "op1", results.Data[0].ID)
 }
 
 func TestService_start_duplicate(T *testing.T) {
@@ -201,13 +223,14 @@ func TestService_start_duplicate(T *testing.T) {
 	T.Run("returns the existing operation when the read succeeds", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "fixed", Kind: "export", State: StateRunning})
+		store := newFakeStore(&Operation{ID: "fixed", Kind: "export", State: StateRunning, Owner: testScope})
 		svc := newTestService(t, store, newRegistry(t))
 
 		_, span := svc.o11y.Begin(t.Context())
 		defer span.End()
 
-		existing, err := svc.start(t.Context(), span, nil, "export", exportRequest{}, []StartOption{WithID("fixed")})
+		existing, err := svc.start(t.Context(), span, nil, "export", exportRequest{},
+			[]StartOption{WithID("fixed"), WithOwner(testScope)})
 
 		must.NoError(t, err)
 		must.NotNil(t, existing)
@@ -223,7 +246,7 @@ func TestService_start_duplicate(T *testing.T) {
 		// stopped retrying.
 		unreachable := platformerrors.New("the read replica is unreachable")
 
-		store := newFakeStore(&Operation{ID: "fixed", Kind: "export", State: StateRunning})
+		store := newFakeStore(&Operation{ID: "fixed", Kind: "export", State: StateRunning, Owner: testScope})
 		store.getErr = unreachable
 
 		svc := newTestService(t, store, newRegistry(t))
@@ -231,7 +254,8 @@ func TestService_start_duplicate(T *testing.T) {
 		_, span := svc.o11y.Begin(t.Context())
 		defer span.End()
 
-		_, err := svc.start(t.Context(), span, nil, "export", exportRequest{}, []StartOption{WithID("fixed")})
+		_, err := svc.start(t.Context(), span, nil, "export", exportRequest{},
+			[]StartOption{WithID("fixed"), WithOwner(testScope)})
 
 		must.Error(t, err)
 		test.ErrorIs(t, err, unreachable)

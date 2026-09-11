@@ -31,9 +31,10 @@ one.
 
 # What is generated and what is written out
 
-Two reads come from database/querygen: the get by id, and the batched read the
-watcher re-reads its subscriptions through. So does the listing, which is
-querygen's filtered page with this schema's three narrowings on it.
+Three reads come from database/querygen: the get by id, the same get with the
+scope beside the id, and the batched read the watcher re-reads its subscriptions
+through. So does the listing, which is querygen's filtered page with this
+schema's three narrowings on it.
 
 Everything else is written out here, and the line is drawn by the SET list rather
 than by effort. querygen assigns bound values — a column and the argument it
@@ -52,14 +53,13 @@ statement in the committed corpus, checked by sqlc against this package's own
 schema, and executed through the generated querier. A renamed column fails
 `make unison` for the claim exactly as it does for the get.
 
-# The listing's three narrowings, and why they are two shapes
+# The listing's three narrowings, and why they are three shapes
 
-Owner and kind are open sets — an owner is whatever the application says it is,
-a kind is whatever was registered — so each is rendered as an optional
+Kind is an open set — whatever was registered — so it is rendered as an optional
 narrowing: a caller who leaves it unset is compared against nothing rather than
-against a sentinel. The alternative reading, where an absent owner means the
-rows whose owner is the empty string, is a query that runs and answers with a
-set nobody asked for.
+against a sentinel. The alternative reading, where an absent kind means the rows
+whose kind is the empty string, is a query that runs and answers with a set
+nobody asked for.
 
 State is the closed set operations.State enumerates, so it is a bound set
 instead, and "every state" is a value rather than an absence: the store binds all
@@ -68,12 +68,22 @@ this module — no keys, no rows — and it is why the narrowing is not eight
 statements, one per subset of the three filters, with a store choosing between
 eight generated row types.
 
-# The two reads with no owner predicate
+The scope is the third shape, and it is the plainest: an equality with no way to
+leave it off. The optional narrowing's reading of an absent value — compared
+against nothing — is every tenant's operations, which is the one answer this
+listing must not be able to give. It is the same reason the single read is
+rendered twice: an equality on the scope cannot be turned into "any scope" by a
+bound value, so the scoped question and the unscoped one are two statements.
 
-The recovery sweep and the retention reap take no owner, and that is the
-component's own machinery servicing itself rather than an omission. A sweep that
-recovered one owner's operations would leave every other owner's stranded, and a
-reap bounded by owner would be a retention policy that only ran for whoever asked
-for it.
+# The reads with no scope predicate
+
+The recovery sweep, the retention reap and the read-back at the end of a
+cancellation take no scope, and that is the component's own machinery servicing
+itself rather than an omission. A sweep that recovered one tenant's operations
+would leave every other tenant's stranded, a reap bounded by scope would be a
+retention policy that only ran for whoever asked for it, and the cancellation's
+read-back holds an id it has itself just written. None is reachable from a
+consumer: operations.Store exposes them as the seven methods that take neither
+an executor nor a scope, and says so on each.
 */
 package queries
