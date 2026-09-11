@@ -40,7 +40,8 @@ func RegisterStore(i do.Injector) {
 // RegisterService registers a dataprivacy.Service with the injector.
 // Packaging follows EnsurePackaging: a registered compression.Compressor
 // and/or encryption.EncryptorDecryptor is applied, and their absence means
-// uncompressed, unencrypted packages.
+// uncompressed, unencrypted packages — which Packaging.Encrypted has to agree
+// with, or the registration is refused.
 //
 // It depends on *dataprivacy.Fulfiller rather than only on the operations
 // Service, and the dependency is there to be ordered rather than used: the
@@ -80,8 +81,9 @@ func RegisterService(i do.Injector) {
 
 // RegisterFulfiller registers a *dataprivacy.Fulfiller with the injector, which
 // registers this package's operation kinds into the *operations.Registry as it
-// is built. Packaging follows EnsurePackaging, and the encrypted flag is derived
-// from whether an encryption.EncryptorDecryptor is registered.
+// is built. Packaging follows EnsurePackaging, so a registered
+// encryption.EncryptorDecryptor that disagrees with Packaging.Encrypted is
+// refused rather than silently believed over the declaration.
 //
 // A registered shredding.Keys makes every erasure destroy the subject's data
 // key, which is what carries an erasure into backups already taken. Its absence
@@ -104,11 +106,6 @@ func RegisterFulfiller(i do.Injector) {
 			return nil, err
 		}
 
-		encryptorDecryptor, err := injection.InvokeOptional[encryption.EncryptorDecryptor](i)
-		if err != nil {
-			return nil, err
-		}
-
 		keys, err := injection.InvokeOptional[shredding.Keys](i)
 		if err != nil {
 			return nil, err
@@ -126,7 +123,6 @@ func RegisterFulfiller(i do.Injector) {
 			do.MustInvoke[*dataprivacy.Registry](i),
 			do.MustInvoke[*operations.Registry](i),
 			do.MustInvoke[uploads.UploadManager](i),
-			encryptorDecryptor != nil,
 			WithPillars(pillars),
 			WithFulfillerOptions(fulfillerOpts...),
 		)
@@ -157,6 +153,11 @@ func RegisterSweeper(i do.Injector) {
 
 // invokePackaging resolves the optional packaging dependencies and turns them
 // into fulfiller and service options via EnsurePackaging.
+//
+// The *Config goes in as well as the dependencies, because EnsurePackaging is
+// where the registered encryptor is checked against what Packaging.Encrypted
+// declares — a container is exactly the place the two drift apart, since one is
+// an environment variable and the other is a registration.
 func invokePackaging(i do.Injector) ([]dataprivacy.FulfillerOption, []dataprivacy.ServiceOption, error) {
 	compressor, err := injection.InvokeOptional[compression.Compressor](i)
 	if err != nil {
@@ -168,7 +169,5 @@ func invokePackaging(i do.Injector) ([]dataprivacy.FulfillerOption, []dataprivac
 		return nil, nil, err
 	}
 
-	fulfillerOpts, serviceOpts := EnsurePackaging(compressor, encryptorDecryptor)
-
-	return fulfillerOpts, serviceOpts, nil
+	return EnsurePackaging(do.MustInvoke[*Config](i), compressor, encryptorDecryptor)
 }

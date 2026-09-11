@@ -143,6 +143,68 @@ func TestRegisterFulfiller(T *testing.T) {
 		// registry can run it.
 		test.Eq(t, []string{dataprivacy.KindExport}, kinds.Kinds())
 	})
+
+	T.Run("with an encryptor the config declares", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := testConfig()
+		cfg.Packaging.Encrypted = true
+
+		i := fulfillerInjector(t, cfg)
+
+		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
+		must.NoError(t, err)
+		do.ProvideValue(i, encryptorDecryptor)
+
+		RegisterStore(i)
+		RegisterFulfiller(i)
+
+		fulfiller, err := do.Invoke[*dataprivacy.Fulfiller](i)
+		must.NoError(t, err)
+		test.NotNil(t, fulfiller)
+	})
+
+	T.Run("refuses an encryptor the config does not declare", func(t *testing.T) {
+		t.Parallel()
+
+		// A container is where the two drift apart: the declaration is an
+		// environment variable and the encryptor is a registration, and nothing
+		// else in the wiring holds both.
+		i := fulfillerInjector(t, testConfig())
+
+		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
+		must.NoError(t, err)
+		do.ProvideValue(i, encryptorDecryptor)
+
+		RegisterStore(i)
+		RegisterFulfiller(i)
+
+		_, err = do.Invoke[*dataprivacy.Fulfiller](i)
+		test.ErrorIs(t, err, ErrPackagingDeclarationMismatch)
+	})
+}
+
+// fulfillerInjector registers everything RegisterFulfiller needs but the store
+// and the fulfiller themselves.
+func fulfillerInjector(t *testing.T, cfg *Config) do.Injector {
+	t.Helper()
+
+	i := do.New()
+	do.ProvideValue[context.Context](i, t.Context())
+	do.ProvideValue[database.Client](i, testDBClient(t))
+	do.ProvideValue(i, cfg)
+
+	domains := dataprivacy.NewRegistry()
+	must.NoError(t, domains.RegisterCollector("example", dataprivacy.CollectorFunc(
+		func(context.Context, tenancy.Scope, dataprivacy.Subject) (json.RawMessage, error) {
+			return json.RawMessage(`{}`), nil
+		},
+	)))
+	do.ProvideValue(i, domains)
+	do.ProvideValue[uploads.UploadManager](i, uploadsnoop.NewUploadManager())
+	do.ProvideValue(i, operations.NewRegistry())
+
+	return i
 }
 
 func TestRegisterSweeper(T *testing.T) {

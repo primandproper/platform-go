@@ -20,6 +20,7 @@ import (
 	"github.com/primandproper/primitives-go/database"
 	"github.com/primandproper/primitives-go/database/dialect"
 	"github.com/primandproper/primitives-go/database/sqlite"
+	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
 	"github.com/primandproper/primitives-go/tenancy"
 	"github.com/primandproper/primitives-go/uploads/noop"
 
@@ -44,6 +45,10 @@ func TestConfig(T *testing.T) {
 		// erasure that silently skipped a store of personal data would be the
 		// more surprising default.
 		test.False(t, cfg.AuditErasure.Disabled)
+
+		// Encryption is off unless configured, because an artifact encrypted at
+		// rest is only as recoverable as its key.
+		test.False(t, cfg.Packaging.Encrypted)
 
 		test.NoError(t, cfg.ValidateWithContext(t.Context()))
 	})
@@ -115,6 +120,37 @@ func TestRegisterAuditEraser(T *testing.T) {
 		test.Error(t, err)
 	})
 
+	T.Run("passes an eraser option through, after the config-derived ones", func(t *testing.T) {
+		t.Parallel()
+
+		// The prefix arrives from configuration and is then overridden by the
+		// pass-through, which is what "applied after" means. An invalid one is
+		// the observable end of that: it can only have been refused if the
+		// option reached auditerasure.New at all.
+		_, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, dataprivacy.NewRegistry(),
+			WithAuditEraserOptions(auditerasure.WithTablePrefix("drop table;--")))
+		test.ErrorIs(t, err, auditerasure.ErrInvalidTablePrefix)
+	})
+
+	T.Run("takes the same option slice as every other constructor", func(t *testing.T) {
+		t.Parallel()
+
+		registry := dataprivacy.NewRegistry()
+
+		// The point of the variadic being this package's Option: one wiring
+		// site's options go to whichever of these functions it calls, and the
+		// ones this function has no use for are ignored rather than refused.
+		registered, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, registry,
+			WithLogger(loggingnoop.NewLogger()),
+			WithStoreOptions(nil),
+			nil,
+		)
+		must.NoError(t, err)
+
+		test.True(t, registered)
+		test.Eq(t, []string{auditerasure.DefaultKey}, registry.EraserKeys())
+	})
+
 	T.Run("propagates a bad audit table prefix", func(t *testing.T) {
 		t.Parallel()
 
@@ -132,10 +168,50 @@ func TestEnsurePackaging(T *testing.T) {
 	T.Run("supplies nothing when nothing is configured", func(t *testing.T) {
 		t.Parallel()
 
-		workerOpts, serviceOpts := EnsurePackaging(nil, nil)
+		workerOpts, serviceOpts, err := EnsurePackaging(&Config{Dialect: dialect.SQLite}, nil, nil)
+		must.NoError(t, err)
 
 		test.SliceEmpty(t, workerOpts)
 		test.SliceEmpty(t, serviceOpts)
+	})
+}
+
+func TestEnsurePackaging_Declaration(T *testing.T) {
+	T.Parallel()
+
+	T.Run("refuses an encryptor a config did not declare", func(t *testing.T) {
+		t.Parallel()
+
+		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
+		must.NoError(t, err)
+
+		// The expensive direction: undeclared encryption mails the subject a
+		// link to ciphertext, and the failure surfaces at the subject weeks
+		// later rather than at startup.
+		fulfillerOpts, serviceOpts, err := EnsurePackaging(&Config{Dialect: dialect.SQLite}, nil, encryptorDecryptor)
+		test.ErrorIs(t, err, ErrPackagingDeclarationMismatch)
+
+		test.SliceEmpty(t, fulfillerOpts)
+		test.SliceEmpty(t, serviceOpts)
+	})
+
+	T.Run("refuses a declaration no encryptor backs", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{Dialect: dialect.SQLite}
+		cfg.Packaging.Encrypted = true
+
+		// The quiet direction: a deployment that declared encryption and wired
+		// none withholds every download link forever, and nothing says so.
+		_, _, err := EnsurePackaging(cfg, nil, nil)
+		test.ErrorIs(t, err, ErrPackagingDeclarationMismatch)
+	})
+
+	T.Run("refuses a nil config", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, err := EnsurePackaging(nil, nil, nil)
+		test.Error(t, err)
 	})
 }
 
@@ -151,7 +227,7 @@ func TestConstructors(T *testing.T) {
 		_, err = NewService(t.Context(), nil, nil, nil, nil)
 		test.Error(t, err)
 
-		_, err = NewFulfiller(t.Context(), nil, nil, nil, nil, nil, nil, false)
+		_, err = NewFulfiller(t.Context(), nil, nil, nil, nil, nil, nil)
 		test.Error(t, err)
 
 		_, err = NewSweeper(t.Context(), nil, nil, nil)
@@ -199,7 +275,6 @@ func TestConstructors(T *testing.T) {
 			domains,
 			kinds,
 			nil,
-			false,
 		)
 		must.NoError(t, err)
 		must.NotNil(t, fulfiller)
@@ -241,7 +316,7 @@ func TestConstructors(T *testing.T) {
 		test.Error(t, err)
 
 		_, err = NewFulfiller(t.Context(), cfg, env.client, nil, dataprivacy.NewRegistry(),
-			operations.NewRegistry(), nil, false)
+			operations.NewRegistry(), nil)
 		test.Error(t, err)
 
 		_, err = NewSweeper(t.Context(), cfg, nil, nil)
@@ -271,7 +346,36 @@ func TestConstructors(T *testing.T) {
 		// Supplying the uploader is what satisfies the export runner's storage
 		// requirement and wires the signer in one step.
 		fulfiller, err := NewFulfiller(t.Context(), cfg, env.client, store, domains, operations.NewRegistry(),
-			noop.NewUploadManager(), false)
+			noop.NewUploadManager())
+		must.NoError(t, err)
+		test.NotNil(t, fulfiller)
+	})
+
+	T.Run("the encryption declaration comes from the config rather than the caller", func(t *testing.T) {
+		t.Parallel()
+
+		env := newConfigEnv(t)
+
+		cfg := &Config{Dialect: dialect.SQLite, TablePrefix: env.prefix}
+		cfg.Packaging.Encrypted = true
+
+		store, err := NewStore(t.Context(), cfg, env.client)
+		must.NoError(t, err)
+
+		domains := dataprivacy.NewRegistry()
+		must.NoError(t, domains.RegisterCollector("identity", dataprivacy.CollectorFunc(
+			func(context.Context, tenancy.Scope, dataprivacy.Subject) (json.RawMessage, error) {
+				return json.RawMessage(`{}`), nil
+			},
+		)))
+
+		// What the declaration decides is whether the signer this builds ever
+		// returns a URL; that it declines under encryption is
+		// dataprivacy.NewArtifactURLSigner's own test. What is asserted here is
+		// that the fact now travels in the Config, so there is no longer a
+		// positional bool for a call site to get wrong.
+		fulfiller, err := NewFulfiller(t.Context(), cfg, env.client, store, domains, operations.NewRegistry(),
+			noop.NewUploadManager())
 		must.NoError(t, err)
 		test.NotNil(t, fulfiller)
 	})
@@ -361,10 +465,14 @@ func TestEnsurePackaging_Supplied(T *testing.T) {
 		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
 		must.NoError(t, err)
 
+		cfg := &Config{Dialect: dialect.SQLite}
+		cfg.Packaging.Encrypted = true
+
 		// The pairing is the point: an artifact written with one compressor and
 		// read with another is unreadable, and the failure would surface at the
 		// subject rather than at startup.
-		workerOpts, serviceOpts := EnsurePackaging(compressor, encryptorDecryptor)
+		workerOpts, serviceOpts, err := EnsurePackaging(cfg, compressor, encryptorDecryptor)
+		must.NoError(t, err)
 
 		test.SliceLen(t, 2, workerOpts)
 		test.SliceLen(t, 2, serviceOpts)
@@ -376,7 +484,8 @@ func TestEnsurePackaging_Supplied(T *testing.T) {
 		compressor, err := compression.NewCompressor(compression.AlgorithmS2)
 		must.NoError(t, err)
 
-		workerOpts, serviceOpts := EnsurePackaging(compressor, nil)
+		workerOpts, serviceOpts, err := EnsurePackaging(&Config{Dialect: dialect.SQLite}, compressor, nil)
+		must.NoError(t, err)
 
 		test.SliceLen(t, 1, workerOpts)
 		test.SliceLen(t, 1, serviceOpts)

@@ -2,6 +2,7 @@ package dataprivacycfg
 
 import (
 	"github.com/primandproper/platform-go/v14/dataprivacy"
+	"github.com/primandproper/platform-go/v14/dataprivacy/auditerasure"
 
 	"github.com/primandproper/primitives-go/observability"
 	"github.com/primandproper/primitives-go/observability/logging"
@@ -30,11 +31,12 @@ type options struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 
-	store     []dataprivacy.SQLStoreOption
-	service   []dataprivacy.ServiceOption
-	fulfiller []dataprivacy.FulfillerOption
-	sweeper   []dataprivacy.SweeperOption
-	urlSigner []dataprivacy.URLSignerOption
+	store       []dataprivacy.SQLStoreOption
+	service     []dataprivacy.ServiceOption
+	fulfiller   []dataprivacy.FulfillerOption
+	sweeper     []dataprivacy.SweeperOption
+	urlSigner   []dataprivacy.URLSignerOption
+	auditEraser []auditerasure.Option
 }
 
 // newOptions applies opts, ignoring nil entries.
@@ -102,6 +104,19 @@ func WithFulfillerOptions(opts ...dataprivacy.FulfillerOption) Option {
 // constructors ignore them.
 func WithSweeperOptions(opts ...dataprivacy.SweeperOption) Option {
 	return func(o *options) { o.sweeper = append(o.sweeper, opts...) }
+}
+
+// WithAuditEraserOptions passes opts to the auditerasure.Eraser
+// RegisterAuditEraser builds, which applies them after the options it derives
+// from configuration — so a caller can override anything. The other
+// constructors ignore them.
+//
+// It exists so RegisterAuditEraser's variadic can be this package's Option like
+// every other constructor's: an eraser's own options used to be that slot, which
+// made it the one function here a caller could not hand its ordinary option
+// slice to.
+func WithAuditEraserOptions(opts ...auditerasure.Option) Option {
+	return func(o *options) { o.auditEraser = append(o.auditEraser, opts...) }
 }
 
 // WithURLSignerOptions passes opts to the NewArtifactURLSigner this package

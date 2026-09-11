@@ -15,6 +15,12 @@ runners that worker calls, and the Service that starts operations for it.
 The registry is not configured here either. Which domains hold data about a
 person is Go code — a set of interface implementations — and there is no useful
 way to express it in the environment. It is passed explicitly to NewFulfiller.
+
+Whether artifacts are encrypted goes the other way, and the reason is the same
+one read backwards: the encryptor is Go code, but the fact that there is one is
+a sentence about the deployment, and the parts of the assembly that need it need
+to know rather than to encrypt. It is Packaging.Encrypted, and EnsurePackaging
+refuses an encryptor that disagrees with it.
 */
 package dataprivacycfg
 
@@ -53,6 +59,9 @@ type Config struct {
 
 	// Fulfiller carries the two runners' knobs.
 	Fulfiller dataprivacy.FulfillerConfig `env:",init" envPrefix:"FULFILLER_" json:"fulfiller,omitzero" yaml:"fulfiller,omitempty"`
+
+	// Packaging declares how artifacts are written.
+	Packaging PackagingConfig `env:",init" envPrefix:"PACKAGING_" json:"packaging,omitzero" yaml:"packaging,omitempty"`
 
 	// Service carries the request state machine's timings.
 	Service dataprivacy.ServiceConfig `env:",init" envPrefix:"SERVICE_" json:"service,omitzero" yaml:"service,omitempty"`
@@ -93,6 +102,40 @@ type AuditErasureConfig struct {
 	// history. See the dataprivacy/auditerasure package documentation.
 	Disabled bool `env:"DISABLED" json:"disabled,omitempty" yaml:"disabled,omitempty"`
 }
+
+// PackagingConfig declares how the Fulfiller writes an export artifact, for the
+// parts of the assembly that have to know without doing the writing.
+type PackagingConfig struct {
+	// Encrypted declares that artifacts are written encrypted at rest. It
+	// defaults to false, matching the package's own default: encryption is off
+	// unless configured, because an artifact encrypted at rest is only as
+	// recoverable as its key and a subject's deadline is not.
+	//
+	// It is a declaration rather than the encryptor itself because nothing in
+	// this package encrypts anything — it only needs to know. What it decides is
+	// whether a completion notification can carry a download link at all: an
+	// encrypted artifact is ciphertext to whoever follows the link, so the
+	// signer declines exactly where Service.Download refuses, and the subject is
+	// told to sign in instead. See dataprivacy.ErrArtifactEncrypted.
+	//
+	// The encryptor itself goes to EnsurePackaging, which refuses a set of
+	// options that disagrees with what this field declares. That check is the
+	// one this config can make on its own behalf: an encryptor is a value at a
+	// wiring site rather than a string in an environment, so nothing
+	// ValidateWithContext can reach knows whether the declaration is true.
+	Encrypted bool `env:"ENCRYPTED" json:"encrypted,omitempty" yaml:"encrypted,omitempty"`
+}
+
+// ErrPackagingDeclarationMismatch is returned by EnsurePackaging when the
+// encryptor it is handed disagrees with what Packaging.Encrypted declares.
+//
+// Both directions are refused, and the reason is that they fail in different
+// places. A declaration of false against a configured encryptor mails the
+// subject a link to ciphertext, which fails at the subject, weeks later, in a
+// support ticket. A declaration of true against no encryptor withholds a link
+// that would have worked, which fails quietly and forever. Neither is something
+// a deployment can be assumed to have meant.
+var ErrPackagingDeclarationMismatch = errors.New("dataprivacy packaging encryption declaration disagrees with the configured encryptor")
 
 var _ validation.ValidatableWithContext = (*Config)(nil)
 
@@ -248,10 +291,9 @@ func NewService(
 //
 // domains is a required argument rather than a config field: which domains hold
 // data about a person is Go code. uploader may be nil for an erasure-only
-// deployment. encrypted must say whether artifacts are written encrypted — it
-// decides whether a notification can carry a download link at all, and it is a
-// bool rather than the encryptor itself because this constructor never encrypts
-// anything, it only needs to know. Pass the encryptor through EnsurePackaging.
+// deployment. Whether artifacts are written encrypted is Packaging.Encrypted,
+// because it is a fact about the deployment rather than a dependency of this
+// constructor — see PackagingConfig.
 func NewFulfiller(
 	ctx context.Context,
 	cfg *Config,
@@ -260,7 +302,6 @@ func NewFulfiller(
 	domains *dataprivacy.Registry,
 	registry *operations.Registry,
 	uploader uploads.UploadManager,
-	encrypted bool,
 	opts ...Option,
 ) (*dataprivacy.Fulfiller, error) {
 	o := newOptions(opts)
@@ -278,7 +319,7 @@ func NewFulfiller(
 		base = append(base,
 			dataprivacy.WithFulfillerUploadManager(uploader),
 			dataprivacy.WithFulfillerURLSigner(dataprivacy.NewArtifactURLSigner(
-				uploader, cfg.Service.SignedURLTTL, encrypted, o.urlSigner...,
+				uploader, cfg.Service.SignedURLTTL, cfg.Packaging.Encrypted, o.urlSigner...,
 			)),
 		)
 	}
@@ -343,12 +384,19 @@ func NewSweeper(
 // went. "Did this deployment erase audit records" is a question that gets asked
 // long after the deployment, and a boolean in a config file somewhere is a poor
 // place to have recorded the answer.
+//
+// Options for the eraser itself travel as WithAuditEraserOptions, like every
+// other pass-through in this package: the variadic slot is this package's own
+// Option type, so one wiring site's option slice is the one every constructor
+// here takes.
 func RegisterAuditEraser(
 	ctx context.Context,
 	cfg *Config,
 	registry *dataprivacy.Registry,
-	opts ...auditerasure.Option,
+	opts ...Option,
 ) (bool, error) {
+	o := newOptions(opts)
+
 	if err := cfg.prepare(ctx); err != nil {
 		return false, err
 	}
@@ -366,7 +414,7 @@ func RegisterAuditEraser(
 		auditerasure.WithTablePrefix(cfg.AuditErasure.TablePrefix),
 	}
 
-	eraser, err := auditerasure.New(cfg.Dialect, append(base, opts...)...)
+	eraser, err := auditerasure.New(cfg.Dialect, append(base, o.auditEraser...)...)
 	if err != nil {
 		return false, errors.Wrap(err, "building dataprivacy audit eraser")
 	}
@@ -384,10 +432,25 @@ func RegisterAuditEraser(
 // It exists so the two cannot be configured apart. An artifact written with one
 // compressor and read with another is unreadable, and the failure surfaces at
 // the subject rather than at startup.
+//
+// It refuses an encryptor that disagrees with cfg.Packaging.Encrypted for the
+// same reason, and it is the only place the disagreement is visible: the
+// declaration is a config field and the encryptor is a value at a wiring site,
+// and this is the one call that holds both. See
+// ErrPackagingDeclarationMismatch.
 func EnsurePackaging(
+	cfg *Config,
 	compressor compression.Compressor,
 	encryptorDecryptor encryption.EncryptorDecryptor,
-) (fulfillerOpts []dataprivacy.FulfillerOption, serviceOpts []dataprivacy.ServiceOption) {
+) (fulfillerOpts []dataprivacy.FulfillerOption, serviceOpts []dataprivacy.ServiceOption, err error) {
+	if cfg == nil {
+		return nil, nil, errors.ErrNilInputParameter
+	}
+
+	if err = cfg.validateEncryptionDeclaration(encryptorDecryptor != nil); err != nil {
+		return nil, nil, err
+	}
+
 	if compressor != nil {
 		fulfillerOpts = append(fulfillerOpts, dataprivacy.WithFulfillerCompressor(compressor))
 		serviceOpts = append(serviceOpts, dataprivacy.WithServiceCompressor(compressor))
@@ -398,5 +461,21 @@ func EnsurePackaging(
 		serviceOpts = append(serviceOpts, dataprivacy.WithServiceDecryptor(encryptorDecryptor))
 	}
 
-	return fulfillerOpts, serviceOpts
+	return fulfillerOpts, serviceOpts, nil
+}
+
+// validateEncryptionDeclaration reports whether Packaging.Encrypted agrees with
+// whether an encryptor was supplied.
+//
+// It is a method rather than a rule inside ValidateWithContext because the fact
+// it checks against is not in the config: ozzo validates what the environment
+// set, and whether this deployment encrypts is settled by whichever value a
+// wiring site hands EnsurePackaging.
+func (cfg *Config) validateEncryptionDeclaration(supplied bool) error {
+	if cfg.Packaging.Encrypted == supplied {
+		return nil
+	}
+
+	return errors.Wrapf(ErrPackagingDeclarationMismatch,
+		"declared encrypted=%t, encryptor supplied=%t", cfg.Packaging.Encrypted, supplied)
 }
