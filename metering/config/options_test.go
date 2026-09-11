@@ -5,15 +5,15 @@ import (
 
 	"github.com/primandproper/platform-go/v14/metering"
 
-	"github.com/primandproper/primitives-go/analytics"
-	analyticsmock "github.com/primandproper/primitives-go/analytics/mock"
-	"github.com/primandproper/primitives-go/cache"
-	cachemock "github.com/primandproper/primitives-go/cache/mock"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/logging"
-	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
-	metricsnoop "github.com/primandproper/primitives-go/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/v2/analytics"
+	analyticsmock "github.com/primandproper/primitives-go/v2/analytics/mock"
+	"github.com/primandproper/primitives-go/v2/cache"
+	cachemock "github.com/primandproper/primitives-go/v2/cache/mock"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
+	metricsnoop "github.com/primandproper/primitives-go/v2/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 )

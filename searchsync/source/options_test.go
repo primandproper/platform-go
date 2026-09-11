@@ -5,11 +5,11 @@ import (
 
 	"github.com/primandproper/platform-go/v14/searchsync"
 
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/logging"
-	nooplogging "github.com/primandproper/primitives-go/observability/logging/noop"
-	noopmetrics "github.com/primandproper/primitives-go/observability/metrics/noop"
-	nooptracing "github.com/primandproper/primitives-go/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	nooplogging "github.com/primandproper/primitives-go/v2/observability/logging/noop"
+	noopmetrics "github.com/primandproper/primitives-go/v2/observability/metrics/noop"
+	nooptracing "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

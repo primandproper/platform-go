@@ -3,7 +3,7 @@ package entitlements
 import (
 	"testing"
 
-	"github.com/primandproper/primitives-go/authorization"
+	"github.com/primandproper/primitives-go/v2/authorization"
 )
 
 // Check is the entitlements counterpart to authorization's Grants.Has: a

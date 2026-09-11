@@ -4,7 +4,7 @@
 //
 // It is not RFC 7591 dynamic client registration. That is an anonymous POST to
 // /authorize's sibling endpoint, it is served by
-// github.com/primandproper/primitives-go/authentication/oauth2server, and a
+// github.com/primandproper/primitives-go/v2/authentication/oauth2server, and a
 // deployment using this registry turns it off. What is here is the API a
 // console and a CLI drive.
 //
@@ -52,7 +52,7 @@
 //
 // A consumer's interceptor gates an RPC by its full method name, and it runs
 // before the request body is parsed -- see
-// github.com/primandproper/primitives-go/authorization/grpc. A single
+// github.com/primandproper/primitives-go/v2/authorization/grpc. A single
 // CreateOAuth2Client whose required permission depended on an "ownership" field
 // would be one the enforcer could not gate: it would have to be declared public
 // and gate itself, which is the arrangement that puts an authorization decision
@@ -112,7 +112,7 @@ import (
 	sync "sync"
 	unsafe "unsafe"
 
-	filteringpb "github.com/primandproper/primitives-go/filtering/filteringpb"
+	filteringpb "github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"

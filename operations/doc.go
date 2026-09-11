@@ -46,11 +46,37 @@ worker, the watcher, the HTTP surface — exists to move that row and to read it
 
 A handler starts one and returns immediately:
 
-	op, err := svc.Start(ctx, "dataprivacy.export", req, operations.WithOwner(userID))
+	op, err := svc.Start(ctx, "dataprivacy.export", req, operations.WithOwner(tenancy.Of(userID)))
 	// ... 202, with op.ID
 
 A worker runs it, and a watcher streams it. Both are ordinary background loops;
 see Worker and Watcher.
+
+# Whose operation it is
+
+Every operation belongs to a tenancy.Scope, and every read a consumer can make
+binds it: Store.Get, Store.GetMany and Store.List each take one, Service.Get and
+Service.List pass it through, and Watcher.Watch establishes a subscription under
+it. There is no read here that omits it, because what an operation holds is the
+status of somebody's export, and the caller who reaches for an unscoped read is
+the caller who has not thought about which somebody.
+
+The consequence is that a row belonging to another tenant is a row the query does
+not return — reported as ErrOperationNotFound, the same answer an operation that
+does not exist gets. That used to be a comparison in operations/http after the
+read. It is gone: one surface remembering to make it is one surface, and a
+consumer's own handler is the one that would not have.
+
+An operation started without WithOwner belongs to tenancy.Global(), which is a
+scope like any other and matches only itself. A single-tenant deployment names no
+owner anywhere, pairs it with operations/http.GlobalOwner, and behaves exactly as
+it did before the dimension existed.
+
+Seven Store methods take no scope, and each says why on itself. They are the
+worker's own: the claim, the flush, the two outcomes, the cancellation write, the
+recovery sweep and the reap. A sweep bounded by tenant would leave every other
+tenant's operations stranded, which is the shape of the carve-out rather than an
+exception somebody wanted.
 
 # The row is the only source of truth
 

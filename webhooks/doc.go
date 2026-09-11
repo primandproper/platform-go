@@ -22,8 +22,7 @@ that transaction:
 			return err
 		}
 
-		return dispatcher.Dispatch(ctx, tx, &webhooks.Delivery{
-			Scope:       tenancy.Of(order.AccountID),
+		return dispatcher.Dispatch(ctx, tx, tenancy.Of(order.AccountID), &webhooks.Delivery{
 			EventType:   OrderUpdated,
 			OrderingKey: order.ID,
 			Payload:     body,
@@ -111,7 +110,8 @@ receives another account's copy of the same event type.
 The scope is the argument rather than Endpoint.Scope, so what the statement binds
 is what the call named. An endpoint that names none adopts it; one naming a
 different tenant is webhooks.ErrScopeMismatch rather than either value quietly
-winning.
+winning. Dispatch reads the same way about Delivery.Scope, which is why the
+example above fills in neither.
 
 An application whose events are global says tenancy.Global() in both places and
 gets what this package did before the dimension existed — Global is a scope like

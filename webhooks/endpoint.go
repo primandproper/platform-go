@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/primandproper/primitives-go/cryptography/requestsigning"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/cryptography/requestsigning"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // DefaultContentType is the Content-Type deliveries carry when an Endpoint does

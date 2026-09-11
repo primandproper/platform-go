@@ -13,20 +13,20 @@ import (
 	"github.com/primandproper/platform-go/v14/sessions"
 	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
 
-	"github.com/primandproper/primitives-go/authentication"
-	"github.com/primandproper/primitives-go/authentication/argon2"
-	"github.com/primandproper/primitives-go/authentication/totp"
-	"github.com/primandproper/primitives-go/cache/memory"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/authentication"
+	"github.com/primandproper/primitives-go/v2/authentication/argon2"
+	"github.com/primandproper/primitives-go/v2/authentication/totp"
+	"github.com/primandproper/primitives-go/v2/cache/memory"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	otp "github.com/pquerna/otp/totp"
 )
 
 // Example_loginFlow is the sign-in this module declines to ship, written the way
-// [github.com/primandproper/primitives-go/authentication]'s package
+// [github.com/primandproper/primitives-go/v2/authentication]'s package
 // documentation says to write it.
 //
 // Everything it calls is a package beside this one. What is written here — the
@@ -372,7 +372,10 @@ func exampleUser(ctx context.Context, flow *exampleDeployment, username, passwor
 	// transactions because they are two acts; a deployment doing both at once
 	// would pass one Tx to both.
 	if err = flow.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return flow.store.CreateUser(ctx, tx, scope, user)
+		registered, createErr := flow.store.CreateUser(ctx, tx, scope, user)
+		user = registered
+
+		return createErr
 	}); err != nil {
 		panic(err)
 	}
@@ -380,7 +383,14 @@ func exampleUser(ctx context.Context, flow *exampleDeployment, username, passwor
 	// Issuing a secret is not holding one. This is the write that turns the
 	// column into a second factor.
 	if err = flow.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return flow.store.MarkUserTwoFactorSecretVerified(ctx, tx, scope, user.ID)
+		verified, verifyErr := flow.store.MarkUserTwoFactorSecretVerified(ctx, tx, scope, user.ID)
+		if verifyErr != nil {
+			return verifyErr
+		}
+
+		user = verified
+
+		return nil
 	}); err != nil {
 		panic(err)
 	}

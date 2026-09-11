@@ -9,9 +9,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/identity"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Ensure, that StoreMock does implement identity.Store.
@@ -27,22 +27,22 @@ var _ identity.Store = &StoreMock{}
 //			AcceptInvitationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitationID string, token string, acceptingUserID string, statusNote string) (*identity.Membership, error) {
 //				panic("mock out the AcceptInvitation method")
 //			},
-//			ArchiveAccountFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) error {
+//			ArchiveAccountFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*identity.Account, error) {
 //				panic("mock out the ArchiveAccount method")
 //			},
-//			ArchiveUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error {
+//			ArchiveUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error) {
 //				panic("mock out the ArchiveUser method")
 //			},
-//			CreateAccountFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) error {
+//			CreateAccountFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) (*identity.Account, error) {
 //				panic("mock out the CreateAccount method")
 //			},
 //			CreateInvitationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *identity.Invitation) error {
 //				panic("mock out the CreateInvitation method")
 //			},
-//			CreateMembershipFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, membership *identity.Membership) error {
+//			CreateMembershipFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, membership *identity.Membership) (*identity.Membership, error) {
 //				panic("mock out the CreateMembership method")
 //			},
-//			CreateUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error {
+//			CreateUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) (*identity.User, error) {
 //				panic("mock out the CreateUser method")
 //			},
 //			EraseUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error) {
@@ -99,16 +99,16 @@ var _ identity.Store = &StoreMock{}
 //			ListUsersByIDsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userIDs []string) ([]*identity.User, error) {
 //				panic("mock out the ListUsersByIDs method")
 //			},
-//			MarkAccountBillingSyncedFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) error {
+//			MarkAccountBillingSyncedFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*identity.Account, error) {
 //				panic("mock out the MarkAccountBillingSynced method")
 //			},
-//			MarkUserEmailAddressUnverifiedFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error {
+//			MarkUserEmailAddressUnverifiedFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error) {
 //				panic("mock out the MarkUserEmailAddressUnverified method")
 //			},
 //			MarkUserEmailAddressVerifiedFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string) error {
 //				panic("mock out the MarkUserEmailAddressVerified method")
 //			},
-//			MarkUserTwoFactorSecretVerifiedFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error {
+//			MarkUserTwoFactorSecretVerifiedFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error) {
 //				panic("mock out the MarkUserTwoFactorSecretVerified method")
 //			},
 //			RecordAccountSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string, status identity.BillingStatus, planID string) error {
@@ -153,10 +153,10 @@ var _ identity.Store = &StoreMock{}
 //			TransferAccountOwnershipFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string, newOwnerUserID string) error {
 //				panic("mock out the TransferAccountOwnership method")
 //			},
-//			UpdateAccountFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) error {
+//			UpdateAccountFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) (*identity.Account, error) {
 //				panic("mock out the UpdateAccount method")
 //			},
-//			UpdateUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error {
+//			UpdateUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) (*identity.User, error) {
 //				panic("mock out the UpdateUser method")
 //			},
 //			UpdateUserAccountStatusFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, status identity.AccountStatus, explanation string) error {
@@ -179,22 +179,22 @@ type StoreMock struct {
 	AcceptInvitationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitationID string, token string, acceptingUserID string, statusNote string) (*identity.Membership, error)
 
 	// ArchiveAccountFunc mocks the ArchiveAccount method.
-	ArchiveAccountFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) error
+	ArchiveAccountFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*identity.Account, error)
 
 	// ArchiveUserFunc mocks the ArchiveUser method.
-	ArchiveUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error
+	ArchiveUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error)
 
 	// CreateAccountFunc mocks the CreateAccount method.
-	CreateAccountFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) error
+	CreateAccountFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) (*identity.Account, error)
 
 	// CreateInvitationFunc mocks the CreateInvitation method.
 	CreateInvitationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *identity.Invitation) error
 
 	// CreateMembershipFunc mocks the CreateMembership method.
-	CreateMembershipFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, membership *identity.Membership) error
+	CreateMembershipFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, membership *identity.Membership) (*identity.Membership, error)
 
 	// CreateUserFunc mocks the CreateUser method.
-	CreateUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error
+	CreateUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) (*identity.User, error)
 
 	// EraseUserFunc mocks the EraseUser method.
 	EraseUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
@@ -251,16 +251,16 @@ type StoreMock struct {
 	ListUsersByIDsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userIDs []string) ([]*identity.User, error)
 
 	// MarkAccountBillingSyncedFunc mocks the MarkAccountBillingSynced method.
-	MarkAccountBillingSyncedFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) error
+	MarkAccountBillingSyncedFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*identity.Account, error)
 
 	// MarkUserEmailAddressUnverifiedFunc mocks the MarkUserEmailAddressUnverified method.
-	MarkUserEmailAddressUnverifiedFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error
+	MarkUserEmailAddressUnverifiedFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error)
 
 	// MarkUserEmailAddressVerifiedFunc mocks the MarkUserEmailAddressVerified method.
 	MarkUserEmailAddressVerifiedFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string) error
 
 	// MarkUserTwoFactorSecretVerifiedFunc mocks the MarkUserTwoFactorSecretVerified method.
-	MarkUserTwoFactorSecretVerifiedFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error
+	MarkUserTwoFactorSecretVerifiedFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error)
 
 	// RecordAccountSubscriptionFunc mocks the RecordAccountSubscription method.
 	RecordAccountSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string, status identity.BillingStatus, planID string) error
@@ -305,10 +305,10 @@ type StoreMock struct {
 	TransferAccountOwnershipFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string, newOwnerUserID string) error
 
 	// UpdateAccountFunc mocks the UpdateAccount method.
-	UpdateAccountFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) error
+	UpdateAccountFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) (*identity.Account, error)
 
 	// UpdateUserFunc mocks the UpdateUser method.
-	UpdateUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error
+	UpdateUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) (*identity.User, error)
 
 	// UpdateUserAccountStatusFunc mocks the UpdateUserAccountStatus method.
 	UpdateUserAccountStatusFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, status identity.AccountStatus, explanation string) error
@@ -1021,7 +1021,7 @@ func (mock *StoreMock) AcceptInvitationCalls() []struct {
 }
 
 // ArchiveAccount calls ArchiveAccountFunc.
-func (mock *StoreMock) ArchiveAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) error {
+func (mock *StoreMock) ArchiveAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*identity.Account, error) {
 	if mock.ArchiveAccountFunc == nil {
 		panic("StoreMock.ArchiveAccountFunc: method is nil but Store.ArchiveAccount was just called")
 	}
@@ -1065,7 +1065,7 @@ func (mock *StoreMock) ArchiveAccountCalls() []struct {
 }
 
 // ArchiveUser calls ArchiveUserFunc.
-func (mock *StoreMock) ArchiveUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error {
+func (mock *StoreMock) ArchiveUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error) {
 	if mock.ArchiveUserFunc == nil {
 		panic("StoreMock.ArchiveUserFunc: method is nil but Store.ArchiveUser was just called")
 	}
@@ -1109,7 +1109,7 @@ func (mock *StoreMock) ArchiveUserCalls() []struct {
 }
 
 // CreateAccount calls CreateAccountFunc.
-func (mock *StoreMock) CreateAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) error {
+func (mock *StoreMock) CreateAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) (*identity.Account, error) {
 	if mock.CreateAccountFunc == nil {
 		panic("StoreMock.CreateAccountFunc: method is nil but Store.CreateAccount was just called")
 	}
@@ -1197,7 +1197,7 @@ func (mock *StoreMock) CreateInvitationCalls() []struct {
 }
 
 // CreateMembership calls CreateMembershipFunc.
-func (mock *StoreMock) CreateMembership(ctx context.Context, tx database.Tx, scope tenancy.Scope, membership *identity.Membership) error {
+func (mock *StoreMock) CreateMembership(ctx context.Context, tx database.Tx, scope tenancy.Scope, membership *identity.Membership) (*identity.Membership, error) {
 	if mock.CreateMembershipFunc == nil {
 		panic("StoreMock.CreateMembershipFunc: method is nil but Store.CreateMembership was just called")
 	}
@@ -1241,7 +1241,7 @@ func (mock *StoreMock) CreateMembershipCalls() []struct {
 }
 
 // CreateUser calls CreateUserFunc.
-func (mock *StoreMock) CreateUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error {
+func (mock *StoreMock) CreateUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) (*identity.User, error) {
 	if mock.CreateUserFunc == nil {
 		panic("StoreMock.CreateUserFunc: method is nil but Store.CreateUser was just called")
 	}
@@ -2105,7 +2105,7 @@ func (mock *StoreMock) ListUsersByIDsCalls() []struct {
 }
 
 // MarkAccountBillingSynced calls MarkAccountBillingSyncedFunc.
-func (mock *StoreMock) MarkAccountBillingSynced(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) error {
+func (mock *StoreMock) MarkAccountBillingSynced(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*identity.Account, error) {
 	if mock.MarkAccountBillingSyncedFunc == nil {
 		panic("StoreMock.MarkAccountBillingSyncedFunc: method is nil but Store.MarkAccountBillingSynced was just called")
 	}
@@ -2149,7 +2149,7 @@ func (mock *StoreMock) MarkAccountBillingSyncedCalls() []struct {
 }
 
 // MarkUserEmailAddressUnverified calls MarkUserEmailAddressUnverifiedFunc.
-func (mock *StoreMock) MarkUserEmailAddressUnverified(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error {
+func (mock *StoreMock) MarkUserEmailAddressUnverified(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error) {
 	if mock.MarkUserEmailAddressUnverifiedFunc == nil {
 		panic("StoreMock.MarkUserEmailAddressUnverifiedFunc: method is nil but Store.MarkUserEmailAddressUnverified was just called")
 	}
@@ -2241,7 +2241,7 @@ func (mock *StoreMock) MarkUserEmailAddressVerifiedCalls() []struct {
 }
 
 // MarkUserTwoFactorSecretVerified calls MarkUserTwoFactorSecretVerifiedFunc.
-func (mock *StoreMock) MarkUserTwoFactorSecretVerified(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error {
+func (mock *StoreMock) MarkUserTwoFactorSecretVerified(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error) {
 	if mock.MarkUserTwoFactorSecretVerifiedFunc == nil {
 		panic("StoreMock.MarkUserTwoFactorSecretVerifiedFunc: method is nil but Store.MarkUserTwoFactorSecretVerified was just called")
 	}
@@ -2969,7 +2969,7 @@ func (mock *StoreMock) TransferAccountOwnershipCalls() []struct {
 }
 
 // UpdateAccount calls UpdateAccountFunc.
-func (mock *StoreMock) UpdateAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) error {
+func (mock *StoreMock) UpdateAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) (*identity.Account, error) {
 	if mock.UpdateAccountFunc == nil {
 		panic("StoreMock.UpdateAccountFunc: method is nil but Store.UpdateAccount was just called")
 	}
@@ -3013,7 +3013,7 @@ func (mock *StoreMock) UpdateAccountCalls() []struct {
 }
 
 // UpdateUser calls UpdateUserFunc.
-func (mock *StoreMock) UpdateUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error {
+func (mock *StoreMock) UpdateUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) (*identity.User, error) {
 	if mock.UpdateUserFunc == nil {
 		panic("StoreMock.UpdateUserFunc: method is nil but Store.UpdateUser was just called")
 	}

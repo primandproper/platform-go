@@ -47,14 +47,18 @@ carrying an operation ID and a Location header pointing at the endpoints below.
 
 # Ownership is required
 
-WithOwnerResolver has no default. Every read here is scoped to the owner it
-returns, and a listing endpoint with no notion of ownership serves every tenant's
-operations to whoever asks — which is a bug discovered from the outside, by
-somebody who was not supposed to be able to discover it.
+WithOwnerResolver has no default. The tenancy.Scope it returns is bound into
+every statement a request makes — the polling read, the listing, the read the
+cancellation makes first, and the subscription — so what confines a request to
+one tenant is the query rather than a comparison a handler remembered to make
+afterwards. That comparison used to be here, and it is gone: this surface made
+it and the next one would have been the one that did not.
 
-A single-tenant deployment that genuinely has no owners passes Unscoped, which is
-a name rather than an omission: it makes "everyone may read every operation" a
-decision somebody wrote down.
+A resolver that returns the zero Scope fails the request at the driver rather
+than widening it. A single-tenant deployment that genuinely has no owners passes
+GlobalOwner instead, which is a name rather than an omission: it makes "every
+operation here belongs to no tenant" a decision somebody wrote down, and it is
+the counterpart of leaving operations.WithOwner off at Start.
 
 # The event stream is registered on the backend
 

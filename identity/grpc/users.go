@@ -6,11 +6,11 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/filtering/filteringpb"
-	filteringgrpc "github.com/primandproper/primitives-go/filtering/grpc"
-	"github.com/primandproper/primitives-go/observability"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
+	filteringgrpc "github.com/primandproper/primitives-go/v2/filtering/grpc"
+	"github.com/primandproper/primitives-go/v2/observability"
 
 	"google.golang.org/grpc/codes"
 )

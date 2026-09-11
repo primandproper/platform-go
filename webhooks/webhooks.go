@@ -5,9 +5,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/primandproper/primitives-go/cryptography/requestsigning"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/cryptography/requestsigning"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.
@@ -98,18 +98,20 @@ var (
 	// a write must not be told its endpoint was saved when it was not.
 	ErrEndpointOutOfScope = platformerrors.New("webhook endpoint ID is registered in another scope")
 
-	// ErrScopeMismatch indicates a save whose Endpoint.Scope names a different
-	// tenant than the scope the call named.
+	// ErrScopeMismatch indicates a write whose entity — an Endpoint being saved,
+	// or a Delivery being dispatched — names a different tenant than the scope
+	// the call named.
 	//
 	// The argument is what the statement binds, so the two disagreeing is a
-	// caller holding one tenant's endpoint and writing it into another — either a
-	// stale value or a mix-up, and neither is a thing to guess at. An endpoint
-	// that names no scope adopts the argument instead.
+	// caller holding one tenant's endpoint and writing it into another, or one
+	// tenant's event and fanning it out in another — either a stale value or a
+	// mix-up, and neither is a thing to guess at. An entity that names no scope
+	// adopts the argument instead.
 	//
 	// It is distinct from ErrEndpointOutOfScope, which is about a row already in
 	// the database: this one is caught before any statement runs, by comparing
 	// two things the caller handed over in the same call.
-	ErrScopeMismatch = platformerrors.New("webhook endpoint names a different scope than the write")
+	ErrScopeMismatch = platformerrors.New("webhook entity names a different scope than the write")
 
 	// ErrEndpointDisabled indicates a Replay targeting an endpoint that is
 	// disabled. Dispatch skips disabled endpoints silently — that is what
@@ -412,7 +414,13 @@ type Delivery struct {
 	// subscribers within it, so an endpoint registered by one account never
 	// receives another account's copy of the same event type.
 	//
-	// Required. An unset scope is refused rather than read as "every
+	// It is not the field a dispatch is scoped by. Dispatch takes the scope as an
+	// argument and writes it here, so leaving this unset is the ordinary way to
+	// fill in a Delivery; setting it to something other than what the call names
+	// is ErrScopeMismatch. What it is for is reading a delivery back — the field
+	// says whose event this was, and Store.Enqueue stores what Dispatch settled.
+	//
+	// An unset scope on the argument is refused rather than read as "every
 	// subscriber", because the reading that makes a missing filter convenient is
 	// the one that leaks a tenant's payload to every other tenant. An
 	// application whose events are global says tenancy.Global().

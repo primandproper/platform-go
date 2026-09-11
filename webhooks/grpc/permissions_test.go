@@ -7,7 +7,7 @@ import (
 	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
 	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
 
-	authzgrpc "github.com/primandproper/primitives-go/authorization/grpc"
+	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

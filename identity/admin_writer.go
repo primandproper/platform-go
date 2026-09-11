@@ -8,10 +8,10 @@ import (
 
 	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
 
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // The SQLStore's AdminWriter: the operator's half, whose exposure through an
@@ -111,8 +111,26 @@ func (s *SQLStore) SetUserServiceRoles(
 }
 
 // ArchiveUser soft-deletes a user and ends every membership they hold, refusing
-// while they still own a live account.
-func (s *SQLStore) ArchiveUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error {
+// while they still own a live account, and answers with the user it hid.
+//
+// The row it hands back is the one no read here can reach afterwards. Every
+// single-row statement over this table excludes archived rows, so once this
+// commits the subject is absent from GetUser, from every list that does not ask
+// for archived rows, and from every Principal — which makes this the last
+// moment anything can describe who was removed. A consumer writing that down
+// used to read the user first and describe them as they stood a statement
+// earlier; what comes back here is the row as the archival left it, stamp
+// included.
+//
+// It is read through a statement of its own, GetArchivedUser, because the
+// ordinary read is precisely the one that cannot see the result — see
+// readArchivedUser.
+func (s *SQLStore) ArchiveUser(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID string,
+) (*User, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(userIDKey, userID),
@@ -120,11 +138,11 @@ func (s *SQLStore) ArchiveUser(ctx context.Context, tx database.Tx, scope tenanc
 	defer op.End()
 
 	if err := requireExecutor(tx); err != nil {
-		return op.Error(err, "archiving identity user")
+		return nil, op.Error(err, "archiving identity user")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving identity user")
+		return nil, op.Error(err, "archiving identity user")
 	}
 
 	// The last-owner guard, which RemoveMembership has always had and this did
@@ -137,16 +155,16 @@ func (s *SQLStore) ArchiveUser(ctx context.Context, tx database.Tx, scope tenanc
 	// causes.
 	owned, err := s.ownedAccountID(ctx, tx, scope, userID)
 	if err != nil {
-		return op.Error(err, "archiving identity user")
+		return nil, op.Error(err, "archiving identity user")
 	}
 
 	if owned != "" {
-		return op.Error(platformerrors.Wrapf(ErrLastAccountOwner, "account %q", owned), "archiving identity user")
+		return nil, op.Error(platformerrors.Wrapf(ErrLastAccountOwner, "account %q", owned), "archiving identity user")
 	}
 
 	count, err := s.q.ArchiveUser(ctx, tx, identitydb.ArchiveUserParams{ID: userID, Scope: scope})
 	if err = s.guardCount(ctx, count, err, ErrUserNotFound, "archiving identity user"); err != nil {
-		return op.Error(err, "archiving identity user")
+		return nil, op.Error(err, "archiving identity user")
 	}
 
 	// The memberships go in the caller's transaction with the archival. A user
@@ -158,17 +176,27 @@ func (s *SQLStore) ArchiveUser(ctx context.Context, tx database.Tx, scope tenanc
 	// statement that clears it reaches live rows only and every one of this
 	// user's memberships is about to stop being one.
 	if err = s.clearDefaultAccountsForUser(ctx, tx, scope, userID, ""); err != nil {
-		return op.Error(err, "archiving identity user")
+		return nil, op.Error(err, "archiving identity user")
 	}
 
 	if _, err = s.q.ArchiveMembershipsForUser(ctx, tx, identitydb.ArchiveMembershipsForUserParams{
 		Scope:         scope,
 		BelongsToUser: userID,
 	}); err != nil {
-		return op.Error(platformerrors.Wrap(err, "archiving identity memberships"), "archiving identity user")
+		return nil, op.Error(platformerrors.Wrap(err, "archiving identity memberships"), "archiving identity user")
 	}
 
-	return nil
+	// After the memberships rather than between them and the row, so what comes
+	// back describes a subject whose removal is complete rather than one halfway
+	// through it. The memberships are not on a User, so the read is of the row
+	// alone; a consumer that needs the rosters the subject just left reads them
+	// before calling, which is the order the service above this one takes.
+	archived, err := s.readArchivedUser(ctx, tx, scope, userID)
+	if err != nil {
+		return nil, op.Error(err, "archiving identity user")
+	}
+
+	return archived, nil
 }
 
 // ownedAccountID returns the id of one live account the user owns in this
@@ -251,8 +279,19 @@ func (s *SQLStore) EraseUser(ctx context.Context, tx database.Tx, scope tenancy.
 	return erased, nil
 }
 
-// ArchiveAccount soft-deletes an account and ends every membership in it.
-func (s *SQLStore) ArchiveAccount(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) error {
+// ArchiveAccount soft-deletes an account and ends every membership in it,
+// answering with the account it hid.
+//
+// The row is reachable through no read here afterwards, for the reason
+// ArchiveUser's is not, and it is the record of what the account was called and
+// who owned it — which is what a consumer's entry, its billing reconciliation
+// and its retention sweep are all written from.
+func (s *SQLStore) ArchiveAccount(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	accountID string,
+) (*Account, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(accountIDKey, accountID),
@@ -260,16 +299,16 @@ func (s *SQLStore) ArchiveAccount(ctx context.Context, tx database.Tx, scope ten
 	defer op.End()
 
 	if err := requireExecutor(tx); err != nil {
-		return op.Error(err, "archiving identity account")
+		return nil, op.Error(err, "archiving identity account")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving identity account")
+		return nil, op.Error(err, "archiving identity account")
 	}
 
 	count, err := s.q.ArchiveAccount(ctx, tx, identitydb.ArchiveAccountParams{ID: accountID, Scope: scope})
 	if err = s.guardCount(ctx, count, err, ErrAccountNotFound, "archiving identity account"); err != nil {
-		return op.Error(err, "archiving identity account")
+		return nil, op.Error(err, "archiving identity account")
 	}
 
 	// The memberships go with it, in the caller's transaction. Members left live
@@ -287,7 +326,7 @@ func (s *SQLStore) ArchiveAccount(ctx context.Context, tx database.Tx, scope ten
 			DefaultAccount:   true,
 		})
 	if err != nil {
-		return op.Error(platformerrors.Wrap(err, "reading identity default memberships"), "archiving identity account")
+		return nil, op.Error(platformerrors.Wrap(err, "reading identity default memberships"), "archiving identity account")
 	}
 
 	// The default flag comes off first, for the reason ArchiveUser's does: the
@@ -298,14 +337,14 @@ func (s *SQLStore) ArchiveAccount(ctx context.Context, tx database.Tx, scope ten
 			BelongsToAccount: accountID,
 			DefaultAccount:   false,
 		}); err != nil {
-		return op.Error(platformerrors.Wrap(err, "clearing identity default accounts"), "archiving identity account")
+		return nil, op.Error(platformerrors.Wrap(err, "clearing identity default accounts"), "archiving identity account")
 	}
 
 	if _, err = s.q.ArchiveMembershipsForAccount(ctx, tx, identitydb.ArchiveMembershipsForAccountParams{
 		Scope:            scope,
 		BelongsToAccount: accountID,
 	}); err != nil {
-		return op.Error(platformerrors.Wrap(err, "archiving identity memberships"), "archiving identity account")
+		return nil, op.Error(platformerrors.Wrap(err, "archiving identity memberships"), "archiving identity account")
 	}
 
 	// Each member who landed here now lands somewhere else they still belong,
@@ -317,9 +356,14 @@ func (s *SQLStore) ArchiveAccount(ctx context.Context, tx database.Tx, scope ten
 	// to point at.
 	for i := range stranded {
 		if err = s.moveDefaultAccount(ctx, tx, scope, stranded[i].BelongsToUser, accountID); err != nil {
-			return op.Error(err, "archiving identity account")
+			return nil, op.Error(err, "archiving identity account")
 		}
 	}
 
-	return nil
+	archived, err := s.readArchivedAccount(ctx, tx, scope, accountID)
+	if err != nil {
+		return nil, op.Error(err, "archiving identity account")
+	}
+
+	return archived, nil
 }

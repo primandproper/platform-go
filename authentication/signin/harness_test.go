@@ -12,13 +12,13 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 	identitymigrations "github.com/primandproper/platform-go/v14/identity/migrations"
 
-	"github.com/primandproper/primitives-go/authentication"
-	"github.com/primandproper/primitives-go/authentication/argon2"
-	"github.com/primandproper/primitives-go/authentication/totp"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/authentication"
+	"github.com/primandproper/primitives-go/v2/authentication/argon2"
+	"github.com/primandproper/primitives-go/v2/authentication/totp"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	pquernatotp "github.com/pquerna/otp/totp"
 	"github.com/shoenig/test/must"
@@ -189,7 +189,9 @@ func (e *env) enrollTOTP(t *testing.T) string {
 			return err
 		}
 
-		return e.store.MarkUserTwoFactorSecretVerified(t.Context(), tx, testScope, e.user.ID)
+		_, verifyErr := e.store.MarkUserTwoFactorSecretVerified(t.Context(), tx, testScope, e.user.ID)
+
+		return verifyErr
 	}))
 
 	return enrollment.Secret
@@ -261,6 +263,10 @@ type recordingHooks struct {
 	issueErr  error
 	failedErr error
 
+	// verified is the user the second-factor hook was handed: the row the
+	// directory's write answered with, rather than the copy read before it.
+	verified *identity.User
+
 	calls           []string
 	authentications []*signin.Authentication
 	signIns         []*signin.SignIn
@@ -315,8 +321,14 @@ func (h *recordingHooks) AfterRefreshTOTPSecret(_ context.Context, _ database.Tx
 	return nil
 }
 
-func (h *recordingHooks) AfterVerifyTOTPSecret(_ context.Context, _ database.Tx, _ tenancy.Scope, _ *identity.User) error {
+func (h *recordingHooks) AfterVerifyTOTPSecret(
+	_ context.Context,
+	_ database.Tx,
+	_ tenancy.Scope,
+	user *identity.User,
+) error {
 	h.verifications++
+	h.verified = user
 
 	return nil
 }

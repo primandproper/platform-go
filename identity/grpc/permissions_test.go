@@ -7,7 +7,7 @@ import (
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
-	authzgrpc "github.com/primandproper/primitives-go/authorization/grpc"
+	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

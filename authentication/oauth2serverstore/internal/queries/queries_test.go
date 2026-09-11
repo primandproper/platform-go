@@ -8,8 +8,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
 
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/querygen"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/querygen"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

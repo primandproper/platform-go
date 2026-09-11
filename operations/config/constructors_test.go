@@ -8,15 +8,15 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/workqueue"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	databasemock "github.com/primandproper/primitives-go/database/mock"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability"
-	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	metricsnoop "github.com/primandproper/primitives-go/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	metricsnoop "github.com/primandproper/primitives-go/v2/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -336,7 +336,7 @@ func TestNewWatcher_Options(T *testing.T) {
 	T.Run("a nil config is refused", func(t *testing.T) {
 		t.Parallel()
 
-		watcher, err := NewWatcher(t.Context(), nil, stubStore{})
+		watcher, err := NewWatcher(t.Context(), nil, postgresClient(), stubStore{})
 		test.ErrorIs(t, err, operations.ErrNilConfig)
 		test.Nil(t, watcher)
 	})
@@ -349,7 +349,7 @@ func TestNewWatcher_Options(T *testing.T) {
 		// on every enqueue.
 		wakeup := make(chan struct{})
 
-		watcher, err := NewWatcher(t.Context(), &Config{}, stubStore{},
+		watcher, err := NewWatcher(t.Context(), &Config{}, postgresClient(), stubStore{},
 			WithPillars(allPillars()),
 			WithWatcherWakeup(wakeup),
 			WithWatcherOptions(),
@@ -675,7 +675,7 @@ func TestConstructors_refuseAnInvalidConfig(T *testing.T) {
 		{
 			name: "NewWatcher",
 			build: func(ctx context.Context, _ *workqueue.Queue[string]) error {
-				_, err := NewWatcher(ctx, invalidConfig(), stubStore{})
+				_, err := NewWatcher(ctx, invalidConfig(), postgresClient(), stubStore{})
 
 				return err
 			},

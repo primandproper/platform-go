@@ -6,11 +6,11 @@ import (
 
 	"github.com/primandproper/platform-go/v14/notifications/async"
 
-	"github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/eventstream"
-	eswebsocket "github.com/primandproper/primitives-go/eventstream/websocket"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/keys"
+	"github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/eventstream"
+	eswebsocket "github.com/primandproper/primitives-go/v2/eventstream/websocket"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/keys"
 )
 
 const o11yName = "async_notifications_websocket"

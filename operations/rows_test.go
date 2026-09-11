@@ -10,8 +10,8 @@ import (
 	"github.com/primandproper/platform-go/v14/operations/internal/operationsdb"
 	"github.com/primandproper/platform-go/v14/operations/internal/queries"
 
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/pointer"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -24,7 +24,7 @@ func sharedRow() operationsdb.GetOperationRow {
 		ID:              "op1",
 		Kind:            "export",
 		State:           string(StateRunning),
-		Owner:           "u1",
+		Scope:           testScope,
 		Request:         []byte(`{"a":1}`),
 		UnitsTotal:      pointer.To(int64(9)),
 		UnitsDone:       3,
@@ -50,7 +50,7 @@ func TestOperationFromRow(T *testing.T) {
 		test.EqOp(t, "op1", op.ID)
 		test.EqOp(t, "export", op.Kind)
 		test.EqOp(t, StateRunning, op.State)
-		test.EqOp(t, "u1", op.Owner)
+		test.EqOp(t, testScope, op.Owner)
 		test.Eq(t, json.RawMessage(`{"a":1}`), op.Request)
 		must.NotNil(t, op.Progress.UnitsTotal)
 		test.EqOp(t, 9, *op.Progress.UnitsTotal)
@@ -224,37 +224,38 @@ func TestListParams(T *testing.T) {
 	// A listing that narrows by no state wants every state, and the statement's
 	// set is never empty: an empty set matches nothing everywhere else in this
 	// module, and this is not the place to make it mean the opposite.
-	T.Run("an unscoped listing binds every state and narrows nothing", func(t *testing.T) {
+	T.Run("a listing with no further narrowing binds every state and the scope", func(t *testing.T) {
 		t.Parallel()
 
-		params := listParams(nil, normalized(t, nil))
+		params := listParams(testScope, nil, normalized(t, nil))
 
-		test.Nil(t, params.Owner)
+		// The scope is bound whether or not a listScope was given, which is the
+		// difference between the two arguments: there is no value of the second
+		// that widens past the first.
+		test.EqOp(t, testScope, params.Scope)
 		test.Nil(t, params.Kind)
 		test.Eq(t, allStates(), params.States)
 	})
 
-	T.Run("an empty scope is the same as no scope", func(t *testing.T) {
+	T.Run("an empty listScope is the same as none", func(t *testing.T) {
 		t.Parallel()
 
-		params := listParams(&ListScope{}, normalized(t, nil))
+		params := listParams(testScope, &ListScope{}, normalized(t, nil))
 
-		test.Nil(t, params.Owner)
+		test.EqOp(t, testScope, params.Scope)
 		test.Nil(t, params.Kind)
 		test.Eq(t, allStates(), params.States)
 	})
 
-	T.Run("a scope narrows what it names", func(t *testing.T) {
+	T.Run("a listScope narrows what it names, inside the scope", func(t *testing.T) {
 		t.Parallel()
 
-		params := listParams(&ListScope{
-			Owner:  "u1",
+		params := listParams(testScope, &ListScope{
 			Kind:   "export",
 			States: []State{StateFailed},
 		}, normalized(t, nil))
 
-		must.NotNil(t, params.Owner)
-		test.EqOp(t, "u1", *params.Owner)
+		test.EqOp(t, testScope, params.Scope)
 		must.NotNil(t, params.Kind)
 		test.EqOp(t, "export", *params.Kind)
 		test.Eq(t, []string{string(StateFailed)}, params.States)
@@ -275,7 +276,7 @@ func TestListParams(T *testing.T) {
 		filter.UpdatedBefore = &at
 		filter.Cursor = pointer.To("op1")
 
-		params := listParams(nil, normalized(t, filter))
+		params := listParams(testScope, nil, normalized(t, filter))
 
 		for name, bound := range map[string]*time.Time{
 			"createdAfter":  params.CreatedAfter,
@@ -353,14 +354,14 @@ func TestCreateParams(T *testing.T) {
 	params := createParams(&Operation{
 		ID:       "op1",
 		Kind:     "export",
-		Owner:    "u1",
+		Owner:    testScope,
 		Request:  json.RawMessage(`{"a":1}`),
 		Progress: Progress{CountLabel: "records"},
 	})
 
 	test.EqOp(T, "op1", params.ID)
 	test.EqOp(T, "export", params.Kind)
-	test.EqOp(T, "u1", params.Owner)
+	test.EqOp(T, testScope, params.Scope)
 	test.EqOp(T, "records", params.CountLabel)
 
 	// The state is the statement's argument rather than a literal in its text,

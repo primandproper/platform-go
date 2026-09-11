@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -429,20 +429,22 @@ func TestDispatcher_Dispatch(T *testing.T) {
 			},
 		})
 
-		delivery := &Delivery{Scope: testScope, EventType: "order.created", Payload: testBody, OrderingKey: "order-7"}
+		delivery := &Delivery{EventType: "order.created", Payload: testBody, OrderingKey: "order-7"}
 
-		must.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), delivery))
+		must.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), testScope, delivery))
 
 		test.Eq(t, []string{"endpoint-1", "endpoint-2"}, enqueuedIDs)
 		must.NotNil(t, enqueued)
 		test.NotEqOp(t, "", enqueued.ID)
 		test.EqOp(t, "order-7", enqueued.OrderingKey)
+		test.EqOp(t, testScope, enqueued.Scope)
 	})
 
-	// The scope the store is asked for is the delivery's, not a default. Get this
-	// wrong and one account's event is fanned out to another's subscribers, which
-	// is the entire failure this dimension exists to prevent.
-	T.Run("resolves subscribers within the delivery's scope", func(t *testing.T) {
+	// The scope the store is asked for is the one the call named, not a default
+	// and not a field. Get this wrong and one account's event is fanned out to
+	// another's subscribers, which is the entire failure this dimension exists to
+	// prevent.
+	T.Run("resolves subscribers within the scope the call names", func(t *testing.T) {
 		t.Parallel()
 
 		var asked tenancy.Scope
@@ -455,15 +457,18 @@ func TestDispatcher_Dispatch(T *testing.T) {
 			},
 		})
 
-		must.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}),
-			&Delivery{Scope: otherScope, EventType: "order.created", Payload: testBody}))
+		must.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), otherScope,
+			&Delivery{EventType: "order.created", Payload: testBody}))
 
 		test.EqOp(t, otherScope, asked)
 	})
 
-	// Refused rather than read as "every subscriber": the convenient reading is
-	// the one that leaks a payload to every other tenant.
-	T.Run("rejects a delivery with no scope before touching the store", func(t *testing.T) {
+	// The argument wins because it is what the statement binds. A delivery
+	// carrying somebody else's scope is a caller holding one tenant's event and
+	// fanning it out in another, and the refusal lands before a single endpoint is
+	// resolved — the wrong reading here is the fan-out this dimension exists to
+	// prevent, so it must not get as far as asking who is subscribed.
+	T.Run("rejects a delivery naming a different scope before touching the store", func(t *testing.T) {
 		t.Parallel()
 
 		looked := false
@@ -476,7 +481,80 @@ func TestDispatcher_Dispatch(T *testing.T) {
 			},
 		})
 
-		err := d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), &Delivery{EventType: "order.created", Payload: testBody})
+		err := d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), testScope,
+			&Delivery{Scope: otherScope, EventType: "order.created", Payload: testBody})
+
+		test.ErrorIs(t, err, ErrScopeMismatch)
+		test.False(t, looked)
+	})
+
+	// Agreeing is not disagreeing. A caller that fills the field in as well as
+	// naming the argument is doing nothing wrong, and refusing them would make the
+	// field unusable rather than merely redundant.
+	T.Run("a delivery naming the same scope dispatches", func(t *testing.T) {
+		t.Parallel()
+
+		var asked tenancy.Scope
+
+		d := newTestDispatcher(t, &fakeStore{
+			endpointsForEvent: func(_ context.Context, _ database.SQLQueryExecutor, scope tenancy.Scope, _ EventType) ([]*Endpoint, error) {
+				asked = scope
+
+				return nil, nil
+			},
+		})
+
+		must.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), testScope,
+			&Delivery{Scope: testScope, EventType: "order.created", Payload: testBody}))
+
+		test.EqOp(t, testScope, asked)
+	})
+
+	// Adoption is what makes leaving the field alone the ordinary way to fill in a
+	// Delivery: the scope reaches Enqueue, and so the delivery row, off the
+	// argument.
+	T.Run("a delivery naming no scope adopts the argument", func(t *testing.T) {
+		t.Parallel()
+
+		var enqueued *Delivery
+
+		d := newTestDispatcher(t, &fakeStore{
+			endpointsForEvent: func(context.Context, database.SQLQueryExecutor, tenancy.Scope, EventType) ([]*Endpoint, error) {
+				return subscribed, nil
+			},
+			enqueue: func(_ context.Context, _ database.SQLQueryExecutor, delivery *Delivery, _ []string, _ time.Time) error {
+				enqueued = delivery
+
+				return nil
+			},
+		})
+
+		delivery := &Delivery{EventType: "order.created", Payload: testBody}
+
+		must.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), otherScope, delivery))
+
+		must.NotNil(t, enqueued)
+		test.EqOp(t, otherScope, enqueued.Scope)
+		test.EqOp(t, otherScope, delivery.Scope)
+	})
+
+	// Refused rather than read as "every subscriber": the convenient reading is
+	// the one that leaks a payload to every other tenant.
+	T.Run("rejects a call with no scope before touching the store", func(t *testing.T) {
+		t.Parallel()
+
+		looked := false
+
+		d := newTestDispatcher(t, &fakeStore{
+			endpointsForEvent: func(context.Context, database.SQLQueryExecutor, tenancy.Scope, EventType) ([]*Endpoint, error) {
+				looked = true
+
+				return subscribed, nil
+			},
+		})
+
+		err := d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), tenancy.Scope{},
+			&Delivery{EventType: "order.created", Payload: testBody})
 
 		test.ErrorIs(t, err, ErrNoScope)
 		test.False(t, looked)
@@ -497,8 +575,8 @@ func TestDispatcher_Dispatch(T *testing.T) {
 			},
 		})
 
-		must.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}),
-			&Delivery{Scope: tenancy.Global(), EventType: "order.created", Payload: testBody}))
+		must.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), tenancy.Global(),
+			&Delivery{EventType: "order.created", Payload: testBody}))
 
 		test.EqOp(t, tenancy.Global(), asked)
 	})
@@ -521,8 +599,8 @@ func TestDispatcher_Dispatch(T *testing.T) {
 			},
 		})
 
-		test.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}),
-			&Delivery{Scope: testScope, EventType: "order.created", Payload: testBody}))
+		test.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), testScope,
+			&Delivery{EventType: "order.created", Payload: testBody}))
 		test.False(t, enqueued)
 	})
 
@@ -542,8 +620,8 @@ func TestDispatcher_Dispatch(T *testing.T) {
 			},
 		})
 
-		must.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}),
-			&Delivery{Scope: testScope, ID: "chosen", EventType: "order.created", Payload: testBody}))
+		must.NoError(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), testScope,
+			&Delivery{ID: "chosen", EventType: "order.created", Payload: testBody}))
 
 		must.NotNil(t, enqueued)
 		test.EqOp(t, "chosen", enqueued.ID)
@@ -562,7 +640,8 @@ func TestDispatcher_Dispatch(T *testing.T) {
 			},
 		})
 
-		err := d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), &Delivery{Scope: testScope, EventType: "order.exploded", Payload: testBody})
+		err := d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), testScope,
+			&Delivery{EventType: "order.exploded", Payload: testBody})
 
 		test.ErrorIs(t, err, ErrUnknownEventType)
 		test.False(t, looked)
@@ -573,7 +652,8 @@ func TestDispatcher_Dispatch(T *testing.T) {
 
 		d := newTestDispatcher(t, &fakeStore{})
 
-		test.Error(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), &Delivery{Scope: testScope, EventType: "order.created"}))
+		test.Error(t, d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), testScope,
+			&Delivery{EventType: "order.created"}))
 	})
 
 	// The transactional guarantee is the executor. Without one there is nothing
@@ -583,7 +663,7 @@ func TestDispatcher_Dispatch(T *testing.T) {
 
 		d := newTestDispatcher(t, &fakeStore{})
 
-		err := d.Dispatch(t.Context(), nil, &Delivery{Scope: testScope, EventType: "order.created", Payload: testBody})
+		err := d.Dispatch(t.Context(), nil, testScope, &Delivery{EventType: "order.created", Payload: testBody})
 		test.ErrorIs(t, err, ErrNilExecutor)
 	})
 
@@ -591,7 +671,7 @@ func TestDispatcher_Dispatch(T *testing.T) {
 		t.Parallel()
 
 		test.ErrorIs(t,
-			newTestDispatcher(t, &fakeStore{}).Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), nil),
+			newTestDispatcher(t, &fakeStore{}).Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), testScope, nil),
 			ErrNilDelivery,
 		)
 	})
@@ -610,7 +690,8 @@ func TestDispatcher_Dispatch(T *testing.T) {
 			},
 		})
 
-		err := d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), &Delivery{Scope: testScope, EventType: "order.created", Payload: testBody})
+		err := d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), testScope,
+			&Delivery{EventType: "order.created", Payload: testBody})
 		test.ErrorIs(t, err, expected)
 	})
 
@@ -623,7 +704,8 @@ func TestDispatcher_Dispatch(T *testing.T) {
 		must.NoError(t, err)
 
 		test.ErrorIs(t,
-			d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), &Delivery{Scope: testScope, EventType: "order.created", Payload: testBody}),
+			d.Dispatch(t.Context(), database.NewTxForTesting(&stubExecutor{}), testScope,
+				&Delivery{EventType: "order.created", Payload: testBody}),
 			ErrUnknownEventType,
 		)
 	})

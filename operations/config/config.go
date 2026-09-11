@@ -6,8 +6,8 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/workqueue"
 
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -186,7 +186,7 @@ func NewService(
 		return nil, nil, err
 	}
 
-	svc, err := newServiceOver(ctx, cfg, store, queue, registry, opts...)
+	svc, err := newServiceOver(ctx, cfg, client, store, queue, registry, opts...)
 	if err != nil {
 		// The queue owns a goroutine, and a constructor that failed after
 		// building one has to give it back — otherwise a process that reports a
@@ -207,6 +207,7 @@ func NewService(
 func newServiceOver(
 	ctx context.Context,
 	cfg *Config,
+	client database.Client,
 	store operations.Store,
 	queue *workqueue.Queue[string],
 	registry *operations.Registry,
@@ -226,7 +227,7 @@ func newServiceOver(
 		base = append(base, operations.WithMetricsProvider(o.metricsProvider))
 	}
 
-	svc, err := operations.NewService(ctx, &cfg.Operations, store, queue, registry, append(base, o.service...)...)
+	svc, err := operations.NewService(ctx, &cfg.Operations, client, store, queue, registry, append(base, o.service...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -279,9 +280,13 @@ func NewWorker(
 //
 // A Watcher owns a goroutine and must be Closed, and its Run must be started for
 // any subscription to receive anything after its first snapshot.
+//
+// The client is the same one the store was built over: the watcher's reads are
+// consumer reads made outside a transaction, so they run on its Reader().
 func NewWatcher(
 	ctx context.Context,
 	cfg *Config,
+	client database.Client,
 	store operations.Store,
 	opts ...Option,
 ) (*operations.Watcher, error) {
@@ -312,5 +317,5 @@ func NewWatcher(
 		base = append(base, operations.WithWatcherWakeup(o.watcherWakeup))
 	}
 
-	return operations.NewWatcher(ctx, &cfg.Watcher, store, append(base, o.watcher...)...)
+	return operations.NewWatcher(ctx, &cfg.Watcher, client, store, append(base, o.watcher...)...)
 }

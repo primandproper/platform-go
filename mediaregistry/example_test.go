@@ -12,12 +12,12 @@ import (
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 	"github.com/primandproper/platform-go/v14/mediaregistry/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	"github.com/primandproper/primitives-go/tenancy"
-	"github.com/primandproper/primitives-go/uploads"
-	"github.com/primandproper/primitives-go/uploads/objectstorage"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/tenancy"
+	"github.com/primandproper/primitives-go/v2/uploads"
+	"github.com/primandproper/primitives-go/v2/uploads/objectstorage"
 )
 
 // Example shows the flow the package exists for: bytes into storage, a row

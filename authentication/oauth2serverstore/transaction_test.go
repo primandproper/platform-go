@@ -8,11 +8,11 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/primandproper/primitives-go/authentication/oauth2server"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	databasemock "github.com/primandproper/primitives-go/database/mock"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -75,7 +75,7 @@ func TestStore_StatementFailuresInsideTransactions(T *testing.T) {
 
 		// A partial sweep is representable and a partial count is not reported:
 		// zero, and the error.
-		swept, err := store.Sweep(ctx, time.Now().UTC())
+		swept, err := store.Sweep(ctx)
 		test.Error(t, err)
 		test.EqOp(t, int64(0), swept)
 	})
@@ -110,7 +110,7 @@ func TestStore_StatementFailuresInsideTransactions(T *testing.T) {
 		store, err := NewStore(&Config{}, client)
 		must.NoError(t, err)
 
-		swept, err := store.Sweep(t.Context(), time.Now().UTC())
+		swept, err := store.Sweep(t.Context())
 		test.Error(t, err)
 		test.EqOp(t, int64(0), swept)
 	})

@@ -6,9 +6,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/metering"
 
-	"github.com/primandproper/primitives-go/authorization"
-	"github.com/primandproper/primitives-go/charset/plainname"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/authorization"
+	"github.com/primandproper/primitives-go/v2/charset/plainname"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.

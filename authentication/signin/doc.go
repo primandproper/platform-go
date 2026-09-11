@@ -15,7 +15,7 @@ nothing, and holds no schema of its own.
 The refusals are one sentinel. An unknown handle, a wrong password and a wrong
 second-factor code all come back as [ErrInvalidCredentials], because telling
 them apart is telling an attacker which half of the guess was right —
-[github.com/primandproper/primitives-go/authentication.Authenticator] says as
+[github.com/primandproper/primitives-go/v2/authentication.Authenticator] says as
 much where it declines to ship a mismatch sentinel of its own, and this is the
 caller it meant. An unknown handle also costs the same password hash a known one
 does, so the two are not told apart by a stopwatch either.
@@ -71,7 +71,7 @@ caller is the consumer's too. Nothing in this package reads a request.
 
 No passkeys, no password reset, no email verification and no session management.
 Each is a flow of its own over an engine this module already ships —
-[github.com/primandproper/primitives-go/authentication/webauthn],
+[github.com/primandproper/primitives-go/v2/authentication/webauthn],
 [github.com/primandproper/platform-go/v14/authentication/passwordreset],
 [github.com/primandproper/platform-go/v14/links] — and each is its own addition
 rather than a branch inside the password flow.

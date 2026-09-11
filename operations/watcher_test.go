@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -24,7 +24,7 @@ func newTestWatcher(t *testing.T, store Store, wakeup <-chan struct{}) *Watcher 
 		MinReadInterval: time.Millisecond,
 	}
 
-	w, err := NewWatcher(t.Context(), cfg, store, WithWatcherWakeup(wakeup))
+	w, err := NewWatcher(t.Context(), cfg, &fakeClient{}, store, WithWatcherWakeup(wakeup))
 	must.NoError(t, err)
 
 	t.Cleanup(func() { _ = w.Close() })
@@ -52,17 +52,17 @@ func TestNewWatcher(T *testing.T) {
 	T.Run("rejects what it cannot work without", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewWatcher(t.Context(), nil, newFakeStore())
+		_, err := NewWatcher(t.Context(), nil, &fakeClient{}, newFakeStore())
 		test.ErrorIs(t, err, ErrNilConfig)
 
-		_, err = NewWatcher(t.Context(), &WatcherConfig{}, nil)
+		_, err = NewWatcher(t.Context(), &WatcherConfig{}, &fakeClient{}, nil)
 		test.ErrorIs(t, err, ErrNilStore)
 	})
 
 	T.Run("defaults an empty config", func(t *testing.T) {
 		t.Parallel()
 
-		w, err := NewWatcher(t.Context(), &WatcherConfig{}, newFakeStore())
+		w, err := NewWatcher(t.Context(), &WatcherConfig{}, &fakeClient{}, newFakeStore())
 		must.NoError(t, err)
 		t.Cleanup(func() { _ = w.Close() })
 	})
@@ -76,10 +76,10 @@ func TestWatcher_Watch(T *testing.T) {
 	T.Run("delivers the current state immediately", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "op1", State: StateRunning, Revision: 4})
+		store := newFakeStore(&Operation{ID: "op1", Owner: testScope, State: StateRunning, Revision: 4})
 		w := newTestWatcher(t, store, nil)
 
-		snapshots, err := w.Watch(t.Context(), "op1")
+		snapshots, err := w.Watch(t.Context(), testScope, "op1")
 		must.NoError(t, err)
 
 		op, ok := receive(t, snapshots)
@@ -93,10 +93,10 @@ func TestWatcher_Watch(T *testing.T) {
 	T.Run("a finished operation delivers its outcome and closes", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "op1", State: StateSucceeded, Done: true, Revision: 9})
+		store := newFakeStore(&Operation{ID: "op1", Owner: testScope, State: StateSucceeded, Done: true, Revision: 9})
 		w := newTestWatcher(t, store, nil)
 
-		snapshots, err := w.Watch(t.Context(), "op1")
+		snapshots, err := w.Watch(t.Context(), testScope, "op1")
 		must.NoError(t, err)
 
 		op, ok := receive(t, snapshots)
@@ -112,7 +112,7 @@ func TestWatcher_Watch(T *testing.T) {
 
 		w := newTestWatcher(t, newFakeStore(), nil)
 
-		_, err := w.Watch(t.Context(), "nope")
+		_, err := w.Watch(t.Context(), testScope, "nope")
 
 		test.ErrorIs(t, err, ErrOperationNotFound)
 	})
@@ -122,29 +122,29 @@ func TestWatcher_Watch(T *testing.T) {
 	T.Run("refuses past the subscription limit", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "op1", State: StateRunning})
+		store := newFakeStore(&Operation{ID: "op1", Owner: testScope, State: StateRunning})
 
-		w, err := NewWatcher(t.Context(), &WatcherConfig{MaxSubscriptions: 1}, store)
+		w, err := NewWatcher(t.Context(), &WatcherConfig{MaxSubscriptions: 1}, &fakeClient{}, store)
 		must.NoError(t, err)
 		t.Cleanup(func() { _ = w.Close() })
 
-		_, err = w.Watch(t.Context(), "op1")
+		_, err = w.Watch(t.Context(), testScope, "op1")
 		must.NoError(t, err)
 
-		_, err = w.Watch(t.Context(), "op1")
+		_, err = w.Watch(t.Context(), testScope, "op1")
 		test.ErrorIs(t, err, ErrTooManyWatchers)
 	})
 
 	T.Run("a closed watcher refuses new subscriptions", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "op1", State: StateRunning})
+		store := newFakeStore(&Operation{ID: "op1", Owner: testScope, State: StateRunning})
 		w := newTestWatcher(t, store, nil)
 
 		must.NoError(t, w.Close())
 		must.NoError(t, w.Close()) // idempotent
 
-		_, err := w.Watch(t.Context(), "op1")
+		_, err := w.Watch(t.Context(), testScope, "op1")
 		test.ErrorIs(t, err, ErrWatcherClosed)
 	})
 }
@@ -155,7 +155,7 @@ func TestWatcher_Run(T *testing.T) {
 	T.Run("delivers changes and closes on the terminal snapshot", func(t *testing.T) {
 		t.Parallel()
 
-		op := &Operation{ID: "op1", State: StateRunning, Revision: 1}
+		op := &Operation{ID: "op1", Owner: testScope, State: StateRunning, Revision: 1}
 		store := newFakeStore(op)
 
 		wakeup := make(chan struct{}, 1)
@@ -163,7 +163,7 @@ func TestWatcher_Run(T *testing.T) {
 
 		go func() { _ = w.Run(t.Context()) }()
 
-		snapshots, err := w.Watch(t.Context(), "op1")
+		snapshots, err := w.Watch(t.Context(), testScope, "op1")
 		must.NoError(t, err)
 
 		first, ok := receive(t, snapshots)
@@ -203,13 +203,13 @@ func TestWatcher_Run(T *testing.T) {
 	T.Run("a slow subscriber gets the latest, not the oldest", func(t *testing.T) {
 		t.Parallel()
 
-		op := &Operation{ID: "op1", State: StateRunning, Revision: 1}
+		op := &Operation{ID: "op1", Owner: testScope, State: StateRunning, Revision: 1}
 		store := newFakeStore(op)
 
 		wakeup := make(chan struct{}, 1)
 		w := newTestWatcher(t, store, wakeup)
 
-		snapshots, err := w.Watch(t.Context(), "op1")
+		snapshots, err := w.Watch(t.Context(), testScope, "op1")
 		must.NoError(t, err)
 
 		// Deliberately not drained: the first snapshot is sitting in the buffer
@@ -230,10 +230,10 @@ func TestWatcher_Run(T *testing.T) {
 	T.Run("an unchanged row delivers nothing", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "op1", State: StateRunning, Revision: 3})
+		store := newFakeStore(&Operation{ID: "op1", Owner: testScope, State: StateRunning, Revision: 3})
 		w := newTestWatcher(t, store, nil)
 
-		snapshots, err := w.Watch(t.Context(), "op1")
+		snapshots, err := w.Watch(t.Context(), testScope, "op1")
 		must.NoError(t, err)
 
 		_, ok := receive(t, snapshots)
@@ -254,10 +254,10 @@ func TestWatcher_Run(T *testing.T) {
 	T.Run("a failed re-read is survivable", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "op1", State: StateRunning, Revision: 1})
+		store := newFakeStore(&Operation{ID: "op1", Owner: testScope, State: StateRunning, Revision: 1})
 		w := newTestWatcher(t, store, nil)
 
-		snapshots, err := w.Watch(t.Context(), "op1")
+		snapshots, err := w.Watch(t.Context(), testScope, "op1")
 		must.NoError(t, err)
 
 		_, ok := receive(t, snapshots)
@@ -273,7 +273,7 @@ func TestWatcher_Run(T *testing.T) {
 		store.getManyErr = nil
 		store.mu.Unlock()
 
-		finished := &Operation{ID: "op1", State: StateSucceeded, Revision: 1}
+		finished := &Operation{ID: "op1", Owner: testScope, State: StateSucceeded, Revision: 1}
 		store.put(finished)
 
 		w.sweep(t.Context())
@@ -286,12 +286,12 @@ func TestWatcher_Run(T *testing.T) {
 	T.Run("a cancelled context retires the subscription", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "op1", State: StateRunning, Revision: 1})
+		store := newFakeStore(&Operation{ID: "op1", Owner: testScope, State: StateRunning, Revision: 1})
 		w := newTestWatcher(t, store, nil)
 
 		ctx, cancel := context.WithCancel(t.Context())
 
-		snapshots, err := w.Watch(ctx, "op1")
+		snapshots, err := w.Watch(ctx, testScope, "op1")
 		must.NoError(t, err)
 
 		_, ok := receive(t, snapshots)
@@ -308,10 +308,10 @@ func TestWatcher_Run(T *testing.T) {
 	T.Run("closing the watcher retires every subscription", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "op1", State: StateRunning, Revision: 1})
+		store := newFakeStore(&Operation{ID: "op1", Owner: testScope, State: StateRunning, Revision: 1})
 		w := newTestWatcher(t, store, nil)
 
-		snapshots, err := w.Watch(t.Context(), "op1")
+		snapshots, err := w.Watch(t.Context(), testScope, "op1")
 		must.NoError(t, err)
 
 		_, ok := receive(t, snapshots)
@@ -328,21 +328,26 @@ func TestWatcher_Run(T *testing.T) {
 	T.Run("several subscribers to one operation share the read", func(t *testing.T) {
 		t.Parallel()
 
-		op := &Operation{ID: "op1", State: StateRunning, Revision: 1}
+		op := &Operation{ID: "op1", Owner: testScope, State: StateRunning, Revision: 1}
 		store := newFakeStore(op)
 		w := newTestWatcher(t, store, nil)
 
-		first, err := w.Watch(t.Context(), "op1")
+		first, err := w.Watch(t.Context(), testScope, "op1")
 		must.NoError(t, err)
 
-		second, err := w.Watch(t.Context(), "op1")
+		second, err := w.Watch(t.Context(), testScope, "op1")
 		must.NoError(t, err)
 
 		_, _ = receive(t, first)
 		_, _ = receive(t, second)
 
 		test.EqOp(t, 2, w.total())
-		test.SliceLen(t, 1, w.watchedIDs())
+
+		// One scope, one id, one statement: two subscribers to one operation
+		// are one entry in what the sweep re-reads.
+		watched := w.watchedByScope()
+		test.MapLen(t, 1, watched)
+		test.SliceLen(t, 1, watched[testScope])
 
 		finished := *op
 		finished.State = StateFailed

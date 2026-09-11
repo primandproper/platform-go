@@ -8,8 +8,8 @@ import (
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
-	"github.com/primandproper/primitives-go/observability"
-	lognoop "github.com/primandproper/primitives-go/observability/logging/noop"
+	"github.com/primandproper/primitives-go/v2/observability"
+	lognoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

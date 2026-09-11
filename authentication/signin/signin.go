@@ -6,16 +6,16 @@ import (
 
 	"github.com/primandproper/platform-go/v14/identity"
 
-	"github.com/primandproper/primitives-go/authentication"
-	"github.com/primandproper/primitives-go/authentication/totp"
-	"github.com/primandproper/primitives-go/clock"
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/logging"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	"github.com/primandproper/primitives-go/observability/tracing"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/authentication"
+	"github.com/primandproper/primitives-go/v2/authentication/totp"
+	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -109,13 +109,18 @@ type Directory interface {
 	) error
 
 	// MarkUserTwoFactorSecretVerified records that the user proved possession of
-	// the secret they hold.
+	// the secret they hold, and answers with the user it moved.
+	//
+	// The stamp on that row is the one the write made, which is what this
+	// service hands AfterVerifyTOTPSecret: a consumer recording who proved a
+	// second factor and when reads it off the row the write returned rather than
+	// off the copy read before it, which carried no stamp at all.
 	MarkUserTwoFactorSecretVerified(
 		ctx context.Context,
 		tx database.Tx,
 		scope tenancy.Scope,
 		userID string,
-	) error
+	) (*identity.User, error)
 }
 
 // Credentials is what a sign-in form submits.

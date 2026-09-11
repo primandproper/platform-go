@@ -30,8 +30,8 @@ func TestNoMapperRegistration(T *testing.T) {
 	T.Parallel()
 
 	forbiddenImports := []string{
-		"github.com/primandproper/primitives-go/errors/http",
-		"github.com/primandproper/primitives-go/errors/grpc",
+		"github.com/primandproper/primitives-go/v2/errors/http",
+		"github.com/primandproper/primitives-go/v2/errors/grpc",
 	}
 
 	forbiddenCalls := []string{

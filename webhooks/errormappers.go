@@ -3,8 +3,8 @@ package webhooks
 import (
 	"errors"
 
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	httperrors "github.com/primandproper/primitives-go/errors/http"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
 
 	"google.golang.org/grpc/codes"
 )
@@ -87,7 +87,7 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrUnknownEventType):
 		return httperrors.ErrValidatingRequestInput, "no such event type", true
 	case errors.Is(err, ErrScopeMismatch):
-		return httperrors.ErrValidatingRequestInput, "the endpoint does not belong to that scope", true
+		return httperrors.ErrValidatingRequestInput, "the endpoint or event does not belong to that scope", true
 
 	// The two conflicts with state that already exists. Neither is corrected by
 	// re-sending the same request, which is what separates them from the six

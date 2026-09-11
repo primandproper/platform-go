@@ -7,7 +7,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/operations"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // operationsRunner adapts an operations loop to Runner.

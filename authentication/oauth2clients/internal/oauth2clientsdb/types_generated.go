@@ -8,7 +8,7 @@ package oauth2clientsdb
 import (
 	"time"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // ArchiveRegisteredClientParams are the arguments to ArchiveRegisteredClient.

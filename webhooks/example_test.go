@@ -15,11 +15,11 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks"
 	"github.com/primandproper/platform-go/v14/webhooks/migrations"
 
-	"github.com/primandproper/primitives-go/cryptography/requestsigning"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/cryptography/requestsigning"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // An application's event types, declared as webhooks.EventType constants. That
@@ -55,11 +55,11 @@ func ExampleDispatcher_Dispatch() {
 	err = client.WithTransaction(ctx, func(tx database.Tx) error {
 		// ... the state change that produced the event ...
 
-		return dispatcher.Dispatch(ctx, tx, &webhooks.Delivery{
-			// Whose event this is. The fan-out is bounded by it, so only this
-			// account's endpoints are resolved. An application whose events are
-			// global says tenancy.Global().
-			Scope:     tenancy.Of(order.AccountID),
+		// The scope is whose event this is, and the fan-out is bounded by it, so
+		// only this account's endpoints are resolved. An application whose events
+		// are global says tenancy.Global(). The Delivery leaves the field alone
+		// and adopts it.
+		return dispatcher.Dispatch(ctx, tx, tenancy.Of(order.AccountID), &webhooks.Delivery{
 			EventType: OrderUpdated,
 			// Deliveries sharing an ordering key reach a given subscriber in
 			// dispatch order, so order.updated cannot overtake order.created.

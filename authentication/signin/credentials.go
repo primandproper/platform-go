@@ -5,11 +5,11 @@ import (
 
 	"github.com/primandproper/platform-go/v14/identity"
 
-	"github.com/primandproper/primitives-go/authentication/totp"
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/authentication/totp"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // UpdatePassword replaces the calling user's password with one they chose.
@@ -217,14 +217,17 @@ func (s *Service) VerifyTOTPSecret(
 		return op.Error(ErrInvalidCredentials, "verifying a second-factor secret")
 	}
 
-	redacted := user.Redacted()
-
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		if txErr := s.directory.MarkUserTwoFactorSecretVerified(ctx, tx, scope, userID); txErr != nil {
+		verified, txErr := s.directory.MarkUserTwoFactorSecretVerified(ctx, tx, scope, userID)
+		if txErr != nil {
 			return txErr
 		}
 
-		return s.hooks.AfterVerifyTOTPSecret(ctx, tx, scope, redacted)
+		// The user the write answered with rather than the one read before it,
+		// which is the same row a moment earlier and without the stamp this
+		// call exists to make. The other two credential writes still hand over
+		// the copy they read, because neither answers with anything.
+		return s.hooks.AfterVerifyTOTPSecret(ctx, tx, scope, verified.Redacted())
 	}); err != nil {
 		return op.Error(err, "marking a second-factor secret verified")
 	}

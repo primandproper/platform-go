@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/querygen"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/querygen"
 )
 
 // OutboxTable is the one table this package owns, at its canonical spelling —

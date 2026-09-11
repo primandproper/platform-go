@@ -3,13 +3,13 @@ package identity
 import (
 	"context"
 
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/logging"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	"github.com/primandproper/primitives-go/observability/tracing"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // serviceLayerName scopes the service's spans, logger, and instruments.
@@ -40,10 +40,11 @@ const (
 // Registration is what a completed registration produced: the user, the account
 // they own, and the membership that makes them a member of it.
 //
-// The User and Account are the caller's own values, written back — Register
-// takes what the caller assembled and fills in the IDs and creation times the
-// store generated. The Membership is minted by Register and is the user's
-// default account, because it is the only one they hold.
+// All three are the rows the store wrote, not the values the caller assembled:
+// the writes answer with what landed and leave their arguments alone, so the
+// IDs and creation times are here rather than on what was passed in. The
+// Membership is minted by Register and is the user's default account, because
+// it is the only one they hold.
 type Registration struct {
 	_ struct{} `json:"-"`
 
@@ -237,9 +238,12 @@ func (s *Service) run(
 // the Store refuses it for exactly that reason. It is the user's only
 // membership and so becomes their default account.
 //
-// The caller's User and Account are written back: IDs, creation times and
-// anything else the store stamps. Neither is redacted, because both are the
-// caller's own values.
+// The Registration carries what the store wrote — the user, the account and the
+// membership as the rows hold them, IDs and creation times included. The values
+// the caller handed in are read and not written to, so a caller that wants what
+// landed reads it off the Registration rather than off what they passed. Nothing
+// here is redacted: a registration's own transaction is the one place the whole
+// user is the honest answer.
 //
 // Policy is the caller's, before the call: whether a password was required,
 // whether an invitation had to be presented, what the account is named. What
@@ -264,47 +268,57 @@ func (s *Service) Register(
 		return nil, op.Error(ErrNilAccount, "registering identity account")
 	}
 
-	registration := &Registration{User: user, Account: account}
+	registration := &Registration{}
 
 	err := s.run(ctx, op, opRegister, func(tx database.Tx) error {
-		if err := s.store.CreateUser(ctx, tx, scope, user); err != nil {
+		registered, err := s.store.CreateUser(ctx, tx, scope, user)
+		if err != nil {
 			return err
 		}
 
-		op.Set(userIDKey, user.ID).Set(usernameKey, user.Username)
+		registration.User = registered
+
+		op.Set(userIDKey, registered.ID).Set(usernameKey, registered.Username)
 
 		// The registrant owns the account they registered with. An account
 		// naming somebody else is a caller who assembled the wrong value, and
 		// overwriting it would make "who owns this" answerable only by reading
 		// what came back — the same objection ErrScopeMismatch answers for the
 		// directory a write is for.
-		switch account.OwnerUserID {
-		case "", user.ID:
-			account.OwnerUserID = user.ID
+		//
+		// The owner is set on a copy, since the store no longer writes to what
+		// it is handed and neither does this.
+		owned := *account
+
+		switch owned.OwnerUserID {
+		case "", registered.ID:
+			owned.OwnerUserID = registered.ID
 		default:
 			return platformerrors.Wrapf(platformerrors.ErrUnrecognizedInputValue,
-				"account names owner %q rather than the registering user", account.OwnerUserID)
+				"account names owner %q rather than the registering user", owned.OwnerUserID)
 		}
 
-		if err := s.store.CreateAccount(ctx, tx, scope, account); err != nil {
+		created, err := s.store.CreateAccount(ctx, tx, scope, &owned)
+		if err != nil {
 			return err
 		}
 
-		op.Set(accountIDKey, account.ID)
+		registration.Account = created
+
+		op.Set(accountIDKey, created.ID)
 
 		// DefaultAccount is stated rather than left to the store, which would
 		// set it anyway for a user who holds nothing else. Stating it is what
 		// makes this read as "their first account is where they land" instead
 		// of relying on a rule enforced two layers down.
-		membership := &Membership{
+		membership, err := s.store.CreateMembership(ctx, tx, scope, &Membership{
 			Scope:            scope,
-			BelongsToUser:    user.ID,
-			BelongsToAccount: account.ID,
+			BelongsToUser:    registered.ID,
+			BelongsToAccount: created.ID,
 			Roles:            ownerRoles,
 			DefaultAccount:   true,
-		}
-
-		if err := s.store.CreateMembership(ctx, tx, scope, membership); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 
@@ -614,13 +628,16 @@ func (s *Service) SetDefaultAccount(
 }
 
 // ArchiveUser soft-deletes a user, ends every membership they hold, and hands
-// the hook both — the user as they were, and the accounts they were on.
+// the hook both — the user as the archival left them, and the accounts they
+// were on.
 //
-// The two reads are before the archival because they cannot be after it: an
-// archived user is returned by no read here, and the memberships are archived
-// with them. A consumer keeping rosters, search documents or per-account
-// derived state of its own needs the list of accounts the subject just left,
-// and this is the last moment anything can produce it.
+// The memberships are read before the archival because they cannot be read
+// after it: they are archived with the user, and a consumer keeping rosters,
+// search documents or per-account derived state of its own needs the list of
+// accounts the subject just left. The user is not read first any more. The
+// store answers with the row it hid, through the one statement that can see it,
+// so what the hook records is the user as the write left them — stamp included
+// — rather than as they stood a statement earlier.
 //
 // Archiving a user who still owns a live account is refused with
 // ErrLastAccountOwner, naming the account: an ownerless account fails every
@@ -638,17 +655,13 @@ func (s *Service) ArchiveUser(ctx context.Context, scope tenancy.Scope, userID s
 	var archived *User
 
 	err := s.run(ctx, op, opArchiveUser, func(tx database.Tx) error {
-		user, err := s.store.GetUser(ctx, tx, scope, userID)
-		if err != nil {
-			return err
-		}
-
 		memberships, err := s.store.ListMembershipsForUser(ctx, tx, scope, userID)
 		if err != nil {
 			return err
 		}
 
-		if err = s.store.ArchiveUser(ctx, tx, scope, userID); err != nil {
+		user, err := s.store.ArchiveUser(ctx, tx, scope, userID)
+		if err != nil {
 			return err
 		}
 
@@ -909,11 +922,7 @@ func (s *Service) UpdateProfile(
 			return nil
 		}
 
-		if err = s.store.UpdateUser(ctx, tx, scope, user); err != nil {
-			return err
-		}
-
-		after, err := s.store.GetUser(ctx, tx, scope, userID)
+		after, err := s.store.UpdateUser(ctx, tx, scope, user)
 		if err != nil {
 			return err
 		}
@@ -966,11 +975,7 @@ func (s *Service) UpdateAccount(
 			return nil
 		}
 
-		if err = s.store.UpdateAccount(ctx, tx, scope, account); err != nil {
-			return err
-		}
-
-		if updated, err = s.store.GetAccount(ctx, tx, scope, accountID); err != nil {
+		if updated, err = s.store.UpdateAccount(ctx, tx, scope, account); err != nil {
 			return err
 		}
 

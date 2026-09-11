@@ -13,9 +13,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/internal/sentinelmatrix"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	httperrors "github.com/primandproper/primitives-go/errors/http"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
