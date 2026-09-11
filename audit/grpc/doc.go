@@ -81,7 +81,8 @@ Without it, an entry that is not there arrives as codes.Unknown.
 
 	reader, err := audit.NewReader(client, audit.WithReaderLogger(logger))
 
-	srv, err := auditgrpc.NewServer(reader, scopeFromConnection,
+	srv, err := auditgrpc.NewServer(reader,
+		auditgrpc.WithScopeResolver(scopeFromConnection),   // required: no default
 		auditgrpc.WithPillars(pillars))
 
 	reqs, err := auditgrpc.Require(authzgrpc.NewRequirements()).Build()

@@ -160,7 +160,9 @@ func newHarness(t *testing.T, opts ...auditgrpc.Option) *harness {
 	reader, err := audit.NewReader(db)
 	must.NoError(t, err)
 
-	srv, err := auditgrpc.NewServer(reader, resolveScope, opts...)
+	// The harness's resolver goes first so a caller's opts can replace it.
+	srv, err := auditgrpc.NewServer(reader,
+		append([]auditgrpc.Option{auditgrpc.WithScopeResolver(resolveScope)}, opts...)...)
 	must.NoError(t, err)
 
 	// The error-encoding interceptor is what puts a sentinel into the status
