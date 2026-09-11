@@ -9,7 +9,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity/internal/queries"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
-	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 )
 
 // header marks the output as generated in the form `go generate` consumers,

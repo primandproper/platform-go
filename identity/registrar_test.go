@@ -3,8 +3,9 @@ package identity
 import (
 	"testing"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -34,6 +35,105 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, user.HashedPassword, read.HashedPassword)
 	})
 
+	t.Run("each create answers with the row and leaves the argument alone", func(t *testing.T) {
+		t.Parallel()
+
+		// The whole of what #572 settled for this package, on the three writes
+		// that used to deliver it by writing onto the caller's value. What comes
+		// back is the row: the defaults the columns supplied, the creation time
+		// the database stamped, and — for the user — the service roles the same
+		// transaction wrote a statement earlier.
+		store := env.newStore(t)
+
+		user := newUser("ada")
+		user.ID = ""
+		user.AccountStatus = ""
+		user.ServiceRoles = []string{"service_user"}
+
+		registered, err := env.createUser(t, store, testScope, user)
+		must.NoError(t, err)
+
+		test.NotEq(t, "", registered.ID)
+		test.False(t, registered.CreatedAt.IsZero())
+		test.EqOp(t, StatusUnverified, registered.AccountStatus)
+		test.Eq(t, []string{"service_user"}, registered.ServiceRoles)
+
+		// And none of it landed on the caller's value.
+		test.EqOp(t, "", user.ID)
+		test.EqOp(t, AccountStatus(""), user.AccountStatus)
+		test.True(t, user.CreatedAt.IsZero())
+
+		account := newAccount("Acme", registered.ID)
+		account.ID = ""
+		account.BillingStatus = ""
+
+		created, err := env.createAccount(t, store, testScope, account)
+		must.NoError(t, err)
+
+		test.NotEq(t, "", created.ID)
+		test.False(t, created.CreatedAt.IsZero())
+		test.EqOp(t, BillingUnpaid, created.BillingStatus)
+		test.EqOp(t, "", account.ID)
+		test.True(t, account.CreatedAt.IsZero())
+
+		membership := &Membership{
+			BelongsToUser:    registered.ID,
+			BelongsToAccount: created.ID,
+			Roles:            []string{"account_admin"},
+		}
+
+		joined, err := env.createMembership(t, store, testScope, membership)
+		must.NoError(t, err)
+
+		test.NotEq(t, "", joined.ID)
+		test.False(t, joined.CreatedAt.IsZero())
+		test.Eq(t, []string{"account_admin"}, joined.Roles)
+
+		// The first membership a user holds anywhere is their default whatever
+		// the value said, and the row is where that shows.
+		test.True(t, joined.DefaultAccount)
+		test.False(t, membership.DefaultAccount)
+		test.EqOp(t, "", membership.ID)
+
+		// Each row is the one a later read returns.
+		read, err := store.GetUser(t.Context(), env.reader(), testScope, registered.ID)
+		must.NoError(t, err)
+		test.EqOp(t, registered.CreatedAt, read.CreatedAt)
+		test.Eq(t, registered.ServiceRoles, read.ServiceRoles)
+
+		storedAccount, err := store.GetAccount(t.Context(), env.reader(), testScope, created.ID)
+		must.NoError(t, err)
+		test.EqOp(t, created.CreatedAt, storedAccount.CreatedAt)
+
+		storedMembership, err := store.GetMembership(t.Context(), env.reader(), testScope, registered.ID, created.ID)
+		must.NoError(t, err)
+		test.EqOp(t, joined.ID, storedMembership.ID)
+	})
+
+	t.Run("a refused create answers with no row", func(t *testing.T) {
+		t.Parallel()
+
+		// The row comes back only beside a nil error, which is what lets a
+		// caller read the answer without checking twice.
+		store := env.newStore(t)
+		seedUser(t, env, store, newUser("ada"))
+
+		taken := newUser("ada")
+		taken.EmailAddress = "different@example.com"
+
+		created, err := env.createUser(t, store, testScope, taken)
+		must.ErrorIs(t, err, ErrUsernameTaken)
+		test.Nil(t, created)
+
+		orphan, err := env.createMembership(t, store, testScope, &Membership{
+			BelongsToUser:    identifiers.New(),
+			BelongsToAccount: identifiers.New(),
+			Roles:            []string{"account_member"},
+		})
+		must.ErrorIs(t, err, ErrUserNotFound)
+		test.Nil(t, orphan)
+	})
+
 	t.Run("generates an ID when none is given", func(t *testing.T) {
 		t.Parallel()
 
@@ -42,8 +142,12 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		user := newUser("grace")
 		user.ID = ""
 
-		seedUser(t, env, store, user)
-		test.NotEq(t, "", user.ID)
+		created := seedUser(t, env, store, user)
+
+		// The generated id is on what the write answered with, and the value
+		// the caller handed over still names none.
+		test.NotEq(t, "", created.ID)
+		test.EqOp(t, "", user.ID)
 	})
 
 	t.Run("refuses a taken username", func(t *testing.T) {
@@ -56,7 +160,9 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		second.EmailAddress = "different@example.com"
 
 		err := env.inTx(t, func(tx database.Tx) error {
-			return store.CreateUser(t.Context(), tx, second.Scope, second)
+			_, err := store.CreateUser(t.Context(), tx, second.Scope, second)
+
+			return err
 		})
 		must.ErrorIs(t, err, ErrUsernameTaken)
 	})
@@ -71,7 +177,9 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		second.EmailAddress = "ada@example.com"
 
 		err := env.inTx(t, func(tx database.Tx) error {
-			return store.CreateUser(t.Context(), tx, second.Scope, second)
+			_, err := store.CreateUser(t.Context(), tx, second.Scope, second)
+
+			return err
 		})
 		must.ErrorIs(t, err, ErrEmailAddressTaken)
 	})
@@ -91,13 +199,15 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		ada := seedUser(t, env, store, newUser("ada"))
 
-		must.NoError(t, env.archiveUser(t, store, testScope, ada.ID))
+		must.NoError(t, env.archiveUserErr(t, store, testScope, ada.ID))
 
 		second := newUser("ada")
 		second.EmailAddress = "different@example.com"
 
 		err := env.inTx(t, func(tx database.Tx) error {
-			return store.CreateUser(t.Context(), tx, second.Scope, second)
+			_, err := store.CreateUser(t.Context(), tx, second.Scope, second)
+
+			return err
 		})
 		must.ErrorIs(t, err, ErrUsernameTaken)
 	})
@@ -126,7 +236,9 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		must.ErrorIs(t, store.CreateUser(t.Context(), nil, testScope, newUser("ada")), ErrNilExecutor)
+		created, err := store.CreateUser(t.Context(), nil, testScope, newUser("ada"))
+		must.ErrorIs(t, err, ErrNilExecutor)
+		test.Nil(t, created)
 	})
 
 	t.Run("refuses a nil value on each of the three writes", func(t *testing.T) {
@@ -138,15 +250,21 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		// live transaction — which is also the shape a registration flow that
 		// dropped a value on the floor arrives in.
 		must.ErrorIs(t, env.inTx(t, func(tx database.Tx) error {
-			return store.CreateUser(t.Context(), tx, testScope, nil)
+			_, err := store.CreateUser(t.Context(), tx, testScope, nil)
+
+			return err
 		}), ErrNilUser)
 
 		must.ErrorIs(t, env.inTx(t, func(tx database.Tx) error {
-			return store.CreateAccount(t.Context(), tx, testScope, nil)
+			_, err := store.CreateAccount(t.Context(), tx, testScope, nil)
+
+			return err
 		}), ErrNilAccount)
 
 		must.ErrorIs(t, env.inTx(t, func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, testScope, nil)
+			_, err := store.CreateMembership(t.Context(), tx, testScope, nil)
+
+			return err
 		}), ErrNilMembership)
 	})
 
@@ -159,7 +277,9 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		noUsername.Username = ""
 
 		err := env.inTx(t, func(tx database.Tx) error {
-			return store.CreateUser(t.Context(), tx, noUsername.Scope, noUsername)
+			_, err := store.CreateUser(t.Context(), tx, noUsername.Scope, noUsername)
+
+			return err
 		})
 		must.Error(t, err)
 
@@ -167,7 +287,9 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		noScope.Scope = tenancy.Scope{}
 
 		err = env.inTx(t, func(tx database.Tx) error {
-			return store.CreateUser(t.Context(), tx, noScope.Scope, noScope)
+			_, createErr := store.CreateUser(t.Context(), tx, noScope.Scope, noScope)
+
+			return createErr
 		})
 		must.ErrorIs(t, err, tenancy.ErrNoScope)
 
@@ -175,7 +297,9 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		badEmail.EmailAddress = "Grace <grace@example.com>"
 
 		err = env.inTx(t, func(tx database.Tx) error {
-			return store.CreateUser(t.Context(), tx, badEmail.Scope, badEmail)
+			_, createErr := store.CreateUser(t.Context(), tx, badEmail.Scope, badEmail)
+
+			return createErr
 		})
 		// ozzo collects field errors into a map that does not unwrap, so the
 		// sentinel is asserted against the rendered message here and against the
@@ -206,7 +330,9 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		orphan := newAccount("Acme", "")
 
 		err := env.inTx(t, func(tx database.Tx) error {
-			return store.CreateAccount(t.Context(), tx, orphan.Scope, orphan)
+			_, err := store.CreateAccount(t.Context(), tx, orphan.Scope, orphan)
+
+			return err
 		})
 		must.Error(t, err)
 	})
@@ -248,18 +374,19 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 			Roles:            []string{"account_member"},
 		}
 
-		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, membership.Scope, membership)
-		}))
+		written, err := env.createMembership(t, store, membership.Scope, membership)
+		must.NoError(t, err)
 
 		// created_at is database-owned on this table as on every other, so the
-		// value the caller is left holding has to be the one the row carries —
-		// not the zero time, and not this process's clock.
-		test.False(t, membership.CreatedAt.IsZero())
+		// value the write answers with has to be the one the row carries — not
+		// the zero time, and not this process's clock. The caller's own struct
+		// is not written to, so it still holds the zero time.
+		test.False(t, written.CreatedAt.IsZero())
+		test.True(t, membership.CreatedAt.IsZero())
 
 		stored, err := store.GetMembership(t.Context(), env.reader(), testScope, member.ID, account.ID)
 		must.NoError(t, err)
-		test.EqOp(t, stored.CreatedAt, membership.CreatedAt)
+		test.EqOp(t, stored.CreatedAt, written.CreatedAt)
 	})
 
 	t.Run("revives an archived membership rather than duplicating it", func(t *testing.T) {
@@ -285,16 +412,15 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 			Roles:            []string{"account_admin"},
 		}
 
-		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, rejoined.Scope, rejoined)
-		}))
+		written, err := env.createMembership(t, store, rejoined.Scope, rejoined)
+		must.NoError(t, err)
 
-		// The struct the caller is holding carries the row that is actually
-		// there, not the one it asked for: the upsert converged on the pair, so
-		// the ID it generated and the creation time it never sent are both read
-		// back off the row.
-		test.EqOp(t, original.ID, rejoined.ID)
-		test.EqOp(t, original.CreatedAt, rejoined.CreatedAt)
+		// What the write answers with is the row that is actually there, not
+		// the one it was asked for: the upsert converged on the pair, so the ID
+		// it generated and the creation time it never sent are both read back
+		// off the row.
+		test.EqOp(t, original.ID, written.ID)
+		test.EqOp(t, original.CreatedAt, written.CreatedAt)
 
 		revived, err := store.GetMembership(t.Context(), env.reader(), testScope, member.ID, account.ID)
 		must.NoError(t, err)
@@ -322,11 +448,13 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		// the part that does not match, and it is the part that decides whose
 		// roster they appear on.
 		err := env.inTx(t, func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			_, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    neighbor.ID,
 				BelongsToAccount: account.ID,
 				Roles:            []string{"account_member"},
 			})
+
+			return err
 		})
 		must.ErrorIs(t, err, ErrUserNotFound)
 
@@ -336,26 +464,32 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		neighborAccount.Scope = otherScope
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			return store.CreateAccount(t.Context(), tx, neighborAccount.Scope, neighborAccount)
+			_, createErr := store.CreateAccount(t.Context(), tx, neighborAccount.Scope, neighborAccount)
+
+			return createErr
 		}))
 
 		err = env.inTx(t, func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			_, createErr := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    owner.ID,
 				BelongsToAccount: neighborAccount.ID,
 				Roles:            []string{"account_member"},
 			})
+
+			return createErr
 		})
 		must.ErrorIs(t, err, ErrAccountNotFound)
 
 		// A membership naming its own scope honestly is still written: this is
 		// a congruence check, not a ban on the neighbor having a directory.
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, otherScope, &Membership{
+			_, err = store.CreateMembership(t.Context(), tx, otherScope, &Membership{
 				BelongsToUser:    neighbor.ID,
 				BelongsToAccount: neighborAccount.ID,
 				Roles:            []string{"account_admin"},
 			})
+
+			return err
 		}))
 
 		members, err := store.ListAccountMembers(t.Context(), env.reader(), testScope, account.ID, nil)
@@ -375,10 +509,12 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 		// A user who belongs to an account and may do nothing in it reads at
 		// runtime as an authorization bug rather than as a missing field.
 		err := env.inTx(t, func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			_, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    member.ID,
 				BelongsToAccount: account.ID,
 			})
+
+			return err
 		})
 		must.Error(t, err)
 	})

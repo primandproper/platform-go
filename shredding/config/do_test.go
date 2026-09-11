@@ -6,8 +6,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/shredding"
 
-	"github.com/primandproper/primitives-go/messagequeue"
-	messagequeuemock "github.com/primandproper/primitives-go/messagequeue/mock"
+	"github.com/primandproper/primitives-go/v2/messagequeue"
+	messagequeuemock "github.com/primandproper/primitives-go/v2/messagequeue/mock"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

@@ -91,7 +91,7 @@ func TestConstructors_nilConfig(T *testing.T) {
 	_, err = NewWorker(T.Context(), nil, nil, nil, operations.NewRegistry())
 	test.ErrorIs(T, err, operations.ErrNilConfig)
 
-	_, err = NewWatcher(T.Context(), nil, nil)
+	_, err = NewWatcher(T.Context(), nil, nil, nil)
 	test.ErrorIs(T, err, operations.ErrNilConfig)
 }
 
@@ -106,7 +106,7 @@ func TestNewWatcher(T *testing.T) {
 		cfg := &Config{}
 		cfg.EnsureDefaults()
 
-		watcher, err := NewWatcher(t.Context(), cfg, stubStore{})
+		watcher, err := NewWatcher(t.Context(), cfg, postgresClient(), stubStore{})
 
 		must.NoError(t, err)
 		must.NotNil(t, watcher)
@@ -120,7 +120,7 @@ func TestNewWatcher(T *testing.T) {
 		cfg := &Config{}
 		cfg.EnsureDefaults()
 
-		_, err := NewWatcher(t.Context(), cfg, nil)
+		_, err := NewWatcher(t.Context(), cfg, postgresClient(), nil)
 
 		test.ErrorIs(t, err, operations.ErrNilStore)
 	})

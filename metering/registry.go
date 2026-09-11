@@ -4,7 +4,7 @@ import (
 	"context"
 	"slices"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // MaxMeterNameLength bounds a meter name. Meter names travel into

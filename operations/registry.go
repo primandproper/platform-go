@@ -8,8 +8,8 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/primandproper/primitives-go/encoding"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/encoding"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // MaxKindLength bounds a kind name. It is the width of the column and the width

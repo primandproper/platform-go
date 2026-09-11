@@ -3,8 +3,8 @@ package audit
 import (
 	"reflect"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/reflection"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/reflection"
 )
 
 var (

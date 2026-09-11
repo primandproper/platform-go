@@ -27,3 +27,6 @@ options:
     # listing binds its page size through. The sweep and the reap cast theirs in
     # the statement and are unaffected.
     - {column: "*.result_limit", go_type: int64}
+    # Scope binds as the type, not a string derived from it, so an unset scope
+    # is a driver error instead of a wider result set.
+    - {column: "*.scope", go_type: github.com/primandproper/primitives-go/v2/tenancy.Scope}

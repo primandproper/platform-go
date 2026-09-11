@@ -4,9 +4,9 @@ import (
 	"context"
 	"io"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/tenancy"
-	"github.com/primandproper/primitives-go/uploads"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/tenancy"
+	"github.com/primandproper/primitives-go/v2/uploads"
 )
 
 // StoreAndRecord writes the bytes and then registers what was written through

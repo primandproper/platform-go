@@ -5,11 +5,11 @@ import (
 
 	"github.com/primandproper/platform-go/v14/notifications/internal/notificationsdb"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/identifiers"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // The SQLStore's Registry: what a push is addressed to.

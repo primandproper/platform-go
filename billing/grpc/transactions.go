@@ -5,9 +5,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 
-	"github.com/primandproper/primitives-go/database"
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	filteringgrpc "github.com/primandproper/primitives-go/filtering/grpc"
+	"github.com/primandproper/primitives-go/v2/database"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	filteringgrpc "github.com/primandproper/primitives-go/v2/filtering/grpc"
 
 	"google.golang.org/grpc/codes"
 )

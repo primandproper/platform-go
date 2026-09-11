@@ -9,12 +9,12 @@ import (
 	"github.com/primandproper/platform-go/v14/dataprivacy"
 	"github.com/primandproper/platform-go/v14/operations"
 
-	"github.com/primandproper/primitives-go/database"
-	databasecfg "github.com/primandproper/primitives-go/database/config"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/tenancy"
-	"github.com/primandproper/primitives-go/uploads"
-	uploadsnoop "github.com/primandproper/primitives-go/uploads/noop"
+	"github.com/primandproper/primitives-go/v2/database"
+	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/tenancy"
+	"github.com/primandproper/primitives-go/v2/uploads"
+	uploadsnoop "github.com/primandproper/primitives-go/v2/uploads/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

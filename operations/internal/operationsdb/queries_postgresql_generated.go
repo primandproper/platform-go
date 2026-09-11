@@ -9,6 +9,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 const beginOperationPostgreSQL = `UPDATE {{prefix}}operations SET
@@ -25,7 +27,7 @@ RETURNING
 	id,
 	kind,
 	state,
-	owner,
+	scope,
 	request,
 	units_total,
 	units_done,
@@ -50,7 +52,7 @@ const createOperationPostgreSQL = `INSERT INTO {{prefix}}operations (
 	id,
 	kind,
 	state,
-	owner,
+	scope,
 	request,
 	count_label
 ) VALUES (
@@ -66,7 +68,7 @@ RETURNING
 	id,
 	kind,
 	state,
-	owner,
+	scope,
 	request,
 	units_total,
 	units_done,
@@ -118,12 +120,11 @@ const finishOperationWithEveryUnitDonePostgreSQL = `UPDATE {{prefix}}operations 
 WHERE id = $7
 	AND state = ANY($8::text[])`
 
-const getOperationPostgreSQL = `
-SELECT
+const getOperationPostgreSQL = `SELECT
 	{{prefix}}operations.id,
 	{{prefix}}operations.kind,
 	{{prefix}}operations.state,
-	{{prefix}}operations.owner,
+	{{prefix}}operations.scope,
 	{{prefix}}operations.request,
 	{{prefix}}operations.units_total,
 	{{prefix}}operations.units_done,
@@ -146,11 +147,12 @@ SELECT
 FROM {{prefix}}operations
 WHERE {{prefix}}operations.id = $1`
 
-const getOperationsPostgreSQL = `SELECT
+const getOperationInScopePostgreSQL = `
+SELECT
 	{{prefix}}operations.id,
 	{{prefix}}operations.kind,
 	{{prefix}}operations.state,
-	{{prefix}}operations.owner,
+	{{prefix}}operations.scope,
 	{{prefix}}operations.request,
 	{{prefix}}operations.units_total,
 	{{prefix}}operations.units_done,
@@ -171,14 +173,43 @@ const getOperationsPostgreSQL = `SELECT
 	{{prefix}}operations.started_at,
 	{{prefix}}operations.finished_at
 FROM {{prefix}}operations
-WHERE {{prefix}}operations.id = ANY($1::text[])
+WHERE {{prefix}}operations.id = $1
+	AND {{prefix}}operations.scope = $2`
+
+const getOperationsPostgreSQL = `SELECT
+	{{prefix}}operations.id,
+	{{prefix}}operations.kind,
+	{{prefix}}operations.state,
+	{{prefix}}operations.scope,
+	{{prefix}}operations.request,
+	{{prefix}}operations.units_total,
+	{{prefix}}operations.units_done,
+	{{prefix}}operations.progress_unit,
+	{{prefix}}operations.progress_count,
+	{{prefix}}operations.count_label,
+	{{prefix}}operations.progress_message,
+	{{prefix}}operations.result_uri,
+	{{prefix}}operations.result_detail,
+	{{prefix}}operations.error_code,
+	{{prefix}}operations.error_message,
+	{{prefix}}operations.error_retryable,
+	{{prefix}}operations.revision,
+	{{prefix}}operations.attempts,
+	{{prefix}}operations.cancel_requested,
+	{{prefix}}operations.created_at,
+	{{prefix}}operations.last_updated_at,
+	{{prefix}}operations.started_at,
+	{{prefix}}operations.finished_at
+FROM {{prefix}}operations
+WHERE {{prefix}}operations.scope = $1
+	AND {{prefix}}operations.id = ANY($2::text[])
 ORDER BY {{prefix}}operations.id ASC`
 
 const listOperationsPostgreSQL = `SELECT
 	{{prefix}}operations.id,
 	{{prefix}}operations.kind,
 	{{prefix}}operations.state,
-	{{prefix}}operations.owner,
+	{{prefix}}operations.scope,
 	{{prefix}}operations.request,
 	{{prefix}}operations.units_total,
 	{{prefix}}operations.units_done,
@@ -211,14 +242,14 @@ const listOperationsPostgreSQL = `SELECT
 				{{prefix}}operations.last_updated_at IS NULL
 				OR {{prefix}}operations.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
 			)
-			AND ($5::text IS NULL OR {{prefix}}operations.owner = $5)
+			AND {{prefix}}operations.scope = $5
 			AND ($6::text IS NULL OR {{prefix}}operations.kind = $6)
 			AND {{prefix}}operations.state = ANY($7::text[])
 	) AS filtered_count,
 	(
 		SELECT COUNT({{prefix}}operations.id)
 		FROM {{prefix}}operations
-		WHERE ($5::text IS NULL OR {{prefix}}operations.owner = $5)
+		WHERE {{prefix}}operations.scope = $5
 			AND ($6::text IS NULL OR {{prefix}}operations.kind = $6)
 			AND {{prefix}}operations.state = ANY($7::text[])
 	) AS total_count
@@ -233,7 +264,7 @@ WHERE {{prefix}}operations.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAMP -
 		{{prefix}}operations.last_updated_at IS NULL
 		OR {{prefix}}operations.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
 	)
-	AND ($5::text IS NULL OR {{prefix}}operations.owner = $5)
+	AND {{prefix}}operations.scope = $5
 	AND ($6::text IS NULL OR {{prefix}}operations.kind = $6)
 	AND {{prefix}}operations.state = ANY($7::text[])
 	AND {{prefix}}operations.id > COALESCE($8, '')
@@ -244,7 +275,7 @@ const listOperationsDescendingPostgreSQL = `SELECT
 	{{prefix}}operations.id,
 	{{prefix}}operations.kind,
 	{{prefix}}operations.state,
-	{{prefix}}operations.owner,
+	{{prefix}}operations.scope,
 	{{prefix}}operations.request,
 	{{prefix}}operations.units_total,
 	{{prefix}}operations.units_done,
@@ -277,14 +308,14 @@ const listOperationsDescendingPostgreSQL = `SELECT
 				{{prefix}}operations.last_updated_at IS NULL
 				OR {{prefix}}operations.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
 			)
-			AND ($5::text IS NULL OR {{prefix}}operations.owner = $5)
+			AND {{prefix}}operations.scope = $5
 			AND ($6::text IS NULL OR {{prefix}}operations.kind = $6)
 			AND {{prefix}}operations.state = ANY($7::text[])
 	) AS filtered_count,
 	(
 		SELECT COUNT({{prefix}}operations.id)
 		FROM {{prefix}}operations
-		WHERE ($5::text IS NULL OR {{prefix}}operations.owner = $5)
+		WHERE {{prefix}}operations.scope = $5
 			AND ($6::text IS NULL OR {{prefix}}operations.kind = $6)
 			AND {{prefix}}operations.state = ANY($7::text[])
 	) AS total_count
@@ -299,7 +330,7 @@ WHERE {{prefix}}operations.created_at > COALESCE($1, (SELECT CURRENT_TIMESTAMP -
 		{{prefix}}operations.last_updated_at IS NULL
 		OR {{prefix}}operations.last_updated_at < COALESCE($4, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
 	)
-	AND ($5::text IS NULL OR {{prefix}}operations.owner = $5)
+	AND {{prefix}}operations.scope = $5
 	AND ($6::text IS NULL OR {{prefix}}operations.kind = $6)
 	AND {{prefix}}operations.state = ANY($7::text[])
 	AND ({{prefix}}operations.id <= COALESCE($8, {{prefix}}operations.id) AND {{prefix}}operations.id <> COALESCE($8, ''))
@@ -310,7 +341,7 @@ const listStrandedOperationsPostgreSQL = `SELECT
 	{{prefix}}operations.id,
 	{{prefix}}operations.kind,
 	{{prefix}}operations.state,
-	{{prefix}}operations.owner,
+	{{prefix}}operations.scope,
 	{{prefix}}operations.request,
 	{{prefix}}operations.units_total,
 	{{prefix}}operations.units_done,
@@ -391,6 +422,7 @@ type postgresqlQueries struct {
 	finishOperation                  string
 	finishOperationWithEveryUnitDone string
 	getOperation                     string
+	getOperationInScope              string
 	getOperations                    string
 	listOperations                   string
 	listOperationsDescending         string
@@ -410,6 +442,7 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		finishOperation:                  strings.ReplaceAll(finishOperationPostgreSQL, prefixMarker, prefix),
 		finishOperationWithEveryUnitDone: strings.ReplaceAll(finishOperationWithEveryUnitDonePostgreSQL, prefixMarker, prefix),
 		getOperation:                     strings.ReplaceAll(getOperationPostgreSQL, prefixMarker, prefix),
+		getOperationInScope:              strings.ReplaceAll(getOperationInScopePostgreSQL, prefixMarker, prefix),
 		getOperations:                    strings.ReplaceAll(getOperationsPostgreSQL, prefixMarker, prefix),
 		listOperations:                   strings.ReplaceAll(listOperationsPostgreSQL, prefixMarker, prefix),
 		listOperationsDescending:         strings.ReplaceAll(listOperationsDescendingPostgreSQL, prefixMarker, prefix),
@@ -437,7 +470,7 @@ func (q *postgresqlQueries) BeginOperation(ctx context.Context, db DBTX, arg Beg
 		&i.ID,
 		&i.Kind,
 		&i.State,
-		&i.Owner,
+		&i.Scope,
 		&i.Request,
 		&i.UnitsTotal,
 		&i.UnitsDone,
@@ -468,7 +501,7 @@ func (q *postgresqlQueries) CreateOperation(ctx context.Context, db DBTX, arg Cr
 		arg.ID,
 		arg.Kind,
 		arg.State,
-		arg.Owner,
+		arg.Scope,
 		arg.Request,
 		arg.CountLabel,
 	)
@@ -479,7 +512,7 @@ func (q *postgresqlQueries) CreateOperation(ctx context.Context, db DBTX, arg Cr
 		&i.ID,
 		&i.Kind,
 		&i.State,
-		&i.Owner,
+		&i.Scope,
 		&i.Request,
 		&i.UnitsTotal,
 		&i.UnitsDone,
@@ -554,7 +587,45 @@ func (q *postgresqlQueries) GetOperation(ctx context.Context, db DBTX, arg GetOp
 		&i.ID,
 		&i.Kind,
 		&i.State,
-		&i.Owner,
+		&i.Scope,
+		&i.Request,
+		&i.UnitsTotal,
+		&i.UnitsDone,
+		&i.ProgressUnit,
+		&i.ProgressCount,
+		&i.CountLabel,
+		&i.ProgressMessage,
+		&i.ResultURI,
+		&i.ResultDetail,
+		&i.ErrorCode,
+		&i.ErrorMessage,
+		&i.ErrorRetryable,
+		&i.Revision,
+		&i.Attempts,
+		&i.CancelRequested,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+	)
+
+	return i, err
+}
+
+// GetOperationInScope runs the :one query against postgresql.
+func (q *postgresqlQueries) GetOperationInScope(ctx context.Context, db DBTX, arg GetOperationInScopeParams) (GetOperationInScopeRow, error) {
+	row := db.QueryRowContext(ctx, q.getOperationInScope,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetOperationInScopeRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.State,
+		&i.Scope,
 		&i.Request,
 		&i.UnitsTotal,
 		&i.UnitsDone,
@@ -582,6 +653,7 @@ func (q *postgresqlQueries) GetOperation(ctx context.Context, db DBTX, arg GetOp
 // GetOperations runs the :many query against postgresql.
 func (q *postgresqlQueries) GetOperations(ctx context.Context, db DBTX, arg GetOperationsParams) ([]GetOperationsRow, error) {
 	rows, err := db.QueryContext(ctx, q.getOperations,
+		arg.Scope,
 		arg.IDs,
 	)
 	if err != nil {
@@ -599,7 +671,7 @@ func (q *postgresqlQueries) GetOperations(ctx context.Context, db DBTX, arg GetO
 			&i.ID,
 			&i.Kind,
 			&i.State,
-			&i.Owner,
+			&i.Scope,
 			&i.Request,
 			&i.UnitsTotal,
 			&i.UnitsDone,
@@ -640,7 +712,7 @@ func (q *postgresqlQueries) ListOperations(ctx context.Context, db DBTX, arg Lis
 		arg.CreatedBefore,
 		arg.UpdatedAfter,
 		arg.UpdatedBefore,
-		arg.Owner,
+		arg.Scope,
 		arg.Kind,
 		arg.States,
 		arg.PageCursor,
@@ -661,7 +733,7 @@ func (q *postgresqlQueries) ListOperations(ctx context.Context, db DBTX, arg Lis
 			&i.ID,
 			&i.Kind,
 			&i.State,
-			&i.Owner,
+			&i.Scope,
 			&i.Request,
 			&i.UnitsTotal,
 			&i.UnitsDone,
@@ -704,7 +776,7 @@ func (q *postgresqlQueries) ListOperationsDescending(ctx context.Context, db DBT
 		arg.CreatedBefore,
 		arg.UpdatedAfter,
 		arg.UpdatedBefore,
-		arg.Owner,
+		arg.Scope,
 		arg.Kind,
 		arg.States,
 		arg.PageCursor,
@@ -725,7 +797,7 @@ func (q *postgresqlQueries) ListOperationsDescending(ctx context.Context, db DBT
 			&i.ID,
 			&i.Kind,
 			&i.State,
-			&i.Owner,
+			&i.Scope,
 			&i.Request,
 			&i.UnitsTotal,
 			&i.UnitsDone,
@@ -784,7 +856,7 @@ func (q *postgresqlQueries) ListStrandedOperations(ctx context.Context, db DBTX,
 			&i.ID,
 			&i.Kind,
 			&i.State,
-			&i.Owner,
+			&i.Scope,
 			&i.Request,
 			&i.UnitsTotal,
 			&i.UnitsDone,
@@ -904,7 +976,7 @@ var (
 		ID              string
 		Kind            string
 		State           string
-		Owner           string
+		Scope           tenancy.Scope
 		Request         []byte
 		UnitsTotal      *int64
 		UnitsDone       int64
@@ -929,7 +1001,7 @@ var (
 		ID         string
 		Kind       string
 		State      string
-		Owner      string
+		Scope      tenancy.Scope
 		Request    []byte
 		CountLabel string
 	}(CreateOperationParams{})
@@ -937,7 +1009,7 @@ var (
 		ID              string
 		Kind            string
 		State           string
-		Owner           string
+		Scope           tenancy.Scope
 		Request         []byte
 		UnitsTotal      *int64
 		UnitsDone       int64
@@ -985,7 +1057,7 @@ var (
 		ID              string
 		Kind            string
 		State           string
-		Owner           string
+		Scope           tenancy.Scope
 		Request         []byte
 		UnitsTotal      *int64
 		UnitsDone       int64
@@ -1007,13 +1079,43 @@ var (
 		FinishedAt      *time.Time
 	}(GetOperationRow{})
 	_ = struct {
-		IDs []string
+		ID    string
+		Scope tenancy.Scope
+	}(GetOperationInScopeParams{})
+	_ = struct {
+		ID              string
+		Kind            string
+		State           string
+		Scope           tenancy.Scope
+		Request         []byte
+		UnitsTotal      *int64
+		UnitsDone       int64
+		ProgressUnit    string
+		ProgressCount   int64
+		CountLabel      string
+		ProgressMessage string
+		ResultURI       string
+		ResultDetail    []byte
+		ErrorCode       string
+		ErrorMessage    string
+		ErrorRetryable  bool
+		Revision        int64
+		Attempts        int64
+		CancelRequested bool
+		CreatedAt       time.Time
+		LastUpdatedAt   *time.Time
+		StartedAt       *time.Time
+		FinishedAt      *time.Time
+	}(GetOperationInScopeRow{})
+	_ = struct {
+		Scope tenancy.Scope
+		IDs   []string
 	}(GetOperationsParams{})
 	_ = struct {
 		ID              string
 		Kind            string
 		State           string
-		Owner           string
+		Scope           tenancy.Scope
 		Request         []byte
 		UnitsTotal      *int64
 		UnitsDone       int64
@@ -1039,7 +1141,7 @@ var (
 		CreatedBefore *time.Time
 		UpdatedAfter  *time.Time
 		UpdatedBefore *time.Time
-		Owner         *string
+		Scope         tenancy.Scope
 		Kind          *string
 		States        []string
 		PageCursor    *string
@@ -1049,7 +1151,7 @@ var (
 		ID              string
 		Kind            string
 		State           string
-		Owner           string
+		Scope           tenancy.Scope
 		Request         []byte
 		UnitsTotal      *int64
 		UnitsDone       int64
@@ -1077,7 +1179,7 @@ var (
 		CreatedBefore *time.Time
 		UpdatedAfter  *time.Time
 		UpdatedBefore *time.Time
-		Owner         *string
+		Scope         tenancy.Scope
 		Kind          *string
 		States        []string
 		PageCursor    *string
@@ -1087,7 +1189,7 @@ var (
 		ID              string
 		Kind            string
 		State           string
-		Owner           string
+		Scope           tenancy.Scope
 		Request         []byte
 		UnitsTotal      *int64
 		UnitsDone       int64
@@ -1120,7 +1222,7 @@ var (
 		ID              string
 		Kind            string
 		State           string
-		Owner           string
+		Scope           tenancy.Scope
 		Request         []byte
 		UnitsTotal      *int64
 		UnitsDone       int64

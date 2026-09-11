@@ -12,10 +12,10 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2serverstore"
 
-	"github.com/primandproper/primitives-go/authentication/oauth2server"
-	oauth2servercfg "github.com/primandproper/primitives-go/authentication/oauth2server/config"
-	"github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/pointer"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	oauth2servercfg "github.com/primandproper/primitives-go/v2/authentication/oauth2server/config"
+	"github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -229,7 +229,9 @@ func TestNewStore(T *testing.T) {
 //
 // The observable is Store.Sweep's own count. A record the background sweeper
 // already removed leaves the scheduled sweep nothing to do, which is exactly
-// the duplication a deployment turns the sweeper off to avoid.
+// the duplication a deployment turns the sweeper off to avoid. Sweep reads the
+// store's clock, which inside the bubble is the bubble's own — so the sleep
+// below moves the horizon as well as the deadline.
 func TestConfig_SweepInterval(T *testing.T) {
 	T.Parallel()
 
@@ -254,7 +256,7 @@ func TestConfig_SweepInterval(T *testing.T) {
 
 			// The scheduled sweep this deployment runs instead still has work,
 			// which is only true because nothing swept behind its back.
-			swept, err := store.Sweep(t.Context(), time.Now())
+			swept, err := store.Sweep(t.Context())
 			must.NoError(t, err)
 			test.EqOp(t, int64(1), swept)
 		})
@@ -273,7 +275,7 @@ func TestConfig_SweepInterval(T *testing.T) {
 			time.Sleep(time.Hour)
 			synctest.Wait()
 
-			swept, err := store.Sweep(t.Context(), time.Now())
+			swept, err := store.Sweep(t.Context())
 			must.NoError(t, err)
 			test.EqOp(t, int64(0), swept)
 		})

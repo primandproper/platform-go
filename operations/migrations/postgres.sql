@@ -11,10 +11,15 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}operations (
     id               TEXT        PRIMARY KEY,
     kind             TEXT        NOT NULL,
     state            TEXT        NOT NULL,
-    -- Opaque to this package and compared only for equality. NOT NULL with an
-    -- empty default rather than nullable, so "unowned" is one value and every
-    -- scoped read is one comparison.
-    owner            TEXT        NOT NULL DEFAULT '',
+    -- Whose operation this is: the tenancy.Scope every consumer read binds.
+    -- Opaque to this package and compared only for equality.
+    --
+    -- NOT NULL and, alone among the text columns here, with no DEFAULT. The
+    -- empty identifier is tenancy.Global() rather than "nobody said", so a
+    -- default would file the write that omitted the column in the scope that
+    -- matches nobody, where every scoped read would fail to find it. The insert
+    -- binds it on every row instead. See internal/scopeddl.
+    scope            TEXT        NOT NULL,
     -- Nullable rather than defaulting to an empty array: "no request" and "an
     -- empty request" are different statements about the operation, and a Runner
     -- that branches on one should not be handed the other.
@@ -80,10 +85,11 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}operations_active_idx
     WHERE state IN ('pending', 'running');
 
 -- Serves the API read: "what has this account got running", and its narrowing
--- by kind and state. Owner leads because every request-scoped listing is scoped
--- by it, and id trails so the cursor pagination reads off the index.
-CREATE INDEX IF NOT EXISTS {{PREFIX}}operations_owner_idx
-    ON {{PREFIX}}operations (owner, kind, state, id);
+-- by kind and state. Scope leads because every consumer read is keyed on it —
+-- the single read included, which is the id and the scope together — and id
+-- trails so the cursor pagination reads off the index.
+CREATE INDEX IF NOT EXISTS {{PREFIX}}operations_scope_idx
+    ON {{PREFIX}}operations (scope, kind, state, id);
 
 -- Serves the reaper, and nothing else looks at finished rows by time.
 CREATE INDEX IF NOT EXISTS {{PREFIX}}operations_reap_idx

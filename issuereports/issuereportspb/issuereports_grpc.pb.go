@@ -39,9 +39,10 @@
 //
 // # Why status is an enum and kind is not
 //
-// [Status] is a closed set this module owns and validates every write against,
-// so a value outside the enum is a row the store would have refused; the
-// generated constant is exactly as complete as the column, in every language.
+// [ReportStatus] is a closed set this module owns and validates every write
+// against, so a value outside the enum is a row the store would have refused;
+// the generated constant is exactly as complete as the column, in every
+// language.
 //
 // [IssueReport.kind] and [IssueReport.subject_type] are strings, and they are
 // the borrowed vocabulary in this file. What a report is *about*, and what

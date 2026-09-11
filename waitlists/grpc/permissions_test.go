@@ -9,8 +9,8 @@ import (
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 
-	"github.com/primandproper/primitives-go/authorization"
-	authzgrpc "github.com/primandproper/primitives-go/authorization/grpc"
+	"github.com/primandproper/primitives-go/v2/authorization"
+	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

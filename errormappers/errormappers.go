@@ -17,8 +17,8 @@ import (
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/webhooks"
 
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	httperrors "github.com/primandproper/primitives-go/errors/http"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
 )
 
 // Register installs the transport mappings for every package in this module

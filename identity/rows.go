@@ -5,8 +5,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
 
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // The typed seam between the generated package and the domain types.
@@ -205,6 +205,22 @@ func userFromRow(r *identitydb.GetUserRow) *User {
 		LastUpdatedAt:                 utcPtr(r.LastUpdatedAt),
 		ArchivedAt:                    utcPtr(r.ArchivedAt),
 	}
+}
+
+// userFromArchivedRow converts the read-back an archival answers with.
+//
+// It casts rather than restating itself, which is sortedRows' reason rather
+// than an exception to the preamble's rule below. GetArchivedUser projects the
+// list GetUser projects — the table's columns, in that order — and differs from
+// it only in which rows it will look at: one sees the live user and the other
+// sees the archived one. So the two row types are one projection rendered
+// twice, and the conversion is the assertion — the day they stop agreeing, in
+// field name, type or order, this stops building rather than filling the wrong
+// fields.
+func userFromArchivedRow(r *identitydb.GetArchivedUserRow) *User {
+	row := identitydb.GetUserRow(*r)
+
+	return userFromRow(&row)
 }
 
 // The three single-user reads keyed on something other than the id each have a
@@ -528,6 +544,15 @@ func accountFromRow(r *identitydb.GetAccountRow) *Account {
 		LastUpdatedAt: utcPtr(r.LastUpdatedAt),
 		ArchivedAt:    utcPtr(r.ArchivedAt),
 	}
+}
+
+// accountFromArchivedRow is userFromArchivedRow for the other noun, and casts
+// for the same reason: GetArchivedAccount and GetAccount are one projection
+// rendered twice, differing only in which rows each will look at.
+func accountFromArchivedRow(r *identitydb.GetArchivedAccountRow) *Account {
+	row := identitydb.GetAccountRow(*r)
+
+	return accountFromRow(&row)
 }
 
 func accountPageRow(r *identitydb.ListAccountsRow) pageRow[Account] {

@@ -5,8 +5,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/identity"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // FailedSignIn is a sign-in that proved nothing, as much of it as this package
@@ -193,6 +193,9 @@ type Hooks interface {
 
 	// AfterVerifyTOTPSecret is called with the user who proved possession of the
 	// secret they hold, redacted, in the transaction that marked it verified.
+	//
+	// It is the row the write answered with, so TwoFactorSecretVerifiedAt holds
+	// the moment being recorded rather than whatever it held before the call.
 	AfterVerifyTOTPSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error
 }
 

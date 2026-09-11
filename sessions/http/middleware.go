@@ -7,7 +7,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/sessions"
 
-	"github.com/primandproper/primitives-go/routing"
+	"github.com/primandproper/primitives-go/v2/routing"
 )
 
 // contextKey types the context value. It is generic so that two Managers over

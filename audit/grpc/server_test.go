@@ -9,10 +9,10 @@ import (
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	auditgrpc "github.com/primandproper/platform-go/v14/audit/grpc"
 
-	"github.com/primandproper/primitives-go/filtering/filteringpb"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/pointer"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/pointer"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

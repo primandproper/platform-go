@@ -7,10 +7,10 @@ import (
 	"github.com/primandproper/platform-go/v14/saga"
 	"github.com/primandproper/platform-go/v14/webhooks"
 
-	"github.com/primandproper/primitives-go/eventcapture"
-	"github.com/primandproper/primitives-go/jobs"
-	grpcserver "github.com/primandproper/primitives-go/server/grpc"
-	httpserver "github.com/primandproper/primitives-go/server/http"
+	"github.com/primandproper/primitives-go/v2/eventcapture"
+	"github.com/primandproper/primitives-go/v2/jobs"
+	grpcserver "github.com/primandproper/primitives-go/v2/server/grpc"
+	httpserver "github.com/primandproper/primitives-go/v2/server/http"
 )
 
 type (

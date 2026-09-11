@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS operations (
     id               TEXT        PRIMARY KEY,
     kind             TEXT        NOT NULL,
     state            TEXT        NOT NULL,
-    owner            TEXT        NOT NULL DEFAULT '',
+    scope            TEXT        NOT NULL,
     request          BYTEA,
     units_total      INTEGER,
     units_done       INTEGER     NOT NULL DEFAULT 0,
@@ -30,8 +30,8 @@ CREATE INDEX IF NOT EXISTS operations_active_idx
     ON operations (created_at, claimed_until)
     WHERE state IN ('pending', 'running');
 
-CREATE INDEX IF NOT EXISTS operations_owner_idx
-    ON operations (owner, kind, state, id);
+CREATE INDEX IF NOT EXISTS operations_scope_idx
+    ON operations (scope, kind, state, id);
 
 CREATE INDEX IF NOT EXISTS operations_reap_idx
     ON operations (finished_at)

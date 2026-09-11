@@ -7,7 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 
-	"github.com/primandproper/primitives-go/filtering/filteringpb"
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

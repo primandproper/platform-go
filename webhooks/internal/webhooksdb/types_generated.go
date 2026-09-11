@@ -8,7 +8,7 @@ package webhooksdb
 import (
 	"time"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // ArchiveEndpointParams are the arguments to ArchiveEndpoint.

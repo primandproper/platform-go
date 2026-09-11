@@ -43,8 +43,8 @@ package client
 import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 
 	"google.golang.org/grpc"
 )

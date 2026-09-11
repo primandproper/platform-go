@@ -7,9 +7,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit"
 
-	"github.com/primandproper/primitives-go/database"
-	databasecfg "github.com/primandproper/primitives-go/database/config"
-	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database"
+	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

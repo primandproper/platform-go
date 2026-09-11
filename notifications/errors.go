@@ -1,7 +1,7 @@
 package notifications
 
 import (
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // The sentinels this package returns. They live together because a caller

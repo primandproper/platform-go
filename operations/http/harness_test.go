@@ -8,10 +8,35 @@ import (
 
 	"github.com/primandproper/platform-go/v14/operations"
 
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
+
+// stubClient is the database.Client the Watcher constructor takes.
+//
+// It hands back a nil executor, which is all these tests need: every store here
+// is a stub that ignores the executor entirely, and what is under test is the
+// handler above them.
+type stubClient struct{}
+
+var _ database.Client = stubClient{}
+
+func (stubClient) Dialect() dialect.Dialect { return dialect.Postgres }
+
+func (stubClient) Reader() database.SQLQueryExecutor { return nil }
+
+func (stubClient) Writer() database.SQLQueryExecutor { return nil }
+
+func (stubClient) WithTransaction(_ context.Context, fn func(database.Tx) error) error {
+	return fn(nil)
+}
+
+func (stubClient) Close() error { return nil }
+
+func (stubClient) CurrentTime() time.Time { return time.Now().UTC() }
 
 // stubStore satisfies operations.Store and does nothing. It is what the tests
 // that only need a Watcher to exist hand it.
@@ -22,17 +47,34 @@ var _ operations.Store = stubStore{}
 func (stubStore) Insert(
 	context.Context,
 	database.Tx,
+	tenancy.Scope,
 	*operations.Operation,
 ) (*operations.Operation, error) {
 	return nil, nil
 }
 
-func (stubStore) Get(context.Context, string) (*operations.Operation, error) { return nil, nil }
+func (stubStore) Get(
+	context.Context,
+	database.SQLQueryExecutor,
+	tenancy.Scope,
+	string,
+) (*operations.Operation, error) {
+	return nil, nil
+}
 
-func (stubStore) GetMany(context.Context, []string) ([]*operations.Operation, error) { return nil, nil }
+func (stubStore) GetMany(
+	context.Context,
+	database.SQLQueryExecutor,
+	tenancy.Scope,
+	[]string,
+) ([]*operations.Operation, error) {
+	return nil, nil
+}
 
 func (stubStore) List(
 	context.Context,
+	database.SQLQueryExecutor,
+	tenancy.Scope,
 	*operations.ListScope,
 	*filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[operations.Operation], error) {
@@ -75,10 +117,6 @@ func (stubStore) Stranded(context.Context, time.Duration, int) ([]*operations.Op
 
 func (stubStore) Reap(context.Context, time.Duration, int) (int64, error) { return 0, nil }
 
-func (stubStore) WithTransaction(_ context.Context, fn func(database.Tx) error) error {
-	return fn(nil)
-}
-
 // streamingStore holds one operation a test can drive to completion, which is
 // all the watch path needs to be exercised end to end through the handler.
 type streamingStore struct {
@@ -88,7 +126,7 @@ type streamingStore struct {
 	mu sync.Mutex
 }
 
-func newStreamingStore(id, owner string) *streamingStore {
+func newStreamingStore(id string, owner tenancy.Scope) *streamingStore {
 	return &streamingStore{
 		op: &operations.Operation{
 			ID:       id,
@@ -98,6 +136,16 @@ func newStreamingStore(id, owner string) *streamingStore {
 			Revision: 1,
 		},
 	}
+}
+
+// serviceGet adapts this store's scoped read to the Service shape, which drops
+// the executor and keeps the scope.
+func (s *streamingStore) serviceGet(
+	ctx context.Context,
+	scope tenancy.Scope,
+	id string,
+) (*operations.Operation, error) {
+	return s.Get(ctx, nil, scope, id)
 }
 
 // finish moves the operation to its terminal state, which is what closes the
@@ -111,11 +159,18 @@ func (s *streamingStore) finish() {
 	s.op.Revision++
 }
 
-func (s *streamingStore) Get(_ context.Context, id string) (*operations.Operation, error) {
+// Both reads narrow by the scope the way the statements do: an operation in
+// another tenant is not a refusal, it is a row the read does not have.
+func (s *streamingStore) Get(
+	_ context.Context,
+	_ database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	id string,
+) (*operations.Operation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if id != s.op.ID {
+	if id != s.op.ID || scope != s.op.Owner {
 		return nil, platformerrors.Wrapf(operations.ErrOperationNotFound, "operation %q", id)
 	}
 
@@ -124,11 +179,16 @@ func (s *streamingStore) Get(_ context.Context, id string) (*operations.Operatio
 	return &clone, nil
 }
 
-func (s *streamingStore) GetMany(_ context.Context, ids []string) ([]*operations.Operation, error) {
+func (s *streamingStore) GetMany(
+	_ context.Context,
+	_ database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	ids []string,
+) ([]*operations.Operation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if slices.Contains(ids, s.op.ID) {
+	if scope == s.op.Owner && slices.Contains(ids, s.op.ID) {
 		clone := *s.op
 
 		return []*operations.Operation{&clone}, nil

@@ -7,12 +7,12 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/shredding"
 
-	"github.com/primandproper/primitives-go/compression"
-	"github.com/primandproper/primitives-go/config/injection"
-	"github.com/primandproper/primitives-go/cryptography/encryption"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/uploads"
+	"github.com/primandproper/primitives-go/v2/compression"
+	"github.com/primandproper/primitives-go/v2/config/injection"
+	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/uploads"
 
 	"github.com/samber/do/v2"
 )

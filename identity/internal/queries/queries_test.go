@@ -8,8 +8,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/querygen"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/querygen"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -113,7 +113,8 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"CreateInvitation", "GetInvitation", "ListInvitations", "ListInvitationsDescending",
 		"ListInvitationsByFromUser", "ListInvitationsByFromUserDescending",
 		"ListInvitationsByToEmail", "ListInvitationsByToEmailDescending",
-		"GetUserCreatedAt", "GetAccountCreatedAt", "GetInvitationCreatedAt",
+		"GetInvitationCreatedAt",
+		"GetArchivedUser", "GetArchivedAccount",
 		"GetUserByUsername", "GetUserByEmailAddress", "GetUserByEmailVerificationToken",
 		"GetUserIDByUsername", "GetUserIDByEmailAddress",
 		"GetOwnedAccountIDForUser",
@@ -220,6 +221,61 @@ func TestRender_SearchesUsernamesByPrefix(T *testing.T) {
 	}
 }
 
+// TestRender_TheArchivalReadBacksSeeOnlyArchivedRows pins the complement, which
+// the two archival read-backs are the only statements in this corpus to carry.
+//
+// It is what makes each read-back an assertion rather than a second lookup: the
+// row an archival just stamped is the one row every other single-row statement
+// over these tables is written not to return, so a read-back carrying the
+// ordinary predicate would find nothing on the write it was called to describe.
+// The inverse matters as much — a read-back carrying no archived predicate at
+// all would answer a guard that matched nothing with a live row.
+func TestRender_TheArchivalReadBacksSeeOnlyArchivedRows(T *testing.T) {
+	T.Parallel()
+
+	readBacks := map[string]*Table{
+		"GetArchivedUser":    &Users,
+		"GetArchivedAccount": &Accounts,
+	}
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rendered := map[string]string{}
+			for statement := range strings.SplitSeq(Render(d), "-- name: ") {
+				if name, body, ok := strings.Cut(statement, "\n"); ok {
+					rendered[strings.Fields(name)[0]] = body
+				}
+			}
+
+			for name, table := range readBacks {
+				body := rendered[name]
+				must.NotEq(t, "", body, must.Sprintf("statement %q is not rendered", name))
+
+				must.StrContains(t, body, table.Name+"."+querygen.ArchivedAtColumn+" IS NOT NULL")
+				test.StrNotContains(t, body, querygen.ArchivedAtColumn+" IS NULL")
+				test.StrContains(t, body, table.Name+"."+ScopeColumn+" = ")
+				test.StrContains(t, body, table.Name+"."+querygen.IDColumn+" = ")
+
+				// Each projects its whole table, so the row it returns converts
+				// to the live read's rather than needing a converter of its own.
+				for _, column := range table.Columns {
+					test.StrContains(t, body, table.Name+"."+column,
+						test.Sprintf("%s omits %s", name, column))
+				}
+			}
+
+			// The other side of it: the read-back is the exception, and the
+			// ordinary keyed reads are what it is an exception to.
+			for _, name := range []string{"GetUser", "GetAccount"} {
+				test.StrContains(t, rendered[name], querygen.ArchivedAtColumn+" IS NULL",
+					test.Sprintf("%s returns rows an archival has hidden", name))
+			}
+		})
+	}
+}
+
 // TestTables_ScopeIsInEveryStatement is the tenancy obligation read off the
 // emitted text: no statement omits the scope, so there is no read a caller can
 // reach that answers across scopes.
@@ -228,11 +284,14 @@ func TestTables_ScopeIsInEveryStatement(T *testing.T) {
 
 	// The exceptions, in two groups, and neither is a read a caller reaches.
 	//
-	// The first is the same exception three times: the read-back of the
-	// creation time a create's own INSERT just caused, by the id that create
-	// minted, inside that create's transaction. It is the component's own
-	// machinery servicing itself — the row is not visible to anything else
-	// until the transaction commits — so it keys on the id alone.
+	// The first is the read-back of the creation time a create's own INSERT just
+	// caused, by the id that create minted, inside that create's transaction. It
+	// is the component's own machinery servicing itself — the row is not visible
+	// to anything else until the transaction commits — so it keys on the id
+	// alone. It used to be three, one per emitted table; the user's create and
+	// the account's read the whole row back through their ordinary keyed read
+	// now, which is scoped like everything else, and the invitation's is what is
+	// left.
 	//
 	// The second is the role tables' nine statements, and their exception is
 	// the schema's rather than the statements': a role table has no scope
@@ -250,7 +309,7 @@ func TestTables_ScopeIsInEveryStatement(T *testing.T) {
 	//
 	// Everything else, without exception, names the scope.
 	unscoped := []string{
-		"GetUserCreatedAt", "GetAccountCreatedAt", "GetInvitationCreatedAt",
+		"GetInvitationCreatedAt",
 		"DeleteUserRoles", "InsertUserRole",
 		"DeleteMembershipRoles", "InsertMembershipRole",
 		"DeleteInvitationRoles", "InsertInvitationRole",

@@ -6,8 +6,8 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/workqueue"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/observability"
 
 	"github.com/samber/do/v2"
 )
@@ -74,6 +74,7 @@ func RegisterService(i do.Injector) {
 		return newServiceOver(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
+			do.MustInvoke[database.Client](i),
 			do.MustInvoke[operations.Store](i),
 			do.MustInvoke[*workqueue.Queue[string]](i),
 			do.MustInvoke[*operations.Registry](i),
@@ -153,6 +154,7 @@ func RegisterWatcher(i do.Injector) {
 		return NewWatcher(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
+			do.MustInvoke[database.Client](i),
 			do.MustInvoke[operations.Store](i),
 			WithPillars(pillars),
 		)

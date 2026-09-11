@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/querygen"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/querygen"
 )
 
 // OperationsTable is the one table this package owns, at its canonical
@@ -29,9 +29,18 @@ const (
 	// enumerates, which is what makes the listing's state filter a bound set
 	// rather than an optional narrowing — see [Render].
 	StateColumn = "state"
-	// OwnerColumn is the opaque owner an API listing is scoped by. Compared
-	// only for equality; this package never parses it.
-	OwnerColumn = "owner"
+	// ScopeColumn is whose operation a row is: the tenancy.Scope every
+	// consumer read binds. Compared only for equality; this package never
+	// parses it.
+	//
+	// It is spelled scope rather than owner, where the Go field it fills is
+	// Operation.Owner, and the difference is load-bearing rather than a slip.
+	// internal/scopeddl finds this module's tenancy columns by name — a column
+	// called scope or ending in _scope — and a tenancy column under a third
+	// name is one the sweep that checks it carries no DEFAULT cannot see. So
+	// the column is named for the type it stores and the field for the role it
+	// plays, which is also what unison.yaml's *.scope override keys on.
+	ScopeColumn = "scope"
 	// KindColumn names the registered work an operation is an instance of.
 	KindColumn = "kind"
 	// RequestColumn holds the encoded input the Runner was started with. It is
@@ -71,7 +80,7 @@ var Columns = []string{
 	querygen.IDColumn,
 	KindColumn,
 	StateColumn,
-	OwnerColumn,
+	ScopeColumn,
 	RequestColumn,
 	"units_total",
 	"units_done",
@@ -105,7 +114,7 @@ func InsertColumns() []string {
 		querygen.IDColumn,
 		KindColumn,
 		StateColumn,
-		OwnerColumn,
+		ScopeColumn,
 		RequestColumn,
 		"count_label",
 	}
@@ -133,11 +142,7 @@ func Render(d dialect.Dialect) string {
 
 	querygen.RegisterTable(TableNames...)
 
-	rendered := []*querygen.Query{
-		g.GetQuery("GetOperation", OperationsTable, Columns),
-		g.SetReadQuery("GetOperations", OperationsTable, Columns,
-			querygen.Read{}, querygen.SetKey{Column: querygen.IDColumn}),
-	}
+	rendered := append(singleReads(g), setRead(g))
 
 	rendered = append(rendered, listQueries(g)...)
 	rendered = append(rendered, transitions()...)
@@ -145,22 +150,62 @@ func Render(d dialect.Dialect) string {
 	return querygen.RenderFile(rendered)
 }
 
+// singleReads is the read of one operation, in both readings of a scope.
+//
+// GetOperationInScope is the consumer read: the id and the scope together, so
+// an operation belonging to somebody else matches no row and is reported as
+// absent rather than compared afterwards by whoever asked. That comparison is
+// what this pair exists to delete — a handler that remembers to make it is a
+// handler, and the next surface is the one that forgets.
+//
+// GetOperation is the unscoped half, and it has exactly one caller: the
+// read-back at the end of RequestOperationCancel, which is machinery holding an
+// id it has just written and no scope to hold. It is not a variant a consumer
+// read may reach for, and Store does not expose one — see the seven methods
+// there that take neither an executor nor a scope, and why.
+func singleReads(g *querygen.Generator) []*querygen.Query {
+	return []*querygen.Query{
+		g.GetQuery("GetOperationInScope", OperationsTable, Columns,
+			querygen.Match{Column: ScopeColumn}),
+		g.GetQuery("GetOperation", OperationsTable, Columns),
+	}
+}
+
+// setRead is the batched read the watcher re-reads its subscriptions through,
+// scoped like every other consumer read.
+//
+// The scope is one value beside a set of ids rather than one per id, which is
+// what the watch loop's own grouping is for: it holds a scope per subscription
+// and re-reads one scope's ids per statement. An unscoped batch would have been
+// one statement instead, and it would have been the one read in the package
+// through which any id, from anywhere, resolves to a row.
+func setRead(g *querygen.Generator) *querygen.Query {
+	return g.SetReadQuery("GetOperations", OperationsTable, Columns,
+		querygen.Read{}, querygen.SetKey{Column: querygen.IDColumn},
+		querygen.Match{Column: ScopeColumn})
+}
+
 // listQueries is the paged read behind "what has this account got running", in
 // both directions.
 //
-// Its three narrowings are two shapes rather than one, and which shape a column
-// gets is decided by whether its domain is closed. Owner and kind are open sets
-// — an owner is whatever the application says it is, a kind is whatever was
-// registered — so each is an optional narrowing a caller may leave off, and
-// leaving it off compares against nothing. State is the closed set
-// operations.State enumerates, so the filter is a bound set and "every state"
-// is expressible as a value: the store binds all five rather than binding
-// nothing, which is what keeps the empty set meaning what it says everywhere
-// else in the module.
+// Its three narrowings are three shapes rather than one, and which shape a
+// column gets is decided by what the absence of a value would mean. Kind is an
+// open set — whatever was registered — so it is an optional narrowing a caller
+// may leave off, and leaving it off compares against nothing. State is the
+// closed set operations.State enumerates, so the filter is a bound set and
+// "every state" is expressible as a value: the store binds all five rather than
+// binding nothing, which is what keeps the empty set meaning what it says
+// everywhere else in the module.
+//
+// The scope is neither. It is a plain equality with no way to leave it off,
+// because the reading an optional narrowing would have given it — "compared
+// against nothing" — is every tenant's operations, which is the answer this
+// listing must not have. tenancy.Scope refuses to bind when it names nobody, so
+// a listing that lost its scope fails at the driver rather than widening.
 func listQueries(g *querygen.Generator) []*querygen.Query {
 	return g.SetListQueries("ListOperations", OperationsTable, Columns,
 		querygen.SetKey{Column: StateColumn, Arg: StatesArg},
-		querygen.Match{Column: OwnerColumn, Against: querygen.OptionalNarrowing},
+		querygen.Match{Column: ScopeColumn},
 		querygen.Match{Column: KindColumn, Against: querygen.OptionalNarrowing},
 	)
 }

@@ -4,12 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/clock"
-	"github.com/primandproper/primitives-go/cryptography/hashing/sha512"
-	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
-	metricsnoop "github.com/primandproper/primitives-go/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
-	"github.com/primandproper/primitives-go/random"
+	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/cryptography/hashing/sha512"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
+	metricsnoop "github.com/primandproper/primitives-go/v2/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/v2/random"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

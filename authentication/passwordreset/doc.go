@@ -26,7 +26,7 @@ boilerplate — code that is short enough to look like it does not need a librar
 and dangerous enough that the mistakes are vulnerabilities rather than bugs.
 
 The token is stored as a digest and never as itself. What goes in the column is
-[github.com/primandproper/primitives-go/cryptography/hashing.Hasher] applied
+[github.com/primandproper/primitives-go/v2/cryptography/hashing.Hasher] applied
 to the secret, hex-encoded; the secret exists once, in the [Issuance] returned
 by [Store.Issue], and this package never has a place to put it again. That is
 what makes a database copy — a backup, a read replica, a support engineer's
@@ -62,13 +62,13 @@ requires already holding the token.
 
 They run in the caller's transaction, and that is what makes the ordering
 question go away. [Store.Consume] takes a
-[github.com/primandproper/primitives-go/database.Tx] and [Store.Verify] takes
-the wider [github.com/primandproper/primitives-go/database.SQLQueryExecutor],
+[github.com/primandproper/primitives-go/v2/database.Tx] and [Store.Verify] takes
+the wider [github.com/primandproper/primitives-go/v2/database.SQLQueryExecutor],
 so the submit verifies, consumes, writes the new password hash through whatever
 store owns users, and calls [Store.RevokeForUser] for the links that were
 outstanding — all of it in one transaction, committing or unwinding together. A
 caller with genuinely nothing to join opens one with
-[github.com/primandproper/primitives-go/database.Client.WithTransaction] and
+[github.com/primandproper/primitives-go/v2/database.Client.WithTransaction] and
 passes the Tx it is handed.
 
 Two transactions is what that removes, and it is the gap worth naming: a
@@ -99,7 +99,7 @@ two differ in what a caller can do with them: a redemption here joins the write
 it authorizes, and a redemption there commits on its own.
 
 What is left is the table's shape, and what follows from it is tenancy. Every
-row here carries a [github.com/primandproper/primitives-go/tenancy.Scope],
+row here carries a [github.com/primandproper/primitives-go/v2/tenancy.Scope],
 which links has no notion of — a scope would have to be something a link is
 minted with, and Mint takes none — so a reset that has to be answerable one
 tenant at a time is answerable here and nowhere else.
@@ -124,11 +124,11 @@ flows; they share no state and no table.
 # Tenancy
 
 Every row carries a
-[github.com/primandproper/primitives-go/tenancy.Scope] and every statement
+[github.com/primandproper/primitives-go/v2/tenancy.Scope] and every statement
 binds it — the module's rule, not an exception to it. A token identifies a
 principal in a scope, and there is no unscoped read: an application with one
 directory passes
-[github.com/primandproper/primitives-go/tenancy.Global] everywhere and
+[github.com/primandproper/primitives-go/v2/tenancy.Global] everywhere and
 behaves exactly as an unscoped store would.
 
 The store's own machinery is the one exception, and it is narrow. [SQLStore.Sweep]

@@ -72,18 +72,18 @@ func ReportsToProto(reports []*issuereports.Report) []*issuereportspb.IssueRepor
 // A status this package does not serve renders as unspecified rather than
 // panicking, and it is unreachable from a stored row: the store refuses a report
 // whose status is not one of the four, so the column holds one of them.
-func StatusToProto(s issuereports.Status) issuereportspb.Status {
+func StatusToProto(s issuereports.Status) issuereportspb.ReportStatus {
 	switch s {
 	case issuereports.StatusOpen:
-		return issuereportspb.Status_STATUS_OPEN
+		return issuereportspb.ReportStatus_REPORT_STATUS_OPEN
 	case issuereports.StatusAcknowledged:
-		return issuereportspb.Status_STATUS_ACKNOWLEDGED
+		return issuereportspb.ReportStatus_REPORT_STATUS_ACKNOWLEDGED
 	case issuereports.StatusResolved:
-		return issuereportspb.Status_STATUS_RESOLVED
+		return issuereportspb.ReportStatus_REPORT_STATUS_RESOLVED
 	case issuereports.StatusDeclined:
-		return issuereportspb.Status_STATUS_DECLINED
+		return issuereportspb.ReportStatus_REPORT_STATUS_DECLINED
 	default:
-		return issuereportspb.Status_STATUS_UNSPECIFIED
+		return issuereportspb.ReportStatus_REPORT_STATUS_UNSPECIFIED
 	}
 }
 
@@ -99,17 +99,17 @@ func StatusToProto(s issuereports.Status) issuereportspb.Status {
 // over this store reads the same enum off the same messages, and the mapping
 // between four constants and four constants is exactly the thing a second copy
 // gets wrong in one arm.
-func StatusFromProto(s issuereportspb.Status) issuereports.Status {
+func StatusFromProto(s issuereportspb.ReportStatus) issuereports.Status {
 	switch s {
-	case issuereportspb.Status_STATUS_OPEN:
+	case issuereportspb.ReportStatus_REPORT_STATUS_OPEN:
 		return issuereports.StatusOpen
-	case issuereportspb.Status_STATUS_ACKNOWLEDGED:
+	case issuereportspb.ReportStatus_REPORT_STATUS_ACKNOWLEDGED:
 		return issuereports.StatusAcknowledged
-	case issuereportspb.Status_STATUS_RESOLVED:
+	case issuereportspb.ReportStatus_REPORT_STATUS_RESOLVED:
 		return issuereports.StatusResolved
-	case issuereportspb.Status_STATUS_DECLINED:
+	case issuereportspb.ReportStatus_REPORT_STATUS_DECLINED:
 		return issuereports.StatusDeclined
-	case issuereportspb.Status_STATUS_UNSPECIFIED:
+	case issuereportspb.ReportStatus_REPORT_STATUS_UNSPECIFIED:
 		return ""
 	default:
 		return ""
