@@ -144,32 +144,9 @@ func TestRegisterFulfiller(T *testing.T) {
 		test.Eq(t, []string{dataprivacy.KindExport}, kinds.Kinds())
 	})
 
-	T.Run("with an encryptor the config declares", func(t *testing.T) {
+	T.Run("a registered encryptor is the whole of what a container says", func(t *testing.T) {
 		t.Parallel()
 
-		cfg := testConfig()
-		cfg.Packaging.Encrypted = true
-
-		i := fulfillerInjector(t, cfg)
-
-		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
-		must.NoError(t, err)
-		do.ProvideValue(i, encryptorDecryptor)
-
-		RegisterStore(i)
-		RegisterFulfiller(i)
-
-		fulfiller, err := do.Invoke[*dataprivacy.Fulfiller](i)
-		must.NoError(t, err)
-		test.NotNil(t, fulfiller)
-	})
-
-	T.Run("refuses an encryptor the config does not declare", func(t *testing.T) {
-		t.Parallel()
-
-		// A container is where the two drift apart: the declaration is an
-		// environment variable and the encryptor is a registration, and nothing
-		// else in the wiring holds both.
 		i := fulfillerInjector(t, testConfig())
 
 		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
@@ -179,8 +156,35 @@ func TestRegisterFulfiller(T *testing.T) {
 		RegisterStore(i)
 		RegisterFulfiller(i)
 
-		_, err = do.Invoke[*dataprivacy.Fulfiller](i)
-		test.ErrorIs(t, err, ErrPackagingDeclarationMismatch)
+		// Registering the encryptor is sufficient, and there is no second
+		// thing to set. The container holds the only statement of whether this
+		// deployment encrypts, so a wiring that is correct cannot also be
+		// refused for failing to repeat itself.
+		fulfiller, err := do.Invoke[*dataprivacy.Fulfiller](i)
+		must.NoError(t, err)
+		test.NotNil(t, fulfiller)
+	})
+
+	T.Run("the same registration reaches the Service that reads the artifacts back", func(t *testing.T) {
+		t.Parallel()
+
+		i := fulfillerInjector(t, testConfig())
+
+		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
+		must.NoError(t, err)
+		do.ProvideValue(i, encryptorDecryptor)
+		do.ProvideValue[operations.Service](i, stubOperations())
+
+		RegisterStore(i)
+		RegisterFulfiller(i)
+		RegisterService(i)
+
+		// Both providers resolve the same two optional registrations, so the
+		// codecs the Fulfiller writes an artifact with are the ones the Service
+		// reads it back with — which is what EnsurePackaging used to be for.
+		svc, err := do.Invoke[dataprivacy.Service](i)
+		must.NoError(t, err)
+		test.NotNil(t, svc)
 	})
 }
 

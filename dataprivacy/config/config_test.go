@@ -46,10 +46,6 @@ func TestConfig(T *testing.T) {
 		// more surprising default.
 		test.False(t, cfg.AuditErasure.Disabled)
 
-		// Encryption is off unless configured, because an artifact encrypted at
-		// rest is only as recoverable as its key.
-		test.False(t, cfg.Packaging.Encrypted)
-
 		test.NoError(t, cfg.ValidateWithContext(t.Context()))
 	})
 
@@ -159,59 +155,6 @@ func TestRegisterAuditEraser(T *testing.T) {
 
 		_, err := RegisterAuditEraser(t.Context(), cfg, dataprivacy.NewRegistry())
 		test.ErrorIs(t, err, auditerasure.ErrInvalidTablePrefix)
-	})
-}
-
-func TestEnsurePackaging(T *testing.T) {
-	T.Parallel()
-
-	T.Run("supplies nothing when nothing is configured", func(t *testing.T) {
-		t.Parallel()
-
-		workerOpts, serviceOpts, err := EnsurePackaging(&Config{Dialect: dialect.SQLite}, nil, nil)
-		must.NoError(t, err)
-
-		test.SliceEmpty(t, workerOpts)
-		test.SliceEmpty(t, serviceOpts)
-	})
-}
-
-func TestEnsurePackaging_Declaration(T *testing.T) {
-	T.Parallel()
-
-	T.Run("refuses an encryptor a config did not declare", func(t *testing.T) {
-		t.Parallel()
-
-		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
-		must.NoError(t, err)
-
-		// The expensive direction: undeclared encryption mails the subject a
-		// link to ciphertext, and the failure surfaces at the subject weeks
-		// later rather than at startup.
-		fulfillerOpts, serviceOpts, err := EnsurePackaging(&Config{Dialect: dialect.SQLite}, nil, encryptorDecryptor)
-		test.ErrorIs(t, err, ErrPackagingDeclarationMismatch)
-
-		test.SliceEmpty(t, fulfillerOpts)
-		test.SliceEmpty(t, serviceOpts)
-	})
-
-	T.Run("refuses a declaration no encryptor backs", func(t *testing.T) {
-		t.Parallel()
-
-		cfg := &Config{Dialect: dialect.SQLite}
-		cfg.Packaging.Encrypted = true
-
-		// The quiet direction: a deployment that declared encryption and wired
-		// none withholds every download link forever, and nothing says so.
-		_, _, err := EnsurePackaging(cfg, nil, nil)
-		test.ErrorIs(t, err, ErrPackagingDeclarationMismatch)
-	})
-
-	T.Run("refuses a nil config", func(t *testing.T) {
-		t.Parallel()
-
-		_, _, err := EnsurePackaging(nil, nil, nil)
-		test.Error(t, err)
 	})
 }
 
@@ -351,13 +294,12 @@ func TestConstructors(T *testing.T) {
 		test.NotNil(t, fulfiller)
 	})
 
-	T.Run("the encryption declaration comes from the config rather than the caller", func(t *testing.T) {
+	T.Run("takes the encryptor it is to write with, and asks it nothing else", func(t *testing.T) {
 		t.Parallel()
 
 		env := newConfigEnv(t)
 
 		cfg := &Config{Dialect: dialect.SQLite, TablePrefix: env.prefix}
-		cfg.Packaging.Encrypted = true
 
 		store, err := NewStore(t.Context(), cfg, env.client)
 		must.NoError(t, err)
@@ -369,13 +311,15 @@ func TestConstructors(T *testing.T) {
 			},
 		)))
 
-		// What the declaration decides is whether the signer this builds ever
-		// returns a URL; that it declines under encryption is
-		// dataprivacy.NewArtifactURLSigner's own test. What is asserted here is
-		// that the fact now travels in the Config, so there is no longer a
-		// positional bool for a call site to get wrong.
+		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
+		must.NoError(t, err)
+
+		// Handing over the encryptor is the whole of what this constructor is
+		// told about encryption. It writes artifacts with it and reads
+		// enc != nil to decide whether the signer may mint a link, so there is
+		// no second statement of the fact and nothing for one to contradict.
 		fulfiller, err := NewFulfiller(t.Context(), cfg, env.client, store, domains, operations.NewRegistry(),
-			noop.NewUploadManager())
+			noop.NewUploadManager(), WithEncryptor(encryptorDecryptor))
 		must.NoError(t, err)
 		test.NotNil(t, fulfiller)
 	})
@@ -453,10 +397,10 @@ func TestRegisterAuditEraser_Failures(T *testing.T) {
 	})
 }
 
-func TestEnsurePackaging_Supplied(T *testing.T) {
+func TestCodecOptions(T *testing.T) {
 	T.Parallel()
 
-	T.Run("pairs the worker and service codecs", func(t *testing.T) {
+	T.Run("one option each reaches the writer and the reader", func(t *testing.T) {
 		t.Parallel()
 
 		compressor, err := compression.NewCompressor(compression.AlgorithmZstd)
@@ -465,30 +409,47 @@ func TestEnsurePackaging_Supplied(T *testing.T) {
 		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
 		must.NoError(t, err)
 
-		cfg := &Config{Dialect: dialect.SQLite}
-		cfg.Packaging.Encrypted = true
+		// The compressor is named at its interface type because that is what
+		// the option stores; the encryptor's constructor already returns one.
+		var wantCompressor compression.Compressor = compressor
 
-		// The pairing is the point: an artifact written with one compressor and
-		// read with another is unreadable, and the failure would surface at the
-		// subject rather than at startup.
-		workerOpts, serviceOpts, err := EnsurePackaging(cfg, compressor, encryptorDecryptor)
-		must.NoError(t, err)
+		// The pairing is the point, and it is now structural: NewFulfiller
+		// writes with what WithCompressor and WithEncryptor name and NewService
+		// reads with the same two, so a wiring site that hands both
+		// constructors its option slice cannot give them different codecs. An
+		// artifact written with one compressor and read with another is
+		// unreadable, and the failure would surface at the subject rather than
+		// at startup.
+		o := newOptions([]Option{WithCompressor(compressor), WithEncryptor(encryptorDecryptor)})
 
-		test.SliceLen(t, 2, workerOpts)
-		test.SliceLen(t, 2, serviceOpts)
+		test.Eq(t, wantCompressor, o.compressor)
+		test.Eq(t, encryptorDecryptor, o.encryptor)
 	})
 
-	T.Run("a compressor alone pairs one option each", func(t *testing.T) {
+	T.Run("a compressor alone leaves artifacts unencrypted", func(t *testing.T) {
 		t.Parallel()
 
 		compressor, err := compression.NewCompressor(compression.AlgorithmS2)
 		must.NoError(t, err)
 
-		workerOpts, serviceOpts, err := EnsurePackaging(&Config{Dialect: dialect.SQLite}, compressor, nil)
-		must.NoError(t, err)
+		var want compression.Compressor = compressor
 
-		test.SliceLen(t, 1, workerOpts)
-		test.SliceLen(t, 1, serviceOpts)
+		o := newOptions([]Option{WithCompressor(compressor)})
+
+		test.Eq(t, want, o.compressor)
+
+		// Which is also the answer to whether a notification may carry a link:
+		// there is no encryptor, so nothing is ciphertext, so the signer signs.
+		test.Nil(t, o.encryptor)
+	})
+
+	T.Run("neither is uncompressed and unencrypted", func(t *testing.T) {
+		t.Parallel()
+
+		o := newOptions(nil)
+
+		test.Nil(t, o.compressor)
+		test.Nil(t, o.encryptor)
 	})
 }
 
