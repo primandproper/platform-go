@@ -218,10 +218,56 @@ WHERE {{prefix}}identity_accounts.archived_at IS NULL
 	AND {{prefix}}identity_accounts.id = ?1
 	AND {{prefix}}identity_accounts.scope = ?2`
 
-const getAccountCreatedAtSQLite = `SELECT
-	{{prefix}}identity_accounts.created_at
+const getArchivedAccountSQLite = `SELECT
+	{{prefix}}identity_accounts.id,
+	{{prefix}}identity_accounts.scope,
+	{{prefix}}identity_accounts.name,
+	{{prefix}}identity_accounts.owner_user_id,
+	{{prefix}}identity_accounts.billing_status,
+	{{prefix}}identity_accounts.subscription_plan_id,
+	{{prefix}}identity_accounts.payment_processor_customer_id,
+	{{prefix}}identity_accounts.last_payment_provider_synced_at,
+	{{prefix}}identity_accounts.address_line1,
+	{{prefix}}identity_accounts.address_line2,
+	{{prefix}}identity_accounts.address_city,
+	{{prefix}}identity_accounts.address_state,
+	{{prefix}}identity_accounts.address_postal_code,
+	{{prefix}}identity_accounts.address_country,
+	{{prefix}}identity_accounts.address_phone,
+	{{prefix}}identity_accounts.time_zone,
+	{{prefix}}identity_accounts.created_at,
+	{{prefix}}identity_accounts.last_updated_at,
+	{{prefix}}identity_accounts.archived_at
 FROM {{prefix}}identity_accounts
-WHERE {{prefix}}identity_accounts.id = ?1`
+WHERE {{prefix}}identity_accounts.id = ?1
+	AND {{prefix}}identity_accounts.scope = ?2
+	AND {{prefix}}identity_accounts.archived_at IS NOT NULL`
+
+const getArchivedUserSQLite = `SELECT
+	{{prefix}}identity_users.id,
+	{{prefix}}identity_users.scope,
+	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.email_address,
+	{{prefix}}identity_users.first_name,
+	{{prefix}}identity_users.last_name,
+	{{prefix}}identity_users.hashed_password,
+	{{prefix}}identity_users.requires_password_change,
+	{{prefix}}identity_users.password_last_changed_at,
+	{{prefix}}identity_users.two_factor_secret,
+	{{prefix}}identity_users.two_factor_secret_verified_at,
+	{{prefix}}identity_users.email_address_verified_at,
+	{{prefix}}identity_users.email_address_verification_token,
+	{{prefix}}identity_users.account_status,
+	{{prefix}}identity_users.account_status_explanation,
+	{{prefix}}identity_users.last_accepted_terms_of_service,
+	{{prefix}}identity_users.last_accepted_privacy_policy,
+	{{prefix}}identity_users.created_at,
+	{{prefix}}identity_users.last_updated_at,
+	{{prefix}}identity_users.archived_at
+FROM {{prefix}}identity_users
+WHERE {{prefix}}identity_users.id = ?1
+	AND {{prefix}}identity_users.scope = ?2
+	AND {{prefix}}identity_users.archived_at IS NOT NULL`
 
 const getInvitationSQLite = `SELECT
 	{{prefix}}identity_invitations.id,
@@ -403,11 +449,6 @@ FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.username = ?1
 	AND {{prefix}}identity_users.scope = ?2`
-
-const getUserCreatedAtSQLite = `SELECT
-	{{prefix}}identity_users.created_at
-FROM {{prefix}}identity_users
-WHERE {{prefix}}identity_users.id = ?1`
 
 const getUserIdbyEmailAddressSQLite = `SELECT
 	{{prefix}}identity_users.id
@@ -1654,7 +1695,8 @@ type sqliteQueries struct {
 	deleteUserRoles                          string
 	eraseUser                                string
 	getAccount                               string
-	getAccountCreatedAt                      string
+	getArchivedAccount                       string
+	getArchivedUser                          string
 	getInvitation                            string
 	getInvitationCreatedAt                   string
 	getMembershipByUserAndAccount            string
@@ -1666,7 +1708,6 @@ type sqliteQueries struct {
 	getUserByEmailAddress                    string
 	getUserByEmailVerificationToken          string
 	getUserByUsername                        string
-	getUserCreatedAt                         string
 	getUserIdbyEmailAddress                  string
 	getUserIdbyUsername                      string
 	insertInvitationRole                     string
@@ -1736,7 +1777,8 @@ func newSQLite(prefix string) *sqliteQueries {
 		deleteUserRoles:                          strings.ReplaceAll(deleteUserRolesSQLite, prefixMarker, prefix),
 		eraseUser:                                strings.ReplaceAll(eraseUserSQLite, prefixMarker, prefix),
 		getAccount:                               strings.ReplaceAll(getAccountSQLite, prefixMarker, prefix),
-		getAccountCreatedAt:                      strings.ReplaceAll(getAccountCreatedAtSQLite, prefixMarker, prefix),
+		getArchivedAccount:                       strings.ReplaceAll(getArchivedAccountSQLite, prefixMarker, prefix),
+		getArchivedUser:                          strings.ReplaceAll(getArchivedUserSQLite, prefixMarker, prefix),
 		getInvitation:                            strings.ReplaceAll(getInvitationSQLite, prefixMarker, prefix),
 		getInvitationCreatedAt:                   strings.ReplaceAll(getInvitationCreatedAtSQLite, prefixMarker, prefix),
 		getMembershipByUserAndAccount:            strings.ReplaceAll(getMembershipByUserAndAccountSQLite, prefixMarker, prefix),
@@ -1748,7 +1790,6 @@ func newSQLite(prefix string) *sqliteQueries {
 		getUserByEmailAddress:                    strings.ReplaceAll(getUserByEmailAddressSQLite, prefixMarker, prefix),
 		getUserByEmailVerificationToken:          strings.ReplaceAll(getUserByEmailVerificationTokenSQLite, prefixMarker, prefix),
 		getUserByUsername:                        strings.ReplaceAll(getUserByUsernameSQLite, prefixMarker, prefix),
-		getUserCreatedAt:                         strings.ReplaceAll(getUserCreatedAtSQLite, prefixMarker, prefix),
 		getUserIdbyEmailAddress:                  strings.ReplaceAll(getUserIdbyEmailAddressSQLite, prefixMarker, prefix),
 		getUserIdbyUsername:                      strings.ReplaceAll(getUserIdbyUsernameSQLite, prefixMarker, prefix),
 		insertInvitationRole:                     strings.ReplaceAll(insertInvitationRoleSQLite, prefixMarker, prefix),
@@ -2108,16 +2149,70 @@ func (q *sqliteQueries) GetAccount(ctx context.Context, db DBTX, arg GetAccountP
 	return i, err
 }
 
-// GetAccountCreatedAt runs the :one query against sqlite.
-func (q *sqliteQueries) GetAccountCreatedAt(ctx context.Context, db DBTX, arg GetAccountCreatedAtParams) (GetAccountCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getAccountCreatedAt,
+// GetArchivedAccount runs the :one query against sqlite.
+func (q *sqliteQueries) GetArchivedAccount(ctx context.Context, db DBTX, arg GetArchivedAccountParams) (GetArchivedAccountRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedAccount,
 		arg.ID,
+		arg.Scope,
 	)
 
-	var i GetAccountCreatedAtRow
+	var i GetArchivedAccountRow
 
 	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.OwnerUserID,
+		&i.BillingStatus,
+		&i.SubscriptionPlanID,
+		&i.PaymentProcessorCustomerID,
+		&i.LastPaymentProviderSyncedAt,
+		&i.AddressLine1,
+		&i.AddressLine2,
+		&i.AddressCity,
+		&i.AddressState,
+		&i.AddressPostalCode,
+		&i.AddressCountry,
+		&i.AddressPhone,
+		&i.TimeZone,
 		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
+// GetArchivedUser runs the :one query against sqlite.
+func (q *sqliteQueries) GetArchivedUser(ctx context.Context, db DBTX, arg GetArchivedUserParams) (GetArchivedUserRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedUser,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedUserRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Username,
+		&i.EmailAddress,
+		&i.FirstName,
+		&i.LastName,
+		&i.HashedPassword,
+		&i.RequiresPasswordChange,
+		&i.PasswordLastChangedAt,
+		&i.TwoFactorSecret,
+		&i.TwoFactorSecretVerifiedAt,
+		&i.EmailAddressVerifiedAt,
+		&i.EmailAddressVerificationToken,
+		&i.AccountStatus,
+		&i.AccountStatusExplanation,
+		&i.LastAcceptedTermsOfService,
+		&i.LastAcceptedPrivacyPolicy,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
 	)
 
 	return i, err
@@ -2393,21 +2488,6 @@ func (q *sqliteQueries) GetUserByUsername(ctx context.Context, db DBTX, arg GetU
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
-	)
-
-	return i, err
-}
-
-// GetUserCreatedAt runs the :one query against sqlite.
-func (q *sqliteQueries) GetUserCreatedAt(ctx context.Context, db DBTX, arg GetUserCreatedAtParams) (GetUserCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getUserCreatedAt,
-		arg.ID,
-	)
-
-	var i GetUserCreatedAtRow
-
-	err := row.Scan(
-		&i.CreatedAt,
 	)
 
 	return i, err
@@ -4117,11 +4197,56 @@ var (
 		ArchivedAt                  *time.Time
 	}(GetAccountRow{})
 	_ = struct {
-		ID string
-	}(GetAccountCreatedAtParams{})
+		ID    string
+		Scope tenancy.Scope
+	}(GetArchivedAccountParams{})
 	_ = struct {
-		CreatedAt time.Time
-	}(GetAccountCreatedAtRow{})
+		ID                          string
+		Scope                       tenancy.Scope
+		Name                        string
+		OwnerUserID                 string
+		BillingStatus               string
+		SubscriptionPlanID          *string
+		PaymentProcessorCustomerID  string
+		LastPaymentProviderSyncedAt *time.Time
+		AddressLine1                string
+		AddressLine2                string
+		AddressCity                 string
+		AddressState                string
+		AddressPostalCode           string
+		AddressCountry              string
+		AddressPhone                string
+		TimeZone                    string
+		CreatedAt                   time.Time
+		LastUpdatedAt               *time.Time
+		ArchivedAt                  *time.Time
+	}(GetArchivedAccountRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetArchivedUserParams{})
+	_ = struct {
+		ID                            string
+		Scope                         tenancy.Scope
+		Username                      string
+		EmailAddress                  string
+		FirstName                     string
+		LastName                      string
+		HashedPassword                string
+		RequiresPasswordChange        bool
+		PasswordLastChangedAt         *time.Time
+		TwoFactorSecret               string
+		TwoFactorSecretVerifiedAt     *time.Time
+		EmailAddressVerifiedAt        *time.Time
+		EmailAddressVerificationToken string
+		AccountStatus                 string
+		AccountStatusExplanation      string
+		LastAcceptedTermsOfService    *time.Time
+		LastAcceptedPrivacyPolicy     *time.Time
+		CreatedAt                     time.Time
+		LastUpdatedAt                 *time.Time
+		ArchivedAt                    *time.Time
+	}(GetArchivedUserRow{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope
@@ -4298,12 +4423,6 @@ var (
 		LastUpdatedAt                 *time.Time
 		ArchivedAt                    *time.Time
 	}(GetUserByUsernameRow{})
-	_ = struct {
-		ID string
-	}(GetUserCreatedAtParams{})
-	_ = struct {
-		CreatedAt time.Time
-	}(GetUserCreatedAtRow{})
 	_ = struct {
 		EmailAddress string
 		Scope        tenancy.Scope

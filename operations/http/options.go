@@ -13,7 +13,7 @@ import (
 // It has no default, and that is the point. Every read this package serves is
 // scoped to an owner, and a default of "no scoping" would make the safe wiring
 // and the wiring that serves every tenant's operations to anyone look identical.
-// A deployment that genuinely has no owners passes Unscoped, by name.
+// A deployment that genuinely has no owners passes GlobalOwner, by name.
 var ErrNilOwnerResolver = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil operations owner resolver")
 
 type (

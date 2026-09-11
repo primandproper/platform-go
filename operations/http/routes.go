@@ -14,6 +14,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/routing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // o11yName scopes this package's spans and logger.
@@ -45,7 +46,7 @@ const (
 	streamedKey    = "operations.snapshots_streamed"
 )
 
-// OwnerResolver derives the owner a request is entitled to read from.
+// OwnerResolver derives the scope a request is entitled to read from.
 //
 // It takes a context rather than a request because that is where a consumer's
 // authentication middleware has already put the identity — the session, the
@@ -53,18 +54,27 @@ const (
 // registers receive a context and nothing else. A resolver that needed the
 // request would work for the event stream and not for anything else.
 //
-// Returning an error fails the request; returning an empty string scopes the
-// read to operations that have no owner, which is what Unscoped does on purpose.
-type OwnerResolver func(ctx context.Context) (string, error)
+// Returning an error fails the request. What it returns otherwise is bound into
+// every statement the request makes, so a resolver that returns the zero Scope
+// fails the read at the driver rather than widening it — which is the failure
+// mode worth having, and is why there is no spelling of "every tenant" here.
+type OwnerResolver func(ctx context.Context) (tenancy.Scope, error)
 
-// Unscoped is the OwnerResolver for a deployment that genuinely has no owners:
-// every reader may read every operation.
+// GlobalOwner is the OwnerResolver for a deployment that genuinely has no
+// owners: every operation is in tenancy.Global(), and every reader reads it.
 //
-// It exists as a name rather than as the default so that "everyone may read
-// every operation" is something somebody wrote down. A single-tenant internal
-// tool is a perfectly good reason to pass it; a multi-tenant API passing it is a
-// data leak, and the difference should be visible in the wiring.
-func Unscoped(context.Context) (string, error) { return "", nil }
+// It is the counterpart of leaving WithOwner off at Start, which is what puts an
+// operation in the global scope in the first place — so a single-tenant
+// deployment that names no owner anywhere behaves exactly as it did before
+// tenancy was a column.
+//
+// It exists as a name rather than as the default so that "this deployment has no
+// tenants" is something somebody wrote down. A single-tenant internal tool is a
+// perfectly good reason to pass it; a multi-tenant API passing it is not a leak
+// — the global scope matches only itself, so such a reader would see nothing
+// rather than everything — but it is still a mistake, and one the wiring should
+// show.
+func GlobalOwner(context.Context) (tenancy.Scope, error) { return tenancy.Global(), nil }
 
 // Handlers is the mountable operations read surface.
 type Handlers struct {
@@ -91,7 +101,7 @@ type Handlers struct {
 
 // New builds the handlers over a Service.
 //
-// resolver is required and has no default; see Unscoped and the package
+// resolver is required and has no default; see GlobalOwner and the package
 // documentation for why. Without WithWatcher the event-stream endpoint is not
 // registered at all — a subscription endpoint with nothing behind it would
 // accept a connection and then say nothing forever, which is worse than a 404.
@@ -240,7 +250,7 @@ func (h *Handlers) get(ctx context.Context, in getInput) (*operations.Operation,
 	ctx, span := h.o11y.Begin(ctx, observability.WithValue(operationIDKey, in.ID))
 	defer span.End()
 
-	op, err := h.read(ctx, in.ID)
+	op, err := h.read(ctx, span, in.ID)
 	if err != nil {
 		return nil, span.Error(err, "reading operation")
 	}
@@ -252,10 +262,12 @@ func (h *Handlers) cancel(ctx context.Context, in cancelInput) (*operations.Oper
 	ctx, span := h.o11y.Begin(ctx, observability.WithValue(operationIDKey, in.ID))
 	defer span.End()
 
-	// Read first, under the ownership check. Cancel is a write, and a write
-	// reached by an ID somebody guessed would be a way to stop other people's
-	// work without ever being able to read it.
-	if _, err := h.read(ctx, in.ID); err != nil {
+	// Read first, under the scope. Cancel is a write reached by an ID and
+	// nothing else — operations.Store.RequestCancel is machinery and takes no
+	// scope, for the reason it states — so without this read it would be a way
+	// to stop other people's work without ever being able to read it. The read
+	// is what confines the write to a tenant, and it is the caller's to make.
+	if _, err := h.read(ctx, span, in.ID); err != nil {
 		return nil, span.Error(err, "cancelling operation")
 	}
 
@@ -274,14 +286,12 @@ func (h *Handlers) list(
 	ctx, span := h.o11y.Begin(ctx)
 	defer span.End()
 
-	owner, err := h.resolver(ctx)
+	scope, err := h.scope(ctx, span)
 	if err != nil {
 		return nil, span.Error(err, "resolving operation owner")
 	}
 
-	span.Set(ownerKey, owner)
-
-	scope := &operations.ListScope{Owner: owner, Kind: in.Kind}
+	listScope := &operations.ListScope{Kind: in.Kind}
 
 	if in.State != "" {
 		state := operations.State(in.State)
@@ -292,10 +302,10 @@ func (h *Handlers) list(
 			)
 		}
 
-		scope.States = []operations.State{state}
+		listScope.States = []operations.State{state}
 	}
 
-	results, err := h.svc.List(ctx, scope, filterFrom(in))
+	results, err := h.svc.List(ctx, scope, listScope, filterFrom(in))
 	if err != nil {
 		return nil, span.Error(err, "listing operations")
 	}
@@ -320,25 +330,43 @@ func filterFrom(in listInput) *filtering.QueryFilter {
 	return filter
 }
 
-// read fetches an operation and enforces ownership.
+// scope resolves whose operations this request may see, and records it.
 //
-// A row belonging to somebody else is reported as ErrOperationNotFound, not as a
-// permission failure. The two are the same answer on purpose: a 403 for an
-// operation that exists and a 404 for one that does not is an oracle telling
+// It is one function rather than a call in each handler so that a handler cannot
+// be written that reads without resolving one: there is no path to svc.Get or
+// svc.List from here that does not come through a resolved scope.
+func (h *Handlers) scope(ctx context.Context, span observability.Operation) (tenancy.Scope, error) {
+	scope, err := h.resolver(ctx)
+	if err != nil {
+		return tenancy.Scope{}, err
+	}
+
+	span.Set(ownerKey, scope.String())
+
+	return scope, nil
+}
+
+// read fetches an operation in the scope the request resolved to.
+//
+// There is no comparison here, and its absence is the point. The scope is bound
+// into the statement, so a row belonging to somebody else is one the query does
+// not return — reported as ErrOperationNotFound, which is also what an operation
+// that does not exist reports. The two are the same answer on purpose: a 403 for
+// an operation that exists and a 404 for one that does not is an oracle telling
 // whoever is guessing IDs which of their guesses are real.
-func (h *Handlers) read(ctx context.Context, id string) (*operations.Operation, error) {
-	owner, err := h.resolver(ctx)
+func (h *Handlers) read(
+	ctx context.Context,
+	span observability.Operation,
+	id string,
+) (*operations.Operation, error) {
+	scope, err := h.scope(ctx, span)
 	if err != nil {
 		return nil, err
 	}
 
-	op, err := h.svc.Get(ctx, id)
+	op, err := h.svc.Get(ctx, scope, id)
 	if err != nil {
 		return nil, err
-	}
-
-	if op.Owner != owner {
-		return nil, platformerrors.Wrapf(operations.ErrOperationNotFound, "operation %q", id)
 	}
 
 	return op, nil
@@ -351,7 +379,7 @@ func (h *Handlers) read(ctx context.Context, id string) (*operations.Operation, 
 // surface:
 //
 //	routing.Post(r, "/exports", func(ctx context.Context, in exportForm) (*operationshttp.Acceptance, error) {
-//	    op, err := svc.Start(ctx, "dataprivacy.export", in.request(), operations.WithOwner(userID(ctx)))
+//	    op, err := svc.Start(ctx, "dataprivacy.export", in.request(), operations.WithOwner(tenancy.Of(userID(ctx))))
 //	    if err != nil {
 //	        return nil, err
 //	    }

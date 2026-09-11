@@ -74,6 +74,7 @@ func RegisterService(i do.Injector) {
 		return newServiceOver(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
+			do.MustInvoke[database.Client](i),
 			do.MustInvoke[operations.Store](i),
 			do.MustInvoke[*workqueue.Queue[string]](i),
 			do.MustInvoke[*operations.Registry](i),
@@ -153,6 +154,7 @@ func RegisterWatcher(i do.Injector) {
 		return NewWatcher(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
+			do.MustInvoke[database.Client](i),
 			do.MustInvoke[operations.Store](i),
 			WithPillars(pillars),
 		)

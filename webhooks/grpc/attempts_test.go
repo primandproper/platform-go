@@ -26,13 +26,12 @@ func dispatch(tb testing.TB, h *harness, scope tenancy.Scope) *webhooks.Delivery
 	tb.Helper()
 
 	delivery := &webhooks.Delivery{
-		Scope:     scope,
 		EventType: orderCreated,
 		Payload:   json.RawMessage(`{"id":"order_1"}`),
 	}
 
 	must.NoError(tb, h.db.WithTransaction(tb.Context(), func(tx database.Tx) error {
-		return h.dispatcher.Dispatch(tb.Context(), tx, delivery)
+		return h.dispatcher.Dispatch(tb.Context(), tx, scope, delivery)
 	}))
 
 	must.NotEq(tb, "", delivery.ID)

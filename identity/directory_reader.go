@@ -72,6 +72,42 @@ func (s *SQLStore) readUser(
 	return user, nil
 }
 
+// readArchivedUser is the read an archival answers with: the user the write it
+// just made hid, on the transaction that hid it.
+//
+// It is not on Store and no consumer reaches it. readUser cannot serve — every
+// single-row statement over this table filters archived_at IS NULL, which is
+// what makes an archived user absent from the directory — so the one row that
+// describes what an archival did is the one row the ordinary read cannot see.
+// The statement carries that predicate's complement, so a read that comes back
+// is proof the archival landed rather than proof a row exists.
+//
+// The service roles come with it, from the same batched read every other user
+// read uses. A role grant is not archived with its owner — the role tables carry
+// no archived column, because a grant is reached through the parent whose own
+// statements are all keyed on one — so the roles the archived user held are
+// still readable, and a caller handed a User with an empty ServiceRoles it never
+// lost would be reading a stamp as a revocation.
+func (s *SQLStore) readArchivedUser(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	userID string,
+) (*User, error) {
+	row, err := s.q.GetArchivedUser(ctx, q, identitydb.GetArchivedUserParams{ID: userID, Scope: scope})
+	if err != nil {
+		return nil, notFound(err, ErrUserNotFound)
+	}
+
+	user := userFromArchivedRow(&row)
+
+	if err = s.attachServiceRoles(ctx, q, []*User{user}); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
 // ListUsers pages the scope's directory, in the direction the filter names.
 //
 // The direction is a choice between two generated statements rather than an
@@ -344,6 +380,24 @@ func (s *SQLStore) readAccount(
 	}
 
 	return accountFromRow(&row), nil
+}
+
+// readArchivedAccount is readArchivedUser for the other noun, and exists for the
+// same reason: the account an archival hid is reachable through no read a
+// consumer has, and the statement's archived_at IS NOT NULL is what makes the
+// row that comes back proof the archival landed.
+func (s *SQLStore) readArchivedAccount(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	accountID string,
+) (*Account, error) {
+	row, err := s.q.GetArchivedAccount(ctx, q, identitydb.GetArchivedAccountParams{ID: accountID, Scope: scope})
+	if err != nil {
+		return nil, notFound(err, ErrAccountNotFound)
+	}
+
+	return accountFromArchivedRow(&row), nil
 }
 
 // ListAccounts pages the scope's accounts, in the direction the filter names.

@@ -128,6 +128,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	T.Parallel()
 
 	expected := []string{
+		"GetOperationInScope",
 		"GetOperation",
 		"GetOperations",
 		"ListOperations",
@@ -329,10 +330,11 @@ func TestRender_ReapOrdersBeforeItLocks(T *testing.T) {
 	test.StrContains(T, reap, "finished_at IS NOT NULL")
 }
 
-// TestRender_TheListingNarrowsInTwoShapes. Owner and kind are open sets, so an
-// absent one narrows nothing; state is closed, so it is a bound set and "every
-// state" is a value the caller sends.
-func TestRender_TheListingNarrowsInTwoShapes(T *testing.T) {
+// TestRender_TheListingNarrowsInThreeShapes. Kind is an open set, so an absent
+// one narrows nothing; state is closed, so it is a bound set and "every state"
+// is a value the caller sends; the scope is a plain equality with no absent
+// form at all, because the absent form of a tenancy predicate is every tenant.
+func TestRender_TheListingNarrowsInThreeShapes(T *testing.T) {
 	T.Parallel()
 
 	rendered := corpus(T)
@@ -340,19 +342,62 @@ func TestRender_TheListingNarrowsInTwoShapes(T *testing.T) {
 	for _, name := range []string{"ListOperations", "ListOperationsDescending"} {
 		listing := rendered[name]
 
-		test.StrContains(T, listing, "sqlc.narg(owner)::text IS NULL OR operations.owner = sqlc.narg(owner)",
-			test.Sprintf("statement %q", name))
 		test.StrContains(T, listing, "sqlc.narg(kind)::text IS NULL OR operations.kind = sqlc.narg(kind)",
 			test.Sprintf("statement %q", name))
 
-		// The page and both counts, or a client paginates through a set whose
-		// size it was told wrongly.
-		test.EqOp(T, 3, strings.Count(listing, "operations.state = ANY(sqlc.arg(states)::text[])"),
-			test.Sprintf("statement %q", name))
+		// No optional form of the scope anywhere in the statement. A narg on
+		// this column would be a listing whose caller can ask for every tenant's
+		// operations by leaving an argument nil.
+		test.StrNotContains(T, listing, "sqlc.narg(scope)", test.Sprintf("statement %q", name))
+
+		// The page and both counts, on the scope as on the state — a count taken
+		// without the scope would tell a client how many operations everybody
+		// has while showing them their own.
+		for _, predicate := range []string{
+			"operations.scope = sqlc.arg(scope)",
+			"operations.state = ANY(sqlc.arg(states)::text[])",
+		} {
+			test.EqOp(T, 3, strings.Count(listing, predicate),
+				test.Sprintf("statement %q, predicate %q", name, predicate))
+		}
 	}
 
 	test.StrContains(T, rendered["ListOperations"], "ORDER BY operations.id ASC")
 	test.StrContains(T, rendered["ListOperationsDescending"], "ORDER BY operations.id DESC")
+}
+
+// TestRender_TheScopedReadsBindTheScope pins the pair the consumer reads
+// through, and the one statement that deliberately does not.
+//
+// The unscoped GetOperation is not an oversight and not a variant a read may
+// reach for: it is the read-back at the end of RequestOperationCancel, which is
+// machinery holding an id it has just written. What would be a defect is a
+// second unscoped read appearing beside it, so the count is pinned rather than
+// the presence.
+func TestRender_TheScopedReadsBindTheScope(T *testing.T) {
+	T.Parallel()
+
+	rendered := corpus(T)
+
+	test.StrContains(T, rendered["GetOperationInScope"], "operations.scope = sqlc.arg(scope)")
+	test.StrContains(T, rendered["GetOperations"], "operations.scope = sqlc.arg(scope)")
+
+	// The bound set trails the scope, which is what keeps the set the last
+	// argument in the statement.
+	test.StrContains(T, rendered["GetOperations"],
+		"WHERE operations.scope = sqlc.arg(scope)\n\tAND operations.id = ANY(sqlc.arg(ids)::text[])")
+
+	test.StrNotContains(T, rendered["GetOperation"], "scope = sqlc.arg(scope)")
+
+	unscoped := 0
+
+	for name, body := range rendered {
+		if strings.HasPrefix(name, "Get") && !strings.Contains(body, "sqlc.arg(scope)") {
+			unscoped++
+		}
+	}
+
+	test.EqOp(T, 1, unscoped)
 }
 
 // TestRender_NoStatementNamesAnUnprefixableTable. Every statement carries the

@@ -372,7 +372,10 @@ func exampleUser(ctx context.Context, flow *exampleDeployment, username, passwor
 	// transactions because they are two acts; a deployment doing both at once
 	// would pass one Tx to both.
 	if err = flow.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return flow.store.CreateUser(ctx, tx, scope, user)
+		registered, createErr := flow.store.CreateUser(ctx, tx, scope, user)
+		user = registered
+
+		return createErr
 	}); err != nil {
 		panic(err)
 	}
@@ -380,7 +383,14 @@ func exampleUser(ctx context.Context, flow *exampleDeployment, username, passwor
 	// Issuing a secret is not holding one. This is the write that turns the
 	// column into a second factor.
 	if err = flow.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return flow.store.MarkUserTwoFactorSecretVerified(ctx, tx, scope, user.ID)
+		verified, verifyErr := flow.store.MarkUserTwoFactorSecretVerified(ctx, tx, scope, user.ID)
+		if verifyErr != nil {
+			return verifyErr
+		}
+
+		user = verified
+
+		return nil
 	}); err != nil {
 		panic(err)
 	}

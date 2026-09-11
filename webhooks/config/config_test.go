@@ -187,11 +187,11 @@ func TestNewDispatcher(T *testing.T) {
 
 		// The catalog reached the dispatcher: an event outside it is refused.
 		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
-			test.NoError(t, dispatcher.Dispatch(t.Context(), q, &webhooks.Delivery{
-				Scope: tenancy.Global(), EventType: "order.created", Payload: []byte(`{}`),
+			test.NoError(t, dispatcher.Dispatch(t.Context(), q, tenancy.Global(), &webhooks.Delivery{
+				EventType: "order.created", Payload: []byte(`{}`),
 			}))
-			test.ErrorIs(t, dispatcher.Dispatch(t.Context(), q, &webhooks.Delivery{
-				Scope: tenancy.Global(), EventType: "order.exploded", Payload: []byte(`{}`),
+			test.ErrorIs(t, dispatcher.Dispatch(t.Context(), q, tenancy.Global(), &webhooks.Delivery{
+				EventType: "order.exploded", Payload: []byte(`{}`),
 			}), webhooks.ErrUnknownEventType)
 
 			return nil

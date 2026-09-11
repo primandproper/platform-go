@@ -163,14 +163,23 @@ anybody copying seven names out of the schema.
 A registration is three writes in one transaction:
 
 	err := client.WithTransaction(ctx, func(tx database.Tx) error {
-		if err := store.CreateUser(ctx, tx, scope, user); err != nil {
+		registered, err := store.CreateUser(ctx, tx, scope, user)
+		if err != nil {
 			return err
 		}
-		if err := store.CreateAccount(ctx, tx, scope, account); err != nil {
+		account.OwnerUserID = registered.ID
+		created, err := store.CreateAccount(ctx, tx, scope, account)
+		if err != nil {
 			return err
 		}
-		return store.CreateMembership(ctx, tx, scope, membership)
+		membership.BelongsToUser, membership.BelongsToAccount = registered.ID, created.ID
+		_, err = store.CreateMembership(ctx, tx, scope, membership)
+		return err
 	})
+
+Each write answers with the row it wrote and leaves the value it was handed
+alone, so the ids the next write keys on come off what the last one returned
+rather than off the struct that was passed to it.
 
 A user without an account, or an account without an owner, is the failure mode
 every application discovers in production rather than in a test, and the shape

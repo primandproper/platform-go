@@ -112,8 +112,10 @@ type Querier interface {
 	EraseUser(ctx context.Context, db DBTX, arg EraseUserParams) (int64, error)
 	// GetAccount runs the :one query.
 	GetAccount(ctx context.Context, db DBTX, arg GetAccountParams) (GetAccountRow, error)
-	// GetAccountCreatedAt runs the :one query.
-	GetAccountCreatedAt(ctx context.Context, db DBTX, arg GetAccountCreatedAtParams) (GetAccountCreatedAtRow, error)
+	// GetArchivedAccount runs the :one query.
+	GetArchivedAccount(ctx context.Context, db DBTX, arg GetArchivedAccountParams) (GetArchivedAccountRow, error)
+	// GetArchivedUser runs the :one query.
+	GetArchivedUser(ctx context.Context, db DBTX, arg GetArchivedUserParams) (GetArchivedUserRow, error)
 	// GetInvitation runs the :one query.
 	GetInvitation(ctx context.Context, db DBTX, arg GetInvitationParams) (GetInvitationRow, error)
 	// GetInvitationCreatedAt runs the :one query.
@@ -136,8 +138,6 @@ type Querier interface {
 	GetUserByEmailVerificationToken(ctx context.Context, db DBTX, arg GetUserByEmailVerificationTokenParams) (GetUserByEmailVerificationTokenRow, error)
 	// GetUserByUsername runs the :one query.
 	GetUserByUsername(ctx context.Context, db DBTX, arg GetUserByUsernameParams) (GetUserByUsernameRow, error)
-	// GetUserCreatedAt runs the :one query.
-	GetUserCreatedAt(ctx context.Context, db DBTX, arg GetUserCreatedAtParams) (GetUserCreatedAtRow, error)
 	// GetUserIDByEmailAddress runs the :one query.
 	GetUserIDByEmailAddress(ctx context.Context, db DBTX, arg GetUserIDByEmailAddressParams) (GetUserIDByEmailAddressRow, error)
 	// GetUserIDByUsername runs the :one query.

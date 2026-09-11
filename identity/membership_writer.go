@@ -217,7 +217,10 @@ func (s *SQLStore) TransferAccountOwnership(
 			return op.Error(existsErr, "transferring identity account ownership")
 		}
 
-		if err = s.writeMembership(ctx, tx, &Membership{
+		// The membership it answers with is discarded: what this method
+		// reports is the transfer, and the row it minted on the way is
+		// described by the account that now names its holder as owner.
+		if _, err = s.writeMembership(ctx, tx, &Membership{
 			ID:               newID(""),
 			Scope:            scope,
 			BelongsToUser:    newOwnerUserID,

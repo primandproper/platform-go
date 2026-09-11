@@ -321,7 +321,7 @@ func runDirectoryReaderSuite(t *testing.T, env *storeEnv) {
 		// Archived after it was written, so what the search leaves out is a
 		// user the prefix matched rather than one it never did.
 		gone := seedUser(t, env, store, newUser("adrian"))
-		must.NoError(t, env.archiveUser(t, store, testScope, gone.ID))
+		must.NoError(t, env.archiveUserErr(t, store, testScope, gone.ID))
 
 		first, err := store.SearchUsersByUsername(t.Context(), env.reader(), testScope, "ad",
 			&filtering.QueryFilter{MaxResponseSize: pointer.To(uint16(2))})
@@ -389,7 +389,7 @@ func runDirectoryReaderSuite(t *testing.T, env *storeEnv) {
 		ada := seedUser(t, env, store, newUser("ada"))
 		gone := seedUser(t, env, store, newUser("brian"))
 
-		must.NoError(t, env.archiveUser(t, store, testScope, gone.ID))
+		must.NoError(t, env.archiveUserErr(t, store, testScope, gone.ID))
 
 		// The batch read is what a caller hydrates "created by" references
 		// through, so a soft-deleted author comes back rather than being
@@ -433,11 +433,13 @@ func runDirectoryReaderSuite(t *testing.T, env *storeEnv) {
 		second := seedAccountFor(t, env, store, owner, "Second")
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			_, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    member.ID,
 				BelongsToAccount: second.ID,
 				Roles:            []string{"account_member"},
 			})
+
+			return err
 		}))
 
 		all, err := store.ListAccounts(t.Context(), env.reader(), testScope, nil)

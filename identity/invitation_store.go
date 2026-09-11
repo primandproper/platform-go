@@ -528,11 +528,12 @@ func (s *SQLStore) AcceptInvitation(
 		membership.DefaultAccount = true
 	}
 
-	if err = s.writeMembership(ctx, tx, membership); err != nil {
+	written, err := s.writeMembership(ctx, tx, membership)
+	if err != nil {
 		return nil, op.Error(err, "accepting identity invitation")
 	}
 
-	return membership, nil
+	return written, nil
 }
 
 // SetInvitationStatus answers an invitation without producing a membership.

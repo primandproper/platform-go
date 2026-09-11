@@ -28,56 +28,75 @@ var _ ProfileWriter = (*SQLStore)(nil)
 // users with their credentials cleared — and a write that demanded a password
 // hash back taught the caller to carry one, which is the habit this package
 // exists to make unnecessary. See User.validateProfile.
-func (s *SQLStore) UpdateUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *User) error {
+func (s *SQLStore) UpdateUser(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	user *User,
+) (*User, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if err := requireExecutor(tx); err != nil {
-		return op.Error(err, "updating identity user")
+		return nil, op.Error(err, "updating identity user")
 	}
 
 	if user == nil {
-		return op.Error(ErrNilUser, "updating identity user")
+		return nil, op.Error(ErrNilUser, "updating identity user")
 	}
+
+	// The caller's value is read and not written to, as it is at creation, so
+	// the scope this write adopts lands on a copy.
+	written := *user
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "updating identity user")
+		return nil, op.Error(err, "updating identity user")
 	}
 
-	if err := adoptScope(scope, &user.Scope, "user"); err != nil {
-		return op.Error(err, "updating identity user")
+	if err := adoptScope(scope, &written.Scope, "user"); err != nil {
+		return nil, op.Error(err, "updating identity user")
 	}
 
-	if err := user.validateProfile(ctx); err != nil {
-		return op.Error(err, "updating identity user")
+	if err := written.validateProfile(ctx); err != nil {
+		return nil, op.Error(err, "updating identity user")
 	}
 
-	op.Set(userIDKey, user.ID)
+	op.Set(userIDKey, written.ID)
 
 	// The uniqueness checks, the read and the write are the caller's one
 	// transaction rather than a second one opened here: checking outside a
 	// transaction leaves a window in which the handle is free at the check and
 	// taken at the write, which surfaces as the driver's constraint violation
 	// rather than as ErrUsernameTaken.
-	if err := s.ensureUsernameFree(ctx, tx, scope, user.Username, user.ID); err != nil {
-		return op.Error(err, "updating identity user")
+	if err := s.ensureUsernameFree(ctx, tx, scope, written.Username, written.ID); err != nil {
+		return nil, op.Error(err, "updating identity user")
 	}
 
-	if err := s.ensureEmailAddressFree(ctx, tx, scope, user.EmailAddress, user.ID); err != nil {
-		return op.Error(err, "updating identity user")
+	if err := s.ensureEmailAddressFree(ctx, tx, scope, written.EmailAddress, written.ID); err != nil {
+		return nil, op.Error(err, "updating identity user")
 	}
 
-	params, err := s.profileUpdateParams(ctx, tx, user)
+	params, err := s.profileUpdateParams(ctx, tx, &written)
 	if err != nil {
-		return op.Error(err, "updating identity user")
+		return nil, op.Error(err, "updating identity user")
 	}
 
 	count, err := s.q.UpdateUser(ctx, tx, params)
 	if err = s.guardCount(ctx, count, err, ErrUserNotFound, "updating identity user"); err != nil {
-		return op.Error(err, "updating identity user")
+		return nil, op.Error(err, "updating identity user")
 	}
 
-	return nil
+	// Read after the write and on the transaction that made it, so what comes
+	// back carries the two columns this method decides rather than accepts —
+	// the verification stamp and the outstanding token, both of which the
+	// argument's own values were ignored for. A caller that changed the address
+	// can see that the proof went with it.
+	updated, err := s.readUser(ctx, tx, scope, written.ID)
+	if err != nil {
+		return nil, op.Error(err, "updating identity user")
+	}
+
+	return updated, nil
 }
 
 // profileUpdateParams assembles what the profile update binds, deciding from the
@@ -126,44 +145,58 @@ func (s *SQLStore) profileUpdateParams(
 	return updateUserParams(user, verifiedAt, token), nil
 }
 
-// UpdateAccount writes the account's name and billing address.
+// UpdateAccount writes the account's name and billing address, and answers with
+// the row it left behind.
+//
+// What comes back carries the columns this write does not assign — the billing
+// state and the owner, both of which move through methods of their own — as the
+// row holds them rather than as the argument did, which is the answer a caller
+// wanting to know what an account now looks like was reading a second time to
+// get.
 func (s *SQLStore) UpdateAccount(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	account *Account,
-) error {
+) (*Account, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if err := requireExecutor(tx); err != nil {
-		return op.Error(err, "updating identity account")
+		return nil, op.Error(err, "updating identity account")
 	}
 
 	if account == nil {
-		return op.Error(ErrNilAccount, "updating identity account")
+		return nil, op.Error(ErrNilAccount, "updating identity account")
 	}
+
+	written := *account
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "updating identity account")
+		return nil, op.Error(err, "updating identity account")
 	}
 
-	if err := adoptScope(scope, &account.Scope, "account"); err != nil {
-		return op.Error(err, "updating identity account")
+	if err := adoptScope(scope, &written.Scope, "account"); err != nil {
+		return nil, op.Error(err, "updating identity account")
 	}
 
-	if err := account.ValidateWithContext(ctx); err != nil {
-		return op.Error(err, "updating identity account")
+	if err := written.ValidateWithContext(ctx); err != nil {
+		return nil, op.Error(err, "updating identity account")
 	}
 
-	op.Set(accountIDKey, account.ID)
+	op.Set(accountIDKey, written.ID)
 
-	count, err := s.q.UpdateAccount(ctx, tx, updateAccountParams(account))
+	count, err := s.q.UpdateAccount(ctx, tx, updateAccountParams(&written))
 	if err = s.guardCount(ctx, count, err, ErrAccountNotFound, "updating identity account"); err != nil {
-		return op.Error(err, "updating identity account")
+		return nil, op.Error(err, "updating identity account")
 	}
 
-	return nil
+	updated, err := s.readAccount(ctx, tx, scope, written.ID)
+	if err != nil {
+		return nil, op.Error(err, "updating identity account")
+	}
+
+	return updated, nil
 }
 
 // RecordAgreement stamps the user's acceptance of one or more documents.

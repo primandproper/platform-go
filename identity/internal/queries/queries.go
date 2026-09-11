@@ -392,6 +392,22 @@ var Memberships = Table{
 // [membershipUpsert]. The list is what gets a set, not what gets a statement.
 var Emitted = []*Table{&Users, &Accounts, &Invitations}
 
+// Stamped is the tables whose create still reads its creation time back on its
+// own, which is now the invitation alone.
+//
+// It used to be every emitted table. The user's and the account's creates
+// return the row they wrote, read back through the keyed read that already
+// exists — a row this transaction just inserted is not archived, so GetUser and
+// GetAccount reach it — and a whole row costs the round trip the stamp alone
+// cost. Two statements that read one column of a row the caller is being handed
+// in full are two statements nothing runs, so they are not emitted; see
+// [createdAtReads] and [archivedReads].
+//
+// The invitation's create still hands its argument back with the stamp written
+// onto it, so it is the one table left here. When it stops doing that, this list
+// and the loop that reads it go with it.
+var Stamped = []*Table{&Invitations}
+
 // Render returns the canonical sqlc input for d: every emitted table's standard
 // queries, and beside them every statement this schema runs that a standard set
 // does not describe — the keyed reads and lists, the field-specific and guarded
@@ -423,6 +439,7 @@ func Render(d dialect.Dialect) string {
 
 	rendered = append(rendered, keyedInvitationLists(g)...)
 	rendered = append(rendered, createdAtReads(g)...)
+	rendered = append(rendered, archivedReads(g)...)
 	rendered = append(rendered, keyedUserReads(g)...)
 	rendered = append(rendered, uniquenessChecks(g)...)
 	rendered = append(rendered, keyedAccountReads(g)...)
@@ -782,8 +799,8 @@ func membershipWrites(g *querygen.Generator) []*querygen.Query {
 // created_at is database-owned — it is not in any create's column list, and the
 // schema gives it a DEFAULT — so the value the caller handed over still holds
 // the zero time when the INSERT returns, and the store reads it back inside the
-// same transaction. One per emitted table, because a query name is a Go method
-// name and the table is not a parameter of one.
+// same transaction. One per table in [Stamped], because a query name is a Go
+// method name and the table is not a parameter of one.
 //
 // It keys on the id alone. The scope is absent because this is not a read a
 // caller reaches: it is the create's read-back of the row it has just written,
@@ -791,9 +808,9 @@ func membershipWrites(g *querygen.Generator) []*querygen.Query {
 // the transaction commits. The column list is the id and nothing else, which is
 // also what leaves the archived predicate off a row that cannot be archived yet.
 func createdAtReads(g *querygen.Generator) []*querygen.Query {
-	rendered := make([]*querygen.Query, 0, len(Emitted))
+	rendered := make([]*querygen.Query, 0, len(Stamped))
 
-	for _, table := range Emitted {
+	for _, table := range Stamped {
 		rendered = append(rendered, g.ReadQuery(
 			"Get"+table.Singular+"CreatedAt", table.Name,
 			[]string{querygen.IDColumn},
@@ -802,6 +819,49 @@ func createdAtReads(g *querygen.Generator) []*querygen.Query {
 	}
 
 	return rendered
+}
+
+// archivedReads is the pair of reads the two archivals answer with: the user or
+// the account the write just hid, on the transaction that hid it.
+//
+// They exist because archiving is the write whose result no other read here can
+// see. Every single-row statement over these two tables filters archived_at IS
+// NULL — which is what makes an archived user absent from GetUser and from every
+// Principal built out of it — so a store that archived a row and read it back
+// through the ordinary keyed read would find nothing, and once the transaction
+// commits the row is unreachable through this package's reads entirely. What a
+// consumer's audit entry says was removed is that row.
+//
+// Each is rendered from no column list at all, which is the trick the uniqueness
+// checks play for the opposite half of its reason: querygen derives the archived
+// predicate from the columns it is handed, so a read that must see archived rows
+// is one keyed entirely on its matches. What takes that predicate's place is its
+// complement — archived_at IS NOT NULL — so the read-back asserts the thing it
+// was called to confirm, and a guard that matched nothing cannot be read back as
+// a success.
+//
+// There is no third for the memberships an archival ends alongside the row, and
+// no companion for a create or an update. Neither of those leaves the directory,
+// so the ordinary keyed read reaches both on the transaction that wrote them,
+// and the read-back each makes is that statement rather than one of its own —
+// which is why two of the three createdAtReads above are gone: a create that
+// reads the whole row back has no use for a statement that reads one column of
+// it.
+func archivedReads(g *querygen.Generator) []*querygen.Query {
+	var (
+		scope    = querygen.Match{Column: ScopeColumn}
+		archived = querygen.Match{Column: querygen.ArchivedAtColumn, Against: querygen.NoValue, Exclude: true}
+	)
+
+	return []*querygen.Query{
+		g.ReadQuery("GetArchivedUser", UsersTable, nil,
+			querygen.Read{Projection: Users.Columns},
+			querygen.Match{Column: querygen.IDColumn}, scope, archived),
+
+		g.ReadQuery("GetArchivedAccount", AccountsTable, nil,
+			querygen.Read{Projection: Accounts.Columns},
+			querygen.Match{Column: querygen.IDColumn}, scope, archived),
+	}
 }
 
 // keyedUserReads is the three single-user reads that key on something other than

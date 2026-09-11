@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // SQLStoreOption configures a SQLStore at construction.
@@ -101,14 +102,23 @@ type (
 
 	startOptions struct {
 		id       string
-		owner    string
+		owner    tenancy.Scope
 		delay    time.Duration
 		priority int
 	}
 )
 
+// newStartOptions applies the caller's options over the defaults.
+//
+// The owner defaults to tenancy.Global() rather than to the zero Scope, which
+// no statement accepts. A Start that names no owner is an operation belonging to
+// no tenant — which is a scope like any other, matching only itself — and that
+// is exactly what a single-tenant deployment wants: it names none, every row
+// lands in the global scope, and every read filters on a value that excludes
+// nothing. The zero Scope is reserved for the caller who lost one, and it does
+// not arrive from here.
 func newStartOptions(opts []StartOption) *startOptions {
-	o := &startOptions{}
+	o := &startOptions{owner: tenancy.Global()}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(o)
@@ -121,8 +131,9 @@ func newStartOptions(opts []StartOption) *startOptions {
 // WithOwner scopes the operation to whoever it belongs to.
 //
 // It is opaque to this package and compared only for equality. Any surface that
-// lists operations for a request must set it — see Operation.Owner.
-func WithOwner(owner string) StartOption {
+// lists operations for a request must set it — see Operation.Owner. Left off, the
+// operation belongs to tenancy.Global().
+func WithOwner(owner tenancy.Scope) StartOption {
 	return func(o *startOptions) { o.owner = owner }
 }
 

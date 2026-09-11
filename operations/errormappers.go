@@ -68,6 +68,11 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// request: the same subscription will be accepted when somebody disconnects.
 	case errors.Is(err, ErrTooManyWatchers):
 		return httperrors.ErrTooManyRequests, "too many concurrent operation subscriptions", true
+	// The two halves of one request disagreeing about which tenant it is for.
+	// The caller holds both halves, so it is a bad request rather than a refusal
+	// on authority.
+	case errors.Is(err, ErrScopeMismatch):
+		return httperrors.ErrValidatingRequestInput, "the operation does not belong to that scope", true
 	default:
 		return "", "", false
 	}
@@ -88,6 +93,10 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	// retry rather than fail over to an instance with the same ceiling.
 	case errors.Is(err, ErrTooManyWatchers):
 		return codes.ResourceExhausted, true
+	// InvalidArgument rather than PermissionDenied, for the reason HTTPMapper
+	// gives: the request contradicted itself.
+	case errors.Is(err, ErrScopeMismatch):
+		return codes.InvalidArgument, true
 	default:
 		return codes.Unknown, false
 	}

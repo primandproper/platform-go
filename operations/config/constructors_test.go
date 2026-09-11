@@ -335,7 +335,7 @@ func TestNewWatcher_Options(T *testing.T) {
 	T.Run("a nil config is refused", func(t *testing.T) {
 		t.Parallel()
 
-		watcher, err := NewWatcher(t.Context(), nil, stubStore{})
+		watcher, err := NewWatcher(t.Context(), nil, postgresClient(), stubStore{})
 		test.ErrorIs(t, err, operations.ErrNilConfig)
 		test.Nil(t, watcher)
 	})
@@ -348,7 +348,7 @@ func TestNewWatcher_Options(T *testing.T) {
 		// on every enqueue.
 		wakeup := make(chan struct{})
 
-		watcher, err := NewWatcher(t.Context(), &Config{}, stubStore{},
+		watcher, err := NewWatcher(t.Context(), &Config{}, postgresClient(), stubStore{},
 			WithPillars(allPillars()),
 			WithWatcherWakeup(wakeup),
 			WithWatcherOptions(),

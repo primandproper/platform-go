@@ -42,7 +42,7 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 		account := newAccount("Ada's account", user.ID)
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			if err := store.CreateUser(t.Context(), tx, testScope, user); err != nil {
+			if _, err := store.CreateUser(t.Context(), tx, testScope, user); err != nil {
 				return err
 			}
 
@@ -54,11 +54,11 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 
 			test.EqOp(t, "ada", read.Username)
 
-			if err = store.CreateAccount(t.Context(), tx, testScope, account); err != nil {
+			if _, err = store.CreateAccount(t.Context(), tx, testScope, account); err != nil {
 				return err
 			}
 
-			if err = store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			if _, err = store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    user.ID,
 				BelongsToAccount: account.ID,
 				Roles:            []string{"account_admin"},
@@ -97,14 +97,16 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		err := env.inTx(t, func(tx database.Tx) error {
-			if createErr := store.CreateUser(t.Context(), tx, testScope, newUser("ada")); createErr != nil {
+			if _, createErr := store.CreateUser(t.Context(), tx, testScope, newUser("ada")); createErr != nil {
 				return createErr
 			}
 
 			second := newUser("ada")
 			second.EmailAddress = "different@example.com"
 
-			return store.CreateUser(t.Context(), tx, testScope, second)
+			_, err := store.CreateUser(t.Context(), tx, testScope, second)
+
+			return err
 		})
 		must.ErrorIs(t, err, ErrUsernameTaken)
 	})
@@ -117,16 +119,21 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 		user := newUser("ada")
 		account := newAccount("Ada's account", user.ID)
 
+		var registered *User
+
 		err := env.inTx(t, func(tx database.Tx) error {
-			if txErr := store.CreateUser(t.Context(), tx, testScope, user); txErr != nil {
+			created, txErr := store.CreateUser(t.Context(), tx, testScope, user)
+			if txErr != nil {
 				return txErr
 			}
 
-			if txErr := store.CreateAccount(t.Context(), tx, testScope, account); txErr != nil {
+			registered = created
+
+			if _, txErr = store.CreateAccount(t.Context(), tx, testScope, account); txErr != nil {
 				return txErr
 			}
 
-			if txErr := store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			if _, txErr = store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    user.ID,
 				BelongsToAccount: account.ID,
 				Roles:            []string{"account_admin"},
@@ -138,10 +145,15 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 		})
 		must.ErrorIs(t, err, errCompanionWrite)
 
-		// The ids and the creation times were written onto the values on the way
-		// through, and nothing undoes that. What rolled back is the rows.
-		test.NotEqOp(t, "", user.ID)
-		test.False(t, user.CreatedAt.IsZero())
+		// The rows the writes answered with described a database that was about
+		// to stop holding them, and nothing undoes a value already handed back.
+		// What rolled back is the rows. The caller's own User is untouched
+		// either way — the write reads it and does not write to it — so its
+		// creation time is still zero.
+		must.NotNil(t, registered)
+		test.NotEqOp(t, "", registered.ID)
+		test.False(t, registered.CreatedAt.IsZero())
+		test.True(t, user.CreatedAt.IsZero())
 
 		_, err = store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		test.ErrorIs(t, err, ErrUserNotFound)
@@ -207,7 +219,7 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 		member := seedUserInto(t, env, store, newUser("grace"), account.ID)
 
 		err := env.inTx(t, func(tx database.Tx) error {
-			if txErr := store.ArchiveAccount(t.Context(), tx, testScope, account.ID); txErr != nil {
+			if _, txErr := store.ArchiveAccount(t.Context(), tx, testScope, account.ID); txErr != nil {
 				return txErr
 			}
 
@@ -239,13 +251,19 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			name string
 		}{
 			{name: "CreateUser", run: func() error {
-				return store.CreateUser(t.Context(), nil, testScope, newUser("ada"))
+				_, err := store.CreateUser(t.Context(), nil, testScope, newUser("ada"))
+
+				return err
 			}},
 			{name: "CreateAccount", run: func() error {
-				return store.CreateAccount(t.Context(), nil, testScope, newAccount("a", "u"))
+				_, err := store.CreateAccount(t.Context(), nil, testScope, newAccount("a", "u"))
+
+				return err
 			}},
 			{name: "CreateMembership", run: func() error {
-				return store.CreateMembership(t.Context(), nil, testScope, &Membership{})
+				_, err := store.CreateMembership(t.Context(), nil, testScope, &Membership{})
+
+				return err
 			}},
 			{name: "GetUserByEmailVerificationToken", run: func() error {
 				_, err := store.GetUserByEmailVerificationToken(t.Context(), nil, testScope, "tok")
@@ -262,7 +280,9 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return store.UpdateUserTwoFactorSecret(t.Context(), nil, testScope, "u", "secret")
 			}},
 			{name: "MarkUserTwoFactorSecretVerified", run: func() error {
-				return store.MarkUserTwoFactorSecretVerified(t.Context(), nil, testScope, "u")
+				_, err := store.MarkUserTwoFactorSecretVerified(t.Context(), nil, testScope, "u")
+
+				return err
 			}},
 			{name: "SetUserEmailAddressVerificationToken", run: func() error {
 				return store.SetUserEmailAddressVerificationToken(t.Context(), nil, testScope, "u", "tok")
@@ -271,7 +291,9 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return store.MarkUserEmailAddressVerified(t.Context(), nil, testScope, "u", "tok")
 			}},
 			{name: "MarkUserEmailAddressUnverified", run: func() error {
-				return store.MarkUserEmailAddressUnverified(t.Context(), nil, testScope, "u")
+				_, err := store.MarkUserEmailAddressUnverified(t.Context(), nil, testScope, "u")
+
+				return err
 			}},
 			{name: "GetUserByUsername", run: func() error {
 				_, err := store.GetUserByUsername(t.Context(), nil, testScope, "ada")
@@ -339,10 +361,14 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return err
 			}},
 			{name: "UpdateUser", run: func() error {
-				return store.UpdateUser(t.Context(), nil, testScope, newUser("ada"))
+				_, err := store.UpdateUser(t.Context(), nil, testScope, newUser("ada"))
+
+				return err
 			}},
 			{name: "UpdateAccount", run: func() error {
-				return store.UpdateAccount(t.Context(), nil, testScope, newAccount("a", "u"))
+				_, err := store.UpdateAccount(t.Context(), nil, testScope, newAccount("a", "u"))
+
+				return err
 			}},
 			{name: "RecordAgreement", run: func() error {
 				return store.RecordAgreement(t.Context(), nil, testScope, "u", TermsOfService)
@@ -366,7 +392,9 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return store.SetUserServiceRoles(t.Context(), nil, testScope, "u", []string{"r"})
 			}},
 			{name: "ArchiveUser", run: func() error {
-				return store.ArchiveUser(t.Context(), nil, testScope, "u")
+				_, err := store.ArchiveUser(t.Context(), nil, testScope, "u")
+
+				return err
 			}},
 			{name: "EraseUser", run: func() error {
 				_, err := store.EraseUser(t.Context(), nil, testScope, "u")
@@ -374,7 +402,9 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return err
 			}},
 			{name: "ArchiveAccount", run: func() error {
-				return store.ArchiveAccount(t.Context(), nil, testScope, "a")
+				_, err := store.ArchiveAccount(t.Context(), nil, testScope, "a")
+
+				return err
 			}},
 			{name: "RecordAccountSubscription", run: func() error {
 				return store.RecordAccountSubscription(t.Context(), nil, testScope, "a", BillingPaid, "plan")
@@ -389,7 +419,9 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return store.SetAccountPaymentProcessorCustomerID(t.Context(), nil, testScope, "a", "cus_1")
 			}},
 			{name: "MarkAccountBillingSynced", run: func() error {
-				return store.MarkAccountBillingSynced(t.Context(), nil, testScope, "a")
+				_, err := store.MarkAccountBillingSynced(t.Context(), nil, testScope, "a")
+
+				return err
 			}},
 			{name: "CreateInvitation", run: func() error {
 				return store.CreateInvitation(t.Context(), nil, testScope, newInvitation(
@@ -446,48 +478,54 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 		stray := newUser("ada")
 		stray.Scope = otherScope
 
-		must.ErrorIs(t, env.createUser(t, store, testScope, stray), ErrScopeMismatch)
+		must.ErrorIs(t, env.createUserErr(t, store, testScope, stray), ErrScopeMismatch)
 
 		// Naming none adopts the argument, which is what a single-directory
 		// deployment writes.
 		adopted := newUser("grace")
 		adopted.Scope = tenancy.Scope{}
 
-		must.NoError(t, env.createUser(t, store, testScope, adopted))
-		test.EqOp(t, testScope, adopted.Scope)
+		created, err := env.createUser(t, store, testScope, adopted)
+		must.NoError(t, err)
 
-		read, err := store.GetUser(t.Context(), env.reader(), testScope, adopted.ID)
+		// The adoption lands on the row and on what the write answered with,
+		// never on the caller's value: the argument still names no directory
+		// after a write that put it in one.
+		test.EqOp(t, testScope, created.Scope)
+		test.EqOp(t, tenancy.Scope{}, adopted.Scope)
+
+		read, err := store.GetUser(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
 		test.EqOp(t, testScope, read.Scope)
 
 		// And the same reading on the other five entity writes.
-		strayAccount := newAccount("Acme", adopted.ID)
+		strayAccount := newAccount("Acme", created.ID)
 		strayAccount.Scope = otherScope
 
-		must.ErrorIs(t, env.createAccount(t, store, testScope, strayAccount), ErrScopeMismatch)
+		must.ErrorIs(t, env.createAccountErr(t, store, testScope, strayAccount), ErrScopeMismatch)
 
 		strayMembership := &Membership{
 			Scope:            otherScope,
-			BelongsToUser:    adopted.ID,
+			BelongsToUser:    created.ID,
 			BelongsToAccount: "whatever",
 		}
 
-		must.ErrorIs(t, env.createMembership(t, store, testScope, strayMembership), ErrScopeMismatch)
+		must.ErrorIs(t, env.createMembershipErr(t, store, testScope, strayMembership), ErrScopeMismatch)
 
-		account := seedAccountFor(t, env, store, adopted, "Acme")
+		account := seedAccountFor(t, env, store, created, "Acme")
 
-		moved := *adopted
+		moved := *created
 		moved.Scope = otherScope
 
-		must.ErrorIs(t, env.updateUser(t, store, testScope, &moved), ErrScopeMismatch)
+		must.ErrorIs(t, env.updateUserErr(t, store, testScope, &moved), ErrScopeMismatch)
 
 		movedAccount := *account
 		movedAccount.Scope = otherScope
 
-		must.ErrorIs(t, env.updateAccount(t, store, testScope, &movedAccount), ErrScopeMismatch)
+		must.ErrorIs(t, env.updateAccountErr(t, store, testScope, &movedAccount), ErrScopeMismatch)
 
 		strayInvitation := newInvitation(
-			adopted, account.ID, "grace@example.com", identifiers.New(), time.Now().Add(time.Hour))
+			created, account.ID, "grace@example.com", identifiers.New(), time.Now().Add(time.Hour))
 		strayInvitation.Scope = otherScope
 
 		must.ErrorIs(t, env.createInvitation(t, store, testScope, strayInvitation), ErrScopeMismatch)

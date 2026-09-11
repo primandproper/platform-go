@@ -76,20 +76,20 @@ func (h *Handlers) stream(res nethttp.ResponseWriter, req *nethttp.Request) {
 
 	span.Set(operationIDKey, id)
 
-	// The same ownership check the polling endpoint makes, and made before the
-	// upgrade so that a refusal is an ordinary HTTP status rather than a stream
-	// that opens and immediately closes.
-	if _, err := h.read(ctx, id); err != nil {
+	scope, err := h.scope(ctx, span)
+	if err != nil {
 		status, body := httpx.ToAPIResponse(err)
 		h.writeRefusal(ctx, res, span, status, body)
 
 		return
 	}
 
-	// Subscribed before the upgrade, for the same reason: a subscription refused
-	// for capacity should be a 429 the client can back off from, not a stream
-	// that says nothing.
-	snapshots, err := h.watcher.Watch(ctx, id)
+	// Subscribed before the upgrade, so that a refusal — an operation in another
+	// scope, or a subscription refused for capacity — is an ordinary HTTP status
+	// rather than a stream that opens and immediately closes. Watch makes the
+	// scoped read itself and holds the scope for every re-read after it, so the
+	// polling endpoint's check is not repeated here.
+	snapshots, err := h.watcher.Watch(ctx, scope, id)
 	if err != nil {
 		status, body := httpx.ToAPIResponse(err)
 		h.writeRefusal(ctx, res, span, status, body)

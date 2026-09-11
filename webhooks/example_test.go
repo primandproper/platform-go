@@ -55,11 +55,11 @@ func ExampleDispatcher_Dispatch() {
 	err = client.WithTransaction(ctx, func(tx database.Tx) error {
 		// ... the state change that produced the event ...
 
-		return dispatcher.Dispatch(ctx, tx, &webhooks.Delivery{
-			// Whose event this is. The fan-out is bounded by it, so only this
-			// account's endpoints are resolved. An application whose events are
-			// global says tenancy.Global().
-			Scope:     tenancy.Of(order.AccountID),
+		// The scope is whose event this is, and the fan-out is bounded by it, so
+		// only this account's endpoints are resolved. An application whose events
+		// are global says tenancy.Global(). The Delivery leaves the field alone
+		// and adopts it.
+		return dispatcher.Dispatch(ctx, tx, tenancy.Of(order.AccountID), &webhooks.Delivery{
 			EventType: OrderUpdated,
 			// Deliveries sharing an ordering key reach a given subscriber in
 			// dispatch order, so order.updated cannot overtake order.created.

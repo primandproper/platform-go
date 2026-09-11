@@ -58,6 +58,8 @@ type Querier interface {
 	FinishOperationWithEveryUnitDone(ctx context.Context, db DBTX, arg FinishOperationWithEveryUnitDoneParams) (int64, error)
 	// GetOperation runs the :one query.
 	GetOperation(ctx context.Context, db DBTX, arg GetOperationParams) (GetOperationRow, error)
+	// GetOperationInScope runs the :one query.
+	GetOperationInScope(ctx context.Context, db DBTX, arg GetOperationInScopeParams) (GetOperationInScopeRow, error)
 	// GetOperations runs the :many query.
 	GetOperations(ctx context.Context, db DBTX, arg GetOperationsParams) ([]GetOperationsRow, error)
 	// ListOperations runs the :many query.

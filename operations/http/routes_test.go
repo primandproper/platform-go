@@ -16,6 +16,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/routing"
 	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -26,24 +27,24 @@ import (
 type ownerContextKey struct{}
 
 // resolverFromContext is the OwnerResolver the tests wire in.
-func resolverFromContext(ctx context.Context) (string, error) {
-	owner, ok := ctx.Value(ownerContextKey{}).(string)
+func resolverFromContext(ctx context.Context) (tenancy.Scope, error) {
+	owner, ok := ctx.Value(ownerContextKey{}).(tenancy.Scope)
 	if !ok {
-		return "", platformerrors.New("no owner on the request")
+		return tenancy.Scope{}, platformerrors.New("no owner on the request")
 	}
 
 	return owner, nil
 }
 
 // asOwner wraps a handler so every request under it carries an owner.
-func asOwner(owner string, next nethttp.Handler) nethttp.Handler {
+func asOwner(owner tenancy.Scope, next nethttp.Handler) nethttp.Handler {
 	return nethttp.HandlerFunc(func(res nethttp.ResponseWriter, req *nethttp.Request) {
 		next.ServeHTTP(res, req.WithContext(context.WithValue(req.Context(), ownerContextKey{}, owner)))
 	})
 }
 
 // mount builds a router with the handlers on it, under an owner.
-func mount(t *testing.T, svc operations.Service, owner string, opts ...Option) nethttp.Handler {
+func mount(t *testing.T, svc operations.Service, owner tenancy.Scope, opts ...Option) nethttp.Handler {
 	t.Helper()
 
 	backend := chi.NewBackend(&chi.Config{ServiceName: "operations-test"})
@@ -59,12 +60,18 @@ func mount(t *testing.T, svc operations.Service, owner string, opts ...Option) n
 	return asOwner(owner, router.Handler())
 }
 
-// serviceReturning is a Service mock whose Get answers with one operation.
+// serviceReturning is a Service mock whose Get answers with one operation, to
+// the scope that owns it and to nobody else.
+//
+// The scope narrowing is here rather than in the handler because that is where
+// it now lives: the statement binds it, so an operation in another tenant is a
+// row the read does not return. A stub that answered any scope would be testing
+// a handler comparison this package no longer makes.
 func serviceReturning(op *operations.Operation) *operationsmock.ServiceMock {
 	svc := &operationsmock.ServiceMock{}
 
-	svc.GetFunc = func(_ context.Context, id string) (*operations.Operation, error) {
-		if op != nil && op.ID == id {
+	svc.GetFunc = func(_ context.Context, scope tenancy.Scope, id string) (*operations.Operation, error) {
+		if op != nil && op.ID == id && op.Owner == scope {
 			return op, nil
 		}
 
@@ -80,7 +87,7 @@ func TestNew(T *testing.T) {
 	T.Run("rejects a nil service", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := New(nil, WithOwnerResolver(Unscoped))
+		_, err := New(nil, WithOwnerResolver(GlobalOwner))
 
 		test.ErrorIs(t, err, operations.ErrNilService)
 	})
@@ -96,17 +103,19 @@ func TestNew(T *testing.T) {
 		test.ErrorIs(t, err, ErrNilOwnerResolver)
 	})
 
-	T.Run("Unscoped is a resolver", func(t *testing.T) {
+	T.Run("GlobalOwner is a resolver", func(t *testing.T) {
 		t.Parallel()
 
-		handlers, err := New(&operationsmock.ServiceMock{}, WithOwnerResolver(Unscoped))
+		handlers, err := New(&operationsmock.ServiceMock{}, WithOwnerResolver(GlobalOwner))
 
 		must.NoError(t, err)
 		must.NotNil(t, handlers)
 
-		owner, err := Unscoped(t.Context())
+		owner, err := GlobalOwner(t.Context())
 		must.NoError(t, err)
-		test.EqOp(t, "", owner)
+		// The global scope rather than the zero one: it is a scope that binds,
+		// and it matches only itself.
+		test.EqOp(t, tenancy.Global(), owner)
 	})
 }
 
@@ -116,8 +125,8 @@ func TestHandlers_get(T *testing.T) {
 	T.Run("serves the owner's own operation", func(t *testing.T) {
 		t.Parallel()
 
-		op := &operations.Operation{ID: "op1", Owner: "u1", Kind: "export", State: operations.StateRunning}
-		handler := mount(t, serviceReturning(op), "u1")
+		op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), Kind: "export", State: operations.StateRunning}
+		handler := mount(t, serviceReturning(op), tenancy.Of("u1"))
 
 		res := httptest.NewRecorder()
 		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, "/operations/op1", nethttp.NoBody))
@@ -127,14 +136,40 @@ func TestHandlers_get(T *testing.T) {
 		test.StrContains(t, res.Body.String(), `"done":false`)
 	})
 
+	// The scope this handler resolves is the one the service is asked with, and
+	// nothing is compared afterwards. That comparison used to be here; the test
+	// it left behind would have passed against a store that returned every
+	// tenant's row, which is why this one asserts on the argument instead.
+	T.Run("the resolved scope is what the read is made with", func(t *testing.T) {
+		t.Parallel()
+
+		svc := &operationsmock.ServiceMock{}
+
+		var asked tenancy.Scope
+
+		svc.GetFunc = func(_ context.Context, scope tenancy.Scope, id string) (*operations.Operation, error) {
+			asked = scope
+
+			return &operations.Operation{ID: id, Owner: scope, State: operations.StateRunning}, nil
+		}
+
+		handler := mount(t, svc, tenancy.Of("u1"))
+
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, "/operations/op1", nethttp.NoBody))
+
+		test.EqOp(t, nethttp.StatusOK, res.Code)
+		test.EqOp(t, tenancy.Of("u1"), asked)
+	})
+
 	// The one that matters: a 403 for an operation that exists and a 404 for one
 	// that does not is an oracle telling whoever is guessing IDs which of their
 	// guesses are real. Both answers have to be the same.
 	T.Run("somebody else's operation is a 404, not a 403", func(t *testing.T) {
 		t.Parallel()
 
-		op := &operations.Operation{ID: "op1", Owner: "u1", Kind: "export", State: operations.StateRunning}
-		handler := mount(t, serviceReturning(op), "u2")
+		op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), Kind: "export", State: operations.StateRunning}
+		handler := mount(t, serviceReturning(op), tenancy.Of("u2"))
 
 		theirs := httptest.NewRecorder()
 		handler.ServeHTTP(theirs, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, "/operations/op1", nethttp.NoBody))
@@ -150,7 +185,7 @@ func TestHandlers_get(T *testing.T) {
 	T.Run("a resolver that fails fails the request", func(t *testing.T) {
 		t.Parallel()
 
-		op := &operations.Operation{ID: "op1", Owner: "u1", State: operations.StateRunning}
+		op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), State: operations.StateRunning}
 
 		backend := chi.NewBackend(&chi.Config{ServiceName: "operations-test"})
 		router := routing.New(backend, encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON))
@@ -175,7 +210,7 @@ func TestHandlers_cancel(T *testing.T) {
 	T.Run("cancels the owner's own operation", func(t *testing.T) {
 		t.Parallel()
 
-		op := &operations.Operation{ID: "op1", Owner: "u1", State: operations.StateRunning}
+		op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), State: operations.StateRunning}
 
 		svc := serviceReturning(op)
 
@@ -185,11 +220,11 @@ func TestHandlers_cancel(T *testing.T) {
 			cancelled = id
 
 			return &operations.Operation{
-				ID: id, Owner: "u1", State: operations.StateRunning, CancelRequested: true,
+				ID: id, Owner: tenancy.Of("u1"), State: operations.StateRunning, CancelRequested: true,
 			}, nil
 		}
 
-		handler := mount(t, svc, "u1")
+		handler := mount(t, svc, tenancy.Of("u1"))
 
 		res := httptest.NewRecorder()
 		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodPost, "/operations/op1/cancel", nethttp.NoBody))
@@ -204,7 +239,7 @@ func TestHandlers_cancel(T *testing.T) {
 	T.Run("refuses somebody else's operation without cancelling it", func(t *testing.T) {
 		t.Parallel()
 
-		op := &operations.Operation{ID: "op1", Owner: "u1", State: operations.StateRunning}
+		op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), State: operations.StateRunning}
 
 		svc := serviceReturning(op)
 
@@ -216,7 +251,7 @@ func TestHandlers_cancel(T *testing.T) {
 			return nil, nil
 		}
 
-		handler := mount(t, svc, "u2")
+		handler := mount(t, svc, tenancy.Of("u2"))
 
 		res := httptest.NewRecorder()
 		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodPost, "/operations/op1/cancel", nethttp.NoBody))
@@ -234,14 +269,18 @@ func TestHandlers_list(T *testing.T) {
 
 		svc := &operationsmock.ServiceMock{}
 
-		var seen *operations.ListScope
+		var (
+			seenScope tenancy.Scope
+			seen      *operations.ListScope
+		)
 
 		svc.ListFunc = func(
 			_ context.Context,
-			scope *operations.ListScope,
+			scope tenancy.Scope,
+			listScope *operations.ListScope,
 			filter *filtering.QueryFilter,
 		) (*filtering.QueryFilteredResult[operations.Operation], error) {
-			seen = scope
+			seenScope, seen = scope, listScope
 
 			return filtering.NewQueryFilteredResult(
 				[]*operations.Operation{}, 0, 0,
@@ -249,14 +288,14 @@ func TestHandlers_list(T *testing.T) {
 			), nil
 		}
 
-		handler := mount(t, svc, "u1")
+		handler := mount(t, svc, tenancy.Of("u1"))
 
 		res := httptest.NewRecorder()
 		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, "/operations?kind=export", nethttp.NoBody))
 
 		test.EqOp(t, nethttp.StatusOK, res.Code)
 		must.NotNil(t, seen)
-		test.EqOp(t, "u1", seen.Owner)
+		test.EqOp(t, tenancy.Of("u1"), seenScope)
 		test.EqOp(t, "export", seen.Kind)
 	})
 
@@ -265,14 +304,18 @@ func TestHandlers_list(T *testing.T) {
 
 		svc := &operationsmock.ServiceMock{}
 
-		var seen *operations.ListScope
+		var (
+			seenScope tenancy.Scope
+			seen      *operations.ListScope
+		)
 
 		svc.ListFunc = func(
 			_ context.Context,
-			scope *operations.ListScope,
+			scope tenancy.Scope,
+			listScope *operations.ListScope,
 			filter *filtering.QueryFilter,
 		) (*filtering.QueryFilteredResult[operations.Operation], error) {
-			seen = scope
+			seenScope, seen = scope, listScope
 
 			return filtering.NewQueryFilteredResult(
 				[]*operations.Operation{}, 0, 0,
@@ -280,13 +323,14 @@ func TestHandlers_list(T *testing.T) {
 			), nil
 		}
 
-		handler := mount(t, svc, "u1")
+		handler := mount(t, svc, tenancy.Of("u1"))
 
 		res := httptest.NewRecorder()
 		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, "/operations?state=failed", nethttp.NoBody))
 
 		test.EqOp(t, nethttp.StatusOK, res.Code)
 		must.NotNil(t, seen)
+		test.EqOp(t, tenancy.Of("u1"), seenScope)
 		must.SliceLen(t, 1, seen.States)
 		test.EqOp(t, operations.StateFailed, seen.States[0])
 	})
@@ -302,6 +346,7 @@ func TestHandlers_list(T *testing.T) {
 
 		svc.ListFunc = func(
 			context.Context,
+			tenancy.Scope,
 			*operations.ListScope,
 			*filtering.QueryFilter,
 		) (*filtering.QueryFilteredResult[operations.Operation], error) {
@@ -310,7 +355,7 @@ func TestHandlers_list(T *testing.T) {
 			return nil, nil
 		}
 
-		handler := mount(t, svc, "u1")
+		handler := mount(t, svc, tenancy.Of("u1"))
 
 		res := httptest.NewRecorder()
 		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, "/operations?state=nonsense", nethttp.NoBody))
@@ -323,7 +368,7 @@ func TestHandlers_list(T *testing.T) {
 func TestHandlers_Accepted(T *testing.T) {
 	T.Parallel()
 
-	handlers, err := New(&operationsmock.ServiceMock{}, WithOwnerResolver(Unscoped))
+	handlers, err := New(&operationsmock.ServiceMock{}, WithOwnerResolver(GlobalOwner))
 	must.NoError(T, err)
 
 	test.Nil(T, handlers.Accepted(nil))
@@ -345,9 +390,9 @@ func TestHandlers_Accepted(T *testing.T) {
 func TestHandlers_basePath(T *testing.T) {
 	T.Parallel()
 
-	op := &operations.Operation{ID: "op1", Owner: "u1", State: operations.StateRunning}
+	op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), State: operations.StateRunning}
 
-	handler := mount(T, serviceReturning(op), "u1", WithBasePath("/v1/jobs"))
+	handler := mount(T, serviceReturning(op), tenancy.Of("u1"), WithBasePath("/v1/jobs"))
 
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, httptest.NewRequestWithContext(T.Context(), nethttp.MethodGet, "/v1/jobs/op1", nethttp.NoBody))
@@ -357,7 +402,7 @@ func TestHandlers_basePath(T *testing.T) {
 	// Accepted follows the mount point, so a consumer's own 202 keeps pointing
 	// at the endpoints that actually exist.
 	handlers, err := New(serviceReturning(op),
-		WithOwnerResolver(Unscoped), WithBasePath("/v1/jobs"))
+		WithOwnerResolver(GlobalOwner), WithBasePath("/v1/jobs"))
 	must.NoError(T, err)
 
 	test.EqOp(T, "/v1/jobs/op1", handlers.Accepted(op).Location)
@@ -384,13 +429,13 @@ func TestHandlers_openAPI(T *testing.T) {
 	backend := chi.NewBackend(&chi.Config{ServiceName: "operations-test"})
 	router := routing.New(backend, encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON))
 
-	watcher, err := operations.NewWatcher(T.Context(), &operations.WatcherConfig{}, stubStore{})
+	watcher, err := operations.NewWatcher(T.Context(), &operations.WatcherConfig{}, stubClient{}, stubStore{})
 	must.NoError(T, err)
 
 	T.Cleanup(func() { _ = watcher.Close() })
 
 	handlers, err := New(&operationsmock.ServiceMock{},
-		WithOwnerResolver(Unscoped), WithWatcher(watcher))
+		WithOwnerResolver(GlobalOwner), WithWatcher(watcher))
 	must.NoError(T, err)
 
 	handlers.Mount(router)
@@ -417,7 +462,7 @@ func TestHandlers_openAPI(T *testing.T) {
 func TestHandlers_selectiveMount(T *testing.T) {
 	T.Parallel()
 
-	op := &operations.Operation{ID: "op1", Owner: "u1", State: operations.StateRunning}
+	op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), State: operations.StateRunning}
 
 	backend := chi.NewBackend(&chi.Config{ServiceName: "operations-test"})
 	router := routing.New(backend, encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON))
@@ -436,7 +481,7 @@ func TestHandlers_selectiveMount(T *testing.T) {
 	test.EqOp(T, nethttp.MethodGet, getRoute.Method)
 	test.StrContains(T, getRoute.Path, "/operations/")
 
-	handler := asOwner("u1", router.Handler())
+	handler := asOwner(tenancy.Of("u1"), router.Handler())
 
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, httptest.NewRequestWithContext(T.Context(), nethttp.MethodGet, "/operations/op1", nethttp.NoBody))
@@ -453,7 +498,7 @@ func TestHandlers_selectiveMount(T *testing.T) {
 func TestHandlers_mountReportsRoutes(T *testing.T) {
 	T.Parallel()
 
-	op := &operations.Operation{ID: "op1", Owner: "u1", State: operations.StateRunning}
+	op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), State: operations.StateRunning}
 
 	backend := chi.NewBackend(&chi.Config{ServiceName: "operations-test"})
 	router := routing.New(backend, encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON))
@@ -470,7 +515,7 @@ func TestHandlers_mountReportsRoutes(T *testing.T) {
 		encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON),
 	)
 
-	watcher, err := operations.NewWatcher(T.Context(), &operations.WatcherConfig{}, stubStore{})
+	watcher, err := operations.NewWatcher(T.Context(), &operations.WatcherConfig{}, stubClient{}, stubStore{})
 	must.NoError(T, err)
 
 	withWatcher, err := New(serviceReturning(op),
@@ -488,8 +533,8 @@ func TestHandlers_mountReportsRoutes(T *testing.T) {
 func TestHandlers_noWatcherNoStream(T *testing.T) {
 	T.Parallel()
 
-	op := &operations.Operation{ID: "op1", Owner: "u1", State: operations.StateRunning}
-	handler := mount(T, serviceReturning(op), "u1")
+	op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), State: operations.StateRunning}
+	handler := mount(T, serviceReturning(op), tenancy.Of("u1"))
 
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, httptest.NewRequestWithContext(T.Context(), nethttp.MethodGet, "/operations/op1/events", nethttp.NoBody))
@@ -503,12 +548,12 @@ func TestHandlers_stream(T *testing.T) {
 	T.Run("streams snapshots and ends after the terminal one", func(t *testing.T) {
 		t.Parallel()
 
-		store := newStreamingStore("op1", "u1")
+		store := newStreamingStore("op1", tenancy.Of("u1"))
 
 		watcher, err := operations.NewWatcher(t.Context(), &operations.WatcherConfig{
 			Poll:            100 * time.Millisecond,
 			MinReadInterval: time.Millisecond,
-		}, store)
+		}, stubClient{}, store)
 		must.NoError(t, err)
 
 		t.Cleanup(func() { _ = watcher.Close() })
@@ -516,9 +561,9 @@ func TestHandlers_stream(T *testing.T) {
 		go func() { _ = watcher.Run(t.Context()) }()
 
 		svc := &operationsmock.ServiceMock{}
-		svc.GetFunc = store.Get
+		svc.GetFunc = store.serviceGet
 
-		handler := mount(t, svc, "u1", WithWatcher(watcher))
+		handler := mount(t, svc, tenancy.Of("u1"), WithWatcher(watcher))
 
 		go func() {
 			time.Sleep(150 * time.Millisecond)
@@ -536,23 +581,24 @@ func TestHandlers_stream(T *testing.T) {
 		test.StrContains(t, body, `"done":true`)
 	})
 
-	// The same ownership check the polling endpoint makes, made before the
-	// upgrade so a refusal is an ordinary status rather than a stream that opens
-	// and immediately closes.
+	// The scoped read Watch itself makes, made before the upgrade so a refusal
+	// is an ordinary status rather than a stream that opens and immediately
+	// closes. Nothing here compares an owner: the read either finds the row in
+	// this scope or it does not.
 	T.Run("refuses somebody else's operation before upgrading", func(t *testing.T) {
 		t.Parallel()
 
-		store := newStreamingStore("op1", "u1")
+		store := newStreamingStore("op1", tenancy.Of("u1"))
 
-		watcher, err := operations.NewWatcher(t.Context(), &operations.WatcherConfig{}, store)
+		watcher, err := operations.NewWatcher(t.Context(), &operations.WatcherConfig{}, stubClient{}, store)
 		must.NoError(t, err)
 
 		t.Cleanup(func() { _ = watcher.Close() })
 
 		svc := &operationsmock.ServiceMock{}
-		svc.GetFunc = store.Get
+		svc.GetFunc = store.serviceGet
 
-		handler := mount(t, svc, "u2", WithWatcher(watcher))
+		handler := mount(t, svc, tenancy.Of("u2"), WithWatcher(watcher))
 
 		res := httptest.NewRecorder()
 		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, "/operations/op1/events", nethttp.NoBody))

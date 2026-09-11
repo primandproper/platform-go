@@ -72,7 +72,7 @@ func TestMappers(T *testing.T) {
 		"an endpoint written into a scope it does not name": {
 			err:      webhooks.ErrScopeMismatch,
 			httpCode: httperrors.ErrValidatingRequestInput,
-			httpMsg:  "the endpoint does not belong to that scope",
+			httpMsg:  "the endpoint or event does not belong to that scope",
 			grpcCode: codes.InvalidArgument,
 		},
 		"an identifier another tenant holds": {

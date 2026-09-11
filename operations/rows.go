@@ -6,7 +6,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/operations/internal/operationsdb"
 
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // The typed seam between the generated package and this package's own types.
@@ -20,9 +22,10 @@ import (
 // mistake as a runtime scan error, or worse, as two same-typed columns silently
 // transposed.
 //
-// Five statements project the same list — the get, the batched get, the create's
-// read-back, the claim's read-back, and the recovery sweep — so their row types
-// are five names for one shape, and the conversions between them are Go's own.
+// Six statements project the same list — the scoped get, the unscoped one the
+// cancellation reads back through, the batched get, the create's read-back, the
+// claim's read-back, and the recovery sweep — so their row types are six names
+// for one shape, and the conversions between them are Go's own.
 // That is the assertion rather than a shortcut around one: the day two of those
 // projections stop being identical in field name, type or order, this file stops
 // building rather than filling the wrong fields. The listing is the one that
@@ -89,7 +92,7 @@ func operationFromRow(r *operationsdb.GetOperationRow) *Operation {
 		ID:            r.ID,
 		Kind:          r.Kind,
 		State:         State(r.State),
-		Owner:         r.Owner,
+		Owner:         r.Scope,
 		Request:       rawMessage(r.Request),
 		Progress: Progress{
 			UnitsTotal: unitsTotal(r.UnitsTotal),
@@ -157,7 +160,7 @@ func operationPageRow(r *operationsdb.ListOperationsRow) pageRow {
 		ID:              r.ID,
 		Kind:            r.Kind,
 		State:           r.State,
-		Owner:           r.Owner,
+		Scope:           r.Scope,
 		Request:         r.Request,
 		UnitsTotal:      r.UnitsTotal,
 		UnitsDone:       r.UnitsDone,
@@ -183,7 +186,13 @@ func operationPageRow(r *operationsdb.ListOperationsRow) pageRow {
 }
 
 // listParams is the whole argument list of the paged read: filtering's window
-// and cursor, and this schema's three narrowings.
+// and cursor, the scope, and this schema's two further narrowings.
+//
+// The scope is bound as the tenancy.Scope rather than as a string taken off it,
+// which is what makes a read that lost its scope a driver error instead of a
+// wider result set. It is also why it is a separate argument from listScope: a
+// nil listScope narrows nothing further, and there is no value of it that can
+// widen past the scope.
 //
 // The state set is bound rather than left off, and the empty set is never sent.
 // A listing that names no states wants every state, and every state is a value
@@ -191,36 +200,57 @@ func operationPageRow(r *operationsdb.ListOperationsRow) pageRow {
 // alternative reading, where an empty set means "do not narrow", would be the
 // one place in this module where an empty set matches everything instead of
 // nothing.
-func listParams(scope *ListScope, filter *filtering.QueryFilter) operationsdb.ListOperationsParams {
+func listParams(
+	scope tenancy.Scope,
+	listScope *ListScope,
+	filter *filtering.QueryFilter,
+) operationsdb.ListOperationsParams {
 	params := operationsdb.ListOperationsParams{
 		CreatedAfter:  utcPtr(filter.CreatedAfter),
 		CreatedBefore: utcPtr(filter.CreatedBefore),
 		UpdatedAfter:  utcPtr(filter.UpdatedAfter),
 		UpdatedBefore: utcPtr(filter.UpdatedBefore),
+		Scope:         scope,
 		States:        allStates(),
 		PageCursor:    filter.Cursor,
 		ResultLimit:   int64(*filter.MaxResponseSize),
 	}
 
-	if scope == nil {
+	if listScope == nil {
 		return params
 	}
 
-	if scope.Owner != "" {
-		owner := scope.Owner
-		params.Owner = &owner
-	}
-
-	if scope.Kind != "" {
-		kind := scope.Kind
+	if listScope.Kind != "" {
+		kind := listScope.Kind
 		params.Kind = &kind
 	}
 
-	if len(scope.States) > 0 {
-		params.States = stateStrings(scope.States)
+	if len(listScope.States) > 0 {
+		params.States = stateStrings(listScope.States)
 	}
 
 	return params
+}
+
+// adoptScope settles which tenant an insert is for, and writes the answer back
+// onto the operation.
+//
+// The scope the call named is the one the statement binds, so an operation that
+// names a different one is refused rather than corrected: the two disagreeing is
+// a caller holding one tenant's operation and recording it under another, which
+// is a stale value or a mix-up and is not a thing to guess at. An operation that
+// names none adopts the argument. tenancy.Scope tells the zero value apart from
+// Global(), so "unset" here is genuinely unset rather than the global scope
+// spelled shortly — which is the whole reason this can adopt at all.
+func adoptScope(scope tenancy.Scope, op *Operation) error {
+	if op.Owner != (tenancy.Scope{}) && op.Owner != scope {
+		return platformerrors.Wrapf(ErrScopeMismatch,
+			"operation names %q, the write names %q", op.Owner, scope)
+	}
+
+	op.Owner = scope
+
+	return nil
 }
 
 // createParams is the insert's arguments. The state is bound rather than
@@ -232,7 +262,7 @@ func createParams(op *Operation) operationsdb.CreateOperationParams {
 		ID:         op.ID,
 		Kind:       op.Kind,
 		State:      string(StatePending),
-		Owner:      op.Owner,
+		Scope:      op.Owner,
 		Request:    op.Request,
 		CountLabel: op.Progress.CountLabel,
 	}

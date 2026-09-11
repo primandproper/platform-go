@@ -272,7 +272,9 @@ func (h *harness) enrollTOTP(t *testing.T) string {
 			return err
 		}
 
-		return h.store.MarkUserTwoFactorSecretVerified(t.Context(), tx, testScope, h.user.ID)
+		_, err = h.store.MarkUserTwoFactorSecretVerified(t.Context(), tx, testScope, h.user.ID)
+
+		return err
 	}))
 
 	return enrollment.Secret
