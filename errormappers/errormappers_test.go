@@ -10,10 +10,10 @@ import (
 	"github.com/primandproper/platform-go/v14/internal/sentinelmatrix"
 	"github.com/primandproper/platform-go/v14/links"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	httperrors "github.com/primandproper/primitives-go/errors/http"
-	"github.com/primandproper/primitives-go/observability"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
+	"github.com/primandproper/primitives-go/v2/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -22,12 +22,12 @@ import (
 	sessionsdatabase "github.com/primandproper/platform-go/v14/sessions/database"
 	sessionshttp "github.com/primandproper/platform-go/v14/sessions/http"
 
-	cachecfg "github.com/primandproper/primitives-go/cache/config"
-	"github.com/primandproper/primitives-go/config/cfgnorm"
-	"github.com/primandproper/primitives-go/cookies"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/pointer"
+	cachecfg "github.com/primandproper/primitives-go/v2/cache/config"
+	"github.com/primandproper/primitives-go/v2/config/cfgnorm"
+	"github.com/primandproper/primitives-go/v2/cookies"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/pointer"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

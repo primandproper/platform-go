@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/primandproper/primitives-go/compression"
-	"github.com/primandproper/primitives-go/cryptography/encryption"
-	"github.com/primandproper/primitives-go/cryptography/hashing/canonical"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/compression"
+	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
+	"github.com/primandproper/primitives-go/v2/cryptography/hashing/canonical"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // DocumentFormat tags the artifact's framing. It is the first thing a reader

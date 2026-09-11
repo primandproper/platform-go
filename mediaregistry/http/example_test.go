@@ -12,14 +12,14 @@ import (
 	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
 	mediaregistrymock "github.com/primandproper/platform-go/v14/mediaregistry/mock"
 
-	"github.com/primandproper/primitives-go/database"
-	databasemock "github.com/primandproper/primitives-go/database/mock"
-	"github.com/primandproper/primitives-go/encoding"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/routing"
-	"github.com/primandproper/primitives-go/routing/backends/chi"
-	"github.com/primandproper/primitives-go/tenancy"
-	"github.com/primandproper/primitives-go/uploads"
+	"github.com/primandproper/primitives-go/v2/database"
+	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
+	"github.com/primandproper/primitives-go/v2/encoding"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/routing"
+	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
+	"github.com/primandproper/primitives-go/v2/tenancy"
+	"github.com/primandproper/primitives-go/v2/uploads"
 )
 
 // callerKey is where this example's authentication middleware leaves the

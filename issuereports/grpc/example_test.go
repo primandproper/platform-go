@@ -9,12 +9,12 @@ import (
 	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 
-	"github.com/primandproper/primitives-go/authorization"
-	authzgrpc "github.com/primandproper/primitives-go/authorization/grpc"
-	"github.com/primandproper/primitives-go/database"
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	"github.com/primandproper/primitives-go/observability"
-	grpcserver "github.com/primandproper/primitives-go/server/grpc"
+	"github.com/primandproper/primitives-go/v2/authorization"
+	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
+	"github.com/primandproper/primitives-go/v2/database"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	"github.com/primandproper/primitives-go/v2/observability"
+	grpcserver "github.com/primandproper/primitives-go/v2/server/grpc"
 
 	"google.golang.org/grpc"
 )

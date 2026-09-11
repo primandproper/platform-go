@@ -3,8 +3,8 @@ package identity
 import (
 	"context"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Hooks is what a consumer hangs off the Service's operations: one method per
@@ -93,14 +93,18 @@ type Hooks interface {
 		previousAccountID string,
 	) error
 
-	// AfterArchiveUser is called with the user as they were read immediately
-	// before the archival, and every membership the archival ended.
+	// AfterArchiveUser is called with the user as the archival left them,
+	// redacted, and every membership the archival ended.
 	//
-	// Both are pre-state deliberately, and neither could be otherwise: an
-	// archived user is not returned by any read here, and the memberships are
-	// archived with them. A consumer removing the subject from the rosters it
-	// keeps of its own needs the accounts they were on, and this is the last
-	// call that can name them.
+	// The user is the row Store.ArchiveUser answered with, read through the one
+	// statement that can see an archived row, so what a consumer records is the
+	// subject as the write left them — archived_at included — rather than as
+	// they stood a statement earlier.
+	//
+	// The memberships are pre-state and could not be otherwise: they are
+	// archived with the user, and a consumer removing the subject from the
+	// rosters it keeps of its own needs the accounts they were on. This is the
+	// last call that can name them.
 	AfterArchiveUser(
 		ctx context.Context,
 		tx database.Tx,

@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/clock"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	databasemock "github.com/primandproper/primitives-go/database/mock"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	messagequeuemock "github.com/primandproper/primitives-go/messagequeue/mock"
+	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	messagequeuemock "github.com/primandproper/primitives-go/v2/messagequeue/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

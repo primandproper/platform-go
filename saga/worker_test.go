@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/retry"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/retry"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

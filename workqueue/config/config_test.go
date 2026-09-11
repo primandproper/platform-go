@@ -5,9 +5,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/workqueue"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	databasemock "github.com/primandproper/primitives-go/database/mock"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

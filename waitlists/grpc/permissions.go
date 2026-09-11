@@ -3,8 +3,8 @@ package grpc
 import (
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 
-	"github.com/primandproper/primitives-go/authorization"
-	authzgrpc "github.com/primandproper/primitives-go/authorization/grpc"
+	"github.com/primandproper/primitives-go/v2/authorization"
+	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 )
 
 // The permissions this service's administrative methods require, in

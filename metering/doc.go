@@ -55,7 +55,7 @@ tick in a worker.
 # The transaction is the caller's
 
 Every write a consumer calls takes a
-[github.com/primandproper/primitives-go/database.Tx], and that is the point of
+[github.com/primandproper/primitives-go/v2/database.Tx], and that is the point of
 the package rather than a tax it charges:
 
 	err := client.WithTransaction(ctx, func(tx database.Tx) error {
@@ -76,7 +76,7 @@ transaction of the store's own, they do not: a crash between the two leaves usag
 counted for work that rolled back, or work committed that nobody was billed for,
 and no ordering of two commits avoids both. A caller with genuinely nothing to
 join — an ingest endpoint whose only job is to record usage — writes the same
-[github.com/primandproper/primitives-go/database.Client.WithTransaction] call
+[github.com/primandproper/primitives-go/v2/database.Client.WithTransaction] call
 with one statement inside it.
 
 [Enforcer.Consume] takes one for the stronger version of the same reason: a nil

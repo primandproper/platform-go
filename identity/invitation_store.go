@@ -7,11 +7,11 @@ import (
 	"github.com/primandproper/platform-go/v14/identity/internal/identitydb"
 	"github.com/primandproper/platform-go/v14/identity/internal/queries"
 
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // The SQLStore's InvitationStore: an invitation issued, looked up, and
@@ -528,11 +528,12 @@ func (s *SQLStore) AcceptInvitation(
 		membership.DefaultAccount = true
 	}
 
-	if err = s.writeMembership(ctx, tx, membership); err != nil {
+	written, err := s.writeMembership(ctx, tx, membership)
+	if err != nil {
 		return nil, op.Error(err, "accepting identity invitation")
 	}
 
-	return membership, nil
+	return written, nil
 }
 
 // SetInvitationStatus answers an invitation without producing a membership.

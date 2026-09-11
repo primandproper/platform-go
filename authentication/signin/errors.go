@@ -1,7 +1,7 @@
 package signin
 
 import (
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // The refusals a caller acts on. Each is a sentinel rather than a code so that

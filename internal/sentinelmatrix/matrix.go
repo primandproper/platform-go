@@ -19,8 +19,8 @@ import (
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/webhooks"
 
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	httperrors "github.com/primandproper/primitives-go/errors/http"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
 
 	"google.golang.org/grpc/codes"
 )
@@ -268,6 +268,11 @@ var Matrix = map[string]map[string]Decision{
 		// else reads as, and a subscription refused for capacity.
 		"ErrOperationNotFound": {Err: operations.ErrOperationNotFound, Is: Mapped},
 		"ErrTooManyWatchers":   {Err: operations.ErrTooManyWatchers, Is: Mapped},
+
+		// An Insert whose entity names a different tenant than the call did. The
+		// two halves of the request disagreed, which is a bad request rather
+		// than a refusal on authority.
+		"ErrScopeMismatch": {Err: operations.ErrScopeMismatch, Is: Mapped},
 
 		// The nil-argument sentinels, which wrap errors.ErrNilInputParameter.
 		"ErrNilConfig":         {Err: operations.ErrNilConfig, Is: Platform},

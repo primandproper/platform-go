@@ -8,7 +8,7 @@ import (
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

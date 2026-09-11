@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/cryptography/encryption"
-	encryptionmock "github.com/primandproper/primitives-go/cryptography/encryption/mock"
+	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
+	encryptionmock "github.com/primandproper/primitives-go/v2/cryptography/encryption/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/primandproper/primitives-go/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
 )
 
 // Reporter is how a Runner says where it has got to.

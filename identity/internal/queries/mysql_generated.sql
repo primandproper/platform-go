@@ -825,23 +825,64 @@ WHERE identity_invitations.created_at > COALESCE(sqlc.narg(created_after), (SELE
 ORDER BY identity_invitations.id DESC
 LIMIT ?;
 
--- name: GetUserCreatedAt :one
-SELECT
-	identity_users.created_at
-FROM identity_users
-WHERE identity_users.id = sqlc.arg(id);
-
--- name: GetAccountCreatedAt :one
-SELECT
-	identity_accounts.created_at
-FROM identity_accounts
-WHERE identity_accounts.id = sqlc.arg(id);
-
 -- name: GetInvitationCreatedAt :one
 SELECT
 	identity_invitations.created_at
 FROM identity_invitations
 WHERE identity_invitations.id = sqlc.arg(id);
+
+-- name: GetArchivedUser :one
+SELECT
+	identity_users.id,
+	identity_users.scope,
+	identity_users.username,
+	identity_users.email_address,
+	identity_users.first_name,
+	identity_users.last_name,
+	identity_users.hashed_password,
+	identity_users.requires_password_change,
+	identity_users.password_last_changed_at,
+	identity_users.two_factor_secret,
+	identity_users.two_factor_secret_verified_at,
+	identity_users.email_address_verified_at,
+	identity_users.email_address_verification_token,
+	identity_users.account_status,
+	identity_users.account_status_explanation,
+	identity_users.last_accepted_terms_of_service,
+	identity_users.last_accepted_privacy_policy,
+	identity_users.created_at,
+	identity_users.last_updated_at,
+	identity_users.archived_at
+FROM identity_users
+WHERE identity_users.id = sqlc.arg(id)
+	AND identity_users.scope = sqlc.arg(scope)
+	AND identity_users.archived_at IS NOT NULL;
+
+-- name: GetArchivedAccount :one
+SELECT
+	identity_accounts.id,
+	identity_accounts.scope,
+	identity_accounts.name,
+	identity_accounts.owner_user_id,
+	identity_accounts.billing_status,
+	identity_accounts.subscription_plan_id,
+	identity_accounts.payment_processor_customer_id,
+	identity_accounts.last_payment_provider_synced_at,
+	identity_accounts.address_line1,
+	identity_accounts.address_line2,
+	identity_accounts.address_city,
+	identity_accounts.address_state,
+	identity_accounts.address_postal_code,
+	identity_accounts.address_country,
+	identity_accounts.address_phone,
+	identity_accounts.time_zone,
+	identity_accounts.created_at,
+	identity_accounts.last_updated_at,
+	identity_accounts.archived_at
+FROM identity_accounts
+WHERE identity_accounts.id = sqlc.arg(id)
+	AND identity_accounts.scope = sqlc.arg(scope)
+	AND identity_accounts.archived_at IS NOT NULL;
 
 -- name: GetUserByUsername :one
 SELECT

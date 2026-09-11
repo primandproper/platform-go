@@ -10,16 +10,16 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks/internal/webhooksdb"
 	"github.com/primandproper/platform-go/v14/webhooks/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/ddl"
-	"github.com/primandproper/primitives-go/database/dialect"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/identifiers"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/logging"
-	"github.com/primandproper/primitives-go/observability/tracing"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/ddl"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // DefaultTablePrefix is the namespace the webhooks tables carry when none is
@@ -258,6 +258,29 @@ func adoptEndpointScope(scope tenancy.Scope, endpoint *Endpoint) error {
 	}
 
 	endpoint.Scope = scope
+
+	return nil
+}
+
+// adoptDeliveryScope settles which tenant a fan-out is for, and writes the
+// answer back onto the delivery.
+//
+// It sits beside adoptEndpointScope because it is the same reading of the same
+// disagreement, on the other entity a caller hands this package whole: the scope
+// the call named is what EndpointsForEvent binds and what the delivery row
+// stores, so a delivery naming a different one is refused rather than corrected,
+// and one naming none adopts the argument. The thing the two could drift on is
+// the answer, and that lives in one place — ErrScopeMismatch, whose doc states
+// the rule for both. What is written twice is a comparison against two different
+// struct fields, which Go has no way to write once without an interface that
+// would say less than the field does.
+func adoptDeliveryScope(scope tenancy.Scope, delivery *Delivery) error {
+	if delivery.Scope != (tenancy.Scope{}) && delivery.Scope != scope {
+		return platformerrors.Wrapf(ErrScopeMismatch,
+			"delivery names %q, the write names %q", delivery.Scope, scope)
+	}
+
+	delivery.Scope = scope
 
 	return nil
 }

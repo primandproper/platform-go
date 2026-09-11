@@ -3,8 +3,8 @@ package queries
 import (
 	"slices"
 
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/querygen"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/querygen"
 )
 
 // SessionsTable is the one table this package owns, at its canonical spelling

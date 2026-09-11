@@ -3,11 +3,11 @@ package webauthncredentialscfg
 import (
 	"github.com/primandproper/platform-go/v14/authentication/webauthncredentials"
 
-	webauthncfg "github.com/primandproper/primitives-go/authentication/webauthn/config"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/logging"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	"github.com/primandproper/primitives-go/observability/tracing"
+	webauthncfg "github.com/primandproper/primitives-go/v2/authentication/webauthn/config"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/observability/tracing"
 )
 
 // Option configures how NewSessionStore and NewRelyingParty assemble their

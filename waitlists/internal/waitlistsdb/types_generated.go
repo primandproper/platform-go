@@ -8,7 +8,7 @@ package waitlistsdb
 import (
 	"time"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // ArchiveListParams are the arguments to ArchiveList.

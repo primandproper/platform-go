@@ -6,12 +6,13 @@ import (
 
 	"github.com/primandproper/platform-go/v14/workqueue"
 
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/identifiers"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -23,6 +24,7 @@ var _ Service = (*StoreService)(nil)
 // is exported, and returned by NewService, so a caller can depend on the service
 // it built rather than on the Service seam.
 type StoreService struct {
+	client   database.Client
 	store    Store
 	queue    *workqueue.Queue[string]
 	registry *Registry
@@ -49,9 +51,15 @@ type StoreService struct {
 // encodes the request through the kind's registration and refuses a kind this
 // build does not have, which is the check that keeps an unrunnable operation out
 // of the table rather than discovering it in a worker an hour later.
+//
+// The client is what Start opens its own transaction on, and what the reads run
+// against outside one. It is passed rather than reached for through the store
+// because Store has no WithTransaction to reach for: one way in, and it is
+// database.Client's.
 func NewService(
 	ctx context.Context,
 	cfg *Config,
+	client database.Client,
 	store Store,
 	queue *workqueue.Queue[string],
 	registry *Registry,
@@ -59,6 +67,9 @@ func NewService(
 ) (*StoreService, error) {
 	if cfg == nil {
 		return nil, ErrNilConfig
+	}
+	if client == nil {
+		return nil, ErrNilDatabaseClient
 	}
 	if store == nil {
 		return nil, ErrNilStore
@@ -90,6 +101,7 @@ func NewService(
 
 	s := &StoreService{
 		cfg:      *cfg,
+		client:   client,
 		store:    store,
 		queue:    queue,
 		registry: registry,
@@ -137,12 +149,13 @@ func (s *StoreService) Start(ctx context.Context, kind string, request any, opts
 
 	var op *Operation
 
-	// The insert runs in a transaction of the store's own so that Start is
+	// The insert runs in a transaction this service opens so that Start is
 	// atomic even when the caller supplies nothing. It is the same code path
-	// StartInTransaction takes, which is what keeps the two from drifting.
-	err := s.store.WithTransaction(ctx, func(q database.Tx) error {
+	// StartInTransaction takes, which is what keeps the two from drifting, and
+	// it goes through Client.WithTransaction because that is the one way in.
+	err := s.client.WithTransaction(ctx, func(tx database.Tx) error {
 		var startErr error
-		op, startErr = s.start(ctx, span, q, kind, request, opts)
+		op, startErr = s.start(ctx, span, tx, kind, request, opts)
 
 		return startErr
 	})
@@ -157,7 +170,7 @@ func (s *StoreService) Start(ctx context.Context, kind string, request any, opts
 
 func (s *StoreService) StartInTransaction(
 	ctx context.Context,
-	q database.Tx,
+	tx database.Tx,
 	kind string,
 	request any,
 	opts ...StartOption,
@@ -165,11 +178,11 @@ func (s *StoreService) StartInTransaction(
 	ctx, span := s.o11y.Begin(ctx, observability.WithValue(kindKey, kind))
 	defer span.End()
 
-	if q == nil {
+	if tx == nil {
 		return nil, span.Error(ErrNilExecutor, "starting operation")
 	}
 
-	op, err := s.start(ctx, span, q, kind, request, opts)
+	op, err := s.start(ctx, span, tx, kind, request, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +203,7 @@ func (s *StoreService) StartInTransaction(
 func (s *StoreService) start(
 	ctx context.Context,
 	span observability.Operation,
-	q database.Tx,
+	tx database.Tx,
 	kind string,
 	request any,
 	opts []StartOption,
@@ -223,13 +236,13 @@ func (s *StoreService) start(
 		},
 	}
 
-	span.Set(operationIDKey, op.ID).Set(ownerKey, op.Owner)
+	span.Set(operationIDKey, op.ID).Set(ownerKey, op.Owner.String())
 
 	// The inserted row comes back from the write itself rather than from a
 	// second read. The write may be inside a transaction nobody has committed —
 	// the caller's, or this service's own — and a read on another connection
 	// would find nothing at all.
-	inserted, err := s.store.Insert(ctx, q, op)
+	inserted, err := s.store.Insert(ctx, tx, o.owner, op)
 	if err != nil {
 		if stderrors.Is(err, ErrDuplicateOperation) {
 			// The idempotency seam, arriving. The caller asked for this work
@@ -245,7 +258,7 @@ func (s *StoreService) start(
 			// sentinel here would tell a caller whose database blinked that their
 			// operation already exists — an answer they would act on, and a
 			// transient failure they would never see.
-			existing, getErr := s.store.Get(ctx, op.ID)
+			existing, getErr := s.store.Get(ctx, s.client.Reader(), o.owner, op.ID)
 			if getErr != nil {
 				return nil, span.Error(getErr, "reading existing operation")
 			}
@@ -286,11 +299,14 @@ func (s *StoreService) enqueue(ctx context.Context, op *Operation, o *startOptio
 	}
 }
 
-func (s *StoreService) Get(ctx context.Context, id string) (*Operation, error) {
-	ctx, span := s.o11y.Begin(ctx, observability.WithValue(operationIDKey, id))
+func (s *StoreService) Get(ctx context.Context, scope tenancy.Scope, id string) (*Operation, error) {
+	ctx, span := s.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		operationIDKey: id,
+		ownerKey:       scope.String(),
+	}))
 	defer span.End()
 
-	op, err := s.store.Get(ctx, id)
+	op, err := s.store.Get(ctx, s.client.Reader(), scope, id)
 	if err != nil {
 		return nil, span.Error(err, "reading operation")
 	}
@@ -300,13 +316,14 @@ func (s *StoreService) Get(ctx context.Context, id string) (*Operation, error) {
 
 func (s *StoreService) List(
 	ctx context.Context,
-	scope *ListScope,
+	scope tenancy.Scope,
+	listScope *ListScope,
 	filter *filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[Operation], error) {
-	ctx, span := s.o11y.Begin(ctx)
+	ctx, span := s.o11y.Begin(ctx, observability.WithValue(ownerKey, scope.String()))
 	defer span.End()
 
-	results, err := s.store.List(ctx, scope, filter)
+	results, err := s.store.List(ctx, s.client.Reader(), scope, listScope, filter)
 	if err != nil {
 		return nil, span.Error(err, "listing operations")
 	}

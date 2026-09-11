@@ -11,12 +11,12 @@ import (
 	"github.com/primandproper/platform-go/v14/shredding"
 	"github.com/primandproper/platform-go/v14/shredding/migrations"
 
-	"github.com/primandproper/primitives-go/cryptography/encryption"
-	"github.com/primandproper/primitives-go/cryptography/encryption/aes"
-	"github.com/primandproper/primitives-go/cryptography/encryption/kms/local"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
+	"github.com/primandproper/primitives-go/v2/cryptography/encryption/aes"
+	"github.com/primandproper/primitives-go/v2/cryptography/encryption/kms/local"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
 )
 
 // The lifecycle in full: a column encrypted under its subject's own key, and

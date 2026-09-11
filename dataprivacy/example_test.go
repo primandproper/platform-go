@@ -9,11 +9,11 @@ import (
 	dataprivacymock "github.com/primandproper/platform-go/v14/dataprivacy/mock"
 	"github.com/primandproper/platform-go/v14/operations"
 
-	"github.com/primandproper/primitives-go/database"
-	databasemock "github.com/primandproper/primitives-go/database/mock"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/tenancy"
-	uploadsnoop "github.com/primandproper/primitives-go/uploads/noop"
+	"github.com/primandproper/primitives-go/v2/database"
+	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/tenancy"
+	uploadsnoop "github.com/primandproper/primitives-go/v2/uploads/noop"
 )
 
 // A Collector returns one domain's view of a subject as already-encoded JSON.

@@ -7,8 +7,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/links/database/internal/linksdb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability/metrics"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
 )
 
 // sweptKey is this store's one observability key.

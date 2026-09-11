@@ -4,10 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/authentication/oauth2server"
-	"github.com/primandproper/primitives-go/authentication/oauth2server/oauth2servertest"
-	"github.com/primandproper/primitives-go/database/dialect"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server/oauth2servertest"
+	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -28,10 +29,10 @@ func TestStore_Conformance(T *testing.T) {
 
 		client := newTestClient(t)
 
-		oauth2servertest.Run(t, func(tb testing.TB) oauth2server.Store {
+		oauth2servertest.Run(t, func(tb testing.TB, c clock.Clock) oauth2server.Store {
 			tb.Helper()
 
-			store, err := NewStore(&Config{}, client)
+			store, err := NewStore(&Config{}, client, WithClock(c))
 			must.NoError(tb, err)
 
 			// Deliberately not closed: Close releases the database client, and
@@ -180,7 +181,7 @@ func TestStore_Encoding(T *testing.T) {
 
 		// Stored as the zero time instead, this row would be swept by the very
 		// next sweep and read as lapsed by every GetClient in between.
-		swept, err := store.Sweep(ctx, time.Now().UTC())
+		swept, err := store.Sweep(ctx)
 		must.NoError(t, err)
 		test.EqOp(t, int64(0), swept)
 
@@ -214,10 +215,43 @@ func TestStore_Sweep(T *testing.T) {
 
 		// Four tables, one transaction, one number. This store is the only one
 		// where a partial sweep is representable, so the count is asserted
-		// exactly rather than as a lower bound.
-		swept, err := store.Sweep(ctx, time.Now().UTC())
+		// exactly rather than as a lower bound. newTestStore gives each subtest
+		// its own SQLite file, so the wall clock reaches nobody else's rows.
+		swept, err := store.Sweep(ctx)
 		must.NoError(t, err)
 		test.EqOp(t, int64(4), swept)
+	})
+
+	T.Run("the horizon is the injected clock and not the wall clock", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		client := newTestClient(t)
+
+		// One row, dead by half an hour on the wall clock.
+		writer, err := NewStore(&Config{}, client)
+		must.NoError(t, err)
+
+		dead := time.Now().UTC().Add(-30 * time.Minute).Truncate(time.Microsecond)
+		must.NoError(t, writer.CreateAuthorizationCode(ctx, &oauth2server.AuthorizationCode{
+			IssuedAt: dead, ExpiresAt: dead, Hash: oauth2server.Hash("clocked"), ClientID: "x",
+		}))
+
+		// A store an hour behind does not reach it. Sweep takes no horizon, so
+		// this is the whole of the difference between the two clocks: a sweep
+		// reading the wall clock would take the row.
+		behind, err := NewStore(&Config{}, client, WithClock(stoppedAt(time.Now().UTC().Add(-time.Hour))))
+		must.NoError(t, err)
+
+		swept, err := behind.Sweep(ctx)
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), swept)
+
+		// And a store on the wall clock does, over the same table — which is
+		// what says the first result was the clock and not an empty database.
+		swept, err = writer.Sweep(ctx)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), swept)
 	})
 }
 

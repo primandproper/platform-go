@@ -3,8 +3,8 @@ package identity
 import (
 	"testing"
 
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -164,7 +164,7 @@ func runMembershipWriterSuite(t *testing.T, env *storeEnv) {
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
 			for _, accountID := range []string{first.ID, second.ID} {
-				if err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
+				if _, err := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 					BelongsToUser:    member.ID,
 					BelongsToAccount: accountID,
 					Roles:            []string{"account_member"},
@@ -223,11 +223,13 @@ func runMembershipWriterSuite(t *testing.T, env *storeEnv) {
 		// Rejoining converges onto the archived row rather than inserting a
 		// second one, and it is their first live membership again.
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			return store.CreateMembership(t.Context(), tx, testScope, &Membership{
+			_, createErr := store.CreateMembership(t.Context(), tx, testScope, &Membership{
 				BelongsToUser:    member.ID,
 				BelongsToAccount: account.ID,
 				Roles:            []string{"account_member"},
 			})
+
+			return createErr
 		}))
 
 		rejoined, err := store.ListMembershipsForUser(t.Context(), env.reader(), testScope, member.ID)

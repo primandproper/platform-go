@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/compression"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/identifiers"
+	"github.com/primandproper/primitives-go/v2/compression"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/identifiers"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

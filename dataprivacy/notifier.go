@@ -6,8 +6,8 @@ import (
 	"html"
 	"time"
 
-	"github.com/primandproper/primitives-go/email"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/email"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // Notification is what a Notifier is handed when a request reaches a terminal

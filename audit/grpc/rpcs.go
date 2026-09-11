@@ -6,13 +6,13 @@ import (
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/filtering/filteringpb"
-	filteringgrpc "github.com/primandproper/primitives-go/filtering/grpc"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/pointer"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
+	filteringgrpc "github.com/primandproper/primitives-go/v2/filtering/grpc"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"google.golang.org/grpc/codes"
 )

@@ -35,7 +35,7 @@ func TestCreateReport(T *testing.T) {
 		// A report is born open, and the identifier and the creation time are
 		// the store's — so the response is the row that was written rather than
 		// the request that asked for it.
-		test.EqOp(t, issuereportspb.Status_STATUS_OPEN, res.GetResult().GetStatus())
+		test.EqOp(t, issuereportspb.ReportStatus_REPORT_STATUS_OPEN, res.GetResult().GetStatus())
 		test.NotEqOp(t, "", res.GetResult().GetId())
 		test.True(t, res.GetResult().GetCreatedAt().AsTime().After(zeroTime()),
 			test.Sprint("the response carries no creation time, so the read-back did not happen"))
@@ -247,7 +247,7 @@ func TestUpdateReport(T *testing.T) {
 		// stands, and why. A revision that assigned any of them would be a
 		// whole-row write that reopened a report somebody had decided.
 		test.EqOp(t, testReporter, result.GetReporter())
-		test.EqOp(t, issuereportspb.Status_STATUS_ACKNOWLEDGED, result.GetStatus())
+		test.EqOp(t, issuereportspb.ReportStatus_REPORT_STATUS_ACKNOWLEDGED, result.GetStatus())
 
 		// The read-back is the stored row, so the stamp the database assigned is
 		// on the response rather than the epoch.
@@ -305,14 +305,14 @@ func TestTransitionReport(T *testing.T) {
 
 		res, err := h.server.TransitionReport(h.ctx(t, triager), &issuereportspb.TransitionReportRequest{
 			ReportId:       report.ID,
-			ExpectedStatus: issuereportspb.Status_STATUS_OPEN,
-			TargetStatus:   issuereportspb.Status_STATUS_RESOLVED,
+			ExpectedStatus: issuereportspb.ReportStatus_REPORT_STATUS_OPEN,
+			TargetStatus:   issuereportspb.ReportStatus_REPORT_STATUS_RESOLVED,
 			Resolution:     "fixed in the next release",
 		})
 		must.NoError(t, err)
 
 		result := res.GetResult()
-		test.EqOp(t, issuereportspb.Status_STATUS_RESOLVED, result.GetStatus())
+		test.EqOp(t, issuereportspb.ReportStatus_REPORT_STATUS_RESOLVED, result.GetStatus())
 		test.EqOp(t, "fixed in the next release", result.GetResolution())
 
 		// A terminal status stamps closed_at, and the response carries the stamp
@@ -328,8 +328,8 @@ func TestTransitionReport(T *testing.T) {
 
 		first := &issuereportspb.TransitionReportRequest{
 			ReportId:       report.ID,
-			ExpectedStatus: issuereportspb.Status_STATUS_OPEN,
-			TargetStatus:   issuereportspb.Status_STATUS_RESOLVED,
+			ExpectedStatus: issuereportspb.ReportStatus_REPORT_STATUS_OPEN,
+			TargetStatus:   issuereportspb.ReportStatus_REPORT_STATUS_RESOLVED,
 			Resolution:     "the first note",
 		}
 
@@ -340,8 +340,8 @@ func TestTransitionReport(T *testing.T) {
 		// was still open and decided from that read.
 		second := &issuereportspb.TransitionReportRequest{
 			ReportId:       report.ID,
-			ExpectedStatus: issuereportspb.Status_STATUS_OPEN,
-			TargetStatus:   issuereportspb.Status_STATUS_DECLINED,
+			ExpectedStatus: issuereportspb.ReportStatus_REPORT_STATUS_OPEN,
+			TargetStatus:   issuereportspb.ReportStatus_REPORT_STATUS_DECLINED,
 			Resolution:     "the second note",
 		}
 
@@ -359,7 +359,7 @@ func TestTransitionReport(T *testing.T) {
 			&issuereportspb.GetReportRequest{ReportId: report.ID})
 		must.NoError(t, err)
 		test.EqOp(t, "the first note", read.GetResult().GetResolution())
-		test.EqOp(t, issuereportspb.Status_STATUS_RESOLVED, read.GetResult().GetStatus())
+		test.EqOp(t, issuereportspb.ReportStatus_REPORT_STATUS_RESOLVED, read.GetResult().GetStatus())
 	})
 
 	T.Run("a move the lifecycle does not admit is refused before anything is written", func(t *testing.T) {
@@ -372,8 +372,8 @@ func TestTransitionReport(T *testing.T) {
 		// Acknowledged does not go back to open: somebody has seen it.
 		_, err := h.server.TransitionReport(h.ctx(t, triager), &issuereportspb.TransitionReportRequest{
 			ReportId:       report.ID,
-			ExpectedStatus: issuereportspb.Status_STATUS_ACKNOWLEDGED,
-			TargetStatus:   issuereportspb.Status_STATUS_OPEN,
+			ExpectedStatus: issuereportspb.ReportStatus_REPORT_STATUS_ACKNOWLEDGED,
+			TargetStatus:   issuereportspb.ReportStatus_REPORT_STATUS_OPEN,
 		})
 		must.Error(t, err)
 		test.ErrorIs(t, err, issuereports.ErrInvalidStatusTransition)
@@ -397,14 +397,14 @@ func TestTransitionReport(T *testing.T) {
 				name: "no expected status",
 				request: &issuereportspb.TransitionReportRequest{
 					ReportId:     report.ID,
-					TargetStatus: issuereportspb.Status_STATUS_RESOLVED,
+					TargetStatus: issuereportspb.ReportStatus_REPORT_STATUS_RESOLVED,
 				},
 			},
 			{
 				name: "no target status",
 				request: &issuereportspb.TransitionReportRequest{
 					ReportId:       report.ID,
-					ExpectedStatus: issuereportspb.Status_STATUS_OPEN,
+					ExpectedStatus: issuereportspb.ReportStatus_REPORT_STATUS_OPEN,
 				},
 			},
 		} {
@@ -431,15 +431,15 @@ func TestTransitionReport(T *testing.T) {
 
 		res, err := h.server.TransitionReport(h.ctx(t, triager), &issuereportspb.TransitionReportRequest{
 			ReportId:       report.ID,
-			ExpectedStatus: issuereportspb.Status_STATUS_RESOLVED,
-			TargetStatus:   issuereportspb.Status_STATUS_OPEN,
+			ExpectedStatus: issuereportspb.ReportStatus_REPORT_STATUS_RESOLVED,
+			TargetStatus:   issuereportspb.ReportStatus_REPORT_STATUS_OPEN,
 			Resolution:     "this note is not kept",
 		})
 		must.NoError(t, err)
 
 		// A reopen goes to open rather than to acknowledged, because nobody has
 		// dealt with it — and a reason that no longer holds is worse than none.
-		test.EqOp(t, issuereportspb.Status_STATUS_OPEN, res.GetResult().GetStatus())
+		test.EqOp(t, issuereportspb.ReportStatus_REPORT_STATUS_OPEN, res.GetResult().GetStatus())
 		test.EqOp(t, "", res.GetResult().GetResolution())
 		test.Nil(t, res.GetResult().GetClosedAt())
 	})

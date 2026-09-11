@@ -8,12 +8,12 @@ import (
 	"github.com/primandproper/platform-go/v14/entitlements"
 	"github.com/primandproper/platform-go/v14/metering"
 
-	"github.com/primandproper/primitives-go/cache"
-	"github.com/primandproper/primitives-go/cache/memory"
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/featureflags"
-	featureflagsmock "github.com/primandproper/primitives-go/featureflags/mock"
+	"github.com/primandproper/primitives-go/v2/cache"
+	"github.com/primandproper/primitives-go/v2/cache/memory"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/featureflags"
+	featureflagsmock "github.com/primandproper/primitives-go/v2/featureflags/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

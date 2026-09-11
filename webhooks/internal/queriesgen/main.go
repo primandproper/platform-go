@@ -9,7 +9,7 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks/internal/queries"
 	"github.com/primandproper/platform-go/v14/webhooks/migrations"
 
-	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 )
 
 // header marks the output as generated in the form `go generate` consumers,

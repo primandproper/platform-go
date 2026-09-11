@@ -8,10 +8,10 @@ import (
 
 	"github.com/primandproper/platform-go/v14/workqueue/internal/workqueuedb"
 
-	"github.com/primandproper/primitives-go/batching"
-	"github.com/primandproper/primitives-go/database/dialect"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/v2/batching"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
 )
 
 // encodedEntry is one row's worth of bound parameters, with the key already

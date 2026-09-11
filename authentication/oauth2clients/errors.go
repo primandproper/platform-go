@@ -1,7 +1,7 @@
 package oauth2clients
 
 import (
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // The wiring failures. Each wraps a platform sentinel, so errors/http and

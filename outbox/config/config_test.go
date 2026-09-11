@@ -5,11 +5,11 @@ import (
 
 	"github.com/primandproper/platform-go/v14/outbox"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	databasemock "github.com/primandproper/primitives-go/database/mock"
-	messagequeuecfg "github.com/primandproper/primitives-go/messagequeue/config"
-	"github.com/primandproper/primitives-go/messagequeue/pubsub"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
+	messagequeuecfg "github.com/primandproper/primitives-go/v2/messagequeue/config"
+	"github.com/primandproper/primitives-go/v2/messagequeue/pubsub"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
