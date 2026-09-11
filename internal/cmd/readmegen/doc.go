@@ -48,9 +48,20 @@ word to invent in a cell.
 
 The prose around each table, including the paragraph naming the packages that
 ship a store and no handlers, and the long form of why the three narrow. Those
-are arguments rather than rosters. Nothing checks them, deliberately: a package
-that crossed the boundary shows up as a new row needing a new directive, which
-is where the author is asked to think.
+are arguments rather than rosters, and nothing checks what they argue,
+deliberately: a package that crossed the boundary shows up as a new row needing
+a new directive, which is where the author is asked to think.
+
+Three mechanical properties of the "Transports" section are checked, and they
+are not the argument. An ordinal ("the third across"), a line written twice, and
+a table split by a blank line are what a reader trips over before reaching the
+reasoning, and the section carried all three at once: four domains each claiming
+to be the third across, one sentence written four times, and a ten-row table
+holding nine packages with one of them twice. Each of the three arrived the same
+way — a transport PR appending its paragraph to a README two other branches were
+also appending to — so the forcing function the directives are cannot reach
+them. See prose_test.go; every one of the three is satisfiable by deleting a
+claim rather than by updating a fixture.
 
 	go generate ./internal/cmd/readmegen   # rewrite the generated regions in README.md
 	go run ./internal/cmd/readmegen -root . -out README.md

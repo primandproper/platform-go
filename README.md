@@ -240,28 +240,32 @@ from the same file. The **scope** is not guessed, because `tenancy.Scope` exists
 and a domain transport binds it off the caller rather than off a request field.
 
 So the line moves, one domain at a time, and `identity` is the first across it.
+The paragraphs that follow are in the order they landed, and each names what
+its own crossing decided rather than its place in the queue: a domain that
+crosses next is a paragraph appended, not ten ordinals re-counted.
 `identity/grpc` serves the directory: twenty-eight RPCs, the `.proto` they are
 described by, a typed client, and the permissions each one wants. What it still
 does not ship is the policy — who is calling is an interface the consumer's own
-authentication interceptor satisfies, and what each method requires is a default
-map a consumer composes into its own. That is the same bargain `identity` always
-stated, one layer further out: a consumer keeps its policy and whatever columns
-are genuinely its own, and does not keep a users table, the transaction-shaped
-code around one, or the service and converters over that.
+authentication interceptor satisfies, and what each method requires is a
+default map a consumer composes into its own. That is the same bargain
+`identity` always stated, one layer further out: a consumer keeps its policy
+and whatever columns are genuinely its own, and does not keep a users table,
+the transaction-shaped code around one, or the service and converters over
+that.
 
-`authentication/signin` is the second across, and it crosses differently: it owns
-no table at all. It is sign-in — the order `argon2`, `totp`, `tokens` and
-`identity` are used in, which is the code every application writes over those
-four and the code where their bugs live. The engines each do one thing and store
-nothing; the directory stores what they produce and never calls them; nothing
-joined them up. What it decides is the refusals, and it collapses four of them
-into one sentinel on purpose, because telling an unknown handle from a wrong
-password is telling an attacker which half of the guess was right. What it
-refuses to decide is the rest: whether a second factor is mandatory, whether the
-administrative door exists, how long a token lives and what it carries are four
-options with four defaults. `authentication/signin/grpc` serves it, and is the
-one surface in the module that reads its tenant off the connection rather than
-off a caller — because a caller signing in has not become one yet.
+`authentication/signin` crosses differently: it owns no table at all. It is
+sign-in — the order `argon2`, `totp`, `tokens` and `identity` are used in,
+which is the code every application writes over those four and the code where
+their bugs live. The engines each do one thing and store nothing; the directory
+stores what they produce and never calls them; nothing joined them up. What it
+decides is the refusals, and it collapses four of them into one sentinel on
+purpose, because telling an unknown handle from a wrong password is telling an
+attacker which half of the guess was right. What it refuses to decide is the
+rest: whether a second factor is mandatory, whether the administrative door
+exists, how long a token lives and what it carries are four options with four
+defaults. `authentication/signin/grpc` serves it, and is the one surface in the
+module that reads its tenant off the connection rather than off a caller —
+because a caller signing in has not become one yet.
 
 `audit` crosses too, and it is the one that ships **strictly narrower than its
 own interface**. `audit/grpc` serves the `Reader` and nothing else:
@@ -278,15 +282,14 @@ reordered an entry is the capability a hand-written log reader never gets around
 to, and the one most worth calling remotely and on a schedule, which is why it
 is its own grant rather than a second use of the read one.
 
-`notifications` is the third across, and it is the first where the two halves of
-a package cross for two different reasons. The inbox half is the bell icon —
-list, list unread, get, mark one read, mark them all read, archive — which is
-the screen every consumer's application has and the code every consumer
-otherwise writes. The registry half is the strongest RPC case anywhere in the
-ten, because the caller is literally a remote device: a handset re-registers on
-every app launch and every token rotation, and the registration converges on
-(platform, token) rather than inserting, so a handset that changes hands has one
-owner.
+`notifications` crosses in both halves, and they cross for two different
+reasons. The inbox half is the bell icon — list, list unread, get, mark one
+read, mark them all read, archive — which is the screen every consumer's
+application has and the code every consumer otherwise writes. The registry half
+is the strongest RPC case anywhere in the ten, because the caller is literally
+a remote device: a handset re-registers on every app launch and every token
+rotation, and the registration converges on (platform, token) rather than
+inserting, so a handset that changes hands has one owner.
 
 Three of its twelve store methods stay behind, and they are three different
 shapes of machinery rather than three instances of one — which is why this is
@@ -320,48 +323,48 @@ a grant on the method cannot answer, *whose* comment this is, and
 `comments/grpc` ships it as a seam with a closed default: say nothing and
 authors edit and archive their own words and nobody else's.
 
-`webhooks` is the third across, and it is the first where the interesting half
-of the ruling is what stayed behind. Nine of its store's eighteen methods are on
-the wire — endpoint CRUD, subscription CRUD and the delivery log — which is
-endpoint management: the half of webhooks that is a resource rather than a
-protocol, and the only half a person ever touches. The other nine are the
-delivery pipeline, and `Enqueue` is the one worth naming here because it is the
-only absence that is genuinely consumer-facing. It writes a delivery and one
-dispatch per endpoint *in the caller's transaction*, so that both commit with
-whatever else that transaction did; an RPC moves the write into a transaction of
-its own, at a moment the caller does not choose, and what you get back is a
-delivery for a row that rolled back or a committed row nobody was told about.
-The other thing that does not cross is an endpoint's signing keys: they travel in
-on exactly one request and there is nowhere in the schema for a response to put
-them, because a key readable back over an administrative API is a key anyone who
-can read that API can forge deliveries with.
+`webhooks` is the one where the interesting half of the ruling is what stayed
+behind. Nine of its store's eighteen methods are on the wire — endpoint CRUD,
+subscription CRUD and the delivery log — which is endpoint management: the half
+of webhooks that is a resource rather than a protocol, and the only half a
+person ever touches. The other nine are the delivery pipeline, and `Enqueue` is
+the one worth naming here because it is the only absence that is genuinely
+consumer-facing. It writes a delivery and one dispatch per endpoint *in the
+caller's transaction*, so that both commit with whatever else that transaction
+did; an RPC moves the write into a transaction of its own, at a moment the
+caller does not choose, and what you get back is a delivery for a row that
+rolled back or a committed row nobody was told about. The other thing that does
+not cross is an endpoint's signing keys: they travel in on exactly one request
+and there is nowhere in the schema for a response to put them, because a key
+readable back over an administrative API is a key anyone who can read that API
+can forge deliveries with.
 
-`billing` is the next domain across, and it crosses read-biased. Its store has
-thirty methods and `billing/grpc` serves eighteen: the catalog and its
-administration, an account's own subscriptions, purchases and ledger, an
-operator's page over each of those three, and the `Archive*` set. The twelve
-absences are the interesting half. Seven are writes whose caller is not a client
-at all — a Stripe or RevenueCat callback, or the checkout handler that created
-the payment intent, each already inside a transaction that is also writing an
-audit entry and an outbox event — and four are lookups by a payment provider's
-identifier, which belong to that same callback path; the twelfth is the existence
-check a write makes on its way to inserting. What the surface refuses to ship is
-a reading: there is no `GetAccountStanding` and no `is_active` field
-anywhere in `billing.proto`, because which reported status leaves an account
-entitled is your policy and `billing/plans` is where it already lives.
+`billing` crosses read-biased. Its store has thirty methods and `billing/grpc`
+serves eighteen: the catalog and its administration, an account's own
+subscriptions, purchases and ledger, an operator's page over each of those
+three, and the `Archive*` set. The twelve absences are the interesting half.
+Seven are writes whose caller is not a client at all — a Stripe or RevenueCat
+callback, or the checkout handler that created the payment intent, each already
+inside a transaction that is also writing an audit entry and an outbox event —
+and four are lookups by a payment provider's identifier, which belong to that
+same callback path; the twelfth is the existence check a write makes on its way
+to inserting. What the surface refuses to ship is a reading: there is no
+`GetAccountStanding` and no `is_active` field anywhere in `billing.proto`,
+because which reported status leaves an account entitled is your policy and
+`billing/plans` is where it already lives.
 
-`issuereports` is the next across, and it is the first whose interesting half
-is a single method. Ten of its store's eleven are on the wire — the filing, the
-reads, the four queue listings, the revision, the archive and the move — and the
-move is why the surface is worth having. `TransitionReport` is a compare-and-set:
-it carries the status the caller believed the report held as well as the one it
-should move to, and the statement requires the row to still hold the first.
-Without that guard, two triagers resolving the same report both succeed, the
-second note overwrites the first, and nothing anywhere says so. A wire widens the
+`issuereports` is the one whose interesting half is a single method. Ten of its
+store's eleven are on the wire — the filing, the reads, the four queue
+listings, the revision, the archive and the move — and the move is why the
+surface is worth having. `TransitionReport` is a compare-and-set: it carries
+the status the caller believed the report held as well as the one it should
+move to, and the statement requires the row to still hold the first. Without
+that guard, two triagers resolving the same report both succeed, the second
+note overwrites the first, and nothing anywhere says so. A wire widens the
 window between the read a decision was made from and the write that records it
-from microseconds to a screen and a person, so the conflict is the ordinary case
-there rather than the rare one, and `ErrStatusConflict` is a refusal a client
-acts on: re-read, and decide about the status it is in now.
+from microseconds to a screen and a person, so the conflict is the ordinary
+case there rather than the rare one, and `ErrStatusConflict` is a refusal a
+client acts on: re-read, and decide about the status it is in now.
 
 The eleventh is `DeleteReportsByReporter`, which destroys every report one person
 filed. It runs inside the caller's transaction so that a subject's reports and
@@ -371,40 +374,40 @@ caller choosing when that commit happens. It is reached through
 does not carry is a reporter on any write: a report is filed by whoever is
 calling, and one a client could name is a report filed in somebody else's words.
 
-`settings` is the third across, and it is the one where the interesting half of
-the ruling is a proto design decision. Thirteen of its store's fourteen methods
-are on the wire, split into the two audiences the store already splits into: a
-catalog an operator administers, and the answers a person gives about
-themselves. `Resolve` is the point of it — a stored value falling back to the
-definition's default, so that anybody who has not chosen gets an answer rather
-than a missing row — and it is the method a hand-written service gets subtly
-wrong. So a resolved value crosses *typed*, as a `oneof` of the four kinds
+`settings` is the one where the interesting half of the ruling is a proto
+design decision. Thirteen of its store's fourteen methods are on the wire,
+split into the two audiences the store already splits into: a catalog an
+operator administers, and the answers a person gives about themselves.
+`Resolve` is the point of it — a stored value falling back to the definition's
+default, so that anybody who has not chosen gets an answer rather than a
+missing row — and it is the method a hand-written service gets subtly wrong. So
+a resolved value crosses *typed*, as a `oneof` of the four kinds
 `settings.Kind` names, rather than as the text the row holds plus the kind to
-parse it with: putting the parse on the wire is putting the bug on the wire, one
-generated client at a time. The definition's default and its allowed values stay
-strings, because those are what a write is checked against byte for byte, and a
-typed round-trip would rewrite the bytes the check is made with. The fourteenth
-method, `DeleteValuesForSubject`, is erasure and stays behind for the reason
-every erasure does: it commits inside the transaction that removes the rest of
-the person.
+parse it with: putting the parse on the wire is putting the bug on the wire,
+one generated client at a time. The definition's default and its allowed values
+stay strings, because those are what a write is checked against byte for byte,
+and a typed round-trip would rewrite the bytes the check is made with. The
+fourteenth method, `DeleteValuesForSubject`, is erasure and stays behind for
+the reason every erasure does: it commits inside the transaction that removes
+the rest of the person.
 
-`waitlists` is the third across, and it is the one where nothing stayed behind.
-All seventeen of its store's methods are on the wire, which is unusual on this
-lane and is why it went first: every carve-out elsewhere is one test applied to
-different machinery — is the realistic caller a worker on a timer, a processor
-callback, or your own code inside your own transaction — and a waitlist has no
-queue protocol, no fan-out and no provider callback. What it has instead is two
-audiences. Three RPCs are the signup page — the open catalog, the form, and the
-unsubscribe link — and are reached by somebody who has not signed in and, on a
-pre-launch list, has nothing to sign in to; the other fourteen are whoever is
-running the launch. So the tenant comes off the caller where there is one and
-off the connection where there is not, which is `authentication/signin/grpc`'s
-arrangement applied to half a surface. And `Withdraw` is public and names a row,
-which no grant on a method could ever have been about, so the standing to move
-that row is a seam a consumer answers — usually by redeeming the action link the
-unsubscribe URL carried. The read that stayed administrative is the one worth
-naming: "is this address on this list" is what the table holds, and answering it
-to anybody who can reach the port would make the surface an oracle over it.
+`waitlists` is the one where nothing stayed behind. All seventeen of its
+store's methods are on the wire, which is unusual on this lane: every carve-out
+elsewhere is one test applied to different machinery — is the realistic caller
+a worker on a timer, a processor callback, or your own code inside your own
+transaction — and a waitlist has no queue protocol, no fan-out and no provider
+callback. What it has instead is two audiences. Three RPCs are the signup page
+— the open catalog, the form, and the unsubscribe link — and are reached by
+somebody who has not signed in and, on a pre-launch list, has nothing to sign
+in to; the other fourteen are whoever is running the launch. So the tenant
+comes off the caller where there is one and off the connection where there is
+not, which is `authentication/signin/grpc`'s arrangement applied to half a
+surface. And `Withdraw` is public and names a row, which no grant on a method
+could ever have been about, so the standing to move that row is a seam a
+consumer answers — usually by redeeming the action link the unsubscribe URL
+carried. The read that stayed administrative is the one worth naming: "is this
+address on this list" is what the table holds, and answering it to anybody who
+can reach the port would make the surface an oracle over it.
 
 Ten more were ruled on together, and each is to follow `identity`. The transport
 is not uniform and neither is the subset of a store that crosses:
@@ -412,19 +415,15 @@ is not uniform and neither is the subset of a store that crosses:
 | package | verdict | transport | carved out, and why |
 |---|---|---|---|
 | `waitlists` | wire surface, full | gRPC | — |
-| `issuereports` | wire surface, full | gRPC | `DeleteReportsByReporter` — erasure machinery |
-
 | `comments` | wire surface, full | gRPC | the two bulk deletes — erasure machinery |
+| `issuereports` | wire surface, full | gRPC | `DeleteReportsByReporter` — erasure machinery |
 | `settings` | wire surface, full | gRPC | `DeleteValuesForSubject` — erasure machinery |
-
 | `notifications` | wire surface, both halves | gRPC | `CreateNotification`, `ListDevicesByPrincipals`, `InvalidateDeviceToken` |
 | `webhooks` | wire surface, management + history | gRPC | `Enqueue`, `EndpointsForEvent`, and the seven its store documents |
-
-| `notifications` | wire surface, both halves | gRPC | `CreateNotification`, `ListDevicesByPrincipals`, `InvalidateDeviceToken` |
 | `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
-
 | `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, and `Query.Scope` itself |
 | `dataprivacy` | wire surface over the existing `Service` | HTTP | — |
+| `mediaregistry` | binding, not a resource surface | HTTP | all seven store methods; what ships is the guarded serve |
 
 Seven get nothing, and saying so is the point of this section rather than
 leaving them unmentioned: `metering`, `saga`, `timers`, `workqueue`, `outbox`,
@@ -494,10 +493,7 @@ is indistinguishable from an absence, a content type a browser executes is never
 served inline, and nothing is cached by a shared proxy. There is no resource of
 yours in that either: what is on the wire is bytes and a content type.
 
-The other thirteen are resource surfaces, and they get there by two routes. The
-other thirteen are resource surfaces, and they get there by two routes. The
-other thirteen are resource surfaces, and they get there by two routes. The
-other thirteen are resource surfaces, and they get there by two routes.
+The other thirteen are resource surfaces, and they get there by two routes.
 `operations/http` is entirely this module's own resource: an `Operation`, its
 two-tier progress and its state machine are types you did not define, and
 polling one or subscribing to its server-sent events is the pattern's protocol
@@ -510,10 +506,6 @@ a domain's own transport, shipped under the rule above rather than as an
 exception to it, and twelve of the thirteen have crossed this way. Eleven of
 those twelve are gRPC and the twelfth is not, for the reason given above:
 `dataprivacy`'s flow was on HTTP before there was a handler in it.
-
-`authentication/oauth2clients/grpc` and `issuereports/grpc` are the other kind —
-a domain's own transport, shipped under the rule above rather than as an
-exception to it, and the first four of the thirteen to cross.
 
 The table is not written by hand either. `internal/cmd/readmegen` emits it on
 `make generate` from the `http` and `grpc` directories the tree ships, and
