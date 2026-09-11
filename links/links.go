@@ -116,9 +116,18 @@ type (
 		// field rather than the storage is what decides. A store that forgets
 		// a record late must not be able to resurrect a credential.
 		ExpiresAt time.Time
-		// ResolvedAt is when the link was redeemed or revoked, and is zero while
+		// ResolvedAt is when the link was redeemed or revoked, and is nil while
 		// the link is active.
-		ResolvedAt time.Time
+		//
+		// It is a pointer because "not yet resolved" is an absence rather than
+		// an instant, and it is the absence the store already spells: the
+		// column is NULL for exactly the active rows, and resolved_at IS NULL
+		// is the guard that makes a resolution single-use. A zero time.Time
+		// would put a second spelling of that absence opposite the first, one
+		// that reads as an instant everywhere it is rendered — a JSON
+		// round-trip hands back 0001-01-01T00:00:00Z rather than null — and
+		// that no comparison against a clock can tell from a stamp.
+		ResolvedAt *time.Time
 		// PurgeAfter is when the store may forget this record, which is past
 		// ExpiresAt by the Minter's retention window.
 		//

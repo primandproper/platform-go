@@ -88,7 +88,7 @@ func TestStore_Put(T *testing.T) {
 		test.True(t, record.CreatedAt.Equal(mintedAt), test.Sprintf("read %v", record.CreatedAt))
 		test.True(t, record.ExpiresAt.Equal(mintedAt.Add(time.Hour)))
 		test.True(t, record.PurgeAfter.Equal(mintedAt.Add(2*time.Hour)))
-		test.True(t, record.ResolvedAt.IsZero())
+		test.Nil(t, record.ResolvedAt)
 	})
 
 	T.Run("round-trips metadata", func(t *testing.T) {
@@ -117,6 +117,26 @@ func TestStore_Put(T *testing.T) {
 		record, err := store.Get(t.Context(), testID)
 		must.NoError(t, err)
 		test.MapLen(t, 0, record.Metadata)
+	})
+
+	// Put is the mint write, and the NULL it leaves in resolved_at is the
+	// guard every later resolution matches on. The record's field is now the
+	// same type as the column's parameter, so passing it through would compile
+	// — and would let a caller mint a link the store considers already spent.
+	T.Run("writes no resolution stamp for a record that arrived carrying one", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		record := activeRecord()
+		resolved := mintedAt.Add(time.Minute)
+		record.ResolvedAt = &resolved
+
+		put(t, store, testID, record)
+
+		stored, err := store.Get(t.Context(), testID)
+		must.NoError(t, err)
+		test.Nil(t, stored.ResolvedAt)
 	})
 
 	T.Run("refuses a second row under one digest", func(t *testing.T) {
@@ -192,12 +212,12 @@ func TestStore_Resolve(T *testing.T) {
 		must.NoError(t, err)
 
 		test.EqOp(t, links.StateRedeemed, record.State)
-		test.True(t, record.ResolvedAt.Equal(at))
+		resolvedAt(t, record, at)
 
 		stored, err := store.Get(t.Context(), testID)
 		must.NoError(t, err)
 		test.EqOp(t, links.StateRedeemed, stored.State)
-		test.True(t, stored.ResolvedAt.Equal(at))
+		resolvedAt(t, stored, at)
 		test.True(t, stored.PurgeAfter.Equal(at.Add(time.Hour)))
 	})
 
@@ -256,7 +276,7 @@ func TestStore_Resolve(T *testing.T) {
 		stored, err := store.Get(t.Context(), testID)
 		must.NoError(t, err)
 		test.EqOp(t, links.StateActive, stored.State)
-		test.True(t, stored.ResolvedAt.IsZero())
+		test.Nil(t, stored.ResolvedAt)
 	})
 
 	T.Run("refuses at the instant the link expires", func(t *testing.T) {
@@ -345,7 +365,7 @@ func TestStore_RevokeForSubject(T *testing.T) {
 			must.NoError(t, getErr, must.Sprintf("id %q", id))
 
 			test.EqOp(t, links.StateRevoked, stored.State, test.Sprintf("id %q", id))
-			test.True(t, stored.ResolvedAt.Equal(at), test.Sprintf("id %q", id))
+			resolvedAt(t, stored, at, must.Sprintf("id %q", id))
 			test.True(t, stored.PurgeAfter.Equal(at.Add(time.Hour)), test.Sprintf("id %q", id))
 		}
 	})
@@ -370,7 +390,7 @@ func TestStore_RevokeForSubject(T *testing.T) {
 		stored, err := store.Get(t.Context(), "theirs")
 		must.NoError(t, err)
 		test.EqOp(t, links.StateActive, stored.State)
-		test.True(t, stored.ResolvedAt.IsZero())
+		test.Nil(t, stored.ResolvedAt)
 	})
 
 	// There is no scope argument and no scope column, so a person's links are

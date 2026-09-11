@@ -289,11 +289,27 @@ func (s *Store) Resolve(
 			// the one a support conversation turns on.
 			//
 			// A row whose resolved_at is set cannot read as usable, so the
-			// fallback is unreachable rather than merely unlikely. It is here
-			// because the alternative to a wrong sentence is no answer at all,
-			// and a resolution that cannot say what happened has to fail closed
-			// rather than report success.
-			if txErr = loser.Usable(loser.ResolvedAt); txErr != nil {
+			// last-resort answer below is reached only where this re-read
+			// cannot see the stamp. It is there because the alternative to a
+			// wrong sentence is no answer at all, and a resolution that cannot
+			// say what happened has to fail closed rather than report success.
+			//
+			// The stamp is a pointer because the column is nullable, and which
+			// engine this is decides whether there is one to read. Under
+			// InnoDB's REPEATABLE READ this re-read returns the snapshot the
+			// transaction opened with — resolved_at still NULL, though the
+			// winner's write is what sent this branch here — while Postgres's
+			// READ COMMITTED sees the stamp and judges against it. The instant
+			// this call was handed stands in for the one that is missing: it is
+			// what this row was already judged usable against a few lines
+			// above, on that same snapshot, so the comparison repeats its
+			// answer rather than inventing one.
+			winnerAt := at.UTC()
+			if loser.ResolvedAt != nil {
+				winnerAt = *loser.ResolvedAt
+			}
+
+			if txErr = loser.Usable(winnerAt); txErr != nil {
 				return txErr
 			}
 
@@ -302,7 +318,7 @@ func (s *Store) Resolve(
 
 		resolved := *record
 		resolved.State = to
-		resolved.ResolvedAt = resolvedAt
+		resolved.ResolvedAt = &resolvedAt
 		resolved.PurgeAfter = purgeAfter
 
 		found = &resolved
@@ -407,7 +423,8 @@ func (s *Store) read(
 	}
 
 	if row.ResolvedAt != nil {
-		record.ResolvedAt = row.ResolvedAt.UTC()
+		resolvedAt := row.ResolvedAt.UTC()
+		record.ResolvedAt = &resolvedAt
 	}
 
 	if !record.Current() {

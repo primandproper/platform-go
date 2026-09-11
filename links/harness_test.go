@@ -122,7 +122,7 @@ func (s *memoryStore) Resolve(
 
 	resolved := *record
 	resolved.State = to
-	resolved.ResolvedAt = at
+	resolved.ResolvedAt = &at
 	resolved.PurgeAfter = purgeAfter
 
 	s.records[id] = &resolved
@@ -151,13 +151,13 @@ func (s *memoryStore) RevokeForSubject(
 	var revoked int64
 
 	for id, record := range s.records {
-		if record.Subject != subject || !record.ResolvedAt.IsZero() {
+		if record.Subject != subject || record.ResolvedAt != nil {
 			continue
 		}
 
 		moved := *record
 		moved.State = StateRevoked
-		moved.ResolvedAt = at
+		moved.ResolvedAt = &at
 		moved.PurgeAfter = purgeAfter
 
 		s.records[id] = &moved
