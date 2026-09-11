@@ -26,8 +26,8 @@ import (
 // verbatim. It is the one call a service assembled by hand makes;
 // service.Register makes it for a service built from a service.Config.
 //
-// It registers all fifteen unconditionally, including for a service that has
-// no privacy requests, runs no operations, reads no audit log, tells nobody
+// It registers every one of them unconditionally, including for a service that
+// has no privacy requests, runs no operations, reads no audit log, tells nobody
 // anything, delivers no webhooks, sells nothing, hears no complaints and has
 // nobody signing in. An unused mapper costs one comparison against a sentinel
 // the process cannot produce, and that is the cheap direction to be wrong in
@@ -68,8 +68,7 @@ func Register() {
 	httperrors.RegisterHTTPErrorMapper(signin.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(signin.GRPCMapper)
 
-	// The third package whose wording is meant for the person reading it, and
-	// the one where the codes collide worst: four of its nine are
+	// The list where the codes collide worst: four of signin's nine refusals are
 	// PermissionDenied and three are FailedPrecondition, each with a different
 	// remedy. See signin.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(signin.ClientSafeSentinels...)
@@ -98,10 +97,9 @@ func Register() {
 	httperrors.RegisterHTTPErrorMapper(comments.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(comments.GRPCMapper)
 
-	// The fourth, and the one whose refusals are most obviously written for a
-	// person: four of the six are InvalidArgument and two are NotFound, and each
-	// says which of a form's fields to go back to. See
-	// comments.ClientSafeSentinels.
+	// The refusals most obviously written for a person: four of comments' six are
+	// InvalidArgument and two are NotFound, and each says which of a form's
+	// fields to go back to. See comments.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(comments.ClientSafeSentinels...)
 
 	httperrors.RegisterHTTPErrorMapper(webhooks.HTTPMapper)
@@ -137,19 +135,18 @@ func Register() {
 	httperrors.RegisterHTTPErrorMapper(settings.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(settings.GRPCMapper)
 
-	// The fourth set whose wording is meant for the person reading it. Three of
-	// settings' refusals are codes.NotFound — no such setting, nobody has set
-	// it, and it has no value and no default — which are three different things
-	// to tell somebody, and one of the six names the row an administrator has to
-	// clear before their edit can land. See settings.ClientSafeSentinels.
+	// Three of settings' refusals are codes.NotFound — no such setting, nobody
+	// has set it, and it has no value and no default — which are three different
+	// things to tell somebody, and one of the six names the row an administrator
+	// has to clear before their edit can land. See settings.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(settings.ClientSafeSentinels...)
 
 	httperrors.RegisterHTTPErrorMapper(waitlists.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(waitlists.GRPCMapper)
 
-	// The fourth package whose wording is meant for the person reading it, and
-	// the only one whose reader is not signed in: four of its five refusals are
-	// FailedPrecondition, and the person meeting them is filling in a signup
-	// form or clicking an unsubscribe link. See waitlists.ClientSafeSentinels.
+	// The only list whose reader is not signed in: four of waitlists' five
+	// refusals are FailedPrecondition, and the person meeting them is filling in
+	// a signup form or clicking an unsubscribe link. See
+	// waitlists.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(waitlists.ClientSafeSentinels...)
 }
