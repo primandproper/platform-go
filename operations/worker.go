@@ -8,10 +8,10 @@ import (
 
 	"github.com/primandproper/platform-go/v14/workqueue"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	"github.com/primandproper/primitives-go/panicking"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/panicking"
 )
 
 // panicStackKey carries a contained panic's stack to the span, and only to the

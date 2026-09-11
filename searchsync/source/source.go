@@ -7,7 +7,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/searchsync"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 type (

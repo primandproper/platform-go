@@ -6,8 +6,8 @@ import (
 	"github.com/primandproper/platform-go/v14/settings"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/pointer"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

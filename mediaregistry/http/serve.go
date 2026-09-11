@@ -11,13 +11,13 @@ import (
 
 	"github.com/primandproper/platform-go/v14/mediaregistry"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/encoding"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	httpx "github.com/primandproper/primitives-go/errors/http"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/routing"
-	"github.com/primandproper/primitives-go/uploads"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/encoding"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	httpx "github.com/primandproper/primitives-go/v2/errors/http"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/routing"
+	"github.com/primandproper/primitives-go/v2/uploads"
 
 	"github.com/swaggest/openapi-go/openapi3"
 )

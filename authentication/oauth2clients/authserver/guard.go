@@ -6,10 +6,10 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 
-	"github.com/primandproper/primitives-go/authentication/oauth2server"
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
 )
 
 // guard is the registry lookup both paths to an authorization code make, and

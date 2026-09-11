@@ -9,10 +9,10 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
 
-	"github.com/primandproper/primitives-go/database"
-	databasemock "github.com/primandproper/primitives-go/database/mock"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

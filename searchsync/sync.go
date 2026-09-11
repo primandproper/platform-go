@@ -6,7 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/outbox"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // serviceName names this package's loggers, spans, and metrics.

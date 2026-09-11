@@ -6,8 +6,8 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
 
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	filteringgrpc "github.com/primandproper/primitives-go/filtering/grpc"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	filteringgrpc "github.com/primandproper/primitives-go/v2/filtering/grpc"
 
 	"google.golang.org/grpc/codes"
 )

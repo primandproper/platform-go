@@ -9,14 +9,14 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/internal/oauth2serverdb"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
 
-	"github.com/primandproper/primitives-go/authentication/oauth2server"
-	"github.com/primandproper/primitives-go/clock"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/ddl"
-	"github.com/primandproper/primitives-go/database/dialect"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/ddl"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
 )
 
 // serviceName names the loggers, spans, and instruments this store emits.
@@ -564,19 +564,25 @@ func (s *Store) RevokeFamily(ctx context.Context, familyID string) (int64, error
 // actually dead rather than to the table; a deployment that outgrows that wants
 // a scheduled sweep with its own batching rather than a bigger one here.
 //
-// The deadline is compared against the instant the caller passes rather than
-// against the server's clock, and that is what makes a horizon useful: a
-// scheduler sweeping at an hour back reclaims only rows nothing is still
-// deciding about, where a sweep at "whatever the database thinks now is" can
-// take a row out from under a request that has just read it.
-func (s *Store) Sweep(ctx context.Context, now time.Time) (int64, error) {
+// The horizon is this store's own clock rather than the database server's, and
+// rather than an instant a caller passes. It is the clock every deadline in
+// this schema was stamped from and the one every read above refuses against,
+// so a sweep reclaims exactly the rows this store has already stopped
+// answering with — which is the only decision a garbage collector is entitled
+// to make. A caller-supplied horizon was a third opinion between the two: it
+// could reap a row a request had just read, or spare one the next read would
+// refuse, and nothing in the signature said which was meant. WithClock is the
+// lever, for a test and for a deployment that points this store and its
+// Server at one source. The four sweepers this module already had read their
+// clocks the same way.
+func (s *Store) Sweep(ctx context.Context) (int64, error) {
 	ctx, op := s.o11y.Begin(ctx)
 	defer op.End()
 
 	var swept int64
 
 	if err := s.db.WithTransaction(ctx, func(q database.Tx) error {
-		horizon := now.UTC()
+		horizon := s.now()
 
 		codes, execErr := s.q.SweepAuthorizationCodes(ctx, q,
 			oauth2serverdb.SweepAuthorizationCodesParams{Now: horizon})

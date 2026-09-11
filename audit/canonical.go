@@ -6,10 +6,10 @@ import (
 	"encoding/hex"
 	"strconv"
 
-	"github.com/primandproper/primitives-go/cryptography/hashing"
-	"github.com/primandproper/primitives-go/cryptography/hashing/canonical"
-	"github.com/primandproper/primitives-go/cryptography/hashing/sha256"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/cryptography/hashing"
+	"github.com/primandproper/primitives-go/v2/cryptography/hashing/canonical"
+	"github.com/primandproper/primitives-go/v2/cryptography/hashing/sha256"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // imageVersion tags the framing below. It is the first field of every image, so

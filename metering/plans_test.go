@@ -5,12 +5,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/logging"
-	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	metricsmock "github.com/primandproper/primitives-go/observability/metrics/mock"
-	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	metricsmock "github.com/primandproper/primitives-go/v2/observability/metrics/mock"
+	tracingnoop "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

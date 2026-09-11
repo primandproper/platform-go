@@ -6,11 +6,11 @@ import (
 
 	"github.com/primandproper/platform-go/v14/operations"
 
-	httpx "github.com/primandproper/primitives-go/errors/http"
-	"github.com/primandproper/primitives-go/eventstream"
-	"github.com/primandproper/primitives-go/eventstream/sse"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/routing"
+	httpx "github.com/primandproper/primitives-go/v2/errors/http"
+	"github.com/primandproper/primitives-go/v2/eventstream"
+	"github.com/primandproper/primitives-go/v2/eventstream/sse"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/routing"
 
 	"github.com/swaggest/openapi-go/openapi3"
 )

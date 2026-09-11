@@ -5,10 +5,10 @@ import (
 
 	"github.com/primandproper/platform-go/v14/comments/internal/commentsdb"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // GetComment reads one of the scope's live comments, on the caller's executor —

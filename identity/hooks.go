@@ -3,8 +3,8 @@ package identity
 import (
 	"context"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Hooks is what a consumer hangs off the Service's operations: one method per

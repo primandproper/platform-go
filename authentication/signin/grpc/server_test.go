@@ -9,8 +9,8 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/tenancy"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

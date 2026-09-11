@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/primandproper/primitives-go/database/ddl"
+	"github.com/primandproper/primitives-go/v2/database/ddl"
 
 	"github.com/shoenig/test"
 )

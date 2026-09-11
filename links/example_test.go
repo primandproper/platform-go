@@ -12,9 +12,9 @@ import (
 	linksdatabase "github.com/primandproper/platform-go/v14/links/database"
 	"github.com/primandproper/platform-go/v14/links/database/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
 )
 
 // newExampleMinter wires a Minter over a throwaway SQLite database. A real

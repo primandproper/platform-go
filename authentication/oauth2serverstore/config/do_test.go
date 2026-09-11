@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/primitives-go/authentication/oauth2server"
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability/logging"
-	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

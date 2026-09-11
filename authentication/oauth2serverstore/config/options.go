@@ -3,11 +3,11 @@ package oauth2serverstorecfg
 import (
 	"github.com/primandproper/platform-go/v14/authentication/oauth2serverstore"
 
-	oauth2servercfg "github.com/primandproper/primitives-go/authentication/oauth2server/config"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/logging"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	"github.com/primandproper/primitives-go/observability/tracing"
+	oauth2servercfg "github.com/primandproper/primitives-go/v2/authentication/oauth2server/config"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/observability/tracing"
 )
 
 // Option configures how NewStore and NewServer assemble their pieces.

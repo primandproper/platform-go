@@ -11,8 +11,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/webhooks/internal/webhooksdb"
 
-	"github.com/primandproper/primitives-go/cryptography/requestsigning"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/cryptography/requestsigning"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

@@ -3,9 +3,9 @@ package audit
 import (
 	"time"
 
-	"github.com/primandproper/primitives-go/database/ddl"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database/ddl"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.

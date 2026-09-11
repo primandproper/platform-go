@@ -7,8 +7,8 @@ import (
 	"github.com/primandproper/platform-go/v14/entitlements"
 	"github.com/primandproper/platform-go/v14/metering"
 
-	"github.com/primandproper/primitives-go/authorization"
-	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/v2/authorization"
+	"github.com/primandproper/primitives-go/v2/database"
 )
 
 // buildCatalog declares the features the code gates on and the plans that

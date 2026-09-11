@@ -6,8 +6,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/internal/oauth2clientsdb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
 )
 
 // The generated row types are one projection rendered five times — the get, the

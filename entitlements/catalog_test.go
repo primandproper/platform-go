@@ -6,7 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/metering"
 
-	"github.com/primandproper/primitives-go/authorization"
+	"github.com/primandproper/primitives-go/v2/authorization"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

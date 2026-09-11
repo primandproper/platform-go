@@ -5,9 +5,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/primandproper/primitives-go/cryptography/requestsigning"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/cryptography/requestsigning"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.

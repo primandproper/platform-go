@@ -25,7 +25,7 @@ import (
 	"github.com/primandproper/platform-go/v14/entitlements"
 	"github.com/primandproper/platform-go/v14/metering"
 
-	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/errors"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

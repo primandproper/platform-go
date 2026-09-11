@@ -6,7 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

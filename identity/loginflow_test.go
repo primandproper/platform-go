@@ -8,16 +8,16 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/sessions"
 
-	"github.com/primandproper/primitives-go/authentication"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/authentication"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
 
 // The flow in loginflow_example_test.go is the ruling in the package
-// documentation of [github.com/primandproper/primitives-go/authentication]
+// documentation of [github.com/primandproper/primitives-go/v2/authentication]
 // made executable, so the four mistakes that ruling names are asserted here
 // rather than described. A change to the example that reintroduces one of them
 // fails a test instead of passing review.

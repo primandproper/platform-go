@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/tenancy"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Fragment encodes a collector's result, or reports that the domain holds

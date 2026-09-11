@@ -6,9 +6,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/operations/internal/operationsdb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/tenancy"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // The typed seam between the generated package and this package's own types.

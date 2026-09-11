@@ -8,7 +8,7 @@ package auditdb
 import (
 	"time"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // AdvanceAuditChainHeadParams are the arguments to AdvanceAuditChainHead.

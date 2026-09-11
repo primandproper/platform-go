@@ -5,14 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/authentication/oauth2server"
-	"github.com/primandproper/primitives-go/authentication/oauth2server/oauth2servertest"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/mysql"
-	"github.com/primandproper/primitives-go/database/postgres"
-	"github.com/primandproper/primitives-go/testutils/containers/mysqltest"
-	"github.com/primandproper/primitives-go/testutils/containers/pgtest"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server/oauth2servertest"
+	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/mysql"
+	"github.com/primandproper/primitives-go/v2/database/postgres"
+	"github.com/primandproper/primitives-go/v2/testutils/containers/mysqltest"
+	"github.com/primandproper/primitives-go/v2/testutils/containers/pgtest"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -68,10 +69,10 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 	// serves every subtest — and nothing declares WithInstanceLocalState,
 	// because two Stores over one server are two handles to the same rows.
 	t.Run("conformance", func(t *testing.T) {
-		oauth2servertest.Run(t, func(tb testing.TB) oauth2server.Store {
+		oauth2servertest.Run(t, func(tb testing.TB, c clock.Clock) oauth2server.Store {
 			tb.Helper()
 
-			store, err := NewStore(&Config{}, client)
+			store, err := NewStore(&Config{}, client, WithClock(c))
 			must.NoError(tb, err)
 
 			// Deliberately not closed: the client is shared by every subtest.
@@ -134,9 +135,13 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 			ID:        "eternal_" + string(d),
 		}))
 
-		// Well before anything the conformance suite writes for its own sweeps,
-		// so this reaches only rows already dead by an hour.
-		_, sweepErr := store.Sweep(ctx, time.Now().UTC().Add(-time.Hour))
+		// A store stopped well before anything the conformance suite writes for
+		// its own sweeps, so this reaches only rows already dead by an hour.
+		// The horizon is the store's clock now, not an argument.
+		sweeper, sweeperErr := NewStore(&Config{}, client, WithClock(stoppedAt(time.Now().UTC().Add(-time.Hour))))
+		must.NoError(t, sweeperErr)
+
+		_, sweepErr := sweeper.Sweep(ctx)
 		must.NoError(t, sweepErr)
 
 		got, readErr := store.GetClient(ctx, "eternal_"+string(d))

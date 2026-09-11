@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // serviceName scopes this package's spans, loggers and instruments.

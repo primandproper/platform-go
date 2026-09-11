@@ -3,10 +3,10 @@ package metering
 import (
 	"testing"
 
-	capitalismnoop "github.com/primandproper/primitives-go/capitalism/noop"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	metricsmock "github.com/primandproper/primitives-go/observability/metrics/mock"
+	capitalismnoop "github.com/primandproper/primitives-go/v2/capitalism/noop"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	metricsmock "github.com/primandproper/primitives-go/v2/observability/metrics/mock"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

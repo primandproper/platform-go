@@ -6,7 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks"
 	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

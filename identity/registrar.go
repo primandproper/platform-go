@@ -3,9 +3,9 @@ package identity
 import (
 	"context"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // The SQLStore's Registrar: the three writes that make a registration, each

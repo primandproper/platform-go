@@ -8,7 +8,7 @@ import (
 	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

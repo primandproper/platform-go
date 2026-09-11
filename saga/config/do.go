@@ -6,11 +6,11 @@ import (
 	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/saga"
 
-	"github.com/primandproper/primitives-go/config/injection"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/distributedlock"
-	"github.com/primandproper/primitives-go/idempotency"
-	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/v2/config/injection"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/distributedlock"
+	"github.com/primandproper/primitives-go/v2/idempotency"
+	"github.com/primandproper/primitives-go/v2/observability"
 
 	"github.com/samber/do/v2"
 )

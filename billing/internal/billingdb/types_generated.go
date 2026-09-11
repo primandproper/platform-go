@@ -8,7 +8,7 @@ package billingdb
 import (
 	"time"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // ArchiveProductParams are the arguments to ArchiveProduct.

@@ -6,10 +6,10 @@ import (
 	"github.com/primandproper/platform-go/v14/entitlements"
 	"github.com/primandproper/platform-go/v14/metering"
 
-	"github.com/primandproper/primitives-go/cache"
-	"github.com/primandproper/primitives-go/config/injection"
-	"github.com/primandproper/primitives-go/featureflags"
-	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/v2/cache"
+	"github.com/primandproper/primitives-go/v2/config/injection"
+	"github.com/primandproper/primitives-go/v2/featureflags"
+	"github.com/primandproper/primitives-go/v2/observability"
 
 	"github.com/samber/do/v2"
 )

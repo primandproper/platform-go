@@ -7,13 +7,13 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/webauthncredentials"
 
-	"github.com/primandproper/primitives-go/authentication/webauthn"
-	webauthncache "github.com/primandproper/primitives-go/authentication/webauthn/cache"
-	webauthncfg "github.com/primandproper/primitives-go/authentication/webauthn/config"
-	cachecfg "github.com/primandproper/primitives-go/cache/config"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/pointer"
+	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
+	webauthncache "github.com/primandproper/primitives-go/v2/authentication/webauthn/cache"
+	webauthncfg "github.com/primandproper/primitives-go/v2/authentication/webauthn/config"
+	cachecfg "github.com/primandproper/primitives-go/v2/cache/config"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

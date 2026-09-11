@@ -25,8 +25,8 @@ import (
 	asyncsse "github.com/primandproper/platform-go/v14/notifications/async/sse"
 	asyncws "github.com/primandproper/platform-go/v14/notifications/async/websocket"
 
-	"github.com/primandproper/primitives-go/config/cfgnorm"
-	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/config/cfgnorm"
+	"github.com/primandproper/primitives-go/v2/errors"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

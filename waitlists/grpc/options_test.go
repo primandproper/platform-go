@@ -8,12 +8,12 @@ import (
 	"github.com/primandproper/platform-go/v14/waitlists"
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
 
-	"github.com/primandproper/primitives-go/database/sqlite"
-	"github.com/primandproper/primitives-go/observability"
-	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
-	metricsnoop "github.com/primandproper/primitives-go/observability/metrics/noop"
-	tracingnoop "github.com/primandproper/primitives-go/observability/tracing/noop"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/observability"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
+	metricsnoop "github.com/primandproper/primitives-go/v2/observability/metrics/noop"
+	tracingnoop "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

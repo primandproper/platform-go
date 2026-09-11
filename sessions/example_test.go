@@ -9,7 +9,7 @@ import (
 	"github.com/primandproper/platform-go/v14/sessions"
 	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
 
-	"github.com/primandproper/primitives-go/cache/memory"
+	"github.com/primandproper/primitives-go/v2/cache/memory"
 )
 
 // Principal is what a session carries: whatever the application needs to know

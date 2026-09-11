@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/authentication/oauth2server"
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -52,7 +52,7 @@ func TestStore_ClosedDatabase(T *testing.T) {
 			func() error { _, err := store.ConsumeAuthorizationCode(ctx, oauth2server.Hash("c")); return err },
 			func() error { _, err := store.ConsumeRefreshToken(ctx, oauth2server.Hash("r")); return err },
 			func() error { _, err := store.RevokeFamily(ctx, "fam"); return err },
-			func() error { _, err := store.Sweep(ctx, now); return err },
+			func() error { _, err := store.Sweep(ctx); return err },
 		} {
 			err := read()
 			must.Error(t, err)

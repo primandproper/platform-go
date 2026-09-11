@@ -7,9 +7,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/sessions"
 
-	"github.com/primandproper/primitives-go/cache"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/v2/cache"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
 )
 
 // serviceName names the loggers and spans this backend emits. The counters live

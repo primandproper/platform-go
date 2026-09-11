@@ -9,17 +9,17 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/internal/passwordresetdb"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 
-	"github.com/primandproper/primitives-go/clock"
-	"github.com/primandproper/primitives-go/cryptography/hashing"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/ddl"
-	"github.com/primandproper/primitives-go/database/dialect"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/identifiers"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/observability/metrics"
-	"github.com/primandproper/primitives-go/random"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/cryptography/hashing"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/ddl"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/random"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // serviceName names the loggers, spans, and instruments this store emits.

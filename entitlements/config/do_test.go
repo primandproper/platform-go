@@ -7,11 +7,11 @@ import (
 	"github.com/primandproper/platform-go/v14/entitlements"
 	"github.com/primandproper/platform-go/v14/metering"
 
-	"github.com/primandproper/primitives-go/cache"
-	"github.com/primandproper/primitives-go/cache/memory"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/featureflags"
-	featureflagsnoop "github.com/primandproper/primitives-go/featureflags/noop"
+	"github.com/primandproper/primitives-go/v2/cache"
+	"github.com/primandproper/primitives-go/v2/cache/memory"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/featureflags"
+	featureflagsnoop "github.com/primandproper/primitives-go/v2/featureflags/noop"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

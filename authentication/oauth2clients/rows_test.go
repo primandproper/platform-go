@@ -6,7 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/internal/oauth2clientsdb"
 
-	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/v2/filtering"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

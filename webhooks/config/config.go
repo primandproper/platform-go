@@ -18,13 +18,13 @@ import (
 
 	"github.com/primandproper/platform-go/v14/webhooks"
 
-	"github.com/primandproper/primitives-go/circuitbreaking"
-	circuitbreakingcfg "github.com/primandproper/primitives-go/circuitbreaking/config"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/httpclient"
-	"github.com/primandproper/primitives-go/observability/logging"
-	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/circuitbreaking"
+	circuitbreakingcfg "github.com/primandproper/primitives-go/v2/circuitbreaking/config"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/httpclient"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"go.opentelemetry.io/otel/attribute"

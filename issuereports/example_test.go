@@ -10,10 +10,10 @@ import (
 	"github.com/primandproper/platform-go/v14/issuereports"
 	"github.com/primandproper/platform-go/v14/issuereports/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Taking a report is one write, and working the queue is one read plus one

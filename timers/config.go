@@ -7,7 +7,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/timers/internal/queries"
 
-	"github.com/primandproper/primitives-go/database/ddl"
+	"github.com/primandproper/primitives-go/v2/database/ddl"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

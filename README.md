@@ -2,7 +2,7 @@
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/primandproper/platform-go/v14.svg)](https://pkg.go.dev/github.com/primandproper/platform-go/v14) [![codecov](https://codecov.io/github/primandproper/platform-go/graph/badge.svg?token=69RLLWLJ39)](https://codecov.io/github/primandproper/platform-go)
 
-A Go library of the things a product has: a noun with a table, its lifecycle, its transport, its permissions and its privacy obligations. Identity, billing, audit, webhooks, sagas and the rest ship a `Store`, the DDL for the dialects they serve, a mock, and — for the ones that have crossed — a gRPC or HTTP surface over them. The infrastructure they are built from is [`primitives-go`](https://github.com/primandproper/primitives-go), which this module requires; [Primitives and Domains](#primitives-and-domains) is the rule that says which is which.
+A Go library of the things a product has: a noun with a table, its lifecycle, its transport, its permissions and its privacy obligations. Identity, billing, audit, webhooks, sagas and the rest ship a `Store`, the DDL for the dialects they serve, a mock, and — for the ones that have crossed — a gRPC or HTTP surface over them. The infrastructure they are built from is [`primitives-go`](https://github.com/primandproper/primitives-go/v2), which this module requires; [Primitives and Domains](#primitives-and-domains) is the rule that says which is which.
 
 **Module:** `github.com/primandproper/platform-go/v14`
 **Go:** 1.27
@@ -48,7 +48,7 @@ This module is the domain tier: a noun with a table, its lifecycle, its
 transport, its permissions and its privacy obligations. The providers behind an
 interface — `cache`, `database`, `email`, `messagequeue`, `observability`,
 `routing`, `secrets`, `search` and the rest of what every service is built from
-— are [`primitives-go`](https://github.com/primandproper/primitives-go), and its
+— are [`primitives-go`](https://github.com/primandproper/primitives-go/v2), and its
 README catalogues them. [Primitives and Domains](#primitives-and-domains) is the
 rule that sorts a new package into one or the other.
 
@@ -110,7 +110,7 @@ reasons behind the three exceptions.
 ## Primitives and Domains
 
 There were two kinds of package here and they have separated: the primitives
-left for [`primitives-go`](https://github.com/primandproper/primitives-go), and
+left for [`primitives-go`](https://github.com/primandproper/primitives-go/v2), and
 what stays is the domain tier. The rule that sorted them is the one to check a
 new package against before writing it, because it now decides which of the two
 repositories the package is written for, and it is one property — does the
@@ -132,7 +132,7 @@ package own a table, or drive one.
 
 The table below is this module's side of that sort. It is not the whole rule's
 answer and is not meant to be: what the primitives are is
-[primitives-go's README](https://github.com/primandproper/primitives-go#readme)
+[primitives-go's README](https://github.com/primandproper/primitives-go/v2#readme)
 to list, and a copy of that list here would be a second answer with nothing
 checking it.
 
@@ -640,4 +640,4 @@ Formatting runs locally with `gci`, `goimports`, `betteralign`, `tagalign`, and 
 
 ## Contributing
 
-Because `main` is a development channel and only tagged releases are supported, changes land on `main` freely and are stabilized before release. Follow the existing package layout (the store, its `config` subpackage, its `migrations`, its rendered query corpus and its mock), match the surrounding code, and keep `make format lint test` green. A package that turns out to be a primitive belongs in [`primitives-go`](https://github.com/primandproper/primitives-go) instead — [Primitives and Domains](#primitives-and-domains) is the rule, and `internal/tiercheck` fails a roster entry that claims one.
+Because `main` is a development channel and only tagged releases are supported, changes land on `main` freely and are stabilized before release. Follow the existing package layout (the store, its `config` subpackage, its `migrations`, its rendered query corpus and its mock), match the surrounding code, and keep `make format lint test` green. A package that turns out to be a primitive belongs in [`primitives-go`](https://github.com/primandproper/primitives-go/v2) instead — [Primitives and Domains](#primitives-and-domains) is the rule, and `internal/tiercheck` fails a roster entry that claims one.

@@ -26,11 +26,11 @@ import (
 	"github.com/primandproper/platform-go/v14/waitlists"
 	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
 
-	databasecfg "github.com/primandproper/primitives-go/database/config"
-	"github.com/primandproper/primitives-go/notifications/mobile"
-	"github.com/primandproper/primitives-go/notifications/mobile/apns"
-	mobilenotifcfg "github.com/primandproper/primitives-go/notifications/mobile/config"
-	"github.com/primandproper/primitives-go/tenancy"
+	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
+	"github.com/primandproper/primitives-go/v2/notifications/mobile"
+	"github.com/primandproper/primitives-go/v2/notifications/mobile/apns"
+	mobilenotifcfg "github.com/primandproper/primitives-go/v2/notifications/mobile/config"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/samber/do/v2"

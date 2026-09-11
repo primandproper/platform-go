@@ -1,8 +1,8 @@
 package dataprivacy
 
 import (
-	"github.com/primandproper/primitives-go/cryptography/encryption"
-	"github.com/primandproper/primitives-go/cryptography/encryption/aes"
+	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
+	"github.com/primandproper/primitives-go/v2/cryptography/encryption/aes"
 )
 
 // testRequestID is the request identity the packager tests bind their

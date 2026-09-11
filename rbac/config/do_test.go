@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/primandproper/primitives-go/authorization"
+	"github.com/primandproper/primitives-go/v2/authorization"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

@@ -10,10 +10,10 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
 
-	"github.com/primandproper/primitives-go/encoding"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/eventstream"
-	"github.com/primandproper/primitives-go/observability"
+	"github.com/primandproper/primitives-go/v2/encoding"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/eventstream"
+	"github.com/primandproper/primitives-go/v2/observability"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

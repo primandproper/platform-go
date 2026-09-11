@@ -6,8 +6,8 @@ import (
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
 
-	"github.com/primandproper/primitives-go/authorization"
-	authzgrpc "github.com/primandproper/primitives-go/authorization/grpc"
+	"github.com/primandproper/primitives-go/v2/authorization"
+	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
