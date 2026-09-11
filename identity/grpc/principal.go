@@ -20,6 +20,42 @@ import (
 // read this service performs — a user, their memberships, and the account a
 // request is against — and it is an answer, where this is the question. The
 // server resolves one from the other in GetPrincipal.
+//
+// # The method set is final
+//
+// Three methods, and there will not be a fourth. Nine sibling packages alias
+// this type verbatim — billing/grpc, comments/grpc, issuereports/grpc,
+// notifications/grpc, settings/grpc, waitlists/grpc, webhooks/grpc,
+// authentication/oauth2clients/grpc and authentication/signin/grpc — so a method
+// added here is a method every consumer of every gRPC surface in this module has
+// to grow at once, on whatever session type they already had. An interface
+// carries no default, so there is no deprecation shape available: the break is
+// total and it arrives at compile time in somebody else's repository. The three
+// that are here are the three every one of those surfaces needs to do anything
+// at all — who is calling, whose directory they are in, and which account the
+// call is against.
+//
+// What the first surface to want a service account flag, a session id or an
+// impersonation marker reaches for instead is an optional interface, declared
+// where it is needed and type-asserted at the call site:
+//
+//	if s, ok := caller.(interface{ SessionID() string }); ok {
+//		// the caller's session type answers this one; use it
+//	}
+//
+// A consumer whose type already has the method satisfies it by having it, and
+// one whose does not keeps compiling and takes the branch that does not need it
+// — which is the part the base interface cannot offer, since every method it
+// declares is one every implementation owes. The precedent is
+// [github.com/primandproper/platform-go/v14/notifications/async.ConnectionAcceptor]
+// and the standard library's http.Flusher; neither is a method the interface
+// beside it grew.
+//
+// This is not the ruling [TargetAuthorizer] carries, and the two should not be
+// collapsed. That one ships a default a consumer embeds, which is a different
+// way of staying additive and is open to it because it has a default to embed.
+// This has none and can have none: a principal is the consumer's own answer to
+// who is calling, and there is nothing here to inherit from.
 type Principal interface {
 	// UserID is the calling user's identifier in this directory.
 	UserID() string

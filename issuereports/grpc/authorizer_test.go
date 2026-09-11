@@ -1,6 +1,7 @@
 package grpc_test
 
 import (
+	"context"
 	"testing"
 
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
@@ -101,4 +102,75 @@ func TestErrTargetNotPermittedIsTheDirectorysSentinel(T *testing.T) {
 	T.Parallel()
 
 	test.EqOp(T, identitygrpc.ErrTargetNotPermitted, issuereportsgrpc.ErrTargetNotPermitted)
+}
+
+// consoleAuthorizer is the composition [issuereportsgrpc.ReportAuthorizer]'s
+// documentation asks a deployment with a triage console to write: the narrow
+// half embedded, the question the console widens answered differently, and the
+// rest inherited.
+//
+// It is what makes this seam's ruling the opposite of the principal's. The
+// method set here may grow, because an implementation in this shape already
+// answers whatever is added.
+type consoleAuthorizer struct {
+	issuereportsgrpc.ReporterAuthorizer
+
+	triager string
+}
+
+var _ issuereportsgrpc.ReportAuthorizer = consoleAuthorizer{}
+
+// AuthorizeReport widens one of the two and delegates the rest of that one.
+func (a consoleAuthorizer) AuthorizeReport(
+	ctx context.Context,
+	caller issuereportsgrpc.Principal,
+	report *issuereports.Report,
+) error {
+	if caller != nil && caller.UserID() == a.triager {
+		return nil
+	}
+
+	return a.ReporterAuthorizer.AuthorizeReport(ctx, caller, report)
+}
+
+// TestTheNarrowHalfIsEmbeddableAndEmbeddingStaysAdditive pins the authorizer
+// half of the two seams' opposite rulings.
+//
+// [issuereportsgrpc.Principal]'s method set is final because a consumer has
+// nothing to inherit from. This one's need not be, and the reason is exactly
+// what runs here: an implementation that embeds
+// [issuereportsgrpc.ReporterAuthorizer] answers the questions it did not write,
+// so a third question this surface grows costs its implementers nothing. That
+// this package ships no default does not change it — what is embedded is the
+// narrow half every deployment's rule contains, which is what it is exported to
+// be. The two rules must not be collapsed into one, and this test is the second
+// of them.
+func TestTheNarrowHalfIsEmbeddableAndEmbeddingStaysAdditive(T *testing.T) {
+	T.Parallel()
+
+	rule := consoleAuthorizer{triager: testReporter}
+	narrow := issuereportsgrpc.ReporterAuthorizer{}
+
+	caller := &testPrincipal{userID: testReporter, scope: testScope}
+
+	T.Run("the overridden question answers the deployment's rule", func(t *testing.T) {
+		t.Parallel()
+
+		somebodyElses := &issuereports.Report{Reporter: otherReporter}
+
+		test.NoError(t, rule.AuthorizeReport(t.Context(), caller, somebodyElses))
+		test.ErrorIs(t, narrow.AuthorizeReport(t.Context(), caller, somebodyElses),
+			issuereportsgrpc.ErrTargetNotPermitted)
+	})
+
+	T.Run("the question it did not write is inherited", func(t *testing.T) {
+		t.Parallel()
+
+		// AuthorizeReporter is not declared on consoleAuthorizer, so it is the
+		// narrow half's answer — which is what a method added to the interface
+		// later would also be.
+		test.NoError(t, rule.AuthorizeReporter(t.Context(), caller, testReporter))
+		test.ErrorIs(t, rule.AuthorizeReporter(t.Context(), caller, otherReporter),
+			issuereportsgrpc.ErrTargetNotPermitted)
+	})
 }
