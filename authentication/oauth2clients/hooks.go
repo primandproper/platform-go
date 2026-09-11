@@ -15,6 +15,10 @@ import (
 // one fact, and a hook that fails rolls the whole operation back — no row, and
 // no credential returned.
 //
+// It is one interface rather than a function type per operation so that a
+// consumer's audit layer is one type. Embed [NoopHooks] and override what
+// matters; a method added here later then does not break the embedder.
+//
 // # What a hook is handed
 //
 // A *Client, never an [IssuedClient]. The plaintext secret exists on exactly
@@ -53,7 +57,19 @@ type Hooks interface {
 
 // NoopHooks does nothing, and is what a [Service] built without [WithHooks]
 // runs. A consumer with nothing to commit alongside a registration configures
-// nothing.
+// nothing. It is also the type to embed in a [Hooks] that overrides some:
+//
+//	type auditHooks struct {
+//		oauth2clients.NoopHooks
+//
+//		audit audit.Recorder
+//	}
+//
+// Embedding it rather than implementing all three is what makes a method added
+// to [Hooks] later additive: an embedder gains a no-op rather than a compile
+// failure. A consumer who implements the interface outright — which the
+// generated HooksMock in the mock subpackage invites, since it implements every
+// method — is the consumer the next method breaks.
 type NoopHooks struct{}
 
 var _ Hooks = NoopHooks{}
