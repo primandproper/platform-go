@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability/metrics"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
 )
 
 // sweptKey is this store's one observability key.
@@ -27,7 +27,7 @@ func (s *Store) sweepEvery(ctx context.Context, interval time.Duration) {
 			// Logged rather than returned: nothing is waiting on this
 			// goroutine, and a sweep that fails is four tables that grow for
 			// another interval, not a token that misbehaves.
-			if _, err := s.Sweep(ctx, s.now()); err != nil {
+			if _, err := s.Sweep(ctx); err != nil {
 				s.o11y.Logger().Error("sweeping expired oauth2 records", err)
 			}
 		}

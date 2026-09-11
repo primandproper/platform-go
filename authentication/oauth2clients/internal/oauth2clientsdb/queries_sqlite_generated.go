@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 const archiveRegisteredClientSQLite = `UPDATE {{prefix}}oauth2_registered_clients SET

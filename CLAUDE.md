@@ -10,7 +10,7 @@ webhooks, notifications, sagas, work queues, data privacy and the rest — each 
 noun with a table, its lifecycle, its transport, its permissions and its privacy
 obligations. The infrastructure it is built from — `database`, `cache`, `email`,
 `messagequeue`, `observability`, `routing`, `secrets`, `search`, `tenancy`,
-`errors` and the rest of the primitives — is `github.com/primandproper/primitives-go`,
+`errors` and the rest of the primitives — is `github.com/primandproper/primitives-go/v2`,
 which this module requires. Single module, ~30 top-level packages, Go 1.27.
 
 ## Common Commands
@@ -62,7 +62,7 @@ Import ordering uses `gci` with four sections, separated by blank lines:
 
 Primitives-go imports are the third section, not a fifth one of their own. It is
 the section that already existed for org-level packages, and it is why the split
-needed no gci change: `github.com/primandproper/primitives-go/database` matches
+needed no gci change: `github.com/primandproper/primitives-go/v2/database` matches
 `prefix(github.com/primandproper)` and sorts with the org.
 
 The Makefile `THIS` variable must be the full module path (`github.com/primandproper/platform-go/v14`). `format_imports.sh` derives the org prefix from it by stripping any trailing major-version suffix (e.g. `/v2`) and then taking `dirname`, yielding `github.com/primandproper`. If `THIS` is too short, the org prefix collapses toward `github.com`, creating a spurious `prefix(github.com)` gci section.

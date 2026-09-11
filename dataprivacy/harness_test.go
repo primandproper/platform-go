@@ -18,14 +18,14 @@ import (
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
 
-	"github.com/primandproper/primitives-go/clock"
-	clockmock "github.com/primandproper/primitives-go/clock/mock"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/tenancy"
-	"github.com/primandproper/primitives-go/uploads"
+	"github.com/primandproper/primitives-go/v2/clock"
+	clockmock "github.com/primandproper/primitives-go/v2/clock/mock"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
+	"github.com/primandproper/primitives-go/v2/uploads"
 
 	"github.com/shoenig/test/must"
 )

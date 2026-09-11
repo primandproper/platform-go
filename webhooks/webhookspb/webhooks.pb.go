@@ -98,7 +98,7 @@ import (
 	sync "sync"
 	unsafe "unsafe"
 
-	filteringpb "github.com/primandproper/primitives-go/filtering/filteringpb"
+	filteringpb "github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"

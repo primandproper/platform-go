@@ -3,9 +3,9 @@ package http
 import (
 	"github.com/primandproper/platform-go/v14/operations"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability/logging"
-	"github.com/primandproper/primitives-go/observability/tracing"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	"github.com/primandproper/primitives-go/v2/observability/tracing"
 )
 
 // ErrNilOwnerResolver indicates handlers built without an OwnerResolver.

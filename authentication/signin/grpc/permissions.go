@@ -3,7 +3,7 @@ package grpc
 import (
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 
-	authzgrpc "github.com/primandproper/primitives-go/authorization/grpc"
+	authzgrpc "github.com/primandproper/primitives-go/v2/authorization/grpc"
 )
 
 // This service's authorization fragment, and the reason it is a list of names

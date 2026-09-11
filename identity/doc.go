@@ -39,9 +39,9 @@ That is the load-bearing decision in this package and it is worth being
 explicit about, because the obvious alternative — identity holds who somebody
 is, authentication holds how they prove it — reads cleaner and is wrong for the
 shape this module already has. The authentication subpackages are engines:
-[github.com/primandproper/primitives-go/authentication/argon2] hashes and
-compares, [github.com/primandproper/primitives-go/authentication/totp]
-generates and validates, [github.com/primandproper/primitives-go/authentication/webauthn]
+[github.com/primandproper/primitives-go/v2/authentication/argon2] hashes and
+compares, [github.com/primandproper/primitives-go/v2/authentication/totp]
+generates and validates, [github.com/primandproper/primitives-go/v2/authentication/webauthn]
 attests. None of them stores anything, none of them wants to, and giving one of
 them a table would mean an application that hashes passwords in a different
 package still ends up with a credential store it did not choose.
@@ -94,7 +94,7 @@ The empty string means the user holds no password credential. What it must
 never be read as is "any password will do". This package stores what an engine
 produced and never compares, so that obligation lands on the sign-in flow: ask
 [User.HasPassword] before reaching for
-[github.com/primandproper/primitives-go/authentication/argon2], rather than
+[github.com/primandproper/primitives-go/v2/authentication/argon2], rather than
 handing the engine an empty hash and trusting it to error. A user who has no
 password should be refused a password sign-in and sent to the credential they
 do have — which is a different answer from "wrong password", and only the flow
@@ -112,7 +112,7 @@ having an opinion, rather than acquiring the opposite one.
 
 # Scope is not the account
 
-Every row here carries a [github.com/primandproper/primitives-go/tenancy.Scope],
+Every row here carries a [github.com/primandproper/primitives-go/v2/tenancy.Scope],
 and every read filters on it — the module's rule, not an exception to it. The
 scope is *not* the account. Accounts are rows in this schema; the scope is
 whoever owns the directory those accounts and users live in.
@@ -201,8 +201,8 @@ forks the first time their answer differs.
 # The transaction is the caller's
 
 Every write in this package takes a
-[github.com/primandproper/primitives-go/database.Tx] and every read takes the
-wider [github.com/primandproper/primitives-go/database.SQLQueryExecutor]. That
+[github.com/primandproper/primitives-go/v2/database.Tx] and every read takes the
+wider [github.com/primandproper/primitives-go/v2/database.SQLQueryExecutor]. That
 is the module's store convention rather than this package's invention, and
 [Store] carries the argument for it.
 

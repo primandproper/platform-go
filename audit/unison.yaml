@@ -34,7 +34,7 @@ options:
     # Scope binds as the type, not a string derived from it, so an unset scope
     # is a driver error instead of a wider result set. The filter beside it is
     # deliberately not this type: see the scope_filter entry below.
-    - {column: "*.scope", go_type: github.com/primandproper/primitives-go/tenancy.Scope}
+    - {column: "*.scope", go_type: github.com/primandproper/primitives-go/v2/tenancy.Scope}
     # The chain's positions and the entry's, which the three engines otherwise
     # disagree about the width of.
     - {column: "*.seq", go_type: int64}

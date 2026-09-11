@@ -7,10 +7,10 @@ import (
 
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
 
-	"github.com/primandproper/primitives-go/encoding"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	messagequeuecfg "github.com/primandproper/primitives-go/messagequeue/config"
-	secretscfg "github.com/primandproper/primitives-go/secrets/config"
+	"github.com/primandproper/primitives-go/v2/encoding"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	messagequeuecfg "github.com/primandproper/primitives-go/v2/messagequeue/config"
+	secretscfg "github.com/primandproper/primitives-go/v2/secrets/config"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/shoenig/test"

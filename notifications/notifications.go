@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // The keys this package attaches to spans and log lines. Declared once so a

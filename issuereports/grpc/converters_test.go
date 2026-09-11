@@ -8,7 +8,7 @@ import (
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
 
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

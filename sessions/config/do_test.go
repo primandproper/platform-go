@@ -7,10 +7,10 @@ import (
 	"github.com/primandproper/platform-go/v14/sessions"
 	sessionshttp "github.com/primandproper/platform-go/v14/sessions/http"
 
-	"github.com/primandproper/primitives-go/cookies"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability/metrics"
+	"github.com/primandproper/primitives-go/v2/cookies"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"

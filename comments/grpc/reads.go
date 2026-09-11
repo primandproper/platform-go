@@ -6,10 +6,10 @@ import (
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 
-	grpcerrors "github.com/primandproper/primitives-go/errors/grpc"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/filtering/filteringpb"
-	filteringgrpc "github.com/primandproper/primitives-go/filtering/grpc"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
+	filteringgrpc "github.com/primandproper/primitives-go/v2/filtering/grpc"
 
 	"google.golang.org/grpc/codes"
 )

@@ -8,10 +8,10 @@ import (
 	"github.com/primandproper/platform-go/v14/outbox"
 	outboxmigrations "github.com/primandproper/platform-go/v14/outbox/migrations"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/retry"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/retry"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

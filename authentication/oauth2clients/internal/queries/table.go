@@ -3,7 +3,7 @@ package queries
 import (
 	"slices"
 
-	"github.com/primandproper/primitives-go/database/querygen"
+	"github.com/primandproper/primitives-go/v2/database/querygen"
 )
 
 // Table is the registered clients table's shape.

@@ -8,12 +8,12 @@ import (
 
 	"github.com/primandproper/platform-go/v14/operations"
 
-	"github.com/primandproper/primitives-go/encoding"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	httpx "github.com/primandproper/primitives-go/errors/http"
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/routing"
+	"github.com/primandproper/primitives-go/v2/encoding"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	httpx "github.com/primandproper/primitives-go/v2/errors/http"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/routing"
 )
 
 // o11yName scopes this package's spans and logger.

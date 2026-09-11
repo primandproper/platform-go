@@ -95,8 +95,8 @@ package migrations
 import (
 	_ "embed"
 
-	"github.com/primandproper/primitives-go/database/ddl"
-	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/ddl"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 )
 
 //go:embed postgres.sql

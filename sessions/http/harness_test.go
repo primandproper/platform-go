@@ -12,9 +12,9 @@ import (
 	"github.com/primandproper/platform-go/v14/sessions"
 	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
 
-	"github.com/primandproper/primitives-go/cache/memory"
-	"github.com/primandproper/primitives-go/clock"
-	"github.com/primandproper/primitives-go/cookies"
+	"github.com/primandproper/primitives-go/v2/cache/memory"
+	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/cookies"
 
 	"github.com/shoenig/test/must"
 )

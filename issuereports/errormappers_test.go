@@ -5,8 +5,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/issuereports"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	httperrors "github.com/primandproper/primitives-go/errors/http"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

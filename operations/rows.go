@@ -6,7 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/operations/internal/operationsdb"
 
-	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/v2/filtering"
 )
 
 // The typed seam between the generated package and this package's own types.

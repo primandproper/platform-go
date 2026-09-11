@@ -10,8 +10,8 @@ import (
 	"github.com/primandproper/platform-go/v14/operations/internal/operationsdb"
 	"github.com/primandproper/platform-go/v14/operations/internal/queries"
 
-	"github.com/primandproper/primitives-go/filtering"
-	"github.com/primandproper/primitives-go/pointer"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

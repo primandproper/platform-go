@@ -7,8 +7,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/sessions/database/internal/sessionsdb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/observability/metrics"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
 )
 
 // sweptKey is this backend's one observability key.

@@ -5,9 +5,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/primandproper/primitives-go/charset/plainname"
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/charset/plainname"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.

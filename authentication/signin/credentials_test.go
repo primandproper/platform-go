@@ -6,7 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/identity"
 
-	"github.com/primandproper/primitives-go/authentication/argon2"
+	"github.com/primandproper/primitives-go/v2/authentication/argon2"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

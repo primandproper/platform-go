@@ -3,9 +3,9 @@ package waitlists
 import (
 	"testing"
 
-	"github.com/primandproper/primitives-go/cryptography/hashing"
-	"github.com/primandproper/primitives-go/cryptography/hashing/sha512"
-	"github.com/primandproper/primitives-go/database/dialect"
+	"github.com/primandproper/primitives-go/v2/cryptography/hashing"
+	"github.com/primandproper/primitives-go/v2/cryptography/hashing/sha512"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

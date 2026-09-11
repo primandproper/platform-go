@@ -10,8 +10,8 @@ import (
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/tenancy"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

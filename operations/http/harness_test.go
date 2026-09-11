@@ -8,9 +8,9 @@ import (
 
 	"github.com/primandproper/platform-go/v14/operations"
 
-	"github.com/primandproper/primitives-go/database"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/filtering"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
 )
 
 // stubStore satisfies operations.Store and does nothing. It is what the tests

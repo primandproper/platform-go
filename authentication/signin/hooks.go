@@ -5,8 +5,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/identity"
 
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // FailedSignIn is a sign-in that proved nothing, as much of it as this package

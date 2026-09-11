@@ -36,8 +36,8 @@ options:
     # projection carries a second one under an alias — the delivery's scope and
     # the endpoint's are the same kind of answer about two rows — and it takes
     # the same type for the same reason.
-    - {column: "*.scope", go_type: github.com/primandproper/primitives-go/tenancy.Scope}
-    - {column: "*.endpoint_scope", go_type: github.com/primandproper/primitives-go/tenancy.Scope}
+    - {column: "*.scope", go_type: github.com/primandproper/primitives-go/v2/tenancy.Scope}
+    - {column: "*.endpoint_scope", go_type: github.com/primandproper/primitives-go/v2/tenancy.Scope}
     # The integer columns, whose width the three engines do not agree on:
     # Postgres and MySQL resolve INTEGER to a 32-bit Go type and SQLite to a
     # 64-bit one, which is a divergence unison refuses rather than reconciles.

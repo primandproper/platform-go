@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/primandproper/primitives-go/circuitbreaking"
-	cbnoop "github.com/primandproper/primitives-go/circuitbreaking/noop"
-	"github.com/primandproper/primitives-go/cryptography/requestsigning"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/retry"
+	"github.com/primandproper/primitives-go/v2/circuitbreaking"
+	cbnoop "github.com/primandproper/primitives-go/v2/circuitbreaking/noop"
+	"github.com/primandproper/primitives-go/v2/cryptography/requestsigning"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/retry"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"

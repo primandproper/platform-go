@@ -29,7 +29,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/timers"
 
-	"github.com/primandproper/primitives-go/database"
+	"github.com/primandproper/primitives-go/v2/database"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

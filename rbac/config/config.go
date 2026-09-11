@@ -6,12 +6,12 @@ import (
 
 	"github.com/primandproper/platform-go/v14/rbac"
 
-	"github.com/primandproper/primitives-go/authorization"
-	authorizationcfg "github.com/primandproper/primitives-go/authorization/config"
-	"github.com/primandproper/primitives-go/cache"
-	"github.com/primandproper/primitives-go/config/cfgnorm"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/errors"
+	"github.com/primandproper/primitives-go/v2/authorization"
+	authorizationcfg "github.com/primandproper/primitives-go/v2/authorization/config"
+	"github.com/primandproper/primitives-go/v2/cache"
+	"github.com/primandproper/primitives-go/v2/config/cfgnorm"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/errors"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )

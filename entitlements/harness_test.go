@@ -10,11 +10,11 @@ import (
 	"github.com/primandproper/platform-go/v14/metering"
 	meteringmock "github.com/primandproper/platform-go/v14/metering/mock"
 
-	"github.com/primandproper/primitives-go/cache"
-	"github.com/primandproper/primitives-go/cache/memory"
-	"github.com/primandproper/primitives-go/featureflags"
-	featureflagsmock "github.com/primandproper/primitives-go/featureflags/mock"
-	loggingnoop "github.com/primandproper/primitives-go/observability/logging/noop"
+	"github.com/primandproper/primitives-go/v2/cache"
+	"github.com/primandproper/primitives-go/v2/cache/memory"
+	"github.com/primandproper/primitives-go/v2/featureflags"
+	featureflagsmock "github.com/primandproper/primitives-go/v2/featureflags/mock"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
 
 	"github.com/shoenig/test/must"
 )

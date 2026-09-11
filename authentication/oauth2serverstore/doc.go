@@ -83,6 +83,13 @@ rather than one per replica. Without either, the authorization code table grows
 by one row per login attempt forever, and the client table grows by one row per
 anonymous registration.
 
+Sweep takes no horizon. It reclaims what this store's own clock says is dead,
+which is the same clock every read here refuses against, so a sweep can neither
+take a row a request is still entitled to nor leave one the next read will
+refuse. A scheduler that wants to sweep as of an earlier instant builds a store
+against a clock stopped there — WithClock — rather than telling one store two
+different times.
+
 A revoked token that has not yet expired is deliberately kept: a resource server
 holding one is entitled to be told "no" rather than to have its request read as
 carrying a token nobody ever issued.

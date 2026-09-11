@@ -10,16 +10,16 @@ import (
 
 	"github.com/primandproper/platform-go/v14/billing/migrations"
 
-	"github.com/primandproper/primitives-go/capitalism"
-	"github.com/primandproper/primitives-go/clock"
-	clockmock "github.com/primandproper/primitives-go/clock/mock"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/mysql"
-	"github.com/primandproper/primitives-go/database/postgres"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/capitalism"
+	"github.com/primandproper/primitives-go/v2/clock"
+	clockmock "github.com/primandproper/primitives-go/v2/clock/mock"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/mysql"
+	"github.com/primandproper/primitives-go/v2/database/postgres"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test/must"
 )

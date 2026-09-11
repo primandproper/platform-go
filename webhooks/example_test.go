@@ -15,11 +15,11 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks"
 	"github.com/primandproper/platform-go/v14/webhooks/migrations"
 
-	"github.com/primandproper/primitives-go/cryptography/requestsigning"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/cryptography/requestsigning"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // An application's event types, declared as webhooks.EventType constants. That

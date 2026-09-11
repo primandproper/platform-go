@@ -13,20 +13,20 @@ import (
 	"github.com/primandproper/platform-go/v14/sessions"
 	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
 
-	"github.com/primandproper/primitives-go/authentication"
-	"github.com/primandproper/primitives-go/authentication/argon2"
-	"github.com/primandproper/primitives-go/authentication/totp"
-	"github.com/primandproper/primitives-go/cache/memory"
-	"github.com/primandproper/primitives-go/database"
-	"github.com/primandproper/primitives-go/database/dialect"
-	"github.com/primandproper/primitives-go/database/sqlite"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/authentication"
+	"github.com/primandproper/primitives-go/v2/authentication/argon2"
+	"github.com/primandproper/primitives-go/v2/authentication/totp"
+	"github.com/primandproper/primitives-go/v2/cache/memory"
+	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	otp "github.com/pquerna/otp/totp"
 )
 
 // Example_loginFlow is the sign-in this module declines to ship, written the way
-// [github.com/primandproper/primitives-go/authentication]'s package
+// [github.com/primandproper/primitives-go/v2/authentication]'s package
 // documentation says to write it.
 //
 // Everything it calls is a package beside this one. What is written here — the

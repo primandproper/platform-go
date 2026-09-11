@@ -3,8 +3,8 @@ package syncsource
 import (
 	"github.com/primandproper/platform-go/v14/searchsync"
 
-	platformerrors "github.com/primandproper/primitives-go/errors"
-	textsearch "github.com/primandproper/primitives-go/search/text"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	textsearch "github.com/primandproper/primitives-go/v2/search/text"
 )
 
 // NewSyncer builds the searchsync.Syncer that applies one index event for this

@@ -5,8 +5,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/identity"
 
-	"github.com/primandproper/primitives-go/observability"
-	"github.com/primandproper/primitives-go/tenancy"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // GetAuthStatus reports where a signed-in caller stands: who they are, which
