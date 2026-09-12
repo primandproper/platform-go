@@ -47,6 +47,22 @@ WHERE scope = $1
 	AND target_type = $2
 	AND target_id = $3`
 
+const getArchivedCommentPostgreSQL = `SELECT
+	{{prefix}}comments.id,
+	{{prefix}}comments.scope,
+	{{prefix}}comments.target_type,
+	{{prefix}}comments.target_id,
+	{{prefix}}comments.parent_id,
+	{{prefix}}comments.author,
+	{{prefix}}comments.body,
+	{{prefix}}comments.created_at,
+	{{prefix}}comments.last_updated_at,
+	{{prefix}}comments.archived_at
+FROM {{prefix}}comments
+WHERE {{prefix}}comments.id = $1
+	AND {{prefix}}comments.scope = $2
+	AND {{prefix}}comments.archived_at IS NOT NULL`
+
 const getCommentPostgreSQL = `SELECT
 	{{prefix}}comments.id,
 	{{prefix}}comments.scope,
@@ -61,12 +77,6 @@ const getCommentPostgreSQL = `SELECT
 FROM {{prefix}}comments
 WHERE {{prefix}}comments.archived_at IS NULL
 	AND {{prefix}}comments.id = $1
-	AND {{prefix}}comments.scope = $2`
-
-const getCommentCreatedAtPostgreSQL = `SELECT
-	{{prefix}}comments.created_at
-FROM {{prefix}}comments
-WHERE {{prefix}}comments.id = $1
 	AND {{prefix}}comments.scope = $2`
 
 const listCommentsPostgreSQL = `SELECT
@@ -412,8 +422,8 @@ type postgresqlQueries struct {
 	createComment                      string
 	deleteCommentsByAuthor             string
 	deleteCommentsForTarget            string
+	getArchivedComment                 string
 	getComment                         string
-	getCommentCreatedAt                string
 	listComments                       string
 	listCommentsByAuthor               string
 	listCommentsByAuthorDescending     string
@@ -431,8 +441,8 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		createComment:                      strings.ReplaceAll(createCommentPostgreSQL, prefixMarker, prefix),
 		deleteCommentsByAuthor:             strings.ReplaceAll(deleteCommentsByAuthorPostgreSQL, prefixMarker, prefix),
 		deleteCommentsForTarget:            strings.ReplaceAll(deleteCommentsForTargetPostgreSQL, prefixMarker, prefix),
+		getArchivedComment:                 strings.ReplaceAll(getArchivedCommentPostgreSQL, prefixMarker, prefix),
 		getComment:                         strings.ReplaceAll(getCommentPostgreSQL, prefixMarker, prefix),
-		getCommentCreatedAt:                strings.ReplaceAll(getCommentCreatedAtPostgreSQL, prefixMarker, prefix),
 		listComments:                       strings.ReplaceAll(listCommentsPostgreSQL, prefixMarker, prefix),
 		listCommentsByAuthor:               strings.ReplaceAll(listCommentsByAuthorPostgreSQL, prefixMarker, prefix),
 		listCommentsByAuthorDescending:     strings.ReplaceAll(listCommentsByAuthorDescendingPostgreSQL, prefixMarker, prefix),
@@ -498,6 +508,31 @@ func (q *postgresqlQueries) DeleteCommentsForTarget(ctx context.Context, db DBTX
 	return result.RowsAffected()
 }
 
+// GetArchivedComment runs the :one query against postgresql.
+func (q *postgresqlQueries) GetArchivedComment(ctx context.Context, db DBTX, arg GetArchivedCommentParams) (GetArchivedCommentRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedComment,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedCommentRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.TargetType,
+		&i.TargetID,
+		&i.ParentID,
+		&i.Author,
+		&i.Body,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
 // GetComment runs the :one query against postgresql.
 func (q *postgresqlQueries) GetComment(ctx context.Context, db DBTX, arg GetCommentParams) (GetCommentRow, error) {
 	row := db.QueryRowContext(ctx, q.getComment,
@@ -518,22 +553,6 @@ func (q *postgresqlQueries) GetComment(ctx context.Context, db DBTX, arg GetComm
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
-	)
-
-	return i, err
-}
-
-// GetCommentCreatedAt runs the :one query against postgresql.
-func (q *postgresqlQueries) GetCommentCreatedAt(ctx context.Context, db DBTX, arg GetCommentCreatedAtParams) (GetCommentCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getCommentCreatedAt,
-		arg.ID,
-		arg.Scope,
-	)
-
-	var i GetCommentCreatedAtRow
-
-	err := row.Scan(
-		&i.CreatedAt,
 	)
 
 	return i, err
@@ -895,6 +914,22 @@ var (
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope
+	}(GetArchivedCommentParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		TargetType    string
+		TargetID      string
+		ParentID      string
+		Author        string
+		Body          string
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetArchivedCommentRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
 	}(GetCommentParams{})
 	_ = struct {
 		ID            string
@@ -908,13 +943,6 @@ var (
 		LastUpdatedAt *time.Time
 		ArchivedAt    *time.Time
 	}(GetCommentRow{})
-	_ = struct {
-		ID    string
-		Scope tenancy.Scope
-	}(GetCommentCreatedAtParams{})
-	_ = struct {
-		CreatedAt time.Time
-	}(GetCommentCreatedAtRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
 		CreatedBefore   *time.Time

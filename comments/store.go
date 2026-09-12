@@ -40,6 +40,31 @@ import (
 // these types; an implementation with no transaction of its own ignores the
 // executor, and the seam stays one signature rather than one per backing.
 //
+// # Every write that names one comment answers with it
+//
+// [Store.CreateComment], [Store.UpdateComment] and [Store.ArchiveComment] each
+// return the row the statement left, read back on the caller's transaction.
+// Returning is the spelling rather than writing the answer onto the argument:
+// the two deliver the same guarantee, and one of them is available to a write
+// that takes an id rather than an entity, so this interface spells it one way.
+// None of the three modifies the value it was handed.
+//
+// The reading is not "a write returns". It is that the row is what the caller
+// acts on next and no read of theirs can reach it as the statement left it. A
+// create mints the id and the creation time is the database's. An edit moves
+// last_updated_at, which is the database's, and leaves the target, the parent
+// and the author as the row already held them rather than as the argument named
+// them. An archive hides the row from every keyed read this interface has, so
+// the entry naming what was removed is written from the returned row or from a
+// read taken before the write, describing a comment that was still in the
+// discussion.
+//
+// [Store.DeleteCommentsForTarget] and [Store.DeleteCommentsByAuthor] are the two
+// writes that do not, and the reason is the shape of the answer rather than an
+// exception to the rule: each destroys a set rather than moving a row, and what
+// a caller reports is how many went. Handing back the rows would be handing back
+// the free text the erasure exists to remove.
+//
 // # The scope is an argument, on every method
 //
 // Every method takes a tenancy.Scope, and none of them offers a variant that
@@ -95,8 +120,8 @@ import (
 // for hiding rows, which is not what it is for.
 type Store interface {
 	// CreateComment writes one comment through the caller's transaction, so the
-	// comment commits with whatever the caller writes beside it. It assigns the
-	// id where the caller left it empty and writes back what was stored. A nil
+	// comment commits with whatever the caller writes beside it, and answers with
+	// the row it wrote. It assigns the id where the caller left it empty. A nil
 	// tx is an error wrapping ErrNilExecutor.
 	//
 	// The target is checked against the catalog the store was built with, and
@@ -111,9 +136,15 @@ type Store interface {
 	// names no target adopts the parent's, and one that names a different target
 	// is ErrTargetMismatch.
 	//
-	// Every one of those checks runs on tx, so a reply whose parent was written
-	// earlier in the same transaction resolves its parent, and the creation time
-	// read back is the one this transaction just wrote.
+	// The comment handed in is not modified. Everything the write settled — the
+	// id it minted, the scope it bound, the target a reply adopted, the stamp the
+	// database wrote — is on the value returned, so a caller reads them from one
+	// place rather than from an argument that changed under them.
+	//
+	// Every one of those checks runs on tx, and so does the read-back: a reply
+	// whose parent was written earlier in the same transaction resolves its
+	// parent, and the creation time read back is the one this transaction just
+	// wrote rather than a read of a row nothing else can see yet.
 	//
 	// One check does not run there, and it is worth stating rather than leaving
 	// to be found. A TargetExistsFunc is handed a scope and a target id and no
@@ -124,7 +155,7 @@ type Store interface {
 	// ErrTargetNotFound where that target type registers a hook, and is written
 	// where it does not. The alternative is an executor on the hook's signature,
 	// which is a connection to a table most hooks do not read.
-	CreateComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *Comment) error
+	CreateComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *Comment) (*Comment, error)
 
 	// GetComment reads one of the scope's live comments. It returns an error
 	// wrapping ErrCommentNotFound when the comment does not exist, has been
@@ -177,25 +208,34 @@ type Store interface {
 
 	// UpdateComment revises what the author said, and only that, through the
 	// caller's transaction — so the revision and whatever the caller records
-	// about it commit together or not at all. An edit is a moderation event as
-	// much as it is a write: who changed what, and when. A nil tx is an error
+	// about it commit together or not at all — and answers with the revised row.
+	// An edit is a moderation event as much as it is a write: who changed what,
+	// and when, and the entry recording it describes the row the statement left
+	// rather than the one the caller read before it. A nil tx is an error
 	// wrapping ErrNilExecutor.
 	//
 	// It does not move the comment: the target is what the comment is about and
 	// was checked against the catalog when it was written, the parent is which
 	// conversation it is in, and the author is who said it. A whole-row write
 	// that assigned any of the three would be an edit that silently moved
-	// somebody else's words.
+	// somebody else's words. The row returned is what makes that visible rather
+	// than assumed — it carries the three as the table holds them, not as the
+	// argument named them.
+	//
+	// The comment handed in is not modified, and last_updated_at is the
+	// database's, so a response assembled from the argument would say the row was
+	// last touched at the epoch.
 	//
 	// A comment that is not in the scope — absent, archived, or somebody else's —
 	// is an error wrapping ErrCommentNotFound.
-	UpdateComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *Comment) error
+	UpdateComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *Comment) (*Comment, error)
 
 	// ArchiveComment removes one comment from the discussion through the caller's
-	// transaction, leaving the row for whoever asks later what was said. It is
-	// the write a moderation action reaches for: the comment leaves the
-	// discussion and the entry naming who removed it land together, or neither
-	// does. A nil tx is an error wrapping ErrNilExecutor.
+	// transaction, leaving the row for whoever asks later what was said, and
+	// answers with the row it hid. It is the write a moderation action reaches
+	// for: the comment leaves the discussion and the entry naming who removed it
+	// land together, or neither does. A nil tx is an error wrapping
+	// ErrNilExecutor.
 	//
 	// It archives exactly the comment named. A root's replies stay where they
 	// are, which is deliberate: a moderator removing an off-topic root has not
@@ -207,7 +247,20 @@ type Store interface {
 	// A comment already archived is an error wrapping ErrCommentNotFound,
 	// because an archived comment is not in the discussion and this method
 	// addresses the discussion.
-	ArchiveComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, commentID string) error
+	//
+	// It returns the row because this is the write whose result no ordinary read
+	// here can reach. GetComment cannot see an archived comment at all — that is
+	// what archiving means — and the three lists reach it only for a caller who
+	// set QueryFilter.IncludeArchived and then pages for it, which is a different
+	// question from "what did I just remove". The words somebody wrote are what a
+	// moderator's entry has to name, and the alternative is the read a consumer
+	// takes a statement earlier, describing the comment as it stood before the
+	// write rather than as the write left it.
+	//
+	// The read-back runs on tx and only after the guard has matched, so a write
+	// that moved nothing is ErrCommentNotFound rather than somebody else's
+	// archive reported as this one's.
+	ArchiveComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, commentID string) (*Comment, error)
 
 	// DeleteCommentsForTarget destroys every comment about one thing — replies
 	// and archived rows included — and reports how many that was.

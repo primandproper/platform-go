@@ -24,10 +24,10 @@ var _ comments.Store = &StoreMock{}
 //
 //		// make and configure a mocked comments.Store
 //		mockedStore := &StoreMock{
-//			ArchiveCommentFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, commentID string) error {
+//			ArchiveCommentFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, commentID string) (*comments.Comment, error) {
 //				panic("mock out the ArchiveComment method")
 //			},
-//			CreateCommentFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error {
+//			CreateCommentFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) (*comments.Comment, error) {
 //				panic("mock out the CreateComment method")
 //			},
 //			DeleteCommentsByAuthorFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, author string) (int64, error) {
@@ -51,7 +51,7 @@ var _ comments.Store = &StoreMock{}
 //			ListRootCommentsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, target comments.Target, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[comments.Comment], error) {
 //				panic("mock out the ListRootComments method")
 //			},
-//			UpdateCommentFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error {
+//			UpdateCommentFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) (*comments.Comment, error) {
 //				panic("mock out the UpdateComment method")
 //			},
 //		}
@@ -62,10 +62,10 @@ var _ comments.Store = &StoreMock{}
 //	}
 type StoreMock struct {
 	// ArchiveCommentFunc mocks the ArchiveComment method.
-	ArchiveCommentFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, commentID string) error
+	ArchiveCommentFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, commentID string) (*comments.Comment, error)
 
 	// CreateCommentFunc mocks the CreateComment method.
-	CreateCommentFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error
+	CreateCommentFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) (*comments.Comment, error)
 
 	// DeleteCommentsByAuthorFunc mocks the DeleteCommentsByAuthor method.
 	DeleteCommentsByAuthorFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, author string) (int64, error)
@@ -89,7 +89,7 @@ type StoreMock struct {
 	ListRootCommentsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, target comments.Target, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[comments.Comment], error)
 
 	// UpdateCommentFunc mocks the UpdateComment method.
-	UpdateCommentFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error
+	UpdateCommentFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) (*comments.Comment, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -227,7 +227,7 @@ type StoreMock struct {
 }
 
 // ArchiveComment calls ArchiveCommentFunc.
-func (mock *StoreMock) ArchiveComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, commentID string) error {
+func (mock *StoreMock) ArchiveComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, commentID string) (*comments.Comment, error) {
 	if mock.ArchiveCommentFunc == nil {
 		panic("StoreMock.ArchiveCommentFunc: method is nil but Store.ArchiveComment was just called")
 	}
@@ -271,7 +271,7 @@ func (mock *StoreMock) ArchiveCommentCalls() []struct {
 }
 
 // CreateComment calls CreateCommentFunc.
-func (mock *StoreMock) CreateComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error {
+func (mock *StoreMock) CreateComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) (*comments.Comment, error) {
 	if mock.CreateCommentFunc == nil {
 		panic("StoreMock.CreateCommentFunc: method is nil but Store.CreateComment was just called")
 	}
@@ -643,7 +643,7 @@ func (mock *StoreMock) ListRootCommentsCalls() []struct {
 }
 
 // UpdateComment calls UpdateCommentFunc.
-func (mock *StoreMock) UpdateComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) error {
+func (mock *StoreMock) UpdateComment(ctx context.Context, tx database.Tx, scope tenancy.Scope, comment *comments.Comment) (*comments.Comment, error) {
 	if mock.UpdateCommentFunc == nil {
 		panic("StoreMock.UpdateCommentFunc: method is nil but Store.UpdateComment was just called")
 	}

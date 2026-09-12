@@ -115,7 +115,8 @@ import (
 // state its caller asked for and there is nothing that was moved.
 //
 // The rejected spelling was mutating the caller's argument in place, which
-// delivers the same guarantee — comments.Store.CreateComment does exactly that.
+// delivers the same guarantee — comments.Store.CreateComment was the module's
+// last one, and it has since moved to returning too.
 // Returning is the one this module already has more of, and the only one
 // available to a write that takes an id rather than an entity, which is what
 // made it the module's answer rather than this package's.

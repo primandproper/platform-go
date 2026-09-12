@@ -84,7 +84,8 @@ import (
 // deciding what to do about the bytes.
 //
 // The rejected spelling was mutating the caller's argument in place, which
-// delivers the same guarantee — comments.Store.CreateComment does exactly that.
+// delivers the same guarantee — comments.Store.CreateComment was the module's
+// last one, and it has since moved to returning too.
 // Returning is the one this module already has more of, and it is the one that
 // also works for a write that takes an id rather than an entity, which is what
 // made it the module's answer rather than this package's.

@@ -216,6 +216,10 @@ func (h *harness) otherCtx(tb testing.TB) context.Context {
 
 // seed writes one comment directly through the store, so a test asserting what a
 // caller can reach does not reach it through the surface under test.
+//
+// It hands back the stored row rather than the value it was given: the create
+// does not touch its argument, so the id and the creation time are on what the
+// write answered with alone.
 func (h *harness) seed(tb testing.TB, scope tenancy.Scope, comment *comments.Comment) *comments.Comment {
 	tb.Helper()
 
@@ -231,9 +235,18 @@ func (h *harness) seed(tb testing.TB, scope tenancy.Scope, comment *comments.Com
 		comment.Target = testTarget
 	}
 
+	var stored *comments.Comment
+
 	must.NoError(tb, h.db.WithTransaction(tb.Context(), func(tx database.Tx) error {
-		return h.store.CreateComment(tb.Context(), tx, scope, comment)
+		written, err := h.store.CreateComment(tb.Context(), tx, scope, comment)
+		if err != nil {
+			return err
+		}
+
+		stored = written
+
+		return nil
 	}))
 
-	return comment
+	return stored
 }

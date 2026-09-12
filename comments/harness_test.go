@@ -161,38 +161,104 @@ func (e *storeEnv) inTx(tb testing.TB, fn func(tx database.Tx) error) error {
 // instead, and they are in the transactions suite.
 func (e *storeEnv) reader() database.SQLQueryExecutor { return e.client.Reader() }
 
-// create writes one comment in a transaction of its own and reports what the
-// write returned.
+// create writes one comment in a transaction of its own, handing back the stored
+// row and what the write returned.
 //
 // The transaction is a detail here rather than the subject: these cases are about
 // what the write checks, and a consumer that has nothing to commit alongside
 // opens exactly this. What a comment commits *with* is the transactions suite.
-func (e *storeEnv) create(tb testing.TB, store *SQLStore, scope tenancy.Scope, comment *Comment) error {
+func (e *storeEnv) create(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	comment *Comment,
+) (*Comment, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.CreateComment(tb.Context(), tx, scope, comment)
+	var created *Comment
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		created, txErr = store.CreateComment(tb.Context(), tx, scope, comment)
+
+		return txErr
 	})
+
+	return created, err
 }
 
-// update revises one comment in a transaction of its own and reports what the
-// write returned.
-func (e *storeEnv) update(tb testing.TB, store *SQLStore, scope tenancy.Scope, comment *Comment) error {
+// createErr is create for the cases whose subject is the refusal rather than the
+// row, so a refused write reads as one expression.
+func (e *storeEnv) createErr(tb testing.TB, store *SQLStore, scope tenancy.Scope, comment *Comment) error {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.UpdateComment(tb.Context(), tx, scope, comment)
-	})
+	_, err := e.create(tb, store, scope, comment)
+
+	return err
 }
 
-// archive removes one comment from the discussion in a transaction of its own
-// and reports what the write returned.
-func (e *storeEnv) archive(tb testing.TB, store *SQLStore, scope tenancy.Scope, commentID string) error {
+// update revises one comment in a transaction of its own, handing back the
+// revised row and what the write returned.
+func (e *storeEnv) update(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	comment *Comment,
+) (*Comment, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ArchiveComment(tb.Context(), tx, scope, commentID)
+	var revised *Comment
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		revised, txErr = store.UpdateComment(tb.Context(), tx, scope, comment)
+
+		return txErr
 	})
+
+	return revised, err
+}
+
+// updateErr is update for the cases whose subject is the refusal rather than the
+// row.
+func (e *storeEnv) updateErr(tb testing.TB, store *SQLStore, scope tenancy.Scope, comment *Comment) error {
+	tb.Helper()
+
+	_, err := e.update(tb, store, scope, comment)
+
+	return err
+}
+
+// archive removes one comment from the discussion in a transaction of its own,
+// handing back the hidden row and what the write returned.
+func (e *storeEnv) archive(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	commentID string,
+) (*Comment, error) {
+	tb.Helper()
+
+	var hidden *Comment
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		hidden, txErr = store.ArchiveComment(tb.Context(), tx, scope, commentID)
+
+		return txErr
+	})
+
+	return hidden, err
+}
+
+// archiveErr is archive for the cases whose subject is the refusal rather than
+// the row.
+func (e *storeEnv) archiveErr(tb testing.TB, store *SQLStore, scope tenancy.Scope, commentID string) error {
+	tb.Helper()
+
+	_, err := e.archive(tb, store, scope, commentID)
+
+	return err
 }
 
 // newComment is one row's worth of input, with everything the store requires
@@ -206,15 +272,21 @@ func newComment(author, body string) *Comment {
 	}
 }
 
-// written creates a comment and returns it, for the tests whose subject is what
-// happens next rather than the write. It writes under the scope the comment
-// carries, which is what a fixture means by naming one.
+// written creates a comment and returns the stored row, for the tests whose
+// subject is what happens next rather than the write. It writes under the scope
+// the comment carries, which is what a fixture means by naming one.
+//
+// It hands back what the write answered with rather than the value it was given:
+// the create does not touch its argument, so the id and the creation time are on
+// the returned row alone, and a fixture that returned the input would be a
+// fixture whose ID is empty.
 func written(tb testing.TB, e *storeEnv, store *SQLStore, comment *Comment) *Comment {
 	tb.Helper()
 
-	must.NoError(tb, e.create(tb, store, comment.Scope, comment))
+	stored, err := e.create(tb, store, comment.Scope, comment)
+	must.NoError(tb, err)
 
-	return comment
+	return stored
 }
 
 // reply is one reply's worth of input, naming no target so that it adopts its

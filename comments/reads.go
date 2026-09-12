@@ -34,10 +34,30 @@ func (s *SQLStore) GetComment(
 		return nil, op.Error(err, "reading comment %q", commentID)
 	}
 
-	row, err := s.q.GetComment(ctx, q,
-		commentsdb.GetCommentParams{ID: commentID, Scope: scope})
+	comment, err := s.commentOn(ctx, q, scope, commentID)
 	if err != nil {
-		return nil, op.Error(notFound(err, ErrCommentNotFound), "reading comment %q", commentID)
+		return nil, op.Error(err, "reading comment %q", commentID)
+	}
+
+	return comment, nil
+}
+
+// commentOn is the keyed read behind GetComment and behind the read-back the
+// create and the edit answer with.
+//
+// It is shared rather than each write calling GetComment, because GetComment
+// begins an operation of its own: a write that reached for it would open a
+// second span inside its own, and what a reader wants on the write's span is the
+// row it answered with rather than a nested read of it.
+func (s *SQLStore) commentOn(
+	ctx context.Context,
+	exec commentsdb.DBTX,
+	scope tenancy.Scope,
+	commentID string,
+) (*Comment, error) {
+	row, err := s.q.GetComment(ctx, exec, commentsdb.GetCommentParams{ID: commentID, Scope: scope})
+	if err != nil {
+		return nil, notFound(err, ErrCommentNotFound)
 	}
 
 	return commentFromRow(&row), nil
