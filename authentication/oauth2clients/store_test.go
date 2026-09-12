@@ -21,7 +21,7 @@ import (
 func runStoreSuite(t *testing.T, env *storeEnv) {
 	t.Helper()
 
-	t.Run("a registration is written and read back with its creation time", func(t *testing.T) {
+	t.Run("a create answers with the row it wrote, creation time and all", func(t *testing.T) {
 		t.Parallel()
 
 		store := env.newStore(t)
@@ -31,7 +31,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		// handed over would report the zero time for a row written a moment ago.
 		// The create reads it back on its own transaction.
 		test.False(t, client.CreatedAt.IsZero(),
-			test.Sprint("the create did not read back the creation time the database assigned"))
+			test.Sprint("the create did not answer with the creation time the database assigned"))
 
 		read, err := store.GetClient(t.Context(), env.reader(), testScope, client.ID)
 		must.NoError(t, err)
@@ -41,6 +41,28 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.Eq(t, []string{testRedirect}, read.RedirectURIs)
 		test.True(t, read.LastUpdatedAt == nil, test.Sprint("a fresh registration reports an update"))
 		test.False(t, read.Archived())
+	})
+
+	t.Run("a create leaves the registration it was handed alone", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		// What the write settles is on what it returns. An argument edited under
+		// the caller is a second place to read one fact from, and the scope it
+		// adopts below is the one field this write assigns at all.
+		handed := newClient(tenancy.Scope{}, testOwner)
+
+		written, err := env.create(t, store, testScope, handed)
+		must.NoError(t, err)
+
+		test.EqOp(t, tenancy.Scope{}, handed.Scope,
+			test.Sprint("the create wrote the scope it adopted onto the caller's value"))
+		test.True(t, handed.CreatedAt.IsZero(),
+			test.Sprint("the create stamped the caller's value"))
+
+		test.EqOp(t, testScope, written.Scope)
+		test.False(t, written.CreatedAt.IsZero())
 	})
 
 	t.Run("a registry cannot read another registry's registration", func(t *testing.T) {
@@ -61,7 +83,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		// Refused rather than corrected: a scope read off a struct the caller
 		// assembled somewhere else is the derivation the column rule rules out.
 		client := newClient(otherScope, testOwner)
-		test.ErrorIs(t, env.create(t, store, testScope, client), ErrScopeMismatch)
+		test.ErrorIs(t, env.createErr(t, store, testScope, client), ErrScopeMismatch)
 	})
 
 	t.Run("a registration naming no scope adopts the call's", func(t *testing.T) {
@@ -69,12 +91,12 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		client := newClient(tenancy.Scope{}, testOwner)
-		must.NoError(t, env.create(t, store, testScope, client))
+		written, err := env.create(t, store, testScope, newClient(tenancy.Scope{}, testOwner))
+		must.NoError(t, err)
 
-		test.EqOp(t, testScope, client.Scope)
+		test.EqOp(t, testScope, written.Scope)
 
-		read, err := store.GetClient(t.Context(), env.reader(), testScope, client.ID)
+		read, err := store.GetClient(t.Context(), env.reader(), testScope, written.ID)
 		must.NoError(t, err)
 		test.EqOp(t, testScope, read.Scope)
 	})
@@ -91,7 +113,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		second := newClient(otherScope, otherOwner)
 		second.ClientID = first.ClientID
 
-		test.ErrorIs(t, env.create(t, store, otherScope, second), ErrClientIDTaken)
+		test.ErrorIs(t, env.createErr(t, store, otherScope, second), ErrClientIDTaken)
 	})
 
 	t.Run("the authorization server's lookup crosses every registry", func(t *testing.T) {
@@ -116,9 +138,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		client := env.seed(t, store, testScope, testOwner)
 
-		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			return store.ArchiveClient(t.Context(), tx, testScope, client.ID)
-		}))
+		must.NoError(t, env.archive(t, store, testScope, client.ID))
 
 		// The scoped read hides it, because that read serves a console.
 		_, err := store.GetClient(t.Context(), env.reader(), testScope, client.ID)
@@ -196,35 +216,91 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.ErrorIs(t, err, ErrEmptyUserID)
 	})
 
-	t.Run("an update revises the descriptive fields and stamps the row", func(t *testing.T) {
+	t.Run("an update revises the descriptive fields and answers with the row", func(t *testing.T) {
 		t.Parallel()
 
 		store := env.newStore(t)
 		client := env.seed(t, store, testScope, testOwner)
 
-		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			return store.UpdateClient(t.Context(), tx, testScope, client.ID, &UpdateInput{
-				Name:         "renamed",
-				Description:  "revised",
-				RedirectURIs: []string{"https://example.test/other"},
-				Scopes:       []string{"recipes:read"},
-			})
-		}))
-
-		read, err := store.GetClient(t.Context(), env.reader(), testScope, client.ID)
+		revised, err := env.update(t, store, testScope, client.ID, &UpdateInput{
+			Name:         "renamed",
+			Description:  "revised",
+			RedirectURIs: []string{"https://example.test/other"},
+			Scopes:       []string{"recipes:read"},
+		})
 		must.NoError(t, err)
 
-		test.EqOp(t, "renamed", read.Name)
-		test.Eq(t, []string{"https://example.test/other"}, read.RedirectURIs)
-		test.Eq(t, []string{"recipes:read"}, read.Scopes)
-		test.True(t, read.LastUpdatedAt != nil, test.Sprint("the update did not stamp last_updated_at"))
+		// What the write answered with is the revision, including the stamp the
+		// statement assigned — which is the value a caller holding an id and a
+		// patch had no other way to learn.
+		test.EqOp(t, "renamed", revised.Name)
+		test.Eq(t, []string{"https://example.test/other"}, revised.RedirectURIs)
+		test.Eq(t, []string{"recipes:read"}, revised.Scopes)
+		test.True(t, revised.LastUpdatedAt != nil,
+			test.Sprint("the update did not answer with the stamp it assigned"))
 
 		// The three immutable columns are not in UpdateInput at all, so this is
 		// what the schema and the generated SET list agree on rather than
 		// something a caller could have asked for.
-		test.EqOp(t, client.ClientID, read.ClientID)
-		test.EqOp(t, client.SecretHash, read.SecretHash)
-		test.EqOp(t, testOwner, read.BelongsToUser)
+		test.EqOp(t, client.ClientID, revised.ClientID)
+		test.EqOp(t, client.SecretHash, revised.SecretHash)
+		test.EqOp(t, testOwner, revised.BelongsToUser)
+
+		// And it is the row, not a description of it: a second read on a
+		// connection that never saw the transaction agrees.
+		read, err := store.GetClient(t.Context(), env.reader(), testScope, client.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "renamed", read.Name)
+	})
+
+	t.Run("an archive answers with the row it withdrew", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		client := env.seed(t, store, testScope, testOwner)
+
+		var withdrawn *Client
+
+		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
+			var archiveErr error
+			withdrawn, archiveErr = store.ArchiveClient(t.Context(), tx, testScope, client.ID)
+
+			return archiveErr
+		}))
+
+		// The row a withdrawal entry is written from, and the one read that can
+		// see it: every consumer read but the lookup filters it out, and the
+		// lookup needs a client_id rather than the row id this call was given.
+		must.NotNil(t, withdrawn)
+		test.EqOp(t, client.ID, withdrawn.ID)
+		test.EqOp(t, client.ClientID, withdrawn.ClientID)
+		test.EqOp(t, "test client", withdrawn.Name)
+		test.Eq(t, []string{testRedirect}, withdrawn.RedirectURIs)
+		test.True(t, withdrawn.Archived(),
+			test.Sprint("the archive answered with the row as it stood before the write"))
+	})
+
+	t.Run("an archive that moves nothing answers with no row", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		client := env.seed(t, store, testScope, testOwner)
+
+		must.NoError(t, env.archive(t, store, testScope, client.ID))
+
+		// The guard decides, not the read-back: a second withdrawal matches
+		// nothing, so it is refused rather than answered with the row the first
+		// one moved.
+		var second *Client
+
+		err := env.inTx(t, func(tx database.Tx) error {
+			var archiveErr error
+			second, archiveErr = store.ArchiveClient(t.Context(), tx, testScope, client.ID)
+
+			return archiveErr
+		})
+		test.ErrorIs(t, err, ErrClientNotFound)
+		test.Nil(t, second)
 	})
 
 	t.Run("a write against another registry's row touches nothing", func(t *testing.T) {
@@ -233,10 +309,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		client := env.seed(t, store, testScope, testOwner)
 
-		err := env.inTx(t, func(tx database.Tx) error {
-			return store.ArchiveClient(t.Context(), tx, otherScope, client.ID)
-		})
-		test.ErrorIs(t, err, ErrClientNotFound)
+		test.ErrorIs(t, env.archive(t, store, otherScope, client.ID), ErrClientNotFound)
 
 		read, err := store.GetClient(t.Context(), env.reader(), testScope, client.ID)
 		must.NoError(t, err)
@@ -251,18 +324,20 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		// The read takes the wider executor type deliberately, so one method
 		// serves a caller holding Reader() and a caller inside a transaction —
-		// and the second sees rows the first cannot yet.
+		// and the second sees rows the first cannot yet. It is also what the
+		// create's own read-back runs on.
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			if err := store.CreateClient(t.Context(), tx, testScope, client); err != nil {
-				return err
-			}
-
-			read, err := store.GetClient(t.Context(), tx, testScope, client.ID)
+			written, err := store.CreateClient(t.Context(), tx, testScope, client)
 			if err != nil {
 				return err
 			}
 
-			test.EqOp(t, client.ClientID, read.ClientID)
+			read, err := store.GetClient(t.Context(), tx, testScope, written.ID)
+			if err != nil {
+				return err
+			}
+
+			test.EqOp(t, written.ClientID, read.ClientID)
 
 			return nil
 		}))
@@ -274,12 +349,20 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		// The Tx argument is the caller's proof they are already inside one, so
-		// a nil is a caller who is not — and no write here opens its own.
-		test.ErrorIs(t, store.CreateClient(t.Context(), nil, testScope, newClient(testScope, testOwner)),
-			ErrNilTransaction)
-		test.ErrorIs(t, store.UpdateClient(t.Context(), nil, testScope, "id", &UpdateInput{}),
-			ErrNilTransaction)
-		test.ErrorIs(t, store.ArchiveClient(t.Context(), nil, testScope, "id"), ErrNilTransaction)
+		// a nil is a caller who is not — and no write here opens its own. Each
+		// refusal answers with a nil row: the row comes back only alongside a
+		// nil error.
+		created, err := store.CreateClient(t.Context(), nil, testScope, newClient(testScope, testOwner))
+		test.ErrorIs(t, err, ErrNilTransaction)
+		test.Nil(t, created)
+
+		revised, err := store.UpdateClient(t.Context(), nil, testScope, "id", &UpdateInput{})
+		test.ErrorIs(t, err, ErrNilTransaction)
+		test.Nil(t, revised)
+
+		withdrawn, err := store.ArchiveClient(t.Context(), nil, testScope, "id")
+		test.ErrorIs(t, err, ErrNilTransaction)
+		test.Nil(t, withdrawn)
 	})
 
 	t.Run("every consumer read refuses an unset scope", func(t *testing.T) {

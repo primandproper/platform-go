@@ -33,8 +33,14 @@ omitted and replaced: client_id carries a unique index, and the standard insert
 would raise on a collision, which is every backing store parsing a dialect's
 constraint text to tell a duplicate from a broken database. The other three
 authored statements are the ones the standard set has no way to express — the
-create's read-back of its own creation time, the self-service page keyed on the
+archive's read-back of the row it withdrew, the self-service page keyed on the
 scope and the owner both, and the authorization server's lookup.
+
+Only the archive needs a read-back of its own. The store's three writes each
+answer with the row they moved, and the create's and the update's leave that row
+live, so the generated get reaches both on the transaction that wrote them. The
+archive's row is the one that get is written not to return, which is why there is
+a statement for it and no statement for the other two.
 
 # The one statement with no scope in it
 

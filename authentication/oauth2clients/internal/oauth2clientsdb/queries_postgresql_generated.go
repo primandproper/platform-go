@@ -42,6 +42,24 @@ const createRegisteredClientPostgreSQL = `INSERT INTO {{prefix}}oauth2_registere
 )
 ON CONFLICT (client_id) DO NOTHING`
 
+const getArchivedRegisteredClientPostgreSQL = `SELECT
+	{{prefix}}oauth2_registered_clients.id,
+	{{prefix}}oauth2_registered_clients.scope,
+	{{prefix}}oauth2_registered_clients.belongs_to_user,
+	{{prefix}}oauth2_registered_clients.name,
+	{{prefix}}oauth2_registered_clients.description,
+	{{prefix}}oauth2_registered_clients.client_id,
+	{{prefix}}oauth2_registered_clients.secret_hash,
+	{{prefix}}oauth2_registered_clients.redirect_uris,
+	{{prefix}}oauth2_registered_clients.scopes,
+	{{prefix}}oauth2_registered_clients.created_at,
+	{{prefix}}oauth2_registered_clients.last_updated_at,
+	{{prefix}}oauth2_registered_clients.archived_at
+FROM {{prefix}}oauth2_registered_clients
+WHERE {{prefix}}oauth2_registered_clients.id = $1
+	AND {{prefix}}oauth2_registered_clients.scope = $2
+	AND {{prefix}}oauth2_registered_clients.archived_at IS NOT NULL`
+
 const getRegisteredClientPostgreSQL = `
 SELECT
 	{{prefix}}oauth2_registered_clients.id,
@@ -76,11 +94,6 @@ const getRegisteredClientByClientIDPostgreSQL = `SELECT
 	{{prefix}}oauth2_registered_clients.archived_at
 FROM {{prefix}}oauth2_registered_clients
 WHERE {{prefix}}oauth2_registered_clients.client_id = $1`
-
-const getRegisteredClientCreatedAtPostgreSQL = `SELECT
-	{{prefix}}oauth2_registered_clients.created_at
-FROM {{prefix}}oauth2_registered_clients
-WHERE {{prefix}}oauth2_registered_clients.id = $1`
 
 const listRegisteredClientsPostgreSQL = `SELECT
 	{{prefix}}oauth2_registered_clients.id,
@@ -310,9 +323,9 @@ WHERE archived_at IS NULL
 type postgresqlQueries struct {
 	archiveRegisteredClient                 string
 	createRegisteredClient                  string
+	getArchivedRegisteredClient             string
 	getRegisteredClient                     string
 	getRegisteredClientByClientID           string
-	getRegisteredClientCreatedAt            string
 	listRegisteredClients                   string
 	listRegisteredClientsDescending         string
 	listRegisteredClientsForOwner           string
@@ -326,9 +339,9 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 	return &postgresqlQueries{
 		archiveRegisteredClient:                 strings.ReplaceAll(archiveRegisteredClientPostgreSQL, prefixMarker, prefix),
 		createRegisteredClient:                  strings.ReplaceAll(createRegisteredClientPostgreSQL, prefixMarker, prefix),
+		getArchivedRegisteredClient:             strings.ReplaceAll(getArchivedRegisteredClientPostgreSQL, prefixMarker, prefix),
 		getRegisteredClient:                     strings.ReplaceAll(getRegisteredClientPostgreSQL, prefixMarker, prefix),
 		getRegisteredClientByClientID:           strings.ReplaceAll(getRegisteredClientByClientIDPostgreSQL, prefixMarker, prefix),
-		getRegisteredClientCreatedAt:            strings.ReplaceAll(getRegisteredClientCreatedAtPostgreSQL, prefixMarker, prefix),
 		listRegisteredClients:                   strings.ReplaceAll(listRegisteredClientsPostgreSQL, prefixMarker, prefix),
 		listRegisteredClientsDescending:         strings.ReplaceAll(listRegisteredClientsDescendingPostgreSQL, prefixMarker, prefix),
 		listRegisteredClientsForOwner:           strings.ReplaceAll(listRegisteredClientsForOwnerPostgreSQL, prefixMarker, prefix),
@@ -368,6 +381,33 @@ func (q *postgresqlQueries) CreateRegisteredClient(ctx context.Context, db DBTX,
 	}
 
 	return result.RowsAffected()
+}
+
+// GetArchivedRegisteredClient runs the :one query against postgresql.
+func (q *postgresqlQueries) GetArchivedRegisteredClient(ctx context.Context, db DBTX, arg GetArchivedRegisteredClientParams) (GetArchivedRegisteredClientRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedRegisteredClient,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedRegisteredClientRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.BelongsToUser,
+		&i.Name,
+		&i.Description,
+		&i.ClientID,
+		&i.SecretHash,
+		&i.RedirectUris,
+		&i.Scopes,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
 }
 
 // GetRegisteredClient runs the :one query against postgresql.
@@ -418,21 +458,6 @@ func (q *postgresqlQueries) GetRegisteredClientByClientID(ctx context.Context, d
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
-	)
-
-	return i, err
-}
-
-// GetRegisteredClientCreatedAt runs the :one query against postgresql.
-func (q *postgresqlQueries) GetRegisteredClientCreatedAt(ctx context.Context, db DBTX, arg GetRegisteredClientCreatedAtParams) (GetRegisteredClientCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getRegisteredClientCreatedAt,
-		arg.ID,
-	)
-
-	var i GetRegisteredClientCreatedAtRow
-
-	err := row.Scan(
-		&i.CreatedAt,
 	)
 
 	return i, err
@@ -690,6 +715,24 @@ var (
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope
+	}(GetArchivedRegisteredClientParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		BelongsToUser string
+		Name          string
+		Description   string
+		ClientID      string
+		SecretHash    string
+		RedirectUris  string
+		Scopes        string
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetArchivedRegisteredClientRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
 	}(GetRegisteredClientParams{})
 	_ = struct {
 		ID            string
@@ -722,12 +765,6 @@ var (
 		LastUpdatedAt *time.Time
 		ArchivedAt    *time.Time
 	}(GetRegisteredClientByClientIDRow{})
-	_ = struct {
-		ID string
-	}(GetRegisteredClientCreatedAtParams{})
-	_ = struct {
-		CreatedAt time.Time
-	}(GetRegisteredClientCreatedAtRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
 		CreatedBefore   *time.Time

@@ -54,17 +54,19 @@ func (f *fakeRegistry) ResolveClientID(
 
 func (f *fakeRegistry) CreateClient(
 	context.Context, database.Tx, tenancy.Scope, *oauth2clients.Client,
-) error {
+) (*oauth2clients.Client, error) {
 	panic("the authorization server seams do not write registrations")
 }
 
 func (f *fakeRegistry) UpdateClient(
 	context.Context, database.Tx, tenancy.Scope, string, *oauth2clients.UpdateInput,
-) error {
+) (*oauth2clients.Client, error) {
 	panic("the authorization server seams do not write registrations")
 }
 
-func (f *fakeRegistry) ArchiveClient(context.Context, database.Tx, tenancy.Scope, string) error {
+func (f *fakeRegistry) ArchiveClient(
+	context.Context, database.Tx, tenancy.Scope, string,
+) (*oauth2clients.Client, error) {
 	panic("the authorization server seams do not write registrations")
 }
 

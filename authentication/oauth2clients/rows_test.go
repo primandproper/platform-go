@@ -90,8 +90,8 @@ func TestDecodeStringsRefusesAColumnItCannotRead(T *testing.T) {
 	}
 }
 
-// TestClientFromRowCarriesEveryColumn is the conversion the four other reads
-// convert into, so a field it dropped would be dropped from all of them.
+// TestClientFromRowCarriesEveryColumn is the conversion every other read
+// converts into, so a field it dropped would be dropped from all of them.
 func TestClientFromRowCarriesEveryColumn(T *testing.T) {
 	T.Parallel()
 
@@ -128,6 +128,46 @@ func TestClientFromRowCarriesEveryColumn(T *testing.T) {
 	must.NotNil(T, client.LastUpdatedAt)
 	test.EqOp(T, updated, *client.LastUpdatedAt)
 	test.True(T, client.Archived())
+}
+
+// TestClientFromArchivedRowIsTheSameProjection pins the cast the archive's
+// read-back rides on.
+//
+// The two statements project the same list in the same order and differ only in
+// which rows they will look at, so the conversion is what fails to build the day
+// they stop agreeing. What the case asserts beyond that is the field the archive
+// exists to deliver: a row that carries archived_at is a row that says when the
+// credential stopped working.
+func TestClientFromArchivedRowIsTheSameProjection(T *testing.T) {
+	T.Parallel()
+
+	archived := time.Date(2026, time.September, 8, 12, 0, 0, 0, time.UTC)
+
+	client, err := clientFromArchivedRow(&oauth2clientsdb.GetArchivedRegisteredClientRow{
+		ID:            "row_1",
+		Scope:         testScope,
+		BelongsToUser: testOwner,
+		Name:          "test client",
+		ClientID:      "cid_1",
+		SecretHash:    "digest",
+		RedirectUris:  encodeStrings([]string{testRedirect}),
+		Scopes:        encodeStrings([]string{"read"}),
+		CreatedAt:     archived.Add(-time.Hour),
+		ArchivedAt:    &archived,
+	})
+	must.NoError(T, err)
+	must.NotNil(T, client)
+
+	test.EqOp(T, "row_1", client.ID)
+	test.EqOp(T, testScope, client.Scope)
+	test.EqOp(T, "cid_1", client.ClientID)
+	test.Eq(T, []string{testRedirect}, client.RedirectURIs)
+	test.True(T, client.Archived(),
+		test.Sprint("the archive's read-back reported a live registration"))
+
+	// The digest travels and the plaintext cannot: the row has never held one,
+	// so neither does anything a write hands back.
+	test.EqOp(T, "digest", client.SecretHash)
 }
 
 // TestClientFromRowReportsAnUnreadableList is the failure surfacing rather than

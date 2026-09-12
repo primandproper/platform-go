@@ -24,10 +24,10 @@ var _ oauth2clients.Store = &StoreMock{}
 //
 //		// make and configure a mocked oauth2clients.Store
 //		mockedStore := &StoreMock{
-//			ArchiveClientFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string) error {
+//			ArchiveClientFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string) (*oauth2clients.Client, error) {
 //				panic("mock out the ArchiveClient method")
 //			},
-//			CreateClientFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) error {
+//			CreateClientFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) (*oauth2clients.Client, error) {
 //				panic("mock out the CreateClient method")
 //			},
 //			GetClientFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string) (*oauth2clients.Client, error) {
@@ -42,7 +42,7 @@ var _ oauth2clients.Store = &StoreMock{}
 //			ResolveClientIDFunc: func(ctx context.Context, q database.SQLQueryExecutor, clientID string) (*oauth2clients.Client, error) {
 //				panic("mock out the ResolveClientID method")
 //			},
-//			UpdateClientFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string, input *oauth2clients.UpdateInput) error {
+//			UpdateClientFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string, input *oauth2clients.UpdateInput) (*oauth2clients.Client, error) {
 //				panic("mock out the UpdateClient method")
 //			},
 //		}
@@ -53,10 +53,10 @@ var _ oauth2clients.Store = &StoreMock{}
 //	}
 type StoreMock struct {
 	// ArchiveClientFunc mocks the ArchiveClient method.
-	ArchiveClientFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string) error
+	ArchiveClientFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string) (*oauth2clients.Client, error)
 
 	// CreateClientFunc mocks the CreateClient method.
-	CreateClientFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) error
+	CreateClientFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) (*oauth2clients.Client, error)
 
 	// GetClientFunc mocks the GetClient method.
 	GetClientFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string) (*oauth2clients.Client, error)
@@ -71,7 +71,7 @@ type StoreMock struct {
 	ResolveClientIDFunc func(ctx context.Context, q database.SQLQueryExecutor, clientID string) (*oauth2clients.Client, error)
 
 	// UpdateClientFunc mocks the UpdateClient method.
-	UpdateClientFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string, input *oauth2clients.UpdateInput) error
+	UpdateClientFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string, input *oauth2clients.UpdateInput) (*oauth2clients.Client, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -165,7 +165,7 @@ type StoreMock struct {
 }
 
 // ArchiveClient calls ArchiveClientFunc.
-func (mock *StoreMock) ArchiveClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string) error {
+func (mock *StoreMock) ArchiveClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string) (*oauth2clients.Client, error) {
 	if mock.ArchiveClientFunc == nil {
 		panic("StoreMock.ArchiveClientFunc: method is nil but Store.ArchiveClient was just called")
 	}
@@ -209,7 +209,7 @@ func (mock *StoreMock) ArchiveClientCalls() []struct {
 }
 
 // CreateClient calls CreateClientFunc.
-func (mock *StoreMock) CreateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) error {
+func (mock *StoreMock) CreateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) (*oauth2clients.Client, error) {
 	if mock.CreateClientFunc == nil {
 		panic("StoreMock.CreateClientFunc: method is nil but Store.CreateClient was just called")
 	}
@@ -429,7 +429,7 @@ func (mock *StoreMock) ResolveClientIDCalls() []struct {
 }
 
 // UpdateClient calls UpdateClientFunc.
-func (mock *StoreMock) UpdateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string, input *oauth2clients.UpdateInput) error {
+func (mock *StoreMock) UpdateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string, input *oauth2clients.UpdateInput) (*oauth2clients.Client, error) {
 	if mock.UpdateClientFunc == nil {
 		panic("StoreMock.UpdateClientFunc: method is nil but Store.UpdateClient was just called")
 	}

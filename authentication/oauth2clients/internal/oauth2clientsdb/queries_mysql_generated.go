@@ -41,6 +41,24 @@ const createRegisteredClientMySQL = `INSERT IGNORE INTO {{prefix}}oauth2_registe
 	?
 )`
 
+const getArchivedRegisteredClientMySQL = `SELECT
+	{{prefix}}oauth2_registered_clients.id,
+	{{prefix}}oauth2_registered_clients.scope,
+	{{prefix}}oauth2_registered_clients.belongs_to_user,
+	{{prefix}}oauth2_registered_clients.name,
+	{{prefix}}oauth2_registered_clients.description,
+	{{prefix}}oauth2_registered_clients.client_id,
+	{{prefix}}oauth2_registered_clients.secret_hash,
+	{{prefix}}oauth2_registered_clients.redirect_uris,
+	{{prefix}}oauth2_registered_clients.scopes,
+	{{prefix}}oauth2_registered_clients.created_at,
+	{{prefix}}oauth2_registered_clients.last_updated_at,
+	{{prefix}}oauth2_registered_clients.archived_at
+FROM {{prefix}}oauth2_registered_clients
+WHERE {{prefix}}oauth2_registered_clients.id = ?
+	AND {{prefix}}oauth2_registered_clients.scope = ?
+	AND {{prefix}}oauth2_registered_clients.archived_at IS NOT NULL`
+
 const getRegisteredClientMySQL = `
 SELECT
 	{{prefix}}oauth2_registered_clients.id,
@@ -75,11 +93,6 @@ const getRegisteredClientByClientIDMySQL = `SELECT
 	{{prefix}}oauth2_registered_clients.archived_at
 FROM {{prefix}}oauth2_registered_clients
 WHERE {{prefix}}oauth2_registered_clients.client_id = ?`
-
-const getRegisteredClientCreatedAtMySQL = `SELECT
-	{{prefix}}oauth2_registered_clients.created_at
-FROM {{prefix}}oauth2_registered_clients
-WHERE {{prefix}}oauth2_registered_clients.id = ?`
 
 const listRegisteredClientsMySQL = `SELECT
 	{{prefix}}oauth2_registered_clients.id,
@@ -309,9 +322,9 @@ WHERE archived_at IS NULL
 type mysqlQueries struct {
 	archiveRegisteredClient                 string
 	createRegisteredClient                  string
+	getArchivedRegisteredClient             string
 	getRegisteredClient                     string
 	getRegisteredClientByClientID           string
-	getRegisteredClientCreatedAt            string
 	listRegisteredClients                   string
 	listRegisteredClientsDescending         string
 	listRegisteredClientsForOwner           string
@@ -325,9 +338,9 @@ func newMySQL(prefix string) *mysqlQueries {
 	return &mysqlQueries{
 		archiveRegisteredClient:                 strings.ReplaceAll(archiveRegisteredClientMySQL, prefixMarker, prefix),
 		createRegisteredClient:                  strings.ReplaceAll(createRegisteredClientMySQL, prefixMarker, prefix),
+		getArchivedRegisteredClient:             strings.ReplaceAll(getArchivedRegisteredClientMySQL, prefixMarker, prefix),
 		getRegisteredClient:                     strings.ReplaceAll(getRegisteredClientMySQL, prefixMarker, prefix),
 		getRegisteredClientByClientID:           strings.ReplaceAll(getRegisteredClientByClientIDMySQL, prefixMarker, prefix),
-		getRegisteredClientCreatedAt:            strings.ReplaceAll(getRegisteredClientCreatedAtMySQL, prefixMarker, prefix),
 		listRegisteredClients:                   strings.ReplaceAll(listRegisteredClientsMySQL, prefixMarker, prefix),
 		listRegisteredClientsDescending:         strings.ReplaceAll(listRegisteredClientsDescendingMySQL, prefixMarker, prefix),
 		listRegisteredClientsForOwner:           strings.ReplaceAll(listRegisteredClientsForOwnerMySQL, prefixMarker, prefix),
@@ -367,6 +380,33 @@ func (q *mysqlQueries) CreateRegisteredClient(ctx context.Context, db DBTX, arg 
 	}
 
 	return result.RowsAffected()
+}
+
+// GetArchivedRegisteredClient runs the :one query against mysql.
+func (q *mysqlQueries) GetArchivedRegisteredClient(ctx context.Context, db DBTX, arg GetArchivedRegisteredClientParams) (GetArchivedRegisteredClientRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedRegisteredClient,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedRegisteredClientRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.BelongsToUser,
+		&i.Name,
+		&i.Description,
+		&i.ClientID,
+		&i.SecretHash,
+		&i.RedirectUris,
+		&i.Scopes,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
 }
 
 // GetRegisteredClient runs the :one query against mysql.
@@ -417,21 +457,6 @@ func (q *mysqlQueries) GetRegisteredClientByClientID(ctx context.Context, db DBT
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
-	)
-
-	return i, err
-}
-
-// GetRegisteredClientCreatedAt runs the :one query against mysql.
-func (q *mysqlQueries) GetRegisteredClientCreatedAt(ctx context.Context, db DBTX, arg GetRegisteredClientCreatedAtParams) (GetRegisteredClientCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getRegisteredClientCreatedAt,
-		arg.ID,
-	)
-
-	var i GetRegisteredClientCreatedAtRow
-
-	err := row.Scan(
-		&i.CreatedAt,
 	)
 
 	return i, err
@@ -727,6 +752,24 @@ var (
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope
+	}(GetArchivedRegisteredClientParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		BelongsToUser string
+		Name          string
+		Description   string
+		ClientID      string
+		SecretHash    string
+		RedirectUris  string
+		Scopes        string
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetArchivedRegisteredClientRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
 	}(GetRegisteredClientParams{})
 	_ = struct {
 		ID            string
@@ -759,12 +802,6 @@ var (
 		LastUpdatedAt *time.Time
 		ArchivedAt    *time.Time
 	}(GetRegisteredClientByClientIDRow{})
-	_ = struct {
-		ID string
-	}(GetRegisteredClientCreatedAtParams{})
-	_ = struct {
-		CreatedAt time.Time
-	}(GetRegisteredClientCreatedAtRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
 		CreatedBefore   *time.Time

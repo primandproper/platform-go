@@ -167,85 +167,113 @@ func NewSQLStore(client database.Client, opts ...SQLStoreOption) (*SQLStore, err
 // rendering the migrations it needs.
 func (s *SQLStore) TablePrefix() string { return s.prefix }
 
-// CreateClient records a registration. See [Store.CreateClient].
+// CreateClient records a registration and answers with the row it wrote. See
+// [Store.CreateClient].
+//
+// The read-back is a second round trip on a write path and it is worth it:
+// created_at is database-owned — see internal/queries — so the value the caller
+// handed over still holds the zero time when the INSERT returns, and a
+// registration serialized straight into a response would render that as a date
+// rather than as an absence. It is GetRegisteredClient rather than a statement
+// of its own, because a row this transaction just inserted is not archived, so
+// the ordinary keyed read reaches it and reading the whole row costs the round
+// trip a read of the stamp alone would.
+//
+// The Client handed in is not modified. What the write settles — the scope it
+// adopts, the creation time the database assigned — is on the value returned, so
+// a caller reads those from one place rather than from an argument that changed
+// under them, and a refused write has not already edited what it refused.
+//
+// What comes back carries SecretHash and no plaintext, because it is a read of
+// the row and the row has never held one. [Service.CreateClient] is the only
+// thing in this package that has ever seen the secret, and [IssuedClient] is the
+// only value that carries it.
 func (s *SQLStore) CreateClient(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	client *Client,
-) error {
+) (*Client, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilTransaction, "creating oauth2 client")
+		return nil, op.Error(ErrNilTransaction, "creating oauth2 client")
 	}
 
 	if client == nil {
-		return op.Error(ErrNilClient, "creating oauth2 client")
+		return nil, op.Error(ErrNilClient, "creating oauth2 client")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "creating oauth2 client")
+		return nil, op.Error(err, "creating oauth2 client")
 	}
+
+	// The copy is what keeps the caller's value out of this. The scope below is
+	// the only field assigned, and its answer is on what this returns, so
+	// writing it through the pointer as well would be two places to read one
+	// fact from.
+	registration := *client
 
 	// The scope is the argument's, and a registration that names a different one
 	// is refused rather than corrected. A registration that names none adopts
 	// it, which is the same reading comments takes of a reply naming no target.
 	switch {
-	case client.Scope == tenancy.Scope{}:
-		client.Scope = scope
-	case client.Scope != scope:
-		return op.Error(ErrScopeMismatch, "creating oauth2 client")
+	case registration.Scope == tenancy.Scope{}:
+		registration.Scope = scope
+	case registration.Scope != scope:
+		return nil, op.Error(ErrScopeMismatch, "creating oauth2 client")
 	}
 
-	if err := validateClient(client); err != nil {
-		return op.Error(err, "creating oauth2 client")
+	if err := validateClient(&registration); err != nil {
+		return nil, op.Error(err, "creating oauth2 client")
 	}
 
-	op.SpanOnly(clientKey, client.ID)
-	op.SpanOnly(clientIDKey, client.ClientID)
+	op.SpanOnly(clientKey, registration.ID)
+	op.SpanOnly(clientIDKey, registration.ClientID)
 
 	count, err := s.q.CreateRegisteredClient(ctx, tx, oauth2clientsdb.CreateRegisteredClientParams{
-		ID:            client.ID,
-		Scope:         client.Scope,
-		BelongsToUser: client.BelongsToUser,
-		Name:          client.Name,
-		Description:   client.Description,
-		ClientID:      client.ClientID,
-		SecretHash:    client.SecretHash,
-		RedirectUris:  encodeStrings(client.RedirectURIs),
-		Scopes:        encodeStrings(client.Scopes),
+		ID:            registration.ID,
+		Scope:         registration.Scope,
+		BelongsToUser: registration.BelongsToUser,
+		Name:          registration.Name,
+		Description:   registration.Description,
+		ClientID:      registration.ClientID,
+		SecretHash:    registration.SecretHash,
+		RedirectUris:  encodeStrings(registration.RedirectURIs),
+		Scopes:        encodeStrings(registration.Scopes),
 	})
 	// A duplicate client_id is not a caller error and there is nothing for them
 	// to correct: the identifier was minted here from crypto/rand. See the taken
 	// guard for why zero rows is how it arrives.
-	if writeErr := s.taken.Count(ctx, op, count, err, client.ID, "create", "creating oauth2 client"); writeErr != nil {
-		return writeErr
+	if writeErr := s.taken.Count(ctx, op, count, err, registration.ID, "create", "creating oauth2 client"); writeErr != nil {
+		return nil, writeErr
 	}
 
-	// The creation time is the database's, so the value the caller handed over
-	// still holds the zero time. Reading it back on the same transaction is what
-	// keeps a response from saying 0001-01-01 for a row written a moment ago.
-	created, err := s.q.GetRegisteredClientCreatedAt(ctx, tx,
-		oauth2clientsdb.GetRegisteredClientCreatedAtParams{ID: client.ID})
+	created, err := s.clientOn(ctx, tx, registration.Scope, registration.ID)
 	if err != nil {
-		return op.Error(err, "reading back the creation time of oauth2 client %q", client.ID)
+		return nil, op.Error(err, "reading back the created oauth2 client %q", registration.ID)
 	}
 
-	client.CreatedAt = created.CreatedAt
-
-	return nil
+	return created, nil
 }
 
-// UpdateClient revises one live registration. See [Store.UpdateClient].
+// UpdateClient revises one live registration and answers with the revised row.
+// See [Store.UpdateClient].
+//
+// The read-back is GetRegisteredClient, on the transaction that did the writing.
+// The row is still live — a revision does not withdraw it — so the console read
+// reaches it, and what it carries is what a caller's audit entry has to
+// describe: the four fields as they now stand and the last_updated_at this
+// statement stamped, which is the database's and is the one value the caller
+// could not have named.
 func (s *SQLStore) UpdateClient(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	id string,
 	input *UpdateInput,
-) error {
+) (*Client, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(clientKey, id),
@@ -253,23 +281,23 @@ func (s *SQLStore) UpdateClient(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilTransaction, "updating oauth2 client")
+		return nil, op.Error(ErrNilTransaction, "updating oauth2 client")
 	}
 
 	if input == nil {
-		return op.Error(ErrNilInput, "updating oauth2 client")
+		return nil, op.Error(ErrNilInput, "updating oauth2 client")
 	}
 
 	if id == "" {
-		return op.Error(ErrEmptyID, "updating oauth2 client")
+		return nil, op.Error(ErrEmptyID, "updating oauth2 client")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "updating oauth2 client")
+		return nil, op.Error(err, "updating oauth2 client")
 	}
 
 	if err := validateDescriptive(input.Name, input.RedirectURIs); err != nil {
-		return op.Error(err, "updating oauth2 client %q", id)
+		return nil, op.Error(err, "updating oauth2 client %q", id)
 	}
 
 	count, err := s.q.UpdateRegisteredClient(ctx, tx, oauth2clientsdb.UpdateRegisteredClientParams{
@@ -280,17 +308,40 @@ func (s *SQLStore) UpdateClient(
 		RedirectUris: encodeStrings(input.RedirectURIs),
 		Scopes:       encodeStrings(input.Scopes),
 	})
+	if writeErr := s.missing.Count(ctx, op, count, err, id, "update", "updating oauth2 client"); writeErr != nil {
+		return nil, writeErr
+	}
 
-	return s.missing.Count(ctx, op, count, err, id, "update", "updating oauth2 client")
+	revised, err := s.clientOn(ctx, tx, scope, id)
+	if err != nil {
+		return nil, op.Error(err, "reading back the revised oauth2 client %q", id)
+	}
+
+	return revised, nil
 }
 
-// ArchiveClient withdraws one registration. See [Store.ArchiveClient].
+// ArchiveClient withdraws one registration and answers with the row it withdrew.
+// See [Store.ArchiveClient].
+//
+// The read-back is GetArchivedRegisteredClient rather than GetRegisteredClient,
+// because it is the one read here that has to see what the console read is
+// written not to. Two statements rather than one is what the dialect roster
+// costs — RETURNING would answer the write directly and MySQL has none, and the
+// corpus is one text per dialect rendered from one description, so there is no
+// per-dialect fork to put it in. There is no gap between them: the guarded
+// UPDATE holds the row until commit and the read runs on the same transaction.
+//
+// It is the guard that decides the answer, not the read. A write that moved
+// nothing is ErrClientNotFound before the read runs, so a registration somebody
+// else withdrew is never reported as this call's — and an empty read-back after
+// a guard that matched is left unmapped rather than folded into that sentinel,
+// because there is no state in which it is honestly absent.
 func (s *SQLStore) ArchiveClient(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	id string,
-) error {
+) (*Client, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(clientKey, id),
@@ -298,21 +349,65 @@ func (s *SQLStore) ArchiveClient(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilTransaction, "archiving oauth2 client")
+		return nil, op.Error(ErrNilTransaction, "archiving oauth2 client")
 	}
 
 	if id == "" {
-		return op.Error(ErrEmptyID, "archiving oauth2 client")
+		return nil, op.Error(ErrEmptyID, "archiving oauth2 client")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving oauth2 client")
+		return nil, op.Error(err, "archiving oauth2 client")
 	}
 
 	count, err := s.q.ArchiveRegisteredClient(ctx, tx,
 		oauth2clientsdb.ArchiveRegisteredClientParams{ID: id, Scope: scope})
+	if writeErr := s.missing.Count(ctx, op, count, err, id, "archive", "archiving oauth2 client"); writeErr != nil {
+		return nil, writeErr
+	}
 
-	return s.missing.Count(ctx, op, count, err, id, "archive", "archiving oauth2 client")
+	row, err := s.q.GetArchivedRegisteredClient(ctx, tx,
+		oauth2clientsdb.GetArchivedRegisteredClientParams{ID: id, Scope: scope})
+	if err != nil {
+		return nil, op.Error(err, "reading back the withdrawn oauth2 client %q", id)
+	}
+
+	withdrawn, err := clientFromArchivedRow(&row)
+	if err != nil {
+		return nil, op.Error(err, "reading back the withdrawn oauth2 client %q", id)
+	}
+
+	return withdrawn, nil
+}
+
+// clientOn reads one live registration on the transaction that just wrote it,
+// with no span of its own.
+//
+// It exists because a write's read-back must go where the write went: a row that
+// transaction has written and not committed is visible on no other connection,
+// so a registration read anywhere else would say it was never registered, or
+// never revised. Two of the three single-row writes answer through this; the
+// third is the archive, whose row is the one this read is written not to see.
+//
+// An empty result is left unmapped rather than folded into ErrClientNotFound,
+// which is the reading [SQLStore.ArchiveClient] takes of its own read-back. Both
+// callers run this only after a write that affected a row on this transaction,
+// so there is no state in which the row is honestly absent — and answering with
+// the sentinel a consumer reads as "no such registration" would report a broken
+// prefix or a rolled-back statement as a 404.
+func (s *SQLStore) clientOn(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	id string,
+) (*Client, error) {
+	row, err := s.q.GetRegisteredClient(ctx, tx,
+		oauth2clientsdb.GetRegisteredClientParams{ID: id, Scope: scope})
+	if err != nil {
+		return nil, err
+	}
+
+	return clientFromRow(&row)
 }
 
 // GetClient reads one live registration by row id. See [Store.GetClient].

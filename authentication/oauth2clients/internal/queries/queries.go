@@ -136,7 +136,7 @@ func Render(d dialect.Dialect) string {
 	g := querygen.For(d)
 
 	rendered := g.StandardCRUD(RegisteredClientsTable, RegisteredClients.Columns, options()...)
-	rendered = append(rendered, create(g), createdAtRead(g), byClientID(g))
+	rendered = append(rendered, create(g), archivedRead(g), byClientID(g))
 
 	return querygen.RenderFile(append(rendered, byOwner(g)...))
 }
@@ -160,23 +160,37 @@ func create(g *querygen.Generator) *querygen.Query {
 		querygen.Match{Column: ClientIDColumn})
 }
 
-// createdAtRead is the read-back of the one column the create does not carry:
-// the creation time the database assigned it.
+// archivedRead is the read-back of the one write here whose result no other
+// read of this table can see.
 //
-// created_at is database-owned — it is not in the create's column list, and the
-// schema gives it a DEFAULT — so the value the caller handed over still holds
-// the zero time when the INSERT returns, and the store reads it back inside the
-// same transaction.
+// Every single-row statement over this table filters archived_at IS NULL —
+// which is what makes a withdrawn registration absent from the console — so the
+// read that would describe what an archive did is the one read that cannot see
+// it. After the transaction commits, the row is reachable only through
+// [byClientID], which needs a client_id the caller of an archive is not holding.
 //
-// It keys on the id alone. The scope is absent because this is not a read a
-// caller reaches: it is the create's read-back of the row it has just written,
-// by the id it minted for it, and the row is not visible to anything else until
-// the transaction commits. The column list is the id and nothing else, which is
-// also what leaves the archived predicate off a row that cannot be archived yet.
-func createdAtRead(g *querygen.Generator) *querygen.Query {
-	return g.ReadQuery("GetRegisteredClientCreatedAt", RegisteredClientsTable,
-		[]string{querygen.IDColumn},
-		querygen.Read{Projection: []string{querygen.CreatedAtColumn}})
+// It is rendered from no column list at all, which is querygen's own idiom for
+// a read that must reach archived rows: the archived predicate is derived from
+// the columns the statement is handed, so a read that has to see past it is one
+// keyed entirely on its matches. What takes that predicate's place is its
+// complement, archived_at IS NOT NULL, so the read-back asserts the thing it was
+// called to confirm rather than merely looking — a guard that matched nothing
+// cannot be read back as a success, and a row somebody else archived a moment
+// earlier is not reported as this call's.
+//
+// The scope is bound, unlike the byClientID lookup below. This read has one and
+// it is the one the archive itself bound, so leaving it off would widen a
+// read-back past the registry the write was confined to.
+//
+// The create and the update need no companion. Neither leaves the console, so
+// GetRegisteredClient reaches both on the transaction that wrote them, and the
+// read-back each makes is that statement rather than one of its own.
+func archivedRead(g *querygen.Generator) *querygen.Query {
+	return g.ReadQuery("GetArchivedRegisteredClient", RegisteredClientsTable, nil,
+		querygen.Read{Projection: RegisteredClients.Columns},
+		querygen.Match{Column: querygen.IDColumn},
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: querygen.ArchivedAtColumn, Against: querygen.NoValue, Exclude: true})
 }
 
 // byClientID is the authorization server's lookup, and the one statement in

@@ -10,16 +10,17 @@ import (
 	"github.com/primandproper/primitives-go/v2/filtering"
 )
 
-// The generated row types are one projection rendered five times — the get, the
-// lookup, and the two pages in both directions — with different predicates and
-// nothing else changed. So the conversions below convert rather than restate
-// field by field wherever Go will let them: the day two of those projections
-// stop being identical, in field name, type or order, this file stops building
-// rather than filling the wrong fields.
+// The generated row types are one projection rendered by every read — the get,
+// the archive's read-back, the authorization server's lookup, and the two pages
+// in both directions — with different predicates and nothing else changed. So
+// the conversions below convert rather than restate field by field wherever Go
+// will let them: the day two of those projections stop being identical, in field
+// name, type or order, this file stops building rather than filling the wrong
+// fields.
 
 // clientFromRow builds a Client out of the shape every read projects.
 //
-// It takes the get's row type, and the other four reads convert into it. The
+// It takes the get's row type, and every other read converts into it. The
 // only fallible step is the two JSON lists, which is why this returns an error
 // at all — a row whose redirect_uris column is not a JSON array is a row
 // something outside this package wrote.
@@ -48,6 +49,19 @@ func clientFromRow(row *oauth2clientsdb.GetRegisteredClientRow) (*Client, error)
 		RedirectURIs:  redirectURIs,
 		Scopes:        scopes,
 	}, nil
+}
+
+// clientFromArchivedRow converts the archive's read-back.
+//
+// GetArchivedRegisteredClient projects the same list GetRegisteredClient does —
+// the table's columns, in that order — and differs from it only in which rows it
+// will look at: the ones the console read is written not to return. So the two
+// row types are one projection rendered twice, and the conversion is the
+// assertion that they still are.
+func clientFromArchivedRow(row *oauth2clientsdb.GetArchivedRegisteredClientRow) (*Client, error) {
+	live := oauth2clientsdb.GetRegisteredClientRow(*row)
+
+	return clientFromRow(&live)
 }
 
 // encodeStrings renders a string slice for a text column.

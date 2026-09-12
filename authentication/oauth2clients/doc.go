@@ -120,6 +120,11 @@ the point of the type. A field populated once and empty on every other read is
 the field that ends up in a log line, because nothing about its declaration says
 it is usually absent.
 
+It is also what keeps the store's writes safe to hand back. Every one of them
+answers with the row it moved — see [Store] — and every one of those rows is a
+read of the table, so it carries Client.SecretHash and could not carry a
+plaintext if a caller wanted it to.
+
 # What this package does not do
 
 It does not authenticate anybody, mint a token, or serve an endpoint. It owns a

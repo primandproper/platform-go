@@ -134,21 +134,93 @@ func newClient(scope tenancy.Scope, owner string) *Client {
 }
 
 // create writes one registration in a transaction of its own and reports what
-// the write returned.
-func (e *storeEnv) create(tb testing.TB, store *SQLStore, scope tenancy.Scope, client *Client) error {
+// the write answered with.
+//
+// The row comes back rather than being read off the argument, because the write
+// no longer touches it: the creation time the database assigned is on what the
+// store returned and nowhere else.
+func (e *storeEnv) create(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	client *Client,
+) (*Client, error) {
+	tb.Helper()
+
+	var written *Client
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		created, createErr := store.CreateClient(tb.Context(), tx, scope, client)
+		written = created
+
+		return createErr
+	})
+
+	return written, err
+}
+
+// createErr is create for the cases that are about the refusal, so a subtest
+// asserting on a sentinel does not have to name a row it knows will be nil.
+func (e *storeEnv) createErr(tb testing.TB, store *SQLStore, scope tenancy.Scope, client *Client) error {
+	tb.Helper()
+
+	written, err := e.create(tb, store, scope, client)
+
+	// The row comes back only alongside a nil error, which is the property every
+	// refusal in this suite is also asserting.
+	if err != nil {
+		must.Nil(tb, written, must.Sprint("a refused create answered with a row"))
+	}
+
+	return err
+}
+
+// update revises one registration in a transaction of its own and reports what
+// the write answered with.
+func (e *storeEnv) update(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	id string,
+	input *UpdateInput,
+) (*Client, error) {
+	tb.Helper()
+
+	var revised *Client
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		written, updateErr := store.UpdateClient(tb.Context(), tx, scope, id, input)
+		revised = written
+
+		return updateErr
+	})
+
+	return revised, err
+}
+
+// archive withdraws one registration and reports only the refusal, for the cases
+// that are about which rows a write reaches rather than about what it hands back.
+func (e *storeEnv) archive(tb testing.TB, store *SQLStore, scope tenancy.Scope, id string) error {
 	tb.Helper()
 
 	return e.inTx(tb, func(tx database.Tx) error {
-		return store.CreateClient(tb.Context(), tx, scope, client)
+		withdrawn, archiveErr := store.ArchiveClient(tb.Context(), tx, scope, id)
+		if archiveErr != nil {
+			must.Nil(tb, withdrawn, must.Sprint("a refused archive answered with a row"))
+		}
+
+		return archiveErr
 	})
 }
 
-// seed writes a registration and fails the test if it could not be written.
+// seed writes a registration and fails the test if it could not be written. What
+// it hands back is the stored row, so a fixture carries the creation time and
+// the scope the write settled.
 func (e *storeEnv) seed(tb testing.TB, store *SQLStore, scope tenancy.Scope, owner string) *Client {
 	tb.Helper()
 
-	client := newClient(scope, owner)
-	must.NoError(tb, e.create(tb, store, scope, client))
+	client, err := e.create(tb, store, scope, newClient(scope, owner))
+	must.NoError(tb, err)
 
 	return client
 }

@@ -177,7 +177,7 @@ func TestService_UpdateClient(T *testing.T) {
 
 	env := newSQLiteEnv(T)
 
-	T.Run("returns the row as it now stands, read on its own transaction", func(t *testing.T) {
+	T.Run("returns the row the write answered with, stamp and all", func(t *testing.T) {
 		t.Parallel()
 
 		hooks := &recordingHooks{}
@@ -193,7 +193,7 @@ func TestService_UpdateClient(T *testing.T) {
 
 		test.EqOp(t, "renamed", updated.Name)
 		test.True(t, updated.LastUpdatedAt != nil,
-			test.Sprint("the read-back ran outside the transaction that stamped the row"))
+			test.Sprint("the write's read-back ran outside the transaction that stamped the row"))
 
 		must.SliceLen(t, 1, hooks.updated)
 		test.EqOp(t, "renamed", hooks.updated[0].Name)
@@ -227,13 +227,20 @@ func TestService_ArchiveClient(T *testing.T) {
 
 		must.NoError(t, svc.ArchiveClient(t.Context(), testScope, client.ID))
 
-		// The row is read before it is archived, which is the whole reason this
-		// is a service operation: an audit entry written from the id alone would
-		// record that something was withdrawn, and what the credential was for
-		// is exactly what somebody reading it later needs.
+		// The store answers with the row the withdrawal moved, so this operation
+		// is one statement rather than a read on either side of one: an audit
+		// entry written from the id alone would record that something was
+		// withdrawn, and what the credential was for is exactly what somebody
+		// reading it later needs.
 		must.SliceLen(t, 1, hooks.archived)
 		test.EqOp(t, client.ClientID, hooks.archived[0].ClientID)
 		test.EqOp(t, "test client", hooks.archived[0].Name)
+
+		// And it is the row as the write left it, not as it stood a statement
+		// earlier — which is what an entry recording when the credential stopped
+		// working is written from.
+		test.True(t, hooks.archived[0].Archived(),
+			test.Sprint("the hook saw the registration as it stood before the withdrawal"))
 
 		_, err := store.GetClient(t.Context(), env.reader(), testScope, client.ID)
 		test.ErrorIs(t, err, ErrClientNotFound)
