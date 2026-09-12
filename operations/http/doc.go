@@ -80,8 +80,8 @@ An SSE connection lives on the process that accepted it, and this package's
 Watcher reads the database rather than a broadcast, so a fleet needs no affinity
 and no fan-out: every replica can serve a subscription to any operation, because
 every replica can read the row. That is the property that makes this different
-from notifications/async, whose single-replica constraint comes from holding
-state in the process.
+from primitives-go's notifications/async, whose single-replica constraint comes
+from holding state in the process.
 
 # Why this package exists at all, when most stores here ship no handlers
 

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/metering"
-	async "github.com/primandproper/platform-go/v14/notifications/async"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/saga"
@@ -22,6 +21,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/healthcheck"
 	"github.com/primandproper/primitives-go/v2/jobs"
 	"github.com/primandproper/primitives-go/v2/messagequeue"
+	"github.com/primandproper/primitives-go/v2/notifications/async"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/ratelimiting"

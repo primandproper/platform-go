@@ -2,11 +2,15 @@
 Package notifications is the durable half of telling somebody something: the
 in-app inbox, and the registry of devices a push can be addressed to.
 
-The subpackages beside it deliver. notifications/mobile sends to handsets
-through APNs and FCM; notifications/async pushes to a connected browser through
-Ably, Pusher, SSE or a websocket. Neither stores anything, which left every
-consumer writing the same two tables: the row that says "this person was told
-this, and has or has not read it", and the list of tokens to push to.
+The senders are primitives-go's, and kept their import paths on the way across:
+[github.com/primandproper/primitives-go/v2/notifications/mobile] sends to
+handsets through APNs and FCM, and
+[github.com/primandproper/primitives-go/v2/notifications/async] pushes to a
+connected browser through Ably, Pusher, SSE or a websocket. Neither owns a
+table, which is what put them on that side of the split — and it is the same
+fact that left every consumer writing the same two tables on this side: the row
+that says "this person was told this, and has or has not read it", and the list
+of tokens to push to.
 
 # The two halves, and why the registry is the one that goes wrong
 

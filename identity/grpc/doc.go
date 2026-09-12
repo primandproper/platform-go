@@ -239,7 +239,7 @@ interface, declared where it is needed and type-asserted at the call site:
 
 which a consumer whose type has the method satisfies by having it, and one whose
 type does not keeps compiling through. The precedent is
-[github.com/primandproper/platform-go/v14/notifications/async.ConnectionAcceptor]
+[github.com/primandproper/primitives-go/v2/notifications/async.ConnectionAcceptor]
 and the standard library's http.Flusher. The nine aliases inherit this from
 [Principal]'s own documentation and none of them restates it, which is the point
 of their being aliases.

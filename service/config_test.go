@@ -207,3 +207,42 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		test.EqOp(t, "", cfg.Observability.Logging.ServiceName)
 	})
 }
+
+// TestConfig_AsyncNotificationsEnvironmentComposesAcrossTheModuleBoundary
+// asserts that the variables an operator already sets for async notifications
+// still reach the config now that the package they configure is primitives-go's.
+//
+// `caarlos0/env` reads struct tags and does not care which module declared the
+// struct, so the composition of ASYNC_NOTIFICATIONS_ with the provider's own
+// PUSHER_ is unaffected by the move on paper. It is pinned here anyway because
+// this is the one kind of breakage the move could cause that no build would
+// report: a prefix that stopped composing hands the operator the default and no
+// error, in a deployment that looks configured. Both halves are spelled out, so
+// the pair is checked end to end rather than one level at a time.
+func TestConfig_AsyncNotificationsEnvironmentComposesAcrossTheModuleBoundary(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{Name: "example"}
+	must.NoError(t, env.ParseWithOptions(cfg, env.Options{Environment: map[string]string{
+		"ASYNC_NOTIFICATIONS_PROVIDER":       "pusher",
+		"ASYNC_NOTIFICATIONS_TOPOLOGY":       "fleet",
+		"ASYNC_NOTIFICATIONS_PUSHER_APP_ID":  "app",
+		"ASYNC_NOTIFICATIONS_PUSHER_KEY":     "key",
+		"ASYNC_NOTIFICATIONS_PUSHER_SECRET":  "secret",
+		"ASYNC_NOTIFICATIONS_PUSHER_CLUSTER": "us-east-1",
+	}}))
+
+	must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+	test.Eq(t, []string{"AsyncNotifications"}, present(t, cfg))
+
+	must.NotNil(t, cfg.AsyncNotifications)
+	test.EqOp(t, "pusher", cfg.AsyncNotifications.Provider)
+	test.EqOp(t, "fleet", cfg.AsyncNotifications.Topology)
+
+	must.NotNil(t, cfg.AsyncNotifications.Pusher)
+	test.EqOp(t, "app", cfg.AsyncNotifications.Pusher.AppID)
+	test.EqOp(t, "key", cfg.AsyncNotifications.Pusher.Key)
+	test.EqOp(t, "secret", cfg.AsyncNotifications.Pusher.Secret)
+	test.EqOp(t, "us-east-1", cfg.AsyncNotifications.Pusher.Cluster)
+}
