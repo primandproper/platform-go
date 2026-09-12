@@ -38,7 +38,8 @@ var (
 	// into it, so there is no server that can be built without one.
 	ErrNilReader = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil audit reader")
 
-	// ErrNilScopeResolver indicates a nil ScopeResolver.
+	// ErrNilScopeResolver indicates a [Server] built without a ScopeResolver —
+	// [WithScopeResolver] absent, or given nil.
 	//
 	// It is refused at construction rather than defaulted, and this is the one
 	// place this service diverges from authentication/signin/grpc, which
@@ -49,6 +50,10 @@ var (
 	// broken one, and it is the one wrong answer in this package that nobody
 	// investigates. A single-tenant deployment names [GlobalScope] and has said
 	// so.
+	//
+	// Being an option rather than a positional argument changes the spelling and
+	// not the policy: an option with nothing behind it refuses a server that
+	// named none exactly as a nil argument did.
 	ErrNilScopeResolver = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil scope resolver for the audit server")
 )
 
@@ -124,24 +129,27 @@ var _ auditpb.AuditServiceServer = (*Server)(nil)
 // their own implementation gets the same surface — and so that this package's
 // own tests can drive the scope binding without a database.
 //
-// Both dependencies are positional because there is no default for either. See
-// [ErrNilScopeResolver] for why the scope resolver is not an option with the
-// global scope behind it.
-func NewServer(reader audit.Reader, scopes ScopeResolver, opts ...Option) (*Server, error) {
+// The reader is positional and the scope resolver is a required option:
+// [WithScopeResolver] has no default behind it, so a server built without it is
+// refused with [ErrNilScopeResolver] exactly as a nil positional argument was.
+// The refusal is the policy; the spelling is what the rest of the transport
+// lane does, and audit is no longer the one surface where the seam is passed a
+// different way.
+func NewServer(reader audit.Reader, opts ...Option) (*Server, error) {
 	if reader == nil {
 		return nil, ErrNilReader
 	}
 
-	if scopes == nil {
-		return nil, ErrNilScopeResolver
-	}
-
-	s := &Server{reader: reader, scopes: scopes}
+	s := &Server{reader: reader}
 
 	for _, opt := range opts {
 		if opt != nil {
 			opt(s)
 		}
+	}
+
+	if s.scopes == nil {
+		return nil, ErrNilScopeResolver
 	}
 
 	s.o11y = observability.NewObserver(serverName, s.logger, s.tracerProvider)
