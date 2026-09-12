@@ -47,7 +47,7 @@ import (
 // one whose does not keeps compiling and takes the branch that does not need it
 // — which is the part the base interface cannot offer, since every method it
 // declares is one every implementation owes. The precedent is
-// [github.com/primandproper/platform-go/v14/notifications/async.ConnectionAcceptor]
+// [github.com/primandproper/primitives-go/v2/notifications/async.ConnectionAcceptor]
 // and the standard library's http.Flusher; neither is a method the interface
 // beside it grew.
 //

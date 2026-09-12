@@ -5,9 +5,6 @@ import (
 	"testing"
 	"time"
 
-	asyncably "github.com/primandproper/platform-go/v14/notifications/async/ably"
-	asyncnotifcfg "github.com/primandproper/platform-go/v14/notifications/async/config"
-	asyncpusher "github.com/primandproper/platform-go/v14/notifications/async/pusher"
 	"github.com/primandproper/platform-go/v14/rbac"
 	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
 
@@ -40,6 +37,9 @@ import (
 	llmcfg "github.com/primandproper/primitives-go/v2/llm/config"
 	llmopenai "github.com/primandproper/primitives-go/v2/llm/openai"
 	messagequeuecfg "github.com/primandproper/primitives-go/v2/messagequeue/config"
+	asyncably "github.com/primandproper/primitives-go/v2/notifications/async/ably"
+	asyncnotifcfg "github.com/primandproper/primitives-go/v2/notifications/async/config"
+	asyncpusher "github.com/primandproper/primitives-go/v2/notifications/async/pusher"
 	"github.com/primandproper/primitives-go/v2/notifications/mobile/apns"
 	mobilecfg "github.com/primandproper/primitives-go/v2/notifications/mobile/config"
 	loggingcfg "github.com/primandproper/primitives-go/v2/observability/logging/config"

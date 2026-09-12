@@ -90,16 +90,16 @@ reasons behind the three exceptions.
 | `mediaregistry` | Object metadata rows over an object store   | postgres, mysql, sqlite          |
 
 ### Coordination & delivery
-| Package         | Purpose                                                                             | Implementations                         |
-|-----------------|-------------------------------------------------------------------------------------|-----------------------------------------|
-| `outbox`        | Transactional outbox                                                                | postgres, mysql, sqlite                 |
-| `workqueue`     | Leased work queue (`SKIP LOCKED` claim/complete/expire)                             | postgres                                |
-| `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres                                |
-| `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres (+ http)                       |
-| `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite                 |
-| `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite                 |
-| `notifications` | User notifications                                                                  | postgres, mysql, sqlite (+ async, grpc) |
-| `searchsync`    | Reindexing worker driven by the outbox                                              | —                                       |
+| Package         | Purpose                                                                             | Implementations                  |
+|-----------------|-------------------------------------------------------------------------------------|----------------------------------|
+| `outbox`        | Transactional outbox                                                                | postgres, mysql, sqlite          |
+| `workqueue`     | Leased work queue (`SKIP LOCKED` claim/complete/expire)                             | postgres                         |
+| `timers`        | Durable one-shot scheduling (run once at time T, fleet-wide)                        | postgres                         |
+| `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres (+ http)                |
+| `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite          |
+| `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite          |
+| `notifications` | User notifications                                                                  | postgres, mysql, sqlite (+ grpc) |
+| `searchsync`    | Reindexing worker driven by the outbox                                              | —                                |
 
 ### The composition root
 | Package        | Purpose                                                                       |

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/metering"
-	asyncnoop "github.com/primandproper/platform-go/v14/notifications/async/noop"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/saga"
@@ -22,6 +21,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/jobs"
 	"github.com/primandproper/primitives-go/v2/messagequeue"
 	messagequeuemock "github.com/primandproper/primitives-go/v2/messagequeue/mock"
+	asyncnoop "github.com/primandproper/primitives-go/v2/notifications/async/noop"
 	"github.com/primandproper/primitives-go/v2/ratelimiting"
 	"github.com/primandproper/primitives-go/v2/secrets"
 	grpcserver "github.com/primandproper/primitives-go/v2/server/grpc"
