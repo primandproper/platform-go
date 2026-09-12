@@ -74,10 +74,12 @@ func TestWorker_InstrumentFailures(T *testing.T) {
 		T.Run(instrument, func(t *testing.T) {
 			t.Parallel()
 
-			store := newSQLiteEnv(t).newStore(t)
+			env := newSQLiteEnv(t)
+
+			store := env.newStore(t)
 			registry := registryWith(t, "orders", noopStep("one"))
 
-			_, err := NewWorker(t.Context(), &WorkerConfig{}, store, registry, newScopedLocker(t),
+			_, err := NewWorker(t.Context(), &WorkerConfig{}, env.client, store, registry, newScopedLocker(t),
 				WithWorkerMetricsProvider(failingInstrumentProvider(instrument)))
 
 			must.ErrorIs(t, err, errInstrument)
@@ -98,9 +100,11 @@ func TestRunner_InstrumentFailures(T *testing.T) {
 		T.Run(instrument, func(t *testing.T) {
 			t.Parallel()
 
-			store := newSQLiteEnv(t).newStore(t)
+			env := newSQLiteEnv(t)
 
-			_, err := NewRunner[testState](store, NewRegistry(),
+			store := env.newStore(t)
+
+			_, err := NewRunner[testState](env.client, store, NewRegistry(),
 				WithRunnerMetricsProvider(failingInstrumentProvider(instrument)))
 
 			must.ErrorIs(t, err, errInstrument)

@@ -27,13 +27,13 @@ func registryWith(t *testing.T, name string, steps ...Step[testState]) *Registry
 }
 
 // startedRecord saves a running instance whose step names match the registry's.
-func startedRecord(t *testing.T, store Store, registry *Registry, definitionName, id string) *Record {
+func (e *storeEnv) startedRecord(t *testing.T, store Store, registry *Registry, definitionName, id string) *Record {
 	t.Helper()
 
 	names, ok := registry.StepNames(definitionName)
 	must.True(t, ok)
 
-	return saveInstance(t, store, newRecord(id, definitionName, names, testState{}, baseTime), baseTime)
+	return e.saveInstance(t, store, newRecord(id, definitionName, names, testState{}, baseTime), baseTime)
 }
 
 // finalState decodes an instance's stored state.
@@ -59,11 +59,13 @@ func TestWorker_HappyPath(T *testing.T) {
 			trailStep(rec, "notify", nil, nil),
 		)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 5)
 
@@ -84,10 +86,12 @@ func TestWorker_HappyPath(T *testing.T) {
 			trailStep(rec, "three", nil, nil),
 		)
 
-		store := newSQLiteEnv(t).newStore(t)
-		worker := newWorker(t, store, registry, newStubClock())
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		worker := env.newWorker(t, store, registry, newStubClock())
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		// One cycle, not three: the pass carries on until the saga rests.
 		drainOnce(t, worker)
@@ -122,11 +126,13 @@ func TestWorker_HappyPath(T *testing.T) {
 			},
 		)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 5)
 		test.EqOp(t, StatusCompleted, inst.Status)
@@ -147,11 +153,13 @@ func TestWorker_Compensation(T *testing.T) {
 			trailStep(rec, "notify", platformerrors.New("the partner is down"), nil),
 		)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 
@@ -185,11 +193,13 @@ func TestWorker_Compensation(T *testing.T) {
 			trailStep(rec, "notify", retry.Unretryable(platformerrors.New("rejected")), nil),
 		)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 
@@ -209,11 +219,13 @@ func TestWorker_Compensation(T *testing.T) {
 			trailStep(rec, "reserve", nil, nil),
 		)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 
@@ -229,11 +241,13 @@ func TestWorker_Compensation(T *testing.T) {
 			Do:   func(context.Context, *testState) error { return retry.Unretryable(platformerrors.New("no")) },
 		})
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 		test.EqOp(t, StatusCompensated, inst.Status)
@@ -262,11 +276,13 @@ func TestWorker_Compensation(T *testing.T) {
 			},
 		)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 		test.EqOp(t, StatusCompensated, inst.Status)
@@ -292,11 +308,13 @@ func TestWorker_Retries(T *testing.T) {
 			Undo: func(context.Context, *testState) error { return nil },
 		})
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 
@@ -324,11 +342,13 @@ func TestWorker_Retries(T *testing.T) {
 			noopStep("after"),
 		)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 		test.EqOp(t, StatusCompleted, inst.Status)
@@ -350,11 +370,13 @@ func TestWorker_Retries(T *testing.T) {
 			Undo: func(context.Context, *testState) error { return nil },
 		})
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 		test.EqOp(t, int64(1), attempts.Load())
@@ -370,10 +392,12 @@ func TestWorker_Retries(T *testing.T) {
 			Undo: func(context.Context, *testState) error { return nil },
 		})
 
-		store := newSQLiteEnv(t).newStore(t)
-		worker := newWorker(t, store, registry, newStubClock())
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		worker := env.newWorker(t, store, registry, newStubClock())
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		drainOnce(t, worker)
 
@@ -403,11 +427,13 @@ func TestWorker_Stuck(T *testing.T) {
 			},
 		)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 15)
 
@@ -419,12 +445,14 @@ func TestWorker_Stuck(T *testing.T) {
 	T.Run("an unknown definition marks the instance stuck", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
 		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		worker := env.newWorker(t, store, registry, clk)
 
-		saveInstance(t, store, newRecord("i1", "refunds", []string{"one"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("i1", "refunds", []string{"one"}, testState{}, baseTime), baseTime)
 
 		drainOnce(t, worker)
 
@@ -438,12 +466,14 @@ func TestWorker_Stuck(T *testing.T) {
 	T.Run("a definition whose steps changed marks the instance stuck", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"), noopStep("two"))
-		worker := newWorker(t, store, registry, newStubClock())
+		worker := env.newWorker(t, store, registry, newStubClock())
 
 		// Started under a one-step definition; this build has two.
-		saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 
 		drainOnce(t, worker)
 
@@ -457,11 +487,13 @@ func TestWorker_Stuck(T *testing.T) {
 	T.Run("a status this build does not know marks the instance stuck", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		registry := registryWith(t, "orders", noopStep("one"))
-		worker := newWorker(t, store, registry, newStubClock())
+		env := newSQLiteEnv(t)
 
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		store := env.newStore(t)
+		registry := registryWith(t, "orders", noopStep("one"))
+		worker := env.newWorker(t, store, registry, newStubClock())
+
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 
 		// Written by a future build that knew a sixth status. The claim
 		// predicate would not return it, so it is fed to step directly.
@@ -478,11 +510,13 @@ func TestWorker_Stuck(T *testing.T) {
 	T.Run("a cursor outside the step list marks a compensating instance stuck", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		registry := registryWith(t, "orders", noopStep("one"))
-		worker := newWorker(t, store, registry, newStubClock())
+		env := newSQLiteEnv(t)
 
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		store := env.newStore(t)
+		registry := registryWith(t, "orders", noopStep("one"))
+		worker := env.newWorker(t, store, registry, newStubClock())
+
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 		inst.Status = StatusCompensating
 		inst.CurrentStep = 9
 
@@ -498,11 +532,13 @@ func TestWorker_Stuck(T *testing.T) {
 	T.Run("a running cursor past the step list completes rather than sticking", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		registry := registryWith(t, "orders", noopStep("one"))
-		worker := newWorker(t, store, registry, newStubClock())
+		env := newSQLiteEnv(t)
 
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		store := env.newStore(t)
+		registry := registryWith(t, "orders", noopStep("one"))
+		worker := env.newWorker(t, store, registry, newStubClock())
+
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 		inst.CurrentStep = 9
 
 		_, err := worker.step(t.Context(), mustLookup(t, registry, "orders"), inst)
@@ -537,11 +573,13 @@ func TestWorker_Panics(T *testing.T) {
 			Undo: func(context.Context, *testState) error { return nil },
 		})
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 
@@ -563,11 +601,13 @@ func TestWorker_Panics(T *testing.T) {
 			},
 		)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 15)
 
@@ -589,11 +629,13 @@ func TestWorker_Delays(T *testing.T) {
 
 		registry := registryWith(t, "orders", trailStep(rec, "now", nil, nil), second)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		drainOnce(t, worker)
 
@@ -630,11 +672,13 @@ func TestWorker_Delays(T *testing.T) {
 
 		registry := registryWith(t, "orders", first, second)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk)
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		// One pass unwinds the whole thing, with no clock advance at all.
 		drainOnce(t, worker)
@@ -672,9 +716,9 @@ func TestWorker_Idempotency(T *testing.T) {
 		// A store whose Advance always fails, so the step succeeds and its
 		// progress is never recorded — the crash-between-effect-and-record case.
 		failing := &failingAdvanceStore{Store: store}
-		worker := newWorker(t, failing, registry, clk, WithWorkerIdempotency(manager))
+		worker := env.newWorker(t, failing, registry, clk, WithWorkerIdempotency(manager))
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		drainOnce(t, worker)
 		test.EqOp(t, int64(1), runs.Load())
@@ -683,7 +727,7 @@ func TestWorker_Idempotency(T *testing.T) {
 		// replayed from the idempotency record rather than executed again.
 		clk.advance(10 * time.Minute)
 
-		healthy := newWorker(t, store, registry, clk, WithWorkerIdempotency(manager))
+		healthy := env.newWorker(t, store, registry, clk, WithWorkerIdempotency(manager))
 		drainOnce(t, healthy)
 
 		test.EqOp(t, int64(1), runs.Load())
@@ -710,11 +754,13 @@ func TestWorker_Idempotency(T *testing.T) {
 			},
 		})
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk, WithWorkerIdempotency(newIdempotencyManager(t)))
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk, WithWorkerIdempotency(newIdempotencyManager(t)))
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 
@@ -731,11 +777,13 @@ func TestWorker_Idempotency(T *testing.T) {
 			trailStep(rec, "fail", retry.Unretryable(platformerrors.New("no")), nil),
 		)
 
-		store := newSQLiteEnv(t).newStore(t)
-		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk, WithWorkerIdempotency(newIdempotencyManager(t)))
+		env := newSQLiteEnv(t)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		store := env.newStore(t)
+		clk := newStubClock()
+		worker := env.newWorker(t, store, registry, clk, WithWorkerIdempotency(newIdempotencyManager(t)))
+
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 
@@ -746,9 +794,11 @@ func TestWorker_Idempotency(T *testing.T) {
 	T.Run("the key names the instance, the phase, and the step, and not the attempt", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("charge"))
-		worker := newWorker(t, store, registry, newStubClock())
+		worker := env.newWorker(t, store, registry, newStubClock())
 
 		test.EqOp(t, "saga:i1:do:charge", string(worker.stepKey("i1", phaseDo, "charge")))
 		test.EqOp(t, "saga:i1:undo:charge", string(worker.stepKey("i1", phaseUndo, "charge")))
@@ -781,14 +831,16 @@ func TestWorker_Locking(T *testing.T) {
 			},
 		})
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		clk := newStubClock()
 
-		worker, err := NewWorker(t.Context(), testWorkerConfig(), store, registry, heldLocker{},
+		worker, err := NewWorker(t.Context(), testWorkerConfig(), env.client, store, registry, heldLocker{},
 			WithWorkerClock(clk))
 		must.NoError(t, err)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		drainOnce(t, worker)
 
@@ -803,14 +855,16 @@ func TestWorker_Locking(T *testing.T) {
 	T.Run("a failing release is logged rather than propagated", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
 
-		worker, err := NewWorker(t.Context(), testWorkerConfig(),
+		worker, err := NewWorker(t.Context(), testWorkerConfig(), env.client,
 			&failingReleaseStore{Store: store}, registry, heldLocker{}, WithWorkerClock(newStubClock()))
 		must.NoError(t, err)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		// Does not panic, does not fail the cycle.
 		drainOnce(t, worker)
@@ -823,9 +877,11 @@ func TestWorker_Lifecycle(T *testing.T) {
 	T.Run("Run stops on Close", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		worker := newWorker(t, store, registry, newStubClock())
+		worker := env.newWorker(t, store, registry, newStubClock())
 
 		go worker.Run()
 
@@ -837,9 +893,11 @@ func TestWorker_Lifecycle(T *testing.T) {
 	T.Run("Close reports a context that expired first", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		worker := newWorker(t, store, registry, newStubClock())
+		worker := env.newWorker(t, store, registry, newStubClock())
 
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
@@ -851,13 +909,15 @@ func TestWorker_Lifecycle(T *testing.T) {
 	T.Run("Run advances what it claims", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
 
 		cfg := testWorkerConfig()
 		cfg.PollInterval = time.Millisecond
 
-		worker, err := NewWorker(t.Context(), cfg, store, registry, newScopedLocker(t))
+		worker, err := NewWorker(t.Context(), cfg, env.client, store, registry, newScopedLocker(t))
 		must.NoError(t, err)
 
 		// Stamped from the wall clock, because this is the one test that runs
@@ -865,7 +925,7 @@ func TestWorker_Lifecycle(T *testing.T) {
 		now := time.Now().UTC()
 		names, ok := registry.StepNames("orders")
 		must.True(t, ok)
-		saveInstance(t, store, newRecord("i1", "orders", names, testState{}, now), now)
+		env.saveInstance(t, store, newRecord("i1", "orders", names, testState{}, now), now)
 
 		go worker.Run()
 		t.Cleanup(func() { _ = worker.Close(context.Background()) })
@@ -884,10 +944,12 @@ func TestWorker_Lifecycle(T *testing.T) {
 	T.Run("a claim failure is counted and the cycle carries on", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
 
-		worker, err := NewWorker(t.Context(), testWorkerConfig(),
+		worker, err := NewWorker(t.Context(), testWorkerConfig(), env.client,
 			&failingClaimStore{Store: store}, registry, newScopedLocker(t), WithWorkerClock(newStubClock()))
 		must.NoError(t, err)
 
@@ -902,43 +964,52 @@ func TestNewWorker(T *testing.T) {
 	T.Run("rejects missing dependencies", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
 		locker := newScopedLocker(t)
 
-		_, err := NewWorker(t.Context(), nil, store, registry, locker)
+		_, err := NewWorker(t.Context(), nil, env.client, store, registry, locker)
 		test.Error(t, err)
 
-		_, err = NewWorker(t.Context(), testWorkerConfig(), nil, registry, locker)
+		_, err = NewWorker(t.Context(), testWorkerConfig(), nil, store, registry, locker)
+		test.ErrorIs(t, err, ErrNilDatabaseClient)
+
+		_, err = NewWorker(t.Context(), testWorkerConfig(), env.client, nil, registry, locker)
 		test.ErrorIs(t, err, ErrNilStore)
 
-		_, err = NewWorker(t.Context(), testWorkerConfig(), store, nil, locker)
+		_, err = NewWorker(t.Context(), testWorkerConfig(), env.client, store, nil, locker)
 		test.ErrorIs(t, err, ErrNilRegistry)
 
-		_, err = NewWorker(t.Context(), testWorkerConfig(), store, registry, nil)
+		_, err = NewWorker(t.Context(), testWorkerConfig(), env.client, store, registry, nil)
 		test.ErrorIs(t, err, ErrNilLocker)
 	})
 
 	T.Run("rejects a config that cannot be satisfied", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
 
 		cfg := testWorkerConfig()
 		cfg.LeaseDuration = time.Second
 
-		_, err := NewWorker(t.Context(), cfg, store, registry, newScopedLocker(t))
+		_, err := NewWorker(t.Context(), cfg, env.client, store, registry, newScopedLocker(t))
 		test.Error(t, err)
 	})
 
 	T.Run("ignores nil options", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
 
-		worker, err := NewWorker(t.Context(), testWorkerConfig(), store, registry, newScopedLocker(t),
+		worker, err := NewWorker(t.Context(), testWorkerConfig(), env.client, store, registry, newScopedLocker(t),
 			nil,
 			WithWorkerClock(nil),
 			WithWorkerLogger(nil),
@@ -960,7 +1031,9 @@ func TestWorker_AdvanceBudget(T *testing.T) {
 
 		rec := &recorder{}
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		clk := newStubClock()
 
 		// Every step burns the whole pass budget, so drive stops before the
@@ -989,9 +1062,9 @@ func TestWorker_AdvanceBudget(T *testing.T) {
 			},
 		}))
 
-		worker := newWorker(t, store, registry, clk)
+		worker := env.newWorker(t, store, registry, clk)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		drainOnce(t, worker)
 
@@ -1074,9 +1147,9 @@ func runWorkerSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		worker := env.newWorker(t, store, registry, clk)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 5)
 
@@ -1096,9 +1169,9 @@ func runWorkerSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		worker := env.newWorker(t, store, registry, clk)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 
@@ -1133,9 +1206,9 @@ func runWorkerSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		worker := env.newWorker(t, store, registry, clk)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		stuck := drain(t, worker, store, clk, "i1", 15)
 		must.EqOp(t, StatusStuck, stuck.Status)
@@ -1143,7 +1216,7 @@ func runWorkerSuite(t *testing.T, env *storeEnv) {
 
 		refundWorks = true
 
-		runner, err := NewRunner[testState](store, registry, WithRunnerClock(clk))
+		runner, err := NewRunner[testState](env.client, store, registry, WithRunnerClock(clk))
 		must.NoError(t, err)
 
 		_, err = runner.Resume(t.Context(), "i1")

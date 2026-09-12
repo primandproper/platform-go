@@ -45,12 +45,14 @@ func TestEvents_Lifecycle(T *testing.T) {
 
 		publisher := &collectingPublisher{}
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"), noopStep("two"))
 		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk, WithWorkerEventPublisher(publisher))
+		worker := env.newWorker(t, store, registry, clk, WithWorkerEventPublisher(publisher))
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 5)
 		must.EqOp(t, StatusCompleted, inst.Status)
@@ -75,15 +77,17 @@ func TestEvents_Lifecycle(T *testing.T) {
 		publisher := &collectingPublisher{}
 		rec := &recorder{}
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders",
 			trailStep(rec, "charge", nil, nil),
 			trailStep(rec, "fail", retry.Unretryable(platformerrors.New("declined")), nil),
 		)
 		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk, WithWorkerEventPublisher(publisher))
+		worker := env.newWorker(t, store, registry, clk, WithWorkerEventPublisher(publisher))
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 10)
 		must.EqOp(t, StatusCompensated, inst.Status)
@@ -107,7 +111,9 @@ func TestEvents_Lifecycle(T *testing.T) {
 
 		publisher := &collectingPublisher{}
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders",
 			Step[testState]{
 				Name: "charge",
@@ -120,9 +126,9 @@ func TestEvents_Lifecycle(T *testing.T) {
 			},
 		)
 		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk, WithWorkerEventPublisher(publisher))
+		worker := env.newWorker(t, store, registry, clk, WithWorkerEventPublisher(publisher))
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 15)
 		must.EqOp(t, StatusStuck, inst.Status)
@@ -136,15 +142,17 @@ func TestEvents_Lifecycle(T *testing.T) {
 	T.Run("a failing publisher rolls the advance back", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"), noopStep("two"))
-		worker := newWorker(t, store, registry, newStubClock(), WithWorkerEventPublisher(
+		worker := env.newWorker(t, store, registry, newStubClock(), WithWorkerEventPublisher(
 			EventPublisherFunc(func(context.Context, database.Tx, ...Event) error {
 				return platformerrors.New("the outbox table is missing")
 			}),
 		))
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		drainOnce(t, worker)
 
@@ -161,7 +169,9 @@ func TestEvents_Lifecycle(T *testing.T) {
 
 		publisher := &collectingPublisher{}
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", Step[testState]{
 			Name: "one",
 			Do: func(_ context.Context, s *testState) error {
@@ -171,9 +181,9 @@ func TestEvents_Lifecycle(T *testing.T) {
 			},
 		})
 		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk, WithWorkerEventPublisher(publisher))
+		worker := env.newWorker(t, store, registry, clk, WithWorkerEventPublisher(publisher))
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		drain(t, worker, store, clk, "i1", 5)
 

@@ -78,8 +78,11 @@ rather than approximately correct.
 
 Start writes a row; a Worker advances it:
 
-	runner, err := saga.NewRunner[Booking](store, registry)
+	runner, err := saga.NewRunner[Booking](client, store, registry)
 	instance, err := runner.Start(ctx, "place_order", Booking{OrderID: id})
+
+The client is there because Start opens a transaction of its own, and a Store is
+not where a transaction comes from — see the Store documentation.
 
 Reach for StartInTransaction where you can. A saga started in its own
 transaction, after the caller's has already committed, does not exist if the
@@ -155,7 +158,7 @@ The library supplies a deterministic idempotency key per (instance, step,
 phase) and, when a Manager is configured, runs every step under it:
 
 	manager, err := idempotency.NewManager[saga.StepResult](recordCache, locker)
-	worker, err := saga.NewWorker(ctx, cfg, store, registry, locker,
+	worker, err := saga.NewWorker(ctx, cfg, client, store, registry, locker,
 		saga.WithWorkerIdempotency(manager))
 
 The key deliberately excludes the attempt number. A crash-and-resume becomes
@@ -264,6 +267,13 @@ The package ships a SQL Store (NewSQLStore) and the DDL it needs
 (saga/migrations), for Postgres, MySQL, and SQLite. Store is an interface
 because the state machine and its storage are genuinely separable; nothing about
 adopting this package requires implementing it.
+
+Two of its methods take the caller's transaction and the other six take nothing
+at all, which is a deviation from what every other store in this module does and
+is a ruling rather than an oversight — the interface's own documentation carries
+the argument, method by method. What an implementor owes is worth stating from
+this side too: no scope, because a saga belongs to no tenant, and no
+WithTransaction, because a Store is not where a transaction comes from.
 
 # Where the SQL comes from
 

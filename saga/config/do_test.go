@@ -7,6 +7,7 @@ import (
 
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
 	"github.com/primandproper/platform-go/v14/saga"
+	sagamock "github.com/primandproper/platform-go/v14/saga/mock"
 
 	cachecfg "github.com/primandproper/primitives-go/v2/cache/config"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -155,6 +156,33 @@ func TestRegisterWorker(T *testing.T) {
 		worker, err := do.Invoke[*saga.Worker](i)
 		must.NoError(t, err)
 		test.NotNil(t, worker)
+	})
+
+	T.Run("an unregistered database client is a wiring failure", func(t *testing.T) {
+		t.Parallel()
+
+		// The client became a prerequisite of the Worker when saga.Store lost
+		// its WithTransaction. RegisterStore already required one, so a
+		// container that resolves the store resolves this too — the case worth
+		// pinning is the one where nobody registered either.
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue(i, &Config{})
+		do.ProvideValue(i, saga.NewRegistry())
+		do.ProvideValue[saga.Store](i, &sagamock.StoreMock{})
+
+		locker, err := distributedlockcfg.NewScopedLocker(
+			t.Context(),
+			&distributedlockcfg.Config{Provider: distributedlockcfg.MemoryProvider},
+			nil,
+		)
+		must.NoError(t, err)
+		do.ProvideValue[distributedlock.ScopedLocker](i, locker)
+
+		RegisterWorker(i)
+
+		_, err = do.Invoke[*saga.Worker](i)
+		test.Error(t, err)
 	})
 
 	T.Run("a registered publisher that fails to build is an error", func(t *testing.T) {

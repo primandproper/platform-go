@@ -53,6 +53,7 @@ type StepResult struct {
 // process regardless of what state each carries, which is only possible because
 // the Registry erased the state types at registration — see the definition type.
 type Worker struct {
+	client      database.Client
 	store       Store
 	registry    *Registry
 	locker      distributedlock.ScopedLocker
@@ -91,6 +92,13 @@ type Worker struct {
 //
 // ctx is used to validate the config and is not retained — Run takes its own.
 //
+// The client is what persist commits an advance and its lifecycle events in,
+// which is the one write on this loop that spans two seams and therefore needs
+// a transaction of its own. It is passed rather than reached for through the
+// store because Store has no WithTransaction to reach for: one way in, and it
+// is database.Client's. Every other write this worker makes is a single
+// statement the store runs on its own handle.
+//
 // The locker is required and has no default. See ErrNilLocker: the lease alone
 // stops two workers picking the same instance up, but a lease is a timestamp
 // and a lease that lapses mid-pass is exactly the moment two workers would run
@@ -98,6 +106,7 @@ type Worker struct {
 func NewWorker(
 	ctx context.Context,
 	cfg *WorkerConfig,
+	client database.Client,
 	store Store,
 	registry *Registry,
 	locker distributedlock.ScopedLocker,
@@ -105,6 +114,10 @@ func NewWorker(
 ) (*Worker, error) {
 	if cfg == nil {
 		return nil, platformerrors.New("nil saga worker config provided")
+	}
+
+	if client == nil {
+		return nil, ErrNilDatabaseClient
 	}
 
 	if store == nil {
@@ -123,6 +136,7 @@ func NewWorker(
 
 	w := &Worker{
 		cfg:      *cfg,
+		client:   client,
 		store:    store,
 		registry: registry,
 		locker:   locker,
@@ -676,11 +690,16 @@ func (w *Worker) reschedule(ctx context.Context, inst *Record, attempts int, pha
 // taking an executor. An event that commits without the advance announces a
 // step that did not happen; an advance that commits without its event leaves a
 // subscriber waiting for a saga that has already finished.
+//
+// The transaction is opened on the worker's own client rather than joining
+// anybody's. There is nobody to join: this runs from a poll tick, and the
+// caller-supplied transaction Store.Advance's signature asks for is supplied
+// here by the component servicing itself.
 func (w *Worker) persist(ctx context.Context, inst *Record, nextAttempt time.Time, events ...Event) error {
 	now := w.clock.Now().UTC()
 	inst.LastUpdatedAt = &now
 
-	return w.store.WithTransaction(ctx, func(q database.Tx) error {
+	return w.client.WithTransaction(ctx, func(q database.Tx) error {
 		if err := w.store.Advance(ctx, q, inst, nextAttempt, now); err != nil {
 			return err
 		}

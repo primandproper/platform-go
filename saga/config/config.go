@@ -14,7 +14,8 @@ one at runtime — it is passed explicitly to NewWorker and to the Runner.
 
 Runner construction is likewise not here, for a different reason: NewRunner is
 generic over the state type, and a constructor in a config package would have to
-name that type. Build the store here, hand it to NewRunner[T] at the call site.
+name that type. Build the store here, hand it and the same database.Client to
+NewRunner[T] at the call site.
 */
 package sagacfg
 
@@ -110,6 +111,12 @@ func NewStore(
 
 // NewWorker builds the Worker that advances instances.
 //
+// The client is the same one NewStore was given — the Worker needs one of its
+// own because saga.Store has no WithTransaction to reach for, and one write on
+// the advance path commits a position and its lifecycle events together. Two
+// clients over one database would work and would be a way to point half of this
+// package somewhere else by accident.
+//
 // The locker is required and has no default — see saga.ErrNilLocker. The
 // idempotency manager and the event publisher are not arguments at all: see
 // WithWorkerIdempotency and WithWorkerEventPublisher, each of which says what a
@@ -117,6 +124,7 @@ func NewStore(
 func NewWorker(
 	ctx context.Context,
 	cfg *Config,
+	client database.Client,
 	store saga.Store,
 	registry *saga.Registry,
 	locker distributedlock.ScopedLocker,
@@ -135,7 +143,7 @@ func NewWorker(
 		return nil, errors.Wrap(err, "validating saga config")
 	}
 
-	return saga.NewWorker(ctx, &cfg.Worker, store, registry, locker,
+	return saga.NewWorker(ctx, &cfg.Worker, client, store, registry, locker,
 		saga.WithWorkerLogger(logger),
 		saga.WithWorkerTracerProvider(tracerProvider),
 		saga.WithWorkerMetricsProvider(metricsProvider),

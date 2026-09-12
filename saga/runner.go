@@ -33,6 +33,7 @@ var _ Runner[struct{}] = (*StoreRunner[struct{}])(nil)
 // StoreRunner per state type over one shared Store, and for a Worker that has never
 // heard of T to advance what they start.
 type StoreRunner[T any] struct {
+	client    database.Client
 	store     Store
 	registry  *Registry
 	publisher EventPublisher
@@ -46,16 +47,31 @@ type StoreRunner[T any] struct {
 	metricsProvider metrics.Provider
 }
 
-// NewRunner builds a Runner over a Store and a Registry.
+// NewRunner builds a Runner over a database.Client, a Store and a Registry.
 //
 // There is no config: a Runner writes one row and reads others, and every knob
 // that could exist — how often to poll, how long a step may take, how many
 // times to retry — belongs to the Worker that does the advancing.
 //
+// The client is what Start opens its own transaction on. It is passed rather
+// than reached for through the store because Store has no WithTransaction to
+// reach for: one way in, and it is database.Client's. A caller that already
+// holds a transaction wants StartInTransaction and this client is never
+// consulted for it.
+//
 // T is the state type. It must match the type the named definition was
 // registered with; Start and Get report ErrStateTypeMismatch rather than
 // decoding a saga's state into a struct that merely happens to parse.
-func NewRunner[T any](store Store, registry *Registry, opts ...RunnerOption) (*StoreRunner[T], error) {
+func NewRunner[T any](
+	client database.Client,
+	store Store,
+	registry *Registry,
+	opts ...RunnerOption,
+) (*StoreRunner[T], error) {
+	if client == nil {
+		return nil, ErrNilDatabaseClient
+	}
+
 	if store == nil {
 		return nil, ErrNilStore
 	}
@@ -72,6 +88,7 @@ func NewRunner[T any](store Store, registry *Registry, opts ...RunnerOption) (*S
 	}
 
 	r := &StoreRunner[T]{
+		client:          client,
 		store:           store,
 		registry:        registry,
 		publisher:       o.publisher,
@@ -102,7 +119,7 @@ func (r *StoreRunner[T]) Start(ctx context.Context, def string, initial T) (*Ins
 
 	var inst *Instance[T]
 
-	if err := r.store.WithTransaction(ctx, func(q database.Tx) error {
+	if err := r.client.WithTransaction(ctx, func(q database.Tx) error {
 		var txErr error
 		inst, txErr = r.start(ctx, q, def, initial)
 

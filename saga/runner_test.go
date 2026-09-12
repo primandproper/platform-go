@@ -15,11 +15,27 @@ import (
 	"github.com/shoenig/test/must"
 )
 
+// txRecordingStore records the executor each Save was handed, and holds no
+// database.Client of its own. It is the implementation Store always claimed to
+// allow and could not, while the interface demanded a WithTransaction that only
+// a client can honestly answer.
+type txRecordingStore struct {
+	Store
+
+	saved []database.Tx
+}
+
+func (s *txRecordingStore) Save(ctx context.Context, q database.Tx, inst *Record, nextAttempt time.Time) error {
+	s.saved = append(s.saved, q)
+
+	return s.Store.Save(ctx, q, inst, nextAttempt)
+}
+
 // newTestRunner builds a Runner over a fresh store and the given registry.
-func newTestRunner(t *testing.T, store Store, registry *Registry, opts ...RunnerOption) Runner[testState] {
+func (e *storeEnv) newTestRunner(t *testing.T, store Store, registry *Registry, opts ...RunnerOption) Runner[testState] {
 	t.Helper()
 
-	runner, err := NewRunner[testState](store, registry,
+	runner, err := NewRunner[testState](e.client, store, registry,
 		append([]RunnerOption{WithRunnerClock(newStubClock())}, opts...)...)
 	must.NoError(t, err)
 
@@ -29,24 +45,51 @@ func newTestRunner(t *testing.T, store Store, registry *Registry, opts ...Runner
 func TestNewRunner(T *testing.T) {
 	T.Parallel()
 
+	T.Run("Start opens its transaction on the client rather than the store", func(t *testing.T) {
+		t.Parallel()
+
+		env := newSQLiteEnv(t)
+
+		store := &txRecordingStore{Store: env.newStore(t)}
+		registry := registryWith(t, "orders", noopStep("one"))
+
+		runner := env.newTestRunner(t, store, registry)
+
+		_, err := runner.Start(t.Context(), "orders", testState{})
+		must.NoError(t, err)
+
+		// Save ran inside a transaction, and nothing asked the store for one.
+		// That is the whole of the change: a Store that cannot produce a
+		// transaction is still a Store a Runner can drive.
+		must.SliceLen(t, 1, store.saved)
+		test.NotNil(t, store.saved[0])
+	})
+
 	T.Run("rejects missing dependencies", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
 
-		_, err := NewRunner[testState](nil, NewRegistry())
+		store := env.newStore(t)
+
+		_, err := NewRunner[testState](nil, store, NewRegistry())
+		test.ErrorIs(t, err, ErrNilDatabaseClient)
+
+		_, err = NewRunner[testState](env.client, nil, NewRegistry())
 		test.ErrorIs(t, err, ErrNilStore)
 
-		_, err = NewRunner[testState](store, nil)
+		_, err = NewRunner[testState](env.client, store, nil)
 		test.ErrorIs(t, err, ErrNilRegistry)
 	})
 
 	T.Run("ignores nil options", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
 
-		runner, err := NewRunner[testState](store, NewRegistry(),
+		store := env.newStore(t)
+
+		runner, err := NewRunner[testState](env.client, store, NewRegistry(),
 			nil,
 			WithRunnerClock(nil),
 			WithRunnerEventPublisher(nil),
@@ -65,9 +108,11 @@ func TestRunner_Start(T *testing.T) {
 	T.Run("writes a running instance at step zero", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"), noopStep("two"))
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		inst, err := runner.Start(t.Context(), "orders", testState{Amount: 12})
 		must.NoError(t, err)
@@ -88,8 +133,10 @@ func TestRunner_Start(T *testing.T) {
 	T.Run("reports an unknown definition", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		runner := newTestRunner(t, store, NewRegistry())
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
+		runner := env.newTestRunner(t, store, NewRegistry())
 
 		_, err := runner.Start(t.Context(), "nope", testState{})
 		test.ErrorIs(t, err, ErrUnknownDefinition)
@@ -98,7 +145,9 @@ func TestRunner_Start(T *testing.T) {
 	T.Run("reports a state type that is not the definition's", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 
 		registry := NewRegistry()
 		must.NoError(t, Register(registry, Definition[otherState]{
@@ -109,7 +158,7 @@ func TestRunner_Start(T *testing.T) {
 			}},
 		}))
 
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		_, err := runner.Start(t.Context(), "orders", testState{})
 		test.ErrorIs(t, err, ErrStateTypeMismatch)
@@ -122,7 +171,9 @@ func TestRunner_Start(T *testing.T) {
 			Fn func() `json:"fn"`
 		}
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 
 		registry := NewRegistry()
 		must.NoError(t, Register(registry, Definition[unencodable]{
@@ -133,7 +184,7 @@ func TestRunner_Start(T *testing.T) {
 			}},
 		}))
 
-		runner, err := NewRunner[unencodable](store, registry)
+		runner, err := NewRunner[unencodable](env.client, store, registry)
 		must.NoError(t, err)
 
 		_, err = runner.Start(t.Context(), "orders", unencodable{Fn: func() {}})
@@ -143,13 +194,15 @@ func TestRunner_Start(T *testing.T) {
 	T.Run("honors the first step's delay", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 
 		delayed := noopStep("later")
 		delayed.Delay = time.Hour
 
 		registry := registryWith(t, "orders", delayed)
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		inst, err := runner.Start(t.Context(), "orders", testState{})
 		must.NoError(t, err)
@@ -170,12 +223,12 @@ func TestRunner_Start(T *testing.T) {
 		env := newSQLiteEnv(t)
 		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		var id string
 
 		// The caller's transaction rolls back, so the saga must not exist.
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
+		err := env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			inst, startErr := runner.StartInTransaction(t.Context(), q, "orders", testState{})
 			if startErr != nil {
 				return startErr
@@ -195,9 +248,11 @@ func TestRunner_Start(T *testing.T) {
 	T.Run("StartInTransaction refuses a nil executor", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		_, err := runner.StartInTransaction(t.Context(), nil, "orders", testState{})
 		test.ErrorIs(t, err, ErrNilExecutor)
@@ -208,9 +263,11 @@ func TestRunner_Start(T *testing.T) {
 
 		var seen []Event
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		runner := newTestRunner(t, store, registry, WithRunnerEventPublisher(
+		runner := env.newTestRunner(t, store, registry, WithRunnerEventPublisher(
 			EventPublisherFunc(func(_ context.Context, _ database.Tx, events ...Event) error {
 				seen = append(seen, events...)
 
@@ -231,9 +288,11 @@ func TestRunner_Start(T *testing.T) {
 	T.Run("a failing publisher fails the start", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		runner := newTestRunner(t, store, registry, WithRunnerEventPublisher(
+		runner := env.newTestRunner(t, store, registry, WithRunnerEventPublisher(
 			EventPublisherFunc(func(context.Context, database.Tx, ...Event) error {
 				return platformerrors.New("the outbox table is missing")
 			}),
@@ -250,9 +309,11 @@ func TestRunner_Get(T *testing.T) {
 	T.Run("decodes the state", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		started, err := runner.Start(t.Context(), "orders", testState{Amount: 5, Trail: []string{"x"}})
 		must.NoError(t, err)
@@ -266,8 +327,10 @@ func TestRunner_Get(T *testing.T) {
 	T.Run("reports a missing instance", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		runner := newTestRunner(t, store, NewRegistry())
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
+		runner := env.newTestRunner(t, store, NewRegistry())
 
 		_, err := runner.Get(t.Context(), "nope")
 		test.ErrorIs(t, err, ErrInstanceNotFound)
@@ -276,7 +339,9 @@ func TestRunner_Get(T *testing.T) {
 	T.Run("reports a state type that is not the definition's", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 
 		registry := NewRegistry()
 		must.NoError(t, Register(registry, Definition[otherState]{
@@ -287,9 +352,9 @@ func TestRunner_Get(T *testing.T) {
 			}},
 		}))
 
-		saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, otherState{Name: "x"}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, otherState{Name: "x"}, baseTime), baseTime)
 
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		_, err := runner.Get(t.Context(), "i1")
 		test.ErrorIs(t, err, ErrStateTypeMismatch)
@@ -298,11 +363,13 @@ func TestRunner_Get(T *testing.T) {
 	T.Run("reads an instance whose definition this process does not register", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		saveInstance(t, store, newRecord("i1", "elsewhere", []string{"one"}, testState{Amount: 9}, baseTime), baseTime)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
+		env.saveInstance(t, store, newRecord("i1", "elsewhere", []string{"one"}, testState{Amount: 9}, baseTime), baseTime)
 
 		// A support tool has the store but not the code that runs the sagas.
-		runner := newTestRunner(t, store, NewRegistry())
+		runner := env.newTestRunner(t, store, NewRegistry())
 
 		got, err := runner.Get(t.Context(), "i1")
 		must.NoError(t, err)
@@ -314,13 +381,13 @@ func TestRunner_Get(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 		store := env.newStore(t)
-		saveInstance(t, store, newRecord("i1", "elsewhere", []string{"one"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("i1", "elsewhere", []string{"one"}, testState{}, baseTime), baseTime)
 
 		_, err := env.client.Writer().ExecContext(t.Context(),
 			"UPDATE "+instancesTable(t, store)+" SET state = 'not json' WHERE id = 'i1'")
 		must.NoError(t, err)
 
-		runner := newTestRunner(t, store, NewRegistry())
+		runner := env.newTestRunner(t, store, NewRegistry())
 
 		_, err = runner.Get(t.Context(), "i1")
 		test.Error(t, err)
@@ -333,9 +400,11 @@ func TestRunner_List(T *testing.T) {
 	T.Run("lists and decodes", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		for i := range 3 {
 			_, err := runner.Start(t.Context(), "orders", testState{Amount: i})
@@ -355,9 +424,11 @@ func TestRunner_List(T *testing.T) {
 	T.Run("carries the pagination through", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		for range 3 {
 			_, err := runner.Start(t.Context(), "orders", testState{})
@@ -377,7 +448,9 @@ func TestRunner_List(T *testing.T) {
 	T.Run("reports an instance it cannot decode", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 
 		registry := NewRegistry()
 		must.NoError(t, Register(registry, Definition[otherState]{
@@ -388,9 +461,9 @@ func TestRunner_List(T *testing.T) {
 			}},
 		}))
 
-		saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, otherState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, otherState{}, baseTime), baseTime)
 
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		_, err := runner.List(t.Context(), nil, nil)
 		test.ErrorIs(t, err, ErrStateTypeMismatch)
@@ -404,7 +477,7 @@ func TestRunner_List(T *testing.T) {
 		store, err := NewSQLStore(env.client, WithTablePrefix("absent"))
 		must.NoError(t, err)
 
-		runner := newTestRunner(t, store, NewRegistry())
+		runner := env.newTestRunner(t, store, NewRegistry())
 
 		_, err = runner.List(t.Context(), nil, nil)
 		test.Error(t, err)
@@ -417,7 +490,7 @@ func TestRunner_Resume(T *testing.T) {
 	// stickInstance drives a saga to StatusStuck by giving it a compensation
 	// that never succeeds, then returns the instance and the registry it ran
 	// under.
-	stickInstance := func(t *testing.T, store Store) (*Registry, string) {
+	stickInstance := func(t *testing.T, env *storeEnv, store Store) (*Registry, string) {
 		t.Helper()
 
 		registry := registryWith(t, "orders",
@@ -433,9 +506,9 @@ func TestRunner_Resume(T *testing.T) {
 		)
 
 		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		worker := env.newWorker(t, store, registry, clk)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		inst := drain(t, worker, store, clk, "i1", 15)
 		must.EqOp(t, StatusStuck, inst.Status)
@@ -446,10 +519,12 @@ func TestRunner_Resume(T *testing.T) {
 	T.Run("returns a stuck instance to the phase it broke in", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		registry, id := stickInstance(t, store)
+		env := newSQLiteEnv(t)
 
-		runner := newTestRunner(t, store, registry)
+		store := env.newStore(t)
+		registry, id := stickInstance(t, env, store)
+
+		runner := env.newTestRunner(t, store, registry)
 
 		resumed, err := runner.Resume(t.Context(), id)
 		must.NoError(t, err)
@@ -461,7 +536,9 @@ func TestRunner_Resume(T *testing.T) {
 	T.Run("a resumed saga finishes unwinding once the cause is fixed", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 
 		var refundWorks bool
 
@@ -484,16 +561,16 @@ func TestRunner_Resume(T *testing.T) {
 		)
 
 		clk := newStubClock()
-		worker := newWorker(t, store, registry, clk)
+		worker := env.newWorker(t, store, registry, clk)
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		stuck := drain(t, worker, store, clk, "i1", 15)
 		must.EqOp(t, StatusStuck, stuck.Status)
 
 		refundWorks = true
 
-		runner, err := NewRunner[testState](store, registry, WithRunnerClock(clk))
+		runner, err := NewRunner[testState](env.client, store, registry, WithRunnerClock(clk))
 		must.NoError(t, err)
 
 		_, err = runner.Resume(t.Context(), "i1")
@@ -506,9 +583,11 @@ func TestRunner_Resume(T *testing.T) {
 	T.Run("refuses an instance that is not stuck", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		started, err := runner.Start(t.Context(), "orders", testState{})
 		must.NoError(t, err)
@@ -520,8 +599,10 @@ func TestRunner_Resume(T *testing.T) {
 	T.Run("reports a missing instance", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		runner := newTestRunner(t, store, NewRegistry())
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
+		runner := env.newTestRunner(t, store, NewRegistry())
 
 		_, err := runner.Resume(t.Context(), "nope")
 		test.ErrorIs(t, err, ErrInstanceNotFound)
@@ -530,10 +611,12 @@ func TestRunner_Resume(T *testing.T) {
 	T.Run("leaves an instance stuck when its definition is not registered", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		_, id := stickInstance(t, store)
+		env := newSQLiteEnv(t)
 
-		runner := newTestRunner(t, store, NewRegistry())
+		store := env.newStore(t)
+		_, id := stickInstance(t, env, store)
+
+		runner := env.newTestRunner(t, store, NewRegistry())
 
 		_, err := runner.Resume(t.Context(), id)
 		test.ErrorIs(t, err, ErrUnknownDefinition)
@@ -546,12 +629,14 @@ func TestRunner_Resume(T *testing.T) {
 	T.Run("leaves an instance stuck when its definition drifted", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		_, id := stickInstance(t, store)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
+		_, id := stickInstance(t, env, store)
 
 		// A build whose definition gained a step.
 		changed := registryWith(t, "orders", noopStep("charge"), noopStep("fail"), noopStep("audit"))
-		runner := newTestRunner(t, store, changed)
+		runner := env.newTestRunner(t, store, changed)
 
 		_, err := runner.Resume(t.Context(), id)
 		test.ErrorIs(t, err, ErrDefinitionDrift)
@@ -568,13 +653,13 @@ func TestRunner_Resume(T *testing.T) {
 		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
 
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 		inst.Status = StatusStuck
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return store.Advance(t.Context(), q, inst, baseTime, baseTime)
 		}))
 
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		resumed, err := runner.Resume(t.Context(), "i1")
 		must.NoError(t, err)
@@ -589,9 +674,9 @@ func TestRunner_Resume(T *testing.T) {
 
 		env := newSQLiteEnv(t)
 		store := env.newStore(t)
-		registry, id := stickInstance(t, store)
+		registry, id := stickInstance(t, env, store)
 
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		_, err := runner.Resume(t.Context(), id)
 		must.NoError(t, err)

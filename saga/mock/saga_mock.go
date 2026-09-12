@@ -48,9 +48,6 @@ var _ saga.Store = &StoreMock{}
 //			SaveFunc: func(ctx context.Context, q database.Tx, inst *saga.Record, nextAttempt time.Time) error {
 //				panic("mock out the Save method")
 //			},
-//			WithTransactionFunc: func(ctx context.Context, fn func(q database.Tx) error) error {
-//				panic("mock out the WithTransaction method")
-//			},
 //		}
 //
 //		// use mockedStore in code that requires saga.Store
@@ -81,9 +78,6 @@ type StoreMock struct {
 
 	// SaveFunc mocks the Save method.
 	SaveFunc func(ctx context.Context, q database.Tx, inst *saga.Record, nextAttempt time.Time) error
-
-	// WithTransactionFunc mocks the WithTransaction method.
-	WithTransactionFunc func(ctx context.Context, fn func(q database.Tx) error) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -175,23 +169,15 @@ type StoreMock struct {
 			// NextAttempt is the nextAttempt argument value.
 			NextAttempt time.Time
 		}
-		// WithTransaction holds details about calls to the WithTransaction method.
-		WithTransaction []struct {
-			// Ctx is the ctx argument value.
-			Ctx context.Context
-			// Fn is the fn argument value.
-			Fn func(q database.Tx) error
-		}
 	}
-	lockAdvance         sync.RWMutex
-	lockClaim           sync.RWMutex
-	lockGet             sync.RWMutex
-	lockList            sync.RWMutex
-	lockRelease         sync.RWMutex
-	lockRequeue         sync.RWMutex
-	lockReschedule      sync.RWMutex
-	lockSave            sync.RWMutex
-	lockWithTransaction sync.RWMutex
+	lockAdvance    sync.RWMutex
+	lockClaim      sync.RWMutex
+	lockGet        sync.RWMutex
+	lockList       sync.RWMutex
+	lockRelease    sync.RWMutex
+	lockRequeue    sync.RWMutex
+	lockReschedule sync.RWMutex
+	lockSave       sync.RWMutex
 }
 
 // Advance calls AdvanceFunc.
@@ -543,41 +529,5 @@ func (mock *StoreMock) SaveCalls() []struct {
 	mock.lockSave.RLock()
 	calls = mock.calls.Save
 	mock.lockSave.RUnlock()
-	return calls
-}
-
-// WithTransaction calls WithTransactionFunc.
-func (mock *StoreMock) WithTransaction(ctx context.Context, fn func(q database.Tx) error) error {
-	if mock.WithTransactionFunc == nil {
-		panic("StoreMock.WithTransactionFunc: method is nil but Store.WithTransaction was just called")
-	}
-	callInfo := struct {
-		Ctx context.Context
-		Fn  func(q database.Tx) error
-	}{
-		Ctx: ctx,
-		Fn:  fn,
-	}
-	mock.lockWithTransaction.Lock()
-	mock.calls.WithTransaction = append(mock.calls.WithTransaction, callInfo)
-	mock.lockWithTransaction.Unlock()
-	return mock.WithTransactionFunc(ctx, fn)
-}
-
-// WithTransactionCalls gets all the calls that were made to WithTransaction.
-// Check the length with:
-//
-//	len(mockedStore.WithTransactionCalls())
-func (mock *StoreMock) WithTransactionCalls() []struct {
-	Ctx context.Context
-	Fn  func(q database.Tx) error
-} {
-	var calls []struct {
-		Ctx context.Context
-		Fn  func(q database.Tx) error
-	}
-	mock.lockWithTransaction.RLock()
-	calls = mock.calls.WithTransaction
-	mock.lockWithTransaction.RUnlock()
 	return calls
 }

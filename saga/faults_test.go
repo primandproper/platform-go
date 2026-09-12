@@ -145,8 +145,14 @@ func (e *faultyExecutor) QueryRowContext(ctx context.Context, query string, args
 }
 
 // newFaultyStore migrates a table against the real client and returns a Store
-// whose statements break according to f.
-func newFaultyStore(t *testing.T, env *storeEnv, f *faults) (faulty, healthy Store) {
+// whose statements break according to f, alongside the faulty client it runs
+// on.
+//
+// The client is returned rather than reached back out of the store because a
+// Store has no WithTransaction, and because it is the client — not the store —
+// that injects the fault into the executor a transaction hands out. A test
+// wanting a broken Advance has to open its transaction on this.
+func newFaultyStore(t *testing.T, env *storeEnv, f *faults) (faulty, healthy Store, client database.Client) {
 	t.Helper()
 
 	// The healthy store first, so the table exists and fixtures can be written
@@ -160,11 +166,12 @@ func newFaultyStore(t *testing.T, env *storeEnv, f *faults) (faulty, healthy Sto
 	must.NoError(t, err)
 	must.NoError(t, db.Close())
 
-	faulty, err = NewSQLStore(&faultyClient{Client: env.client, closed: db, faults: f},
-		WithTablePrefix(concrete.prefix))
+	client = &faultyClient{Client: env.client, closed: db, faults: f}
+
+	faulty, err = NewSQLStore(client, WithTablePrefix(concrete.prefix))
 	must.NoError(t, err)
 
-	return faulty, healthy
+	return faulty, healthy, client
 }
 
 func TestSQLStore_Faults(T *testing.T) {
@@ -174,9 +181,9 @@ func TestSQLStore_Faults(T *testing.T) {
 		t.Parallel()
 
 		env := newSQLiteEnv(t)
-		faulty, healthy := newFaultyStore(t, env, &faults{failExec: "UPDATE"})
+		faulty, healthy, _ := newFaultyStore(t, env, &faults{failExec: "UPDATE"})
 
-		saveInstance(t, healthy, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, healthy, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 
 		_, err := faulty.Claim(t.Context(), baseTime, 10, baseTime.Add(time.Hour))
 		test.ErrorIs(t, err, errDatabase)
@@ -189,9 +196,9 @@ func TestSQLStore_Faults(T *testing.T) {
 
 		// The projection, not the ID select: the claimable read runs first and
 		// must succeed for this branch to be the one under test.
-		faulty, healthy := newFaultyStore(t, env, &faults{failQuery: batchProjection})
+		faulty, healthy, _ := newFaultyStore(t, env, &faults{failQuery: batchProjection})
 
-		saveInstance(t, healthy, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, healthy, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 
 		_, err := faulty.Claim(t.Context(), baseTime, 10, baseTime.Add(time.Hour))
 		test.ErrorIs(t, err, errDatabase)
@@ -206,9 +213,9 @@ func TestSQLStore_Faults(T *testing.T) {
 		// statements — another worker's advance finishing it — which is the
 		// race the claim repeats its status guard for and which cannot be
 		// produced deterministically against a serialized database.
-		faulty, healthy := newFaultyStore(t, env, &faults{truncate: batchProjection})
+		faulty, healthy, _ := newFaultyStore(t, env, &faults{truncate: batchProjection})
 
-		saveInstance(t, healthy, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, healthy, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 
 		claimed, err := faulty.Claim(t.Context(), baseTime, 10, baseTime.Add(time.Hour))
 		must.NoError(t, err)
@@ -222,9 +229,9 @@ func TestSQLStore_Faults(T *testing.T) {
 		t.Parallel()
 
 		env := newSQLiteEnv(t)
-		faulty, healthy := newFaultyStore(t, env, &faults{failQuery: batchProjection})
+		faulty, healthy, _ := newFaultyStore(t, env, &faults{failQuery: batchProjection})
 
-		saveInstance(t, healthy, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, healthy, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 
 		_, err := faulty.List(t.Context(), nil, nil)
 		test.Error(t, err)
@@ -234,14 +241,17 @@ func TestSQLStore_Faults(T *testing.T) {
 		t.Parallel()
 
 		env := newSQLiteEnv(t)
-		faulty, healthy := newFaultyStore(t, env, &faults{badResult: "UPDATE"})
+		faulty, healthy, faultyClient := newFaultyStore(t, env, &faults{badResult: "UPDATE"})
 
-		inst := saveInstance(t, healthy, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		inst := env.saveInstance(t, healthy, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 
 		// Advance, through execExpectingRow.
 		inst.CurrentStep = 1
 
-		err := faulty.WithTransaction(t.Context(), func(q database.Tx) error {
+		// On the faulty client, not the environment's: the fault is injected into
+		// the executor the transaction hands out, so a healthy transaction here
+		// would leave the assertion below testing nothing.
+		err := faultyClient.WithTransaction(t.Context(), func(q database.Tx) error {
 			return faulty.Advance(t.Context(), q, inst, baseTime, baseTime)
 		})
 		test.ErrorIs(t, err, errDatabase)
