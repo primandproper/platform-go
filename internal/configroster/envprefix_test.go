@@ -69,11 +69,6 @@ var roleNamed = map[string]string{
 	"saga.WorkerConfig.CompensationBackoff": "the compensation loop's backoff, the other",
 	"metering.FlusherConfig.Backoff":        "the flush protocol's backoff",
 	"webhooks.WorkerConfig.Backoff":         "the delivery loop's backoff",
-
-	// QUEUE_ is what a component calls the queue it works through, whichever
-	// queue that is: operations nests a workqueue.Config under the same name,
-	// and it has no top-level spelling to agree or disagree with.
-	"outboxcfg.Config.Queue": "the queue the relay publishes claimed messages to",
 }
 
 // TestNestedEnvPrefixesMatchTheTopLevelSpelling asserts that a config nested
