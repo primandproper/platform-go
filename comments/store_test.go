@@ -3,6 +3,7 @@ package comments
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -79,24 +80,71 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		c := newComment(testAuthor, "this was delicious")
-		must.NoError(t, env.create(t, store, testScope, c))
+		input := newComment(testAuthor, "this was delicious")
+
+		created, err := env.create(t, store, testScope, input)
+		must.NoError(t, err)
+		must.NotNil(t, created)
 
 		// The id is minted here and the creation time is the database's, read
 		// back rather than left as a zero time a caller would serialize as a
 		// date in the year one.
-		test.NotEqOp(t, "", c.ID)
-		test.False(t, c.CreatedAt.IsZero())
-		test.Nil(t, c.LastUpdatedAt)
-		test.True(t, c.Root())
+		test.NotEqOp(t, "", created.ID)
+		test.False(t, created.CreatedAt.IsZero())
+		test.Nil(t, created.LastUpdatedAt)
+		test.Nil(t, created.ArchivedAt)
+		test.True(t, created.Root())
+		test.EqOp(t, testScope, created.Scope)
+		test.EqOp(t, testAuthor, created.Author)
+		test.EqOp(t, "this was delicious", created.Body)
+		test.EqOp(t, testTarget, created.Target)
 
-		read, err := store.GetComment(t.Context(), env.reader(), testScope, c.ID)
+		// And the argument is untouched, which is the other half of the same
+		// fact: the write's answers are on the value it returned, so a caller
+		// reads them from one place.
+		test.EqOp(t, "", input.ID)
+		test.True(t, input.CreatedAt.IsZero())
+
+		read, err := store.GetComment(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
-		test.EqOp(t, c.ID, read.ID)
+		test.EqOp(t, created.ID, read.ID)
 		test.EqOp(t, testAuthor, read.Author)
 		test.EqOp(t, "this was delicious", read.Body)
 		test.EqOp(t, testTarget, read.Target)
 		test.EqOp(t, RootParentID, read.ParentID)
+
+		// The row the write answered with is the row the read finds, field for
+		// field, because one of them is a read of the other.
+		test.Eq(t, read, created)
+	})
+
+	t.Run("the stamps a caller filled in are not the write's to believe", func(t *testing.T) {
+		t.Parallel()
+
+		// Neither column is in the insert's list, so a comment arriving with an
+		// edited-at or an archived-at is describing a row that does not exist
+		// yet. The read-back answers with what the database holds rather than
+		// with what the caller assembled.
+		store := env.newStore(t)
+
+		claimed := time.Now().UTC()
+
+		input := newComment(testAuthor, "not edited, not archived")
+		input.LastUpdatedAt = &claimed
+		input.ArchivedAt = &claimed
+
+		created, err := env.create(t, store, testScope, input)
+		must.NoError(t, err)
+		must.NotNil(t, created)
+
+		test.Nil(t, created.LastUpdatedAt)
+		test.Nil(t, created.ArchivedAt)
+
+		// And it is in the discussion, which the archived stamp would have said
+		// it was not.
+		page, err := store.ListRootComments(t.Context(), env.reader(), testScope, testTarget, nil)
+		must.NoError(t, err)
+		test.Eq(t, []string{created.ID}, ids(page.Data))
 	})
 
 	t.Run("a caller-supplied id is kept", func(t *testing.T) {
@@ -106,7 +154,7 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 
 		c := newComment(testAuthor, "words")
 		c.ID = "comment_of_my_own"
-		must.NoError(t, env.create(t, store, testScope, c))
+		must.NoError(t, env.createErr(t, store, testScope, c))
 
 		read, err := store.GetComment(t.Context(), env.reader(), testScope, "comment_of_my_own")
 		must.NoError(t, err)
@@ -119,12 +167,12 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		anonymous := newComment("", "words")
-		must.ErrorIs(t, env.create(t, store, testScope, anonymous), ErrEmptyAuthor)
+		must.ErrorIs(t, env.createErr(t, store, testScope, anonymous), ErrEmptyAuthor)
 
 		// Whitespace is nothing said. A row holding it is a comment a client
 		// renders as an empty bubble.
 		silent := newComment(testAuthor, "   \n\t ")
-		must.ErrorIs(t, env.create(t, store, testScope, silent), ErrEmptyBody)
+		must.ErrorIs(t, env.createErr(t, store, testScope, silent), ErrEmptyBody)
 	})
 
 	t.Run("a nil comment and an unset scope are refused", func(t *testing.T) {
@@ -132,13 +180,13 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		must.ErrorIs(t, env.create(t, store, testScope, nil), ErrNilComment)
+		must.ErrorIs(t, env.createErr(t, store, testScope, nil), ErrNilComment)
 
 		// The scope the write binds is the argument's, so the unset one that has
 		// to be refused is the argument. tenancy.Scope answers for that itself:
 		// an unset scope is a driver error rather than a wider write.
 		must.ErrorIs(t,
-			env.create(t, store, tenancy.Scope{}, newComment(testAuthor, "words")),
+			env.createErr(t, store, tenancy.Scope{}, newComment(testAuthor, "words")),
 			tenancy.ErrNoScope)
 	})
 
@@ -154,7 +202,7 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		elsewhere := newComment(testAuthor, "written by somebody next door")
 		elsewhere.Scope = otherScope
 
-		must.ErrorIs(t, env.create(t, store, testScope, elsewhere), ErrScopeMismatch)
+		must.ErrorIs(t, env.createErr(t, store, testScope, elsewhere), ErrScopeMismatch)
 
 		page, err := store.ListCommentsByAuthor(t.Context(), env.reader(), testScope, testAuthor, nil)
 		must.NoError(t, err)
@@ -173,10 +221,16 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		fresh := newComment(testAuthor, "no scope of its own")
 		fresh.Scope = tenancy.Scope{}
 
-		must.NoError(t, env.create(t, store, testScope, fresh))
-		test.EqOp(t, testScope, fresh.Scope)
+		created, err := env.create(t, store, testScope, fresh)
+		must.NoError(t, err)
+		must.NotNil(t, created)
+		test.EqOp(t, testScope, created.Scope)
 
-		read, err := store.GetComment(t.Context(), env.reader(), testScope, fresh.ID)
+		// The adoption lands on the row the write answered with and not on the
+		// argument, which stays as unset as the caller left it.
+		test.EqOp(t, tenancy.Scope{}, fresh.Scope)
+
+		read, err := store.GetComment(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
 		test.EqOp(t, testScope, read.Scope)
 	})
@@ -187,17 +241,24 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		c := written(t, env, store, newComment(testAuthor, "frist"))
 
-		c.Body = "first"
-		must.NoError(t, env.update(t, store, testScope, c))
+		edit := &Comment{ID: c.ID, Body: "first"}
+
+		revised, err := env.update(t, store, testScope, edit)
+		must.NoError(t, err)
+		must.NotNil(t, revised)
+		test.EqOp(t, "first", revised.Body)
+
+		// The stamp a client renders "edited" from, on the row the write
+		// answered with: it is the database's, so an argument assembled by the
+		// caller has nothing to put there.
+		must.NotNil(t, revised.LastUpdatedAt)
+		test.Nil(t, edit.LastUpdatedAt)
 
 		read, err := store.GetComment(t.Context(), env.reader(), testScope, c.ID)
 		must.NoError(t, err)
 		test.EqOp(t, "first", read.Body)
-
-		// The stamp a client renders "edited" from. It is nil until somebody
-		// revises the comment, which is what makes it readable as a fact about
-		// the words rather than about the row.
 		must.NotNil(t, read.LastUpdatedAt)
+		test.Eq(t, read, revised)
 	})
 
 	t.Run("an edit cannot move a comment to another target, parent or author", func(t *testing.T) {
@@ -209,11 +270,23 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 
 		// Everything but the body changed, which is everything the statement
 		// does not assign: the write succeeds and none of it lands.
-		child.Body = "child, edited"
-		child.Target = Target{Type: mealType, ID: "meal_9"}
-		child.ParentID = RootParentID
-		child.Author = "somebody_else"
-		must.NoError(t, env.update(t, store, testScope, child))
+		moved := *child
+		moved.Body = "child, edited"
+		moved.Target = Target{Type: mealType, ID: "meal_9"}
+		moved.ParentID = RootParentID
+		moved.Author = "somebody_else"
+
+		revised, err := env.update(t, store, testScope, &moved)
+		must.NoError(t, err)
+		must.NotNil(t, revised)
+
+		// The row returned is what makes that visible rather than assumed: it
+		// carries the three as the table holds them, not as the argument named
+		// them.
+		test.EqOp(t, "child, edited", revised.Body)
+		test.EqOp(t, testTarget, revised.Target)
+		test.EqOp(t, root.ID, revised.ParentID)
+		test.EqOp(t, otherAuthor, revised.Author)
 
 		read, err := store.GetComment(t.Context(), env.reader(), testScope, child.ID)
 		must.NoError(t, err)
@@ -230,7 +303,7 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		c := written(t, env, store, newComment(testAuthor, "words"))
 
 		c.Body = " "
-		must.ErrorIs(t, env.update(t, store, testScope, c), ErrEmptyBody)
+		must.ErrorIs(t, env.updateErr(t, store, testScope, c), ErrEmptyBody)
 
 		read, err := store.GetComment(t.Context(), env.reader(), testScope, c.ID)
 		must.NoError(t, err)
@@ -247,8 +320,16 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		theirs.Scope = otherScope
 		theirs.Body = "not yours to edit"
 
-		must.ErrorIs(t, env.update(t, store, otherScope, &theirs), ErrCommentNotFound)
-		must.ErrorIs(t, env.archive(t, store, otherScope, c.ID), ErrCommentNotFound)
+		// The row comes back only alongside a nil error, on the guarded writes
+		// as much as on the checked ones: the guard is what decides the answer,
+		// so a write that moved nothing never reads a row back to describe it.
+		revised, err := env.update(t, store, otherScope, &theirs)
+		must.ErrorIs(t, err, ErrCommentNotFound)
+		test.Nil(t, revised)
+
+		hidden, err := env.archive(t, store, otherScope, c.ID)
+		must.ErrorIs(t, err, ErrCommentNotFound)
+		test.Nil(t, hidden)
 
 		read, err := store.GetComment(t.Context(), env.reader(), testScope, c.ID)
 		must.NoError(t, err)
@@ -261,14 +342,27 @@ func runWriteSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		c := written(t, env, store, newComment(testAuthor, "off topic"))
 
-		must.NoError(t, env.archive(t, store, testScope, c.ID))
+		hidden, err := env.archive(t, store, testScope, c.ID)
+		must.NoError(t, err)
 
-		_, err := store.GetComment(t.Context(), env.reader(), testScope, c.ID)
+		// The row the archive answered with, which is the one read here that no
+		// other read can make: every keyed statement over this table filters the
+		// archived rows out, so this is where the words a moderator's entry has
+		// to name come from.
+		must.NotNil(t, hidden)
+		test.EqOp(t, c.ID, hidden.ID)
+		test.EqOp(t, "off topic", hidden.Body)
+		test.EqOp(t, testAuthor, hidden.Author)
+		test.EqOp(t, testTarget, hidden.Target)
+		test.EqOp(t, testScope, hidden.Scope)
+		must.NotNil(t, hidden.ArchivedAt)
+
+		_, err = store.GetComment(t.Context(), env.reader(), testScope, c.ID)
 		must.ErrorIs(t, err, ErrCommentNotFound)
 
 		// The statement excludes archived rows, so a second archive addresses
 		// nothing — which is the honest answer rather than a quiet success.
-		must.ErrorIs(t, env.archive(t, store, testScope, c.ID), ErrCommentNotFound)
+		must.ErrorIs(t, env.archiveErr(t, store, testScope, c.ID), ErrCommentNotFound)
 
 		page, err := store.ListRootComments(t.Context(), env.reader(), testScope, testTarget, nil)
 		must.NoError(t, err)
@@ -287,7 +381,7 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 		c := newComment(testAuthor, "about a thing that does not exist here")
 		c.Target = Target{Type: unknownType, ID: "x"}
 
-		must.ErrorIs(t, env.create(t, store, testScope, c), ErrUnknownTargetType)
+		must.ErrorIs(t, env.createErr(t, store, testScope, c), ErrUnknownTargetType)
 	})
 
 	t.Run("a store with no catalog accepts nothing", func(t *testing.T) {
@@ -298,7 +392,7 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 		// storing rows under types nothing will ever list.
 		store := env.newStore(t, WithTargets(Targets{}))
 
-		must.ErrorIs(t, env.create(t, store, testScope, newComment(testAuthor, "words")),
+		must.ErrorIs(t, env.createErr(t, store, testScope, newComment(testAuthor, "words")),
 			ErrUnknownTargetType)
 	})
 
@@ -309,13 +403,13 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 
 		typeless := newComment(testAuthor, "words")
 		typeless.Target = Target{ID: "recipe_1"}
-		must.ErrorIs(t, env.create(t, store, testScope, typeless), ErrEmptyTargetType)
+		must.ErrorIs(t, env.createErr(t, store, testScope, typeless), ErrEmptyTargetType)
 
 		// The empty id is not a wildcard: a comment holding it would be about
 		// every recipe and no recipe at once.
 		idless := newComment(testAuthor, "words")
 		idless.Target = Target{Type: recipeType}
-		must.ErrorIs(t, env.create(t, store, testScope, idless), ErrEmptyTargetID)
+		must.ErrorIs(t, env.createErr(t, store, testScope, idless), ErrEmptyTargetID)
 	})
 
 	t.Run("a registered existence check is consulted, in the comment's scope", func(t *testing.T) {
@@ -326,7 +420,7 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 			recipeType: {Description: "a recipe", Exists: check.exists},
 		}))
 
-		must.NoError(t, env.create(t, store, testScope, newComment(testAuthor, "words")))
+		must.NoError(t, env.createErr(t, store, testScope, newComment(testAuthor, "words")))
 
 		test.Eq(t, []string{testTarget.ID}, check.asked)
 		test.Eq(t, []tenancy.Scope{testScope}, check.scopes)
@@ -341,7 +435,7 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 		}))
 
 		c := newComment(testAuthor, "about a deleted recipe")
-		must.ErrorIs(t, env.create(t, store, testScope, c), ErrTargetNotFound)
+		must.ErrorIs(t, env.createErr(t, store, testScope, c), ErrTargetNotFound)
 
 		page, err := store.ListCommentsByTargetType(t.Context(), env.reader(), testScope, recipeType, nil)
 		must.NoError(t, err)
@@ -359,7 +453,7 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 			recipeType: {Description: "a recipe", Exists: check.exists},
 		}))
 
-		err := env.create(t, store, testScope, newComment(testAuthor, "words"))
+		err := env.createErr(t, store, testScope, newComment(testAuthor, "words"))
 		must.ErrorIs(t, err, errCheckUnavailable)
 		test.False(t, errors.Is(err, ErrTargetNotFound))
 	})
@@ -375,7 +469,7 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 		c := newComment(testAuthor, "words")
 		c.Target = Target{Type: unknownType, ID: "x"}
 
-		must.ErrorIs(t, env.create(t, store, testScope, c), ErrUnknownTargetType)
+		must.ErrorIs(t, env.createErr(t, store, testScope, c), ErrUnknownTargetType)
 		test.Eq(t, []TargetType{recipeType}, store.TargetTypes())
 	})
 
@@ -398,7 +492,7 @@ func runTargetSuite(t *testing.T, env *storeEnv) {
 
 		// And the write is still refused, which is the asymmetry stated as a
 		// pair rather than as one half.
-		must.ErrorIs(t, env.create(t, withdrawn, testScope, newComment(testAuthor, "too late")),
+		must.ErrorIs(t, env.createErr(t, withdrawn, testScope, newComment(testAuthor, "too late")),
 			ErrUnknownTargetType)
 	})
 }
@@ -412,10 +506,17 @@ func runThreadSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		root := written(t, env, store, newComment(testAuthor, "root"))
 
-		child := reply(root.ID, otherAuthor, "child")
-		must.NoError(t, env.create(t, store, testScope, child))
+		input := reply(root.ID, otherAuthor, "child")
 
+		child, err := env.create(t, store, testScope, input)
+		must.NoError(t, err)
+		must.NotNil(t, child)
+
+		// The adopted target is on the row the write answered with, and the
+		// argument still names none: a caller with a comment id and a text box
+		// reads what it is about from what came back.
 		test.EqOp(t, testTarget, child.Target)
+		test.True(t, input.Target.Zero())
 
 		read, err := store.GetComment(t.Context(), env.reader(), testScope, child.ID)
 		must.NoError(t, err)
@@ -433,7 +534,7 @@ func runThreadSuite(t *testing.T, env *storeEnv) {
 		child := reply(root.ID, otherAuthor, "child")
 		child.Target = testTarget
 
-		must.NoError(t, env.create(t, store, testScope, child))
+		must.NoError(t, env.createErr(t, store, testScope, child))
 	})
 
 	t.Run("a reply naming a different target is refused", func(t *testing.T) {
@@ -445,7 +546,7 @@ func runThreadSuite(t *testing.T, env *storeEnv) {
 		child := reply(root.ID, otherAuthor, "child")
 		child.Target = Target{Type: mealType, ID: "meal_9"}
 
-		must.ErrorIs(t, env.create(t, store, testScope, child), ErrTargetMismatch)
+		must.ErrorIs(t, env.createErr(t, store, testScope, child), ErrTargetMismatch)
 	})
 
 	t.Run("a reply to a reply is refused", func(t *testing.T) {
@@ -456,7 +557,7 @@ func runThreadSuite(t *testing.T, env *storeEnv) {
 		child := written(t, env, store, reply(root.ID, otherAuthor, "child"))
 
 		grandchild := reply(child.ID, testAuthor, "grandchild")
-		must.ErrorIs(t, env.create(t, store, testScope, grandchild), ErrNestedReply)
+		must.ErrorIs(t, env.createErr(t, store, testScope, grandchild), ErrNestedReply)
 	})
 
 	t.Run("a reply to a comment that is not in the scope is refused", func(t *testing.T) {
@@ -465,7 +566,7 @@ func runThreadSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		orphan := reply("no_such_comment", testAuthor, "into the void")
-		must.ErrorIs(t, env.create(t, store, testScope, orphan), ErrParentNotFound)
+		must.ErrorIs(t, env.createErr(t, store, testScope, orphan), ErrParentNotFound)
 
 		// Another scope's comment reads as absent from here, which is the same
 		// answer and for the same reason a get gives it.
@@ -473,7 +574,7 @@ func runThreadSuite(t *testing.T, env *storeEnv) {
 
 		crossScope := reply(mine.ID, testAuthor, "from next door")
 		crossScope.Scope = otherScope
-		must.ErrorIs(t, env.create(t, store, otherScope, crossScope), ErrParentNotFound)
+		must.ErrorIs(t, env.createErr(t, store, otherScope, crossScope), ErrParentNotFound)
 	})
 
 	t.Run("a reply to an archived comment is refused", func(t *testing.T) {
@@ -483,9 +584,9 @@ func runThreadSuite(t *testing.T, env *storeEnv) {
 		// under something no discussion renders.
 		store := env.newStore(t)
 		root := written(t, env, store, newComment(testAuthor, "root"))
-		must.NoError(t, env.archive(t, store, testScope, root.ID))
+		must.NoError(t, env.archiveErr(t, store, testScope, root.ID))
 
-		must.ErrorIs(t, env.create(t, store, testScope, reply(root.ID, otherAuthor, "late")),
+		must.ErrorIs(t, env.createErr(t, store, testScope, reply(root.ID, otherAuthor, "late")),
 			ErrParentNotFound)
 	})
 
@@ -498,7 +599,7 @@ func runThreadSuite(t *testing.T, env *storeEnv) {
 		root := written(t, env, store, newComment(testAuthor, "root"))
 		child := written(t, env, store, reply(root.ID, otherAuthor, "child"))
 
-		must.NoError(t, env.archive(t, store, testScope, root.ID))
+		must.NoError(t, env.archiveErr(t, store, testScope, root.ID))
 
 		replies, err := store.ListReplies(t.Context(), env.reader(), testScope, testTarget, root.ID, nil)
 		must.NoError(t, err)
@@ -575,7 +676,7 @@ func runReadSuite(t *testing.T, env *storeEnv) {
 
 		second := newComment(testAuthor, "on recipe_2")
 		second.Target = Target{Type: recipeType, ID: "recipe_2"}
-		written(t, env, store, second)
+		second = written(t, env, store, second)
 
 		meal := newComment(testAuthor, "on a meal")
 		meal.Target = Target{Type: mealType, ID: "meal_1"}
@@ -605,7 +706,7 @@ func runReadSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 		c := written(t, env, store, newComment(testAuthor, "off topic"))
-		must.NoError(t, env.archive(t, store, testScope, c.ID))
+		must.NoError(t, env.archiveErr(t, store, testScope, c.ID))
 
 		hidden, err := store.ListCommentsByAuthor(t.Context(), env.reader(), testScope, testAuthor, nil)
 		must.NoError(t, err)
@@ -691,7 +792,7 @@ func runSweepSuite(t *testing.T, env *storeEnv) {
 		written(t, env, store, reply(root.ID, otherAuthor, "child"))
 
 		gone := written(t, env, store, newComment(testAuthor, "already archived"))
-		must.NoError(t, env.archive(t, store, testScope, gone.ID))
+		must.NoError(t, env.archiveErr(t, store, testScope, gone.ID))
 
 		elsewhere := newComment(testAuthor, "about another recipe")
 		elsewhere.Target = Target{Type: recipeType, ID: "recipe_2"}
@@ -743,7 +844,7 @@ func runSweepSuite(t *testing.T, env *storeEnv) {
 		// Archived and still theirs: an erasure has to reach what a soft delete
 		// hid, or a subject's words survive their own request.
 		archived := written(t, env, store, newComment(testAuthor, "archived but still mine"))
-		must.NoError(t, env.archive(t, store, testScope, archived.ID))
+		must.NoError(t, env.archiveErr(t, store, testScope, archived.ID))
 
 		theirs := written(t, env, store, newComment(otherAuthor, "theirs"))
 
@@ -843,12 +944,16 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// its own caller just wrote.
 		store := env.newStore(t)
 
-		created := newComment(testAuthor, "written and read on one executor")
+		var created *Comment
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			if err := store.CreateComment(t.Context(), tx, testScope, created); err != nil {
+			stored, err := store.CreateComment(t.Context(), tx, testScope,
+				newComment(testAuthor, "written and read on one executor"))
+			if err != nil {
 				return err
 			}
+
+			created = stored
 
 			read, err := store.GetComment(t.Context(), tx, testScope, created.ID)
 			if err != nil {
@@ -889,28 +994,62 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		created := newComment(testAuthor, "written inside")
+		input := newComment(testAuthor, "written inside")
 		edited := written(t, env, store, newComment(testAuthor, "before the edit"))
 		doomed := written(t, env, store, newComment(testAuthor, "on the way out"))
 
+		var (
+			created *Comment
+			revised *Comment
+			hidden  *Comment
+		)
+
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			if err := store.CreateComment(t.Context(), tx, testScope, created); err != nil {
+			stored, err := store.CreateComment(t.Context(), tx, testScope, input)
+			if err != nil {
 				return err
 			}
 
-			edited.Body = "after the edit"
-			if err := store.UpdateComment(t.Context(), tx, testScope, edited); err != nil {
+			created = stored
+
+			edit := &Comment{ID: edited.ID, Body: "after the edit"}
+
+			stored, err = store.UpdateComment(t.Context(), tx, testScope, edit)
+			if err != nil {
 				return err
 			}
 
-			return store.ArchiveComment(t.Context(), tx, testScope, doomed.ID)
+			revised = stored
+
+			stored, err = store.ArchiveComment(t.Context(), tx, testScope, doomed.ID)
+			if err != nil {
+				return err
+			}
+
+			hidden = stored
+
+			return nil
 		}))
 
-		// The create reads its creation time back through the caller's executor,
-		// so the value the caller is handed is the row this transaction wrote
-		// rather than a zero time waiting on a commit.
+		// Each of the three read its row back through the caller's executor, so
+		// what the caller is handed is the row this transaction wrote rather than
+		// a value waiting on a commit.
+		must.NotNil(t, created)
 		test.NotEqOp(t, "", created.ID)
 		test.False(t, created.CreatedAt.IsZero())
+
+		// And none of it landed on the argument, which is the other half of the
+		// same fact: the answers are on the value returned.
+		test.EqOp(t, "", input.ID)
+		test.True(t, input.CreatedAt.IsZero())
+
+		must.NotNil(t, revised)
+		test.EqOp(t, "after the edit", revised.Body)
+		must.NotNil(t, revised.LastUpdatedAt)
+
+		must.NotNil(t, hidden)
+		test.EqOp(t, doomed.ID, hidden.ID)
+		must.NotNil(t, hidden.ArchivedAt)
 
 		read, err := store.GetComment(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
@@ -933,21 +1072,26 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// of.
 		store := env.newStore(t)
 
-		created := newComment(testAuthor, "never committed")
 		edited := written(t, env, store, newComment(testAuthor, "the original"))
 		doomed := written(t, env, store, newComment(testAuthor, "still here"))
 
+		var created *Comment
+
 		err := env.inTx(t, func(tx database.Tx) error {
-			if txErr := store.CreateComment(t.Context(), tx, testScope, created); txErr != nil {
+			stored, txErr := store.CreateComment(t.Context(), tx, testScope,
+				newComment(testAuthor, "never committed"))
+			if txErr != nil {
 				return txErr
 			}
 
-			edited.Body = "the edit"
-			if txErr := store.UpdateComment(t.Context(), tx, testScope, edited); txErr != nil {
+			created = stored
+
+			if _, txErr = store.UpdateComment(t.Context(), tx, testScope,
+				&Comment{ID: edited.ID, Body: "the edit"}); txErr != nil {
 				return txErr
 			}
 
-			if txErr := store.ArchiveComment(t.Context(), tx, testScope, doomed.ID); txErr != nil {
+			if _, txErr = store.ArchiveComment(t.Context(), tx, testScope, doomed.ID); txErr != nil {
 				return txErr
 			}
 
@@ -955,8 +1099,10 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		})
 		must.ErrorIs(t, err, errCompanionWrite)
 
-		// The id was minted onto the caller's value on the way through. Nothing
-		// undoes that, and nothing should: what rolled back is the row.
+		// The row the create answered with described a real row at the moment it
+		// was read, and the id on it is the one that was minted. Nothing undoes
+		// either, and nothing should: what rolled back is the row.
+		must.NotNil(t, created)
 		test.NotEqOp(t, "", created.ID)
 
 		_, err = store.GetComment(t.Context(), env.reader(), testScope, created.ID)
@@ -980,22 +1126,33 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// parent absent.
 		store := env.newStore(t)
 
-		root := newComment(testAuthor, "root")
-		child := reply("", otherAuthor, "child")
+		var root, child *Comment
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			if err := store.CreateComment(t.Context(), tx, testScope, root); err != nil {
+			parent, err := store.CreateComment(t.Context(), tx, testScope, newComment(testAuthor, "root"))
+			if err != nil {
 				return err
 			}
 
-			child.ParentID = root.ID
+			root = parent
 
-			return store.CreateComment(t.Context(), tx, testScope, child)
+			stored, err := store.CreateComment(t.Context(), tx, testScope,
+				reply(root.ID, otherAuthor, "child"))
+			if err != nil {
+				return err
+			}
+
+			child = stored
+
+			return nil
 		}))
 
 		// And it adopted the target it never named, which it could only do
-		// having read the parent.
+		// having read the parent — read off the row the write answered with,
+		// which is where every answer a write settles now lives.
+		must.NotNil(t, child)
 		test.EqOp(t, testTarget, child.Target)
+		test.EqOp(t, root.ID, child.ParentID)
 
 		replies, err := store.ListReplies(t.Context(), env.reader(), testScope, testTarget, root.ID, nil)
 		must.NoError(t, err)
@@ -1011,17 +1168,19 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		// refuse would be reaching for something that is not there.
 		store := env.newStore(t)
 
-		must.ErrorIs(t,
-			store.CreateComment(t.Context(), nil, testScope, newComment(testAuthor, "words")),
-			ErrNilExecutor)
-		must.ErrorIs(t,
-			store.UpdateComment(t.Context(), nil, testScope, newComment(testAuthor, "words")),
-			ErrNilExecutor)
-		must.ErrorIs(t,
-			store.ArchiveComment(t.Context(), nil, testScope, "cmt_1"),
-			ErrNilExecutor)
+		created, err := store.CreateComment(t.Context(), nil, testScope, newComment(testAuthor, "words"))
+		must.ErrorIs(t, err, ErrNilExecutor)
+		test.Nil(t, created)
 
-		_, err := store.DeleteCommentsForTarget(t.Context(), nil, testScope, testTarget)
+		revised, err := store.UpdateComment(t.Context(), nil, testScope, newComment(testAuthor, "words"))
+		must.ErrorIs(t, err, ErrNilExecutor)
+		test.Nil(t, revised)
+
+		hidden, err := store.ArchiveComment(t.Context(), nil, testScope, "cmt_1")
+		must.ErrorIs(t, err, ErrNilExecutor)
+		test.Nil(t, hidden)
+
+		_, err = store.DeleteCommentsForTarget(t.Context(), nil, testScope, testTarget)
 		must.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.DeleteCommentsByAuthor(t.Context(), nil, testScope, testAuthor)
@@ -1058,41 +1217,76 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		elsewhere := newComment(testAuthor, "belonging to somebody else")
 		elsewhere.Scope = otherScope
 
+		// Each refusal is collected as the pair the method answers with, because
+		// the row is half the promise: a write that returns a value alongside its
+		// error is a write whose caller has something to mistake for a row.
+		type refusal struct {
+			row  *Comment
+			got  error
+			want error
+			name string
+		}
+
 		var (
-			nilCreate, unknownCreate, mismatchedCreate error
-			nilUpdate, emptyBody, missingUpdate        error
-			missingArchive                             error
+			refusals []refusal
+			survivor *Comment
 		)
 
-		survivor := newComment(testAuthor, "written after all the refusals")
+		collect := func(name string, want error, row *Comment, got error) {
+			refusals = append(refusals, refusal{row: row, got: got, want: want, name: name})
+		}
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
-			nilCreate = store.CreateComment(t.Context(), tx, testScope, nil)
-			unknownCreate = store.CreateComment(t.Context(), tx, testScope, unknown)
-			mismatchedCreate = store.CreateComment(t.Context(), tx, testScope, elsewhere)
+			row, err := store.CreateComment(t.Context(), tx, testScope, nil)
+			collect("a nil comment", ErrNilComment, row, err)
 
-			nilUpdate = store.UpdateComment(t.Context(), tx, testScope, nil)
+			row, err = store.CreateComment(t.Context(), tx, testScope, unknown)
+			collect("an unregistered target", ErrUnknownTargetType, row, err)
+
+			row, err = store.CreateComment(t.Context(), tx, testScope, elsewhere)
+			collect("another scope's comment", ErrScopeMismatch, row, err)
+
+			row, err = store.UpdateComment(t.Context(), tx, testScope, nil)
+			collect("a nil edit", ErrNilComment, row, err)
 
 			silent := newComment(testAuthor, "  ")
 			silent.ID = "cmt_never_written"
-			emptyBody = store.UpdateComment(t.Context(), tx, testScope, silent)
+			row, err = store.UpdateComment(t.Context(), tx, testScope, silent)
+			collect("an edit that says nothing", ErrEmptyBody, row, err)
 
 			absent := newComment(testAuthor, "an edit to nothing")
 			absent.ID = "cmt_never_written"
-			missingUpdate = store.UpdateComment(t.Context(), tx, testScope, absent)
+			row, err = store.UpdateComment(t.Context(), tx, testScope, absent)
+			collect("an edit to nothing", ErrCommentNotFound, row, err)
 
-			missingArchive = store.ArchiveComment(t.Context(), tx, testScope, "cmt_never_written")
+			row, err = store.ArchiveComment(t.Context(), tx, testScope, "cmt_never_written")
+			collect("an archive of nothing", ErrCommentNotFound, row, err)
 
-			return store.CreateComment(t.Context(), tx, testScope, survivor)
+			stored, err := store.CreateComment(t.Context(), tx, testScope,
+				newComment(testAuthor, "written after all the refusals"))
+			if err != nil {
+				return err
+			}
+
+			survivor = stored
+
+			return nil
 		}))
 
-		must.ErrorIs(t, nilCreate, ErrNilComment)
-		must.ErrorIs(t, unknownCreate, ErrUnknownTargetType)
-		must.ErrorIs(t, mismatchedCreate, ErrScopeMismatch)
-		must.ErrorIs(t, nilUpdate, ErrNilComment)
-		must.ErrorIs(t, emptyBody, ErrEmptyBody)
-		must.ErrorIs(t, missingUpdate, ErrCommentNotFound)
-		must.ErrorIs(t, missingArchive, ErrCommentNotFound)
+		must.SliceLen(t, 7, refusals)
+
+		for i := range refusals {
+			r := &refusals[i]
+
+			test.ErrorIs(t, r.got, r.want, test.Sprintf("%s was refused with something else", r.name))
+
+			// The row comes back only alongside a nil error, so a caller that
+			// checked the error and carried on has a nil to trip over rather
+			// than a comment that was never written.
+			test.Nil(t, r.row, test.Sprintf("%s answered with a row", r.name))
+		}
+
+		must.NotNil(t, survivor)
 
 		read, err := store.GetComment(t.Context(), env.reader(), testScope, survivor.ID)
 		must.NoError(t, err)
@@ -1113,8 +1307,10 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		}))
 
 		err := env.inTx(t, func(tx database.Tx) error {
-			return store.CreateComment(t.Context(), tx, testScope,
+			_, createErr := store.CreateComment(t.Context(), tx, testScope,
 				newComment(testAuthor, "about a recipe nobody can find"))
+
+			return createErr
 		})
 		must.ErrorIs(t, err, ErrTargetNotFound)
 

@@ -70,9 +70,9 @@ import (
 // duplicates a read the caller can decline.
 //
 // The rejected spelling was mutating the caller's argument in place, which
-// delivers the same guarantee — comments.Store.CreateComment does exactly that.
-// Neither is wrong; one module wants one of them, and more of this one already
-// returns.
+// delivers the same guarantee — comments.Store.CreateComment was the module's
+// last one, and it has since moved to returning too. Neither is wrong; one
+// module wants one of them, and more of this one already returned.
 //
 // DeleteValuesForSubject answers with a count for a different reason. It is not
 // a write over one row, and the rows it destroys are destroyed rather than

@@ -96,8 +96,13 @@ own, and the type is what says so — only database.RunInTransaction produces on
 so the obligation is the compiler's rather than a doc comment's. A consumer with
 nothing to join writes:
 
+	var written *comments.Comment
+
 	err := client.WithTransaction(ctx, func(tx database.Tx) error {
-		return store.CreateComment(ctx, tx, scope, comment)
+		var createErr error
+		written, createErr = store.CreateComment(ctx, tx, scope, comment)
+
+		return createErr
 	})
 
 The reason is that a comment is rarely the only row a consumer writes. An audit
@@ -108,6 +113,13 @@ The gap is narrow and it is one-directional — a comment with no event, never a
 event naming a comment that was not written — and nothing outside this package
 can close it. A write that could still be called without a transaction is a write
 that will be, so there is no such call.
+
+Every write that names one comment hands its row back that way, on the caller's
+transaction and after the statement: the writing, the edit and the archive. What
+the entry beside a write describes is the row the write left, not the one the
+caller read a statement earlier — and on the archive there is no earlier read to
+fall back on, because the row it hides is the one every keyed read here is
+written not to return.
 
 The reads take the wider database.SQLQueryExecutor, which is the asymmetry doing
 the work: a caller listing a discussion for a page passes Client.Reader() and a

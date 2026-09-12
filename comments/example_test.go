@@ -46,29 +46,34 @@ func Example() {
 	scope := tenancy.Of("acct_1")
 	recipe := comments.Target{Type: recipeTarget, ID: "recipe_1"}
 
-	root := &comments.Comment{
-		Target: recipe,
-		Author: "user_1",
-		Body:   "halved the sugar and it was still too sweet",
-	}
-
-	// A reply names its parent and nothing else about where it goes: its target
-	// is its parent's, and the store fills it in. Written in the same transaction
-	// as its parent, it resolves it — the parent read runs on the executor the
-	// write was handed.
-	answer := &comments.Comment{
-		Author: "user_2",
-		Body:   "try two thirds of the syrup as well",
-	}
+	// Each write answers with the row it wrote — the identifier it minted, the
+	// creation time the database assigned — rather than filling those in on the
+	// value it was handed.
+	var root, answer *comments.Comment
 
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		if txErr := store.CreateComment(ctx, tx, scope, root); txErr != nil {
+		written, txErr := store.CreateComment(ctx, tx, scope, &comments.Comment{
+			Target: recipe,
+			Author: "user_1",
+			Body:   "halved the sugar and it was still too sweet",
+		})
+		if txErr != nil {
 			return txErr
 		}
 
-		answer.ParentID = root.ID
+		root = written
 
-		return store.CreateComment(ctx, tx, scope, answer)
+		// A reply names its parent and nothing else about where it goes: its
+		// target is its parent's, and the store fills it in on the row it hands
+		// back. Written in the same transaction as its parent, it resolves it —
+		// the parent read runs on the executor the write was handed.
+		answer, txErr = store.CreateComment(ctx, tx, scope, &comments.Comment{
+			ParentID: root.ID,
+			Author:   "user_2",
+			Body:     "try two thirds of the syrup as well",
+		})
+
+		return txErr
 	}); err != nil {
 		panic(err)
 	}
@@ -121,7 +126,9 @@ func ExampleWithTargets() {
 	}
 
 	refused := client.WithTransaction(ctx, func(tx database.Tx) error {
-		return store.CreateComment(ctx, tx, tenancy.Of("acct_1"), misspelled)
+		_, txErr := store.CreateComment(ctx, tx, tenancy.Of("acct_1"), misspelled)
+
+		return txErr
 	})
 
 	fmt.Println("refused:", refused != nil)
@@ -149,16 +156,18 @@ func ExampleStore_DeleteCommentsForTarget() {
 	scope := tenancy.Of("acct_1")
 	recipe := comments.Target{Type: recipeTarget, ID: "recipe_1"}
 
-	root := &comments.Comment{Target: recipe, Author: "user_1", Body: "lovely"}
-
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		if txErr := store.CreateComment(ctx, tx, scope, root); txErr != nil {
+		root, txErr := store.CreateComment(ctx, tx, scope,
+			&comments.Comment{Target: recipe, Author: "user_1", Body: "lovely"})
+		if txErr != nil {
 			return txErr
 		}
 
-		return store.CreateComment(ctx, tx, scope, &comments.Comment{
+		_, txErr = store.CreateComment(ctx, tx, scope, &comments.Comment{
 			ParentID: root.ID, Author: "user_2", Body: "agreed",
 		})
+
+		return txErr
 	}); err != nil {
 		panic(err)
 	}
@@ -202,20 +211,25 @@ func ExampleStore_CreateComment() {
 		panic(err)
 	}
 
-	comment := &comments.Comment{
-		Target: comments.Target{Type: recipeTarget, ID: "recipe_1"},
-		Author: "user_1",
-		Body:   "this wants more salt",
-	}
+	var comment *comments.Comment
 
 	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
-		if txErr := store.CreateComment(ctx, tx, tenancy.Of("acct_1"), comment); txErr != nil {
+		// The entry names the row the write left, which is why the write hands
+		// it back: the identifier it is keyed on is the one the store minted.
+		written, txErr := store.CreateComment(ctx, tx, tenancy.Of("acct_1"), &comments.Comment{
+			Target: comments.Target{Type: recipeTarget, ID: "recipe_1"},
+			Author: "user_1",
+			Body:   "this wants more salt",
+		})
+		if txErr != nil {
 			return txErr
 		}
 
+		comment = written
+
 		// A failure here takes the comment back with it, which is the whole
 		// reason this is one transaction rather than two.
-		_, txErr := tx.ExecContext(ctx,
+		_, txErr = tx.ExecContext(ctx,
 			`INSERT INTO audit_log (comment_id, actor) VALUES (?, ?)`,
 			comment.ID, comment.Author)
 

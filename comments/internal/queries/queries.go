@@ -157,8 +157,8 @@ func writes(g *querygen.Generator) []*querygen.Query {
 	}
 }
 
-// reads is the get, the read-back the create runs, and the three paged lists,
-// each list in both directions because a paged list is two statements.
+// reads is the get, the read-back the archive answers with, and the three paged
+// lists, each list in both directions because a paged list is two statements.
 //
 // There are three rather than four, and the missing one is the point: the
 // discussion's roots and one root's replies are the same statement. Both are
@@ -172,14 +172,36 @@ func reads(g *querygen.Generator) []*querygen.Query {
 	rendered := []*querygen.Query{
 		g.GetQuery("GetComment", CommentsTable, Comments.Columns, scope),
 
-		// The read the create runs to learn the creation time the database
-		// assigned. created_at is database-owned, so the insert does not carry
-		// it, and without this the value a caller serializes straight back into
-		// a response says 0001-01-01 for a row written a moment ago.
-		g.ReadQuery("GetCommentCreatedAt", CommentsTable,
-			[]string{querygen.IDColumn},
-			querygen.Read{Projection: []string{querygen.CreatedAtColumn}},
-			scope),
+		// The read the archive answers with: the comment it just took out of
+		// the discussion, on the transaction that took it.
+		//
+		// It exists because archiving is the one write here whose result no
+		// other read can see. Every single-row statement over this table filters
+		// archived_at IS NULL — which is what makes an archived comment absent
+		// from the discussion — so a store that archived a row and read it back
+		// through GetComment would find nothing, and once the transaction
+		// commits the row is unreachable through every keyed read this package
+		// has. The words somebody wrote are still in it, which is the fact a
+		// moderation entry naming what was removed is written from.
+		//
+		// It is rendered from no column list at all, which is the same trick the
+		// sweep's and the erasure's ColumnsExcept plays for the opposite reason:
+		// querygen derives the archived predicate from the columns it is handed,
+		// so a read that must see archived rows is one keyed entirely on its
+		// matches. What takes that predicate's place is its complement —
+		// archived_at IS NOT NULL — so the read-back asserts the thing it was
+		// called to confirm, and a guard that matched nothing cannot be read
+		// back as a success.
+		//
+		// There is no companion for the create or the edit. Neither leaves the
+		// discussion, so GetComment reaches both on the transaction that wrote
+		// them, and the read-back each makes is that statement rather than one
+		// of its own — which is also why the creation time no longer has a
+		// statement of its own to be read through.
+		g.ReadQuery("GetArchivedComment", CommentsTable, nil,
+			querygen.Read{Projection: Comments.Columns},
+			querygen.Match{Column: querygen.IDColumn}, scope,
+			querygen.Match{Column: querygen.ArchivedAtColumn, Against: querygen.NoValue, Exclude: true}),
 	}
 
 	// One level of a discussion: the target's roots, or one root's replies.

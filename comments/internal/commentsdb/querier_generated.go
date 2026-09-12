@@ -44,10 +44,10 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	DeleteCommentsForTarget(ctx context.Context, db DBTX, arg DeleteCommentsForTargetParams) (int64, error)
+	// GetArchivedComment runs the :one query.
+	GetArchivedComment(ctx context.Context, db DBTX, arg GetArchivedCommentParams) (GetArchivedCommentRow, error)
 	// GetComment runs the :one query.
 	GetComment(ctx context.Context, db DBTX, arg GetCommentParams) (GetCommentRow, error)
-	// GetCommentCreatedAt runs the :one query.
-	GetCommentCreatedAt(ctx context.Context, db DBTX, arg GetCommentCreatedAtParams) (GetCommentCreatedAtRow, error)
 	// ListComments runs the :many query.
 	ListComments(ctx context.Context, db DBTX, arg ListCommentsParams) ([]ListCommentsRow, error)
 	// ListCommentsByAuthor runs the :many query.

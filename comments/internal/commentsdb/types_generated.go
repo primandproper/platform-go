@@ -41,6 +41,26 @@ type DeleteCommentsForTargetParams struct {
 	TargetID   string
 }
 
+// GetArchivedCommentParams are the arguments to GetArchivedComment.
+type GetArchivedCommentParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetArchivedCommentRow is one row of GetArchivedComment's result.
+type GetArchivedCommentRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	TargetType    string
+	TargetID      string
+	ParentID      string
+	Author        string
+	Body          string
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+}
+
 // GetCommentParams are the arguments to GetComment.
 type GetCommentParams struct {
 	ID    string
@@ -59,17 +79,6 @@ type GetCommentRow struct {
 	CreatedAt     time.Time
 	LastUpdatedAt *time.Time
 	ArchivedAt    *time.Time
-}
-
-// GetCommentCreatedAtParams are the arguments to GetCommentCreatedAt.
-type GetCommentCreatedAtParams struct {
-	ID    string
-	Scope tenancy.Scope
-}
-
-// GetCommentCreatedAtRow is one row of GetCommentCreatedAt's result.
-type GetCommentCreatedAtRow struct {
-	CreatedAt time.Time
 }
 
 // ListCommentsParams are the arguments to ListComments.

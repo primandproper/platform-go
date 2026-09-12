@@ -13,8 +13,8 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
-// CreateComment writes one comment through the caller's transaction and reads
-// back the creation time the database assigned.
+// CreateComment writes one comment through the caller's transaction and answers
+// with the row it wrote.
 //
 // The read-back is a second round trip on a write path, and it is worth it:
 // created_at is database-owned — see comments/internal/queries — so the insert
@@ -23,84 +23,100 @@ import (
 // just created straight into a response would render that as a date rather than
 // as an absence.
 //
-// Every check runs on tx, so a reply whose parent was written earlier in the
-// same transaction resolves its parent instead of reporting it absent. The
-// catalog's existence hook is the one that does not, because it takes no
-// executor and has none of this to run on. See [Store.CreateComment].
+// It is GetComment rather than a statement of its own. A row this transaction
+// just inserted is not archived, so the ordinary keyed read reaches it, and
+// reading the whole row costs the same round trip a read of the stamp alone
+// would while answering with what the database holds instead of with what the
+// caller assembled plus a timestamp.
+//
+// The comment handed in is not modified. What the write settles — the id, the
+// scope, the target a reply adopted, the stamp — is on the value returned, so a
+// caller reads those from one place rather than from an argument that changed
+// under them.
+//
+// Every check and both statements run on tx, so a reply whose parent was written
+// earlier in the same transaction resolves its parent instead of reporting it
+// absent, and the creation time read back is the one this transaction just
+// wrote. The catalog's existence hook is the one check that does not run there,
+// because it takes no executor and has none of this to run on.
+// See [Store.CreateComment].
 func (s *SQLStore) CreateComment(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	comment *Comment,
-) error {
+) (*Comment, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "writing comment")
+		return nil, op.Error(ErrNilExecutor, "writing comment")
 	}
 
 	if comment == nil {
-		return op.Error(ErrNilComment, "writing comment")
+		return nil, op.Error(ErrNilComment, "writing comment")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "writing comment")
+		return nil, op.Error(err, "writing comment")
 	}
 
-	if err := adoptScope(scope, comment); err != nil {
-		return op.Error(err, "writing comment")
+	// The copy is what keeps the caller's value out of this. Everything below
+	// assigns — the scope it adopts, the target a reply takes from its parent,
+	// the id it mints — and every one of those answers is on what this returns,
+	// so writing them through the pointer as well would be two places to read
+	// one fact from and a refused write that had already edited its argument.
+	written := *comment
+
+	if err := adoptScope(scope, &written); err != nil {
+		return nil, op.Error(err, "writing comment")
 	}
 
-	op.Set(authorKey, comment.Author)
+	op.Set(authorKey, written.Author)
 
-	if err := validAuthorAndBody(comment); err != nil {
-		return op.Error(err, "writing comment")
+	if err := validAuthorAndBody(&written); err != nil {
+		return nil, op.Error(err, "writing comment")
 	}
 
 	// The parent first, because a reply's target is its parent's and the catalog
 	// check below is made against whatever this settles on.
-	if err := s.adoptParent(ctx, tx, scope, comment); err != nil {
-		return op.Error(err, "writing comment")
+	if err := s.adoptParent(ctx, tx, scope, &written); err != nil {
+		return nil, op.Error(err, "writing comment")
 	}
 
-	op.Set(targetTypeKey, comment.Target.Type.String()).
-		Set(targetIDKey, comment.Target.ID).
-		Set(parentIDKey, comment.ParentID)
+	op.Set(targetTypeKey, written.Target.Type.String()).
+		Set(targetIDKey, written.Target.ID).
+		Set(parentIDKey, written.ParentID)
 
-	if err := s.checkTarget(ctx, scope, comment.Target); err != nil {
-		return op.Error(err, "writing comment")
+	if err := s.checkTarget(ctx, scope, written.Target); err != nil {
+		return nil, op.Error(err, "writing comment")
 	}
 
-	if comment.ID == "" {
-		comment.ID = identifiers.New()
+	if written.ID == "" {
+		written.ID = identifiers.New()
 	}
 
-	op.Set(commentIDKey, comment.ID)
+	op.Set(commentIDKey, written.ID)
 
-	if err := s.q.CreateComment(ctx, tx, createCommentParams(scope, comment)); err != nil {
-		return op.Error(err, "writing comment")
+	if err := s.q.CreateComment(ctx, tx, createCommentParams(scope, &written)); err != nil {
+		return nil, op.Error(err, "writing comment")
 	}
 
-	created, err := s.q.GetCommentCreatedAt(ctx, tx,
-		commentsdb.GetCommentCreatedAtParams{ID: comment.ID, Scope: scope})
+	// The row rather than the assembled value, which is also what settles the
+	// two stamps a caller may have filled in: neither column is in the insert's
+	// list, so an edited-at or an archived-at on the argument describes a row
+	// that does not exist yet and the read-back answers with the NULLs the
+	// database holds.
+	created, err := s.commentOn(ctx, tx, scope, written.ID)
 	if err != nil {
-		return op.Error(err, "reading back the comment's creation time")
+		return nil, op.Error(err, "reading back the created comment")
 	}
 
-	comment.CreatedAt = created.CreatedAt.UTC()
-
-	// Nothing has edited or archived a comment that was written a moment ago,
-	// and a caller who filled either in is a caller describing a row that does
-	// not exist yet.
-	comment.LastUpdatedAt = nil
-	comment.ArchivedAt = nil
-
-	return nil
+	return created, nil
 }
 
-// adoptScope settles which tenant a write is for, and writes the answer back
-// onto the comment.
+// adoptScope settles which tenant a write is for, and writes the answer onto the
+// comment it is handed — which is the write's own copy, never the caller's.
 //
 // The scope the call named is the one the statement binds, so a comment that
 // names a different one is refused rather than corrected: the two disagreeing is
@@ -226,62 +242,97 @@ func (s *SQLStore) checkTarget(ctx context.Context, scope tenancy.Scope, target 
 
 // UpdateComment revises what the author said, through the caller's transaction,
 // so the revision and whatever the caller records about it commit together or
-// not at all. See [Store.UpdateComment].
+// not at all, and answers with the revised row. See [Store.UpdateComment].
+//
+// The read-back is GetComment, on the transaction that did the writing. A
+// revision does not take the comment out of the discussion, so the ordinary
+// keyed read reaches it, and what it carries is what a caller's entry has to
+// describe: last_updated_at, which is the database's, and the target, the parent
+// and the author, none of which this statement assigns and any of which the
+// argument may well have been wrong about.
+//
+// The comment handed in is not modified, the scope it adopts included: the write
+// binds the argument's scope either way, and the row returned carries the one the
+// table holds.
 func (s *SQLStore) UpdateComment(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	comment *Comment,
-) error {
+) (*Comment, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "editing comment")
+		return nil, op.Error(ErrNilExecutor, "editing comment")
 	}
 
 	if comment == nil {
-		return op.Error(ErrNilComment, "editing comment")
+		return nil, op.Error(ErrNilComment, "editing comment")
 	}
 
 	op.Set(commentIDKey, comment.ID)
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "editing comment %q", comment.ID)
+		return nil, op.Error(err, "editing comment %q", comment.ID)
 	}
 
-	if err := adoptScope(scope, comment); err != nil {
-		return op.Error(err, "editing comment %q", comment.ID)
+	revision := *comment
+
+	if err := adoptScope(scope, &revision); err != nil {
+		return nil, op.Error(err, "editing comment %q", comment.ID)
 	}
 
 	// The body alone, because the body is all the statement assigns. Checking the
 	// target here would be checking a value this write cannot store, and refusing
 	// a comment whose target type has since been withdrawn would mean its author
 	// could no longer fix a typo in it.
-	if strings.TrimSpace(comment.Body) == "" {
-		return op.Error(ErrEmptyBody, "editing comment %q", comment.ID)
+	if strings.TrimSpace(revision.Body) == "" {
+		return nil, op.Error(ErrEmptyBody, "editing comment %q", revision.ID)
 	}
 
-	count, err := s.q.UpdateComment(ctx, tx, updateCommentParams(scope, comment))
+	count, err := s.q.UpdateComment(ctx, tx, updateCommentParams(scope, &revision))
+	if err = guardCount(count, err, ErrCommentNotFound, "editing the comment"); err != nil {
+		return nil, op.Error(err, "editing comment %q", revision.ID)
+	}
 
-	return op.Error(
-		guardCount(count, err, ErrCommentNotFound, "editing the comment"),
-		"editing comment %q", comment.ID)
+	revised, err := s.commentOn(ctx, tx, scope, revision.ID)
+	if err != nil {
+		return nil, op.Error(err, "reading back the revised comment")
+	}
+
+	return revised, nil
 }
 
 // ArchiveComment removes one comment from the discussion, through the caller's
 // transaction, so the removal and whatever the caller records about it commit
-// together or not at all. See [Store.ArchiveComment].
+// together or not at all, and answers with the row it hid.
+// See [Store.ArchiveComment].
 //
 // Zero rows is ErrCommentNotFound rather than a quiet success, and the reading is
 // exact: the statement excludes archived rows, so a comment that has already
 // been archived is not in the discussion, which is what this method addresses.
+//
+// The read-back is GetArchivedComment rather than GetComment, because it is the
+// one read here that has to see what every other read is written not to. Two
+// statements rather than one is what the dialect roster costs — RETURNING would
+// answer the write directly and MySQL has none, and the corpus is one text per
+// dialect rendered from one column list, so there is no per-dialect fork to put
+// it in. There is no gap between them: the guarded UPDATE holds the row until
+// commit and the read runs on the same transaction.
+//
+// It is the guard that decides the answer, not the read. A write that moved
+// nothing is ErrCommentNotFound before the read runs, so a comment somebody else
+// archived is never reported as this call's — and an empty read-back after a
+// guard that matched is left unmapped rather than folded into that sentinel,
+// because the statement holds the row until commit and there is no state in
+// which it is honestly absent.
 func (s *SQLStore) ArchiveComment(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	commentID string,
-) error {
+) (*Comment, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(commentIDKey, commentID),
@@ -289,19 +340,26 @@ func (s *SQLStore) ArchiveComment(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving comment %q", commentID)
+		return nil, op.Error(ErrNilExecutor, "archiving comment %q", commentID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving comment %q", commentID)
+		return nil, op.Error(err, "archiving comment %q", commentID)
 	}
 
 	count, err := s.q.ArchiveComment(ctx, tx,
 		commentsdb.ArchiveCommentParams{ID: commentID, Scope: scope})
+	if err = guardCount(count, err, ErrCommentNotFound, "archiving the comment"); err != nil {
+		return nil, op.Error(err, "archiving comment %q", commentID)
+	}
 
-	return op.Error(
-		guardCount(count, err, ErrCommentNotFound, "archiving the comment"),
-		"archiving comment %q", commentID)
+	row, err := s.q.GetArchivedComment(ctx, tx,
+		commentsdb.GetArchivedCommentParams{ID: commentID, Scope: scope})
+	if err != nil {
+		return nil, op.Error(err, "reading back the archived comment")
+	}
+
+	return commentFromArchivedRow(&row), nil
 }
 
 // DeleteCommentsForTarget destroys every comment about one thing and reports how

@@ -173,6 +173,21 @@ func commentFromRow(r *commentsdb.GetCommentRow) *Comment {
 	}
 }
 
+// commentFromArchivedRow converts the archive's read-back, which is the one row
+// shape here that casts rather than restating itself.
+//
+// It is sortedRows' reason rather than an exception to the preamble's rule.
+// GetArchivedComment projects the same list GetComment does — the table's
+// columns, in that order — and differs from it only in which rows it will look
+// at, so the two row types are one projection rendered twice. The conversion is
+// therefore the assertion: the day the two projections stop agreeing, in field
+// name, type or order, this stops building rather than filling the wrong fields.
+func commentFromArchivedRow(r *commentsdb.GetArchivedCommentRow) *Comment {
+	row := commentsdb.GetCommentRow(*r)
+
+	return commentFromRow(&row)
+}
+
 // commentPageRow is the one conversion from a list row, and every list converts
 // through it.
 //

@@ -62,12 +62,22 @@ WHERE comments.archived_at IS NULL
 	AND comments.id = sqlc.arg(id)
 	AND comments.scope = sqlc.arg(scope);
 
--- name: GetCommentCreatedAt :one
+-- name: GetArchivedComment :one
 SELECT
-	comments.created_at
+	comments.id,
+	comments.scope,
+	comments.target_type,
+	comments.target_id,
+	comments.parent_id,
+	comments.author,
+	comments.body,
+	comments.created_at,
+	comments.last_updated_at,
+	comments.archived_at
 FROM comments
 WHERE comments.id = sqlc.arg(id)
-	AND comments.scope = sqlc.arg(scope);
+	AND comments.scope = sqlc.arg(scope)
+	AND comments.archived_at IS NOT NULL;
 
 -- name: ListComments :many
 SELECT

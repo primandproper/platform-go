@@ -43,6 +43,14 @@ other than the row's own id says so by handing over a list without the id, and
 what it projects is a separate list. Two statements here use it — the target
 sweep, which keys on a thing, and the erasure, which keys on a person.
 
+The archived predicate comes from the same list, and one read here needs its
+complement instead. GetArchivedComment is the row the archive hands back, and the
+row an archive just moved is the one row every other statement over this table is
+written not to return — so it is rendered from no column list at all and carries
+archived_at IS NOT NULL as a match of its own. That makes the read-back an
+assertion rather than a second lookup: a guard that touched nothing cannot be
+read back as a live row.
+
 # The three lists
 
 There are three paged lists — one level of a discussion, one target type, one

@@ -66,11 +66,21 @@ func (s *Server) CreateComment(
 		Set(targetTypeKey, comment.Target.Type.String()).
 		Set(targetIDKey, comment.Target.ID)
 
-	// The store writes the identifier, the creation time and the settled target
-	// back onto the argument, so there is no read to follow this one: what the
-	// transaction produced is already in hand.
+	// The store answers with the row it wrote — the identifier it minted, the
+	// creation time the database assigned, the target a reply adopted from its
+	// parent — so the response is what was stored rather than the request that
+	// asked for it, and this handler needs no read to follow the write.
+	var stored *comments.Comment
+
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.store.CreateComment(ctx, tx, req.scope, comment)
+		created, createErr := s.store.CreateComment(ctx, tx, req.scope, comment)
+		if createErr != nil {
+			return createErr
+		}
+
+		stored = created
+
+		return nil
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "writing a comment")
@@ -81,9 +91,9 @@ func (s *Server) CreateComment(
 	// Set after the write rather than before it, because a create names no
 	// identifier: the one recorded here is the one the store minted, and it is
 	// what somebody reading this span is looking for.
-	req.op.Set(commentIDKey, comment.ID)
+	req.op.Set(commentIDKey, stored.ID)
 
-	return &commentspb.CreateCommentResponse{Result: CommentToProto(comment)}, nil
+	return &commentspb.CreateCommentResponse{Result: CommentToProto(stored)}, nil
 }
 
 // UpdateComment revises what was said, and only that.
@@ -118,21 +128,18 @@ func (s *Server) UpdateComment(
 		// text; the target, the parent and the author stay whatever the row
 		// already holds.
 		edit := &comments.Comment{ID: existing.ID, Body: request.GetBody()}
-		if updateErr := s.store.UpdateComment(ctx, tx, req.scope, edit); updateErr != nil {
+
+		// The store answers with the stored row, which is what carries the
+		// last_updated_at the database stamped: responding with the edit instead
+		// would answer with an "edited" marker that has no time on it. It is read
+		// back on this transaction, so what comes back is the row the write just
+		// left rather than a read of one nothing else can see yet.
+		stored, updateErr := s.store.UpdateComment(ctx, tx, req.scope, edit)
+		if updateErr != nil {
 			return updateErr
 		}
 
-		// Re-read inside the same transaction, which is what comments.Store's
-		// reads taking an executor rather than a reader is for: the row this
-		// sees is the one this transaction just wrote, and it carries the
-		// last_updated_at the database stamped. Returning the edit instead would
-		// answer with an "edited" marker that has no time on it.
-		read, readErr := s.store.GetComment(ctx, tx, req.scope, existing.ID)
-		if readErr != nil {
-			return readErr
-		}
-
-		revised = read
+		revised = stored
 
 		return nil
 	}, "editing comment %q", id); err != nil {
@@ -168,8 +175,16 @@ func (s *Server) ArchiveComment(
 	id := request.GetCommentId()
 	req.op.Set(commentIDKey, id)
 
+	// The store answers with the row it hid, and nothing here carries it:
+	// ArchiveCommentResponse has no field for a comment, because an archive on
+	// the wire says only that the comment left the discussion. The row is for a
+	// consumer writing an entry beside the write, which this handler is not —
+	// its transaction holds the read, the authorization and this one call, and
+	// nothing to describe it to.
 	if err = s.mutate(ctx, req, id, func(tx database.Tx, existing *comments.Comment) error {
-		return s.store.ArchiveComment(ctx, tx, req.scope, existing.ID)
+		_, archiveErr := s.store.ArchiveComment(ctx, tx, req.scope, existing.ID)
+
+		return archiveErr
 	}, "archiving comment %q", id); err != nil {
 		return nil, err
 	}

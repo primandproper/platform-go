@@ -75,7 +75,7 @@ func TestSQLStore_AbsentTargetCounter(T *testing.T) {
 			recipeType: {Description: "a recipe", Exists: check.exists},
 		})
 
-		must.ErrorIs(t, env.create(t, store, testScope, newComment(testAuthor, "words")),
+		must.ErrorIs(t, env.createErr(t, store, testScope, newComment(testAuthor, "words")),
 			ErrTargetNotFound)
 
 		test.Eq(t, []int64{1}, counter.observed())
@@ -90,7 +90,7 @@ func TestSQLStore_AbsentTargetCounter(T *testing.T) {
 			recipeType: {Description: "a recipe", Exists: check.exists},
 		})
 
-		must.NoError(t, env.create(t, store, testScope, newComment(testAuthor, "words")))
+		must.NoError(t, env.createErr(t, store, testScope, newComment(testAuthor, "words")))
 
 		test.SliceEmpty(t, counter.observed())
 	})
@@ -105,7 +105,7 @@ func TestSQLStore_AbsentTargetCounter(T *testing.T) {
 		env := newSQLiteEnv(t)
 		store, counter := newCountingStore(t, env, Targets{mealType: {Description: "a meal"}})
 
-		must.ErrorIs(t, env.create(t, store, testScope, newComment(testAuthor, "words")),
+		must.ErrorIs(t, env.createErr(t, store, testScope, newComment(testAuthor, "words")),
 			ErrUnknownTargetType)
 
 		test.SliceEmpty(t, counter.observed())
@@ -123,7 +123,7 @@ func TestSQLStore_AbsentTargetCounter(T *testing.T) {
 			recipeType: {Description: "a recipe", Exists: check.exists},
 		})
 
-		must.ErrorIs(t, env.create(t, store, testScope, newComment(testAuthor, "words")),
+		must.ErrorIs(t, env.createErr(t, store, testScope, newComment(testAuthor, "words")),
 			errCheckUnavailable)
 
 		test.SliceEmpty(t, counter.observed())
