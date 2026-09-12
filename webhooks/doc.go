@@ -99,12 +99,18 @@ so with a tenancy.Scope. Fan-out is bounded by it: Dispatch resolves subscribers
 within the delivery's scope, so an endpoint registered by one account never
 receives another account's copy of the same event type.
 
+	var registered *webhooks.Endpoint
+
 	err := client.WithTransaction(ctx, func(tx database.Tx) error {
-		return dispatcher.Register(ctx, tx, tenancy.Of(accountID), &webhooks.Endpoint{
+		var registerErr error
+
+		registered, registerErr = dispatcher.Register(ctx, tx, tenancy.Of(accountID), &webhooks.Endpoint{
 			URL:           "https://subscriber.example/hooks",
 			Secret:        webhooks.Secret{Current: key},
 			Subscriptions: webhooks.SubscribeTo(OrderUpdated),
 		})
+
+		return registerErr
 	})
 
 The scope is the argument rather than Endpoint.Scope, so what the statement binds
@@ -144,14 +150,22 @@ endpoint did. Against rows it is Unsubscribe on one ID:
 
 	sub, err := dispatcher.Subscribe(ctx, tx, scope, endpointID, OrderShipped)
 	// ...
-	err = dispatcher.Unsubscribe(ctx, tx, scope, sub.ID)
+	retired, err := dispatcher.Unsubscribe(ctx, tx, scope, sub.ID)
+
+retired is the row as the archive left it, so when the subscription ended is
+readable without asking again — which is what every consumer write here answers
+with. Register hands back the endpoint the store holds, Subscribe the
+subscription, and the two archives the row they moved; none of them writes onto
+the value it was handed, and an archive whose ID named nothing in scope answers
+a nil row and no error, because that is the state the caller asked for and there
+is nothing to describe it with.
 
 Register and SaveEndpoint still take the whole set, because registration names
 event types rather than subscription IDs — there are none yet — and SubscribeTo
 builds it. What a save does to the stored rows is reconcile rather than replace:
 one the endpoint already has keeps its identity and its creation time, one it no
-longer names is archived rather than deleted, and Endpoint.Subscriptions comes
-back filled with what is live.
+longer names is archived rather than deleted, and the returned endpoint's
+Subscriptions are what is live.
 
 Endpoint.EventTypes derives the flat list where one is wanted — a catalog check,
 a subscription UI's checkboxes. It is derived and not stored, so there is no

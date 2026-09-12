@@ -148,6 +148,13 @@ func (s *Server) ListSubscriptions(
 //
 // It writes through webhooks.Dispatcher.Unsubscribe, which is the dispatcher's
 // name for the store's ArchiveSubscription.
+//
+// The retired row Unsubscribe answers with is discarded: this response has
+// nowhere to put it, and it is returned for the consumer recording what it just
+// did beside the write rather than for a handler that already named the
+// subscription in its request. A subscription ID that names nothing under one of
+// the caller's endpoints comes back as a nil row and no error, and is answered
+// OK for the reason ArchiveEndpoint is.
 func (s *Server) ArchiveSubscription(
 	ctx context.Context,
 	request *webhookspb.ArchiveSubscriptionRequest,
@@ -163,7 +170,9 @@ func (s *Server) ArchiveSubscription(
 	req.op.Set(subscriptionKey, id)
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.dispatcher.Unsubscribe(ctx, tx, req.scope, id)
+		_, unsubscribeErr := s.dispatcher.Unsubscribe(ctx, tx, req.scope, id)
+
+		return unsubscribeErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "archiving webhook subscription %q", id)

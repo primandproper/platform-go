@@ -117,6 +117,33 @@ type ClaimedDispatch struct {
 // are the same case: a worker draining a queue on a timer, not a request being
 // served.
 //
+// # A consumer write answers with the row it moved
+//
+// SaveEndpoint, AddSubscription, ArchiveEndpoint and ArchiveSubscription each
+// return the row the statement left behind, read back on the caller's
+// transaction. A consumer's write almost never travels alone, and the companion
+// it travels with — the audit entry naming who retired an endpoint is the
+// standing example — describes what happened. Without a returned row that entry
+// describes the row as a read found it a statement earlier, which is the row
+// before the write on a create and a row nobody promised still exists on an
+// archive.
+//
+// The read-back is a second statement rather than a RETURNING clause, which is
+// not a preference: MySQL has none and this schema is on all three dialects, so
+// there is no per-dialect fork to hide one in. There is no gap between the two
+// either. The guarded write holds the row until commit and the read runs inside
+// the same transaction, which is the property the reads taking a
+// database.SQLQueryExecutor rather than a reader exists for.
+//
+// Enqueue is the consumer-facing write that does not return, and the reason is
+// the one its own doc gives: what it writes is a delivery and one dispatch per
+// endpoint, which is a fan-out rather than a row, and its only caller is
+// Dispatcher.Dispatch — which assembled the delivery it passed and already holds
+// every field of it. The machinery below returns what it has always returned:
+// Reap a count because it deletes a set, Backlog two gauges, and the rest a bare
+// error, because each of them addresses a dispatch the worker is already
+// holding.
+//
 // # Nine of these are on the wire and nine are not
 //
 // webhooks/grpc serves endpoint management and delivery history: SaveEndpoint,
@@ -160,19 +187,27 @@ type ClaimedDispatch struct {
 // argument.
 type Store interface {
 	// SaveEndpoint creates or replaces an endpoint in scope, through the caller's
-	// transaction, and reconciles its subscriptions against the set it names.
+	// transaction, reconciles its subscriptions against the set it names, and
+	// returns the endpoint as it now stands.
 	//
 	// Reconciles rather than replaces: a subscription the endpoint already has is
 	// kept, with its identity and its creation time; one it names for the first
 	// time is created; one it no longer names is archived rather than deleted, so
 	// that a subscription an endpoint has ended is still something the delivery
-	// log can be read against. It fills the endpoint's Subscriptions with the rows
+	// log can be read against. The returned endpoint's Subscriptions are the rows
 	// that are live afterwards, IDs included.
+	//
+	// This is an upsert, so "the endpoint I passed in" and "the endpoint that is
+	// now there" are different things on an update, and what comes back is the
+	// second: the stored row, with the database's stamps on it and with the
+	// columns a re-registration does not update — created_at and created_by —
+	// reading as the row already held them rather than as the argument spelled
+	// them. The argument itself is not written to.
 	//
 	// The endpoint adopts scope where it names none, and an endpoint naming a
 	// different one is ErrScopeMismatch. A nil tx is an error wrapping
 	// ErrNilExecutor.
-	SaveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) error
+	SaveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) (*Endpoint, error)
 	// GetEndpoint reads one of scope's endpoints, secrets included, on the
 	// caller's executor. It returns an error wrapping database/sql.ErrNoRows when
 	// the endpoint does not exist — including when it exists in another scope,
@@ -182,15 +217,25 @@ type Store interface {
 	// caller's executor.
 	ListEndpoints(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Endpoint], error)
 	// ArchiveEndpoint retires one of scope's endpoints, through the caller's
-	// transaction. Its delivery history is retained: the attempts log outlives the
-	// endpoint, because "what did we send them" is asked most often after someone
-	// has been removed.
+	// transaction, and returns the row it moved. Its delivery history is
+	// retained: the attempts log outlives the endpoint, because "what did we send
+	// them" is asked most often after someone has been removed.
 	//
 	// Its subscriptions are left as they are. An archived endpoint is excluded
 	// from fan-out by its own archived_at, so archiving them too would buy
 	// nothing and would lose which event types it was subscribed to if it is ever
-	// re-registered.
-	ArchiveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) error
+	// re-registered. They are not read back either: what this returns is the
+	// endpoint row and the Subscriptions of the value are nil, because a write
+	// answers with the rows it wrote and this one wrote in one table.
+	// ListSubscriptions reaches them unchanged.
+	//
+	// A nil endpoint and a nil error is the answer where the identifier names
+	// nothing in scope, which is the answer this method has always given: an
+	// archive that named nothing and an archive of something already archived are
+	// both "this endpoint is not live", which is the state the caller asked for.
+	// The second of those two does come back — the row is still there and still
+	// says when it was retired, which may be before this call.
+	ArchiveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) (*Endpoint, error)
 
 	// AddSubscription subscribes one of scope's endpoints to eventType, through
 	// the caller's transaction, and returns the resulting row.
@@ -216,15 +261,20 @@ type Store interface {
 	// on the caller's executor.
 	ListSubscriptions(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, endpointID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Subscription], error)
 	// ArchiveSubscription retires one of scope's subscriptions, through the
-	// caller's transaction, so the endpoint stops receiving that event type
-	// without its other subscriptions, its delivery history, or its identity being
-	// touched.
+	// caller's transaction, and returns the row it moved — so the endpoint stops
+	// receiving that event type without its other subscriptions, its delivery
+	// history, or its identity being touched.
 	//
 	// This is the method a flat event list cannot offer. Against one, "stop
 	// sending me order.created" can only be expressed as a rewrite of the whole
 	// set, which loses when it happened and races any concurrent edit of the same
-	// endpoint.
-	ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error
+	// endpoint. The returned row is where "when it happened" is now readable
+	// without asking again.
+	//
+	// Like ArchiveEndpoint it answers a nil subscription and a nil error where
+	// the identifier names nothing under one of scope's endpoints, and returns an
+	// already-archived row as it stands.
+	ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*Subscription, error)
 
 	// EndpointsForEvent returns the enabled, unarchived endpoints in scope that
 	// are subscribed to eventType, using the caller's executor.

@@ -20,7 +20,7 @@ import (
 // here cares about only two or three methods and a moq struct would need every
 // field stubbed to avoid a nil-func panic.
 type fakeStore struct {
-	saveEndpoint        func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) error
+	saveEndpoint        func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) (*Endpoint, error)
 	getEndpoint         func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, endpointID string) (*Endpoint, error)
 	endpointsForEvent   func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, eventType EventType) ([]*Endpoint, error)
 	enqueue             func(ctx context.Context, q database.SQLQueryExecutor, delivery *Delivery, endpointIDs []string, now time.Time) error
@@ -29,7 +29,7 @@ type fakeStore struct {
 	recordFailure       func(ctx context.Context, dispatchID string, attempts int, nextAttempt time.Time, lastErr string, dead bool) error
 	recordAttempt       func(ctx context.Context, attempt *Attempt) error
 	addSubscription     func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType EventType) (*Subscription, error)
-	archiveSubscription func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error
+	archiveSubscription func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*Subscription, error)
 	requeue             func(ctx context.Context, deliveryID, endpointID string, at time.Time) error
 	backlog             func(ctx context.Context) (int64, time.Time, error)
 	reap                func(ctx context.Context, before time.Time, limit int) (int64, error)
@@ -37,9 +37,12 @@ type fakeStore struct {
 
 var _ Store = (*fakeStore)(nil)
 
-func (f *fakeStore) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) error {
+func (f *fakeStore) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) (*Endpoint, error) {
 	if f.saveEndpoint == nil {
-		return nil
+		saved := *endpoint
+		saved.Scope = scope
+
+		return &saved, nil
 	}
 
 	return f.saveEndpoint(ctx, tx, scope, endpoint)
@@ -57,8 +60,8 @@ func (f *fakeStore) ListEndpoints(context.Context, database.SQLQueryExecutor, te
 	return &filtering.QueryFilteredResult[Endpoint]{}, nil
 }
 
-func (f *fakeStore) ArchiveEndpoint(context.Context, database.Tx, tenancy.Scope, string) error {
-	return nil
+func (f *fakeStore) ArchiveEndpoint(_ context.Context, _ database.Tx, scope tenancy.Scope, endpointID string) (*Endpoint, error) {
+	return &Endpoint{ID: endpointID, Scope: scope}, nil
 }
 
 func (f *fakeStore) AddSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType EventType) (*Subscription, error) {
@@ -77,9 +80,9 @@ func (f *fakeStore) ListSubscriptions(context.Context, database.SQLQueryExecutor
 	return &filtering.QueryFilteredResult[Subscription]{}, nil
 }
 
-func (f *fakeStore) ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+func (f *fakeStore) ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*Subscription, error) {
 	if f.archiveSubscription == nil {
-		return nil
+		return &Subscription{ID: subscriptionID}, nil
 	}
 
 	return f.archiveSubscription(ctx, tx, scope, subscriptionID)
@@ -196,6 +199,37 @@ func newTestDispatcher(t *testing.T, store Store, opts ...DispatcherOption) Disp
 // port: a consumer write that cannot be called without one.
 func testTx() database.Tx { return database.NewTxForTesting(&stubExecutor{}) }
 
+// registerErr and unsubscribeErr are the refusal halves of the two writes that
+// now answer with a row.
+//
+// A refusal has no row to assert about, and spelling the discard at every one
+// of those call sites would bury what each case is actually checking under a
+// blank identifier. Every case that cares about the row calls the method
+// directly.
+func registerErr(t *testing.T, d Dispatcher, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) error {
+	t.Helper()
+
+	registered, err := d.Register(t.Context(), tx, scope, endpoint)
+	if err != nil {
+		// A refused write answers with no row, which is the half of the contract
+		// a call site reaching for this helper would otherwise not be checking.
+		must.Nil(t, registered)
+	}
+
+	return err
+}
+
+func unsubscribeErr(t *testing.T, d Dispatcher, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+	t.Helper()
+
+	retired, err := d.Unsubscribe(t.Context(), tx, scope, subscriptionID)
+	if err != nil {
+		must.Nil(t, retired)
+	}
+
+	return err
+}
+
 func TestNewDispatcher(T *testing.T) {
 	T.Parallel()
 
@@ -253,19 +287,33 @@ func TestDispatcher_Register(T *testing.T) {
 		var saved *Endpoint
 
 		d := newTestDispatcher(t, &fakeStore{
-			saveEndpoint: func(_ context.Context, _ database.Tx, _ tenancy.Scope, endpoint *Endpoint) error {
+			saveEndpoint: func(_ context.Context, _ database.Tx, _ tenancy.Scope, endpoint *Endpoint) (*Endpoint, error) {
 				saved = endpoint
 
-				return nil
+				return endpoint, nil
 			},
 		})
 
 		endpoint := valid()
-		must.NoError(t, d.Register(t.Context(), testTx(), testScope, endpoint))
+
+		registered, err := d.Register(t.Context(), testTx(), testScope, endpoint)
+		must.NoError(t, err)
 
 		must.NotNil(t, saved)
 		test.NotEqOp(t, "", saved.ID)
 		test.EqOp(t, DefaultContentType, saved.ContentType)
+
+		// What the store was handed is what comes back.
+		must.NotNil(t, registered)
+		test.EqOp(t, saved.ID, registered.ID)
+		test.EqOp(t, DefaultContentType, registered.ContentType)
+
+		// And the caller's value is untouched: the identifier and the content
+		// type were settled on a copy, so a caller who wants either reads the
+		// endpoint this answered with.
+		test.EqOp(t, "", endpoint.ID)
+		test.EqOp(t, "", endpoint.ContentType)
+		test.EqOp(t, tenancy.Scope{}, endpoint.Scope)
 	})
 
 	T.Run("preserves a caller-supplied ID", func(t *testing.T) {
@@ -276,8 +324,10 @@ func TestDispatcher_Register(T *testing.T) {
 		endpoint := valid()
 		endpoint.ID = "chosen"
 
-		must.NoError(t, d.Register(t.Context(), testTx(), testScope, endpoint))
-		test.EqOp(t, "chosen", endpoint.ID)
+		registered, err := d.Register(t.Context(), testTx(), testScope, endpoint)
+		must.NoError(t, err)
+		must.NotNil(t, registered)
+		test.EqOp(t, "chosen", registered.ID)
 	})
 
 	// The SSRF case, at the layer that matters: an unvalidated endpoint must
@@ -288,17 +338,17 @@ func TestDispatcher_Register(T *testing.T) {
 		saved := false
 
 		d := newTestDispatcher(t, &fakeStore{
-			saveEndpoint: func(context.Context, database.Tx, tenancy.Scope, *Endpoint) error {
+			saveEndpoint: func(_ context.Context, _ database.Tx, _ tenancy.Scope, endpoint *Endpoint) (*Endpoint, error) {
 				saved = true
 
-				return nil
+				return endpoint, nil
 			},
 		})
 
 		endpoint := valid()
 		endpoint.URL = "https://169.254.169.254/latest/meta-data/"
 
-		test.ErrorIs(t, d.Register(t.Context(), testTx(), testScope, endpoint), ErrDisallowedEndpointHost)
+		test.ErrorIs(t, registerErr(t, d, testTx(), testScope, endpoint), ErrDisallowedEndpointHost)
 		test.False(t, saved)
 	})
 
@@ -310,7 +360,7 @@ func TestDispatcher_Register(T *testing.T) {
 		endpoint := valid()
 		endpoint.Subscriptions = SubscribeTo(orderExploded)
 
-		test.ErrorIs(t, d.Register(t.Context(), testTx(), testScope, endpoint), ErrUnknownEventType)
+		test.ErrorIs(t, registerErr(t, d, testTx(), testScope, endpoint), ErrUnknownEventType)
 	})
 
 	// The same shape as the SSRF case, for the same reason: a registration that
@@ -322,14 +372,14 @@ func TestDispatcher_Register(T *testing.T) {
 		saved := false
 
 		d := newTestDispatcher(t, &fakeStore{
-			saveEndpoint: func(context.Context, database.Tx, tenancy.Scope, *Endpoint) error {
+			saveEndpoint: func(_ context.Context, _ database.Tx, _ tenancy.Scope, endpoint *Endpoint) (*Endpoint, error) {
 				saved = true
 
-				return nil
+				return endpoint, nil
 			},
 		})
 
-		test.ErrorIs(t, d.Register(t.Context(), testTx(), tenancy.Scope{}, valid()), ErrNoScope)
+		test.ErrorIs(t, registerErr(t, d, testTx(), tenancy.Scope{}, valid()), ErrNoScope)
 		test.False(t, saved)
 	})
 
@@ -341,18 +391,27 @@ func TestDispatcher_Register(T *testing.T) {
 		var saved *Endpoint
 
 		d := newTestDispatcher(t, &fakeStore{
-			saveEndpoint: func(_ context.Context, _ database.Tx, _ tenancy.Scope, endpoint *Endpoint) error {
+			saveEndpoint: func(_ context.Context, _ database.Tx, _ tenancy.Scope, endpoint *Endpoint) (*Endpoint, error) {
 				saved = endpoint
 
-				return nil
+				return endpoint, nil
 			},
 		})
 
 		endpoint := valid()
-		must.NoError(t, d.Register(t.Context(), testTx(), otherScope, endpoint))
+
+		registered, err := d.Register(t.Context(), testTx(), otherScope, endpoint)
+		must.NoError(t, err)
 
 		must.NotNil(t, saved)
 		test.EqOp(t, otherScope, saved.Scope)
+
+		must.NotNil(t, registered)
+		test.EqOp(t, otherScope, registered.Scope)
+
+		// The adoption lands on the copy, so the caller's endpoint still names
+		// nobody — there is one place to read the answer and it is the return.
+		test.EqOp(t, tenancy.Scope{}, endpoint.Scope)
 	})
 
 	// The mix-up the argument exists to catch: a caller holding one tenant's
@@ -364,17 +423,17 @@ func TestDispatcher_Register(T *testing.T) {
 		saved := false
 
 		d := newTestDispatcher(t, &fakeStore{
-			saveEndpoint: func(context.Context, database.Tx, tenancy.Scope, *Endpoint) error {
+			saveEndpoint: func(_ context.Context, _ database.Tx, _ tenancy.Scope, endpoint *Endpoint) (*Endpoint, error) {
 				saved = true
 
-				return nil
+				return endpoint, nil
 			},
 		})
 
 		endpoint := valid()
 		endpoint.Scope = otherScope
 
-		test.ErrorIs(t, d.Register(t.Context(), testTx(), testScope, endpoint), ErrScopeMismatch)
+		test.ErrorIs(t, registerErr(t, d, testTx(), testScope, endpoint), ErrScopeMismatch)
 		test.False(t, saved)
 	})
 
@@ -386,21 +445,21 @@ func TestDispatcher_Register(T *testing.T) {
 		saved := false
 
 		d := newTestDispatcher(t, &fakeStore{
-			saveEndpoint: func(context.Context, database.Tx, tenancy.Scope, *Endpoint) error {
+			saveEndpoint: func(_ context.Context, _ database.Tx, _ tenancy.Scope, endpoint *Endpoint) (*Endpoint, error) {
 				saved = true
 
-				return nil
+				return endpoint, nil
 			},
 		})
 
-		test.ErrorIs(t, d.Register(t.Context(), nil, testScope, valid()), ErrNilExecutor)
+		test.ErrorIs(t, registerErr(t, d, nil, testScope, valid()), ErrNilExecutor)
 		test.False(t, saved)
 	})
 
 	T.Run("nil endpoint", func(t *testing.T) {
 		t.Parallel()
 
-		test.ErrorIs(t, newTestDispatcher(t, &fakeStore{}).Register(t.Context(), testTx(), testScope, nil), ErrNilEndpoint)
+		test.ErrorIs(t, registerErr(t, newTestDispatcher(t, &fakeStore{}), testTx(), testScope, nil), ErrNilEndpoint)
 	})
 }
 
@@ -793,21 +852,48 @@ func TestDispatcher_Subscribe(T *testing.T) {
 func TestDispatcher_Unsubscribe(T *testing.T) {
 	T.Parallel()
 
+	retiredAt := time.Date(2026, time.September, 12, 9, 0, 0, 0, time.UTC)
+
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
 		var archived string
 
 		d := newTestDispatcher(t, &fakeStore{
-			archiveSubscription: func(_ context.Context, _ database.Tx, _ tenancy.Scope, subscriptionID string) error {
+			archiveSubscription: func(_ context.Context, _ database.Tx, _ tenancy.Scope, subscriptionID string) (*Subscription, error) {
 				archived = subscriptionID
 
-				return nil
+				return &Subscription{ID: subscriptionID, ArchivedAt: &retiredAt}, nil
 			},
 		})
 
-		must.NoError(t, d.Unsubscribe(t.Context(), testTx(), testScope, "subscription-1"))
+		retired, err := d.Unsubscribe(t.Context(), testTx(), testScope, "subscription-1")
+		must.NoError(t, err)
 		test.EqOp(t, "subscription-1", archived)
+
+		// The row the store retired travels out unchanged: when it happened is
+		// the answer this method exists to stop a caller asking twice for.
+		must.NotNil(t, retired)
+		test.EqOp(t, "subscription-1", retired.ID)
+		must.NotNil(t, retired.ArchivedAt)
+		test.EqOp(t, retiredAt, *retired.ArchivedAt)
+	})
+
+	// The store's own answer for an ID that names nothing in scope, arriving
+	// unchanged: no row, and no error, because "this subscription is not live"
+	// is the state the caller asked for.
+	T.Run("an ID naming nothing answers no row and no error", func(t *testing.T) {
+		t.Parallel()
+
+		d := newTestDispatcher(t, &fakeStore{
+			archiveSubscription: func(context.Context, database.Tx, tenancy.Scope, string) (*Subscription, error) {
+				return nil, nil
+			},
+		})
+
+		retired, err := d.Unsubscribe(t.Context(), testTx(), testScope, "nonexistent")
+		must.NoError(t, err)
+		test.Nil(t, retired)
 	})
 
 	// Deliberately not gated on the catalog: an event type can be withdrawn from
@@ -819,7 +905,9 @@ func TestDispatcher_Unsubscribe(T *testing.T) {
 		d, err := NewDispatcher(&fakeStore{}, &stubExecutor{}, WithCatalog(Catalog{}))
 		must.NoError(t, err)
 
-		test.NoError(t, d.Unsubscribe(t.Context(), testTx(), testScope, "subscription-1"))
+		retired, unsubscribeError := d.Unsubscribe(t.Context(), testTx(), testScope, "subscription-1")
+		test.NoError(t, unsubscribeError)
+		test.NotNil(t, retired)
 	})
 
 	T.Run("refuses a scope that names nobody", func(t *testing.T) {
@@ -827,7 +915,7 @@ func TestDispatcher_Unsubscribe(T *testing.T) {
 
 		d := newTestDispatcher(t, &fakeStore{})
 
-		test.ErrorIs(t, d.Unsubscribe(t.Context(), testTx(), tenancy.Scope{}, "subscription-1"), ErrNoScope)
+		test.ErrorIs(t, unsubscribeErr(t, d, testTx(), tenancy.Scope{}, "subscription-1"), ErrNoScope)
 	})
 
 	T.Run("refuses an empty subscription ID", func(t *testing.T) {
@@ -835,19 +923,19 @@ func TestDispatcher_Unsubscribe(T *testing.T) {
 
 		d := newTestDispatcher(t, &fakeStore{})
 
-		test.ErrorIs(t, d.Unsubscribe(t.Context(), testTx(), testScope, ""), platformerrors.ErrInvalidIDProvided)
+		test.ErrorIs(t, unsubscribeErr(t, d, testTx(), testScope, ""), platformerrors.ErrInvalidIDProvided)
 	})
 
 	T.Run("surfaces a store failure", func(t *testing.T) {
 		t.Parallel()
 
 		d := newTestDispatcher(t, &fakeStore{
-			archiveSubscription: func(context.Context, database.Tx, tenancy.Scope, string) error {
-				return errStoreFailed
+			archiveSubscription: func(context.Context, database.Tx, tenancy.Scope, string) (*Subscription, error) {
+				return nil, errStoreFailed
 			},
 		})
 
-		test.ErrorIs(t, d.Unsubscribe(t.Context(), testTx(), testScope, "subscription-1"), errStoreFailed)
+		test.ErrorIs(t, unsubscribeErr(t, d, testTx(), testScope, "subscription-1"), errStoreFailed)
 	})
 }
 

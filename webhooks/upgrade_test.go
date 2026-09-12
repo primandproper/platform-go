@@ -185,7 +185,7 @@ func runUpgradeSuite(t *testing.T, env *storeEnv) {
 		must.SliceLen(t, 2, got.Subscriptions)
 
 		retired := got.Subscriptions[0]
-		must.NoError(t, archiveSubscription(t, store, testScope, retired.ID))
+		mustArchiveSubscription(t, store, testScope, retired.ID)
 
 		after, err := store.GetEndpoint(t.Context(), readerOf(t, store), testScope, "legacy-endpoint")
 		must.NoError(t, err)
