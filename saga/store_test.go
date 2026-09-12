@@ -81,7 +81,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		store := env.newStore(t)
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"a", "b"}, testState{Amount: 3}, baseTime), baseTime)
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"a", "b"}, testState{Amount: 3}, baseTime), baseTime)
 
 		got, err := store.Get(t.Context(), inst.ID)
 		must.NoError(t, err)
@@ -110,7 +110,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		at := baseTime.Add(1500 * time.Millisecond)
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, at), at)
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, at), at)
 
 		got, err := store.Get(t.Context(), inst.ID)
 		must.NoError(t, err)
@@ -140,7 +140,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		test.ErrorIs(t, store.Save(t.Context(), nil, &Record{}, baseTime), ErrNilExecutor)
 
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			test.ErrorIs(t, store.Save(t.Context(), q, nil, baseTime), ErrNilInstance)
 
 			return nil
@@ -152,8 +152,8 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		saveInstance(t, store, newRecord("due", "orders", []string{"a"}, testState{}, baseTime), baseTime)
-		saveInstance(t, store, newRecord("later", "orders", []string{"a"}, testState{}, baseTime), baseTime.Add(time.Hour))
+		env.saveInstance(t, store, newRecord("due", "orders", []string{"a"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("later", "orders", []string{"a"}, testState{}, baseTime), baseTime.Add(time.Hour))
 
 		claimed, err := store.Claim(t.Context(), baseTime, 10, baseTime.Add(time.Minute))
 		must.NoError(t, err)
@@ -178,10 +178,10 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		store := env.newStore(t)
-		inst := saveInstance(t, store, newRecord("done", "orders", []string{"a"}, testState{}, baseTime), baseTime)
+		inst := env.saveInstance(t, store, newRecord("done", "orders", []string{"a"}, testState{}, baseTime), baseTime)
 
 		inst.Status = StatusCompleted
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return store.Advance(t.Context(), q, inst, baseTime, baseTime)
 		}))
 
@@ -204,7 +204,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		store := env.newStore(t)
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"a", "b"}, testState{}, baseTime), baseTime)
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"a", "b"}, testState{}, baseTime), baseTime)
 
 		claimed, err := store.Claim(t.Context(), baseTime, 10, baseTime.Add(time.Hour))
 		must.NoError(t, err)
@@ -213,7 +213,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		inst.CurrentStep = 1
 		inst.State = []byte(`{"amount":9}`)
 
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return store.Advance(t.Context(), q, inst, baseTime.Add(time.Second), baseTime.Add(time.Second))
 		}))
 
@@ -233,14 +233,14 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		store := env.newStore(t)
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"a", "b"}, testState{}, baseTime), baseTime)
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"a", "b"}, testState{}, baseTime), baseTime)
 
 		_, err := store.Claim(t.Context(), baseTime, 10, baseTime.Add(time.Hour))
 		must.NoError(t, err)
 
 		inst.CurrentStep = 1
 
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return store.Advance(t.Context(), q, inst, baseTime.Add(time.Minute), baseTime)
 		}))
 
@@ -259,15 +259,15 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		store := env.newStore(t)
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
 
 		inst.Status = StatusCompleted
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return store.Advance(t.Context(), q, inst, baseTime, baseTime)
 		}))
 
 		inst.Status = StatusRunning
-		err := store.WithTransaction(t.Context(), func(q database.Tx) error {
+		err := env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return store.Advance(t.Context(), q, inst, baseTime, baseTime)
 		})
 		test.ErrorIs(t, err, ErrInstanceNotFound)
@@ -280,7 +280,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		test.ErrorIs(t, store.Advance(t.Context(), nil, &Record{}, baseTime, baseTime), ErrNilExecutor)
 
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			test.ErrorIs(t, store.Advance(t.Context(), q, nil, baseTime, baseTime), ErrNilInstance)
 
 			return nil
@@ -291,7 +291,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		store := env.newStore(t)
-		saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
 
 		_, err := store.Claim(t.Context(), baseTime, 10, baseTime.Add(time.Hour))
 		must.NoError(t, err)
@@ -321,7 +321,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		store := env.newStore(t)
-		saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
 
 		_, err := store.Claim(t.Context(), baseTime, 10, baseTime.Add(time.Hour))
 		must.NoError(t, err)
@@ -338,12 +338,12 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		store := env.newStore(t)
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
 
 		inst.Status = StatusStuck
 		inst.ResumeStatus = StatusCompensating
 		inst.LastError = "the refund failed"
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return store.Advance(t.Context(), q, inst, baseTime, baseTime)
 		}))
 
@@ -368,7 +368,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		store := env.newStore(t)
-		saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
 
 		_, err := store.Requeue(t.Context(), "i1", []Status{StatusStuck}, StatusRunning, baseTime)
 		test.ErrorIs(t, err, ErrInstanceNotFound)
@@ -388,14 +388,14 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		saveInstance(t, store, newRecord("a1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
-		saveInstance(t, store, newRecord("a2", "orders", []string{"a"}, testState{}, baseTime), baseTime)
-		saveInstance(t, store, newRecord("b1", "refunds", []string{"a"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("a1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("a2", "orders", []string{"a"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("b1", "refunds", []string{"a"}, testState{}, baseTime), baseTime)
 
 		stuck := newRecord("a3", "orders", []string{"a"}, testState{}, baseTime)
-		saveInstance(t, store, stuck, baseTime)
+		env.saveInstance(t, store, stuck, baseTime)
 		stuck.Status = StatusStuck
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return store.Advance(t.Context(), q, stuck, baseTime, baseTime)
 		}))
 
@@ -427,7 +427,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		for _, id := range []string{"a", "b", "c"} {
-			saveInstance(t, store, newRecord(id, "orders", []string{"one"}, testState{}, baseTime), baseTime)
+			env.saveInstance(t, store, newRecord(id, "orders", []string{"one"}, testState{}, baseTime), baseTime)
 		}
 
 		filter := filtering.DefaultQueryFilter()
@@ -461,8 +461,8 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{Amount: 1}, baseTime), baseTime)
-		saveInstance(t, store, newRecord("i2", "orders", []string{"a"}, testState{Amount: 2}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{Amount: 1}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("i2", "orders", []string{"a"}, testState{Amount: 2}, baseTime), baseTime)
 
 		claimed, err := store.Claim(t.Context(), baseTime, 10, baseTime.Add(time.Hour))
 		must.NoError(t, err)
@@ -507,7 +507,7 @@ func TestSQLStore_Errors(T *testing.T) {
 		_, err = store.Requeue(t.Context(), "i1", []Status{StatusStuck}, StatusRunning, baseTime)
 		test.Error(t, err)
 
-		test.Error(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		test.Error(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return store.Save(t.Context(), q, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
 		}))
 	})
@@ -518,7 +518,7 @@ func TestSQLStore_Errors(T *testing.T) {
 		env := newSQLiteEnv(t)
 		store := env.newStore(t)
 
-		saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
+		env.saveInstance(t, store, newRecord("i1", "orders", []string{"a"}, testState{}, baseTime), baseTime)
 
 		// Reaching past the store to corrupt the column, which is the only way
 		// this row ever gets written: nothing in the package writes a non-JSON

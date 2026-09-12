@@ -35,6 +35,38 @@ import (
 // the instant Resolve was handed, so a store that evicts late — or not at all,
 // as a table does until something sweeps it — cannot keep a credential alive
 // past the moment it was supposed to die.
+//
+// # No executor and no scope, on any of the four
+//
+// Every other store in this module takes the caller's database.Tx on a write
+// and a database.SQLQueryExecutor on a read, under a tenancy.Scope. Nothing
+// here takes any of it, and each method says so on itself. This is the
+// argument those clauses are short for.
+//
+// The executor first. A link is addressed by the digest of its token, because
+// redemption arrives holding the token and nothing else, and the two ends of a
+// link's life are routinely two processes: the handler that builds the email
+// mints, the handler that serves the click resolves. There is no transaction
+// spanning those, so there is no caller transaction to join — which is why this
+// is a four-method key-value seam rather than a table's worth of signatures,
+// and links/database is one implementation of it rather than the shape of it.
+//
+// Resolve is the sharp one. Its atomicity is the implementation's own — a
+// guarded UPDATE and its affected row count — and a caller supplying a
+// transaction would be choosing when that guard commits. Two calls naming one
+// link must produce one transition and one refusal, on separate connections,
+// with no cooperation from the Minter; a transition sitting uncommitted inside
+// somebody's request is a link the second caller still finds active. Single use
+// is the whole product here, and it is the one property a caller's transaction
+// would take away.
+//
+// The scope second, and RevokeForSubject has carried the reason since it
+// shipped: revoking a person's links should cross whatever tenants that person
+// belongs to rather than stop inside one. It generalises to the other three.
+// What a link belongs to is a Subject — a person — and the caller redeeming one
+// is somebody following a URL out of an inbox rather than a session inside an
+// account. There is no tenant on the request to bind, and a Put that recorded
+// one would have to be undone by a revocation that ignores it.
 type Store interface {
 	// Put writes a freshly minted link's record.
 	//
@@ -46,6 +78,12 @@ type Store interface {
 	// The id is already in use only when the token generator has repeated
 	// itself, so an implementation refuses rather than overwrites: a failed
 	// mint is the correct outcome of randomness that has stopped being random.
+	//
+	// It takes no executor: the process that mints is routinely not the one
+	// that redeems, so there is no transaction spanning the two ends of a
+	// link's life for this to join. It takes no scope because what a record
+	// belongs to is its Subject, and RevokeForSubject has to reach it in every
+	// tenant that person appears in.
 	Put(ctx context.Context, id ID, record *Record) error
 
 	// Get reads a record without consuming it.
@@ -54,6 +92,11 @@ type Store interface {
 	// ErrStaleRecord when what is stored was written by a different shape of
 	// this package. Every other error means the store could not answer, which
 	// is a different fact with an opposite consequence — see ErrStoreUnavailable.
+	//
+	// It takes no executor and no scope, for Put's reasons. The id is the whole
+	// address: a caller holding one has already been handed the credential, and
+	// a caller holding none cannot narrow their way to a record by naming a
+	// tenant.
 	Get(ctx context.Context, id ID) (*Record, error)
 
 	// Resolve moves an active link into a terminal state, atomically, and
@@ -70,6 +113,17 @@ type Store interface {
 	// it whenever one was found, because the action it names is what keeps a
 	// metric labeled by action from going blank exactly when one flow's links
 	// start failing.
+	//
+	// It takes no executor, and of the four this is the one where that is a
+	// guarantee rather than a consequence. The transition has to commit by
+	// itself, immediately, because a transition sitting uncommitted inside a
+	// caller's transaction is a link the next caller still finds active — and
+	// one transition and one refusal is the whole of single use. A caller who
+	// wants their own work to commit with the redemption has it the other way
+	// round: resolve first, and do the work only if this returned nil.
+	//
+	// It takes no scope for Get's reason. Redemption arrives holding a token
+	// and nothing else; there is no session, and so no tenant, behind a click.
 	Resolve(ctx context.Context, id ID, to State, at, purgeAfter time.Time) (*Record, error)
 
 	// RevokeForSubject moves every unresolved link for a subject into
@@ -97,6 +151,24 @@ type Store interface {
 	// rather than stop inside one: the caller asking is a completed password
 	// reset, a locked account, or an erasure, and none of those means "in this
 	// tenant only".
+	//
+	// It takes no executor, and this is the one of the four where a caller
+	// plausibly has a transaction to offer: the reset that completes, the
+	// account that locks and the erasure that runs each write something of
+	// their own at the same moment. They still cannot hand it over. Store is a
+	// seam satisfied by holding records addressable by id and by subject, and
+	// links/database is one implementation of it rather than the shape of it —
+	// a database.Tx on this method alone would narrow the interface to storage
+	// on the caller's own database, on behalf of the only three callers in the
+	// package that could supply one.
+	//
+	// What that costs is the caller's to order correctly. A revocation that
+	// commits while the caller's own write rolls back leaves a person
+	// re-requesting a link, which is a nuisance; a caller that commits a
+	// password change and then fails to revoke leaves live reset links behind
+	// a credential that has already changed, which is the thing this method
+	// exists to prevent. Revoke first and commit second, exactly as Resolve
+	// says for the same reason.
 	//
 	// It does not consult a link's deadline, because nothing in this package
 	// decides liveness in SQL — Record.Usable does, in Go, against the Minter's

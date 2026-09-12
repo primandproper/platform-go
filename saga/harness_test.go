@@ -194,10 +194,14 @@ func newIdempotencyManager(t *testing.T) *idempotency.Manager[StepResult] {
 }
 
 // saveInstance inserts an instance through a transaction, as a Runner does.
-func saveInstance(t *testing.T, store Store, inst *Record, nextAttempt time.Time) *Record {
+//
+// The transaction comes from the environment's client rather than from the
+// store, because a Store has no WithTransaction: one way in, and it is
+// database.Client's.
+func (e *storeEnv) saveInstance(t *testing.T, store Store, inst *Record, nextAttempt time.Time) *Record {
 	t.Helper()
 
-	must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+	must.NoError(t, e.client.WithTransaction(t.Context(), func(q database.Tx) error {
 		return store.Save(t.Context(), q, inst, nextAttempt)
 	}))
 
@@ -284,10 +288,10 @@ func testWorkerConfig() *WorkerConfig {
 
 // newWorker builds a Worker over the given store and registry with the suite's
 // clock, plus whatever extra options a test needs.
-func newWorker(t *testing.T, store Store, registry *Registry, c clock.Clock, opts ...WorkerOption) *Worker {
+func (e *storeEnv) newWorker(t *testing.T, store Store, registry *Registry, c clock.Clock, opts ...WorkerOption) *Worker {
 	t.Helper()
 
-	worker, err := NewWorker(t.Context(), testWorkerConfig(), store, registry, newScopedLocker(t),
+	worker, err := NewWorker(t.Context(), testWorkerConfig(), e.client, store, registry, newScopedLocker(t),
 		append([]WorkerOption{WithWorkerClock(c)}, opts...)...)
 	must.NoError(t, err)
 

@@ -360,6 +360,11 @@ func (s *SQLStore) Claim(ctx context.Context, now time.Time, limit int, leaseUnt
 	// The select and the update run in one transaction so that FOR UPDATE SKIP
 	// LOCKED means anything. Without it the lock is released before the update,
 	// and two workers select the same rows.
+	//
+	// It is opened on the client this store was built with, which is the store's
+	// own machinery rather than a re-entry point: Claim takes no executor
+	// precisely so that the lease commits here and not whenever a caller's
+	// transaction happens to end.
 	err := s.client.WithTransaction(ctx, func(q database.Tx) error {
 		ids, err := s.claimable(ctx, q, now, limit)
 		if err != nil {
@@ -588,13 +593,6 @@ func (s *SQLStore) Requeue(
 	}
 
 	return s.Get(ctx, instanceID)
-}
-
-// WithTransaction delegates to the client, which begins its own span for the
-// transaction. Wrapping it here would nest a second span around the first and
-// say nothing the client's does not.
-func (s *SQLStore) WithTransaction(ctx context.Context, fn func(q database.Tx) error) error {
-	return s.client.WithTransaction(ctx, fn)
 }
 
 // convertRows turns a page of generated rows into whatever this package reads

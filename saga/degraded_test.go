@@ -43,9 +43,11 @@ func TestRunner_Degraded(T *testing.T) {
 	T.Run("reports a store that cannot insert", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		runner := newTestRunner(t, &failingSaveStore{Store: store}, registry)
+		runner := env.newTestRunner(t, &failingSaveStore{Store: store}, registry)
 
 		_, err := runner.Start(t.Context(), "orders", testState{})
 		test.Error(t, err)
@@ -54,10 +56,12 @@ func TestRunner_Degraded(T *testing.T) {
 	T.Run("StartInTransaction reports an unknown definition", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		runner := newTestRunner(t, store, NewRegistry())
+		env := newSQLiteEnv(t)
 
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		store := env.newStore(t)
+		runner := env.newTestRunner(t, store, NewRegistry())
+
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			_, err := runner.StartInTransaction(t.Context(), q, "nope", testState{})
 			test.ErrorIs(t, err, ErrUnknownDefinition)
 
@@ -68,17 +72,19 @@ func TestRunner_Degraded(T *testing.T) {
 	T.Run("reports a store that cannot requeue", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
 
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 		inst.Status = StatusStuck
 		inst.ResumeStatus = StatusRunning
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return store.Advance(t.Context(), q, inst, baseTime, baseTime)
 		}))
 
-		runner := newTestRunner(t, &failingRequeueStore{Store: store}, registry)
+		runner := env.newTestRunner(t, &failingRequeueStore{Store: store}, registry)
 
 		_, err := runner.Resume(t.Context(), "i1")
 		test.Error(t, err)
@@ -91,10 +97,10 @@ func TestRunner_Degraded(T *testing.T) {
 		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
 
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 		inst.Status = StatusStuck
 		inst.ResumeStatus = StatusRunning
-		must.NoError(t, store.WithTransaction(t.Context(), func(q database.Tx) error {
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
 			return store.Advance(t.Context(), q, inst, baseTime, baseTime)
 		}))
 
@@ -102,7 +108,7 @@ func TestRunner_Degraded(T *testing.T) {
 			"UPDATE "+instancesTable(t, store)+" SET state = 'not json' WHERE id = 'i1'")
 		must.NoError(t, err)
 
-		runner := newTestRunner(t, store, registry)
+		runner := env.newTestRunner(t, store, registry)
 
 		_, err = runner.Resume(t.Context(), "i1")
 		test.Error(t, err)
@@ -115,16 +121,18 @@ func TestWorker_Degraded(T *testing.T) {
 	T.Run("a store that cannot record the compensation decision leaves the cursor alone", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", Step[testState]{
 			Name: "fail",
 			Do:   func(context.Context, *testState) error { return retry.Unretryable(platformerrors.New("no")) },
 			Undo: func(context.Context, *testState) error { return nil },
 		})
 
-		worker := newWorker(t, &failingAdvanceStore{Store: store}, registry, newStubClock())
+		worker := env.newWorker(t, &failingAdvanceStore{Store: store}, registry, newStubClock())
 
-		startedRecord(t, store, registry, "orders", "i1")
+		env.startedRecord(t, store, registry, "orders", "i1")
 
 		drainOnce(t, worker)
 
@@ -139,14 +147,16 @@ func TestWorker_Degraded(T *testing.T) {
 	T.Run("a store that cannot record a completed compensation leaves the cursor alone", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
 
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 		inst.Status = StatusCompensating
 		inst.CurrentStep = -1
 
-		worker := newWorker(t, &failingAdvanceStore{Store: store}, registry, newStubClock())
+		worker := env.newWorker(t, &failingAdvanceStore{Store: store}, registry, newStubClock())
 
 		_, err := worker.step(t.Context(), mustLookup(t, registry, "orders"), inst)
 		test.Error(t, err)
@@ -155,11 +165,13 @@ func TestWorker_Degraded(T *testing.T) {
 	T.Run("a compensating instance already past its first step finishes", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
-		registry := registryWith(t, "orders", noopStep("one"))
-		worker := newWorker(t, store, registry, newStubClock())
+		env := newSQLiteEnv(t)
 
-		inst := saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
+		store := env.newStore(t)
+		registry := registryWith(t, "orders", noopStep("one"))
+		worker := env.newWorker(t, store, registry, newStubClock())
+
+		inst := env.saveInstance(t, store, newRecord("i1", "orders", []string{"one"}, testState{}, baseTime), baseTime)
 		inst.Status = StatusCompensating
 		inst.CurrentStep = -1
 
@@ -175,9 +187,11 @@ func TestWorker_Degraded(T *testing.T) {
 	T.Run("a terminal instance is a no-op for step and for drive", func(t *testing.T) {
 		t.Parallel()
 
-		store := newSQLiteEnv(t).newStore(t)
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
 		registry := registryWith(t, "orders", noopStep("one"))
-		worker := newWorker(t, store, registry, newStubClock())
+		worker := env.newWorker(t, store, registry, newStubClock())
 
 		for _, status := range []Status{StatusCompleted, StatusCompensated, StatusStuck} {
 			inst := newRecord("i1", "orders", []string{"one"}, testState{}, baseTime)

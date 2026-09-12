@@ -66,9 +66,10 @@ func RegisterOutboxEventPublisher(i do.Injector) {
 // sagas without an outbox — see RegisterOutboxEventPublisher, which is the
 // publisher an outbox-carrying deployment registers.
 //
-// Prerequisites: *Config, saga.Store (see RegisterStore), *saga.Registry (the
-// application's saga definitions), and distributedlock.ScopedLocker must be
-// registered in the injector before the Worker is invoked.
+// Prerequisites: *Config, database.Client, saga.Store (see RegisterStore),
+// *saga.Registry (the application's saga definitions), and
+// distributedlock.ScopedLocker must be registered in the injector before the
+// Worker is invoked.
 func RegisterWorker(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*saga.Worker, error) {
 		pillars, err := observability.InvokePillars(i)
@@ -97,6 +98,7 @@ func RegisterWorker(i do.Injector) {
 		return NewWorker(
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
+			do.MustInvoke[database.Client](i),
 			do.MustInvoke[saga.Store](i),
 			do.MustInvoke[*saga.Registry](i),
 			do.MustInvoke[distributedlock.ScopedLocker](i),

@@ -188,12 +188,15 @@ func TestNewWorker(T *testing.T) {
 	T.Run("builds a worker", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), validConfig(), newClient(t))
+		client := newClient(t)
+
+		store, err := NewStore(t.Context(), validConfig(), client)
 		must.NoError(t, err)
 
 		worker, err := NewWorker(
 			t.Context(),
 			validConfig(),
+			client,
 			store,
 			registry(t),
 			newLocker(t),
@@ -205,36 +208,56 @@ func TestNewWorker(T *testing.T) {
 	T.Run("rejects a nil config", func(t *testing.T) {
 		t.Parallel()
 
+		client := newClient(t)
+
+		store, err := NewStore(t.Context(), validConfig(), client)
+		must.NoError(t, err)
+
+		_, err = NewWorker(t.Context(), nil, client, store, registry(t), newLocker(t))
+		test.Error(t, err)
+	})
+
+	T.Run("propagates a missing client", func(t *testing.T) {
+		t.Parallel()
+
+		// The Worker needs one of its own: saga.Store has no WithTransaction to
+		// reach for, and one write on the advance path commits a position and
+		// its lifecycle events together.
 		store, err := NewStore(t.Context(), validConfig(), newClient(t))
 		must.NoError(t, err)
 
-		_, err = NewWorker(t.Context(), nil, store, registry(t), newLocker(t))
-		test.Error(t, err)
+		_, err = NewWorker(t.Context(), validConfig(), nil, store, registry(t), newLocker(t))
+		test.ErrorIs(t, err, saga.ErrNilDatabaseClient)
 	})
 
 	T.Run("rejects an invalid config", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), validConfig(), newClient(t))
+		client := newClient(t)
+
+		store, err := NewStore(t.Context(), validConfig(), client)
 		must.NoError(t, err)
 
 		cfg := validConfig()
 		cfg.Worker.StepTimeout = time.Hour
 		cfg.Worker.AdvanceTimeout = time.Second
 
-		_, err = NewWorker(t.Context(), cfg, store, registry(t), newLocker(t))
+		_, err = NewWorker(t.Context(), cfg, client, store, registry(t), newLocker(t))
 		test.Error(t, err)
 	})
 
 	T.Run("propagates a missing locker", func(t *testing.T) {
 		t.Parallel()
 
-		store, err := NewStore(t.Context(), validConfig(), newClient(t))
+		client := newClient(t)
+
+		store, err := NewStore(t.Context(), validConfig(), client)
 		must.NoError(t, err)
 
 		_, err = NewWorker(
 			t.Context(),
 			validConfig(),
+			client,
 			store,
 			registry(t),
 			nil,
@@ -256,7 +279,7 @@ func TestNewWorker(T *testing.T) {
 
 		reg := registry(t)
 
-		runner, err := saga.NewRunner[struct{}](store, reg)
+		runner, err := saga.NewRunner[struct{}](client, store, reg)
 		must.NoError(t, err)
 
 		_, err = runner.Start(t.Context(), "orders", struct{}{})
@@ -287,7 +310,7 @@ func TestNewWorker(T *testing.T) {
 			idempotency.WithInFlightTTL(time.Minute))
 		must.NoError(t, err)
 
-		worker, err := NewWorker(t.Context(), cfg, store, reg, newLocker(t),
+		worker, err := NewWorker(t.Context(), cfg, client, store, reg, newLocker(t),
 			WithWorkerEventPublisher(publisher),
 			WithWorkerIdempotency(manager),
 		)
