@@ -328,36 +328,43 @@ func (s *SQLStore) ListCurrentSubscriptions(
 }
 
 // UpdateSubscription rewrites everything a provider's own subscription can move,
-// through the caller's transaction.
+// through the caller's transaction, and answers with the row as the statement
+// left it.
 //
 // The collision check against the provider-side id runs on tx, so a subscription
 // written earlier in the same transaction is one this edit is checked against.
-// See [Store.UpdateSubscription].
+//
+// The read-back is [SQLStore.readSubscription]'s statement rather than one of
+// its own: a sync write does not take the row out of the table, so the ordinary
+// keyed read reaches it on the transaction that wrote it. What it adds is the
+// columns this write does not assign — the account the agreement belongs to,
+// which is deliberately immutable, and the stamps the database owns. See
+// [Store.UpdateSubscription].
 func (s *SQLStore) UpdateSubscription(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	subscription *Subscription,
-) error {
+) (*Subscription, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "updating subscription")
+		return nil, op.Error(ErrNilExecutor, "updating subscription")
 	}
 
 	if subscription == nil {
-		return op.Error(ErrNilSubscription, "updating subscription")
+		return nil, op.Error(ErrNilSubscription, "updating subscription")
 	}
 
 	op.Set(subscriptionKey, subscription.ID)
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "updating subscription %q", subscription.ID)
+		return nil, op.Error(err, "updating subscription %q", subscription.ID)
 	}
 
 	if err := requireID(subscription.ID); err != nil {
-		return op.Error(err, "updating subscription %q", subscription.ID)
+		return nil, op.Error(err, "updating subscription %q", subscription.ID)
 	}
 
 	updated := *subscription
@@ -365,21 +372,26 @@ func (s *SQLStore) UpdateSubscription(
 	updated.CurrentPeriodEnd = updated.CurrentPeriodEnd.UTC()
 
 	if err := updated.validate(); err != nil {
-		return op.Error(err, "updating subscription %q", subscription.ID)
+		return nil, op.Error(err, "updating subscription %q", subscription.ID)
 	}
 
 	if err := s.ensureSubscriptionExternalIDFree(
 		ctx, tx, scope, updated.ExternalSubscriptionID, updated.ID,
 	); err != nil {
-		return op.Error(err, "updating subscription %q", updated.ID)
+		return nil, op.Error(err, "updating subscription %q", updated.ID)
 	}
 
 	count, err := s.q.UpdateSubscription(ctx, tx, updateSubscriptionParams(&updated, scope))
 	if err = guardCount(count, err, ErrSubscriptionNotFound, "updating subscription"); err != nil {
-		return op.Error(err, "updating subscription %q", updated.ID)
+		return nil, op.Error(err, "updating subscription %q", updated.ID)
 	}
 
-	return nil
+	stored, err := s.readSubscription(ctx, tx, scope, updated.ID)
+	if err != nil {
+		return nil, op.Error(err, "reading back the updated subscription %q", updated.ID)
+	}
+
+	return stored, nil
 }
 
 // SetSubscriptionStatus moves the standing and nothing else, through the
@@ -443,13 +455,18 @@ func (s *SQLStore) SetSubscriptionStatus(
 }
 
 // ArchiveSubscription retires one of the scope's subscriptions administratively,
-// through the caller's transaction. See [Store.ArchiveSubscription].
+// through the caller's transaction, and answers with the row it retired.
+//
+// The read-back is GetArchivedSubscription rather than the keyed read, for the
+// reason [SQLStore.ArchiveProduct] gives: a retired subscription is absent from
+// every read by id this package has, and the ledger rows still pointing at it
+// are what somebody reconciling them has to read it for.
 func (s *SQLStore) ArchiveSubscription(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	subscriptionID string,
-) error {
+) (*Subscription, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(subscriptionKey, subscriptionID),
@@ -457,20 +474,27 @@ func (s *SQLStore) ArchiveSubscription(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving subscription %q", subscriptionID)
+		return nil, op.Error(ErrNilExecutor, "archiving subscription %q", subscriptionID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving subscription %q", subscriptionID)
+		return nil, op.Error(err, "archiving subscription %q", subscriptionID)
 	}
 
 	count, err := s.q.ArchiveSubscription(ctx, tx,
 		billingdb.ArchiveSubscriptionParams{ID: subscriptionID, Scope: scope})
 	if err = guardCount(count, err, ErrSubscriptionNotFound, "archiving subscription"); err != nil {
-		return op.Error(err, "archiving subscription %q", subscriptionID)
+		return nil, op.Error(err, "archiving subscription %q", subscriptionID)
 	}
 
-	return nil
+	row, err := s.q.GetArchivedSubscription(ctx, tx,
+		billingdb.GetArchivedSubscriptionParams{ID: subscriptionID, Scope: scope})
+	if err != nil {
+		return nil, op.Error(platformerrors.Wrap(err, "reading back the archived subscription"),
+			"archiving subscription %q", subscriptionID)
+	}
+
+	return subscriptionFromArchivedRow(&row), nil
 }
 
 // drainSubscriptions turns one list statement's rows into the paged result.

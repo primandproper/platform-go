@@ -156,8 +156,12 @@ func (s *Server) ArchivePurchase(
 	id := request.GetPurchaseId()
 	req.op.Set(purchaseKey, id)
 
+	// The row the store answers with is discarded, for the reason ArchiveProduct
+	// discards a product: this response has no field for a purchase.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.store.ArchivePurchase(ctx, tx, req.scope, id)
+		_, archiveErr := s.store.ArchivePurchase(ctx, tx, req.scope, id)
+
+		return archiveErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "archiving purchase %q", id)

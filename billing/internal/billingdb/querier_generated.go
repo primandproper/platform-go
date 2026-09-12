@@ -78,6 +78,14 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	CreateTransaction(ctx context.Context, db DBTX, arg CreateTransactionParams) (int64, error)
+	// GetArchivedProduct runs the :one query.
+	GetArchivedProduct(ctx context.Context, db DBTX, arg GetArchivedProductParams) (GetArchivedProductRow, error)
+	// GetArchivedPurchase runs the :one query.
+	GetArchivedPurchase(ctx context.Context, db DBTX, arg GetArchivedPurchaseParams) (GetArchivedPurchaseRow, error)
+	// GetArchivedSubscription runs the :one query.
+	GetArchivedSubscription(ctx context.Context, db DBTX, arg GetArchivedSubscriptionParams) (GetArchivedSubscriptionRow, error)
+	// GetArchivedTransaction runs the :one query.
+	GetArchivedTransaction(ctx context.Context, db DBTX, arg GetArchivedTransactionParams) (GetArchivedTransactionRow, error)
 	// GetProduct runs the :one query.
 	GetProduct(ctx context.Context, db DBTX, arg GetProductParams) (GetProductRow, error)
 	// GetProductByExternalID runs the :one query.

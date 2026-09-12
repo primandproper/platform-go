@@ -125,6 +125,92 @@ type CreateTransactionParams struct {
 	Currency              string
 }
 
+// GetArchivedProductParams are the arguments to GetArchivedProduct.
+type GetArchivedProductParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetArchivedProductRow is one row of GetArchivedProduct's result.
+type GetArchivedProductRow struct {
+	ID                    string
+	Scope                 tenancy.Scope
+	Name                  string
+	Description           string
+	Kind                  string
+	AmountCents           int64
+	Currency              string
+	BillingIntervalMonths *int64
+	ExternalProductID     *string
+	CreatedAt             time.Time
+	LastUpdatedAt         *time.Time
+	ArchivedAt            *time.Time
+}
+
+// GetArchivedPurchaseParams are the arguments to GetArchivedPurchase.
+type GetArchivedPurchaseParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetArchivedPurchaseRow is one row of GetArchivedPurchase's result.
+type GetArchivedPurchaseRow struct {
+	ID                    string
+	Scope                 tenancy.Scope
+	BelongsToAccount      string
+	ProductID             string
+	ExternalTransactionID *string
+	AmountCents           int64
+	Currency              string
+	CompletedAt           *time.Time
+	CreatedAt             time.Time
+	LastUpdatedAt         *time.Time
+	ArchivedAt            *time.Time
+}
+
+// GetArchivedSubscriptionParams are the arguments to GetArchivedSubscription.
+type GetArchivedSubscriptionParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetArchivedSubscriptionRow is one row of GetArchivedSubscription's result.
+type GetArchivedSubscriptionRow struct {
+	ID                     string
+	Scope                  tenancy.Scope
+	BelongsToAccount       string
+	ProductID              string
+	ExternalSubscriptionID *string
+	Status                 string
+	CurrentPeriodStart     time.Time
+	CurrentPeriodEnd       time.Time
+	CreatedAt              time.Time
+	LastUpdatedAt          *time.Time
+	ArchivedAt             *time.Time
+}
+
+// GetArchivedTransactionParams are the arguments to GetArchivedTransaction.
+type GetArchivedTransactionParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetArchivedTransactionRow is one row of GetArchivedTransaction's result.
+type GetArchivedTransactionRow struct {
+	ID                    string
+	Scope                 tenancy.Scope
+	BelongsToAccount      string
+	SubscriptionID        *string
+	PurchaseID            *string
+	ExternalTransactionID *string
+	Status                string
+	AmountCents           int64
+	Currency              string
+	CreatedAt             time.Time
+	LastUpdatedAt         *time.Time
+	ArchivedAt            *time.Time
+}
+
 // GetProductParams are the arguments to GetProduct.
 type GetProductParams struct {
 	ID    string

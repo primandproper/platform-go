@@ -227,6 +227,24 @@ func productFromRow(r *billingdb.GetProductRow) *Product {
 	}
 }
 
+// productFromArchivedRow converts the archive's read-back.
+//
+// It is one of the four shapes here that cast rather than restating themselves,
+// and they are sortedRows' reason rather than an exception to the preamble's
+// rule.
+// GetArchivedProduct projects the same list GetProduct does — the table's
+// columns, in that order — and differs from it only in which rows it will look
+// at, so the two row types are one projection rendered twice. The conversion is
+// therefore the assertion: the day the two projections stop agreeing, in field
+// name, type or order, this stops building rather than filling the wrong
+// fields. Its three siblings below are the same claim about the other three
+// tables.
+func productFromArchivedRow(r *billingdb.GetArchivedProductRow) *Product {
+	row := billingdb.GetProductRow(*r)
+
+	return productFromRow(&row)
+}
+
 func productPageRow(r *billingdb.ListProductsRow) pageRow[Product] {
 	return pageRow[Product]{
 		value: &Product{
@@ -307,6 +325,14 @@ func subscriptionFromRow(r *billingdb.GetSubscriptionRow) *Subscription {
 		LastUpdatedAt:          utcPtr(r.LastUpdatedAt),
 		ArchivedAt:             utcPtr(r.ArchivedAt),
 	}
+}
+
+// subscriptionFromArchivedRow converts the archive's read-back. See
+// productFromArchivedRow.
+func subscriptionFromArchivedRow(r *billingdb.GetArchivedSubscriptionRow) *Subscription {
+	row := billingdb.GetSubscriptionRow(*r)
+
+	return subscriptionFromRow(&row)
 }
 
 func subscriptionPageRow(r *billingdb.ListSubscriptionsRow) pageRow[Subscription] {
@@ -429,6 +455,14 @@ func purchaseFromRow(r *billingdb.GetPurchaseRow) *Purchase {
 	}
 }
 
+// purchaseFromArchivedRow converts the archive's read-back. See
+// productFromArchivedRow.
+func purchaseFromArchivedRow(r *billingdb.GetArchivedPurchaseRow) *Purchase {
+	row := billingdb.GetPurchaseRow(*r)
+
+	return purchaseFromRow(&row)
+}
+
 func purchasePageRow(r *billingdb.ListPurchasesRow) pageRow[Purchase] {
 	return pageRow[Purchase]{
 		value: &Purchase{
@@ -514,6 +548,14 @@ func transactionFromRow(r *billingdb.GetTransactionRow) *Transaction {
 		LastUpdatedAt:         utcPtr(r.LastUpdatedAt),
 		ArchivedAt:            utcPtr(r.ArchivedAt),
 	}
+}
+
+// transactionFromArchivedRow converts the archive's read-back. See
+// productFromArchivedRow.
+func transactionFromArchivedRow(r *billingdb.GetArchivedTransactionRow) *Transaction {
+	row := billingdb.GetTransactionRow(*r)
+
+	return transactionFromRow(&row)
 }
 
 func transactionPageRow(r *billingdb.ListTransactionsRow) pageRow[Transaction] {

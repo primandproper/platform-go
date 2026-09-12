@@ -48,6 +48,10 @@ statements with more predicates rather than a second rendering of them:
 
   - the read-back of created_at on all four tables, which no create carries
     because the database owns the column
+  - the read-back each archive answers with, on all four tables — the one shape
+    here carrying archived_at IS NOT NULL, because the row an archive moved is
+    the row every other single-row statement over its table is written not to
+    return; see [archivedReads]
   - the four reads keyed on a provider's own identifier, which is the lookup
     every payment webhook begins with — see [externalIDReads]
   - the three paged histories keyed on the account, beside the scope-wide lists

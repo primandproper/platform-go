@@ -266,11 +266,15 @@ func everythingFails() billing.Store {
 		) (*filtering.QueryFilteredResult[billing.Product], error) {
 			return nil, errBrokenStore
 		},
-		UpdateProductFunc: func(context.Context, database.Tx, tenancy.Scope, *billing.Product) error {
-			return errBrokenStore
+		UpdateProductFunc: func(
+			context.Context, database.Tx, tenancy.Scope, *billing.Product,
+		) (*billing.Product, error) {
+			return nil, errBrokenStore
 		},
-		ArchiveProductFunc: func(context.Context, database.Tx, tenancy.Scope, string) error {
-			return errBrokenStore
+		ArchiveProductFunc: func(
+			context.Context, database.Tx, tenancy.Scope, string,
+		) (*billing.Product, error) {
+			return nil, errBrokenStore
 		},
 
 		GetSubscriptionFunc: func(
@@ -293,8 +297,10 @@ func everythingFails() billing.Store {
 		) (*filtering.QueryFilteredResult[billing.Subscription], error) {
 			return nil, errBrokenStore
 		},
-		ArchiveSubscriptionFunc: func(context.Context, database.Tx, tenancy.Scope, string) error {
-			return errBrokenStore
+		ArchiveSubscriptionFunc: func(
+			context.Context, database.Tx, tenancy.Scope, string,
+		) (*billing.Subscription, error) {
+			return nil, errBrokenStore
 		},
 
 		GetPurchaseFunc: func(
@@ -312,8 +318,10 @@ func everythingFails() billing.Store {
 		) (*filtering.QueryFilteredResult[billing.Purchase], error) {
 			return nil, errBrokenStore
 		},
-		ArchivePurchaseFunc: func(context.Context, database.Tx, tenancy.Scope, string) error {
-			return errBrokenStore
+		ArchivePurchaseFunc: func(
+			context.Context, database.Tx, tenancy.Scope, string,
+		) (*billing.Purchase, error) {
+			return nil, errBrokenStore
 		},
 
 		GetTransactionFunc: func(
@@ -331,8 +339,10 @@ func everythingFails() billing.Store {
 		) (*filtering.QueryFilteredResult[billing.Transaction], error) {
 			return nil, errBrokenStore
 		},
-		ArchiveTransactionFunc: func(context.Context, database.Tx, tenancy.Scope, string) error {
-			return errBrokenStore
+		ArchiveTransactionFunc: func(
+			context.Context, database.Tx, tenancy.Scope, string,
+		) (*billing.Transaction, error) {
+			return nil, errBrokenStore
 		},
 	}
 }

@@ -26,19 +26,19 @@ var _ billing.Store = &StoreMock{}
 //
 //		// make and configure a mocked billing.Store
 //		mockedStore := &StoreMock{
-//			ArchiveProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) error {
+//			ArchiveProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) (*billing.Product, error) {
 //				panic("mock out the ArchiveProduct method")
 //			},
-//			ArchivePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) error {
+//			ArchivePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) (*billing.Purchase, error) {
 //				panic("mock out the ArchivePurchase method")
 //			},
-//			ArchiveSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+//			ArchiveSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*billing.Subscription, error) {
 //				panic("mock out the ArchiveSubscription method")
 //			},
-//			ArchiveTransactionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) error {
+//			ArchiveTransactionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) (*billing.Transaction, error) {
 //				panic("mock out the ArchiveTransaction method")
 //			},
-//			CompletePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) error {
+//			CompletePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) (*billing.Purchase, error) {
 //				panic("mock out the CompletePurchase method")
 //			},
 //			CreateProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) (*billing.Product, error) {
@@ -110,10 +110,10 @@ var _ billing.Store = &StoreMock{}
 //			SetTransactionStatusFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string, status billing.TransactionStatus) error {
 //				panic("mock out the SetTransactionStatus method")
 //			},
-//			UpdateProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error {
+//			UpdateProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) (*billing.Product, error) {
 //				panic("mock out the UpdateProduct method")
 //			},
-//			UpdateSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error {
+//			UpdateSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) (*billing.Subscription, error) {
 //				panic("mock out the UpdateSubscription method")
 //			},
 //		}
@@ -124,19 +124,19 @@ var _ billing.Store = &StoreMock{}
 //	}
 type StoreMock struct {
 	// ArchiveProductFunc mocks the ArchiveProduct method.
-	ArchiveProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) error
+	ArchiveProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) (*billing.Product, error)
 
 	// ArchivePurchaseFunc mocks the ArchivePurchase method.
-	ArchivePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) error
+	ArchivePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) (*billing.Purchase, error)
 
 	// ArchiveSubscriptionFunc mocks the ArchiveSubscription method.
-	ArchiveSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error
+	ArchiveSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*billing.Subscription, error)
 
 	// ArchiveTransactionFunc mocks the ArchiveTransaction method.
-	ArchiveTransactionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) error
+	ArchiveTransactionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) (*billing.Transaction, error)
 
 	// CompletePurchaseFunc mocks the CompletePurchase method.
-	CompletePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) error
+	CompletePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) (*billing.Purchase, error)
 
 	// CreateProductFunc mocks the CreateProduct method.
 	CreateProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) (*billing.Product, error)
@@ -208,10 +208,10 @@ type StoreMock struct {
 	SetTransactionStatusFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string, status billing.TransactionStatus) error
 
 	// UpdateProductFunc mocks the UpdateProduct method.
-	UpdateProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error
+	UpdateProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) (*billing.Product, error)
 
 	// UpdateSubscriptionFunc mocks the UpdateSubscription method.
-	UpdateSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error
+	UpdateSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) (*billing.Subscription, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -593,7 +593,7 @@ type StoreMock struct {
 }
 
 // ArchiveProduct calls ArchiveProductFunc.
-func (mock *StoreMock) ArchiveProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) error {
+func (mock *StoreMock) ArchiveProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) (*billing.Product, error) {
 	if mock.ArchiveProductFunc == nil {
 		panic("StoreMock.ArchiveProductFunc: method is nil but Store.ArchiveProduct was just called")
 	}
@@ -637,7 +637,7 @@ func (mock *StoreMock) ArchiveProductCalls() []struct {
 }
 
 // ArchivePurchase calls ArchivePurchaseFunc.
-func (mock *StoreMock) ArchivePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) error {
+func (mock *StoreMock) ArchivePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) (*billing.Purchase, error) {
 	if mock.ArchivePurchaseFunc == nil {
 		panic("StoreMock.ArchivePurchaseFunc: method is nil but Store.ArchivePurchase was just called")
 	}
@@ -681,7 +681,7 @@ func (mock *StoreMock) ArchivePurchaseCalls() []struct {
 }
 
 // ArchiveSubscription calls ArchiveSubscriptionFunc.
-func (mock *StoreMock) ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+func (mock *StoreMock) ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*billing.Subscription, error) {
 	if mock.ArchiveSubscriptionFunc == nil {
 		panic("StoreMock.ArchiveSubscriptionFunc: method is nil but Store.ArchiveSubscription was just called")
 	}
@@ -725,7 +725,7 @@ func (mock *StoreMock) ArchiveSubscriptionCalls() []struct {
 }
 
 // ArchiveTransaction calls ArchiveTransactionFunc.
-func (mock *StoreMock) ArchiveTransaction(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) error {
+func (mock *StoreMock) ArchiveTransaction(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) (*billing.Transaction, error) {
 	if mock.ArchiveTransactionFunc == nil {
 		panic("StoreMock.ArchiveTransactionFunc: method is nil but Store.ArchiveTransaction was just called")
 	}
@@ -769,7 +769,7 @@ func (mock *StoreMock) ArchiveTransactionCalls() []struct {
 }
 
 // CompletePurchase calls CompletePurchaseFunc.
-func (mock *StoreMock) CompletePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) error {
+func (mock *StoreMock) CompletePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) (*billing.Purchase, error) {
 	if mock.CompletePurchaseFunc == nil {
 		panic("StoreMock.CompletePurchaseFunc: method is nil but Store.CompletePurchase was just called")
 	}
@@ -1853,7 +1853,7 @@ func (mock *StoreMock) SetTransactionStatusCalls() []struct {
 }
 
 // UpdateProduct calls UpdateProductFunc.
-func (mock *StoreMock) UpdateProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error {
+func (mock *StoreMock) UpdateProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) (*billing.Product, error) {
 	if mock.UpdateProductFunc == nil {
 		panic("StoreMock.UpdateProductFunc: method is nil but Store.UpdateProduct was just called")
 	}
@@ -1897,7 +1897,7 @@ func (mock *StoreMock) UpdateProductCalls() []struct {
 }
 
 // UpdateSubscription calls UpdateSubscriptionFunc.
-func (mock *StoreMock) UpdateSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error {
+func (mock *StoreMock) UpdateSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) (*billing.Subscription, error) {
 	if mock.UpdateSubscriptionFunc == nil {
 		panic("StoreMock.UpdateSubscriptionFunc: method is nil but Store.UpdateSubscription was just called")
 	}
@@ -1950,7 +1950,7 @@ var _ billing.ProductStore = &ProductStoreMock{}
 //
 //		// make and configure a mocked billing.ProductStore
 //		mockedProductStore := &ProductStoreMock{
-//			ArchiveProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) error {
+//			ArchiveProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) (*billing.Product, error) {
 //				panic("mock out the ArchiveProduct method")
 //			},
 //			CreateProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) (*billing.Product, error) {
@@ -1968,7 +1968,7 @@ var _ billing.ProductStore = &ProductStoreMock{}
 //			ProductExistsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, productID string) (bool, error) {
 //				panic("mock out the ProductExists method")
 //			},
-//			UpdateProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error {
+//			UpdateProductFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) (*billing.Product, error) {
 //				panic("mock out the UpdateProduct method")
 //			},
 //		}
@@ -1979,7 +1979,7 @@ var _ billing.ProductStore = &ProductStoreMock{}
 //	}
 type ProductStoreMock struct {
 	// ArchiveProductFunc mocks the ArchiveProduct method.
-	ArchiveProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) error
+	ArchiveProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) (*billing.Product, error)
 
 	// CreateProductFunc mocks the CreateProduct method.
 	CreateProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) (*billing.Product, error)
@@ -1997,7 +1997,7 @@ type ProductStoreMock struct {
 	ProductExistsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, productID string) (bool, error)
 
 	// UpdateProductFunc mocks the UpdateProduct method.
-	UpdateProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error
+	UpdateProductFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) (*billing.Product, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -2089,7 +2089,7 @@ type ProductStoreMock struct {
 }
 
 // ArchiveProduct calls ArchiveProductFunc.
-func (mock *ProductStoreMock) ArchiveProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) error {
+func (mock *ProductStoreMock) ArchiveProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) (*billing.Product, error) {
 	if mock.ArchiveProductFunc == nil {
 		panic("ProductStoreMock.ArchiveProductFunc: method is nil but ProductStore.ArchiveProduct was just called")
 	}
@@ -2353,7 +2353,7 @@ func (mock *ProductStoreMock) ProductExistsCalls() []struct {
 }
 
 // UpdateProduct calls UpdateProductFunc.
-func (mock *ProductStoreMock) UpdateProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) error {
+func (mock *ProductStoreMock) UpdateProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *billing.Product) (*billing.Product, error) {
 	if mock.UpdateProductFunc == nil {
 		panic("ProductStoreMock.UpdateProductFunc: method is nil but ProductStore.UpdateProduct was just called")
 	}
@@ -2406,7 +2406,7 @@ var _ billing.SubscriptionStore = &SubscriptionStoreMock{}
 //
 //		// make and configure a mocked billing.SubscriptionStore
 //		mockedSubscriptionStore := &SubscriptionStoreMock{
-//			ArchiveSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+//			ArchiveSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*billing.Subscription, error) {
 //				panic("mock out the ArchiveSubscription method")
 //			},
 //			CreateSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) (*billing.Subscription, error) {
@@ -2430,7 +2430,7 @@ var _ billing.SubscriptionStore = &SubscriptionStoreMock{}
 //			SetSubscriptionStatusFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string, status capitalism.SubscriptionStatus) error {
 //				panic("mock out the SetSubscriptionStatus method")
 //			},
-//			UpdateSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error {
+//			UpdateSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) (*billing.Subscription, error) {
 //				panic("mock out the UpdateSubscription method")
 //			},
 //		}
@@ -2441,7 +2441,7 @@ var _ billing.SubscriptionStore = &SubscriptionStoreMock{}
 //	}
 type SubscriptionStoreMock struct {
 	// ArchiveSubscriptionFunc mocks the ArchiveSubscription method.
-	ArchiveSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error
+	ArchiveSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*billing.Subscription, error)
 
 	// CreateSubscriptionFunc mocks the CreateSubscription method.
 	CreateSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) (*billing.Subscription, error)
@@ -2465,7 +2465,7 @@ type SubscriptionStoreMock struct {
 	SetSubscriptionStatusFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string, status capitalism.SubscriptionStatus) error
 
 	// UpdateSubscriptionFunc mocks the UpdateSubscription method.
-	UpdateSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error
+	UpdateSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) (*billing.Subscription, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -2587,7 +2587,7 @@ type SubscriptionStoreMock struct {
 }
 
 // ArchiveSubscription calls ArchiveSubscriptionFunc.
-func (mock *SubscriptionStoreMock) ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+func (mock *SubscriptionStoreMock) ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*billing.Subscription, error) {
 	if mock.ArchiveSubscriptionFunc == nil {
 		panic("SubscriptionStoreMock.ArchiveSubscriptionFunc: method is nil but SubscriptionStore.ArchiveSubscription was just called")
 	}
@@ -2951,7 +2951,7 @@ func (mock *SubscriptionStoreMock) SetSubscriptionStatusCalls() []struct {
 }
 
 // UpdateSubscription calls UpdateSubscriptionFunc.
-func (mock *SubscriptionStoreMock) UpdateSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) error {
+func (mock *SubscriptionStoreMock) UpdateSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *billing.Subscription) (*billing.Subscription, error) {
 	if mock.UpdateSubscriptionFunc == nil {
 		panic("SubscriptionStoreMock.UpdateSubscriptionFunc: method is nil but SubscriptionStore.UpdateSubscription was just called")
 	}
@@ -3004,10 +3004,10 @@ var _ billing.PurchaseStore = &PurchaseStoreMock{}
 //
 //		// make and configure a mocked billing.PurchaseStore
 //		mockedPurchaseStore := &PurchaseStoreMock{
-//			ArchivePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) error {
+//			ArchivePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) (*billing.Purchase, error) {
 //				panic("mock out the ArchivePurchase method")
 //			},
-//			CompletePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) error {
+//			CompletePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) (*billing.Purchase, error) {
 //				panic("mock out the CompletePurchase method")
 //			},
 //			CreatePurchaseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *billing.Purchase) (*billing.Purchase, error) {
@@ -3033,10 +3033,10 @@ var _ billing.PurchaseStore = &PurchaseStoreMock{}
 //	}
 type PurchaseStoreMock struct {
 	// ArchivePurchaseFunc mocks the ArchivePurchase method.
-	ArchivePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) error
+	ArchivePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) (*billing.Purchase, error)
 
 	// CompletePurchaseFunc mocks the CompletePurchase method.
-	CompletePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) error
+	CompletePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) (*billing.Purchase, error)
 
 	// CreatePurchaseFunc mocks the CreatePurchase method.
 	CreatePurchaseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchase *billing.Purchase) (*billing.Purchase, error)
@@ -3147,7 +3147,7 @@ type PurchaseStoreMock struct {
 }
 
 // ArchivePurchase calls ArchivePurchaseFunc.
-func (mock *PurchaseStoreMock) ArchivePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) error {
+func (mock *PurchaseStoreMock) ArchivePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) (*billing.Purchase, error) {
 	if mock.ArchivePurchaseFunc == nil {
 		panic("PurchaseStoreMock.ArchivePurchaseFunc: method is nil but PurchaseStore.ArchivePurchase was just called")
 	}
@@ -3191,7 +3191,7 @@ func (mock *PurchaseStoreMock) ArchivePurchaseCalls() []struct {
 }
 
 // CompletePurchase calls CompletePurchaseFunc.
-func (mock *PurchaseStoreMock) CompletePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) error {
+func (mock *PurchaseStoreMock) CompletePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) (*billing.Purchase, error) {
 	if mock.CompletePurchaseFunc == nil {
 		panic("PurchaseStoreMock.CompletePurchaseFunc: method is nil but PurchaseStore.CompletePurchase was just called")
 	}
@@ -3472,7 +3472,7 @@ var _ billing.TransactionStore = &TransactionStoreMock{}
 //
 //		// make and configure a mocked billing.TransactionStore
 //		mockedTransactionStore := &TransactionStoreMock{
-//			ArchiveTransactionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) error {
+//			ArchiveTransactionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) (*billing.Transaction, error) {
 //				panic("mock out the ArchiveTransaction method")
 //			},
 //			GetTransactionFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, transactionID string) (*billing.Transaction, error) {
@@ -3501,7 +3501,7 @@ var _ billing.TransactionStore = &TransactionStoreMock{}
 //	}
 type TransactionStoreMock struct {
 	// ArchiveTransactionFunc mocks the ArchiveTransaction method.
-	ArchiveTransactionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) error
+	ArchiveTransactionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) (*billing.Transaction, error)
 
 	// GetTransactionFunc mocks the GetTransaction method.
 	GetTransactionFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, transactionID string) (*billing.Transaction, error)
@@ -3615,7 +3615,7 @@ type TransactionStoreMock struct {
 }
 
 // ArchiveTransaction calls ArchiveTransactionFunc.
-func (mock *TransactionStoreMock) ArchiveTransaction(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) error {
+func (mock *TransactionStoreMock) ArchiveTransaction(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) (*billing.Transaction, error) {
 	if mock.ArchiveTransactionFunc == nil {
 		panic("TransactionStoreMock.ArchiveTransactionFunc: method is nil but TransactionStore.ArchiveTransaction was just called")
 	}

@@ -154,6 +154,35 @@ neither seam they implement hands one over: billing/plans is an
 entitlements.PlanSource, whose PlanFor takes an account and nothing else, and
 billing/privacy is a dataprivacy.Collector, whose Collect takes a subject.
 
+# A write answers with the row it wrote
+
+Every write here bar the two status moves returns the row: the four creates, the
+two updates, the completion and the four archives. Each reads it back on the
+caller's own transaction after the statement, so what a consumer's audit entry,
+receipt or outbox event describes is what the database holds rather than what the
+caller assembled and hoped for.
+
+The archives are the case with no alternative. Every keyed read over these tables
+filters archived_at IS NULL, which is what makes a withdrawn product absent from
+a catalog and a retired ledger row absent from a reconciliation, so once the
+transaction commits the row an archive moved is reachable only by paging for
+archived rows and picking it out. The read-back is a statement of its own for
+them, carrying the complement — archived_at IS NOT NULL — so it describes the
+row this call moved rather than one that was already gone.
+
+It is a second statement rather than RETURNING because MySQL has none and the
+corpus is one text per dialect rendered from one column list. There is no gap
+between the two: the guarded write holds the row until the caller commits, and
+the read runs on the same transaction.
+
+[SubscriptionStore.SetSubscriptionStatus] and
+[TransactionStore.SetTransactionStatus] are the two exceptions, and the boundary
+is worth stating because it is what keeps "returns the row" from meaning "every
+write pays for a read". Each assigns one fact the caller already holds — the
+status came in on the provider's event — to a row that stays in its table, which
+[SubscriptionStore.GetSubscription] and [TransactionStore.GetTransaction] still
+reach on the transaction that wrote it.
+
 # A price is a fact about a moment, not a lookup
 
 [Purchase] and [Transaction] each carry their own amount and currency rather than

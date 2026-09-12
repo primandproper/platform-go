@@ -339,13 +339,19 @@ func (s *SQLStore) SetTransactionStatus(
 }
 
 // ArchiveTransaction retires one of the scope's ledger rows administratively,
-// through the caller's transaction. See [Store.ArchiveTransaction].
+// through the caller's transaction, and answers with the row it retired.
+//
+// The read-back is GetArchivedTransaction rather than the keyed read, for the
+// reason [SQLStore.ArchiveProduct] gives, and it is sharpest here: a ledger row
+// taken out of a reconciliation is an amount of money that stops being counted,
+// and the entry recording that is written from a row no read by id reaches
+// afterwards.
 func (s *SQLStore) ArchiveTransaction(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	transactionID string,
-) error {
+) (*Transaction, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(transactionKey, transactionID),
@@ -353,20 +359,27 @@ func (s *SQLStore) ArchiveTransaction(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving transaction %q", transactionID)
+		return nil, op.Error(ErrNilExecutor, "archiving transaction %q", transactionID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving transaction %q", transactionID)
+		return nil, op.Error(err, "archiving transaction %q", transactionID)
 	}
 
 	count, err := s.q.ArchiveTransaction(ctx, tx,
 		billingdb.ArchiveTransactionParams{ID: transactionID, Scope: scope})
 	if err = guardCount(count, err, ErrTransactionNotFound, "archiving transaction"); err != nil {
-		return op.Error(err, "archiving transaction %q", transactionID)
+		return nil, op.Error(err, "archiving transaction %q", transactionID)
 	}
 
-	return nil
+	row, err := s.q.GetArchivedTransaction(ctx, tx,
+		billingdb.GetArchivedTransactionParams{ID: transactionID, Scope: scope})
+	if err != nil {
+		return nil, op.Error(platformerrors.Wrap(err, "reading back the archived transaction"),
+			"archiving transaction %q", transactionID)
+	}
+
+	return transactionFromArchivedRow(&row), nil
 }
 
 // drainTransactions turns one list statement's rows into the paged result.

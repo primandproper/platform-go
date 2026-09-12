@@ -124,17 +124,12 @@ func (s *SQLStore) GetPurchase(
 		return nil, op.Error(err, "reading purchase %q", purchaseID)
 	}
 
-	if err := requireID(purchaseID); err != nil {
+	purchase, err := s.readPurchase(ctx, q, scope, purchaseID)
+	if err != nil {
 		return nil, op.Error(err, "reading purchase %q", purchaseID)
 	}
 
-	row, err := s.q.GetPurchase(ctx, q,
-		billingdb.GetPurchaseParams{ID: purchaseID, Scope: scope})
-	if err != nil {
-		return nil, op.Error(notFound(err, ErrPurchaseNotFound), "reading purchase %q", purchaseID)
-	}
-
-	return purchaseFromRow(&row), nil
+	return purchase, nil
 }
 
 // GetPurchaseByExternalID reads one live purchase by the payment provider's
@@ -263,20 +258,29 @@ func (s *SQLStore) ListPurchasesForAccount(
 }
 
 // CompletePurchase stamps the moment the money arrived, through the caller's
-// transaction.
+// transaction, and answers with the settled purchase.
 //
 // The guard is completed_at IS NULL, in the statement, so a purchase completes
-// exactly once however many times the provider delivers the event. Telling a
-// replay apart from a missing purchase takes one read, made only on the losing
-// path — and on tx, so a sale created and settled in one transaction is answered
-// by the row that transaction wrote. See [Store.CompletePurchase].
+// exactly once however many times the provider delivers the event.
+//
+// One read follows the write on every path, and it is two answers in one
+// statement. Where the guard held it is the read-back: a settled purchase is
+// what a receipt and an audit entry are written from, and the stamp on it is
+// this store's clock's whenever the provider sent none, which is a value the
+// caller cannot name for itself. Where the guard lost it is the attribution —
+// a purchase that is there was already paid for, and one that is not is
+// ErrPurchaseNotFound. It runs on tx either way, so a sale created and settled
+// in one transaction is answered by the row that transaction wrote.
+//
+// The completion leaves the purchase in the table, so that read is the ordinary
+// keyed one rather than an archive's. See [Store.CompletePurchase].
 func (s *SQLStore) CompletePurchase(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	purchaseID string,
 	at time.Time,
-) error {
+) (*Purchase, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(purchaseKey, purchaseID),
@@ -284,15 +288,15 @@ func (s *SQLStore) CompletePurchase(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "completing purchase %q", purchaseID)
+		return nil, op.Error(ErrNilExecutor, "completing purchase %q", purchaseID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "completing purchase %q", purchaseID)
+		return nil, op.Error(err, "completing purchase %q", purchaseID)
 	}
 
 	if err := requireID(purchaseID); err != nil {
-		return op.Error(err, "completing purchase %q", purchaseID)
+		return nil, op.Error(err, "completing purchase %q", purchaseID)
 	}
 
 	// The zero time is the completion with no provider behind it — a comped
@@ -310,25 +314,40 @@ func (s *SQLStore) CompletePurchase(
 		Scope:       scope,
 	})
 	if err != nil {
-		return op.Error(platformerrors.Wrap(err, "completing purchase"),
+		return nil, op.Error(platformerrors.Wrap(err, "completing purchase"),
 			"completing purchase %q", purchaseID)
 	}
 
-	if count == 0 {
-		return op.Error(s.refuseCompletion(ctx, tx, scope, purchaseID), "completing purchase %q", purchaseID)
+	settled, err := s.readPurchase(ctx, tx, scope, purchaseID)
+	if err != nil {
+		return nil, op.Error(err, "completing purchase %q", purchaseID)
 	}
 
-	return nil
+	// The row is there and live, so a guard that lost is one the money had
+	// already arrived for. The read exists to tell that apart from a purchase
+	// nobody has; it is not a second guard, and it does not re-examine
+	// completed_at.
+	if count == 0 {
+		return nil, op.Error(platformerrors.Wrapf(ErrAlreadyCompleted, "purchase %q", purchaseID),
+			"completing purchase %q", purchaseID)
+	}
+
+	return settled, nil
 }
 
 // ArchivePurchase retires one of the scope's purchases administratively, through
-// the caller's transaction. See [Store.ArchivePurchase].
+// the caller's transaction, and answers with the row it retired.
+//
+// The read-back is GetArchivedPurchase rather than the keyed read, for the
+// reason [SQLStore.ArchiveProduct] gives — and it carries the one fact a caller
+// deciding what to do next needs most: whether the money ever arrived for the
+// sale being retired. See [Store.ArchivePurchase].
 func (s *SQLStore) ArchivePurchase(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	purchaseID string,
-) error {
+) (*Purchase, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(purchaseKey, purchaseID),
@@ -336,20 +355,27 @@ func (s *SQLStore) ArchivePurchase(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving purchase %q", purchaseID)
+		return nil, op.Error(ErrNilExecutor, "archiving purchase %q", purchaseID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving purchase %q", purchaseID)
+		return nil, op.Error(err, "archiving purchase %q", purchaseID)
 	}
 
 	count, err := s.q.ArchivePurchase(ctx, tx,
 		billingdb.ArchivePurchaseParams{ID: purchaseID, Scope: scope})
 	if err = guardCount(count, err, ErrPurchaseNotFound, "archiving purchase"); err != nil {
-		return op.Error(err, "archiving purchase %q", purchaseID)
+		return nil, op.Error(err, "archiving purchase %q", purchaseID)
 	}
 
-	return nil
+	row, err := s.q.GetArchivedPurchase(ctx, tx,
+		billingdb.GetArchivedPurchaseParams{ID: purchaseID, Scope: scope})
+	if err != nil {
+		return nil, op.Error(platformerrors.Wrap(err, "reading back the archived purchase"),
+			"archiving purchase %q", purchaseID)
+	}
+
+	return purchaseFromArchivedRow(&row), nil
 }
 
 // drainPurchases turns one list statement's rows into the paged result.
@@ -368,27 +394,24 @@ func (s *SQLStore) drainPurchases(
 	return drainPage(page, func(p *Purchase) string { return p.ID }, filter)
 }
 
-// refuseCompletion reports why a completion touched nothing, having lost its
-// guard: a purchase that is not there, or one whose money already arrived.
-//
-// It reads through the executor the write ran on, for the reason
-// refuseStatusWrite does.
-func (s *SQLStore) refuseCompletion(
+// readPurchase is the read by id, through whatever executor the caller is
+// holding — the caller's own, or the transaction a write is running on.
+func (s *SQLStore) readPurchase(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
 	purchaseID string,
-) error {
-	if _, err := s.q.GetPurchase(ctx, q,
-		billingdb.GetPurchaseParams{ID: purchaseID, Scope: scope}); err != nil {
-		return notFound(err, ErrPurchaseNotFound)
+) (*Purchase, error) {
+	if err := requireID(purchaseID); err != nil {
+		return nil, err
 	}
 
-	// The row is there and live, so the guard is what lost — which for this
-	// statement means the money had already arrived. The read exists to tell that
-	// apart from a purchase nobody has; it is not a second guard, and it does not
-	// re-examine completed_at.
-	return platformerrors.Wrapf(ErrAlreadyCompleted, "purchase %q", purchaseID)
+	row, err := s.q.GetPurchase(ctx, q, billingdb.GetPurchaseParams{ID: purchaseID, Scope: scope})
+	if err != nil {
+		return nil, notFound(err, ErrPurchaseNotFound)
+	}
+
+	return purchaseFromRow(&row), nil
 }
 
 // readPurchaseByExternalID is the read keyed on a provider's identifier. It sees
