@@ -1,6 +1,7 @@
 package grpc_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -27,17 +28,40 @@ func TestNewServer(T *testing.T) {
 	T.Run("refuses a nil reader", func(t *testing.T) {
 		t.Parallel()
 
-		srv, err := auditgrpc.NewServer(nil, auditgrpc.GlobalScope)
+		srv, err := auditgrpc.NewServer(nil, auditgrpc.WithScopeResolver(auditgrpc.GlobalScope))
 		test.ErrorIs(t, err, auditgrpc.ErrNilReader)
 		test.Nil(t, srv)
 	})
 
 	// Not defaulted to the global scope, which is where this service and
-	// authentication/signin/grpc part company — see ErrNilScopeResolver.
+	// authentication/signin/grpc part company — see ErrNilScopeResolver. The
+	// option carries nothing behind it, so naming none refuses exactly as
+	// naming nil does.
+	T.Run("refuses an absent scope resolver", func(t *testing.T) {
+		t.Parallel()
+
+		srv, err := auditgrpc.NewServer(&audit.SQLReader{})
+		test.ErrorIs(t, err, auditgrpc.ErrNilScopeResolver)
+		test.Nil(t, srv)
+	})
+
 	T.Run("refuses a nil scope resolver", func(t *testing.T) {
 		t.Parallel()
 
-		srv, err := auditgrpc.NewServer(&audit.SQLReader{}, nil)
+		srv, err := auditgrpc.NewServer(&audit.SQLReader{}, auditgrpc.WithScopeResolver(nil))
+		test.ErrorIs(t, err, auditgrpc.ErrNilScopeResolver)
+		test.Nil(t, srv)
+	})
+
+	// Options apply in order, so the last word on the resolver is the one that
+	// counts — including when it is nil.
+	T.Run("refuses a scope resolver a later option cleared", func(t *testing.T) {
+		t.Parallel()
+
+		srv, err := auditgrpc.NewServer(&audit.SQLReader{},
+			auditgrpc.WithScopeResolver(auditgrpc.GlobalScope),
+			auditgrpc.WithScopeResolver(nil),
+		)
 		test.ErrorIs(t, err, auditgrpc.ErrNilScopeResolver)
 		test.Nil(t, srv)
 	})
@@ -45,16 +69,33 @@ func TestNewServer(T *testing.T) {
 	T.Run("builds with observability and without", func(t *testing.T) {
 		t.Parallel()
 
-		bare, err := auditgrpc.NewServer(&audit.SQLReader{}, auditgrpc.GlobalScope)
+		bare, err := auditgrpc.NewServer(&audit.SQLReader{}, auditgrpc.WithScopeResolver(auditgrpc.GlobalScope))
 		must.NoError(t, err)
 		must.NotNil(t, bare)
 
-		observed, err := auditgrpc.NewServer(&audit.SQLReader{}, auditgrpc.GlobalScope,
+		observed, err := auditgrpc.NewServer(&audit.SQLReader{},
+			auditgrpc.WithScopeResolver(auditgrpc.GlobalScope),
 			auditgrpc.WithPillars(&observability.Pillars{}),
 			nil,
 		)
 		must.NoError(t, err)
 		must.NotNil(t, observed)
+	})
+
+	// The resolver a later option names is the one every RPC runs, which is what
+	// the harness relies on when it puts its own first and a caller's opts after.
+	T.Run("takes the last resolver named", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, auditgrpc.WithScopeResolver(func(context.Context) (tenancy.Scope, error) {
+			return theirs, nil
+		}))
+
+		// The request says ours and the entry belongs to theirs, so the read
+		// only succeeds because the option replaced the harness's resolver.
+		response, err := h.client.GetEntry(h.asOurs(), &auditpb.GetEntryRequest{EntryId: h.yours.ID})
+		must.NoError(t, err)
+		test.EqOp(t, h.yours.ID, response.GetEntry().GetId())
 	})
 }
 

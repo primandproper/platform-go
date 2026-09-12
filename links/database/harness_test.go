@@ -183,6 +183,18 @@ func activeRecord() *links.Record {
 	}
 }
 
+// resolvedAt asserts that a record carries a resolution stamp equal to at.
+//
+// The stamp is a pointer, and a record that carries none is the case these
+// assertions exist to rule out, so the absence is reported as itself rather
+// than reached through a comparison that would panic on it.
+func resolvedAt(tb testing.TB, record *links.Record, at time.Time, settings ...must.Setting) {
+	tb.Helper()
+
+	must.NotNil(tb, record.ResolvedAt, settings...)
+	must.True(tb, record.ResolvedAt.Equal(at), settings...)
+}
+
 // put writes one record, failing the test if it cannot.
 func put(tb testing.TB, store *Store, id links.ID, record *links.Record) {
 	tb.Helper()

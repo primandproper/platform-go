@@ -70,7 +70,7 @@ const (
 // authenticated request afterwards makes, the one read that returns a user's
 // credentials, and the three credential writes. identity.Store satisfies it, so
 // a consumer passes theirs; a consumer whose directory is not that schema
-// implements these nine methods.
+// implements these seven methods.
 //
 // It is narrow deliberately, and for the reason identity.SignInReader is: this
 // is the interface the component holding everybody's passwords depends on, and

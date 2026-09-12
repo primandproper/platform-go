@@ -33,13 +33,16 @@ const DefaultTablePrefix = ""
 // storeName scopes the store's spans and logger.
 const storeName = serviceName + "_store"
 
+var _ Store = (*SQLStore)(nil)
+
 // SQLStore is the SQL-backed [Inbox] and [Registry], against the schema
 // notifications/migrations renders.
 //
 // One type implements both, because they are one schema, one connection, and
 // one migration; declaring two would make a consumer that wants an inbox and a
 // registry build the same thing twice. The interfaces stay separate because
-// their consumers are — see store.go.
+// their consumers are, and [Store] names the pair for the wiring that has to
+// return one thing — see store.go.
 //
 // It is exported, and returned by [NewSQLStore], so a caller who has chosen SQL
 // storage can depend on that choice rather than on the seams every backing

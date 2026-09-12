@@ -65,16 +65,26 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 	return migrations.ValidatePrefix(cfg.TablePrefix)
 }
 
-// NewStore builds the store. client must be the database holding the
+// NewStore builds the Store. client must be the database holding the
 // notifications tables.
 //
-// It returns the concrete *notifications.SQLStore rather than one of the two
-// seams it satisfies, because narrowing here would have to pick one: the type
-// is an [notifications.Inbox] and a [notifications.Registry] at once, and a
-// caller who has chosen SQL storage should not have to choose which half of it
-// to hold. [RegisterStore] is where the narrowing happens, and it registers
-// both.
-func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...Option) (*notifications.SQLStore, error) {
+// It returns [notifications.Store] — both seams at once — rather than either
+// half, because a caller who configured a store configured both halves of one
+// and narrowing here would pick which of them a deployment gets.
+// [RegisterStore] is where the consumer-facing narrowings happen, and it
+// registers all three.
+//
+// It returned the concrete *notifications.SQLStore before, which made every
+// method that type happens to export part of what a configured deployment may
+// depend on. Every sibling config package narrows to its own package's Store;
+// this one now does too.
+//
+// The store is built into a variable and returned only once its error is known
+// to be nil. notifications.NewSQLStore returns its own concrete type, so
+// returning it straight through would convert a nil *notifications.SQLStore
+// into a non-nil notifications.Store on the error path, and a caller testing the
+// result against nil would find a store that panics on first use.
+func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...Option) (notifications.Store, error) {
 	if cfg == nil {
 		return nil, errors.ErrNilInputParameter
 	}
@@ -92,5 +102,10 @@ func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...
 		notifications.WithStoreMetricsProvider(options.metricsProvider),
 	}
 
-	return notifications.NewSQLStore(client, append(base, options.store...)...)
+	store, storeErr := notifications.NewSQLStore(client, append(base, options.store...)...)
+	if storeErr != nil {
+		return nil, storeErr
+	}
+
+	return store, nil
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/workqueue"
 
 	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
@@ -77,12 +78,23 @@ func (cfg *Config) ValidateWithContext(ctx context.Context) error {
 // client must speak Postgres: this package's SQL is written against it rather
 // than reduced to a portable subset, and operations.NewSQLStore returns
 // dialect.ErrUnsupported for anything else.
-func NewStore(cfg *Config, client database.Client, opts ...Option) (operations.Store, error) {
+//
+// ctx is what the configuration is validated under, once its defaults have been
+// applied. The whole Config is validated rather than the store's half of it:
+// the halves are derived from each other — Queue.Name comes from
+// Operations.QueueName — so a process that builds nothing but a store still
+// learns at boot that the queue its operations will be enqueued onto is
+// misconfigured.
+func NewStore(ctx context.Context, cfg *Config, client database.Client, opts ...Option) (operations.Store, error) {
 	if cfg == nil {
 		return nil, operations.ErrNilConfig
 	}
 
 	cfg.EnsureDefaults()
+
+	if err := cfg.ValidateWithContext(ctx); err != nil {
+		return nil, platformerrors.Wrap(err, "validating operations config")
+	}
 
 	o := newOptions(opts)
 
@@ -124,6 +136,10 @@ func NewQueue(ctx context.Context, cfg *Config, client database.Client, opts ...
 
 	cfg.EnsureDefaults()
 
+	if err := cfg.ValidateWithContext(ctx); err != nil {
+		return nil, platformerrors.Wrap(err, "validating operations config")
+	}
+
 	o := newOptions(opts)
 
 	base := make([]workqueue.Option, 0, len(o.queue)+4) //nolint:mnd // the four options below
@@ -160,7 +176,7 @@ func NewService(
 		return nil, nil, operations.ErrNilConfig
 	}
 
-	store, err := NewStore(cfg, client, opts...)
+	store, err := NewStore(ctx, cfg, client, opts...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -239,6 +255,10 @@ func NewWorker(
 
 	cfg.EnsureDefaults()
 
+	if err := cfg.ValidateWithContext(ctx); err != nil {
+		return nil, platformerrors.Wrap(err, "validating operations config")
+	}
+
 	o := newOptions(opts)
 
 	base := make([]operations.WorkerOption, 0, len(o.worker)+3) //nolint:mnd // the three options below
@@ -275,6 +295,10 @@ func NewWatcher(
 	}
 
 	cfg.EnsureDefaults()
+
+	if err := cfg.ValidateWithContext(ctx); err != nil {
+		return nil, platformerrors.Wrap(err, "validating operations config")
+	}
 
 	o := newOptions(opts)
 

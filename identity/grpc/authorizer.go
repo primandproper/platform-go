@@ -78,6 +78,36 @@ var ErrTargetNotPermitted = platformerrors.New("the caller may not act on the na
 // anything reads or writes a row. A malformed request is answered as malformed
 // whoever sent it, since saying so discloses nothing about any row; everything
 // past that point is gated.
+//
+// # A fourth question stays available, and the default is how
+//
+// This is the opposite ruling to [Principal]'s, and the two must not be
+// collapsed into one. That method set is final because there is nothing for an
+// implementation to inherit: every consumer answers "who is calling" themselves,
+// so a fourth method there is a break with no remedy. Here there is a default —
+// [MembershipAuthorizer] — and a fourth authorization question is therefore
+// something this package can grow, because an implementation that embeds the
+// default inherits an answer to it on the day it appears:
+//
+//	type consoleAuthorizer struct{ *identitygrpc.MembershipAuthorizer }
+//
+//	func (a consoleAuthorizer) AuthorizeUser(ctx context.Context,
+//		caller identitygrpc.Principal, userID string) error {
+//		if operates(caller) {
+//			return nil
+//		}
+//
+//		return a.MembershipAuthorizer.AuthorizeUser(ctx, caller, userID)
+//	}
+//
+// So embedding is how an implementation stays additive, and it is what this
+// package asks a consumer with a rule of their own to do — which is also the
+// composition [NewMembershipAuthorizer] is exported for. An implementation that
+// declares all three methods from nothing is choosing the compile error a fourth
+// would bring, and that is a choice left open rather than a mistake: a consumer
+// whose policy must be total wants to be told when the surface grows a question
+// their policy has not considered. It is the deliberate version of the failure
+// [Principal] has no way to offer.
 type TargetAuthorizer interface {
 	// AuthorizeAccount is asked before an RPC acts on the account a request
 	// named.

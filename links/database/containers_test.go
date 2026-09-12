@@ -83,7 +83,7 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		test.True(t, read.ExpiresAt.Equal(record.ExpiresAt),
 			test.Sprintf("wrote %v, read %v", record.ExpiresAt, read.ExpiresAt))
 		test.True(t, read.PurgeAfter.Equal(record.PurgeAfter))
-		test.True(t, read.ResolvedAt.IsZero())
+		test.Nil(t, read.ResolvedAt)
 	})
 
 	// The whole reason this store needs no locker. On SQLite every writer is

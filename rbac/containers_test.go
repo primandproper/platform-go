@@ -202,10 +202,16 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 // one transaction at a time, so the race this exercises — a writer whose
 // lookup ran before another's commit, and a grant written between another's
 // DELETE and INSERT — cannot happen anywhere else. What is asserted is that
-// every seed commits and that what they converged on is the policy each was
-// given, on a first seed where every name is minted at once, on a re-seed
-// where the grants are cleared and rewritten under one another, and on a
-// re-seed that changes the policy.
+// every seed commits, retrying where the engine refused one as Seed says a
+// caller should, and that what they converged on is the policy each was given,
+// on a first seed where every name is minted at once, on a re-seed where the
+// grants are cleared and rewritten under one another, and on a re-seed that
+// changes the policy.
+//
+// Convergence is the subject rather than first-attempt success. Whether a given
+// replica needed one attempt or two is the engine's business and Seed's
+// documentation says so; what must hold either way is that no policy lands half
+// applied and that all four replicas end up describing the same one.
 func runConcurrentSeeds(t *testing.T, env *dialectEnv) {
 	t.Helper()
 
@@ -231,6 +237,49 @@ func runConcurrentSeeds(t *testing.T, env *dialectEnv) {
 	)
 	must.NoError(t, err)
 
+	// seedWithRetry runs one Seed in its own transaction, retrying a transaction the
+	// engine refused.
+	//
+	// Seed documents that an engine may refuse one of two overlapping seeds
+	// where its locking rules leave it no other answer — SQLite admits one
+	// writer at a time and reports the second as busy, MySQL's default
+	// isolation can declare a deadlock between two seeds of a role that had no
+	// grants stored yet — and that what it reports is an error on a transaction
+	// that wrote nothing, for the caller to retry. Asserting that every seeder
+	// commits on its first attempt therefore asserts something stronger than
+	// Seed promises, and MySQL makes good on the difference often enough to red
+	// a pull request that touched nothing here.
+	//
+	// The refusal is deliberately not matched on. A transient refusal and a
+	// broken seed are told apart by whether retrying works: a seed that fails
+	// for a reason concurrency did not cause fails every attempt and arrives at
+	// the assertion as the error it always was. Matching would mean a SQLSTATE
+	// list — primitives-go's database/postgres/pgretry holds Postgres's and
+	// there is no MySQL counterpart to reach for — and a second copy of one,
+	// kept in a test, is the copy that rots without anybody noticing.
+	seedWithRetry := func(roles []authorization.Role) error {
+		const attempts = 3
+
+		var seedErr error
+
+		for attempt := range attempts {
+			if attempt > 0 {
+				// Long enough that the retry does not re-collide with whoever
+				// won, short enough to stay invisible in the suite's runtime.
+				time.Sleep(time.Duration(attempt) * 25 * time.Millisecond)
+			}
+
+			seedErr = env.client.WithTransaction(ctx, func(q database.Tx) error {
+				return r.Seed(ctx, q, roles...)
+			})
+			if seedErr == nil {
+				return nil
+			}
+		}
+
+		return seedErr
+	}
+
 	// seedFromEveryReplica runs one Seed per replica, each in its own
 	// transaction, released together so that they overlap rather than queue.
 	seedFromEveryReplica := func(t *testing.T, roles []authorization.Role) {
@@ -244,9 +293,7 @@ func runConcurrentSeeds(t *testing.T, env *dialectEnv) {
 			wg.Go(func() {
 				<-start
 
-				errs <- env.client.WithTransaction(ctx, func(q database.Tx) error {
-					return r.Seed(ctx, q, roles...)
-				})
+				errs <- seedWithRetry(roles)
 			})
 		}
 

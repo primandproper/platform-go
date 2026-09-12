@@ -52,6 +52,30 @@ func GlobalScope(context.Context) (tenancy.Scope, error) {
 // Option configures a Server.
 type Option func(*Server)
 
+// WithScopeResolver sets what decides whose log a request is against. It is
+// required: a Server built without it, or given nil here, is refused with
+// [ErrNilScopeResolver].
+//
+// It is the one option in this package with nothing behind it. The others are
+// observability and absent means noop; this one is the whole of the service's
+// tenancy, and the deployment that wants every request against tenancy.Global
+// writes WithScopeResolver([GlobalScope]) and has said so — see
+// [ErrNilScopeResolver] for why that sentence is not a default.
+//
+// Options apply in order, so a later WithScopeResolver(nil) clears an earlier
+// resolver and the constructor refuses, which is the same reading
+// [WithMetricsProvider] already takes of a nil provider after [WithPillars].
+//
+// A consumer whose resolver reads the connection and whose authentication
+// interceptor reads a token owes one thing: the two must agree. A console whose
+// token names one tenant, connecting somewhere that resolves to another, reads
+// the second tenant's chain — every query binds whichever scope answered, so
+// nothing crosses a boundary, but the log on the screen is not the log the
+// operator believes they are auditing.
+func WithScopeResolver(resolve ScopeResolver) Option {
+	return func(s *Server) { s.scopes = resolve }
+}
+
 // WithLogger sets the logger. Absent means no logging.
 func WithLogger(logger logging.Logger) Option {
 	return func(s *Server) { s.logger = logger }

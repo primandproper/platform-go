@@ -2,13 +2,11 @@ package errormappers_test
 
 import (
 	"context"
-	"slices"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/errormappers"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/internal/sentinelmatrix"
-	"github.com/primandproper/platform-go/v14/links"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -76,12 +74,18 @@ func TestRegister_resolvesEveryMappedSentinel(T *testing.T) {
 	}
 }
 
-// TestRegister_installsTheClientSafeSentinels covers the other half of what
-// links and identity need from gRPC. Their outcomes share codes, so the
-// message is the only place the difference between "already used" and
-// "expired", or between a taken username and a taken email address, survives,
-// and a gRPC message is the code's name unless a sentinel is registered as safe
-// to quote.
+// TestRegister_installsTheClientSafeSentinels covers the other half of what the
+// packages in internal/sentinelmatrix's client-safe roster need from gRPC.
+// Their outcomes share codes, so the message is the only place the difference
+// between "already used" and "expired", or between a taken username and a taken
+// email address, survives, and a gRPC message is the code's name unless a
+// sentinel is registered as safe to quote.
+//
+// The lists come from the roster rather than from names spelled here, which is
+// what makes this the assertion the prose points at. It used to name links and
+// identity, so the seven packages that declared a list afterwards were
+// registered by Register and asserted by nothing — and a list registered nowhere
+// has no symptom in its own package's tests.
 func TestRegister_installsTheClientSafeSentinels(T *testing.T) {
 	T.Parallel()
 
@@ -89,7 +93,12 @@ func TestRegister_installsTheClientSafeSentinels(T *testing.T) {
 
 	seen := map[string]struct{}{}
 
-	sentinels := slices.Concat(links.ClientSafeSentinels, identity.ClientSafeSentinels)
+	var sentinels []error
+	for _, pkg := range sentinelmatrix.ClientSafePackages {
+		sentinels = append(sentinels, sentinelmatrix.ClientSafeSentinels(pkg)...)
+	}
+
+	must.SliceNotEmpty(T, sentinels, must.Sprint("no client-safe sentinels, so this test asserted nothing"))
 
 	for _, sentinel := range sentinels {
 		_, err := interceptor(
@@ -97,7 +106,7 @@ func TestRegister_installsTheClientSafeSentinels(T *testing.T) {
 			nil,
 			&grpc.UnaryServerInfo{},
 			func(context.Context, any) (any, error) {
-				return nil, platformerrors.Wrap(sentinel, "redeeming action link")
+				return nil, platformerrors.Wrap(sentinel, "serving a request")
 			},
 		)
 		must.Error(T, err)
@@ -111,7 +120,8 @@ func TestRegister_installsTheClientSafeSentinels(T *testing.T) {
 		seen[st.Message()] = struct{}{}
 	}
 
-	test.MapLen(T, len(sentinels), seen)
+	test.MapLen(T, len(sentinels), seen, test.Sprint(
+		"two client-safe sentinels reached a client with the same words, so neither says which happened"))
 }
 
 // TestRegister_theOperationSpellingReachesTheRegistry is the acceptance test for

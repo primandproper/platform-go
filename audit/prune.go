@@ -69,7 +69,7 @@ type RetentionConfig struct {
 
 	// ScopePageSize is how many scopes one batch reads at a time. Defaults to
 	// DefaultScopePageSize.
-	ScopePageSize int `env:"SCOPE_PAGE" json:"scopePageSize,omitempty" yaml:"scopePageSize,omitempty"`
+	ScopePageSize int `env:"SCOPE_PAGE_SIZE" json:"scopePageSize,omitempty" yaml:"scopePageSize,omitempty"`
 }
 
 var _ validation.ValidatableWithContext = (*RetentionConfig)(nil)

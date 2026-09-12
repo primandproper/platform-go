@@ -54,10 +54,11 @@ func (d Disposition) String() string {
 	}
 }
 
-// The packages that map their own sentinels, spelled once each; there are fifteen
-// today. Each name is three things — a key in Matrix, an entry in Packages and a
-// case in Mappers — and a package that declares a pair later is added in all
-// three together.
+// The packages that map their own sentinels, spelled once each. Each name is
+// three things — a key in Matrix, an entry in Packages and a case in Mappers —
+// and a package that declares a pair later is added in all three together. How
+// many there are is a question for Packages rather than for a sentence here,
+// which is the sort that stops being true without anybody noticing.
 //
 // Each is a path relative to the module root rather than a package name,
 // because that is what the roster's own test reads the rows out of.
@@ -85,8 +86,8 @@ type Decision struct {
 	Is  Disposition
 }
 
-// Matrix is the decision made about every exported sentinel in the fifteen
-// packages that map their own errors. Its keys are checked against those
+// Matrix is the decision made about every exported sentinel in the packages
+// that map their own errors. Its keys are checked against those
 // packages' source in both directions, so it is a roster that cannot quietly
 // stop describing the tree.
 //
@@ -729,8 +730,12 @@ var Matrix = map[string]map[string]Decision{
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
-// module root. They are the fifteen that export mappers of their own; a package
+// module root. They are the ones that export mappers of their own; a package
 // that declares a pair later is added here, in Matrix and in Mappers together.
+//
+// It is the roster the module's prose points at rather than re-listing. Three
+// passages used to name the packages themselves, and between them they named
+// eight, six and four of what were by then fifteen and nine.
 var Packages = []string{
 	auditPkg, dataPrivacyPkg, identityPkg, linksPkg, operationsPkg,
 	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
@@ -738,7 +743,7 @@ var Packages = []string{
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
-// this package spells the fifteen out; everywhere else they are the strings in
+// this package spells them out; everywhere else they are the strings in
 // Packages.
 func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper) {
 	switch pkg {
@@ -774,6 +779,53 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return waitlists.HTTPMapper, waitlists.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
+	}
+}
+
+// ClientSafePackages are the packages that declare a ClientSafeSentinels list as
+// well as a pair of mappers: the refusals whose own wording a gRPC status may
+// carry, because the code they share cannot tell the person reading it which of
+// them happened. Every one of them is also in Packages — a list of sentinels no
+// mapper of that package's own answers is a list no client ever reaches.
+//
+// It is a roster for the same reason Packages is one, and it catches the same
+// silence. A package that declares a list and is handed to
+// RegisterClientSafeSentinels nowhere has no symptom in its own tests: the
+// mapper still answers, the sentinels still carry their wording, and the only
+// thing that changes is that a person staring at a browser is told
+// "FailedPrecondition". Both directions are checked against those packages'
+// source, so declaring a list is what fails this roster rather than remembering
+// to add a row to it.
+var ClientSafePackages = []string{
+	linksPkg, identityPkg, signInPkg, oauth2ClientsPkg, commentsPkg,
+	billingPkg, issueReportsPkg, settingsPkg, waitlistsPkg,
+}
+
+// ClientSafeSentinels is the list pkg declares safe for a gRPC status to quote
+// verbatim. The switch is the one place this package spells them out; everywhere
+// else they are the strings in ClientSafePackages.
+func ClientSafeSentinels(pkg string) []error {
+	switch pkg {
+	case linksPkg:
+		return links.ClientSafeSentinels
+	case identityPkg:
+		return identity.ClientSafeSentinels
+	case signInPkg:
+		return signin.ClientSafeSentinels
+	case oauth2ClientsPkg:
+		return oauth2clients.ClientSafeSentinels
+	case commentsPkg:
+		return comments.ClientSafeSentinels
+	case billingPkg:
+		return billing.ClientSafeSentinels
+	case issueReportsPkg:
+		return issuereports.ClientSafeSentinels
+	case settingsPkg:
+		return settings.ClientSafeSentinels
+	case waitlistsPkg:
+		return waitlists.ClientSafeSentinels
+	default:
+		panic("no client-safe sentinels for " + pkg)
 	}
 }
 

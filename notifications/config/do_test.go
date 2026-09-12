@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	"github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/notifications/mobile"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 
 	"github.com/samber/do/v2"
@@ -44,17 +45,18 @@ func TestRegisterStore(T *testing.T) {
 
 		RegisterStore(i)
 
-		store, err := do.Invoke[*notifications.SQLStore](i)
+		store, err := do.Invoke[notifications.Store](i)
 		must.NoError(t, err)
 		test.NotNil(t, store)
 	})
 
-	T.Run("the three registrations are one store", func(t *testing.T) {
+	T.Run("the four registrations are one store", func(t *testing.T) {
 		t.Parallel()
 
-		// The interfaces are narrowings of the concrete registration rather than
-		// registrations of their own, so a container invoking both seams gets
-		// one connection and one set of instruments instead of two of each.
+		// The narrower seams are narrowings of the notifications.Store
+		// registration rather than registrations of their own, so a container
+		// invoking both halves gets one connection and one set of instruments
+		// instead of two of each.
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
@@ -62,7 +64,7 @@ func TestRegisterStore(T *testing.T) {
 
 		RegisterStore(i)
 
-		store, err := do.Invoke[*notifications.SQLStore](i)
+		store, err := do.Invoke[notifications.Store](i)
 		must.NoError(t, err)
 
 		inbox, err := do.Invoke[notifications.Inbox](i)
@@ -71,9 +73,16 @@ func TestRegisterStore(T *testing.T) {
 		registry, err := do.Invoke[notifications.Registry](i)
 		must.NoError(t, err)
 
+		invalidator, err := do.Invoke[mobile.TokenInvalidator](i)
+		must.NoError(t, err)
+
 		test.True(t, inbox == notifications.Inbox(store))
 		test.True(t, registry == notifications.Registry(store))
-		test.EqOp(t, "ddb", store.TablePrefix())
+		test.True(t, invalidator == mobile.TokenInvalidator(store))
+
+		sqlStore, ok := store.(*notifications.SQLStore)
+		must.True(t, ok)
+		test.EqOp(t, "ddb", sqlStore.TablePrefix())
 	})
 
 	T.Run("with no observability registered", func(t *testing.T) {
@@ -107,7 +116,7 @@ func TestRegisterStore(T *testing.T) {
 
 		RegisterStore(i)
 
-		_, err := do.Invoke[*notifications.SQLStore](i)
+		_, err := do.Invoke[notifications.Store](i)
 		must.Error(t, err)
 		test.ErrorIs(t, err, errBuild)
 	})
@@ -115,10 +124,10 @@ func TestRegisterStore(T *testing.T) {
 	T.Run("a store that will not build leaves the seams nil rather than panicking", func(t *testing.T) {
 		t.Parallel()
 
-		// The narrowings return only once the store's error is known to be nil.
-		// Handing a nil *SQLStore straight back would make a non-nil interface
-		// holding a nil pointer, and this assertion would pass while the value
-		// panicked on first use.
+		// The narrowings return only once the store's error is known to be nil,
+		// and NewStore itself returns a nil notifications.Store rather than one
+		// holding a nil *SQLStore. Either link getting that wrong would leave
+		// these assertions passing over a value that panicked on first use.
 		i := do.New()
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
@@ -133,6 +142,10 @@ func TestRegisterStore(T *testing.T) {
 		registry, err := do.Invoke[notifications.Registry](i)
 		must.Error(t, err)
 		test.Nil(t, registry)
+
+		store, err := do.Invoke[notifications.Store](i)
+		must.Error(t, err)
+		test.Nil(t, store)
 	})
 
 	T.Run("fails when the database client is not registered", func(t *testing.T) {
@@ -144,7 +157,7 @@ func TestRegisterStore(T *testing.T) {
 
 		RegisterStore(i)
 
-		_, err := do.Invoke[*notifications.SQLStore](i)
+		_, err := do.Invoke[notifications.Store](i)
 		test.Error(t, err)
 	})
 }

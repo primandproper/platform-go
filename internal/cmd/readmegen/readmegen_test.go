@@ -12,10 +12,14 @@ import (
 
 // The tests below are all the same shape, and it is the shape the acceptance of
 // this command rests on: build a tree, generate, mutate the tree, generate
-// again, and read what moved. Nothing here parses the module's own README or
-// asserts what it currently says — the claim being made is that the file
-// follows the tree, and a fixture that has to be edited alongside the tree would
-// be the hand-maintained roster this command replaced.
+// again, and read what moved. Nothing in this file parses the module's own
+// README or asserts what it currently says — the claim being made is that the
+// file follows the tree, and a fixture that has to be edited alongside the tree
+// would be the hand-maintained roster this command replaced.
+//
+// prose_test.go does read it, for the three things about the "Transports"
+// section that are mechanical rather than argued, and says there why that is
+// not the same bargain.
 
 // tree is a throwaway module tree that generate can be pointed at.
 type tree struct {

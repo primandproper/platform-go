@@ -535,3 +535,73 @@ func TestNewMembershipAuthorizerRefusesWhatItCannotBeBuiltFrom(T *testing.T) {
 	must.NoError(T, err)
 	must.NotNil(T, authorizer)
 }
+
+// consoleAuthorizer is the composition [identitygrpc.TargetAuthorizer]'s
+// documentation asks a consumer with a rule of their own to write: the default
+// embedded, one question answered differently, and the rest inherited.
+//
+// It is what makes this seam's ruling the opposite of the principal's. The
+// method set here may grow, because an implementation in this shape already
+// answers whatever is added.
+type consoleAuthorizer struct {
+	*identitygrpc.MembershipAuthorizer
+
+	operator string
+}
+
+var _ identitygrpc.TargetAuthorizer = consoleAuthorizer{}
+
+// AuthorizeUser widens one of the three and delegates the rest of that one.
+func (a consoleAuthorizer) AuthorizeUser(ctx context.Context, caller identitygrpc.Principal, userID string) error {
+	if caller != nil && caller.UserID() == a.operator {
+		return nil
+	}
+
+	return a.MembershipAuthorizer.AuthorizeUser(ctx, caller, userID)
+}
+
+// TestTheDefaultIsEmbeddableAndEmbeddingStaysAdditive pins the authorizer half
+// of the two seams' opposite rulings.
+//
+// [identitygrpc.Principal]'s method set is final because a consumer has nothing
+// to inherit from; this one's need not be, and the reason is exactly what runs
+// here — an implementation that embeds [identitygrpc.MembershipAuthorizer]
+// answers the questions it did not write, so a fourth authorization question
+// costs its implementers nothing. The two rules must not be collapsed into one,
+// and this test is the second of them.
+func TestTheDefaultIsEmbeddableAndEmbeddingStaysAdditive(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T)
+
+	operator := h.seedUser(T, testScope, "operator")
+	stranger := h.seedUser(T, testScope, "stranger")
+
+	base, err := identitygrpc.NewMembershipAuthorizer(h.db, h.store)
+	must.NoError(T, err)
+
+	rule := consoleAuthorizer{MembershipAuthorizer: base, operator: operator.ID}
+
+	caller := &testPrincipal{userID: operator.ID, scope: testScope}
+
+	T.Run("the overridden question answers the consumer's rule", func(t *testing.T) {
+		t.Parallel()
+
+		// A user the operator shares no account with, which the default refuses.
+		test.NoError(t, rule.AuthorizeUser(t.Context(), caller, stranger.ID))
+		test.ErrorIs(t, base.AuthorizeUser(t.Context(), caller, stranger.ID),
+			identitygrpc.ErrTargetNotPermitted)
+	})
+
+	T.Run("the questions it did not write are inherited", func(t *testing.T) {
+		t.Parallel()
+
+		// Neither method is declared on consoleAuthorizer, so both are the
+		// default's answer — which is what a method added to the interface
+		// later would also be.
+		test.ErrorIs(t, rule.AuthorizeAccount(t.Context(), caller, "an-account-nobody-is-in"),
+			identitygrpc.ErrTargetNotPermitted)
+		test.ErrorIs(t, rule.AuthorizeInvitation(t.Context(), caller, "an-invitation-nobody-sent"),
+			identitygrpc.ErrTargetNotPermitted)
+	})
+}
