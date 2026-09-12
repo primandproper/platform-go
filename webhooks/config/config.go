@@ -41,13 +41,20 @@ type Config struct {
 	// CircuitBreaker configures the per-endpoint breakers. Its Name is used as
 	// a prefix — each endpoint's breaker is named for the endpoint, so a
 	// tripped breaker names the subscriber that tripped it.
-	CircuitBreaker circuitbreakingcfg.Config `env:",init" envPrefix:"CIRCUIT_BREAKER_" json:"circuitBreaker,omitzero" yaml:"circuitBreaker,omitempty"`
+	//
+	// The prefix is the one service.Config gives circuitbreaking at the top
+	// level rather than the field's own name, so an operator who has learned
+	// CIRCUIT_BREAKING_ERROR_RATE for the service's breaker sets the same
+	// variable under WEBHOOKS_ for these.
+	CircuitBreaker circuitbreakingcfg.Config `env:",init" envPrefix:"CIRCUIT_BREAKING_" json:"circuitBreaker,omitzero" yaml:"circuitBreaker,omitempty"`
 
 	// Worker carries the delivery loop's own knobs.
 	Worker webhooks.WorkerConfig `env:",init" envPrefix:"WORKER_" json:"worker,omitzero" yaml:"worker,omitempty"`
 
-	// HTTPClient configures the single client every delivery goes through.
-	HTTPClient httpclient.Config `env:",init" envPrefix:"HTTP_" json:"httpClient,omitzero" yaml:"httpClient,omitempty"`
+	// HTTPClient configures the single client every delivery goes through. Its
+	// prefix is HTTP_CLIENT_ for the same reason the breaker's is
+	// CIRCUIT_BREAKING_: it is what service.Config spells at the top level.
+	HTTPClient httpclient.Config `env:",init" envPrefix:"HTTP_CLIENT_" json:"httpClient,omitzero" yaml:"httpClient,omitempty"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)
