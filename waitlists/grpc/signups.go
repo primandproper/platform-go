@@ -21,10 +21,11 @@ import (
 // [SignupAuthorizer] and a [ScopeResolver] where the surfaces next door have
 // neither. Everything else here is whoever is running the launch.
 //
-// Every write opens its own transaction with Client.WithTransaction. The three
-// that revise or move a row read it back inside that transaction, because
-// status_changed_at is what a consumer schedules a reminder off and the store
-// stamps it rather than returning it — see waitlists.SignupStore.Invite.
+// Every write opens its own transaction with Client.WithTransaction, and the
+// three that revise or move a row answer with what the store handed back — read
+// by the store on that same transaction, so status_changed_at on the wire is the
+// instant the statement stamped rather than the one a second read would have
+// found. See waitlists.SignupStore.Invite.
 //
 // None of them switches on a sentinel: the error goes through
 // grpcerrors.PrepareAndLogGRPCStatus with codes.Internal as the *default*, and
@@ -269,8 +270,8 @@ func (s *Server) UpdateSignupNotes(
 	listID, signupID := request.GetListId(), request.GetSignupId()
 	req.op.Set(listKey, listID).Set(signupKey, signupID)
 
-	signup, err := s.writeAndReadBack(ctx, req, listID, signupID,
-		func(tx database.Tx) error {
+	signup, err := s.written(ctx, req,
+		func(tx database.Tx) (*waitlists.Signup, error) {
 			return s.store.UpdateSignupNotes(ctx, tx, req.scope, listID, signupID, request.GetNotes())
 		},
 		"updating the notes on waitlist signup %q", signupID)
@@ -304,8 +305,8 @@ func (s *Server) Invite(
 	listID, signupID := request.GetListId(), request.GetSignupId()
 	req.op.Set(listKey, listID).Set(signupKey, signupID)
 
-	signup, err := s.writeAndReadBack(ctx, req, listID, signupID,
-		func(tx database.Tx) error {
+	signup, err := s.written(ctx, req,
+		func(tx database.Tx) (*waitlists.Signup, error) {
 			return s.store.Invite(ctx, tx, req.scope, listID, signupID)
 		},
 		"inviting waitlist signup %q", signupID)
@@ -336,8 +337,8 @@ func (s *Server) Convert(
 	listID, signupID := request.GetListId(), request.GetSignupId()
 	req.op.Set(listKey, listID).Set(signupKey, signupID)
 
-	signup, err := s.writeAndReadBack(ctx, req, listID, signupID,
-		func(tx database.Tx) error {
+	signup, err := s.written(ctx, req,
+		func(tx database.Tx) (*waitlists.Signup, error) {
 			return s.store.Convert(ctx, tx, req.scope, listID, signupID)
 		},
 		"converting waitlist signup %q", signupID)
@@ -362,9 +363,12 @@ func (s *Server) Convert(
 // second call reports that the signup has already been withdrawn rather than
 // restamping the moment they left.
 //
-// The response is empty and carries no signup. What is left of the row after a
-// withdrawal is a status and a digest, and the caller who has just asked to be
-// forgotten is not the caller to hand it to.
+// The response is empty and carries no signup, and the store's answer is dropped
+// on purpose rather than for symmetry. What the store hands back is the row as
+// it stood *before* the blanking — the contact, the notes and the subject — which
+// is the record a consumer writes an audit entry from and is the last thing to
+// send back to somebody who has just asked to be forgotten. What is left of the
+// row afterwards is a status and a digest, which is no better an answer.
 func (s *Server) Withdraw(
 	ctx context.Context,
 	request *waitlistspb.WithdrawRequest,
@@ -384,7 +388,9 @@ func (s *Server) Withdraw(
 	}
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.store.Withdraw(ctx, tx, req.scope, listID, signupID)
+		_, withdrawErr := s.store.Withdraw(ctx, tx, req.scope, listID, signupID)
+
+		return withdrawErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "withdrawing waitlist signup %q", signupID)
@@ -458,6 +464,11 @@ func (s *Server) WithdrawSignupsForSubject(
 // changes nothing about what it holds, so the contact is still stored, nothing
 // is suppressed, and the next signup from that address is refused as a
 // duplicate. Somebody asking to come off a list reaches [Server.Withdraw].
+//
+// The response carries nothing and the store's answer is dropped, for the reason
+// [Server.ArchiveList]'s is: the operator who sent this already holds the row,
+// and the archived signup the store hands back is there for a consumer recording
+// what it retired.
 func (s *Server) ArchiveSignup(
 	ctx context.Context,
 	request *waitlistspb.ArchiveSignupRequest,
@@ -473,7 +484,9 @@ func (s *Server) ArchiveSignup(
 	req.op.Set(listKey, listID).Set(signupKey, signupID)
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.store.ArchiveSignup(ctx, tx, req.scope, listID, signupID)
+		_, archiveErr := s.store.ArchiveSignup(ctx, tx, req.scope, listID, signupID)
+
+		return archiveErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "archiving waitlist signup %q", signupID)
@@ -484,38 +497,32 @@ func (s *Server) ArchiveSignup(
 	return &waitlistspb.ArchiveSignupResponse{}, nil
 }
 
-// writeAndReadBack runs one signup write and reads the row back inside the same
-// transaction, which is what the three revising RPCs share.
+// written runs one signup write in a transaction of its own and carries the row
+// the store answered with back out of the closure, which is what the three
+// revising RPCs share.
 //
-// The read is inside the transaction deliberately, and it is the reason
-// waitlists.Store's reads take a database.SQLQueryExecutor rather than a reader:
-// a Tx satisfies that interface, so this read sees the write it follows. On
-// Client.Reader() it would be a read of a database that does not yet hold the
-// change — the signup would come back in the status it was in before the call.
-//
-// It is a helper rather than three copies because the part that can be got wrong
-// is which executor the read runs on, and it is the same mistake in all three.
-func (s *Server) writeAndReadBack(
+// It used to run the read as well, because the store's writes reported only an
+// error; the store makes that read itself now, on the transaction it was handed,
+// so the row this returns is the one the statement wrote rather than one a
+// second read went looking for. What is left here is the part a closure makes
+// awkward — a value produced inside a WithTransaction callback and wanted after
+// it — plus the one status mapping the three share.
+func (s *Server) written(
 	ctx context.Context,
 	req *request,
-	listID, signupID string,
-	write func(tx database.Tx) error,
+	write func(tx database.Tx) (*waitlists.Signup, error),
 	descriptionFmt string,
 	descriptionArgs ...any,
 ) (*waitlists.Signup, error) {
 	var signup *waitlists.Signup
 
 	if err := s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		if writeErr := write(tx); writeErr != nil {
+		written, writeErr := write(tx)
+		if writeErr != nil {
 			return writeErr
 		}
 
-		read, readErr := s.store.GetSignup(ctx, tx, req.scope, listID, signupID)
-		if readErr != nil {
-			return readErr
-		}
-
-		signup = read
+		signup = written
 
 		return nil
 	}); err != nil {

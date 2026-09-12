@@ -39,6 +39,10 @@ type Querier interface {
 	ArchiveSignup(ctx context.Context, db DBTX, arg ArchiveSignupParams) (int64, error)
 	// CreateList runs the :exec query.
 	CreateList(ctx context.Context, db DBTX, arg CreateListParams) error
+	// GetArchivedList runs the :one query.
+	GetArchivedList(ctx context.Context, db DBTX, arg GetArchivedListParams) (GetArchivedListRow, error)
+	// GetArchivedSignup runs the :one query.
+	GetArchivedSignup(ctx context.Context, db DBTX, arg GetArchivedSignupParams) (GetArchivedSignupRow, error)
 	// GetList runs the :one query.
 	GetList(ctx context.Context, db DBTX, arg GetListParams) (GetListRow, error)
 	// GetListCreatedAt runs the :one query.

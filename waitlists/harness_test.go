@@ -136,14 +136,20 @@ func (e *storeEnv) inTx(tb testing.TB, fn func(tx database.Tx) error) error {
 // instead, and they are in the transactions suite.
 func (e *storeEnv) reader() database.SQLQueryExecutor { return e.client.Reader() }
 
-// The nine writes, each in a transaction of its own, reporting what the write
-// returned.
+// The nine writes, each in a transaction of its own, reporting both halves of
+// what the write returned: the row, and the error.
 //
 // The transaction is a detail in these rather than the subject: the list, signup
 // and withdrawal suites are about what a write checks and what it leaves behind,
 // and a consumer with nothing to commit alongside opens exactly this. What a
 // signup commits *with* is the transactions suite, which calls the store
 // directly.
+//
+// The row is an answer rather than a convenience. No write here touches the
+// value it was handed, so a case that wants to know what the statement settled —
+// the stamp, the status, the contact a withdrawal is about to blank — reads it
+// off what came back or not at all. Eight of the nine answer with the row after
+// the write; withdraw is the one whose answer is the row from before it.
 
 func (e *storeEnv) createList(tb testing.TB, store *SQLStore, scope tenancy.Scope, list *List) (*List, error) {
 	tb.Helper()
@@ -159,20 +165,42 @@ func (e *storeEnv) createList(tb testing.TB, store *SQLStore, scope tenancy.Scop
 	return created, err
 }
 
-func (e *storeEnv) updateList(tb testing.TB, store *SQLStore, scope tenancy.Scope, list *List) error {
+func (e *storeEnv) updateList(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	list *List,
+) (*List, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.UpdateList(tb.Context(), tx, scope, list)
+	var updated *List
+
+	err := e.inTx(tb, func(tx database.Tx) (updateErr error) {
+		updated, updateErr = store.UpdateList(tb.Context(), tx, scope, list)
+
+		return updateErr
 	})
+
+	return updated, err
 }
 
-func (e *storeEnv) archiveList(tb testing.TB, store *SQLStore, scope tenancy.Scope, listID string) error {
+func (e *storeEnv) archiveList(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	listID string,
+) (*List, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ArchiveList(tb.Context(), tx, scope, listID)
+	var archived *List
+
+	err := e.inTx(tb, func(tx database.Tx) (archiveErr error) {
+		archived, archiveErr = store.ArchiveList(tb.Context(), tx, scope, listID)
+
+		return archiveErr
 	})
+
+	return archived, err
 }
 
 func (e *storeEnv) join(
@@ -200,44 +228,94 @@ func (e *storeEnv) updateNotes(
 	store *SQLStore,
 	scope tenancy.Scope,
 	listID, signupID, notes string,
-) error {
+) (*Signup, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.UpdateSignupNotes(tb.Context(), tx, scope, listID, signupID, notes)
+	var updated *Signup
+
+	err := e.inTx(tb, func(tx database.Tx) (updateErr error) {
+		updated, updateErr = store.UpdateSignupNotes(tb.Context(), tx, scope, listID, signupID, notes)
+
+		return updateErr
 	})
+
+	return updated, err
 }
 
-func (e *storeEnv) invite(tb testing.TB, store *SQLStore, scope tenancy.Scope, listID, signupID string) error {
+func (e *storeEnv) invite(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	listID, signupID string,
+) (*Signup, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.Invite(tb.Context(), tx, scope, listID, signupID)
+	var invited *Signup
+
+	err := e.inTx(tb, func(tx database.Tx) (inviteErr error) {
+		invited, inviteErr = store.Invite(tb.Context(), tx, scope, listID, signupID)
+
+		return inviteErr
 	})
+
+	return invited, err
 }
 
-func (e *storeEnv) convert(tb testing.TB, store *SQLStore, scope tenancy.Scope, listID, signupID string) error {
+func (e *storeEnv) convert(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	listID, signupID string,
+) (*Signup, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.Convert(tb.Context(), tx, scope, listID, signupID)
+	var converted *Signup
+
+	err := e.inTx(tb, func(tx database.Tx) (convertErr error) {
+		converted, convertErr = store.Convert(tb.Context(), tx, scope, listID, signupID)
+
+		return convertErr
 	})
+
+	return converted, err
 }
 
-func (e *storeEnv) withdraw(tb testing.TB, store *SQLStore, scope tenancy.Scope, listID, signupID string) error {
+func (e *storeEnv) withdraw(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	listID, signupID string,
+) (*Signup, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.Withdraw(tb.Context(), tx, scope, listID, signupID)
+	var withdrawn *Signup
+
+	err := e.inTx(tb, func(tx database.Tx) (withdrawErr error) {
+		withdrawn, withdrawErr = store.Withdraw(tb.Context(), tx, scope, listID, signupID)
+
+		return withdrawErr
 	})
+
+	return withdrawn, err
 }
 
-func (e *storeEnv) archiveSignup(tb testing.TB, store *SQLStore, scope tenancy.Scope, listID, signupID string) error {
+func (e *storeEnv) archiveSignup(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	listID, signupID string,
+) (*Signup, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ArchiveSignup(tb.Context(), tx, scope, listID, signupID)
+	var archived *Signup
+
+	err := e.inTx(tb, func(tx database.Tx) (archiveErr error) {
+		archived, archiveErr = store.ArchiveSignup(tb.Context(), tx, scope, listID, signupID)
+
+		return archiveErr
 	})
+
+	return archived, err
 }
 
 // openList is a list that is still taking signups at testNow.
@@ -283,6 +361,77 @@ func mustJoin(
 	must.NotNil(tb, joined)
 
 	return joined
+}
+
+// refused reports only the error half of a write's answer.
+//
+// It is for the cases whose subject is the refusal itself, where naming the row
+// would mean a blank identifier on every line. That the row is nil whenever the
+// error is not is a claim about all nine writes rather than about any one case,
+// so it is asserted once — see TestSQLStore_RefusedWritesAnswerWithNoRow.
+func refused[T any](_ *T, err error) error { return err }
+
+// mustArchiveList and mustArchiveSignup retire a row in a transaction of their
+// own and fail the test if it will not go, handing back the row the write hid.
+func mustArchiveList(tb testing.TB, e *storeEnv, store *SQLStore, scope tenancy.Scope, listID string) *List {
+	tb.Helper()
+
+	archived, err := e.archiveList(tb, store, scope, listID)
+	must.NoError(tb, err)
+	must.NotNil(tb, archived)
+
+	return archived
+}
+
+func mustArchiveSignup(
+	tb testing.TB,
+	e *storeEnv,
+	store *SQLStore,
+	scope tenancy.Scope,
+	listID, signupID string,
+) *Signup {
+	tb.Helper()
+
+	archived, err := e.archiveSignup(tb, store, scope, listID, signupID)
+	must.NoError(tb, err)
+	must.NotNil(tb, archived)
+
+	return archived
+}
+
+// mustInvite and mustWithdraw move a signup in a transaction of its own and fail
+// the test if the move will not go through. They are the fixture forms, for the
+// cases whose subject is what happens *after* the move.
+func mustInvite(
+	tb testing.TB,
+	e *storeEnv,
+	store *SQLStore,
+	scope tenancy.Scope,
+	listID, signupID string,
+) *Signup {
+	tb.Helper()
+
+	invited, err := e.invite(tb, store, scope, listID, signupID)
+	must.NoError(tb, err)
+	must.NotNil(tb, invited)
+
+	return invited
+}
+
+func mustWithdraw(
+	tb testing.TB,
+	e *storeEnv,
+	store *SQLStore,
+	scope tenancy.Scope,
+	listID, signupID string,
+) *Signup {
+	tb.Helper()
+
+	withdrawn, err := e.withdraw(tb, store, scope, listID, signupID)
+	must.NoError(tb, err)
+	must.NotNil(tb, withdrawn)
+
+	return withdrawn
 }
 
 // stubClock is a manually advanced clock parked at testNow.

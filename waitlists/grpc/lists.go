@@ -19,10 +19,10 @@ import (
 // The writes open their own transaction with Client.WithTransaction, because
 // waitlists.Store's writes take a database.Tx and an RPC handler is precisely
 // the caller that method's documentation describes: one with nothing of its own
-// to join. The two that revise a row read it back inside that transaction, which
-// is what the Store's reads taking an executor rather than a reader is for — the
-// read sees the write it follows, and the response carries the timestamps the
-// database stamped rather than the ones the request sent.
+// to join. Each of the three answers with the row the store handed it, read on
+// that transaction by the store itself — so the response carries the timestamps
+// the database stamped rather than the ones the request sent, and this package
+// makes no read of its own to get them.
 //
 // None of them switches on a sentinel: the error goes through
 // grpcerrors.PrepareAndLogGRPCStatus with codes.Internal as the *default*, and
@@ -191,9 +191,9 @@ func (s *Server) ListOpenLists(
 // UpdateList rewrites a list's name, description and closing time.
 //
 // It answers with the list as stored rather than with the list it was sent,
-// which is the reason the read is inside the transaction: last_updated_at is the
-// database's, and a response echoing the request would be telling a console the
-// row still says what it said before this call.
+// which is the store's own read-back inside the write's transaction:
+// last_updated_at is the database's, and a response echoing the request would be
+// telling a console the row still says what it said before this call.
 //
 // It will not revive an archived list, and it is not guarded against the signups
 // already on one: a list closed early keeps everybody who joined while it was
@@ -219,19 +219,15 @@ func (s *Server) UpdateList(
 
 	req.op.Set(listKey, list.ID)
 
-	updated := list
+	var updated *waitlists.List
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		if updateErr := s.store.UpdateList(ctx, tx, req.scope, list); updateErr != nil {
+		stored, updateErr := s.store.UpdateList(ctx, tx, req.scope, list)
+		if updateErr != nil {
 			return updateErr
 		}
 
-		read, readErr := s.store.GetList(ctx, tx, req.scope, list.ID)
-		if readErr != nil {
-			return readErr
-		}
-
-		updated = read
+		updated = stored
 
 		return nil
 	}); err != nil {
@@ -249,6 +245,12 @@ func (s *Server) UpdateList(
 // The signups against it are left alone and stay readable, because archiving is
 // not erasure. What it does do is close the list to new signups immediately,
 // whatever its closing time says.
+//
+// The response carries nothing, and the store's answer is dropped on purpose. A
+// retired list is a row an operator has just asked to stop seeing, and the
+// console that sent this already holds everything the row says; what the store
+// hands back is there for the consumer writing an audit entry beside the call,
+// which is not this surface — see waitlists.ListStore.ArchiveList.
 func (s *Server) ArchiveList(
 	ctx context.Context,
 	request *waitlistspb.ArchiveListRequest,
@@ -264,7 +266,9 @@ func (s *Server) ArchiveList(
 	req.op.Set(listKey, id)
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.store.ArchiveList(ctx, tx, req.scope, id)
+		_, archiveErr := s.store.ArchiveList(ctx, tx, req.scope, id)
+
+		return archiveErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "archiving waitlist %q", id)

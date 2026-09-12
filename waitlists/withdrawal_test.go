@@ -37,7 +37,19 @@ func runWithdrawalSuite(t *testing.T, env *storeEnv) {
 			})
 
 			c.advance(time.Hour)
-			must.NoError(t, env.withdraw(t, store, testScope, list.ID, signup.ID))
+
+			withdrawn, err := env.withdraw(t, store, testScope, list.ID, signup.ID)
+			must.NoError(t, err)
+			must.NotNil(t, withdrawn)
+
+			// The write answers with the row as it stood *before* the blanking,
+			// which is the whole reason it answers at all: these three values
+			// are the ones a consumer's record of who left is written from, and
+			// they do not exist anywhere by the time the call returns.
+			test.EqOp(t, "ada@example.com", withdrawn.Contact)
+			test.EqOp(t, "met at the conference", withdrawn.Notes)
+			test.EqOp(t, testSubject, withdrawn.Subject)
+			test.EqOp(t, StatusWaiting, withdrawn.Status)
 
 			read, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, signup.ID)
 			must.NoError(t, err)
@@ -62,7 +74,7 @@ func runWithdrawalSuite(t *testing.T, env *storeEnv) {
 			list := mustCreateList(t, env, store, testScope, openList("Launch"))
 			signup := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "Ada@Example.com"})
 
-			must.NoError(t, env.withdraw(t, store, testScope, list.ID, signup.ID))
+			mustWithdraw(t, env, store, testScope, list.ID, signup.ID)
 
 			// The failure a hand-rolled table has: delete the row and the next
 			// form submission re-subscribes whoever asked to be left alone.
@@ -84,7 +96,7 @@ func runWithdrawalSuite(t *testing.T, env *storeEnv) {
 			second := mustCreateList(t, env, store, testScope, openList("second"))
 
 			signup := mustJoin(t, env, store, testScope, first.ID, &Signup{Contact: "ada@example.com"})
-			must.NoError(t, env.withdraw(t, store, testScope, first.ID, signup.ID))
+			mustWithdraw(t, env, store, testScope, first.ID, signup.ID)
 
 			// Coming off one list is not coming off every list. The uniqueness
 			// and the suppression are both keyed on (scope, list, digest).
@@ -102,7 +114,7 @@ func runWithdrawalSuite(t *testing.T, env *storeEnv) {
 				Subject: testSubject,
 			})
 
-			must.NoError(t, env.withdraw(t, store, testScope, list.ID, signup.ID))
+			mustWithdraw(t, env, store, testScope, list.ID, signup.ID)
 
 			// The subject reference goes with the contact, so the row that
 			// remembers a suppression no longer says whose it was.
@@ -119,17 +131,23 @@ func runWithdrawalSuite(t *testing.T, env *storeEnv) {
 			list := mustCreateList(t, env, store, testScope, openList("Launch"))
 
 			invited := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "invited@example.com"})
-			must.NoError(t, env.invite(t, store, testScope, list.ID, invited.ID))
-			must.NoError(t, env.withdraw(t, store, testScope, list.ID, invited.ID))
+			mustInvite(t, env, store, testScope, list.ID, invited.ID)
+
+			leftInvited := mustWithdraw(t, env, store, testScope, list.ID, invited.ID)
+			test.EqOp(t, StatusInvited, leftInvited.Status)
 
 			converted := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "converted@example.com"})
-			must.NoError(t, env.invite(t, store, testScope, list.ID, converted.ID))
-			must.NoError(t, env.convert(t, store, testScope, list.ID, converted.ID))
+			mustInvite(t, env, store, testScope, list.ID, converted.ID)
+
+			_, err := env.convert(t, store, testScope, list.ID, converted.ID)
+			must.NoError(t, err)
 
 			// Somebody who took the invitation up may still ask to stop hearing
 			// from the list, so the withdrawal is guarded on not-yet-withdrawn
-			// rather than on any particular status.
-			must.NoError(t, env.withdraw(t, store, testScope, list.ID, converted.ID))
+			// rather than on any particular status. The row each one answers
+			// with says which status they were in when they left.
+			leftConverted := mustWithdraw(t, env, store, testScope, list.ID, converted.ID)
+			test.EqOp(t, StatusConverted, leftConverted.Status)
 		})
 
 		T.Run("a replay reports rather than restamping", func(t *testing.T) {
@@ -141,14 +159,19 @@ func runWithdrawalSuite(t *testing.T, env *storeEnv) {
 			list := mustCreateList(t, env, store, testScope, openList("Launch"))
 			signup := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
 
-			must.NoError(t, env.withdraw(t, store, testScope, list.ID, signup.ID))
+			mustWithdraw(t, env, store, testScope, list.ID, signup.ID)
 
 			first, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, signup.ID)
 			must.NoError(t, err)
 			must.NotNil(t, first.StatusChangedAt)
 
 			c.advance(24 * time.Hour)
-			test.ErrorIs(t, env.withdraw(t, store, testScope, list.ID, signup.ID), ErrAlreadyWithdrawn)
+
+			// The read this write makes in front of itself decides nothing: the
+			// row is there and readable, and it is the guarded statement's own
+			// count that refuses the replay.
+			test.ErrorIs(t, refused(env.withdraw(t, store, testScope, list.ID, signup.ID)),
+				ErrAlreadyWithdrawn)
 
 			// The moment somebody asked to come off a list is a fact about
 			// them, and a second request must not move it.
@@ -167,8 +190,8 @@ func runWithdrawalSuite(t *testing.T, env *storeEnv) {
 			other := mustCreateList(t, env, store, testScope, openList("other"))
 			signup := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
 
-			test.ErrorIs(t, env.withdraw(t, store, otherScope, list.ID, signup.ID), ErrSignupNotFound)
-			test.ErrorIs(t, env.withdraw(t, store, testScope, other.ID, signup.ID), ErrSignupNotFound)
+			test.ErrorIs(t, refused(env.withdraw(t, store, otherScope, list.ID, signup.ID)), ErrSignupNotFound)
+			test.ErrorIs(t, refused(env.withdraw(t, store, testScope, other.ID, signup.ID)), ErrSignupNotFound)
 		})
 
 		T.Run("outlives the list closing", func(t *testing.T) {
@@ -185,7 +208,7 @@ func runWithdrawalSuite(t *testing.T, env *storeEnv) {
 			// A closed list still lets somebody leave it. Nothing about the
 			// withdrawal reads the list, which is deliberate: an obligation
 			// that expired with the list would be an obligation.
-			must.NoError(t, env.withdraw(t, store, testScope, list.ID, signup.ID))
+			mustWithdraw(t, env, store, testScope, list.ID, signup.ID)
 		})
 	})
 
@@ -205,7 +228,7 @@ func runWithdrawalSuite(t *testing.T, env *storeEnv) {
 				Subject: testSubject,
 			})
 			retired := mustJoin(t, env, store, testScope, second.ID, &Signup{Contact: "ada@example.com", Subject: testSubject})
-			must.NoError(t, env.archiveSignup(t, store, testScope, second.ID, retired.ID))
+			mustArchiveSignup(t, env, store, testScope, second.ID, retired.ID)
 
 			// Two rows the erasure must leave alone: somebody else's, and one
 			// naming nobody — which is the row a predicate bound to the empty

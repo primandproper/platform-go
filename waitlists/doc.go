@@ -29,12 +29,21 @@ them with a lifecycle of their own.
 		}
 
 		// When it is their turn, and when they ask to come off it, in the
-		// transaction that records who did either.
-		if err = store.Invite(ctx, tx, tenancy.Global(), list.ID, signup.ID); err != nil {
-			return err
+		// transaction that records who did either. Each hands back the signup
+		// it moved — and the withdrawal's is the row from before it blanked
+		// the contact, which is the only place that address still exists.
+		if _, inviteErr := store.Invite(ctx, tx, tenancy.Global(), list.ID, signup.ID); inviteErr != nil {
+			return inviteErr
 		}
 
-		return store.Withdraw(ctx, tx, tenancy.Global(), list.ID, signup.ID)
+		left, withdrawErr := store.Withdraw(ctx, tx, tenancy.Global(), list.ID, signup.ID)
+		if withdrawErr != nil {
+			return withdrawErr
+		}
+
+		// left.Contact is the address, still there: the row in the table no
+		// longer holds it.
+		return audit.Record(ctx, tx, "waitlist.withdrawn", left.Contact)
 	})
 
 	// Reads take the wider executor: an ordinary one runs off the client, and
@@ -101,6 +110,13 @@ reports [ErrSignupNotFound], one in another status reports [ErrWrongStatus]
 naming it, and a second withdrawal reports [ErrAlreadyWithdrawn]. That read costs
 a round trip nobody is waiting on.
 
+The winning path makes one too, and it is the signup the move answers with.
+[Signup.StatusChangedAt] is stamped from the store's clock, which is the one
+value on the row a caller cannot name — and it is the instant a reminder is
+scheduled off — so a transition that reported only an error left "when" to be
+reconstructed by reading the row again. A refused move answers with a nil signup;
+the row comes back only beside a nil error, so the count still decides.
+
 # Archiving is not withdrawing
 
 Both hide a signup, and they are not interchangeable, so the store offers both
@@ -116,6 +132,14 @@ uniqueness still covers the row — so the next signup from that address gets
 about them and keeps the suppression. Somebody clicking "unsubscribe" wants this
 one, and a consumer that reaches for the archive instead has written the bug this
 package exists to prevent.
+
+Both answer with a row, and the two are read at opposite ends of their write.
+[SignupStore.ArchiveSignup] reads afterwards, through a statement written to see
+a hidden row, because every single-row read here excludes archived ones.
+[SignupStore.Withdraw] reads *before*, because afterwards the values a consumer's
+own record needs — the address, the notes, the subject — are no longer on the
+row. That ordering is the whole reason the withdrawal returns anything; see
+[Store].
 
 # Every write takes the caller's transaction, and every read an executor
 

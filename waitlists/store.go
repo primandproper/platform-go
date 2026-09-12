@@ -65,6 +65,41 @@ import (
 // transaction sees it. The signups counter is fed when the statement lands,
 // which is before the caller commits — see SQLStore.countSignups.
 //
+// # Nine writes answer with the row they wrote
+//
+// Every write here but one hands back a row: the two creates, the two updates,
+// the two transitions, the withdrawal and the two retirements. None of them
+// touches the value it was handed — mutating the argument and returning deliver
+// the same guarantee, and returning is the one spelling available to a write
+// addressed by an id rather than by an entity, so it is the one this module
+// uses.
+//
+// What they have in common is that the answer is not something the caller could
+// have assembled. A create settles an id and a creation time the database
+// stamped. An update leaves the columns it deliberately does not assign, and
+// last_updated_at is the database's. A transition stamps StatusChangedAt from
+// this Store's clock, which is the one value on the row a caller cannot name and
+// is the instant a consumer schedules a reminder off. A retirement puts the row
+// beyond every single-row read here, so the moment it returns is the last one at
+// which anything answers for it by its id.
+//
+// Withdraw is the sharpest case and the one that decided the shape. It blanks
+// the contact, the notes and the subject reference, so a read afterwards answers
+// with a status and a digest and nothing else — the row it hands back is
+// therefore the row as it stood *before* the statement, read on the same
+// transaction immediately in front of it. That is the only moment at which the
+// values a consumer's own record needs still exist.
+//
+// A refused write answers with a nil row. The sentinels are unchanged and none
+// of them arrives beside a value: the row comes back only alongside a nil error,
+// so a guarded transition that matched nothing still reports ErrWrongStatus,
+// ErrAlreadyWithdrawn or ErrSignupNotFound and hands back nothing.
+//
+// WithdrawSignupsForSubject is the one write that could answer with what it
+// erased and does not. It reports how many rows went, because the rows are the
+// subject's own data — the address and the account reference — and handing them
+// back would be handing back exactly what the erasure exists to remove.
+//
 // # The scope is an argument, including where a whole entity carries one
 //
 // CreateList, UpdateList and Join take both a tenancy.Scope and a value with a
@@ -119,20 +154,31 @@ type ListStore interface {
 	ListOpenLists(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[List], error)
 
 	// UpdateList rewrites a list's name, description and closing time, in the
-	// caller's transaction.
+	// caller's transaction, and answers with the list as stored.
 	//
 	// Moving the closing time is how a list is extended or brought in, and it
 	// is not guarded against the signups already on it: a list closed early
 	// keeps everybody who joined while it was open, and reopening one lets the
 	// next person through. What it will not do is revive an archived list.
-	UpdateList(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *List) error
+	//
+	// The List passed in is read and not written to. The row that comes back
+	// carries the creation time and the last-updated stamp, both of which are
+	// the database's rather than anything the caller assembled — see Store.
+	UpdateList(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *List) (*List, error)
 
-	// ArchiveList retires a list, in the caller's transaction.
+	// ArchiveList retires a list, in the caller's transaction, and answers with
+	// the list it retired.
 	//
 	// The signups against it are left alone and stay readable, because archiving
 	// is not erasure. What it does do is close the list to new signups
 	// immediately, whatever its closing time says — see List.OpenAt.
-	ArchiveList(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) error
+	//
+	// The list it hands back is the last thing here that answers for that row by
+	// its id. GetList excludes archived lists, as every single-row read here
+	// does, so once this commits the only way back to the name the surviving
+	// signups were queueing for is to page the whole catalog with the filter's
+	// IncludeArchived set.
+	ArchiveList(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) (*List, error)
 }
 
 // SignupStore is the queue: who is on a list, where they stand, and what
@@ -196,29 +242,44 @@ type SignupStore interface {
 	ListSignupsForSubject(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subject Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Signup], error)
 
 	// UpdateSignupNotes rewrites the operator's note against a signup, in the
-	// caller's transaction.
+	// caller's transaction, and answers with the signup as stored.
 	//
 	// It is the one write that touches a signup without moving it, and it
 	// deliberately leaves StatusChangedAt alone — a typo fixed in a note must
-	// not reschedule the reminder somebody's invitation started.
-	UpdateSignupNotes(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID, signupID, notes string) error
+	// not reschedule the reminder somebody's invitation started. The row it
+	// hands back is what shows that: the note is the new one and the status pair
+	// is where it was.
+	UpdateSignupNotes(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		listID, signupID, notes string,
+	) (*Signup, error)
 
 	// Invite moves a waiting signup to invited and stamps the moment, in the
 	// caller's transaction — so the invitation and the record of who sent it
-	// land together or not at all.
+	// land together or not at all — and answers with the signup it moved.
 	//
 	// It refuses anything that is not waiting with ErrWrongStatus, and the
 	// refusal is the affected-row count of a guarded update rather than a
 	// decision made on a read — so two requests inviting the same person send
-	// one email between them.
-	Invite(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID, signupID string) error
+	// one email between them. A refused move answers with a nil signup; the row
+	// comes back only beside a nil error.
+	//
+	// That row is what the invitation is actually sent from. It carries the
+	// contact to write to and the StatusChangedAt this statement stamped, which
+	// is the instant a reminder is scheduled off and is read from this Store's
+	// clock rather than from anything the caller holds.
+	Invite(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID, signupID string) (*Signup, error)
 
 	// Convert moves an invited signup to converted and stamps the moment, in the
 	// caller's transaction — which is the ordinary one, since what somebody
-	// converted into is a row of the caller's written in the same transaction.
+	// converted into is a row of the caller's written in the same transaction —
+	// and answers with the signup it moved.
+	//
 	// It refuses anything that is not invited with ErrWrongStatus, guarded the
-	// same way Invite is.
-	Convert(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID, signupID string) error
+	// same way Invite is, and hands back the row for the same reason.
+	Convert(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID, signupID string) (*Signup, error)
 
 	// Withdraw takes somebody off the list at their own request, in the caller's
 	// transaction, and erases what the row said about them.
@@ -229,7 +290,18 @@ type SignupStore interface {
 	// somebody who asked to be left alone. It moves a signup in any status; a
 	// second call reports ErrAlreadyWithdrawn rather than restamping the moment
 	// they left.
-	Withdraw(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID, signupID string) error
+	//
+	// The signup it answers with is the row **as it stood before the blanking**,
+	// read on the caller's transaction immediately before the statement. That is
+	// deliberate and is the reason this write returns anything at all: a
+	// post-blank row is a status and a digest, so a consumer recording who came
+	// off which list would be recording nothing. A caller wanting to see what is
+	// left instead reads the signup afterwards, which GetSignup still reaches.
+	//
+	// Nothing is decided on that read. The guarded update's own count still
+	// refuses a row that has already been withdrawn or has moved out from under
+	// this caller, so the signup comes back only beside a nil error.
+	Withdraw(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID, signupID string) (*Signup, error)
 
 	// WithdrawSignupsForSubject withdraws every signup one principal holds in
 	// the scope — archived signups included — and reports how many that was.
@@ -253,7 +325,7 @@ type SignupStore interface {
 	WithdrawSignupsForSubject(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject Subject) (int64, error)
 
 	// ArchiveSignup retires a signup administratively, in the caller's
-	// transaction.
+	// transaction, and answers with the row it hid.
 	//
 	// It is not a withdrawal and must not be used as one: it hides the row from
 	// every read that does not ask for archived rows and changes nothing about
@@ -261,5 +333,17 @@ type SignupStore interface {
 	// a re-signup — the uniqueness covers archived rows, so what the next
 	// attempt gets is ErrAlreadySignedUp. Somebody asking to come off a list
 	// wants Withdraw.
-	ArchiveSignup(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID, signupID string) error
+	//
+	// The row it hands back is read through a statement of its own, because
+	// GetSignup is written not to see it, as every single-row read here is. What
+	// is left afterwards is a page: ListSignups and ListSignupsForSubject reach
+	// an archived signup with the filter's IncludeArchived set, and the second of
+	// those reaches nothing for a signup naming no subject, which is what a
+	// public form produces.
+	ArchiveSignup(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		listID, signupID string,
+	) (*Signup, error)
 }
