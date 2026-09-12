@@ -17,6 +17,11 @@ import (
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
+	"github.com/primandproper/platform-go/v14/links"
+	linkscfg "github.com/primandproper/platform-go/v14/links/config"
+	linksdatabase "github.com/primandproper/platform-go/v14/links/database"
+	"github.com/primandproper/platform-go/v14/mediaregistry"
+	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
 	"github.com/primandproper/platform-go/v14/notifications"
 	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
 	"github.com/primandproper/platform-go/v14/retention"
@@ -61,8 +66,8 @@ func sqliteDatabase(t *testing.T) *databasecfg.Config {
 }
 
 // TestRegisterStores covers the subsystems the composition root reached last:
-// the identity, issue report, comment, settings, notifications and waitlist
-// stores, and the retention sweeper.
+// the identity, issue report, comment, settings, notifications, waitlist and
+// media registry stores, the links minter, and the retention sweeper.
 //
 // The reflection-driven tests above already assert that a field on Config is
 // validated and registers something. What they cannot say is that what it
@@ -83,6 +88,19 @@ func TestRegisterStores(T *testing.T) {
 			Settings:      &settingscfg.Config{TablePrefix: storePrefix},
 			Notifications: &notificationscfg.Config{TablePrefix: storePrefix},
 			Waitlists:     &waitlistscfg.Config{TablePrefix: storePrefix},
+			MediaRegistry: &mediaregistrycfg.Config{TablePrefix: storePrefix},
+			Links: &linkscfg.Config{
+				Database: linksdatabase.Config{TablePrefix: storePrefix},
+				// A minter with an empty registry mints nothing, so the
+				// constructor refuses one — which makes an action the links
+				// entry's equivalent of the comment store's Targets below, and
+				// the reason Config.Actions carries no env tag: where a
+				// magic-login link points and how long it lives is a policy
+				// written in a file somebody reviews.
+				Actions: map[links.Action]links.ActionPolicy{
+					"magic_login": {URL: "https://example.com/auth/magic/{token}", TTL: 15 * time.Minute},
+				},
+			},
 		}
 		must.NoError(t, cfg.ValidateWithContext(t.Context()))
 
@@ -112,6 +130,17 @@ func TestRegisterStores(T *testing.T) {
 		waitlistStore, err := do.Invoke[waitlists.Store](i)
 		must.NoError(t, err)
 		test.NotNil(t, waitlistStore)
+
+		mediaStore, err := do.Invoke[mediaregistry.Store](i)
+		must.NoError(t, err)
+		test.NotNil(t, mediaStore)
+
+		// The minter rather than a store, because that is what the bridge
+		// registers: the table is behind it, and so is the sweeper an
+		// unconfigured interval starts.
+		minter, err := do.Invoke[*links.Minter](i)
+		must.NoError(t, err)
+		test.NotNil(t, minter)
 
 		// The notifications store is registered under four keys, and the two
 		// halves are narrowings of the one notifications.Store registration
