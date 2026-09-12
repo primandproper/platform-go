@@ -3,6 +3,7 @@ package signin_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -15,6 +16,36 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// TestDirectory_MethodCount holds Directory's documentation to the interface it
+// documents.
+//
+// That comment tells a consumer whose directory is not identity's schema how
+// many methods they are signing up to implement, and it said nine while the
+// interface had seven: the number was written when the interface was a
+// different size and stayed when the interface changed. A count written in
+// prose beside a type that can grow is a count that drifts, and nothing says so
+// — so the number is pinned here, where growing the interface without revisiting
+// the sentence is a failing test rather than a consumer's surprise.
+//
+// The split is pinned as well as the total, because the sentence enumerates the
+// methods in two groups — the reads identity.SignInReader already declares, and
+// the credential read and the three writes this interface adds — and a method
+// moving between the groups leaves the total right and the enumeration wrong.
+func TestDirectory_MethodCount(T *testing.T) {
+	T.Parallel()
+
+	directory := reflect.TypeFor[signin.Directory]()
+	inherited := reflect.TypeFor[identity.SignInReader]()
+
+	test.EqOp(T, 7, directory.NumMethod())
+	test.EqOp(T, 3, inherited.NumMethod())
+
+	for method := range inherited.Methods() {
+		_, ok := directory.MethodByName(method.Name)
+		test.True(T, ok, test.Sprintf("Directory no longer carries SignInReader.%s", method.Name))
+	}
+}
 
 func TestNewService(T *testing.T) {
 	T.Parallel()
