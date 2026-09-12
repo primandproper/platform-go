@@ -157,6 +157,42 @@ SELECT
 FROM waitlist_signups
 WHERE waitlist_signups.id = sqlc.arg(id);
 
+-- name: GetArchivedList :one
+SELECT
+	waitlists.id,
+	waitlists.scope,
+	waitlists.name,
+	waitlists.description,
+	waitlists.closes_at,
+	waitlists.created_at,
+	waitlists.last_updated_at,
+	waitlists.archived_at
+FROM waitlists
+WHERE waitlists.id = sqlc.arg(id)
+	AND waitlists.scope = sqlc.arg(scope)
+	AND waitlists.archived_at IS NOT NULL;
+
+-- name: GetArchivedSignup :one
+SELECT
+	waitlist_signups.id,
+	waitlist_signups.scope,
+	waitlist_signups.waitlist_id,
+	waitlist_signups.contact,
+	waitlist_signups.contact_digest,
+	waitlist_signups.subject_type,
+	waitlist_signups.subject_id,
+	waitlist_signups.notes,
+	waitlist_signups.status,
+	waitlist_signups.status_changed_at,
+	waitlist_signups.created_at,
+	waitlist_signups.last_updated_at,
+	waitlist_signups.archived_at
+FROM waitlist_signups
+WHERE waitlist_signups.id = sqlc.arg(id)
+	AND waitlist_signups.scope = sqlc.arg(scope)
+	AND waitlist_signups.waitlist_id = sqlc.arg(waitlist_id)
+	AND waitlist_signups.archived_at IS NOT NULL;
+
 -- name: ListOpenLists :many
 SELECT
 	waitlists.id,

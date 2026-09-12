@@ -161,6 +161,22 @@ func listFromRow(r *waitlistsdb.GetListRow) *List {
 	}
 }
 
+// listFromArchivedRow converts the retirement's read-back, which with its signup
+// counterpart is the one place in this file that casts rather than restating
+// itself.
+//
+// It is sortedRows' reason rather than an exception to the preamble's rule.
+// GetArchivedList projects the same list GetList does — Lists.Columns, in that
+// order — and differs from it only in which rows it will look at, so the two row
+// types are one projection rendered twice. The conversion is therefore the
+// assertion: the day the two projections stop agreeing, in field name, type or
+// order, this stops building rather than filling the wrong fields.
+func listFromArchivedRow(r *waitlistsdb.GetArchivedListRow) *List {
+	row := waitlistsdb.GetListRow(*r)
+
+	return listFromRow(&row)
+}
+
 func listPageRow(r *waitlistsdb.ListListsRow) pageRow[List] {
 	return pageRow[List]{
 		value: &List{
@@ -267,6 +283,16 @@ func signupFromRow(r *waitlistsdb.GetSignupRow) *Signup {
 		LastUpdatedAt:   utcPtr(r.LastUpdatedAt),
 		ArchivedAt:      utcPtr(r.ArchivedAt),
 	}
+}
+
+// signupFromArchivedRow converts the archive's read-back. It casts for the
+// reason listFromArchivedRow casts: GetArchivedSignup projects Signups.Columns
+// in the order GetSignup projects them, so the two row types are one projection
+// rendered twice and the conversion is what checks that they still are.
+func signupFromArchivedRow(r *waitlistsdb.GetArchivedSignupRow) *Signup {
+	row := waitlistsdb.GetSignupRow(*r)
+
+	return signupFromRow(&row)
 }
 
 func signupFromDigestRow(r *waitlistsdb.GetSignupByContactDigestRow) *Signup {

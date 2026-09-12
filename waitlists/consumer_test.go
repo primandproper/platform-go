@@ -120,15 +120,24 @@ func (a *consumerAdapter) CreateWaitlist(
 	return created, err
 }
 
+// The four writes below drop the row the store answers with, because the
+// consumer's own method reports an error and nothing else. That is the shape
+// being ported to rather than a recommendation: what these returns buy is the
+// read the consumer makes before each of them, which an adapter faithful to the
+// old signature has nowhere to put.
 func (a *consumerAdapter) UpdateWaitlist(ctx context.Context, waitlist *waitlists.List) error {
 	return a.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return a.store.UpdateList(ctx, tx, a.scope, waitlist)
+		_, err := a.store.UpdateList(ctx, tx, a.scope, waitlist)
+
+		return err
 	})
 }
 
 func (a *consumerAdapter) ArchiveWaitlist(ctx context.Context, waitlistID string) error {
 	return a.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return a.store.ArchiveList(ctx, tx, a.scope, waitlistID)
+		_, err := a.store.ArchiveList(ctx, tx, a.scope, waitlistID)
+
+		return err
 	})
 }
 
@@ -181,13 +190,17 @@ func (a *consumerAdapter) CreateWaitlistSignup(
 
 func (a *consumerAdapter) UpdateWaitlistSignup(ctx context.Context, waitlistID, waitlistSignupID, notes string) error {
 	return a.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return a.store.UpdateSignupNotes(ctx, tx, a.scope, waitlistID, waitlistSignupID, notes)
+		_, err := a.store.UpdateSignupNotes(ctx, tx, a.scope, waitlistID, waitlistSignupID, notes)
+
+		return err
 	})
 }
 
 func (a *consumerAdapter) ArchiveWaitlistSignup(ctx context.Context, waitlistID, waitlistSignupID string) error {
 	return a.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return a.store.ArchiveSignup(ctx, tx, a.scope, waitlistID, waitlistSignupID)
+		_, err := a.store.ArchiveSignup(ctx, tx, a.scope, waitlistID, waitlistSignupID)
+
+		return err
 	})
 }
 
@@ -256,14 +269,31 @@ func TestConsumerOperationsAreExpressible(t *testing.T) {
 	must.NoError(t, err)
 
 	must.NoError(t, repo.client.WithTransaction(ctx, func(tx database.Tx) error {
-		if err = repo.store.Invite(ctx, tx, repo.scope, second.ID, joined.ID); err != nil {
-			return err
+		invited, inviteErr := repo.store.Invite(ctx, tx, repo.scope, second.ID, joined.ID)
+		if inviteErr != nil {
+			return inviteErr
 		}
 
-		if err = repo.store.Convert(ctx, tx, repo.scope, second.ID, joined.ID); err != nil {
-			return err
+		// The read the consumer makes before each of these is what the returns
+		// replace: the address to write to and the moment the move happened are
+		// on what came back, so nothing here has to go and look for them.
+		test.EqOp(t, "grace@example.com", invited.Contact)
+		test.NotNil(t, invited.StatusChangedAt)
+
+		if _, convertErr := repo.store.Convert(ctx, tx, repo.scope, second.ID, joined.ID); convertErr != nil {
+			return convertErr
 		}
 
-		return repo.store.Withdraw(ctx, tx, repo.scope, second.ID, joined.ID)
+		withdrawn, withdrawErr := repo.store.Withdraw(ctx, tx, repo.scope, second.ID, joined.ID)
+		if withdrawErr != nil {
+			return withdrawErr
+		}
+
+		// And the withdrawal's row is the one from before the blanking, which
+		// is the only place the address it was about still exists.
+		test.EqOp(t, "grace@example.com", withdrawn.Contact)
+		test.EqOp(t, waitlists.StatusConverted, withdrawn.Status)
+
+		return nil
 	}))
 }

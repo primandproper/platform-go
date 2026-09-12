@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/cryptography/hashing"
 	"github.com/primandproper/primitives-go/v2/cryptography/hashing/sha512"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -29,6 +30,74 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 	runSignupSuite(t, env)
 	runWithdrawalSuite(t, env)
 	runTransactionSuite(t, env)
+}
+
+// TestSQLStore_RefusedWritesAnswerWithNoRow is the claim the `refused` helper
+// rests on, made once for all nine writes rather than at each of the fifty-odd
+// places a refusal is asserted.
+//
+// Every write here answers with a row *and* an error, and the pairing is the
+// part a caller has to be able to rely on: a row beside a non-nil error is a
+// value that looks readable and describes a write that did not happen. The
+// refusals below are each a different shape of miss — a nil argument, a wrong
+// tenant, a guard that was not satisfied, a row that is not there — so what is
+// pinned is the pairing rather than one path through it.
+func TestSQLStore_RefusedWritesAnswerWithNoRow(T *testing.T) {
+	T.Parallel()
+
+	env := newSQLiteEnv(T)
+	store := env.newStore(T)
+
+	list := mustCreateList(T, env, store, testScope, openList("Launch"))
+	signup := mustJoin(T, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
+
+	T.Run("the catalog", func(t *testing.T) {
+		t.Parallel()
+
+		created, err := env.createList(t, store, testScope, nil)
+		test.Nil(t, created)
+		test.ErrorIs(t, err, ErrNilList)
+
+		updated, err := env.updateList(t, store, otherScope, &List{ID: list.ID, Name: "x", ClosesAt: testNow})
+		test.Nil(t, updated)
+		test.ErrorIs(t, err, ErrListNotFound)
+
+		archived, err := env.archiveList(t, store, otherScope, list.ID)
+		test.Nil(t, archived)
+		test.ErrorIs(t, err, ErrListNotFound)
+	})
+
+	T.Run("the queue", func(t *testing.T) {
+		t.Parallel()
+
+		joined, err := env.join(t, store, testScope, list.ID, nil)
+		test.Nil(t, joined)
+		test.ErrorIs(t, err, ErrNilSignup)
+
+		noted, err := env.updateNotes(t, store, testScope, list.ID, "sg_nope", "x")
+		test.Nil(t, noted)
+		test.ErrorIs(t, err, ErrSignupNotFound)
+
+		// The guard, rather than the row being absent: this signup is waiting,
+		// so the conversion is the move that is out of order.
+		converted, err := env.convert(t, store, testScope, list.ID, signup.ID)
+		test.Nil(t, converted)
+		test.ErrorIs(t, err, ErrWrongStatus)
+
+		invited, err := env.invite(t, store, otherScope, list.ID, signup.ID)
+		test.Nil(t, invited)
+		test.ErrorIs(t, err, ErrSignupNotFound)
+
+		// The withdrawal reads before it writes, so this is the one case where
+		// a row was in hand when the refusal was decided. It is not handed back.
+		withdrawn, err := env.withdraw(t, store, testScope, "wl_nope", signup.ID)
+		test.Nil(t, withdrawn)
+		test.ErrorIs(t, err, ErrSignupNotFound)
+
+		retired, err := env.archiveSignup(t, store, testScope, list.ID, "")
+		test.Nil(t, retired)
+		test.ErrorIs(t, err, platformerrors.ErrInvalidIDProvided)
+	})
 }
 
 func TestNewSQLStore(T *testing.T) {

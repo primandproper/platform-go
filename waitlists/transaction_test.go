@@ -95,8 +95,12 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		archived := mustJoin(t, env, store, testScope, renamed.ID, &Signup{Contact: "archived@example.com"})
 
 		var (
-			opened *List
-			joined *Signup
+			opened  *List
+			retired *List
+			joined  *Signup
+			noted   *Signup
+			left    *Signup
+			putAway *Signup
 		)
 
 		must.NoError(t, env.inTx(t, func(tx database.Tx) (err error) {
@@ -105,11 +109,11 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 			}
 
 			renamed.Name = "after"
-			if err = store.UpdateList(t.Context(), tx, testScope, renamed); err != nil {
+			if _, err = store.UpdateList(t.Context(), tx, testScope, renamed); err != nil {
 				return err
 			}
 
-			if err = store.ArchiveList(t.Context(), tx, testScope, doomed.ID); err != nil {
+			if retired, err = store.ArchiveList(t.Context(), tx, testScope, doomed.ID); err != nil {
 				return err
 			}
 
@@ -118,23 +122,26 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 				return err
 			}
 
-			if err = store.UpdateSignupNotes(t.Context(), tx, testScope, renamed.ID, joined.ID, "noted"); err != nil {
+			if noted, err = store.UpdateSignupNotes(
+				t.Context(), tx, testScope, renamed.ID, joined.ID, "noted"); err != nil {
 				return err
 			}
 
-			if err = store.Invite(t.Context(), tx, testScope, renamed.ID, converted.ID); err != nil {
+			if _, err = store.Invite(t.Context(), tx, testScope, renamed.ID, converted.ID); err != nil {
 				return err
 			}
 
-			if err = store.Convert(t.Context(), tx, testScope, renamed.ID, converted.ID); err != nil {
+			if _, err = store.Convert(t.Context(), tx, testScope, renamed.ID, converted.ID); err != nil {
 				return err
 			}
 
-			if err = store.Withdraw(t.Context(), tx, testScope, renamed.ID, withdrawn.ID); err != nil {
+			if left, err = store.Withdraw(t.Context(), tx, testScope, renamed.ID, withdrawn.ID); err != nil {
 				return err
 			}
 
-			return store.ArchiveSignup(t.Context(), tx, testScope, renamed.ID, archived.ID)
+			putAway, err = store.ArchiveSignup(t.Context(), tx, testScope, renamed.ID, archived.ID)
+
+			return err
 		}))
 
 		// The creates read their creation times back through the caller's
@@ -145,6 +152,21 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		test.False(t, opened.CreatedAt.IsZero())
 		must.NotNil(t, joined)
 		test.False(t, joined.CreatedAt.IsZero())
+
+		// And so do the seven that answer with a row. Each of these was read on
+		// the same transaction the write ran on — the two retirements through a
+		// statement written to see a hidden row, the withdrawal in front of the
+		// statement rather than behind it — so they describe rows nothing
+		// outside this transaction could see when they were read.
+		must.NotNil(t, retired)
+		test.NotNil(t, retired.ArchivedAt)
+		must.NotNil(t, noted)
+		test.EqOp(t, "noted", noted.Notes)
+		must.NotNil(t, left)
+		test.EqOp(t, "withdrawn@example.com", left.Contact)
+		must.NotNil(t, putAway)
+		test.EqOp(t, "archived@example.com", putAway.Contact)
+		test.NotNil(t, putAway.ArchivedAt)
 
 		list, err := store.GetList(t.Context(), env.reader(), testScope, opened.ID)
 		must.NoError(t, err)
@@ -202,11 +224,11 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 			edited := *kept
 			edited.Name = "the edit"
-			if err = store.UpdateList(t.Context(), tx, testScope, &edited); err != nil {
+			if _, err = store.UpdateList(t.Context(), tx, testScope, &edited); err != nil {
 				return err
 			}
 
-			if err = store.ArchiveList(t.Context(), tx, testScope, spared.ID); err != nil {
+			if _, err = store.ArchiveList(t.Context(), tx, testScope, spared.ID); err != nil {
 				return err
 			}
 
@@ -215,19 +237,20 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 				return err
 			}
 
-			if err = store.UpdateSignupNotes(t.Context(), tx, testScope, kept.ID, staying.ID, "the edit"); err != nil {
+			if _, err = store.UpdateSignupNotes(
+				t.Context(), tx, testScope, kept.ID, staying.ID, "the edit"); err != nil {
 				return err
 			}
 
-			if err = store.Invite(t.Context(), tx, testScope, kept.ID, waiting.ID); err != nil {
+			if _, err = store.Invite(t.Context(), tx, testScope, kept.ID, waiting.ID); err != nil {
 				return err
 			}
 
-			if err = store.Withdraw(t.Context(), tx, testScope, kept.ID, staying.ID); err != nil {
+			if _, err = store.Withdraw(t.Context(), tx, testScope, kept.ID, staying.ID); err != nil {
 				return err
 			}
 
-			if err = store.ArchiveSignup(t.Context(), tx, testScope, kept.ID, visible.ID); err != nil {
+			if _, err = store.ArchiveSignup(t.Context(), tx, testScope, kept.ID, visible.ID); err != nil {
 				return err
 			}
 
@@ -346,19 +369,19 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 				return err
 			}
 
-			convertedFirst = store.Convert(t.Context(), tx, testScope, list.ID, joined.ID)
+			_, convertedFirst = store.Convert(t.Context(), tx, testScope, list.ID, joined.ID)
 
-			if err = store.Invite(t.Context(), tx, testScope, list.ID, joined.ID); err != nil {
+			if _, err = store.Invite(t.Context(), tx, testScope, list.ID, joined.ID); err != nil {
 				return err
 			}
 
-			invitedTwice = store.Invite(t.Context(), tx, testScope, list.ID, joined.ID)
+			_, invitedTwice = store.Invite(t.Context(), tx, testScope, list.ID, joined.ID)
 
-			if err = store.Withdraw(t.Context(), tx, testScope, list.ID, joined.ID); err != nil {
+			if _, err = store.Withdraw(t.Context(), tx, testScope, list.ID, joined.ID); err != nil {
 				return err
 			}
 
-			withdrawnTwice = store.Withdraw(t.Context(), tx, testScope, list.ID, joined.ID)
+			_, withdrawnTwice = store.Withdraw(t.Context(), tx, testScope, list.ID, joined.ID)
 
 			return nil
 		}))
@@ -380,8 +403,10 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		_, err := store.CreateList(t.Context(), nil, testScope, openList("Launch"))
 		must.ErrorIs(t, err, ErrNilExecutor)
-		must.ErrorIs(t, store.UpdateList(t.Context(), nil, testScope, openList("Launch")), ErrNilExecutor)
-		must.ErrorIs(t, store.ArchiveList(t.Context(), nil, testScope, "wl_1"), ErrNilExecutor)
+		_, err = store.UpdateList(t.Context(), nil, testScope, openList("Launch"))
+		must.ErrorIs(t, err, ErrNilExecutor)
+		_, err = store.ArchiveList(t.Context(), nil, testScope, "wl_1")
+		must.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.GetList(t.Context(), nil, testScope, "wl_1")
 		must.ErrorIs(t, err, ErrNilExecutor)
@@ -392,11 +417,16 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 
 		_, err = store.Join(t.Context(), nil, testScope, "wl_1", &Signup{Contact: "ada@example.com"})
 		must.ErrorIs(t, err, ErrNilExecutor)
-		must.ErrorIs(t, store.UpdateSignupNotes(t.Context(), nil, testScope, "wl_1", "sg_1", "note"), ErrNilExecutor)
-		must.ErrorIs(t, store.Invite(t.Context(), nil, testScope, "wl_1", "sg_1"), ErrNilExecutor)
-		must.ErrorIs(t, store.Convert(t.Context(), nil, testScope, "wl_1", "sg_1"), ErrNilExecutor)
-		must.ErrorIs(t, store.Withdraw(t.Context(), nil, testScope, "wl_1", "sg_1"), ErrNilExecutor)
-		must.ErrorIs(t, store.ArchiveSignup(t.Context(), nil, testScope, "wl_1", "sg_1"), ErrNilExecutor)
+		_, err = store.UpdateSignupNotes(t.Context(), nil, testScope, "wl_1", "sg_1", "note")
+		must.ErrorIs(t, err, ErrNilExecutor)
+		_, err = store.Invite(t.Context(), nil, testScope, "wl_1", "sg_1")
+		must.ErrorIs(t, err, ErrNilExecutor)
+		_, err = store.Convert(t.Context(), nil, testScope, "wl_1", "sg_1")
+		must.ErrorIs(t, err, ErrNilExecutor)
+		_, err = store.Withdraw(t.Context(), nil, testScope, "wl_1", "sg_1")
+		must.ErrorIs(t, err, ErrNilExecutor)
+		_, err = store.ArchiveSignup(t.Context(), nil, testScope, "wl_1", "sg_1")
+		must.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.GetSignup(t.Context(), nil, testScope, "wl_1", "sg_1")
 		must.ErrorIs(t, err, ErrNilExecutor)

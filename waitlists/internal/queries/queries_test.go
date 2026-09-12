@@ -104,6 +104,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	want := []string{
 		"CreateList", "GetList", "ListLists", "ListListsDescending", "UpdateList", "ArchiveList",
 		"GetListCreatedAt", "GetSignupCreatedAt",
+		"GetArchivedList", "GetArchivedSignup",
 		"ListOpenLists", "ListOpenListsDescending",
 		"GetSignup", "GetSignupByContactDigest",
 		"ListSignups", "ListSignupsDescending",
@@ -130,6 +131,13 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 			// question every signup begins with is when the list closes, which
 			// an existence check cannot answer.
 			test.StrNotContains(t, rendered, "Existence")
+
+			// The archived predicate's complement belongs to the two read-backs
+			// the retirements answer with and to nothing else. Every other
+			// single-row statement here excludes archived rows or ignores the
+			// column, and one that asserted a row *is* archived would be a read
+			// that cannot see the ordinary case.
+			test.EqOp(t, 2, strings.Count(rendered, "archived_at IS NOT NULL"))
 		})
 	}
 }

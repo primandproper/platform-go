@@ -188,6 +188,7 @@ func Render(d dialect.Dialect) string {
 	}
 
 	rendered = append(rendered, createdAtReads(g)...)
+	rendered = append(rendered, archivedReads(g)...)
 	rendered = append(rendered, openListReads(g)...)
 	rendered = append(rendered, signupReads(g)...)
 	rendered = append(rendered, signupWrites(g)...)
@@ -220,6 +221,55 @@ func createdAtReads(g *querygen.Generator) []*querygen.Query {
 	}
 
 	return rendered
+}
+
+// archivedReads is the pair of reads the two retirements answer with: the list
+// or the signup the write just hid, on the transaction that hid it.
+//
+// They exist because archiving is the write here whose result no other read can
+// see. Every single-row statement over these two tables filters archived_at IS
+// NULL — which is what makes a retired list absent from the catalog and an
+// archived signup absent from GetSignup — so a store that archived a row and
+// read it back through the ordinary keyed read would find nothing. The paged
+// reads reach it, but only by walking the table with include_archived set: once
+// the transaction commits, nothing here answers for that row by its id. The list
+// row is the only record of what the signups still pointing at it were queueing
+// for, and the signup row is the only record of the address it was made with.
+//
+// Each is rendered from no column list at all, which is the trick
+// GetSignupByContactDigest plays for the opposite half of its reason: querygen
+// derives the archived predicate from the columns it is handed, so a read that
+// must see archived rows is one keyed entirely on its matches. What takes that
+// predicate's place is its complement — archived_at IS NOT NULL — so the
+// read-back asserts the thing it was called to confirm, and a guard that matched
+// nothing cannot be read back as a success.
+//
+// The signup's keys on its list as well as on its id, because every single-row
+// signup statement does: a read that omitted the list is a read that could hand
+// one list's row to a caller holding another list's id, and an archival is not
+// the place to start making an exception.
+//
+// There is no companion for a create, an update or a transition. None of those
+// leaves the row hidden, so the ordinary keyed read reaches it on the
+// transaction that wrote it, and the read-back each of those makes is that
+// statement rather than one of its own.
+func archivedReads(g *querygen.Generator) []*querygen.Query {
+	var (
+		id       = querygen.Match{Column: querygen.IDColumn}
+		scope    = querygen.Match{Column: ScopeColumn}
+		list     = querygen.Match{Column: SignupListColumn}
+		archived = querygen.Match{Column: querygen.ArchivedAtColumn, Against: querygen.NoValue, Exclude: true}
+	)
+
+	return []*querygen.Query{
+		g.ReadQuery("GetArchivedList", ListsTable, nil,
+			querygen.Read{Projection: Lists.Columns},
+			id, scope, archived),
+
+		g.ReadQuery("GetArchivedSignup", SignupsTable, nil,
+			querygen.Read{Projection: Signups.Columns},
+			id, scope, list, archived),
+	}
 }
 
 // openListReads is the catalog page narrowed to the lists still taking signups.

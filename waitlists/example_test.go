@@ -76,10 +76,21 @@ func Example() {
 	}
 
 	// When it is their turn. The move is a guarded write, so a second
-	// invitation loses rather than sending a second email.
+	// invitation loses rather than sending a second email — and the one that
+	// won hands back the signup it moved, which is what the invitation is
+	// written from.
+	var invited *waitlists.Signup
+
 	invite := func() error {
 		return client.WithTransaction(ctx, func(tx database.Tx) error {
-			return store.Invite(ctx, tx, scope, list.ID, signup.ID)
+			moved, inviteErr := store.Invite(ctx, tx, scope, list.ID, signup.ID)
+			if inviteErr != nil {
+				return inviteErr
+			}
+
+			invited = moved
+
+			return nil
 		})
 	}
 
@@ -89,12 +100,6 @@ func Example() {
 
 	if err = invite(); err != nil {
 		fmt.Println("invited once:", errors.Is(err, waitlists.ErrWrongStatus))
-	}
-
-	// The read takes an executor, and this one is outside any transaction.
-	invited, err := store.GetSignup(ctx, client.Reader(), scope, list.ID, signup.ID)
-	if err != nil {
-		panic(err)
 	}
 
 	fmt.Println("now:", invited.Status)
@@ -117,6 +122,7 @@ func Example_withdrawal() {
 	var (
 		list   *waitlists.List
 		signup *waitlists.Signup
+		left   *waitlists.Signup
 	)
 
 	// The list, the signup and the withdrawal, each in a transaction a consumer
@@ -134,14 +140,20 @@ func Example_withdrawal() {
 			return txErr
 		}
 
-		return store.Withdraw(ctx, tx, scope, list.ID, signup.ID)
+		left, txErr = store.Withdraw(ctx, tx, scope, list.ID, signup.ID)
+
+		return txErr
 	})
 	if err != nil {
 		panic(err)
 	}
 
-	// What is left is the digest and the fact of the withdrawal. The address,
-	// the notes and the subject reference are gone.
+	// The withdrawal answers with the row as it stood before the blanking, which
+	// is where a consumer's own record of who came off the list is written from.
+	fmt.Printf("left: %q\n", left.Contact)
+
+	// What is left in the table is the digest and the fact of the withdrawal.
+	// The address, the notes and the subject reference are gone.
 	withdrawn, err := store.GetSignupByContact(ctx, client.Reader(), scope, list.ID, "ada@example.com")
 	if err != nil {
 		panic(err)
@@ -160,6 +172,7 @@ func Example_withdrawal() {
 	}
 
 	// Output:
+	// left: "ada@example.com"
 	// status withdrawn, contact ""
 	// stays off the list: true
 }

@@ -66,7 +66,7 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 
 			closed := mustCreateList(t, env, store, testScope, closedList("closed"))
 			archived := mustCreateList(t, env, store, testScope, openList("archived"))
-			must.NoError(t, env.archiveList(t, store, testScope, archived.ID))
+			mustArchiveList(t, env, store, testScope, archived.ID)
 
 			_, err := env.join(t, store, testScope, closed.ID, &Signup{Contact: "ada@example.com"})
 			test.ErrorIs(t, err, ErrListClosed)
@@ -154,7 +154,7 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 			list := mustCreateList(t, env, store, testScope, openList("Launch"))
 
 			signup := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
-			must.NoError(t, env.archiveSignup(t, store, testScope, list.ID, signup.ID))
+			mustArchiveSignup(t, env, store, testScope, list.ID, signup.ID)
 
 			// The uniqueness covers archived rows, so the check that stands in
 			// for it has to see them — otherwise this is a driver error naming
@@ -220,13 +220,13 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 			list := mustCreateList(t, env, store, testScope, openList("Launch"))
 
 			archived := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "archived@example.com"})
-			must.NoError(t, env.archiveSignup(t, store, testScope, list.ID, archived.ID))
+			mustArchiveSignup(t, env, store, testScope, list.ID, archived.ID)
 
 			_, err := store.GetSignupByContact(t.Context(), env.reader(), testScope, list.ID, "archived@example.com")
 			test.ErrorIs(t, err, ErrSignupNotFound)
 
 			gone := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "gone@example.com"})
-			must.NoError(t, env.withdraw(t, store, testScope, list.ID, gone.ID))
+			mustWithdraw(t, env, store, testScope, list.ID, gone.ID)
 
 			// A withdrawn row is live, which is what lets an unsubscribe page
 			// say "you are already off this list" rather than "we have never
@@ -328,7 +328,7 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 
 			live := mustJoin(t, env, store, testScope, first.ID, &Signup{Contact: "ada@example.com", Subject: testSubject})
 			retired := mustJoin(t, env, store, testScope, second.ID, &Signup{Contact: "ada@example.com", Subject: testSubject})
-			must.NoError(t, env.archiveSignup(t, store, testScope, second.ID, retired.ID))
+			mustArchiveSignup(t, env, store, testScope, second.ID, retired.ID)
 
 			page, err := store.ListSignupsForSubject(t.Context(), env.reader(), testScope, testSubject, nil)
 			must.NoError(t, err)
@@ -376,23 +376,28 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 			list := mustCreateList(t, env, store, testScope, openList("Launch"))
 			signup := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
 
-			must.NoError(t, env.invite(t, store, testScope, list.ID, signup.ID))
-
-			invited, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, signup.ID)
-			must.NoError(t, err)
+			invited := mustInvite(t, env, store, testScope, list.ID, signup.ID)
 			must.NotNil(t, invited.StatusChangedAt)
 
-			must.NoError(t, env.updateNotes(t, store, testScope, list.ID, signup.ID, "typo fixed"))
-
-			read, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, signup.ID)
+			updated, err := env.updateNotes(t, store, testScope, list.ID, signup.ID, "typo fixed")
 			must.NoError(t, err)
-			test.EqOp(t, "typo fixed", read.Notes)
-			test.EqOp(t, StatusInvited, read.Status)
+			must.NotNil(t, updated)
+
+			// The row the write answers with is what shows that it moved
+			// nobody: the note is the new one and the status pair is where the
+			// invitation left it.
+			test.EqOp(t, "typo fixed", updated.Notes)
+			test.EqOp(t, StatusInvited, updated.Status)
+			test.NotNil(t, updated.LastUpdatedAt)
 
 			// The reminder that goes out three days after an invitation is
 			// scheduled off StatusChangedAt, and a typo must not reschedule it.
-			must.NotNil(t, read.StatusChangedAt)
-			test.EqOp(t, *invited.StatusChangedAt, *read.StatusChangedAt)
+			must.NotNil(t, updated.StatusChangedAt)
+			test.EqOp(t, *invited.StatusChangedAt, *updated.StatusChangedAt)
+
+			read, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, signup.ID)
+			must.NoError(t, err)
+			test.Eq(t, updated, read)
 		})
 
 		T.Run("does not cross lists or scopes", func(t *testing.T) {
@@ -404,9 +409,11 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 			other := mustCreateList(t, env, store, testScope, openList("other"))
 			signup := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
 
-			test.ErrorIs(t, env.updateNotes(t, store, otherScope, list.ID, signup.ID, "x"), ErrSignupNotFound)
-			test.ErrorIs(t, env.updateNotes(t, store, testScope, other.ID, signup.ID, "x"), ErrSignupNotFound)
-			test.ErrorIs(t, env.updateNotes(t, store, testScope, list.ID, "", "x"),
+			test.ErrorIs(t, refused(env.updateNotes(t, store, otherScope, list.ID, signup.ID, "x")),
+				ErrSignupNotFound)
+			test.ErrorIs(t, refused(env.updateNotes(t, store, testScope, other.ID, signup.ID, "x")),
+				ErrSignupNotFound)
+			test.ErrorIs(t, refused(env.updateNotes(t, store, testScope, list.ID, "", "x")),
 				platformerrors.ErrInvalidIDProvided)
 		})
 	})
@@ -422,18 +429,28 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 			signup := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
 
 			c.advance(time.Hour)
-			must.NoError(t, env.invite(t, store, testScope, list.ID, signup.ID))
 
-			invited, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, signup.ID)
+			invited, err := env.invite(t, store, testScope, list.ID, signup.ID)
 			must.NoError(t, err)
+			must.NotNil(t, invited)
+
+			// The move answers with the row it moved, which is what puts the
+			// stamp a reminder is scheduled off in the caller's hands without a
+			// read of their own.
 			test.EqOp(t, StatusInvited, invited.Status)
 			must.NotNil(t, invited.StatusChangedAt)
+			test.EqOp(t, c.Now().UTC(), *invited.StatusChangedAt)
+			test.EqOp(t, "ada@example.com", invited.Contact)
+
+			read, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, signup.ID)
+			must.NoError(t, err)
+			test.Eq(t, invited, read)
 
 			c.advance(time.Hour)
-			must.NoError(t, env.convert(t, store, testScope, list.ID, signup.ID))
 
-			converted, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, signup.ID)
+			converted, err := env.convert(t, store, testScope, list.ID, signup.ID)
 			must.NoError(t, err)
+			must.NotNil(t, converted)
 			test.EqOp(t, StatusConverted, converted.Status)
 			must.NotNil(t, converted.StatusChangedAt)
 			test.True(t, converted.StatusChangedAt.After(*invited.StatusChangedAt))
@@ -449,13 +466,13 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 
 			// Converting somebody who was never invited is the out-of-order
 			// move, and the guard is what refuses it.
-			test.ErrorIs(t, env.convert(t, store, testScope, list.ID, signup.ID), ErrWrongStatus)
+			test.ErrorIs(t, refused(env.convert(t, store, testScope, list.ID, signup.ID)), ErrWrongStatus)
 
-			must.NoError(t, env.invite(t, store, testScope, list.ID, signup.ID))
+			mustInvite(t, env, store, testScope, list.ID, signup.ID)
 
 			// The second invitation is the one that would send a second email.
 			// It loses on the affected-row count rather than on a read.
-			test.ErrorIs(t, env.invite(t, store, testScope, list.ID, signup.ID), ErrWrongStatus)
+			test.ErrorIs(t, refused(env.invite(t, store, testScope, list.ID, signup.ID)), ErrWrongStatus)
 		})
 
 		T.Run("report a missing signup rather than a wrong status", func(t *testing.T) {
@@ -468,9 +485,10 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 
 			// A statement that matched nothing cannot tell the two apart, which
 			// is why the losing path reads once more to find out.
-			test.ErrorIs(t, env.invite(t, store, testScope, list.ID, "nope"), ErrSignupNotFound)
-			test.ErrorIs(t, env.invite(t, store, otherScope, list.ID, signup.ID), ErrSignupNotFound)
-			test.ErrorIs(t, env.invite(t, store, testScope, list.ID, ""), platformerrors.ErrInvalidIDProvided)
+			test.ErrorIs(t, refused(env.invite(t, store, testScope, list.ID, "nope")), ErrSignupNotFound)
+			test.ErrorIs(t, refused(env.invite(t, store, otherScope, list.ID, signup.ID)), ErrSignupNotFound)
+			test.ErrorIs(t, refused(env.invite(t, store, testScope, list.ID, "")),
+				platformerrors.ErrInvalidIDProvided)
 		})
 	})
 
@@ -483,7 +501,13 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 			list := mustCreateList(t, env, store, testScope, openList("Launch"))
 			signup := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
 
-			must.NoError(t, env.archiveSignup(t, store, testScope, list.ID, signup.ID))
+			archived := mustArchiveSignup(t, env, store, testScope, list.ID, signup.ID)
+
+			// The row it answers with is the one it hid, address and all, which
+			// is the last thing here that reaches it by id.
+			test.EqOp(t, signup.ID, archived.ID)
+			test.EqOp(t, "ada@example.com", archived.Contact)
+			test.NotNil(t, archived.ArchivedAt)
 
 			_, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, signup.ID)
 			test.ErrorIs(t, err, ErrSignupNotFound)
@@ -497,8 +521,9 @@ func runSignupSuite(t *testing.T, env *storeEnv) {
 			_, err = env.join(t, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
 			test.ErrorIs(t, err, ErrAlreadySignedUp)
 
-			test.ErrorIs(t, env.archiveSignup(t, store, testScope, list.ID, signup.ID), ErrSignupNotFound)
-			test.ErrorIs(t, env.archiveSignup(t, store, testScope, list.ID, ""),
+			test.ErrorIs(t, refused(env.archiveSignup(t, store, testScope, list.ID, signup.ID)),
+				ErrSignupNotFound)
+			test.ErrorIs(t, refused(env.archiveSignup(t, store, testScope, list.ID, "")),
 				platformerrors.ErrInvalidIDProvided)
 		})
 	})

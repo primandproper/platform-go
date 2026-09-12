@@ -24,13 +24,13 @@ var _ waitlists.Store = &StoreMock{}
 //
 //		// make and configure a mocked waitlists.Store
 //		mockedStore := &StoreMock{
-//			ArchiveListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) error {
+//			ArchiveListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) (*waitlists.List, error) {
 //				panic("mock out the ArchiveList method")
 //			},
-//			ArchiveSignupFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+//			ArchiveSignupFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the ArchiveSignup method")
 //			},
-//			ConvertFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+//			ConvertFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the Convert method")
 //			},
 //			CreateListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) (*waitlists.List, error) {
@@ -45,7 +45,7 @@ var _ waitlists.Store = &StoreMock{}
 //			GetSignupByContactFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, listID string, contact string) (*waitlists.Signup, error) {
 //				panic("mock out the GetSignupByContact method")
 //			},
-//			InviteFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+//			InviteFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the Invite method")
 //			},
 //			JoinFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signup *waitlists.Signup) (*waitlists.Signup, error) {
@@ -63,13 +63,13 @@ var _ waitlists.Store = &StoreMock{}
 //			ListSignupsForSubjectFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subject waitlists.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[waitlists.Signup], error) {
 //				panic("mock out the ListSignupsForSubject method")
 //			},
-//			UpdateListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) error {
+//			UpdateListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) (*waitlists.List, error) {
 //				panic("mock out the UpdateList method")
 //			},
-//			UpdateSignupNotesFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) error {
+//			UpdateSignupNotesFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) (*waitlists.Signup, error) {
 //				panic("mock out the UpdateSignupNotes method")
 //			},
-//			WithdrawFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+//			WithdrawFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the Withdraw method")
 //			},
 //			WithdrawSignupsForSubjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject waitlists.Subject) (int64, error) {
@@ -83,13 +83,13 @@ var _ waitlists.Store = &StoreMock{}
 //	}
 type StoreMock struct {
 	// ArchiveListFunc mocks the ArchiveList method.
-	ArchiveListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) error
+	ArchiveListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) (*waitlists.List, error)
 
 	// ArchiveSignupFunc mocks the ArchiveSignup method.
-	ArchiveSignupFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error
+	ArchiveSignupFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
 
 	// ConvertFunc mocks the Convert method.
-	ConvertFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error
+	ConvertFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
 
 	// CreateListFunc mocks the CreateList method.
 	CreateListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) (*waitlists.List, error)
@@ -104,7 +104,7 @@ type StoreMock struct {
 	GetSignupByContactFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, listID string, contact string) (*waitlists.Signup, error)
 
 	// InviteFunc mocks the Invite method.
-	InviteFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error
+	InviteFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
 
 	// JoinFunc mocks the Join method.
 	JoinFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signup *waitlists.Signup) (*waitlists.Signup, error)
@@ -122,13 +122,13 @@ type StoreMock struct {
 	ListSignupsForSubjectFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subject waitlists.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[waitlists.Signup], error)
 
 	// UpdateListFunc mocks the UpdateList method.
-	UpdateListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) error
+	UpdateListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) (*waitlists.List, error)
 
 	// UpdateSignupNotesFunc mocks the UpdateSignupNotes method.
-	UpdateSignupNotesFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) error
+	UpdateSignupNotesFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) (*waitlists.Signup, error)
 
 	// WithdrawFunc mocks the Withdraw method.
-	WithdrawFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error
+	WithdrawFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
 
 	// WithdrawSignupsForSubjectFunc mocks the WithdrawSignupsForSubject method.
 	WithdrawSignupsForSubjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject waitlists.Subject) (int64, error)
@@ -365,7 +365,7 @@ type StoreMock struct {
 }
 
 // ArchiveList calls ArchiveListFunc.
-func (mock *StoreMock) ArchiveList(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) error {
+func (mock *StoreMock) ArchiveList(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) (*waitlists.List, error) {
 	if mock.ArchiveListFunc == nil {
 		panic("StoreMock.ArchiveListFunc: method is nil but Store.ArchiveList was just called")
 	}
@@ -409,7 +409,7 @@ func (mock *StoreMock) ArchiveListCalls() []struct {
 }
 
 // ArchiveSignup calls ArchiveSignupFunc.
-func (mock *StoreMock) ArchiveSignup(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+func (mock *StoreMock) ArchiveSignup(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 	if mock.ArchiveSignupFunc == nil {
 		panic("StoreMock.ArchiveSignupFunc: method is nil but Store.ArchiveSignup was just called")
 	}
@@ -457,7 +457,7 @@ func (mock *StoreMock) ArchiveSignupCalls() []struct {
 }
 
 // Convert calls ConvertFunc.
-func (mock *StoreMock) Convert(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+func (mock *StoreMock) Convert(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 	if mock.ConvertFunc == nil {
 		panic("StoreMock.ConvertFunc: method is nil but Store.Convert was just called")
 	}
@@ -689,7 +689,7 @@ func (mock *StoreMock) GetSignupByContactCalls() []struct {
 }
 
 // Invite calls InviteFunc.
-func (mock *StoreMock) Invite(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+func (mock *StoreMock) Invite(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 	if mock.InviteFunc == nil {
 		panic("StoreMock.InviteFunc: method is nil but Store.Invite was just called")
 	}
@@ -969,7 +969,7 @@ func (mock *StoreMock) ListSignupsForSubjectCalls() []struct {
 }
 
 // UpdateList calls UpdateListFunc.
-func (mock *StoreMock) UpdateList(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) error {
+func (mock *StoreMock) UpdateList(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) (*waitlists.List, error) {
 	if mock.UpdateListFunc == nil {
 		panic("StoreMock.UpdateListFunc: method is nil but Store.UpdateList was just called")
 	}
@@ -1013,7 +1013,7 @@ func (mock *StoreMock) UpdateListCalls() []struct {
 }
 
 // UpdateSignupNotes calls UpdateSignupNotesFunc.
-func (mock *StoreMock) UpdateSignupNotes(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) error {
+func (mock *StoreMock) UpdateSignupNotes(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) (*waitlists.Signup, error) {
 	if mock.UpdateSignupNotesFunc == nil {
 		panic("StoreMock.UpdateSignupNotesFunc: method is nil but Store.UpdateSignupNotes was just called")
 	}
@@ -1065,7 +1065,7 @@ func (mock *StoreMock) UpdateSignupNotesCalls() []struct {
 }
 
 // Withdraw calls WithdrawFunc.
-func (mock *StoreMock) Withdraw(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+func (mock *StoreMock) Withdraw(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 	if mock.WithdrawFunc == nil {
 		panic("StoreMock.WithdrawFunc: method is nil but Store.Withdraw was just called")
 	}
@@ -1166,7 +1166,7 @@ var _ waitlists.ListStore = &ListStoreMock{}
 //
 //		// make and configure a mocked waitlists.ListStore
 //		mockedListStore := &ListStoreMock{
-//			ArchiveListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) error {
+//			ArchiveListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) (*waitlists.List, error) {
 //				panic("mock out the ArchiveList method")
 //			},
 //			CreateListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) (*waitlists.List, error) {
@@ -1181,7 +1181,7 @@ var _ waitlists.ListStore = &ListStoreMock{}
 //			ListOpenListsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[waitlists.List], error) {
 //				panic("mock out the ListOpenLists method")
 //			},
-//			UpdateListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) error {
+//			UpdateListFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) (*waitlists.List, error) {
 //				panic("mock out the UpdateList method")
 //			},
 //		}
@@ -1192,7 +1192,7 @@ var _ waitlists.ListStore = &ListStoreMock{}
 //	}
 type ListStoreMock struct {
 	// ArchiveListFunc mocks the ArchiveList method.
-	ArchiveListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) error
+	ArchiveListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) (*waitlists.List, error)
 
 	// CreateListFunc mocks the CreateList method.
 	CreateListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) (*waitlists.List, error)
@@ -1207,7 +1207,7 @@ type ListStoreMock struct {
 	ListOpenListsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[waitlists.List], error)
 
 	// UpdateListFunc mocks the UpdateList method.
-	UpdateListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) error
+	UpdateListFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) (*waitlists.List, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -1287,7 +1287,7 @@ type ListStoreMock struct {
 }
 
 // ArchiveList calls ArchiveListFunc.
-func (mock *ListStoreMock) ArchiveList(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) error {
+func (mock *ListStoreMock) ArchiveList(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string) (*waitlists.List, error) {
 	if mock.ArchiveListFunc == nil {
 		panic("ListStoreMock.ArchiveListFunc: method is nil but ListStore.ArchiveList was just called")
 	}
@@ -1507,7 +1507,7 @@ func (mock *ListStoreMock) ListOpenListsCalls() []struct {
 }
 
 // UpdateList calls UpdateListFunc.
-func (mock *ListStoreMock) UpdateList(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) error {
+func (mock *ListStoreMock) UpdateList(ctx context.Context, tx database.Tx, scope tenancy.Scope, list *waitlists.List) (*waitlists.List, error) {
 	if mock.UpdateListFunc == nil {
 		panic("ListStoreMock.UpdateListFunc: method is nil but ListStore.UpdateList was just called")
 	}
@@ -1560,10 +1560,10 @@ var _ waitlists.SignupStore = &SignupStoreMock{}
 //
 //		// make and configure a mocked waitlists.SignupStore
 //		mockedSignupStore := &SignupStoreMock{
-//			ArchiveSignupFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+//			ArchiveSignupFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the ArchiveSignup method")
 //			},
-//			ConvertFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+//			ConvertFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the Convert method")
 //			},
 //			GetSignupFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
@@ -1572,7 +1572,7 @@ var _ waitlists.SignupStore = &SignupStoreMock{}
 //			GetSignupByContactFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, listID string, contact string) (*waitlists.Signup, error) {
 //				panic("mock out the GetSignupByContact method")
 //			},
-//			InviteFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+//			InviteFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the Invite method")
 //			},
 //			JoinFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signup *waitlists.Signup) (*waitlists.Signup, error) {
@@ -1584,10 +1584,10 @@ var _ waitlists.SignupStore = &SignupStoreMock{}
 //			ListSignupsForSubjectFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subject waitlists.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[waitlists.Signup], error) {
 //				panic("mock out the ListSignupsForSubject method")
 //			},
-//			UpdateSignupNotesFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) error {
+//			UpdateSignupNotesFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) (*waitlists.Signup, error) {
 //				panic("mock out the UpdateSignupNotes method")
 //			},
-//			WithdrawFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+//			WithdrawFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 //				panic("mock out the Withdraw method")
 //			},
 //			WithdrawSignupsForSubjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject waitlists.Subject) (int64, error) {
@@ -1601,10 +1601,10 @@ var _ waitlists.SignupStore = &SignupStoreMock{}
 //	}
 type SignupStoreMock struct {
 	// ArchiveSignupFunc mocks the ArchiveSignup method.
-	ArchiveSignupFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error
+	ArchiveSignupFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
 
 	// ConvertFunc mocks the Convert method.
-	ConvertFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error
+	ConvertFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
 
 	// GetSignupFunc mocks the GetSignup method.
 	GetSignupFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
@@ -1613,7 +1613,7 @@ type SignupStoreMock struct {
 	GetSignupByContactFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, listID string, contact string) (*waitlists.Signup, error)
 
 	// InviteFunc mocks the Invite method.
-	InviteFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error
+	InviteFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
 
 	// JoinFunc mocks the Join method.
 	JoinFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signup *waitlists.Signup) (*waitlists.Signup, error)
@@ -1625,10 +1625,10 @@ type SignupStoreMock struct {
 	ListSignupsForSubjectFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, subject waitlists.Subject, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[waitlists.Signup], error)
 
 	// UpdateSignupNotesFunc mocks the UpdateSignupNotes method.
-	UpdateSignupNotesFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) error
+	UpdateSignupNotesFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) (*waitlists.Signup, error)
 
 	// WithdrawFunc mocks the Withdraw method.
-	WithdrawFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error
+	WithdrawFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error)
 
 	// WithdrawSignupsForSubjectFunc mocks the WithdrawSignupsForSubject method.
 	WithdrawSignupsForSubjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject waitlists.Subject) (int64, error)
@@ -1793,7 +1793,7 @@ type SignupStoreMock struct {
 }
 
 // ArchiveSignup calls ArchiveSignupFunc.
-func (mock *SignupStoreMock) ArchiveSignup(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+func (mock *SignupStoreMock) ArchiveSignup(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 	if mock.ArchiveSignupFunc == nil {
 		panic("SignupStoreMock.ArchiveSignupFunc: method is nil but SignupStore.ArchiveSignup was just called")
 	}
@@ -1841,7 +1841,7 @@ func (mock *SignupStoreMock) ArchiveSignupCalls() []struct {
 }
 
 // Convert calls ConvertFunc.
-func (mock *SignupStoreMock) Convert(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+func (mock *SignupStoreMock) Convert(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 	if mock.ConvertFunc == nil {
 		panic("SignupStoreMock.ConvertFunc: method is nil but SignupStore.Convert was just called")
 	}
@@ -1985,7 +1985,7 @@ func (mock *SignupStoreMock) GetSignupByContactCalls() []struct {
 }
 
 // Invite calls InviteFunc.
-func (mock *SignupStoreMock) Invite(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+func (mock *SignupStoreMock) Invite(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 	if mock.InviteFunc == nil {
 		panic("SignupStoreMock.InviteFunc: method is nil but SignupStore.Invite was just called")
 	}
@@ -2177,7 +2177,7 @@ func (mock *SignupStoreMock) ListSignupsForSubjectCalls() []struct {
 }
 
 // UpdateSignupNotes calls UpdateSignupNotesFunc.
-func (mock *SignupStoreMock) UpdateSignupNotes(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) error {
+func (mock *SignupStoreMock) UpdateSignupNotes(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string, notes string) (*waitlists.Signup, error) {
 	if mock.UpdateSignupNotesFunc == nil {
 		panic("SignupStoreMock.UpdateSignupNotesFunc: method is nil but SignupStore.UpdateSignupNotes was just called")
 	}
@@ -2229,7 +2229,7 @@ func (mock *SignupStoreMock) UpdateSignupNotesCalls() []struct {
 }
 
 // Withdraw calls WithdrawFunc.
-func (mock *SignupStoreMock) Withdraw(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) error {
+func (mock *SignupStoreMock) Withdraw(ctx context.Context, tx database.Tx, scope tenancy.Scope, listID string, signupID string) (*waitlists.Signup, error) {
 	if mock.WithdrawFunc == nil {
 		panic("SignupStoreMock.WithdrawFunc: method is nil but SignupStore.Withdraw was just called")
 	}

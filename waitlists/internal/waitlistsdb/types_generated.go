@@ -33,6 +33,48 @@ type CreateListParams struct {
 	ClosesAt    time.Time
 }
 
+// GetArchivedListParams are the arguments to GetArchivedList.
+type GetArchivedListParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetArchivedListRow is one row of GetArchivedList's result.
+type GetArchivedListRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	Name          string
+	Description   string
+	ClosesAt      time.Time
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+}
+
+// GetArchivedSignupParams are the arguments to GetArchivedSignup.
+type GetArchivedSignupParams struct {
+	ID         string
+	Scope      tenancy.Scope
+	WaitlistID string
+}
+
+// GetArchivedSignupRow is one row of GetArchivedSignup's result.
+type GetArchivedSignupRow struct {
+	ID              string
+	Scope           tenancy.Scope
+	WaitlistID      string
+	Contact         string
+	ContactDigest   string
+	SubjectType     string
+	SubjectID       string
+	Notes           string
+	Status          string
+	StatusChangedAt *time.Time
+	CreatedAt       time.Time
+	LastUpdatedAt   *time.Time
+	ArchivedAt      *time.Time
+}
+
 // GetListParams are the arguments to GetList.
 type GetListParams struct {
 	ID    string

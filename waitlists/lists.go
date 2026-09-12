@@ -220,55 +220,72 @@ func (s *SQLStore) ListOpenLists(
 }
 
 // UpdateList rewrites a list's name, description and closing time, through the
-// caller's transaction. See [Store].
+// caller's transaction, and answers with the row. See [Store].
+//
+// The read-back runs on tx, after the write, which is what makes it the row this
+// statement left rather than the one the caller assembled: last_updated_at is
+// the database's, and the List handed in is read and not written to.
 func (s *SQLStore) UpdateList(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	list *List,
-) error {
+) (*List, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "updating waitlist")
+		return nil, op.Error(ErrNilExecutor, "updating waitlist")
 	}
 
 	if list == nil {
-		return op.Error(ErrNilList, "updating waitlist")
+		return nil, op.Error(ErrNilList, "updating waitlist")
 	}
 
 	op.Set(listKey, list.ID)
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "updating waitlist")
+		return nil, op.Error(err, "updating waitlist")
 	}
 
 	if err := matchScope(scope, list.Scope, "waitlist"); err != nil {
-		return op.Error(err, "updating waitlist")
+		return nil, op.Error(err, "updating waitlist")
 	}
 
 	if err := requireID(list.ID); err != nil {
-		return op.Error(err, "updating waitlist")
+		return nil, op.Error(err, "updating waitlist")
 	}
 
 	if err := list.validate(); err != nil {
-		return op.Error(err, "updating waitlist %q", list.ID)
+		return nil, op.Error(err, "updating waitlist %q", list.ID)
 	}
 
 	count, err := s.q.UpdateList(ctx, tx, updateListParams(list, scope))
+	if err = guardCount(count, err, ErrListNotFound, "updating waitlist"); err != nil {
+		return nil, op.Error(err, "updating waitlist %q", list.ID)
+	}
 
-	return op.Error(guardCount(count, err, ErrListNotFound, "updating waitlist"), "updating waitlist")
+	updated, err := s.readList(ctx, tx, scope, list.ID)
+	if err != nil {
+		return nil, op.Error(err, "reading back the updated waitlist %q", list.ID)
+	}
+
+	return updated, nil
 }
 
 // ArchiveList retires one of the scope's lists, through the caller's
-// transaction. See [Store].
+// transaction, and answers with the row it hid. See [Store].
+//
+// The read-back is a statement of its own, because the row it describes is the
+// one row GetList is written not to see — see waitlists/internal/queries. It
+// runs on tx, so what it reads is what this transaction has just hidden and
+// nothing else can see yet.
 func (s *SQLStore) ArchiveList(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	listID string,
-) error {
+) (*List, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(listKey, listID),
@@ -276,17 +293,24 @@ func (s *SQLStore) ArchiveList(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving waitlist %q", listID)
+		return nil, op.Error(ErrNilExecutor, "archiving waitlist %q", listID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving waitlist %q", listID)
+		return nil, op.Error(err, "archiving waitlist %q", listID)
 	}
 
 	count, err := s.q.ArchiveList(ctx, tx, waitlistsdb.ArchiveListParams{ID: listID, Scope: scope})
+	if err = guardCount(count, err, ErrListNotFound, "archiving waitlist"); err != nil {
+		return nil, op.Error(err, "archiving waitlist %q", listID)
+	}
 
-	return op.Error(guardCount(count, err, ErrListNotFound, "archiving waitlist"),
-		"archiving waitlist %q", listID)
+	row, err := s.q.GetArchivedList(ctx, tx, waitlistsdb.GetArchivedListParams{ID: listID, Scope: scope})
+	if err != nil {
+		return nil, op.Error(notFound(err, ErrListNotFound), "reading back the archived waitlist %q", listID)
+	}
+
+	return listFromArchivedRow(&row), nil
 }
 
 // readList is the read by id, through whatever executor the caller is holding.

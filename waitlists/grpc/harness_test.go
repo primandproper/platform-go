@@ -324,7 +324,9 @@ func (h *harness) invite(tb testing.TB, scope tenancy.Scope, listID, signupID st
 	tb.Helper()
 
 	must.NoError(tb, h.db.WithTransaction(tb.Context(), func(tx database.Tx) error {
-		return h.store.Invite(tb.Context(), tx, scope, listID, signupID)
+		_, err := h.store.Invite(tb.Context(), tx, scope, listID, signupID)
+
+		return err
 	}))
 }
 

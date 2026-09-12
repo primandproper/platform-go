@@ -156,7 +156,7 @@ func runListSuite(t *testing.T, env *storeEnv) {
 			store := env.newStore(t)
 
 			created := mustCreateList(t, env, store, testScope, openList("Launch"))
-			must.NoError(t, env.archiveList(t, store, testScope, created.ID))
+			mustArchiveList(t, env, store, testScope, created.ID)
 
 			page, err := store.ListLists(t.Context(), env.reader(), testScope, nil)
 			must.NoError(t, err)
@@ -224,7 +224,7 @@ func runListSuite(t *testing.T, env *storeEnv) {
 			store := env.newStore(t)
 
 			created := mustCreateList(t, env, store, testScope, openList("Launch"))
-			must.NoError(t, env.archiveList(t, store, testScope, created.ID))
+			mustArchiveList(t, env, store, testScope, created.ID)
 
 			page, err := store.ListOpenLists(t.Context(), env.reader(), testScope, nil)
 			must.NoError(t, err)
@@ -244,14 +244,23 @@ func runListSuite(t *testing.T, env *storeEnv) {
 			created.Description = "now with fewer bugs"
 			created.ClosesAt = testNow.Add(90 * 24 * time.Hour)
 
-			must.NoError(t, env.updateList(t, store, testScope, created))
+			updated, err := env.updateList(t, store, testScope, created)
+			must.NoError(t, err)
+			must.NotNil(t, updated)
+
+			// The write answers with the row rather than with the argument, so
+			// the stamp the database assigned is on what came back — which is
+			// the read a caller used to have to make for themselves.
+			test.EqOp(t, "Beta", updated.Name)
+			test.EqOp(t, "now with fewer bugs", updated.Description)
+			test.EqOp(t, created.ClosesAt.UTC(), updated.ClosesAt)
+			test.NotNil(t, updated.LastUpdatedAt)
+			test.EqOp(t, testScope, updated.Scope)
+			test.Nil(t, updated.ArchivedAt)
 
 			read, err := store.GetList(t.Context(), env.reader(), testScope, created.ID)
 			must.NoError(t, err)
-			test.EqOp(t, "Beta", read.Name)
-			test.EqOp(t, "now with fewer bugs", read.Description)
-			test.EqOp(t, created.ClosesAt.UTC(), read.ClosesAt)
-			test.NotNil(t, read.LastUpdatedAt)
+			test.Eq(t, updated, read)
 		})
 
 		T.Run("brings a closed list back by moving its horizon", func(t *testing.T) {
@@ -262,7 +271,9 @@ func runListSuite(t *testing.T, env *storeEnv) {
 			created := mustCreateList(t, env, store, testScope, closedList("Launch"))
 
 			created.ClosesAt = testNow.Add(time.Hour)
-			must.NoError(t, env.updateList(t, store, testScope, created))
+
+			_, err := env.updateList(t, store, testScope, created)
+			must.NoError(t, err)
 
 			page, err := store.ListOpenLists(t.Context(), env.reader(), testScope, nil)
 			must.NoError(t, err)
@@ -276,23 +287,23 @@ func runListSuite(t *testing.T, env *storeEnv) {
 
 			created := mustCreateList(t, env, store, testScope, openList("Launch"))
 
-			test.ErrorIs(t, env.updateList(t, store, testScope, nil), ErrNilList)
-			test.ErrorIs(t, env.updateList(t, store, testScope, &List{ClosesAt: testNow, Name: "x"}),
+			test.ErrorIs(t, refused(env.updateList(t, store, testScope, nil)), ErrNilList)
+			test.ErrorIs(t, refused(env.updateList(t, store, testScope, &List{ClosesAt: testNow, Name: "x"})),
 				platformerrors.ErrInvalidIDProvided)
 
 			// A list that names one tenant and a write that names another is a
 			// mix-up rather than a thing to guess at — see Store.
-			test.ErrorIs(t, env.updateList(t, store, otherScope, created), ErrScopeMismatch)
+			test.ErrorIs(t, refused(env.updateList(t, store, otherScope, created)), ErrScopeMismatch)
 
 			// And with the entity saying nothing about whose it is, the scope
 			// predicate on the statement is what refuses it, which is the whole
 			// of what that predicate is for.
 			unclaimed := *created
 			unclaimed.Scope = tenancy.Scope{}
-			test.ErrorIs(t, env.updateList(t, store, otherScope, &unclaimed), ErrListNotFound)
+			test.ErrorIs(t, refused(env.updateList(t, store, otherScope, &unclaimed)), ErrListNotFound)
 
-			must.NoError(t, env.archiveList(t, store, testScope, created.ID))
-			test.ErrorIs(t, env.updateList(t, store, testScope, created), ErrListNotFound)
+			mustArchiveList(t, env, store, testScope, created.ID)
+			test.ErrorIs(t, refused(env.updateList(t, store, testScope, created)), ErrListNotFound)
 		})
 	})
 
@@ -304,13 +315,22 @@ func runListSuite(t *testing.T, env *storeEnv) {
 
 			created := mustCreateList(t, env, store, testScope, openList("Launch"))
 
-			test.ErrorIs(t, env.archiveList(t, store, otherScope, created.ID), ErrListNotFound)
+			test.ErrorIs(t, refused(env.archiveList(t, store, otherScope, created.ID)), ErrListNotFound)
 
-			must.NoError(t, env.archiveList(t, store, testScope, created.ID))
+			archived := mustArchiveList(t, env, store, testScope, created.ID)
+
+			// The row it answers with is the one it hid, which is the one read
+			// that reaches it by id from here on: GetList no longer will.
+			test.EqOp(t, created.ID, archived.ID)
+			test.EqOp(t, created.Name, archived.Name)
+			test.NotNil(t, archived.ArchivedAt)
+
+			_, err := store.GetList(t.Context(), env.reader(), testScope, created.ID)
+			test.ErrorIs(t, err, ErrListNotFound)
 
 			// A second archive reports the row was not there to archive rather
 			// than restamping the moment it was retired.
-			test.ErrorIs(t, env.archiveList(t, store, testScope, created.ID), ErrListNotFound)
+			test.ErrorIs(t, refused(env.archiveList(t, store, testScope, created.ID)), ErrListNotFound)
 		})
 
 		T.Run("leaves the signups against it readable", func(t *testing.T) {
@@ -321,7 +341,7 @@ func runListSuite(t *testing.T, env *storeEnv) {
 			list := mustCreateList(t, env, store, testScope, openList("Launch"))
 			signup := mustJoin(t, env, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
 
-			must.NoError(t, env.archiveList(t, store, testScope, list.ID))
+			mustArchiveList(t, env, store, testScope, list.ID)
 
 			// Archiving is not erasure: the queue is still there to be worked
 			// through, and only the list has left the catalog.

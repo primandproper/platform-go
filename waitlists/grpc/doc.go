@@ -92,19 +92,21 @@ waitlists.Store's writes take a database.Tx, which only Client.WithTransaction
 produces, so each write here opens one: an RPC handler is precisely the caller
 with nothing of its own to join that the Store's documentation describes.
 
-Four of them read the row back inside that transaction — UpdateList,
-UpdateSignupNotes, Invite and Convert — and that is what waitlists.Store's reads
-taking a database.SQLQueryExecutor rather than a reader is for. A Tx satisfies
-that interface, so the read sees the write it follows; on Client.Reader() it
-would be a read of a database that does not yet hold the change, and Invite would
-answer with the signup still waiting. It matters most on the two transitions,
-because status_changed_at is the field a consumer schedules a reminder off and
-the store stamps it rather than returning it.
+Four of them answer with a row — UpdateList, UpdateSignupNotes, Invite and
+Convert — and the read behind each is the store's own, made on the transaction
+the write ran in. This package made that read for itself until the store's writes
+started returning what they wrote; the helper that did it is gone, and what is
+left in its place carries a value out of a WithTransaction closure. It matters
+most on the two transitions, because status_changed_at is the field a consumer
+schedules a reminder off and it is stamped from the store's clock.
 
-The retirements and the erasure answer with nothing, and Withdraw answers with
-nothing on purpose rather than for symmetry: what is left of the row is a status
-and a digest, and the caller who has just asked to be forgotten is not the caller
-to hand it to.
+Five answer with nothing, and three of those now drop a row the store offered.
+The two retirements drop it because the operator who sent the request already
+holds the row and what the store hands back is for a consumer's audit entry
+rather than for this wire. Withdraw drops it for a sharper reason: the row it
+hands back is the one from *before* the blanking — the address, the notes, the
+subject — and the caller who has just asked to be forgotten is the last caller to
+send that to. The erasure and its count are unchanged.
 
 # Errors
 

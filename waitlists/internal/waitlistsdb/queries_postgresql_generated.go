@@ -41,6 +41,40 @@ INSERT INTO {{prefix}}waitlists (
 	$5
 )`
 
+const getArchivedListPostgreSQL = `SELECT
+	{{prefix}}waitlists.id,
+	{{prefix}}waitlists.scope,
+	{{prefix}}waitlists.name,
+	{{prefix}}waitlists.description,
+	{{prefix}}waitlists.closes_at,
+	{{prefix}}waitlists.created_at,
+	{{prefix}}waitlists.last_updated_at,
+	{{prefix}}waitlists.archived_at
+FROM {{prefix}}waitlists
+WHERE {{prefix}}waitlists.id = $1
+	AND {{prefix}}waitlists.scope = $2
+	AND {{prefix}}waitlists.archived_at IS NOT NULL`
+
+const getArchivedSignupPostgreSQL = `SELECT
+	{{prefix}}waitlist_signups.id,
+	{{prefix}}waitlist_signups.scope,
+	{{prefix}}waitlist_signups.waitlist_id,
+	{{prefix}}waitlist_signups.contact,
+	{{prefix}}waitlist_signups.contact_digest,
+	{{prefix}}waitlist_signups.subject_type,
+	{{prefix}}waitlist_signups.subject_id,
+	{{prefix}}waitlist_signups.notes,
+	{{prefix}}waitlist_signups.status,
+	{{prefix}}waitlist_signups.status_changed_at,
+	{{prefix}}waitlist_signups.created_at,
+	{{prefix}}waitlist_signups.last_updated_at,
+	{{prefix}}waitlist_signups.archived_at
+FROM {{prefix}}waitlist_signups
+WHERE {{prefix}}waitlist_signups.id = $1
+	AND {{prefix}}waitlist_signups.scope = $2
+	AND {{prefix}}waitlist_signups.waitlist_id = $3
+	AND {{prefix}}waitlist_signups.archived_at IS NOT NULL`
+
 const getListPostgreSQL = `SELECT
 	{{prefix}}waitlists.id,
 	{{prefix}}waitlists.scope,
@@ -614,6 +648,8 @@ type postgresqlQueries struct {
 	archiveList                     string
 	archiveSignup                   string
 	createList                      string
+	getArchivedList                 string
+	getArchivedSignup               string
 	getList                         string
 	getListCreatedAt                string
 	getSignup                       string
@@ -642,6 +678,8 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		archiveList:                     strings.ReplaceAll(archiveListPostgreSQL, prefixMarker, prefix),
 		archiveSignup:                   strings.ReplaceAll(archiveSignupPostgreSQL, prefixMarker, prefix),
 		createList:                      strings.ReplaceAll(createListPostgreSQL, prefixMarker, prefix),
+		getArchivedList:                 strings.ReplaceAll(getArchivedListPostgreSQL, prefixMarker, prefix),
+		getArchivedSignup:               strings.ReplaceAll(getArchivedSignupPostgreSQL, prefixMarker, prefix),
 		getList:                         strings.ReplaceAll(getListPostgreSQL, prefixMarker, prefix),
 		getListCreatedAt:                strings.ReplaceAll(getListCreatedAtPostgreSQL, prefixMarker, prefix),
 		getSignup:                       strings.ReplaceAll(getSignupPostgreSQL, prefixMarker, prefix),
@@ -702,6 +740,58 @@ func (q *postgresqlQueries) CreateList(ctx context.Context, db DBTX, arg CreateL
 	)
 
 	return err
+}
+
+// GetArchivedList runs the :one query against postgresql.
+func (q *postgresqlQueries) GetArchivedList(ctx context.Context, db DBTX, arg GetArchivedListParams) (GetArchivedListRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedList,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedListRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.Description,
+		&i.ClosesAt,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
+// GetArchivedSignup runs the :one query against postgresql.
+func (q *postgresqlQueries) GetArchivedSignup(ctx context.Context, db DBTX, arg GetArchivedSignupParams) (GetArchivedSignupRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedSignup,
+		arg.ID,
+		arg.Scope,
+		arg.WaitlistID,
+	)
+
+	var i GetArchivedSignupRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.WaitlistID,
+		&i.Contact,
+		&i.ContactDigest,
+		&i.SubjectType,
+		&i.SubjectID,
+		&i.Notes,
+		&i.Status,
+		&i.StatusChangedAt,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
 }
 
 // GetList runs the :one query against postgresql.
@@ -1357,6 +1447,40 @@ var (
 		Description string
 		ClosesAt    time.Time
 	}(CreateListParams{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetArchivedListParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Name          string
+		Description   string
+		ClosesAt      time.Time
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetArchivedListRow{})
+	_ = struct {
+		ID         string
+		Scope      tenancy.Scope
+		WaitlistID string
+	}(GetArchivedSignupParams{})
+	_ = struct {
+		ID              string
+		Scope           tenancy.Scope
+		WaitlistID      string
+		Contact         string
+		ContactDigest   string
+		SubjectType     string
+		SubjectID       string
+		Notes           string
+		Status          string
+		StatusChangedAt *time.Time
+		CreatedAt       time.Time
+		LastUpdatedAt   *time.Time
+		ArchivedAt      *time.Time
+	}(GetArchivedSignupRow{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope

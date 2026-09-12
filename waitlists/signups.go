@@ -308,13 +308,17 @@ func (s *SQLStore) ListSignupsForSubject(
 }
 
 // UpdateSignupNotes rewrites the operator's note against a signup, through the
-// caller's transaction. See [Store].
+// caller's transaction, and answers with the row. See [Store].
+//
+// The read-back runs on tx, after the write. It is what lets a console show the
+// signup as it now stands — which for this write is a signup that has *not*
+// moved, since the status pair is the one thing it leaves alone.
 func (s *SQLStore) UpdateSignupNotes(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	listID, signupID, notes string,
-) error {
+) (*Signup, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(listKey, listID),
@@ -323,15 +327,15 @@ func (s *SQLStore) UpdateSignupNotes(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "updating waitlist signup %q", signupID)
+		return nil, op.Error(ErrNilExecutor, "updating waitlist signup %q", signupID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "updating waitlist signup %q", signupID)
+		return nil, op.Error(err, "updating waitlist signup %q", signupID)
 	}
 
 	if err := requireID(signupID); err != nil {
-		return op.Error(err, "updating waitlist signup %q", signupID)
+		return nil, op.Error(err, "updating waitlist signup %q", signupID)
 	}
 
 	count, err := s.q.UpdateSignupNotes(ctx, tx, waitlistsdb.UpdateSignupNotesParams{
@@ -340,20 +344,27 @@ func (s *SQLStore) UpdateSignupNotes(
 		Scope:      scope,
 		WaitlistID: listID,
 	})
+	if err = guardCount(count, err, ErrSignupNotFound, "updating waitlist signup"); err != nil {
+		return nil, op.Error(err, "updating waitlist signup %q", signupID)
+	}
 
-	return op.Error(guardCount(count, err, ErrSignupNotFound, "updating waitlist signup"),
-		"updating waitlist signup %q", signupID)
+	updated, err := s.readSignup(ctx, tx, scope, listID, signupID)
+	if err != nil {
+		return nil, op.Error(err, "reading back the updated waitlist signup %q", signupID)
+	}
+
+	return updated, nil
 }
 
 // Invite moves a waiting signup to invited, through the caller's transaction —
-// so the invitation and the record of who sent it land together or not at all.
-// See [Store].
+// so the invitation and the record of who sent it land together or not at all —
+// and answers with the signup it moved. See [Store].
 func (s *SQLStore) Invite(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	listID, signupID string,
-) error {
+) (*Signup, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(listKey, listID),
@@ -363,22 +374,27 @@ func (s *SQLStore) Invite(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "moving waitlist signup %q to %s", signupID, StatusInvited)
+		return nil, op.Error(ErrNilExecutor, "moving waitlist signup %q to %s", signupID, StatusInvited)
 	}
 
-	return op.Error(s.transition(ctx, tx, scope, listID, signupID, StatusWaiting, StatusInvited),
-		"moving waitlist signup %q to %s", signupID, StatusInvited)
+	invited, err := s.transition(ctx, tx, scope, listID, signupID, StatusWaiting, StatusInvited)
+	if err != nil {
+		return nil, op.Error(err, "moving waitlist signup %q to %s", signupID, StatusInvited)
+	}
+
+	return invited, nil
 }
 
 // Convert moves an invited signup to converted, through the caller's transaction
 // — which is the ordinary one, since what somebody converted into is a row of
-// the caller's written in the same transaction. See [Store].
+// the caller's written in the same transaction — and answers with the signup it
+// moved. See [Store].
 func (s *SQLStore) Convert(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	listID, signupID string,
-) error {
+) (*Signup, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(listKey, listID),
@@ -388,21 +404,32 @@ func (s *SQLStore) Convert(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "moving waitlist signup %q to %s", signupID, StatusConverted)
+		return nil, op.Error(ErrNilExecutor, "moving waitlist signup %q to %s", signupID, StatusConverted)
 	}
 
-	return op.Error(s.transition(ctx, tx, scope, listID, signupID, StatusInvited, StatusConverted),
-		"moving waitlist signup %q to %s", signupID, StatusConverted)
+	converted, err := s.transition(ctx, tx, scope, listID, signupID, StatusInvited, StatusConverted)
+	if err != nil {
+		return nil, op.Error(err, "moving waitlist signup %q to %s", signupID, StatusConverted)
+	}
+
+	return converted, nil
 }
 
 // transition is the guarded lifecycle move both Invite and Convert are, on the
-// transaction the caller is holding.
+// transaction the caller is holding, and the signup as the move left it.
 //
 // The guard is in the statement rather than in a read before it, which is what
 // makes the move happen once: two requests inviting the same signup both find it
 // waiting, and only one of their updates reports a row. Deciding on the read
 // leaves a window as wide as whatever the caller does next, which for an
 // invitation is an email.
+//
+// The read-back comes after the guard has already decided, so it reads what this
+// caller wrote rather than standing in for the count. It is the ordinary keyed
+// read: a transition does not hide the row, so GetSignup reaches it on the
+// transaction that moved it. status_changed_at is the reason it is worth a round
+// trip — it is stamped from this store's clock, which is the one value on the
+// row a caller cannot name.
 //
 // The refusal it reports is not certain about which of two things went wrong —
 // the row is gone, or it is in another status — because a statement that matched
@@ -415,38 +442,55 @@ func (s *SQLStore) transition(
 	scope tenancy.Scope,
 	listID, signupID string,
 	from, to Status,
-) error {
+) (*Signup, error) {
 	if err := scope.Validate(); err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := requireID(signupID); err != nil {
-		return err
+		return nil, err
 	}
 
 	count, err := s.q.TransitionSignup(ctx, tx,
 		transitionSignupParams(scope, listID, signupID, from, to, s.clock.Now()))
 	if err != nil {
-		return platformerrors.Wrap(err, "moving waitlist signup")
+		return nil, platformerrors.Wrap(err, "moving waitlist signup")
 	}
 
 	if count == 0 {
-		return s.explainLostTransition(ctx, tx, scope, listID, signupID, from)
+		return nil, s.explainLostTransition(ctx, tx, scope, listID, signupID, from)
+	}
+
+	moved, err := s.readSignup(ctx, tx, scope, listID, signupID)
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "reading back the moved waitlist signup")
 	}
 
 	s.countSignups(ctx, to, 1)
 
-	return nil
+	return moved, nil
 }
 
 // Withdraw takes somebody off the list at their own request, through the
-// caller's transaction. See [Store].
+// caller's transaction, and answers with the signup as it stood before the
+// blanking. See [Store].
+//
+// It is the one write here that reads *before* it writes, and the order is the
+// whole point: the statement blanks the contact, the notes and the subject
+// reference, so after it has run there is nothing left on the row to hand back.
+// A read afterwards would answer with a status and a digest, which is precisely
+// the caller's own record of who left made useless.
+//
+// The read does not decide anything. The guarded update's own count is still
+// what refuses a row that has already been withdrawn or has moved out from under
+// this caller, so a row read here and refused there is never handed back — the
+// signup comes back only beside a nil error.
 func (s *SQLStore) Withdraw(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	listID, signupID string,
-) error {
+) (*Signup, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(listKey, listID),
@@ -455,31 +499,36 @@ func (s *SQLStore) Withdraw(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "withdrawing waitlist signup %q", signupID)
+		return nil, op.Error(ErrNilExecutor, "withdrawing waitlist signup %q", signupID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "withdrawing waitlist signup %q", signupID)
+		return nil, op.Error(err, "withdrawing waitlist signup %q", signupID)
 	}
 
 	if err := requireID(signupID); err != nil {
-		return op.Error(err, "withdrawing waitlist signup %q", signupID)
+		return nil, op.Error(err, "withdrawing waitlist signup %q", signupID)
+	}
+
+	withdrawn, err := s.readSignup(ctx, tx, scope, listID, signupID)
+	if err != nil {
+		return nil, op.Error(err, "withdrawing waitlist signup %q", signupID)
 	}
 
 	count, err := s.q.WithdrawSignup(ctx, tx, withdrawSignupParams(scope, listID, signupID, s.clock.Now()))
 	if err != nil {
-		return op.Error(platformerrors.Wrap(err, "withdrawing waitlist signup"),
+		return nil, op.Error(platformerrors.Wrap(err, "withdrawing waitlist signup"),
 			"withdrawing waitlist signup %q", signupID)
 	}
 
 	if count == 0 {
-		return op.Error(s.explainLostTransition(ctx, tx, scope, listID, signupID, StatusWithdrawn),
+		return nil, op.Error(s.explainLostTransition(ctx, tx, scope, listID, signupID, StatusWithdrawn),
 			"withdrawing waitlist signup %q", signupID)
 	}
 
 	s.countSignups(ctx, StatusWithdrawn, 1)
 
-	return nil
+	return withdrawn, nil
 }
 
 // WithdrawSignupsForSubject withdraws every signup one principal holds in the
@@ -538,13 +587,18 @@ func (s *SQLStore) WithdrawSignupsForSubject(
 }
 
 // ArchiveSignup retires a signup administratively, through the caller's
-// transaction. See [Store].
+// transaction, and answers with the row it hid. See [Store].
+//
+// The read-back is a statement of its own, because the row it describes is the
+// one row GetSignup is written not to see — see waitlists/internal/queries. It
+// runs on tx, so what it reads is what this transaction has just hidden and
+// nothing else can see yet.
 func (s *SQLStore) ArchiveSignup(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	listID, signupID string,
-) error {
+) (*Signup, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(listKey, listID),
@@ -553,15 +607,15 @@ func (s *SQLStore) ArchiveSignup(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving waitlist signup %q", signupID)
+		return nil, op.Error(ErrNilExecutor, "archiving waitlist signup %q", signupID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving waitlist signup %q", signupID)
+		return nil, op.Error(err, "archiving waitlist signup %q", signupID)
 	}
 
 	if err := requireID(signupID); err != nil {
-		return op.Error(err, "archiving waitlist signup %q", signupID)
+		return nil, op.Error(err, "archiving waitlist signup %q", signupID)
 	}
 
 	count, err := s.q.ArchiveSignup(ctx, tx, waitlistsdb.ArchiveSignupParams{
@@ -569,9 +623,21 @@ func (s *SQLStore) ArchiveSignup(
 		Scope:      scope,
 		WaitlistID: listID,
 	})
+	if err = guardCount(count, err, ErrSignupNotFound, "archiving waitlist signup"); err != nil {
+		return nil, op.Error(err, "archiving waitlist signup %q", signupID)
+	}
 
-	return op.Error(guardCount(count, err, ErrSignupNotFound, "archiving waitlist signup"),
-		"archiving waitlist signup %q", signupID)
+	row, err := s.q.GetArchivedSignup(ctx, tx, waitlistsdb.GetArchivedSignupParams{
+		ID:         signupID,
+		Scope:      scope,
+		WaitlistID: listID,
+	})
+	if err != nil {
+		return nil, op.Error(notFound(err, ErrSignupNotFound),
+			"reading back the archived waitlist signup %q", signupID)
+	}
+
+	return signupFromArchivedRow(&row), nil
 }
 
 // explainLostTransition says why a guarded write matched nothing.
