@@ -20,6 +20,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 	"github.com/primandproper/primitives-go/v2/uploads/noop"
 
@@ -115,6 +116,37 @@ func TestRegisterAuditEraser(T *testing.T) {
 		test.Error(t, err)
 	})
 
+	T.Run("passes an eraser option through, after the config-derived ones", func(t *testing.T) {
+		t.Parallel()
+
+		// The prefix arrives from configuration and is then overridden by the
+		// pass-through, which is what "applied after" means. An invalid one is
+		// the observable end of that: it can only have been refused if the
+		// option reached auditerasure.New at all.
+		_, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, dataprivacy.NewRegistry(),
+			WithAuditEraserOptions(auditerasure.WithTablePrefix("drop table;--")))
+		test.ErrorIs(t, err, auditerasure.ErrInvalidTablePrefix)
+	})
+
+	T.Run("takes the same option slice as every other constructor", func(t *testing.T) {
+		t.Parallel()
+
+		registry := dataprivacy.NewRegistry()
+
+		// The point of the variadic being this package's Option: one wiring
+		// site's options go to whichever of these functions it calls, and the
+		// ones this function has no use for are ignored rather than refused.
+		registered, err := RegisterAuditEraser(t.Context(), &Config{Dialect: dialect.SQLite}, registry,
+			WithLogger(loggingnoop.NewLogger()),
+			WithStoreOptions(nil),
+			nil,
+		)
+		must.NoError(t, err)
+
+		test.True(t, registered)
+		test.Eq(t, []string{auditerasure.DefaultKey}, registry.EraserKeys())
+	})
+
 	T.Run("propagates a bad audit table prefix", func(t *testing.T) {
 		t.Parallel()
 
@@ -123,19 +155,6 @@ func TestRegisterAuditEraser(T *testing.T) {
 
 		_, err := RegisterAuditEraser(t.Context(), cfg, dataprivacy.NewRegistry())
 		test.ErrorIs(t, err, auditerasure.ErrInvalidTablePrefix)
-	})
-}
-
-func TestEnsurePackaging(T *testing.T) {
-	T.Parallel()
-
-	T.Run("supplies nothing when nothing is configured", func(t *testing.T) {
-		t.Parallel()
-
-		workerOpts, serviceOpts := EnsurePackaging(nil, nil)
-
-		test.SliceEmpty(t, workerOpts)
-		test.SliceEmpty(t, serviceOpts)
 	})
 }
 
@@ -151,7 +170,7 @@ func TestConstructors(T *testing.T) {
 		_, err = NewService(t.Context(), nil, nil, nil, nil)
 		test.Error(t, err)
 
-		_, err = NewFulfiller(t.Context(), nil, nil, nil, nil, nil, nil, false)
+		_, err = NewFulfiller(t.Context(), nil, nil, nil, nil, nil, nil)
 		test.Error(t, err)
 
 		_, err = NewSweeper(t.Context(), nil, nil, nil)
@@ -199,7 +218,6 @@ func TestConstructors(T *testing.T) {
 			domains,
 			kinds,
 			nil,
-			false,
 		)
 		must.NoError(t, err)
 		must.NotNil(t, fulfiller)
@@ -241,7 +259,7 @@ func TestConstructors(T *testing.T) {
 		test.Error(t, err)
 
 		_, err = NewFulfiller(t.Context(), cfg, env.client, nil, dataprivacy.NewRegistry(),
-			operations.NewRegistry(), nil, false)
+			operations.NewRegistry(), nil)
 		test.Error(t, err)
 
 		_, err = NewSweeper(t.Context(), cfg, nil, nil)
@@ -271,7 +289,37 @@ func TestConstructors(T *testing.T) {
 		// Supplying the uploader is what satisfies the export runner's storage
 		// requirement and wires the signer in one step.
 		fulfiller, err := NewFulfiller(t.Context(), cfg, env.client, store, domains, operations.NewRegistry(),
-			noop.NewUploadManager(), false)
+			noop.NewUploadManager())
+		must.NoError(t, err)
+		test.NotNil(t, fulfiller)
+	})
+
+	T.Run("takes the encryptor it is to write with, and asks it nothing else", func(t *testing.T) {
+		t.Parallel()
+
+		env := newConfigEnv(t)
+
+		cfg := &Config{Dialect: dialect.SQLite, TablePrefix: env.prefix}
+
+		store, err := NewStore(t.Context(), cfg, env.client)
+		must.NoError(t, err)
+
+		domains := dataprivacy.NewRegistry()
+		must.NoError(t, domains.RegisterCollector("identity", dataprivacy.CollectorFunc(
+			func(context.Context, tenancy.Scope, dataprivacy.Subject) (json.RawMessage, error) {
+				return json.RawMessage(`{}`), nil
+			},
+		)))
+
+		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
+		must.NoError(t, err)
+
+		// Handing over the encryptor is the whole of what this constructor is
+		// told about encryption. It writes artifacts with it and reads
+		// enc != nil to decide whether the signer may mint a link, so there is
+		// no second statement of the fact and nothing for one to contradict.
+		fulfiller, err := NewFulfiller(t.Context(), cfg, env.client, store, domains, operations.NewRegistry(),
+			noop.NewUploadManager(), WithEncryptor(encryptorDecryptor))
 		must.NoError(t, err)
 		test.NotNil(t, fulfiller)
 	})
@@ -349,10 +397,10 @@ func TestRegisterAuditEraser_Failures(T *testing.T) {
 	})
 }
 
-func TestEnsurePackaging_Supplied(T *testing.T) {
+func TestCodecOptions(T *testing.T) {
 	T.Parallel()
 
-	T.Run("pairs the worker and service codecs", func(t *testing.T) {
+	T.Run("one option each reaches the writer and the reader", func(t *testing.T) {
 		t.Parallel()
 
 		compressor, err := compression.NewCompressor(compression.AlgorithmZstd)
@@ -361,25 +409,47 @@ func TestEnsurePackaging_Supplied(T *testing.T) {
 		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
 		must.NoError(t, err)
 
-		// The pairing is the point: an artifact written with one compressor and
-		// read with another is unreadable, and the failure would surface at the
-		// subject rather than at startup.
-		workerOpts, serviceOpts := EnsurePackaging(compressor, encryptorDecryptor)
+		// The compressor is named at its interface type because that is what
+		// the option stores; the encryptor's constructor already returns one.
+		var wantCompressor compression.Compressor = compressor
 
-		test.SliceLen(t, 2, workerOpts)
-		test.SliceLen(t, 2, serviceOpts)
+		// The pairing is the point, and it is now structural: NewFulfiller
+		// writes with what WithCompressor and WithEncryptor name and NewService
+		// reads with the same two, so a wiring site that hands both
+		// constructors its option slice cannot give them different codecs. An
+		// artifact written with one compressor and read with another is
+		// unreadable, and the failure would surface at the subject rather than
+		// at startup.
+		o := newOptions([]Option{WithCompressor(compressor), WithEncryptor(encryptorDecryptor)})
+
+		test.Eq(t, wantCompressor, o.compressor)
+		test.Eq(t, encryptorDecryptor, o.encryptor)
 	})
 
-	T.Run("a compressor alone pairs one option each", func(t *testing.T) {
+	T.Run("a compressor alone leaves artifacts unencrypted", func(t *testing.T) {
 		t.Parallel()
 
 		compressor, err := compression.NewCompressor(compression.AlgorithmS2)
 		must.NoError(t, err)
 
-		workerOpts, serviceOpts := EnsurePackaging(compressor, nil)
+		var want compression.Compressor = compressor
 
-		test.SliceLen(t, 1, workerOpts)
-		test.SliceLen(t, 1, serviceOpts)
+		o := newOptions([]Option{WithCompressor(compressor)})
+
+		test.Eq(t, want, o.compressor)
+
+		// Which is also the answer to whether a notification may carry a link:
+		// there is no encryptor, so nothing is ciphertext, so the signer signs.
+		test.Nil(t, o.encryptor)
+	})
+
+	T.Run("neither is uncompressed and unencrypted", func(t *testing.T) {
+		t.Parallel()
+
+		o := newOptions(nil)
+
+		test.Nil(t, o.compressor)
+		test.Nil(t, o.encryptor)
 	})
 }
 

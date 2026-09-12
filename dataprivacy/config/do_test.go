@@ -143,6 +143,72 @@ func TestRegisterFulfiller(T *testing.T) {
 		// registry can run it.
 		test.Eq(t, []string{dataprivacy.KindExport}, kinds.Kinds())
 	})
+
+	T.Run("a registered encryptor is the whole of what a container says", func(t *testing.T) {
+		t.Parallel()
+
+		i := fulfillerInjector(t, testConfig())
+
+		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
+		must.NoError(t, err)
+		do.ProvideValue(i, encryptorDecryptor)
+
+		RegisterStore(i)
+		RegisterFulfiller(i)
+
+		// Registering the encryptor is sufficient, and there is no second
+		// thing to set. The container holds the only statement of whether this
+		// deployment encrypts, so a wiring that is correct cannot also be
+		// refused for failing to repeat itself.
+		fulfiller, err := do.Invoke[*dataprivacy.Fulfiller](i)
+		must.NoError(t, err)
+		test.NotNil(t, fulfiller)
+	})
+
+	T.Run("the same registration reaches the Service that reads the artifacts back", func(t *testing.T) {
+		t.Parallel()
+
+		i := fulfillerInjector(t, testConfig())
+
+		encryptorDecryptor, err := newTestEncryptorDecryptor([]byte("0123456789abcdef0123456789abcdef"))
+		must.NoError(t, err)
+		do.ProvideValue(i, encryptorDecryptor)
+		do.ProvideValue[operations.Service](i, stubOperations())
+
+		RegisterStore(i)
+		RegisterFulfiller(i)
+		RegisterService(i)
+
+		// Both providers resolve the same two optional registrations, so the
+		// codecs the Fulfiller writes an artifact with are the ones the Service
+		// reads it back with — which is what EnsurePackaging used to be for.
+		svc, err := do.Invoke[dataprivacy.Service](i)
+		must.NoError(t, err)
+		test.NotNil(t, svc)
+	})
+}
+
+// fulfillerInjector registers everything RegisterFulfiller needs but the store
+// and the fulfiller themselves.
+func fulfillerInjector(t *testing.T, cfg *Config) do.Injector {
+	t.Helper()
+
+	i := do.New()
+	do.ProvideValue[context.Context](i, t.Context())
+	do.ProvideValue[database.Client](i, testDBClient(t))
+	do.ProvideValue(i, cfg)
+
+	domains := dataprivacy.NewRegistry()
+	must.NoError(t, domains.RegisterCollector("example", dataprivacy.CollectorFunc(
+		func(context.Context, tenancy.Scope, dataprivacy.Subject) (json.RawMessage, error) {
+			return json.RawMessage(`{}`), nil
+		},
+	)))
+	do.ProvideValue(i, domains)
+	do.ProvideValue[uploads.UploadManager](i, uploadsnoop.NewUploadManager())
+	do.ProvideValue(i, operations.NewRegistry())
+
+	return i
 }
 
 func TestRegisterSweeper(T *testing.T) {

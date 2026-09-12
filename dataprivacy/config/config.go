@@ -15,6 +15,15 @@ runners that worker calls, and the Service that starts operations for it.
 The registry is not configured here either. Which domains hold data about a
 person is Go code — a set of interface implementations — and there is no useful
 way to express it in the environment. It is passed explicitly to NewFulfiller.
+
+The compressor and the encryptor go the same way, for the same reason. They are
+WithCompressor and WithEncryptor: NewFulfiller writes artifacts with them and
+NewService reads artifacts back with them, out of one option slice, so a wiring
+site cannot hand the writer and the reader different codecs.
+
+Whether artifacts are encrypted is therefore not configured at all. It is
+whether there is an encryptor — something this package can look at, rather than
+a claim a deployment states separately and then has to keep true.
 */
 package dataprivacycfg
 
@@ -26,8 +35,6 @@ import (
 	"github.com/primandproper/platform-go/v14/dataprivacy/auditerasure"
 	"github.com/primandproper/platform-go/v14/operations"
 
-	"github.com/primandproper/primitives-go/v2/compression"
-	"github.com/primandproper/primitives-go/v2/cryptography/encryption"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/errors"
@@ -219,6 +226,12 @@ func NewService(
 	}
 
 	var base []dataprivacy.ServiceOption
+	if o.compressor != nil {
+		base = append(base, dataprivacy.WithServiceCompressor(o.compressor))
+	}
+	if o.encryptor != nil {
+		base = append(base, dataprivacy.WithServiceDecryptor(o.encryptor))
+	}
 	if logger != nil {
 		base = append(base, dataprivacy.WithServiceLogger(logger))
 	}
@@ -248,10 +261,14 @@ func NewService(
 //
 // domains is a required argument rather than a config field: which domains hold
 // data about a person is Go code. uploader may be nil for an erasure-only
-// deployment. encrypted must say whether artifacts are written encrypted — it
-// decides whether a notification can carry a download link at all, and it is a
-// bool rather than the encryptor itself because this constructor never encrypts
-// anything, it only needs to know. Pass the encryptor through EnsurePackaging.
+// deployment.
+//
+// Whether a completion notification may carry a download link is read off
+// [WithEncryptor] rather than declared beside it. An encrypted artifact is
+// ciphertext to whoever follows the link, so the signer declines exactly where
+// Service.Download refuses. This constructor never encrypts anything — it only
+// needs to know — but it is handed the encryptor rather than a boolean about
+// one, because the two cannot then disagree.
 func NewFulfiller(
 	ctx context.Context,
 	cfg *Config,
@@ -260,7 +277,6 @@ func NewFulfiller(
 	domains *dataprivacy.Registry,
 	registry *operations.Registry,
 	uploader uploads.UploadManager,
-	encrypted bool,
 	opts ...Option,
 ) (*dataprivacy.Fulfiller, error) {
 	o := newOptions(opts)
@@ -271,6 +287,13 @@ func NewFulfiller(
 	}
 
 	var base []dataprivacy.FulfillerOption
+	if o.compressor != nil {
+		base = append(base, dataprivacy.WithFulfillerCompressor(o.compressor))
+	}
+	if o.encryptor != nil {
+		base = append(base, dataprivacy.WithFulfillerEncryptor(o.encryptor))
+	}
+
 	if uploader != nil {
 		// Wired here so a completion notification carries a working link
 		// without the caller assembling the signer by hand — and so its TTL is
@@ -278,7 +301,7 @@ func NewFulfiller(
 		base = append(base,
 			dataprivacy.WithFulfillerUploadManager(uploader),
 			dataprivacy.WithFulfillerURLSigner(dataprivacy.NewArtifactURLSigner(
-				uploader, cfg.Service.SignedURLTTL, encrypted, o.urlSigner...,
+				uploader, cfg.Service.SignedURLTTL, o.encryptor != nil, o.urlSigner...,
 			)),
 		)
 	}
@@ -343,12 +366,19 @@ func NewSweeper(
 // went. "Did this deployment erase audit records" is a question that gets asked
 // long after the deployment, and a boolean in a config file somewhere is a poor
 // place to have recorded the answer.
+//
+// Options for the eraser itself travel as WithAuditEraserOptions, like every
+// other pass-through in this package: the variadic slot is this package's own
+// Option type, so one wiring site's option slice is the one every constructor
+// here takes.
 func RegisterAuditEraser(
 	ctx context.Context,
 	cfg *Config,
 	registry *dataprivacy.Registry,
-	opts ...auditerasure.Option,
+	opts ...Option,
 ) (bool, error) {
+	o := newOptions(opts)
+
 	if err := cfg.prepare(ctx); err != nil {
 		return false, err
 	}
@@ -366,7 +396,7 @@ func RegisterAuditEraser(
 		auditerasure.WithTablePrefix(cfg.AuditErasure.TablePrefix),
 	}
 
-	eraser, err := auditerasure.New(cfg.Dialect, append(base, opts...)...)
+	eraser, err := auditerasure.New(cfg.Dialect, append(base, o.auditEraser...)...)
 	if err != nil {
 		return false, errors.Wrap(err, "building dataprivacy audit eraser")
 	}
@@ -376,27 +406,4 @@ func RegisterAuditEraser(
 	}
 
 	return true, nil
-}
-
-// EnsurePackaging returns the compressor and encryptor pair the Fulfiller
-// writes artifacts with and the Service reads them with.
-//
-// It exists so the two cannot be configured apart. An artifact written with one
-// compressor and read with another is unreadable, and the failure surfaces at
-// the subject rather than at startup.
-func EnsurePackaging(
-	compressor compression.Compressor,
-	encryptorDecryptor encryption.EncryptorDecryptor,
-) (fulfillerOpts []dataprivacy.FulfillerOption, serviceOpts []dataprivacy.ServiceOption) {
-	if compressor != nil {
-		fulfillerOpts = append(fulfillerOpts, dataprivacy.WithFulfillerCompressor(compressor))
-		serviceOpts = append(serviceOpts, dataprivacy.WithServiceCompressor(compressor))
-	}
-
-	if encryptorDecryptor != nil {
-		fulfillerOpts = append(fulfillerOpts, dataprivacy.WithFulfillerEncryptor(encryptorDecryptor))
-		serviceOpts = append(serviceOpts, dataprivacy.WithServiceDecryptor(encryptorDecryptor))
-	}
-
-	return fulfillerOpts, serviceOpts
 }
