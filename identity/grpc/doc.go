@@ -221,6 +221,39 @@ The second is that an ownership check standing in front of a write is not a
 check, because it reads through one connection what the write will act on
 through another. The owner belongs in the statement — a write keyed on the id,
 the scope and the owner together — rather than in a guard ahead of it.
+
+# The two seams grow in opposite directions
+
+[Principal]'s method set is final: three methods, and there will not be a
+fourth. Nine surfaces alias the type verbatim rather than declaring one of their
+own, so it is not this package's interface in any useful sense — it is the one
+shape every consumer of every gRPC surface in this module has implemented on
+their own session type, and a method added here breaks all of them at once with
+no deprecation available, because an interface carries no default. A surface
+that wants more of its caller than the three asks for it as an optional
+interface, declared where it is needed and type-asserted at the call site:
+
+	if s, ok := caller.(interface{ SessionID() string }); ok {
+		// the caller's session type answers this one; use it
+	}
+
+which a consumer whose type has the method satisfies by having it, and one whose
+type does not keeps compiling through. The precedent is
+[github.com/primandproper/platform-go/v14/notifications/async.ConnectionAcceptor]
+and the standard library's http.Flusher. The nine aliases inherit this from
+[Principal]'s own documentation and none of them restates it, which is the point
+of their being aliases.
+
+The authorizer seams get the opposite ruling and it must not be collapsed into
+the first. [TargetAuthorizer] ships [MembershipAuthorizer] as its default, and
+issuereports/grpc — which ships none, for a reason its [ReportAuthorizer] gives —
+still exports ReporterAuthorizer as the narrow half every deployment's rule
+contains. Either is embeddable, so an implementation that embeds it inherits an
+answer to a question the interface has not grown yet. That is the rule there: the
+default is embeddable and embedding is how an implementation stays additive,
+which deliberately leaves a fourth authorization question available. A surface
+crossing with a row check of its own owes the same pair — a seam and something
+exported to embed — rather than an interface a consumer can only implement whole.
 */
 package grpc
 

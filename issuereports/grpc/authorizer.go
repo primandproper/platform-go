@@ -83,6 +83,27 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 // with no triage console passes [ReporterAuthorizer]; one with a console
 // composes it, which is what its documentation shows.
 //
+// # A third question stays available, and embedding is how
+//
+// This is the opposite ruling to [Principal]'s, and the two must not be
+// collapsed into one. That method set is final because there is nothing for an
+// implementation to inherit: every consumer answers "who is calling" themselves,
+// so a fourth method there breaks all of them with no remedy available. Here
+// there is something to inherit, and it is [ReporterAuthorizer] — not a default,
+// since this package ships none and the section above says why, but the narrow
+// half of every rule a deployment writes, exported and embeddable for exactly
+// this. An implementation that embeds it inherits an answer to a third question
+// on the day this interface grows one, and the shape is the composition
+// [ReporterAuthorizer]'s own documentation already shows:
+//
+//	type consoleAuthorizer struct{ issuereportsgrpc.ReporterAuthorizer }
+//
+// So embedding is how an implementation stays additive. One that declares both
+// methods from nothing is choosing the compile error a third would bring, and
+// that is a choice left open rather than a mistake: a deployment whose rule about
+// its users' own words must be total wants to be told when this surface grows a
+// question that rule has not considered.
+//
 // # What implementations owe
 //
 // A nil error means permitted. [ErrTargetNotPermitted] means refused. Any other
