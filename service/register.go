@@ -2,12 +2,17 @@ package service
 
 import (
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
+	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
+	webauthncredentialscfg "github.com/primandproper/platform-go/v14/authentication/webauthncredentials/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
+	entitlementscfg "github.com/primandproper/platform-go/v14/entitlements/config"
 	"github.com/primandproper/platform-go/v14/errormappers"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
+	linkscfg "github.com/primandproper/platform-go/v14/links/config"
+	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
 	meteringcfg "github.com/primandproper/platform-go/v14/metering/config"
 	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
@@ -21,7 +26,9 @@ import (
 	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
 
 	analyticscfg "github.com/primandproper/primitives-go/v2/analytics/config"
+	oauth2servercfg "github.com/primandproper/primitives-go/v2/authentication/oauth2server/config"
 	tokenscfg "github.com/primandproper/primitives-go/v2/authentication/tokens/config"
+	webauthncfg "github.com/primandproper/primitives-go/v2/authentication/webauthn/config"
 	capitalismcfg "github.com/primandproper/primitives-go/v2/capitalism/config"
 	circuitbreakingcfg "github.com/primandproper/primitives-go/v2/circuitbreaking/config"
 	partitionedcfg "github.com/primandproper/primitives-go/v2/circuitbreaking/partitioned/config"
@@ -53,6 +60,7 @@ import (
 	httpserver "github.com/primandproper/primitives-go/v2/server/http"
 	uploadscfg "github.com/primandproper/primitives-go/v2/uploads/config"
 	"github.com/primandproper/primitives-go/v2/uploads/objectstorage"
+	inboundcfg "github.com/primandproper/primitives-go/v2/webhooks/inbound/config"
 
 	"github.com/samber/do/v2"
 )
@@ -255,6 +263,28 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 		encryptioncfg.RegisterEncryptorDecryptor(i)
 	}
 
+	// All three bridges, on the same reading of presence the rest of this walk
+	// makes: the config names one entitlements tier, and a deployment that
+	// wrote out its plans wants the answers rather than the table they are
+	// kept in. Each resolves something this package will never define — the
+	// []entitlements.Feature the application declares in Go, the
+	// entitlements.PlanSource saying which account is on which plan, and for
+	// the quota source the *metering.Registry — and each reports the missing one
+	// at the invoke rather than here, which is the lazy reading the comments
+	// store's Targets already gets.
+	//
+	// The quota source is registered under its own concrete type and not as a
+	// metering.QuotaSource, which is what keeps a metering enforcer elsewhere in
+	// the container enforcing what it was built to enforce. A deployment that
+	// wants the catalog's limits to be the enforced ones says so in one
+	// do.Provide of its own; entitlementscfg.RegisterQuotaSource carries it.
+	if cfg.Entitlements != nil {
+		do.ProvideValue(i, cfg.Entitlements)
+		entitlementscfg.RegisterCatalog(i)
+		entitlementscfg.RegisterChecker(i)
+		entitlementscfg.RegisterQuotaSource(i)
+	}
+
 	// Both registrations resolve the container's database.Client, which is to
 	// say the keys land in the same database as the data they protect unless
 	// the application arranges otherwise. That is the one thing about
@@ -296,6 +326,43 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 		issuereportscfg.RegisterStore(i)
 	}
 
+	// The verifier and the receiver, which are two registrations rather than one
+	// for the reason inboundcfg gives: a consumer on the far end of the topic
+	// re-verifying a Delivery it took off the queue has no receiver and no
+	// router to reach one through. The receiver needs a
+	// messagequeue.PublisherProvider and says so; a service that configured
+	// inbound webhooks and no queue hears about it at the invoke.
+	if cfg.InboundWebhooks != nil {
+		do.ProvideValue(i, cfg.InboundWebhooks)
+		inboundcfg.RegisterVerifier(i)
+		inboundcfg.RegisterReceiver(i)
+	}
+
+	// The minter, and the sweeper that comes with it: LINKS_SWEEP_INTERVAL is a
+	// knob on this config, so it has to reach something a process runs, and an
+	// absent one is the default rather than an absence — a table that keeps a
+	// row for every link ever minted is the failure mode of leaving it out. A
+	// deployment sweeping from a scheduler instead sets it to zero.
+	//
+	// The action registry is not registered here and cannot be. Where a
+	// magic-login link points and how long it lives is a security policy
+	// written in a file somebody reviews, which is why linkscfg.Config.Actions
+	// carries no env tag; a deployment declaring actions in code passes them
+	// through linkscfg.WithMinterOptions at a wiring site of its own.
+	if cfg.Links != nil {
+		do.ProvideValue(i, cfg.Links)
+		linkscfg.RegisterMinter(i)
+	}
+
+	// The registry table only. Which bucket the bytes went to is the Uploads
+	// block's question, and keeping the two apart is the separation the registry
+	// itself rests on: a service registering objects somebody else stored
+	// configures this and no storage at all.
+	if cfg.MediaRegistry != nil {
+		do.ProvideValue(i, cfg.MediaRegistry)
+		mediaregistrycfg.RegisterStore(i)
+	}
+
 	if cfg.LLM != nil {
 		do.ProvideValue(i, cfg.LLM)
 		llmcfg.RegisterLLMProvider(i)
@@ -323,6 +390,34 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 		mobilenotifcfg.RegisterPushSender(i)
 	}
 
+	// The store from this module's half and the server from primitives-go's, and
+	// that pairing is the whole of the decision. Both halves ship a bridge for
+	// each, and the two stores provide the same key, so a container that called
+	// both of this package's registrations would hold two — the one under
+	// oauth2server.Store and the one the server built privately — with only the
+	// second issuing codes. oauth2servercfg.RegisterServer resolves the store
+	// instead of building one, so registering the selecting half's store and the
+	// primitive's server over it leaves one store and one thing reading it.
+	//
+	// That is why the embedded half is registered too. The provider string lives
+	// with the implementation that created the choice, so a deployment's
+	// OAUTH2_SERVER_* variables land on this module's Config — and the
+	// primitive's registration reads a *oauth2servercfg.Config, which is the
+	// struct embedded inside it. One config, two keys, no second copy of
+	// anything.
+	//
+	// The oauth2server.SubjectAuthenticator the server resolves is the
+	// application's, because how a deployment identifies a human is not
+	// something an environment variable says. A container that registered none
+	// fails at the invoke rather than issuing authorization codes to whoever
+	// asks.
+	if cfg.OAuth2Server != nil {
+		do.ProvideValue(i, cfg.OAuth2Server)
+		do.ProvideValue(i, &cfg.OAuth2Server.Config)
+		oauth2serverstorecfg.RegisterStore(i)
+		oauth2servercfg.RegisterServer(i)
+	}
+
 	if cfg.Settings != nil {
 		do.ProvideValue(i, cfg.Settings)
 		settingscfg.RegisterStore(i)
@@ -331,6 +426,26 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	if cfg.Tokens != nil {
 		do.ProvideValue(i, cfg.Tokens)
 		tokenscfg.RegisterTokenIssuer(i)
+	}
+
+	// The ceremony store from this module's half and the relying party from
+	// primitives-go's, which is the oauth2 block's pairing made a second time
+	// and for the same reason: both halves provide webauthn.SessionStore under
+	// one key, and webauthncfg.RegisterRelyingParty resolves that store rather
+	// than building a second one nobody else can see. Under the cache provider
+	// that is the difference between a working login and a ceremony saved into
+	// one store and looked for in another.
+	//
+	// The embedded half is registered for the same reason it is in the oauth2
+	// block — the primitive's registration reads a *webauthncfg.Config, and that
+	// struct is embedded in this one — and the relying party is safe to build
+	// over a SQL store because webauthncfg.NewRelyingParty validates the relying
+	// party's own settings and not the cache block nobody configured.
+	if cfg.WebAuthn != nil {
+		do.ProvideValue(i, cfg.WebAuthn)
+		do.ProvideValue(i, &cfg.WebAuthn.Config)
+		webauthncredentialscfg.RegisterSessionStore(i)
+		webauthncfg.RegisterRelyingParty(i)
 	}
 }
 

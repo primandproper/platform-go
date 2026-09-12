@@ -246,3 +246,71 @@ func TestConfig_AsyncNotificationsEnvironmentComposesAcrossTheModuleBoundary(t *
 	test.EqOp(t, "secret", cfg.AsyncNotifications.Pusher.Secret)
 	test.EqOp(t, "us-east-1", cfg.AsyncNotifications.Pusher.Cluster)
 }
+
+// TestConfig_TheSixLateSubsystemsParseAtTheirOwnPrefix pins the environment
+// prefix each of the six subsystems wired last reads at.
+//
+// A prefix is decided once. It is the name an operator writes in a manifest and
+// the name every deployment keeps writing afterwards, so changing one later is a
+// breaking change to something no Go compiler can see — which makes the day the
+// field lands the only cheap moment to get it right, and this the test that says
+// what was chosen.
+//
+// Two of the six read through an embedded struct rather than a field of their
+// own. WEBAUTHN_RP_ID and OAUTH2_SERVER_ISSUER are declared on primitives-go's
+// half of a config split across the module boundary, promoted into this module's
+// half by an untagged embed, and reached here at a third prefix this struct
+// adds. Nothing about that composition fails loudly if it stops working: a
+// prefix that stops composing hands the operator the library's default and no
+// error, in a deployment that looks configured. So both are spelled out end to
+// end rather than assumed from the shorter ones.
+func TestConfig_TheSixLateSubsystemsParseAtTheirOwnPrefix(t *testing.T) {
+	t.Parallel()
+
+	cfg := &Config{Name: "example"}
+	must.NoError(t, env.ParseWithOptions(cfg, env.Options{Environment: map[string]string{
+		"ENTITLEMENTS_CHECKER_CACHE_PREFIX": "plans:",
+		"INBOUND_WEBHOOKS_PROVIDER":         "github",
+		"INBOUND_WEBHOOKS_TOPIC":            "inbound",
+		"INBOUND_WEBHOOKS_SECRET":           "hunter2",
+		"LINKS_TOKEN_BYTES":                 "48",
+		"MEDIA_REGISTRY_TABLE_PREFIX":       "media",
+		// Declared on oauth2servercfg.Config and webauthn.Config respectively,
+		// and reached through two levels of embedding and nesting.
+		"OAUTH2_SERVER_ISSUER":     "https://example.com",
+		"WEBAUTHN_RP_ID":           "example.com",
+		"WEBAUTHN_RP_DISPLAY_NAME": "Example",
+		"WEBAUTHN_RP_ORIGINS":      "https://example.com",
+	}}))
+
+	must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+	test.Eq(t, []string{
+		"Entitlements",
+		"InboundWebhooks",
+		"Links",
+		"MediaRegistry",
+		"OAuth2Server",
+		"WebAuthn",
+	}, present(t, cfg))
+
+	must.NotNil(t, cfg.Entitlements)
+	test.EqOp(t, "plans:", cfg.Entitlements.Checker.CachePrefix)
+
+	must.NotNil(t, cfg.InboundWebhooks)
+	test.EqOp(t, "github", cfg.InboundWebhooks.Provider)
+	test.EqOp(t, "inbound", cfg.InboundWebhooks.Topic)
+
+	must.NotNil(t, cfg.Links)
+	test.EqOp(t, 48, cfg.Links.TokenBytes)
+
+	must.NotNil(t, cfg.MediaRegistry)
+	test.EqOp(t, "media", cfg.MediaRegistry.TablePrefix)
+
+	must.NotNil(t, cfg.OAuth2Server)
+	test.EqOp(t, "https://example.com", cfg.OAuth2Server.Issuer)
+
+	must.NotNil(t, cfg.WebAuthn)
+	test.EqOp(t, "example.com", cfg.WebAuthn.RelyingParty.RPID)
+	test.SliceLen(t, 1, cfg.WebAuthn.RelyingParty.RPOrigins)
+}
