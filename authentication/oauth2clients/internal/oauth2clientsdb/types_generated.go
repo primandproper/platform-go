@@ -30,6 +30,28 @@ type CreateRegisteredClientParams struct {
 	Scopes        string
 }
 
+// GetArchivedRegisteredClientParams are the arguments to GetArchivedRegisteredClient.
+type GetArchivedRegisteredClientParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetArchivedRegisteredClientRow is one row of GetArchivedRegisteredClient's result.
+type GetArchivedRegisteredClientRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	BelongsToUser string
+	Name          string
+	Description   string
+	ClientID      string
+	SecretHash    string
+	RedirectUris  string
+	Scopes        string
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+}
+
 // GetRegisteredClientParams are the arguments to GetRegisteredClient.
 type GetRegisteredClientParams struct {
 	ID    string
@@ -71,16 +93,6 @@ type GetRegisteredClientByClientIDRow struct {
 	CreatedAt     time.Time
 	LastUpdatedAt *time.Time
 	ArchivedAt    *time.Time
-}
-
-// GetRegisteredClientCreatedAtParams are the arguments to GetRegisteredClientCreatedAt.
-type GetRegisteredClientCreatedAtParams struct {
-	ID string
-}
-
-// GetRegisteredClientCreatedAtRow is one row of GetRegisteredClientCreatedAt's result.
-type GetRegisteredClientCreatedAtRow struct {
-	CreatedAt time.Time
 }
 
 // ListRegisteredClientsParams are the arguments to ListRegisteredClients.

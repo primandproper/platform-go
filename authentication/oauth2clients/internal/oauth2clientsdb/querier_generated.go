@@ -37,12 +37,12 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	CreateRegisteredClient(ctx context.Context, db DBTX, arg CreateRegisteredClientParams) (int64, error)
+	// GetArchivedRegisteredClient runs the :one query.
+	GetArchivedRegisteredClient(ctx context.Context, db DBTX, arg GetArchivedRegisteredClientParams) (GetArchivedRegisteredClientRow, error)
 	// GetRegisteredClient runs the :one query.
 	GetRegisteredClient(ctx context.Context, db DBTX, arg GetRegisteredClientParams) (GetRegisteredClientRow, error)
 	// GetRegisteredClientByClientID runs the :one query.
 	GetRegisteredClientByClientID(ctx context.Context, db DBTX, arg GetRegisteredClientByClientIDParams) (GetRegisteredClientByClientIDRow, error)
-	// GetRegisteredClientCreatedAt runs the :one query.
-	GetRegisteredClientCreatedAt(ctx context.Context, db DBTX, arg GetRegisteredClientCreatedAtParams) (GetRegisteredClientCreatedAtRow, error)
 	// ListRegisteredClients runs the :many query.
 	ListRegisteredClients(ctx context.Context, db DBTX, arg ListRegisteredClientsParams) ([]ListRegisteredClientsRow, error)
 	// ListRegisteredClientsDescending runs the :many query.

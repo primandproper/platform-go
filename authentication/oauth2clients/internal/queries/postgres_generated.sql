@@ -167,11 +167,24 @@ INSERT INTO oauth2_registered_clients (
 )
 ON CONFLICT (client_id) DO NOTHING;
 
--- name: GetRegisteredClientCreatedAt :one
+-- name: GetArchivedRegisteredClient :one
 SELECT
-	oauth2_registered_clients.created_at
+	oauth2_registered_clients.id,
+	oauth2_registered_clients.scope,
+	oauth2_registered_clients.belongs_to_user,
+	oauth2_registered_clients.name,
+	oauth2_registered_clients.description,
+	oauth2_registered_clients.client_id,
+	oauth2_registered_clients.secret_hash,
+	oauth2_registered_clients.redirect_uris,
+	oauth2_registered_clients.scopes,
+	oauth2_registered_clients.created_at,
+	oauth2_registered_clients.last_updated_at,
+	oauth2_registered_clients.archived_at
 FROM oauth2_registered_clients
-WHERE oauth2_registered_clients.id = sqlc.arg(id);
+WHERE oauth2_registered_clients.id = sqlc.arg(id)
+	AND oauth2_registered_clients.scope = sqlc.arg(scope)
+	AND oauth2_registered_clients.archived_at IS NOT NULL;
 
 -- name: GetRegisteredClientByClientID :one
 SELECT

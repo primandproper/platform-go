@@ -24,12 +24,15 @@ const serviceLayerName = serviceName + "_service"
 //
 // # What it adds over the store
 //
-// Three things the store deliberately does not do. It mints the credentials, so
+// Two things the store deliberately does not do. It mints the credentials, so
 // that there is one place deciding how long a client secret is and what digests
-// it. It owns the transaction, so a consumer's audit entry and outbox row commit
-// with the registration or not at all — which is what [Hooks] is for. And it
-// reads a row back before withdrawing it, so the hook recording the withdrawal
-// can say what was withdrawn.
+// it. And it owns the transaction, so a consumer's audit entry and outbox row
+// commit with the registration or not at all — which is what [Hooks] is for.
+//
+// What it no longer does is read a row back around a write. Every store write
+// answers with the row it moved, so each operation here is one store call and a
+// hook, and the value the hook is handed is what the statement left rather than
+// what a read on either side of it found.
 //
 // Reads are not here. They are one store call with no hook and no transaction to
 // own, so a service method over them would be a second name for the store's,
@@ -149,18 +152,26 @@ func (s *Service) CreateClient(
 		Scopes:        input.Scopes,
 	}
 
+	var registered *Client
+
 	err = s.run(ctx, op, "create", func(tx database.Tx) error {
-		if writeErr := s.store.CreateClient(ctx, tx, scope, client); writeErr != nil {
+		// The row the write answers with, not the value assembled above: the
+		// creation time is the database's, and reading the response off the
+		// argument is what would render it as 0001-01-01.
+		written, writeErr := s.store.CreateClient(ctx, tx, scope, client)
+		if writeErr != nil {
 			return writeErr
 		}
 
-		return s.hooks.AfterCreateClient(ctx, tx, scope, client)
+		registered = written
+
+		return s.hooks.AfterCreateClient(ctx, tx, scope, written)
 	})
 	if err != nil {
 		return nil, op.Error(err, "creating oauth2 client")
 	}
 
-	return &IssuedClient{Client: client, Secret: secret}, nil
+	return &IssuedClient{Client: registered, Secret: secret}, nil
 }
 
 // UpdateClient revises one registration's descriptive fields and returns the row
@@ -187,14 +198,11 @@ func (s *Service) UpdateClient(
 	var updated *Client
 
 	err := s.run(ctx, op, "update", func(tx database.Tx) error {
-		if err := s.store.UpdateClient(ctx, tx, scope, id, input); err != nil {
-			return err
-		}
-
-		// Read back on the transaction, not on a second connection: what the
-		// hook and the caller see is what this operation wrote, including the
-		// last_updated_at the statement stamped.
-		client, err := s.store.GetClient(ctx, tx, scope, id)
+		// One store call rather than two. The write answers with the row it
+		// revised, read back on this transaction, so what the hook and the
+		// caller see is what the statement left — the last_updated_at it stamped
+		// included.
+		client, err := s.store.UpdateClient(ctx, tx, scope, id, input)
 		if err != nil {
 			return err
 		}
@@ -212,12 +220,12 @@ func (s *Service) UpdateClient(
 
 // ArchiveClient withdraws one registration.
 //
-// The row is read before it is archived, and the hook is handed what it read.
-// That ordering is the whole reason this is a service operation rather than a
-// store call: after the write the name and the redirect URIs are still there,
-// but an audit entry written from the id alone would record that *something*
-// was withdrawn, and the record of what the credential was for is exactly what
-// somebody reading that entry later needs.
+// The hook is handed the row the withdrawal moved, which the store answers with
+// — one statement rather than the read-before-write this operation used to make.
+// An audit entry written from the id alone would record that *something* was
+// withdrawn, and what the credential was for is exactly what somebody reading
+// that entry later needs. What the hook now sees is the row as the withdrawal
+// left it, ArchivedAt set, rather than as it stood a statement earlier.
 func (s *Service) ArchiveClient(ctx context.Context, scope tenancy.Scope, id string) error {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
@@ -226,12 +234,8 @@ func (s *Service) ArchiveClient(ctx context.Context, scope tenancy.Scope, id str
 	defer op.End()
 
 	err := s.run(ctx, op, "archive", func(tx database.Tx) error {
-		client, err := s.store.GetClient(ctx, tx, scope, id)
+		client, err := s.store.ArchiveClient(ctx, tx, scope, id)
 		if err != nil {
-			return err
-		}
-
-		if err = s.store.ArchiveClient(ctx, tx, scope, id); err != nil {
 			return err
 		}
 

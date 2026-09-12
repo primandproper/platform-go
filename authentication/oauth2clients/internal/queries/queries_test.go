@@ -108,21 +108,21 @@ func TestRender_MatchesTheCommittedFiles(T *testing.T) {
 // TestRender_ScopeIsInEveryConsumerReachableStatement is the tenancy obligation,
 // checked rather than promised.
 //
-// There are exactly two exceptions and neither is a read a consumer reaches.
-// GetRegisteredClientCreatedAt is the create's read-back of the row it has just
-// written, by the id it minted for it, inside the transaction that wrote it —
-// the row is not visible to anything else until that commits.
-// GetRegisteredClientByClientID does not omit the scope, it *resolves* one:
-// client_id is server-minted and globally unique, and the row it finds is the
-// only thing in the system that knows which registry the client is in.
+// There is exactly one exception, and it is not a read that omits the scope:
+// GetRegisteredClientByClientID *resolves* one. client_id is server-minted and
+// globally unique, and the row it finds is the only thing in the system that
+// knows which registry the client is in.
 //
-// Everything else binds it. A statement that stopped would be a read crossing
-// registries with nothing reporting it.
+// Everything else binds it, the archive's read-back included — that read has a
+// scope and it is the one the archive itself bound, so leaving it off would
+// widen a read-back past the registry the write was confined to.
+//
+// A statement that stopped binding it would be a read crossing registries with
+// nothing reporting it.
 func TestRender_ScopeIsInEveryConsumerReachableStatement(T *testing.T) {
 	T.Parallel()
 
 	unscoped := map[string]bool{
-		"GetRegisteredClientCreatedAt":  true,
 		"GetRegisteredClientByClientID": true,
 	}
 
@@ -354,13 +354,13 @@ func TestRender_EmitsTheGeneratedSetAndTheAuthoredStatements(T *testing.T) {
 	}
 
 	// What is written out beside it: the insert-ignore that replaces the
-	// standard create, that create's read-back of its own creation time, the
+	// standard create, the archive's read-back of the row it withdrew, the
 	// authorization server's lookup, and the self-service page in both
 	// directions.
 	authored := []string{
 		"CreateRegisteredClient",
+		"GetArchivedRegisteredClient",
 		"GetRegisteredClientByClientID",
-		"GetRegisteredClientCreatedAt",
 		"ListRegisteredClientsForOwner",
 		"ListRegisteredClientsForOwnerDescending",
 	}
@@ -372,6 +372,63 @@ func TestRender_EmitsTheGeneratedSetAndTheAuthoredStatements(T *testing.T) {
 			t.Parallel()
 
 			test.Eq(t, expected, slices.Sorted(maps.Keys(statements(t, d))))
+		})
+	}
+}
+
+// TestRender_TheArchiveReadBackSeesOnlyWithdrawnRows pins the complement, which
+// is the one statement in this corpus rendered from no column list and the only
+// one carrying archived_at IS NOT NULL.
+//
+// It is what makes the read-back an assertion rather than a second lookup. The
+// row an archive has just moved is the one row every other keyed statement over
+// this table is written not to return, so a read-back carrying the ordinary
+// predicate would find nothing on the write it was called to describe. The
+// inverse matters as much: a read-back carrying no archived predicate at all
+// would answer a guard that matched nothing with a live row.
+func TestRender_TheArchiveReadBackSeesOnlyWithdrawnRows(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			readBack, ok := statements(t, d)["GetArchivedRegisteredClient"]
+			must.True(t, ok, must.Sprint("GetArchivedRegisteredClient was not emitted"))
+
+			test.StrContains(t, readBack, querygen.ArchivedAtColumn+" IS NOT NULL")
+			test.StrNotContains(t, readBack, querygen.ArchivedAtColumn+" IS NULL",
+				test.Sprint("the archive read-back cannot see the row it was called to describe"))
+			test.StrContains(t, readBack, ScopeColumn+" = ")
+
+			// It projects the whole table, so the row it returns converts to the
+			// console read's rather than needing a converter of its own.
+			for _, column := range RegisteredClients.Columns {
+				test.StrContains(t, readBack, RegisteredClientsTable+"."+column,
+					test.Sprintf("the archive read-back omits %s", column))
+			}
+		})
+	}
+}
+
+// TestRender_TheConsoleReadSkipsWithdrawnRows is the other side of it: the
+// read-back is the exception, and it is one.
+//
+// It is also what makes the create's and the update's read-back this statement
+// rather than one of their own — neither write withdraws the row, so the read
+// every console makes reaches both on the transaction that wrote them.
+func TestRender_TheConsoleReadSkipsWithdrawnRows(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			body, ok := statements(t, d)["GetRegisteredClient"]
+			must.True(t, ok, must.Sprint("GetRegisteredClient was not emitted"))
+
+			test.StrContains(t, body, querygen.ArchivedAtColumn+" IS NULL",
+				test.Sprint("a withdrawn registration is absent from the console read"))
 		})
 	}
 }

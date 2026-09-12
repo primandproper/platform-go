@@ -54,11 +54,15 @@ func everythingFails() *oauth2clientsmock.StoreMock {
 		) (*filtering.QueryFilteredResult[oauth2clients.Client], error) {
 			return nil, broken
 		},
-		CreateClientFunc: func(context.Context, database.Tx, tenancy.Scope, *oauth2clients.Client) error {
-			return broken
+		CreateClientFunc: func(
+			context.Context, database.Tx, tenancy.Scope, *oauth2clients.Client,
+		) (*oauth2clients.Client, error) {
+			return nil, broken
 		},
-		ArchiveClientFunc: func(context.Context, database.Tx, tenancy.Scope, string) error {
-			return broken
+		ArchiveClientFunc: func(
+			context.Context, database.Tx, tenancy.Scope, string,
+		) (*oauth2clients.Client, error) {
+			return nil, broken
 		},
 	}
 }

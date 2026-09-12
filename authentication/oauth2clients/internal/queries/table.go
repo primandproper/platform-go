@@ -21,9 +21,10 @@ import (
 // [options], which is where both omissions are declared.
 //
 // What that set has no way to express is the other three reads, and those are
-// written at the statement instead with querygen.Match: the create's read-back
-// of the creation time the database assigned it, the self-service page keyed on
-// the scope and the owner both, and the authorization server's lookup keyed on
+// written at the statement instead with querygen.Match: the archive's read-back
+// of the row it withdrew, which is the one read here that must see past the
+// archived predicate every other one carries; the self-service page keyed on the
+// scope and the owner both; and the authorization server's lookup keyed on
 // client_id and no scope at all. [Render] is where the generated set and the
 // authored statements are appended to each other.
 type Table struct {

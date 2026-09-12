@@ -24,9 +24,29 @@ import (
 //
 // The reads take the wider type deliberately. A Tx satisfies SQLQueryExecutor,
 // so one method serves a caller holding Client.Reader() and a caller inside a
-// transaction, and the second sees that transaction's own uncommitted writes —
-// which is what [Service.CreateClient] needs to read back the creation time the
-// database assigned a row it has just inserted.
+// transaction, and the second sees that transaction's own uncommitted writes.
+//
+// # Every write answers with the row it moved
+//
+// All three of them, and none of them touches the [Client] it was handed. A
+// write that reported only an error left its caller describing the registration
+// as it stood a statement earlier: an audit entry for a revision named fields
+// the statement may not have kept, and one for a withdrawal written from the id
+// alone recorded that *something* was withdrawn. The row each returns is read
+// back on the caller's own transaction, immediately after the write, so what
+// comes back is what the statement left rather than what a second connection
+// can see.
+//
+// The read-back is a second statement rather than RETURNING. MySQL has none,
+// and the corpus is one text per dialect rendered from one description, so
+// there is no per-dialect fork to hide it in; the guarded write holds the row
+// until commit, so the two statements have no gap between them. The cost is one
+// round trip per write, and the create's is the one it was already paying.
+//
+// A refused write answers with a nil row. The sentinels are unchanged — a
+// guarded write that matched nothing is still ErrClientNotFound, a minted
+// identifier already in use is still ErrClientIDTaken — and the row comes back
+// only alongside a nil error.
 //
 // # The one method that takes no scope
 //
@@ -35,19 +55,30 @@ import (
 // any of them: the caller who reaches for one is the caller who has not thought
 // about tenancy.
 type Store interface {
-	// CreateClient records a registration.
+	// CreateClient records a registration and answers with the row it wrote.
 	//
 	// The scope is an argument even though the Client carries one, and a Client
 	// whose own scope disagrees is refused with ErrScopeMismatch rather than
 	// corrected — a scope read off a struct the caller assembled somewhere else
 	// is exactly the derivation the column rule exists to rule out. A Client
-	// naming no scope adopts the argument's.
+	// naming no scope adopts the argument's, on the row that comes back and not
+	// on the argument: the Client handed in is left exactly as it was.
+	//
+	// What comes back carries Client.SecretHash and no plaintext secret. It is a
+	// read of the row, and the row has never held one — the plaintext is
+	// returned once, by [Service.CreateClient], on an [IssuedClient], and there
+	// is no read in this package that recovers it.
 	//
 	// A client_id already in use is ErrClientIDTaken rather than an overwrite.
-	CreateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *Client) error
+	CreateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *Client) (*Client, error)
 
 	// UpdateClient revises the four descriptive fields of one live
-	// registration, and stamps last_updated_at.
+	// registration, stamps last_updated_at, and answers with the revised row.
+	//
+	// It is the method here with nothing to read a result off at all — the
+	// caller holds an id and a patch — so it is the clearest case in the package
+	// for returning the row, and last_updated_at is a value only the database
+	// could have named.
 	//
 	// It cannot touch the owner, the client_id or the digest: those are
 	// immutable in the schema as well as in [UpdateInput], because a row that
@@ -56,9 +87,22 @@ type Store interface {
 	//
 	// A registration that is absent, archived, or in another registry is
 	// ErrClientNotFound.
-	UpdateClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string, input *UpdateInput) error
+	UpdateClient(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		id string,
+		input *UpdateInput,
+	) (*Client, error)
 
-	// ArchiveClient withdraws one registration.
+	// ArchiveClient withdraws one registration and answers with the row it
+	// withdrew, ArchivedAt set.
+	//
+	// It is the one write here whose result no other read of this registry can
+	// reach: every consumer read but [Store.ResolveClientID] filters the
+	// withdrawn rows out, and that one needs a client_id rather than the row id
+	// this call was given. So the name, the owner and the redirect URIs a
+	// withdrawal entry has to record are available here and nowhere afterwards.
 	//
 	// Withdrawn rather than deleted, and that is not merely the module's row
 	// convention: a client_id names access and refresh tokens that may still be
@@ -69,7 +113,7 @@ type Store interface {
 	//
 	// A registration that is absent, already archived, or in another registry is
 	// ErrClientNotFound.
-	ArchiveClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string) error
+	ArchiveClient(ctx context.Context, tx database.Tx, scope tenancy.Scope, id string) (*Client, error)
 
 	// GetClient reads one of the registry's live registrations by row id.
 	//
