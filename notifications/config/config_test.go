@@ -1,6 +1,7 @@
 package notificationscfg
 
 import (
+	"context"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/notifications"
@@ -14,6 +15,13 @@ import (
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
 )
+
+// NewStore's declared return type is notifications.Store rather than the
+// implementation it builds. A function value takes the signature exactly, so
+// this stops compiling the moment the return narrows back to
+// *notifications.SQLStore — which is what a caller would then be entitled to
+// depend on, and what could not be taken back inside a major version.
+var _ func(context.Context, *Config, database.Client, ...Option) (notifications.Store, error) = NewStore
 
 // newClient returns a database.Client that answers Dialect and nothing else,
 // which is all NewStore reaches for.
@@ -55,7 +63,7 @@ func TestNewStore(T *testing.T) {
 		must.NotNil(t, store)
 
 		// One value answering both seams, which is what lets RegisterStore
-		// narrow it twice without building it twice.
+		// narrow it three times without building it three times.
 		var _ notifications.Inbox = store
 		var _ notifications.Registry = store
 	})
@@ -65,7 +73,13 @@ func TestNewStore(T *testing.T) {
 
 		store, err := NewStore(t.Context(), &Config{TablePrefix: "ddb"}, newClient(dialect.MySQL))
 		must.NoError(t, err)
-		test.EqOp(t, "ddb", store.TablePrefix())
+
+		// The prefix is not on either seam, so reading it back means naming the
+		// implementation this config builds — which a test in this package may
+		// do and a caller holding the interface may not.
+		sqlStore, ok := store.(*notifications.SQLStore)
+		must.True(t, ok)
+		test.EqOp(t, "ddb", sqlStore.TablePrefix())
 	})
 
 	T.Run("refuses a nil config", func(t *testing.T) {
@@ -73,6 +87,10 @@ func TestNewStore(T *testing.T) {
 
 		store, err := NewStore(t.Context(), nil, newClient(dialect.Postgres))
 		must.ErrorIs(t, err, errors.ErrNilInputParameter)
+
+		// The interface must be nil, not a non-nil interface holding a nil
+		// pointer — a caller testing the result against nil would otherwise find
+		// a store that panics on first use.
 		test.Nil(t, store)
 	})
 
@@ -108,7 +126,10 @@ func TestNewStore(T *testing.T) {
 		store, err := NewStore(t.Context(), &Config{TablePrefix: "ddb"}, newClient(dialect.Postgres),
 			WithStoreOptions(notifications.WithTablePrefix("override")))
 		must.NoError(t, err)
-		test.EqOp(t, "override", store.TablePrefix())
+
+		sqlStore, ok := store.(*notifications.SQLStore)
+		must.True(t, ok)
+		test.EqOp(t, "override", sqlStore.TablePrefix())
 	})
 
 	T.Run("takes no observability at all", func(t *testing.T) {

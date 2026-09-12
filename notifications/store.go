@@ -120,6 +120,28 @@ import (
 // available to a write that takes an id rather than an entity, which is what
 // made it the module's answer rather than this package's.
 
+// Store is both seams at once, and it exists for the layer that has to name one
+// of them.
+//
+// A store assembled from configuration has to come back as something, and the
+// two interfaces below are two things. notificationscfg.NewStore returning the
+// concrete *SQLStore was the alternative, and it makes every method that type
+// happens to export part of what a deployment assembled from configuration may
+// depend on — a surface no other package here hands out, and one that cannot be
+// taken back inside a major version. Naming the pair costs a line and puts the
+// narrowing where every sibling package already does it.
+//
+// It does not retract the split the top of this file argues for. A consumer
+// still depends on the half it uses: notifications/grpc takes an [Inbox] and a
+// [Registry] separately though one value satisfies both, an application with no
+// mobile app implements [Inbox] alone, and nothing here is reachable that was
+// not reachable through one of them. This interface names the pair rather than
+// joining them.
+type Store interface {
+	Inbox
+	Registry
+}
+
 // Inbox is the persistence seam for in-app notifications.
 //
 // This package ships a SQL implementation ([NewSQLStore]) together with the DDL

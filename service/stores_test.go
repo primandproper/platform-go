@@ -113,20 +113,20 @@ func TestRegisterStores(T *testing.T) {
 		must.NoError(t, err)
 		test.NotNil(t, waitlistStore)
 
-		// The notifications store is registered under three keys, and the two
-		// interfaces are narrowings of the one concrete registration rather
-		// than stores of their own.
-		concrete, err := do.Invoke[*notifications.SQLStore](i)
+		// The notifications store is registered under four keys, and the two
+		// halves are narrowings of the one notifications.Store registration
+		// rather than stores of their own.
+		notificationStore, err := do.Invoke[notifications.Store](i)
 		must.NoError(t, err)
-		must.NotNil(t, concrete)
+		must.NotNil(t, notificationStore)
 
 		inbox, err := do.Invoke[notifications.Inbox](i)
 		must.NoError(t, err)
-		test.True(t, inbox == notifications.Inbox(concrete))
+		test.True(t, inbox == notifications.Inbox(notificationStore))
 
 		registry, err := do.Invoke[notifications.Registry](i)
 		must.NoError(t, err)
-		test.True(t, registry == notifications.Registry(concrete))
+		test.True(t, registry == notifications.Registry(notificationStore))
 	})
 
 	T.Run("the environment alone names the newest stores", func(t *testing.T) {

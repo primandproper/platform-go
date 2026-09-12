@@ -105,8 +105,9 @@ func TestBothHalvesCloseTheFeedbackLoop(t *testing.T) {
 	// The handoff: the sender is pruning the registry this container registered,
 	// and nothing in either wiring site named the other. The key the sender
 	// resolved is mobile.TokenInvalidator, which RegisterStore registers as a
-	// fourth narrowing of the same store — so the three resolutions below are
-	// one value, and the sender never named the package that owns the table.
+	// third narrowing of the same notifications.Store — so the three resolutions
+	// below are one value, and the sender never named the package that owns the
+	// table.
 	invalidator, err := do.Invoke[mobile.TokenInvalidator](i)
 	must.NoError(t, err)
 	test.True(t, invalidator == mobile.TokenInvalidator(registry))

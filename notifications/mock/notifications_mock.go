@@ -14,6 +14,808 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+// Ensure, that StoreMock does implement notifications.Store.
+// If this is not the case, regenerate this file with moq.
+var _ notifications.Store = &StoreMock{}
+
+// StoreMock is a mock implementation of notifications.Store.
+//
+//	func TestSomethingThatUsesStore(t *testing.T) {
+//
+//		// make and configure a mocked notifications.Store
+//		mockedStore := &StoreMock{
+//			ArchiveNotificationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
+//				panic("mock out the ArchiveNotification method")
+//			},
+//			CreateNotificationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) (*notifications.Notification, error) {
+//				panic("mock out the CreateNotification method")
+//			},
+//			GetNotificationFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
+//				panic("mock out the GetNotification method")
+//			},
+//			InvalidateDeviceTokenFunc: func(ctx context.Context, platform string, token string) error {
+//				panic("mock out the InvalidateDeviceToken method")
+//			},
+//			ListDevicesFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[notifications.Device], error) {
+//				panic("mock out the ListDevices method")
+//			},
+//			ListDevicesByPrincipalsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principals []string) ([]*notifications.Device, error) {
+//				panic("mock out the ListDevicesByPrincipals method")
+//			},
+//			ListNotificationsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[notifications.Notification], error) {
+//				panic("mock out the ListNotifications method")
+//			},
+//			ListUnreadNotificationsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[notifications.Notification], error) {
+//				panic("mock out the ListUnreadNotifications method")
+//			},
+//			MarkAllNotificationsReadFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error) {
+//				panic("mock out the MarkAllNotificationsRead method")
+//			},
+//			MarkNotificationReadFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
+//				panic("mock out the MarkNotificationRead method")
+//			},
+//			RegisterDeviceFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) (*notifications.Device, error) {
+//				panic("mock out the RegisterDevice method")
+//			},
+//			RevokeDeviceFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deviceID string) (*notifications.Device, error) {
+//				panic("mock out the RevokeDevice method")
+//			},
+//		}
+//
+//		// use mockedStore in code that requires notifications.Store
+//		// and then make assertions.
+//
+//	}
+type StoreMock struct {
+	// ArchiveNotificationFunc mocks the ArchiveNotification method.
+	ArchiveNotificationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error)
+
+	// CreateNotificationFunc mocks the CreateNotification method.
+	CreateNotificationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) (*notifications.Notification, error)
+
+	// GetNotificationFunc mocks the GetNotification method.
+	GetNotificationFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error)
+
+	// InvalidateDeviceTokenFunc mocks the InvalidateDeviceToken method.
+	InvalidateDeviceTokenFunc func(ctx context.Context, platform string, token string) error
+
+	// ListDevicesFunc mocks the ListDevices method.
+	ListDevicesFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[notifications.Device], error)
+
+	// ListDevicesByPrincipalsFunc mocks the ListDevicesByPrincipals method.
+	ListDevicesByPrincipalsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principals []string) ([]*notifications.Device, error)
+
+	// ListNotificationsFunc mocks the ListNotifications method.
+	ListNotificationsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[notifications.Notification], error)
+
+	// ListUnreadNotificationsFunc mocks the ListUnreadNotifications method.
+	ListUnreadNotificationsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[notifications.Notification], error)
+
+	// MarkAllNotificationsReadFunc mocks the MarkAllNotificationsRead method.
+	MarkAllNotificationsReadFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error)
+
+	// MarkNotificationReadFunc mocks the MarkNotificationRead method.
+	MarkNotificationReadFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error)
+
+	// RegisterDeviceFunc mocks the RegisterDevice method.
+	RegisterDeviceFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) (*notifications.Device, error)
+
+	// RevokeDeviceFunc mocks the RevokeDevice method.
+	RevokeDeviceFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deviceID string) (*notifications.Device, error)
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// ArchiveNotification holds details about calls to the ArchiveNotification method.
+		ArchiveNotification []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+			// NotificationID is the notificationID argument value.
+			NotificationID string
+		}
+		// CreateNotification holds details about calls to the CreateNotification method.
+		CreateNotification []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Notification is the notification argument value.
+			Notification *notifications.Notification
+		}
+		// GetNotification holds details about calls to the GetNotification method.
+		GetNotification []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+			// NotificationID is the notificationID argument value.
+			NotificationID string
+		}
+		// InvalidateDeviceToken holds details about calls to the InvalidateDeviceToken method.
+		InvalidateDeviceToken []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Platform is the platform argument value.
+			Platform string
+			// Token is the token argument value.
+			Token string
+		}
+		// ListDevices holds details about calls to the ListDevices method.
+		ListDevices []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+			// Filter is the filter argument value.
+			Filter *filtering.QueryFilter
+		}
+		// ListDevicesByPrincipals holds details about calls to the ListDevicesByPrincipals method.
+		ListDevicesByPrincipals []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principals is the principals argument value.
+			Principals []string
+		}
+		// ListNotifications holds details about calls to the ListNotifications method.
+		ListNotifications []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+			// Filter is the filter argument value.
+			Filter *filtering.QueryFilter
+		}
+		// ListUnreadNotifications holds details about calls to the ListUnreadNotifications method.
+		ListUnreadNotifications []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+			// Filter is the filter argument value.
+			Filter *filtering.QueryFilter
+		}
+		// MarkAllNotificationsRead holds details about calls to the MarkAllNotificationsRead method.
+		MarkAllNotificationsRead []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+		}
+		// MarkNotificationRead holds details about calls to the MarkNotificationRead method.
+		MarkNotificationRead []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+			// NotificationID is the notificationID argument value.
+			NotificationID string
+		}
+		// RegisterDevice holds details about calls to the RegisterDevice method.
+		RegisterDevice []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Device is the device argument value.
+			Device *notifications.Device
+		}
+		// RevokeDevice holds details about calls to the RevokeDevice method.
+		RevokeDevice []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+			// DeviceID is the deviceID argument value.
+			DeviceID string
+		}
+	}
+	lockArchiveNotification      sync.RWMutex
+	lockCreateNotification       sync.RWMutex
+	lockGetNotification          sync.RWMutex
+	lockInvalidateDeviceToken    sync.RWMutex
+	lockListDevices              sync.RWMutex
+	lockListDevicesByPrincipals  sync.RWMutex
+	lockListNotifications        sync.RWMutex
+	lockListUnreadNotifications  sync.RWMutex
+	lockMarkAllNotificationsRead sync.RWMutex
+	lockMarkNotificationRead     sync.RWMutex
+	lockRegisterDevice           sync.RWMutex
+	lockRevokeDevice             sync.RWMutex
+}
+
+// ArchiveNotification calls ArchiveNotificationFunc.
+func (mock *StoreMock) ArchiveNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
+	if mock.ArchiveNotificationFunc == nil {
+		panic("StoreMock.ArchiveNotificationFunc: method is nil but Store.ArchiveNotification was just called")
+	}
+	callInfo := struct {
+		Ctx            context.Context
+		Tx             database.Tx
+		Scope          tenancy.Scope
+		Principal      string
+		NotificationID string
+	}{
+		Ctx:            ctx,
+		Tx:             tx,
+		Scope:          scope,
+		Principal:      principal,
+		NotificationID: notificationID,
+	}
+	mock.lockArchiveNotification.Lock()
+	mock.calls.ArchiveNotification = append(mock.calls.ArchiveNotification, callInfo)
+	mock.lockArchiveNotification.Unlock()
+	return mock.ArchiveNotificationFunc(ctx, tx, scope, principal, notificationID)
+}
+
+// ArchiveNotificationCalls gets all the calls that were made to ArchiveNotification.
+// Check the length with:
+//
+//	len(mockedStore.ArchiveNotificationCalls())
+func (mock *StoreMock) ArchiveNotificationCalls() []struct {
+	Ctx            context.Context
+	Tx             database.Tx
+	Scope          tenancy.Scope
+	Principal      string
+	NotificationID string
+} {
+	var calls []struct {
+		Ctx            context.Context
+		Tx             database.Tx
+		Scope          tenancy.Scope
+		Principal      string
+		NotificationID string
+	}
+	mock.lockArchiveNotification.RLock()
+	calls = mock.calls.ArchiveNotification
+	mock.lockArchiveNotification.RUnlock()
+	return calls
+}
+
+// CreateNotification calls CreateNotificationFunc.
+func (mock *StoreMock) CreateNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) (*notifications.Notification, error) {
+	if mock.CreateNotificationFunc == nil {
+		panic("StoreMock.CreateNotificationFunc: method is nil but Store.CreateNotification was just called")
+	}
+	callInfo := struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Notification *notifications.Notification
+	}{
+		Ctx:          ctx,
+		Tx:           tx,
+		Scope:        scope,
+		Notification: notification,
+	}
+	mock.lockCreateNotification.Lock()
+	mock.calls.CreateNotification = append(mock.calls.CreateNotification, callInfo)
+	mock.lockCreateNotification.Unlock()
+	return mock.CreateNotificationFunc(ctx, tx, scope, notification)
+}
+
+// CreateNotificationCalls gets all the calls that were made to CreateNotification.
+// Check the length with:
+//
+//	len(mockedStore.CreateNotificationCalls())
+func (mock *StoreMock) CreateNotificationCalls() []struct {
+	Ctx          context.Context
+	Tx           database.Tx
+	Scope        tenancy.Scope
+	Notification *notifications.Notification
+} {
+	var calls []struct {
+		Ctx          context.Context
+		Tx           database.Tx
+		Scope        tenancy.Scope
+		Notification *notifications.Notification
+	}
+	mock.lockCreateNotification.RLock()
+	calls = mock.calls.CreateNotification
+	mock.lockCreateNotification.RUnlock()
+	return calls
+}
+
+// GetNotification calls GetNotificationFunc.
+func (mock *StoreMock) GetNotification(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
+	if mock.GetNotificationFunc == nil {
+		panic("StoreMock.GetNotificationFunc: method is nil but Store.GetNotification was just called")
+	}
+	callInfo := struct {
+		Ctx            context.Context
+		Q              database.SQLQueryExecutor
+		Scope          tenancy.Scope
+		Principal      string
+		NotificationID string
+	}{
+		Ctx:            ctx,
+		Q:              q,
+		Scope:          scope,
+		Principal:      principal,
+		NotificationID: notificationID,
+	}
+	mock.lockGetNotification.Lock()
+	mock.calls.GetNotification = append(mock.calls.GetNotification, callInfo)
+	mock.lockGetNotification.Unlock()
+	return mock.GetNotificationFunc(ctx, q, scope, principal, notificationID)
+}
+
+// GetNotificationCalls gets all the calls that were made to GetNotification.
+// Check the length with:
+//
+//	len(mockedStore.GetNotificationCalls())
+func (mock *StoreMock) GetNotificationCalls() []struct {
+	Ctx            context.Context
+	Q              database.SQLQueryExecutor
+	Scope          tenancy.Scope
+	Principal      string
+	NotificationID string
+} {
+	var calls []struct {
+		Ctx            context.Context
+		Q              database.SQLQueryExecutor
+		Scope          tenancy.Scope
+		Principal      string
+		NotificationID string
+	}
+	mock.lockGetNotification.RLock()
+	calls = mock.calls.GetNotification
+	mock.lockGetNotification.RUnlock()
+	return calls
+}
+
+// InvalidateDeviceToken calls InvalidateDeviceTokenFunc.
+func (mock *StoreMock) InvalidateDeviceToken(ctx context.Context, platform string, token string) error {
+	if mock.InvalidateDeviceTokenFunc == nil {
+		panic("StoreMock.InvalidateDeviceTokenFunc: method is nil but Store.InvalidateDeviceToken was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		Platform string
+		Token    string
+	}{
+		Ctx:      ctx,
+		Platform: platform,
+		Token:    token,
+	}
+	mock.lockInvalidateDeviceToken.Lock()
+	mock.calls.InvalidateDeviceToken = append(mock.calls.InvalidateDeviceToken, callInfo)
+	mock.lockInvalidateDeviceToken.Unlock()
+	return mock.InvalidateDeviceTokenFunc(ctx, platform, token)
+}
+
+// InvalidateDeviceTokenCalls gets all the calls that were made to InvalidateDeviceToken.
+// Check the length with:
+//
+//	len(mockedStore.InvalidateDeviceTokenCalls())
+func (mock *StoreMock) InvalidateDeviceTokenCalls() []struct {
+	Ctx      context.Context
+	Platform string
+	Token    string
+} {
+	var calls []struct {
+		Ctx      context.Context
+		Platform string
+		Token    string
+	}
+	mock.lockInvalidateDeviceToken.RLock()
+	calls = mock.calls.InvalidateDeviceToken
+	mock.lockInvalidateDeviceToken.RUnlock()
+	return calls
+}
+
+// ListDevices calls ListDevicesFunc.
+func (mock *StoreMock) ListDevices(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[notifications.Device], error) {
+	if mock.ListDevicesFunc == nil {
+		panic("StoreMock.ListDevicesFunc: method is nil but Store.ListDevices was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     tenancy.Scope
+		Principal string
+		Filter    *filtering.QueryFilter
+	}{
+		Ctx:       ctx,
+		Q:         q,
+		Scope:     scope,
+		Principal: principal,
+		Filter:    filter,
+	}
+	mock.lockListDevices.Lock()
+	mock.calls.ListDevices = append(mock.calls.ListDevices, callInfo)
+	mock.lockListDevices.Unlock()
+	return mock.ListDevicesFunc(ctx, q, scope, principal, filter)
+}
+
+// ListDevicesCalls gets all the calls that were made to ListDevices.
+// Check the length with:
+//
+//	len(mockedStore.ListDevicesCalls())
+func (mock *StoreMock) ListDevicesCalls() []struct {
+	Ctx       context.Context
+	Q         database.SQLQueryExecutor
+	Scope     tenancy.Scope
+	Principal string
+	Filter    *filtering.QueryFilter
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     tenancy.Scope
+		Principal string
+		Filter    *filtering.QueryFilter
+	}
+	mock.lockListDevices.RLock()
+	calls = mock.calls.ListDevices
+	mock.lockListDevices.RUnlock()
+	return calls
+}
+
+// ListDevicesByPrincipals calls ListDevicesByPrincipalsFunc.
+func (mock *StoreMock) ListDevicesByPrincipals(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principals []string) ([]*notifications.Device, error) {
+	if mock.ListDevicesByPrincipalsFunc == nil {
+		panic("StoreMock.ListDevicesByPrincipalsFunc: method is nil but Store.ListDevicesByPrincipals was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Q          database.SQLQueryExecutor
+		Scope      tenancy.Scope
+		Principals []string
+	}{
+		Ctx:        ctx,
+		Q:          q,
+		Scope:      scope,
+		Principals: principals,
+	}
+	mock.lockListDevicesByPrincipals.Lock()
+	mock.calls.ListDevicesByPrincipals = append(mock.calls.ListDevicesByPrincipals, callInfo)
+	mock.lockListDevicesByPrincipals.Unlock()
+	return mock.ListDevicesByPrincipalsFunc(ctx, q, scope, principals)
+}
+
+// ListDevicesByPrincipalsCalls gets all the calls that were made to ListDevicesByPrincipals.
+// Check the length with:
+//
+//	len(mockedStore.ListDevicesByPrincipalsCalls())
+func (mock *StoreMock) ListDevicesByPrincipalsCalls() []struct {
+	Ctx        context.Context
+	Q          database.SQLQueryExecutor
+	Scope      tenancy.Scope
+	Principals []string
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Q          database.SQLQueryExecutor
+		Scope      tenancy.Scope
+		Principals []string
+	}
+	mock.lockListDevicesByPrincipals.RLock()
+	calls = mock.calls.ListDevicesByPrincipals
+	mock.lockListDevicesByPrincipals.RUnlock()
+	return calls
+}
+
+// ListNotifications calls ListNotificationsFunc.
+func (mock *StoreMock) ListNotifications(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[notifications.Notification], error) {
+	if mock.ListNotificationsFunc == nil {
+		panic("StoreMock.ListNotificationsFunc: method is nil but Store.ListNotifications was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     tenancy.Scope
+		Principal string
+		Filter    *filtering.QueryFilter
+	}{
+		Ctx:       ctx,
+		Q:         q,
+		Scope:     scope,
+		Principal: principal,
+		Filter:    filter,
+	}
+	mock.lockListNotifications.Lock()
+	mock.calls.ListNotifications = append(mock.calls.ListNotifications, callInfo)
+	mock.lockListNotifications.Unlock()
+	return mock.ListNotificationsFunc(ctx, q, scope, principal, filter)
+}
+
+// ListNotificationsCalls gets all the calls that were made to ListNotifications.
+// Check the length with:
+//
+//	len(mockedStore.ListNotificationsCalls())
+func (mock *StoreMock) ListNotificationsCalls() []struct {
+	Ctx       context.Context
+	Q         database.SQLQueryExecutor
+	Scope     tenancy.Scope
+	Principal string
+	Filter    *filtering.QueryFilter
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     tenancy.Scope
+		Principal string
+		Filter    *filtering.QueryFilter
+	}
+	mock.lockListNotifications.RLock()
+	calls = mock.calls.ListNotifications
+	mock.lockListNotifications.RUnlock()
+	return calls
+}
+
+// ListUnreadNotifications calls ListUnreadNotificationsFunc.
+func (mock *StoreMock) ListUnreadNotifications(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[notifications.Notification], error) {
+	if mock.ListUnreadNotificationsFunc == nil {
+		panic("StoreMock.ListUnreadNotificationsFunc: method is nil but Store.ListUnreadNotifications was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     tenancy.Scope
+		Principal string
+		Filter    *filtering.QueryFilter
+	}{
+		Ctx:       ctx,
+		Q:         q,
+		Scope:     scope,
+		Principal: principal,
+		Filter:    filter,
+	}
+	mock.lockListUnreadNotifications.Lock()
+	mock.calls.ListUnreadNotifications = append(mock.calls.ListUnreadNotifications, callInfo)
+	mock.lockListUnreadNotifications.Unlock()
+	return mock.ListUnreadNotificationsFunc(ctx, q, scope, principal, filter)
+}
+
+// ListUnreadNotificationsCalls gets all the calls that were made to ListUnreadNotifications.
+// Check the length with:
+//
+//	len(mockedStore.ListUnreadNotificationsCalls())
+func (mock *StoreMock) ListUnreadNotificationsCalls() []struct {
+	Ctx       context.Context
+	Q         database.SQLQueryExecutor
+	Scope     tenancy.Scope
+	Principal string
+	Filter    *filtering.QueryFilter
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Q         database.SQLQueryExecutor
+		Scope     tenancy.Scope
+		Principal string
+		Filter    *filtering.QueryFilter
+	}
+	mock.lockListUnreadNotifications.RLock()
+	calls = mock.calls.ListUnreadNotifications
+	mock.lockListUnreadNotifications.RUnlock()
+	return calls
+}
+
+// MarkAllNotificationsRead calls MarkAllNotificationsReadFunc.
+func (mock *StoreMock) MarkAllNotificationsRead(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error) {
+	if mock.MarkAllNotificationsReadFunc == nil {
+		panic("StoreMock.MarkAllNotificationsReadFunc: method is nil but Store.MarkAllNotificationsRead was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+	}{
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		Principal: principal,
+	}
+	mock.lockMarkAllNotificationsRead.Lock()
+	mock.calls.MarkAllNotificationsRead = append(mock.calls.MarkAllNotificationsRead, callInfo)
+	mock.lockMarkAllNotificationsRead.Unlock()
+	return mock.MarkAllNotificationsReadFunc(ctx, tx, scope, principal)
+}
+
+// MarkAllNotificationsReadCalls gets all the calls that were made to MarkAllNotificationsRead.
+// Check the length with:
+//
+//	len(mockedStore.MarkAllNotificationsReadCalls())
+func (mock *StoreMock) MarkAllNotificationsReadCalls() []struct {
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	Principal string
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+	}
+	mock.lockMarkAllNotificationsRead.RLock()
+	calls = mock.calls.MarkAllNotificationsRead
+	mock.lockMarkAllNotificationsRead.RUnlock()
+	return calls
+}
+
+// MarkNotificationRead calls MarkNotificationReadFunc.
+func (mock *StoreMock) MarkNotificationRead(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
+	if mock.MarkNotificationReadFunc == nil {
+		panic("StoreMock.MarkNotificationReadFunc: method is nil but Store.MarkNotificationRead was just called")
+	}
+	callInfo := struct {
+		Ctx            context.Context
+		Tx             database.Tx
+		Scope          tenancy.Scope
+		Principal      string
+		NotificationID string
+	}{
+		Ctx:            ctx,
+		Tx:             tx,
+		Scope:          scope,
+		Principal:      principal,
+		NotificationID: notificationID,
+	}
+	mock.lockMarkNotificationRead.Lock()
+	mock.calls.MarkNotificationRead = append(mock.calls.MarkNotificationRead, callInfo)
+	mock.lockMarkNotificationRead.Unlock()
+	return mock.MarkNotificationReadFunc(ctx, tx, scope, principal, notificationID)
+}
+
+// MarkNotificationReadCalls gets all the calls that were made to MarkNotificationRead.
+// Check the length with:
+//
+//	len(mockedStore.MarkNotificationReadCalls())
+func (mock *StoreMock) MarkNotificationReadCalls() []struct {
+	Ctx            context.Context
+	Tx             database.Tx
+	Scope          tenancy.Scope
+	Principal      string
+	NotificationID string
+} {
+	var calls []struct {
+		Ctx            context.Context
+		Tx             database.Tx
+		Scope          tenancy.Scope
+		Principal      string
+		NotificationID string
+	}
+	mock.lockMarkNotificationRead.RLock()
+	calls = mock.calls.MarkNotificationRead
+	mock.lockMarkNotificationRead.RUnlock()
+	return calls
+}
+
+// RegisterDevice calls RegisterDeviceFunc.
+func (mock *StoreMock) RegisterDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, device *notifications.Device) (*notifications.Device, error) {
+	if mock.RegisterDeviceFunc == nil {
+		panic("StoreMock.RegisterDeviceFunc: method is nil but Store.RegisterDevice was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Device *notifications.Device
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		Device: device,
+	}
+	mock.lockRegisterDevice.Lock()
+	mock.calls.RegisterDevice = append(mock.calls.RegisterDevice, callInfo)
+	mock.lockRegisterDevice.Unlock()
+	return mock.RegisterDeviceFunc(ctx, tx, scope, device)
+}
+
+// RegisterDeviceCalls gets all the calls that were made to RegisterDevice.
+// Check the length with:
+//
+//	len(mockedStore.RegisterDeviceCalls())
+func (mock *StoreMock) RegisterDeviceCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	Device *notifications.Device
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		Device *notifications.Device
+	}
+	mock.lockRegisterDevice.RLock()
+	calls = mock.calls.RegisterDevice
+	mock.lockRegisterDevice.RUnlock()
+	return calls
+}
+
+// RevokeDevice calls RevokeDeviceFunc.
+func (mock *StoreMock) RevokeDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string, deviceID string) (*notifications.Device, error) {
+	if mock.RevokeDeviceFunc == nil {
+		panic("StoreMock.RevokeDeviceFunc: method is nil but Store.RevokeDevice was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+		DeviceID  string
+	}{
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		Principal: principal,
+		DeviceID:  deviceID,
+	}
+	mock.lockRevokeDevice.Lock()
+	mock.calls.RevokeDevice = append(mock.calls.RevokeDevice, callInfo)
+	mock.lockRevokeDevice.Unlock()
+	return mock.RevokeDeviceFunc(ctx, tx, scope, principal, deviceID)
+}
+
+// RevokeDeviceCalls gets all the calls that were made to RevokeDevice.
+// Check the length with:
+//
+//	len(mockedStore.RevokeDeviceCalls())
+func (mock *StoreMock) RevokeDeviceCalls() []struct {
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	Principal string
+	DeviceID  string
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+		DeviceID  string
+	}
+	mock.lockRevokeDevice.RLock()
+	calls = mock.calls.RevokeDevice
+	mock.lockRevokeDevice.RUnlock()
+	return calls
+}
+
 // Ensure, that InboxMock does implement notifications.Inbox.
 // If this is not the case, regenerate this file with moq.
 var _ notifications.Inbox = &InboxMock{}
