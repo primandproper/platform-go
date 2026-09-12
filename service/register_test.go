@@ -2,10 +2,14 @@ package service
 
 import (
 	"context"
+	"net/http"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
+	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
+	webauthncredentialscfg "github.com/primandproper/platform-go/v14/authentication/webauthncredentials/config"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	"github.com/primandproper/platform-go/v14/outbox"
@@ -14,6 +18,9 @@ import (
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
 	"github.com/primandproper/platform-go/v14/workqueue"
 
+	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
+	cachecfg "github.com/primandproper/primitives-go/v2/cache/config"
 	"github.com/primandproper/primitives-go/v2/config/injection"
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
@@ -37,6 +44,29 @@ func provided(i do.Injector) map[string]bool {
 	}
 
 	return names
+}
+
+// invoked returns the set of service names something has actually built,
+// which is how a registration that resolves a dependency is told apart from one
+// that quietly builds its own.
+func invoked(i do.Injector) map[string]bool {
+	services := i.ListInvokedServices()
+
+	names := map[string]bool{}
+	for idx := range services {
+		names[services[idx].Service] = true
+	}
+
+	return names
+}
+
+// refusingAuthenticator is an oauth2server.SubjectAuthenticator that identifies
+// nobody. The server needs one registered to build, and no test here reaches a
+// login.
+type refusingAuthenticator struct{}
+
+func (refusingAuthenticator) AuthenticateSubject(context.Context, *http.Request) (*oauth2server.Subject, error) {
+	return nil, oauth2server.ErrLoginFailed
 }
 
 // newInjector registers cfg against a fresh injector, along with the
@@ -171,6 +201,75 @@ func TestRegister(T *testing.T) {
 		} {
 			test.MapContainsKey(t, names, svc)
 		}
+	})
+
+	T.Run("the webauthn relying party is built over the registered ceremony store", func(t *testing.T) {
+		t.Parallel()
+
+		// The load-bearing property of the webauthn block, and the one no
+		// count of registrations can see. Both halves of the split provide
+		// webauthn.SessionStore under one key, so a walk that registered this
+		// module's store and this module's relying party would leave the
+		// container holding two — the registered one and the one the relying
+		// party built privately — with only the second in the ceremonies. Under
+		// the cache provider that is a challenge saved into one store and looked
+		// for in another, which is a fraction of logins failing on a fleet and
+		// nothing at all failing on a laptop.
+		//
+		// Invoking the store is the evidence: the relying party resolved it
+		// rather than building one, so it shows up as invoked without anything
+		// in this test asking for it.
+		ceremonyTimeout := time.Minute
+		cfg := &Config{
+			Name: "example",
+			WebAuthn: &webauthncredentialscfg.Config{
+				Provider: webauthncredentialscfg.ProviderCache,
+				RelyingParty: webauthn.Config{
+					RPID:            "localhost",
+					RPDisplayName:   "Example",
+					RPOrigins:       []string{"http://localhost:8080"},
+					CeremonyTimeout: ceremonyTimeout,
+				},
+				Cache: cachecfg.Config{Provider: cachecfg.ProviderMemory},
+			},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+
+		relyingParty, err := do.Invoke[*webauthn.RelyingParty](i)
+		must.NoError(t, err)
+		must.NotNil(t, relyingParty)
+
+		test.MapContainsKey(t, invoked(i), do.NameOf[webauthn.SessionStore]())
+	})
+
+	T.Run("the oauth2 server is built over the registered store", func(t *testing.T) {
+		t.Parallel()
+
+		// The webauthn subtest's property, a second time, for the second half of
+		// the authentication split. The two stores provide one key here too, and
+		// a server issuing authorization codes against a store nothing else can
+		// read is the same failure wearing a different name.
+		cfg := &Config{
+			Name: "example",
+			OAuth2Server: &oauth2serverstorecfg.Config{
+				Provider: oauth2serverstorecfg.ProviderMemory,
+				Issuer:   "https://example.com",
+			},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+		// The application's, always: how a deployment identifies a human is not
+		// something an environment variable says.
+		do.ProvideValue[oauth2server.SubjectAuthenticator](i, refusingAuthenticator{})
+
+		server, err := do.Invoke[*oauth2server.Server](i)
+		must.NoError(t, err)
+		must.NotNil(t, server)
+
+		test.MapContainsKey(t, invoked(i), do.NameOf[oauth2server.Store]())
 	})
 
 	T.Run("the saga outbox publisher needs both ends configured", func(t *testing.T) {
