@@ -280,6 +280,7 @@ func Render(d dialect.Dialect) string {
 	rendered = append(rendered, guardedCreates(g)...)
 	rendered = append(rendered, referentChecks(g)...)
 	rendered = append(rendered, createdAtReads(g)...)
+	rendered = append(rendered, archivedReads(g)...)
 	rendered = append(rendered, externalIDReads(g)...)
 	rendered = append(rendered, accountReads(g)...)
 	rendered = append(rendered, guardedWrites(g)...)
@@ -397,6 +398,53 @@ func createdAtReads(g *querygen.Generator) []*querygen.Query {
 			"Get"+table.Singular+"CreatedAt", table.Name,
 			[]string{querygen.IDColumn},
 			querygen.Read{Projection: []string{querygen.CreatedAtColumn}},
+		))
+	}
+
+	return rendered
+}
+
+// archivedReads are the four reads an archive answers with: the row it just
+// withdrew, on the transaction that withdrew it.
+//
+// They exist because archiving is the one write in this schema whose result no
+// read by id can see. Every keyed read here filters archived_at IS NULL — which
+// is what makes an archived product absent from the catalog and an archived
+// ledger row absent from a reconciliation — so a store that archived a row and
+// read it back through one of those would find nothing. What is left once the
+// transaction commits is a page asked for archived rows, and the four
+// provider-id lookups, which need an identifier the row may not carry.
+//
+// Each is rendered from no column list at all, which is the opposite half of
+// [Table.UnarchivedBlindColumns]' reason: querygen derives the archived
+// predicate from the columns it is handed, so a read that must see archived
+// rows is one keyed entirely on its matches. What takes that predicate's place
+// is its complement — archived_at IS NOT NULL — so the read-back asserts the
+// thing it was called to confirm, and a guard that matched nothing cannot be
+// read back as a success.
+//
+// The scope is bound, unlike [createdAtReads]: this is a read of a row the
+// caller named rather than one the store has just minted an id for, and every
+// read of a row somebody named binds the column it belongs to.
+//
+// There is no companion for the two updates or for the completion. None of them
+// takes the row out of its table, so the ordinary keyed read reaches all three
+// on the transaction that wrote them, and the read-back each makes is that
+// statement rather than one of its own.
+func archivedReads(g *querygen.Generator) []*querygen.Query {
+	var (
+		scope    = querygen.Match{Column: ScopeColumn}
+		id       = querygen.Match{Column: querygen.IDColumn}
+		archived = querygen.Match{Column: querygen.ArchivedAtColumn, Against: querygen.NoValue, Exclude: true}
+	)
+
+	rendered := make([]*querygen.Query, 0, len(Emitted))
+
+	for _, table := range Emitted {
+		rendered = append(rendered, g.ReadQuery(
+			"GetArchived"+table.Singular, table.Name, nil,
+			querygen.Read{Projection: table.Columns},
+			id, scope, archived,
 		))
 	}
 

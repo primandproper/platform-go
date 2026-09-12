@@ -149,6 +149,76 @@ const createTransactionSQLite = `INSERT OR IGNORE INTO {{prefix}}billing_transac
 	?9
 )`
 
+const getArchivedProductSQLite = `SELECT
+	{{prefix}}billing_products.id,
+	{{prefix}}billing_products.scope,
+	{{prefix}}billing_products.name,
+	{{prefix}}billing_products.description,
+	{{prefix}}billing_products.kind,
+	{{prefix}}billing_products.amount_cents,
+	{{prefix}}billing_products.currency,
+	{{prefix}}billing_products.billing_interval_months,
+	{{prefix}}billing_products.external_product_id,
+	{{prefix}}billing_products.created_at,
+	{{prefix}}billing_products.last_updated_at,
+	{{prefix}}billing_products.archived_at
+FROM {{prefix}}billing_products
+WHERE {{prefix}}billing_products.id = ?1
+	AND {{prefix}}billing_products.scope = ?2
+	AND {{prefix}}billing_products.archived_at IS NOT NULL`
+
+const getArchivedPurchaseSQLite = `SELECT
+	{{prefix}}billing_purchases.id,
+	{{prefix}}billing_purchases.scope,
+	{{prefix}}billing_purchases.belongs_to_account,
+	{{prefix}}billing_purchases.product_id,
+	{{prefix}}billing_purchases.external_transaction_id,
+	{{prefix}}billing_purchases.amount_cents,
+	{{prefix}}billing_purchases.currency,
+	{{prefix}}billing_purchases.completed_at,
+	{{prefix}}billing_purchases.created_at,
+	{{prefix}}billing_purchases.last_updated_at,
+	{{prefix}}billing_purchases.archived_at
+FROM {{prefix}}billing_purchases
+WHERE {{prefix}}billing_purchases.id = ?1
+	AND {{prefix}}billing_purchases.scope = ?2
+	AND {{prefix}}billing_purchases.archived_at IS NOT NULL`
+
+const getArchivedSubscriptionSQLite = `SELECT
+	{{prefix}}billing_subscriptions.id,
+	{{prefix}}billing_subscriptions.scope,
+	{{prefix}}billing_subscriptions.belongs_to_account,
+	{{prefix}}billing_subscriptions.product_id,
+	{{prefix}}billing_subscriptions.external_subscription_id,
+	{{prefix}}billing_subscriptions.status,
+	{{prefix}}billing_subscriptions.current_period_start,
+	{{prefix}}billing_subscriptions.current_period_end,
+	{{prefix}}billing_subscriptions.created_at,
+	{{prefix}}billing_subscriptions.last_updated_at,
+	{{prefix}}billing_subscriptions.archived_at
+FROM {{prefix}}billing_subscriptions
+WHERE {{prefix}}billing_subscriptions.id = ?1
+	AND {{prefix}}billing_subscriptions.scope = ?2
+	AND {{prefix}}billing_subscriptions.archived_at IS NOT NULL`
+
+const getArchivedTransactionSQLite = `SELECT
+	{{prefix}}billing_transactions.id,
+	{{prefix}}billing_transactions.scope,
+	{{prefix}}billing_transactions.belongs_to_account,
+	{{prefix}}billing_transactions.subscription_id,
+	{{prefix}}billing_transactions.purchase_id,
+	{{prefix}}billing_transactions.external_transaction_id,
+	{{prefix}}billing_transactions.status,
+	{{prefix}}billing_transactions.amount_cents,
+	{{prefix}}billing_transactions.currency,
+	{{prefix}}billing_transactions.created_at,
+	{{prefix}}billing_transactions.last_updated_at,
+	{{prefix}}billing_transactions.archived_at
+FROM {{prefix}}billing_transactions
+WHERE {{prefix}}billing_transactions.id = ?1
+	AND {{prefix}}billing_transactions.scope = ?2
+	AND {{prefix}}billing_transactions.archived_at IS NOT NULL`
+
 const getProductSQLite = `
 SELECT
 	{{prefix}}billing_products.id,
@@ -1212,6 +1282,10 @@ type sqliteQueries struct {
 	createPurchase                        string
 	createSubscription                    string
 	createTransaction                     string
+	getArchivedProduct                    string
+	getArchivedPurchase                   string
+	getArchivedSubscription               string
+	getArchivedTransaction                string
 	getProduct                            string
 	getProductByExternalID                string
 	getProductCreatedAt                   string
@@ -1262,6 +1336,10 @@ func newSQLite(prefix string) *sqliteQueries {
 		createPurchase:                        strings.ReplaceAll(createPurchaseSQLite, prefixMarker, prefix),
 		createSubscription:                    strings.ReplaceAll(createSubscriptionSQLite, prefixMarker, prefix),
 		createTransaction:                     strings.ReplaceAll(createTransactionSQLite, prefixMarker, prefix),
+		getArchivedProduct:                    strings.ReplaceAll(getArchivedProductSQLite, prefixMarker, prefix),
+		getArchivedPurchase:                   strings.ReplaceAll(getArchivedPurchaseSQLite, prefixMarker, prefix),
+		getArchivedSubscription:               strings.ReplaceAll(getArchivedSubscriptionSQLite, prefixMarker, prefix),
+		getArchivedTransaction:                strings.ReplaceAll(getArchivedTransactionSQLite, prefixMarker, prefix),
 		getProduct:                            strings.ReplaceAll(getProductSQLite, prefixMarker, prefix),
 		getProductByExternalID:                strings.ReplaceAll(getProductByExternalIDSQLite, prefixMarker, prefix),
 		getProductCreatedAt:                   strings.ReplaceAll(getProductCreatedAtSQLite, prefixMarker, prefix),
@@ -1517,6 +1595,112 @@ func (q *sqliteQueries) CreateTransaction(ctx context.Context, db DBTX, arg Crea
 	}
 
 	return result.RowsAffected()
+}
+
+// GetArchivedProduct runs the :one query against sqlite.
+func (q *sqliteQueries) GetArchivedProduct(ctx context.Context, db DBTX, arg GetArchivedProductParams) (GetArchivedProductRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedProduct,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedProductRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.Description,
+		&i.Kind,
+		&i.AmountCents,
+		&i.Currency,
+		&i.BillingIntervalMonths,
+		&i.ExternalProductID,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
+// GetArchivedPurchase runs the :one query against sqlite.
+func (q *sqliteQueries) GetArchivedPurchase(ctx context.Context, db DBTX, arg GetArchivedPurchaseParams) (GetArchivedPurchaseRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedPurchase,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedPurchaseRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.BelongsToAccount,
+		&i.ProductID,
+		&i.ExternalTransactionID,
+		&i.AmountCents,
+		&i.Currency,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
+// GetArchivedSubscription runs the :one query against sqlite.
+func (q *sqliteQueries) GetArchivedSubscription(ctx context.Context, db DBTX, arg GetArchivedSubscriptionParams) (GetArchivedSubscriptionRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedSubscription,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedSubscriptionRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.BelongsToAccount,
+		&i.ProductID,
+		&i.ExternalSubscriptionID,
+		&i.Status,
+		&i.CurrentPeriodStart,
+		&i.CurrentPeriodEnd,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
+// GetArchivedTransaction runs the :one query against sqlite.
+func (q *sqliteQueries) GetArchivedTransaction(ctx context.Context, db DBTX, arg GetArchivedTransactionParams) (GetArchivedTransactionRow, error) {
+	row := db.QueryRowContext(ctx, q.getArchivedTransaction,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetArchivedTransactionRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.BelongsToAccount,
+		&i.SubscriptionID,
+		&i.PurchaseID,
+		&i.ExternalTransactionID,
+		&i.Status,
+		&i.AmountCents,
+		&i.Currency,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
 }
 
 // GetProduct runs the :one query against sqlite.
@@ -2780,6 +2964,76 @@ var (
 		AmountCents           int64
 		Currency              string
 	}(CreateTransactionParams{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetArchivedProductParams{})
+	_ = struct {
+		ID                    string
+		Scope                 tenancy.Scope
+		Name                  string
+		Description           string
+		Kind                  string
+		AmountCents           int64
+		Currency              string
+		BillingIntervalMonths *int64
+		ExternalProductID     *string
+		CreatedAt             time.Time
+		LastUpdatedAt         *time.Time
+		ArchivedAt            *time.Time
+	}(GetArchivedProductRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetArchivedPurchaseParams{})
+	_ = struct {
+		ID                    string
+		Scope                 tenancy.Scope
+		BelongsToAccount      string
+		ProductID             string
+		ExternalTransactionID *string
+		AmountCents           int64
+		Currency              string
+		CompletedAt           *time.Time
+		CreatedAt             time.Time
+		LastUpdatedAt         *time.Time
+		ArchivedAt            *time.Time
+	}(GetArchivedPurchaseRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetArchivedSubscriptionParams{})
+	_ = struct {
+		ID                     string
+		Scope                  tenancy.Scope
+		BelongsToAccount       string
+		ProductID              string
+		ExternalSubscriptionID *string
+		Status                 string
+		CurrentPeriodStart     time.Time
+		CurrentPeriodEnd       time.Time
+		CreatedAt              time.Time
+		LastUpdatedAt          *time.Time
+		ArchivedAt             *time.Time
+	}(GetArchivedSubscriptionRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetArchivedTransactionParams{})
+	_ = struct {
+		ID                    string
+		Scope                 tenancy.Scope
+		BelongsToAccount      string
+		SubscriptionID        *string
+		PurchaseID            *string
+		ExternalTransactionID *string
+		Status                string
+		AmountCents           int64
+		Currency              string
+		CreatedAt             time.Time
+		LastUpdatedAt         *time.Time
+		ArchivedAt            *time.Time
+	}(GetArchivedTransactionRow{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope

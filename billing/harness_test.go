@@ -204,8 +204,9 @@ func (e *storeEnv) inTx(tb testing.TB, fn func(tx database.Tx) error) error {
 // instead, and they are in the caller-transaction suite.
 func (e *storeEnv) reader() database.SQLQueryExecutor { return e.client.Reader() }
 
-// The thirteen writes, each in a transaction of its own, reporting what the
-// write returned.
+// The thirteen writes, each in a transaction of its own, handing back what the
+// write answered with — the row for the eleven that return one, and the error
+// alone for the two status moves.
 //
 // The transaction is a detail in most of these cases rather than the subject: a
 // consumer with nothing to commit alongside opens exactly this. What a billing
@@ -231,20 +232,44 @@ func (e *storeEnv) createProduct(
 	return created, err
 }
 
-func (e *storeEnv) updateProduct(tb testing.TB, store *SQLStore, scope tenancy.Scope, product *Product) error {
+func (e *storeEnv) updateProduct(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	product *Product,
+) (*Product, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.UpdateProduct(tb.Context(), tx, scope, product)
+	var updated *Product
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		updated, txErr = store.UpdateProduct(tb.Context(), tx, scope, product)
+
+		return txErr
 	})
+
+	return updated, err
 }
 
-func (e *storeEnv) archiveProduct(tb testing.TB, store *SQLStore, scope tenancy.Scope, productID string) error {
+func (e *storeEnv) archiveProduct(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	productID string,
+) (*Product, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ArchiveProduct(tb.Context(), tx, scope, productID)
+	var withdrawn *Product
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		withdrawn, txErr = store.ArchiveProduct(tb.Context(), tx, scope, productID)
+
+		return txErr
 	})
+
+	return withdrawn, err
 }
 
 func (e *storeEnv) createSubscription(
@@ -272,12 +297,19 @@ func (e *storeEnv) updateSubscription(
 	store *SQLStore,
 	scope tenancy.Scope,
 	subscription *Subscription,
-) error {
+) (*Subscription, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.UpdateSubscription(tb.Context(), tx, scope, subscription)
+	var updated *Subscription
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		updated, txErr = store.UpdateSubscription(tb.Context(), tx, scope, subscription)
+
+		return txErr
 	})
+
+	return updated, err
 }
 
 func (e *storeEnv) setSubscriptionStatus(
@@ -299,12 +331,19 @@ func (e *storeEnv) archiveSubscription(
 	store *SQLStore,
 	scope tenancy.Scope,
 	subscriptionID string,
-) error {
+) (*Subscription, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ArchiveSubscription(tb.Context(), tx, scope, subscriptionID)
+	var retired *Subscription
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		retired, txErr = store.ArchiveSubscription(tb.Context(), tx, scope, subscriptionID)
+
+		return txErr
 	})
+
+	return retired, err
 }
 
 func (e *storeEnv) createPurchase(
@@ -333,20 +372,39 @@ func (e *storeEnv) completePurchase(
 	scope tenancy.Scope,
 	purchaseID string,
 	at time.Time,
-) error {
+) (*Purchase, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.CompletePurchase(tb.Context(), tx, scope, purchaseID, at)
+	var settled *Purchase
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		settled, txErr = store.CompletePurchase(tb.Context(), tx, scope, purchaseID, at)
+
+		return txErr
 	})
+
+	return settled, err
 }
 
-func (e *storeEnv) archivePurchase(tb testing.TB, store *SQLStore, scope tenancy.Scope, purchaseID string) error {
+func (e *storeEnv) archivePurchase(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	purchaseID string,
+) (*Purchase, error) {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ArchivePurchase(tb.Context(), tx, scope, purchaseID)
+	var retired *Purchase
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		retired, txErr = store.ArchivePurchase(tb.Context(), tx, scope, purchaseID)
+
+		return txErr
 	})
+
+	return retired, err
 }
 
 func (e *storeEnv) recordTransaction(
@@ -388,12 +446,101 @@ func (e *storeEnv) archiveTransaction(
 	store *SQLStore,
 	scope tenancy.Scope,
 	transactionID string,
+) (*Transaction, error) {
+	tb.Helper()
+
+	var retired *Transaction
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		retired, txErr = store.ArchiveTransaction(tb.Context(), tx, scope, transactionID)
+
+		return txErr
+	})
+
+	return retired, err
+}
+
+// The seven writes above hand back a row, and half the cases here are about a
+// refusal rather than about the row. These are those seven for those cases, so
+// a refused write reads as one expression — the shape issuereports' storeEnv
+// takes for the same reason.
+
+func (e *storeEnv) updateProductErr(tb testing.TB, store *SQLStore, scope tenancy.Scope, product *Product) error {
+	tb.Helper()
+
+	_, err := e.updateProduct(tb, store, scope, product)
+
+	return err
+}
+
+func (e *storeEnv) archiveProductErr(tb testing.TB, store *SQLStore, scope tenancy.Scope, productID string) error {
+	tb.Helper()
+
+	_, err := e.archiveProduct(tb, store, scope, productID)
+
+	return err
+}
+
+func (e *storeEnv) updateSubscriptionErr(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	subscription *Subscription,
 ) error {
 	tb.Helper()
 
-	return e.inTx(tb, func(tx database.Tx) error {
-		return store.ArchiveTransaction(tb.Context(), tx, scope, transactionID)
-	})
+	_, err := e.updateSubscription(tb, store, scope, subscription)
+
+	return err
+}
+
+func (e *storeEnv) archiveSubscriptionErr(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	subscriptionID string,
+) error {
+	tb.Helper()
+
+	_, err := e.archiveSubscription(tb, store, scope, subscriptionID)
+
+	return err
+}
+
+func (e *storeEnv) completePurchaseErr(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	purchaseID string,
+	at time.Time,
+) error {
+	tb.Helper()
+
+	_, err := e.completePurchase(tb, store, scope, purchaseID, at)
+
+	return err
+}
+
+func (e *storeEnv) archivePurchaseErr(tb testing.TB, store *SQLStore, scope tenancy.Scope, purchaseID string) error {
+	tb.Helper()
+
+	_, err := e.archivePurchase(tb, store, scope, purchaseID)
+
+	return err
+}
+
+func (e *storeEnv) archiveTransactionErr(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	transactionID string,
+) error {
+	tb.Helper()
+
+	_, err := e.archiveTransaction(tb, store, scope, transactionID)
+
+	return err
 }
 
 // recurringProduct is a subscription product priced in whole dollars.

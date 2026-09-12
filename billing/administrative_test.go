@@ -48,7 +48,7 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 		purchase.ExternalTransactionID = "pi_stripe_archived"
 		created := mustCreatePurchase(t, env, store, testScope, purchase)
 
-		must.NoError(t, env.archivePurchase(t, store, testScope, created.ID))
+		must.NoError(t, env.archivePurchaseErr(t, store, testScope, created.ID))
 
 		_, err := store.GetPurchaseByExternalID(t.Context(), env.reader(), testScope, "pi_stripe_archived")
 		test.ErrorIs(t, err, ErrPurchaseNotFound)
@@ -66,7 +66,7 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 		first.ExternalTransactionID = "pi_stripe_reused"
 		created := mustCreatePurchase(t, env, store, testScope, first)
 
-		must.NoError(t, env.archivePurchase(t, store, testScope, created.ID))
+		must.NoError(t, env.archivePurchaseErr(t, store, testScope, created.ID))
 
 		second := outstandingPurchase(product.ID, testAccount)
 		second.ExternalTransactionID = "pi_stripe_reused"
@@ -127,9 +127,18 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 		ledger.PurchaseID = created.ID
 		recorded := mustRecordTransaction(t, env, store, testScope, ledger)
 
-		must.NoError(t, env.archivePurchase(t, store, testScope, created.ID))
+		retired, err := env.archivePurchase(t, store, testScope, created.ID)
+		must.NoError(t, err)
 
-		_, err := store.GetPurchase(t.Context(), env.reader(), testScope, created.ID)
+		// Whether the money ever arrived is on the row the archive answered
+		// with: to every read by id afterwards, a retired sale that settled and
+		// one that never did are the same absence.
+		must.NotNil(t, retired)
+		must.NotNil(t, retired.ArchivedAt)
+		test.False(t, retired.Complete())
+		test.EqOp(t, created.AmountCents, retired.AmountCents)
+
+		_, err = store.GetPurchase(t.Context(), env.reader(), testScope, created.ID)
 		test.ErrorIs(t, err, ErrPurchaseNotFound)
 
 		// The money that moved is not undone by retiring the sale it paid for.
@@ -143,7 +152,7 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		test.ErrorIs(t, env.archivePurchase(t, store, testScope, "purchase-nobody-has"), ErrPurchaseNotFound)
+		test.ErrorIs(t, env.archivePurchaseErr(t, store, testScope, "purchase-nobody-has"), ErrPurchaseNotFound)
 	})
 
 	t.Run("refuses an unscoped purchase archive", func(t *testing.T) {
@@ -151,7 +160,7 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		must.Error(t, env.archivePurchase(t, store, tenancy.Scope{}, "purchase-1"))
+		must.Error(t, env.archivePurchaseErr(t, store, tenancy.Scope{}, "purchase-1"))
 	})
 
 	t.Run("does not archive another scope's sale", func(t *testing.T) {
@@ -161,7 +170,7 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 		product := mustCreateProduct(t, env, store, testScope, oneTimeProduct("lifetime"))
 		created := mustCreatePurchase(t, env, store, testScope, outstandingPurchase(product.ID, testAccount))
 
-		test.ErrorIs(t, env.archivePurchase(t, store, otherScope, created.ID), ErrPurchaseNotFound)
+		test.ErrorIs(t, env.archivePurchaseErr(t, store, otherScope, created.ID), ErrPurchaseNotFound)
 
 		survivor, err := store.GetPurchase(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
@@ -174,9 +183,17 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		recorded := mustRecordTransaction(t, env, store, testScope, pendingTransaction(testAccount))
 
-		must.NoError(t, env.archiveTransaction(t, store, testScope, recorded.ID))
+		retired, err := env.archiveTransaction(t, store, testScope, recorded.ID)
+		must.NoError(t, err)
 
-		_, err := store.GetTransaction(t.Context(), env.reader(), testScope, recorded.ID)
+		// A ledger row taken out of a reconciliation is an amount that stops
+		// being counted, and this is the last read by id that can say which.
+		must.NotNil(t, retired)
+		must.NotNil(t, retired.ArchivedAt)
+		test.EqOp(t, recorded.AmountCents, retired.AmountCents)
+		test.EqOp(t, recorded.Currency, retired.Currency)
+
+		_, err = store.GetTransaction(t.Context(), env.reader(), testScope, recorded.ID)
 		test.ErrorIs(t, err, ErrTransactionNotFound)
 	})
 
@@ -186,7 +203,7 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		test.ErrorIs(t,
-			env.archiveTransaction(t, store, testScope, "transaction-nobody-has"),
+			env.archiveTransactionErr(t, store, testScope, "transaction-nobody-has"),
 			ErrTransactionNotFound)
 	})
 
@@ -195,7 +212,7 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		must.Error(t, env.archiveTransaction(t, store, tenancy.Scope{}, "transaction-1"))
+		must.Error(t, env.archiveTransactionErr(t, store, tenancy.Scope{}, "transaction-1"))
 	})
 
 	t.Run("does not archive another scope's ledger row", func(t *testing.T) {
@@ -204,7 +221,7 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 		recorded := mustRecordTransaction(t, env, store, testScope, pendingTransaction(testAccount))
 
-		test.ErrorIs(t, env.archiveTransaction(t, store, otherScope, recorded.ID), ErrTransactionNotFound)
+		test.ErrorIs(t, env.archiveTransactionErr(t, store, otherScope, recorded.ID), ErrTransactionNotFound)
 
 		survivor, err := store.GetTransaction(t.Context(), env.reader(), testScope, recorded.ID)
 		must.NoError(t, err)
@@ -225,7 +242,10 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 
 		created.CurrentPeriodEnd = created.CurrentPeriodEnd.Add(24 * time.Hour)
 
-		must.NoError(t, env.updateSubscription(t, store, testScope, created))
+		synced, err := env.updateSubscription(t, store, testScope, created)
+		must.NoError(t, err)
+		must.NotNil(t, synced)
+		test.EqOp(t, "sub_stripe_kept", synced.ExternalSubscriptionID)
 	})
 
 	t.Run("refuses an update claiming another subscription's provider subscription", func(t *testing.T) {
@@ -243,7 +263,7 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 
 		created.ExternalSubscriptionID = "sub_stripe_taken"
 
-		test.ErrorIs(t, env.updateSubscription(t, store, testScope, created), ErrSubscriptionExists)
+		test.ErrorIs(t, env.updateSubscriptionErr(t, store, testScope, created), ErrSubscriptionExists)
 	})
 
 	t.Run("an update with no provider subscription is always free", func(t *testing.T) {
@@ -258,7 +278,7 @@ func runAdministrativeSuite(t *testing.T, env *storeEnv) {
 		first := mustCreateSubscription(t, env, store, testScope, currentSubscription(product.ID, testAccount))
 		second := mustCreateSubscription(t, env, store, testScope, currentSubscription(product.ID, otherAccount))
 
-		must.NoError(t, env.updateSubscription(t, store, testScope, first))
-		must.NoError(t, env.updateSubscription(t, store, testScope, second))
+		must.NoError(t, env.updateSubscriptionErr(t, store, testScope, first))
+		must.NoError(t, env.updateSubscriptionErr(t, store, testScope, second))
 	})
 }

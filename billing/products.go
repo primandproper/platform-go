@@ -268,43 +268,49 @@ func (s *SQLStore) ListProducts(
 }
 
 // UpdateProduct rewrites everything about a product a caller may assign, through
-// the caller's transaction.
+// the caller's transaction, and answers with the row as the statement left it.
 //
 // The collision check against the provider-side id runs on tx, so a product
 // created earlier in the same transaction is one this edit is checked against.
-// See [Store.UpdateProduct].
+//
+// The read-back is [SQLStore.readProduct]'s statement rather than one of its
+// own: an update does not take the row out of the catalog, so the ordinary keyed
+// read reaches it on the transaction that wrote it. What it adds is the columns
+// this write does not assign — the creation time, the last-updated stamp the
+// database owns — so the answer describes the stored row rather than the
+// argument plus an assumption. See [Store.UpdateProduct].
 func (s *SQLStore) UpdateProduct(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	product *Product,
-) error {
+) (*Product, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "updating product")
+		return nil, op.Error(ErrNilExecutor, "updating product")
 	}
 
 	if product == nil {
-		return op.Error(ErrNilProduct, "updating product")
+		return nil, op.Error(ErrNilProduct, "updating product")
 	}
 
 	op.Set(productKey, product.ID)
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "updating product %q", product.ID)
+		return nil, op.Error(err, "updating product %q", product.ID)
 	}
 
 	if err := requireID(product.ID); err != nil {
-		return op.Error(err, "updating product %q", product.ID)
+		return nil, op.Error(err, "updating product %q", product.ID)
 	}
 
 	updated := *product
 	updated.normalize()
 
 	if err := updated.validate(); err != nil {
-		return op.Error(err, "updating product %q", product.ID)
+		return nil, op.Error(err, "updating product %q", product.ID)
 	}
 
 	// The row being updated is excluded by its own id, which is what lets a
@@ -312,25 +318,37 @@ func (s *SQLStore) UpdateProduct(
 	// whole row, so the exclusion is a comparison here rather than a second
 	// argument the SQL has to carry.
 	if err := s.ensureProductExternalIDFree(ctx, tx, scope, updated.ExternalProductID, updated.ID); err != nil {
-		return op.Error(err, "updating product %q", updated.ID)
+		return nil, op.Error(err, "updating product %q", updated.ID)
 	}
 
 	count, err := s.q.UpdateProduct(ctx, tx, updateProductParams(&updated, scope))
 	if err = guardCount(count, err, ErrProductNotFound, "updating product"); err != nil {
-		return op.Error(err, "updating product %q", updated.ID)
+		return nil, op.Error(err, "updating product %q", updated.ID)
 	}
 
-	return nil
+	stored, err := s.readProduct(ctx, tx, scope, updated.ID)
+	if err != nil {
+		return nil, op.Error(err, "reading back the updated product %q", updated.ID)
+	}
+
+	return stored, nil
 }
 
 // ArchiveProduct withdraws one of the scope's products from sale, through the
-// caller's transaction. See [Store.ArchiveProduct].
+// caller's transaction, and answers with the row it withdrew.
+//
+// The read-back is GetArchivedProduct rather than the keyed read, because this
+// is the one write here whose result no read by id can see: every keyed read
+// over this table filters archived_at IS NULL, which is what makes a withdrawn
+// product absent from the catalog. It runs on tx, so there is no gap — the
+// guarded UPDATE holds the row until the caller commits. See
+// [Store.ArchiveProduct] and billing/internal/queries.
 func (s *SQLStore) ArchiveProduct(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	productID string,
-) error {
+) (*Product, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(productKey, productID),
@@ -338,19 +356,25 @@ func (s *SQLStore) ArchiveProduct(
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving product %q", productID)
+		return nil, op.Error(ErrNilExecutor, "archiving product %q", productID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving product %q", productID)
+		return nil, op.Error(err, "archiving product %q", productID)
 	}
 
 	count, err := s.q.ArchiveProduct(ctx, tx, billingdb.ArchiveProductParams{ID: productID, Scope: scope})
 	if err = guardCount(count, err, ErrProductNotFound, "archiving product"); err != nil {
-		return op.Error(err, "archiving product %q", productID)
+		return nil, op.Error(err, "archiving product %q", productID)
 	}
 
-	return nil
+	row, err := s.q.GetArchivedProduct(ctx, tx, billingdb.GetArchivedProductParams{ID: productID, Scope: scope})
+	if err != nil {
+		return nil, op.Error(platformerrors.Wrap(err, "reading back the archived product"),
+			"archiving product %q", productID)
+	}
+
+	return productFromArchivedRow(&row), nil
 }
 
 // readProduct is the read by id, through whatever executor the caller is

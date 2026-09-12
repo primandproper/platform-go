@@ -70,6 +70,31 @@ import (
 // reason comments.Store gives about Comment.Scope: an entity field is exactly
 // the derivation the column rule exists to rule out. The entity's own scope is
 // overwritten with the argument on the way in.
+//
+// # A write answers with the row it wrote
+//
+// Every write here but two returns its row, read back on the caller's own
+// transaction after the statement: the four creates, the two updates, the
+// completion and the four archives. A consumer's audit entry, receipt or outbox
+// event is written from what the statement left behind rather than from what
+// the caller assembled, and the archives are the sharpest case — every keyed
+// read over these tables filters archived_at IS NULL, so the row a withdrawal
+// or a retirement moved is a row no read by id reaches afterwards, and a caller
+// that wants it back is left paging for archived rows to find one. The row
+// comes back only alongside a nil error; a refused write answers with nil and
+// its existing sentinel.
+//
+// The read-back is a second statement rather than RETURNING, which MySQL has
+// none of — see billing/internal/queries. There is no gap between the two: the
+// guarded write holds the row until the caller commits, and the read runs on
+// the same transaction.
+//
+// The two exceptions are SetSubscriptionStatus and SetTransactionStatus, and
+// what makes them exceptions is that each assigns one fact the caller already
+// holds to a row every read still reaches. A provider event carries the status,
+// the caller passed it in, and GetSubscription or GetTransaction answers with
+// the rest on the transaction that wrote it — so returning the row would charge
+// every status write a read for a value nobody learned anything from.
 type Store interface {
 	ProductStore
 	SubscriptionStore
@@ -140,27 +165,40 @@ type ProductStore interface {
 
 	// UpdateProduct rewrites a product's name, description, kind, price,
 	// currency, billing interval and provider-side id, through the caller's
-	// transaction. A nil tx is an error wrapping ErrNilExecutor.
+	// transaction, and returns the product as stored. A nil tx is an error
+	// wrapping ErrNilExecutor.
 	//
 	// Repricing a product changes what the next sale costs and nothing about
 	// what anybody already paid — the amount on a purchase and on a ledger row
 	// is that sale's own. What it will not do is revive an archived product.
 	//
+	// It does not touch the Product it was handed. What comes back is the row
+	// the statement left, read back on tx, which carries the columns this write
+	// does not assign — so a caller writing an audit entry describes what was
+	// stored rather than what it proposed.
+	//
 	// The collision check against the provider-side id runs on tx, so a catalog
 	// sync writing several products in one transaction is checked against what
 	// that transaction has written rather than against what was committed before
 	// it began.
-	UpdateProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *Product) error
+	UpdateProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, product *Product) (*Product, error)
 
 	// ArchiveProduct withdraws a product from sale, through the caller's
-	// transaction. A nil tx is an error wrapping ErrNilExecutor.
+	// transaction, and returns the product it withdrew. A nil tx is an error
+	// wrapping ErrNilExecutor.
 	//
 	// The subscriptions already on it keep renewing and the purchases already
 	// made stay readable, because archiving is taking something off the shelf
 	// rather than cancelling what has been sold. A deployment that means to end
 	// the agreements ends them through the payment provider, and the statuses
 	// arrive here as events.
-	ArchiveProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) error
+	//
+	// The row comes back because this is the last moment it can be read by id:
+	// GetProduct stops finding a withdrawn product, and what still finds one is
+	// a page somebody asked for archived rows on. A caller that means to say
+	// what was taken off the shelf — its price, its provider id, what it was
+	// called — has this answer or that search.
+	ArchiveProduct(ctx context.Context, tx database.Tx, scope tenancy.Scope, productID string) (*Product, error)
 }
 
 // SubscriptionStore is the recurring half: who is paying for what, and until
@@ -272,10 +310,20 @@ type SubscriptionStore interface {
 	// The collision check against the provider-side id runs on tx, for the reason
 	// UpdateProduct's does.
 	//
+	// It returns the subscription as stored and does not touch the one it was
+	// handed, for the reason UpdateProduct does — and here the difference is
+	// visible: the account is not assignable, so a sync that restated one is
+	// answered by the row still naming the account it always did.
+	//
 	// It is not an RPC, for the reason CreateSubscription is not: a sync write
 	// is the provider's event restated, and its caller is the receiver holding
 	// that event.
-	UpdateSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscription *Subscription) error
+	UpdateSubscription(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		subscription *Subscription,
+	) (*Subscription, error)
 
 	// SetSubscriptionStatus moves the standing and nothing else, through the
 	// caller's transaction. A nil tx is an error wrapping ErrNilExecutor.
@@ -307,14 +355,24 @@ type SubscriptionStore interface {
 	) error
 
 	// ArchiveSubscription retires a subscription administratively, through the
-	// caller's transaction. A nil tx is an error wrapping ErrNilExecutor.
+	// caller's transaction, and returns the subscription it retired. A nil tx is
+	// an error wrapping ErrNilExecutor.
 	//
 	// It is not a cancellation and must not be used as one: a cancelled
 	// subscription is one whose status says so, which is a fact the provider
 	// reports, and archiving hides the row from every read that does not ask for
 	// archived rows while changing nothing about what it holds. The ledger rows
 	// pointing at it are left alone.
-	ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error
+	//
+	// The row comes back for ArchiveProduct's reason, and it carries the two
+	// facts somebody reading those ledger rows afterwards needs: the provider's
+	// own id for the agreement, and the period it was paid through.
+	ArchiveSubscription(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		subscriptionID string,
+	) (*Subscription, error)
 }
 
 // PurchaseStore is the one-time half: what an account bought outright.
@@ -387,16 +445,33 @@ type PurchaseStore interface {
 	// and settled in one transaction — a comped order, a migration — is answered
 	// by the row that transaction wrote.
 	//
+	// It returns the settled purchase, which is what a receipt and an audit
+	// entry are written from — including the stamp itself, this store's clock's
+	// whenever the caller passed the zero time. That read is the one the guard's
+	// refusal already made; a completion and a replay now cost the same two
+	// statements.
+	//
 	// It is not an RPC. A client does not decide that money arrived; a
 	// processor's callback reports it, carrying the settlement time this method
 	// takes and the delivery it may repeat, and it writes here inside its own
 	// transaction. See billing/grpc.
-	CompletePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string, at time.Time) error
+	CompletePurchase(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		purchaseID string,
+		at time.Time,
+	) (*Purchase, error)
 
 	// ArchivePurchase retires a purchase administratively, through the caller's
-	// transaction. A nil tx is an error wrapping ErrNilExecutor. It is not a
-	// refund — a refund is a transaction of its own, recorded through the ledger.
-	ArchivePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) error
+	// transaction, and returns the purchase it retired. A nil tx is an error
+	// wrapping ErrNilExecutor. It is not a refund — a refund is a transaction of
+	// its own, recorded through the ledger.
+	//
+	// The row comes back for ArchiveProduct's reason, and what a caller wants
+	// off it is whether the money ever arrived: to every read by id afterwards,
+	// a retired sale that settled and one that never did are the same absence.
+	ArchivePurchase(ctx context.Context, tx database.Tx, scope tenancy.Scope, purchaseID string) (*Purchase, error)
 }
 
 // TransactionStore is the ledger: what each attempt to move money left behind.
@@ -505,10 +580,21 @@ type TransactionStore interface {
 	) error
 
 	// ArchiveTransaction retires a ledger row administratively, through the
-	// caller's transaction. A nil tx is an error wrapping ErrNilExecutor.
+	// caller's transaction, and returns the row it retired. A nil tx is an error
+	// wrapping ErrNilExecutor.
 	//
 	// It exists for the row written in error — a test charge, a duplicate that
 	// predates the uniqueness — and not for a refund, which is a transaction of
 	// its own.
-	ArchiveTransaction(ctx context.Context, tx database.Tx, scope tenancy.Scope, transactionID string) error
+	//
+	// The row comes back for ArchiveProduct's reason, and this is where it
+	// matters most: a ledger row taken out of a reconciliation is an amount of
+	// money that stops being counted, and the entry saying which amount is
+	// written from a row no read by id reaches once the transaction commits.
+	ArchiveTransaction(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		transactionID string,
+	) (*Transaction, error)
 }

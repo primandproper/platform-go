@@ -163,8 +163,12 @@ func (s *Server) ArchiveTransaction(
 	id := request.GetTransactionId()
 	req.op.Set(transactionKey, id)
 
+	// The row the store answers with is discarded, for the reason ArchiveProduct
+	// discards a product: this response has no field for a ledger row.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.store.ArchiveTransaction(ctx, tx, req.scope, id)
+		_, archiveErr := s.store.ArchiveTransaction(ctx, tx, req.scope, id)
+
+		return archiveErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "archiving transaction %q", id)

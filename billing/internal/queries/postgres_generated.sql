@@ -687,6 +687,80 @@ SELECT
 FROM billing_transactions
 WHERE billing_transactions.id = sqlc.arg(id);
 
+-- name: GetArchivedProduct :one
+SELECT
+	billing_products.id,
+	billing_products.scope,
+	billing_products.name,
+	billing_products.description,
+	billing_products.kind,
+	billing_products.amount_cents,
+	billing_products.currency,
+	billing_products.billing_interval_months,
+	billing_products.external_product_id,
+	billing_products.created_at,
+	billing_products.last_updated_at,
+	billing_products.archived_at
+FROM billing_products
+WHERE billing_products.id = sqlc.arg(id)
+	AND billing_products.scope = sqlc.arg(scope)
+	AND billing_products.archived_at IS NOT NULL;
+
+-- name: GetArchivedSubscription :one
+SELECT
+	billing_subscriptions.id,
+	billing_subscriptions.scope,
+	billing_subscriptions.belongs_to_account,
+	billing_subscriptions.product_id,
+	billing_subscriptions.external_subscription_id,
+	billing_subscriptions.status,
+	billing_subscriptions.current_period_start,
+	billing_subscriptions.current_period_end,
+	billing_subscriptions.created_at,
+	billing_subscriptions.last_updated_at,
+	billing_subscriptions.archived_at
+FROM billing_subscriptions
+WHERE billing_subscriptions.id = sqlc.arg(id)
+	AND billing_subscriptions.scope = sqlc.arg(scope)
+	AND billing_subscriptions.archived_at IS NOT NULL;
+
+-- name: GetArchivedPurchase :one
+SELECT
+	billing_purchases.id,
+	billing_purchases.scope,
+	billing_purchases.belongs_to_account,
+	billing_purchases.product_id,
+	billing_purchases.external_transaction_id,
+	billing_purchases.amount_cents,
+	billing_purchases.currency,
+	billing_purchases.completed_at,
+	billing_purchases.created_at,
+	billing_purchases.last_updated_at,
+	billing_purchases.archived_at
+FROM billing_purchases
+WHERE billing_purchases.id = sqlc.arg(id)
+	AND billing_purchases.scope = sqlc.arg(scope)
+	AND billing_purchases.archived_at IS NOT NULL;
+
+-- name: GetArchivedTransaction :one
+SELECT
+	billing_transactions.id,
+	billing_transactions.scope,
+	billing_transactions.belongs_to_account,
+	billing_transactions.subscription_id,
+	billing_transactions.purchase_id,
+	billing_transactions.external_transaction_id,
+	billing_transactions.status,
+	billing_transactions.amount_cents,
+	billing_transactions.currency,
+	billing_transactions.created_at,
+	billing_transactions.last_updated_at,
+	billing_transactions.archived_at
+FROM billing_transactions
+WHERE billing_transactions.id = sqlc.arg(id)
+	AND billing_transactions.scope = sqlc.arg(scope)
+	AND billing_transactions.archived_at IS NOT NULL;
+
 -- name: GetProductByExternalID :one
 SELECT
 	billing_products.id,

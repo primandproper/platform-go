@@ -57,6 +57,17 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			opened  *Subscription
 			sold    *Purchase
 			charged *Transaction
+
+			// What the seven writes that move an existing row answered with.
+			// Each is read back on this transaction, which for the four
+			// archives is the only executor that can see the row at all.
+			repriced       *Product
+			shelved        *Product
+			lapsed         *Subscription
+			retiredAccount *Subscription
+			settled        *Purchase
+			retiredSale    *Purchase
+			retiredCharge  *Transaction
 		)
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
@@ -88,21 +99,21 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return txErr
 			}
 
-			repriced := *catalog
-			repriced.AmountCents = 3_500
+			repricing := *catalog
+			repricing.AmountCents = 3_500
 
-			if txErr = store.UpdateProduct(t.Context(), tx, testScope, &repriced); txErr != nil {
+			if repriced, txErr = store.UpdateProduct(t.Context(), tx, testScope, &repricing); txErr != nil {
 				return txErr
 			}
 
-			if txErr = store.ArchiveProduct(t.Context(), tx, testScope, withdrawn.ID); txErr != nil {
+			if shelved, txErr = store.ArchiveProduct(t.Context(), tx, testScope, withdrawn.ID); txErr != nil {
 				return txErr
 			}
 
 			lapsing := *synced
 			lapsing.Status = capitalism.SubscriptionStatusPastDue
 
-			if txErr = store.UpdateSubscription(t.Context(), tx, testScope, &lapsing); txErr != nil {
+			if lapsed, txErr = store.UpdateSubscription(t.Context(), tx, testScope, &lapsing); txErr != nil {
 				return txErr
 			}
 
@@ -111,16 +122,18 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return txErr
 			}
 
-			if txErr = store.ArchiveSubscription(t.Context(), tx, testScope,
+			if retiredAccount, txErr = store.ArchiveSubscription(t.Context(), tx, testScope,
 				retiredSubscription.ID); txErr != nil {
 				return txErr
 			}
 
-			if txErr = store.CompletePurchase(t.Context(), tx, testScope, settling.ID, settledAt); txErr != nil {
+			if settled, txErr = store.CompletePurchase(t.Context(), tx, testScope,
+				settling.ID, settledAt); txErr != nil {
 				return txErr
 			}
 
-			if txErr = store.ArchivePurchase(t.Context(), tx, testScope, retiredPurchase.ID); txErr != nil {
+			if retiredSale, txErr = store.ArchivePurchase(t.Context(), tx, testScope,
+				retiredPurchase.ID); txErr != nil {
 				return txErr
 			}
 
@@ -129,8 +142,37 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return txErr
 			}
 
-			return store.ArchiveTransaction(t.Context(), tx, testScope, retiredLedgerRow.ID)
+			retiredCharge, txErr = store.ArchiveTransaction(t.Context(), tx, testScope, retiredLedgerRow.ID)
+
+			return txErr
 		}))
+
+		// The seven writes that move a row answered with the row, read back on
+		// the transaction that moved it. For the four archives that is the only
+		// executor that ever could: every read by id here skips an archived row,
+		// so once this transaction committed nothing below could be fetched
+		// again.
+		test.EqOp(t, int64(3_500), repriced.AmountCents)
+		test.EqOp(t, catalog.Name, repriced.Name)
+		test.NotNil(t, repriced.LastUpdatedAt)
+
+		must.NotNil(t, shelved.ArchivedAt)
+		test.EqOp(t, "withdrawn", shelved.Name)
+
+		test.EqOp(t, capitalism.SubscriptionStatusPastDue, lapsed.Status)
+		test.EqOp(t, testAccount, lapsed.BelongsToAccount)
+
+		must.NotNil(t, retiredAccount.ArchivedAt)
+		test.EqOp(t, retiredSubscription.ID, retiredAccount.ID)
+
+		must.NotNil(t, settled.CompletedAt)
+		test.True(t, settledAt.Equal(settled.CompletedAt.UTC()))
+
+		must.NotNil(t, retiredSale.ArchivedAt)
+		test.EqOp(t, retiredPurchase.ID, retiredSale.ID)
+
+		must.NotNil(t, retiredCharge.ArchivedAt)
+		test.EqOp(t, retiredLedgerRow.ID, retiredCharge.ID)
 
 		// The creation times were read back through the caller's executor
 		// rather than left waiting on a commit.
@@ -227,11 +269,11 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return txErr
 			}
 
-			if txErr = store.CompletePurchase(t.Context(), tx, testScope, purchase.ID, testNow); txErr != nil {
+			if _, txErr = store.CompletePurchase(t.Context(), tx, testScope, purchase.ID, testNow); txErr != nil {
 				return txErr
 			}
 
-			if txErr = store.ArchiveTransaction(t.Context(), tx, testScope, ledgerRow.ID); txErr != nil {
+			if _, txErr = store.ArchiveTransaction(t.Context(), tx, testScope, ledgerRow.ID); txErr != nil {
 				return txErr
 			}
 
@@ -385,11 +427,11 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return txErr
 			}
 
-			if txErr = store.CompletePurchase(t.Context(), tx, testScope, sold.ID, testNow); txErr != nil {
+			if _, txErr = store.CompletePurchase(t.Context(), tx, testScope, sold.ID, testNow); txErr != nil {
 				return txErr
 			}
 
-			alreadyCompleted = store.CompletePurchase(t.Context(), tx, testScope, sold.ID, testNow)
+			_, alreadyCompleted = store.CompletePurchase(t.Context(), tx, testScope, sold.ID, testNow)
 
 			charged, txErr := store.RecordTransaction(t.Context(), tx, testScope,
 				pendingTransaction(testAccount))
@@ -420,26 +462,34 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 		_, err := store.CreateProduct(t.Context(), nil, testScope, recurringProduct("pro"))
 		test.ErrorIs(t, err, ErrNilExecutor)
 
-		test.ErrorIs(t, store.UpdateProduct(t.Context(), nil, testScope, recurringProduct("pro")), ErrNilExecutor)
-		test.ErrorIs(t, store.ArchiveProduct(t.Context(), nil, testScope, "whatever"), ErrNilExecutor)
+		_, err = store.UpdateProduct(t.Context(), nil, testScope, recurringProduct("pro"))
+		test.ErrorIs(t, err, ErrNilExecutor)
+
+		_, err = store.ArchiveProduct(t.Context(), nil, testScope, "whatever")
+		test.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.CreateSubscription(t.Context(), nil, testScope, currentSubscription("p", testAccount))
 		test.ErrorIs(t, err, ErrNilExecutor)
 
-		test.ErrorIs(t,
-			store.UpdateSubscription(t.Context(), nil, testScope, currentSubscription("p", testAccount)),
-			ErrNilExecutor)
+		_, err = store.UpdateSubscription(t.Context(), nil, testScope, currentSubscription("p", testAccount))
+		test.ErrorIs(t, err, ErrNilExecutor)
+
 		test.ErrorIs(t,
 			store.SetSubscriptionStatus(t.Context(), nil, testScope, "whatever",
 				capitalism.SubscriptionStatusActive),
 			ErrNilExecutor)
-		test.ErrorIs(t, store.ArchiveSubscription(t.Context(), nil, testScope, "whatever"), ErrNilExecutor)
+
+		_, err = store.ArchiveSubscription(t.Context(), nil, testScope, "whatever")
+		test.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.CreatePurchase(t.Context(), nil, testScope, outstandingPurchase("p", testAccount))
 		test.ErrorIs(t, err, ErrNilExecutor)
 
-		test.ErrorIs(t, store.CompletePurchase(t.Context(), nil, testScope, "whatever", testNow), ErrNilExecutor)
-		test.ErrorIs(t, store.ArchivePurchase(t.Context(), nil, testScope, "whatever"), ErrNilExecutor)
+		_, err = store.CompletePurchase(t.Context(), nil, testScope, "whatever", testNow)
+		test.ErrorIs(t, err, ErrNilExecutor)
+
+		_, err = store.ArchivePurchase(t.Context(), nil, testScope, "whatever")
+		test.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.RecordTransaction(t.Context(), nil, testScope, pendingTransaction(testAccount))
 		test.ErrorIs(t, err, ErrNilExecutor)
@@ -447,7 +497,9 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 		test.ErrorIs(t,
 			store.SetTransactionStatus(t.Context(), nil, testScope, "whatever", TransactionSucceeded),
 			ErrNilExecutor)
-		test.ErrorIs(t, store.ArchiveTransaction(t.Context(), nil, testScope, "whatever"), ErrNilExecutor)
+
+		_, err = store.ArchiveTransaction(t.Context(), nil, testScope, "whatever")
+		test.ErrorIs(t, err, ErrNilExecutor)
 
 		// And the seventeen reads, which have the same nothing to fall back to.
 		_, err = store.GetProduct(t.Context(), nil, testScope, "whatever")
@@ -600,6 +652,18 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 		)
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+			// The row each refusal from a write that answers with one, checked
+			// as it is collected. That is the other half of what these
+			// signatures promise: the row comes back only alongside a nil
+			// error, so a caller that checked the error has nothing to guard
+			// against.
+			var (
+				refusedProduct      *Product
+				refusedSubscription *Subscription
+				refusedPurchase     *Purchase
+				refusedLedgerRow    *Transaction
+			)
+
 			_, nilProduct = store.CreateProduct(t.Context(), tx, testScope, nil)
 			_, unscopedProduct = store.CreateProduct(t.Context(), tx, unset, recurringProduct("pro"))
 
@@ -607,14 +671,21 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			unnamed.Name = ""
 			_, unnamedProduct = store.CreateProduct(t.Context(), tx, testScope, unnamed)
 
-			unidentifiedProductEdit = store.UpdateProduct(t.Context(), tx, testScope, recurringProduct("pro"))
+			refusedProduct, unidentifiedProductEdit = store.UpdateProduct(t.Context(), tx, testScope,
+				recurringProduct("pro"))
+			test.Nil(t, refusedProduct)
 
 			absent := recurringProduct("pro")
 			absent.ID = "prod_never_written"
-			absentProductEdit = store.UpdateProduct(t.Context(), tx, testScope, absent)
+			refusedProduct, absentProductEdit = store.UpdateProduct(t.Context(), tx, testScope, absent)
+			test.Nil(t, refusedProduct)
 
-			absentProductArchive = store.ArchiveProduct(t.Context(), tx, testScope, "prod_never_written")
-			foreignProductArchive = store.ArchiveProduct(t.Context(), tx, otherScope, catalog.ID)
+			refusedProduct, absentProductArchive = store.ArchiveProduct(t.Context(), tx, testScope,
+				"prod_never_written")
+			test.Nil(t, refusedProduct)
+
+			refusedProduct, foreignProductArchive = store.ArchiveProduct(t.Context(), tx, otherScope, catalog.ID)
+			test.Nil(t, refusedProduct)
 
 			_, nilSubscription = store.CreateSubscription(t.Context(), tx, testScope, nil)
 
@@ -630,22 +701,30 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 
 			absentEdit := currentSubscription(catalog.ID, testAccount)
 			absentEdit.ID = "sub_never_written"
-			absentSubscriptionEdit = store.UpdateSubscription(t.Context(), tx, testScope, absentEdit)
+			refusedSubscription, absentSubscriptionEdit = store.UpdateSubscription(t.Context(), tx, testScope,
+				absentEdit)
+			test.Nil(t, refusedSubscription)
 
 			unknownStatus = store.SetSubscriptionStatus(t.Context(), tx, testScope, subscription.ID,
 				capitalism.SubscriptionStatus("whatever"))
 			absentStatus = store.SetSubscriptionStatus(t.Context(), tx, testScope, "sub_never_written",
 				capitalism.SubscriptionStatusCanceled)
 
-			absentSubscriptionArchive = store.ArchiveSubscription(t.Context(), tx, testScope,
+			refusedSubscription, absentSubscriptionArchive = store.ArchiveSubscription(t.Context(), tx, testScope,
 				"sub_never_written")
+			test.Nil(t, refusedSubscription)
 
 			_, nilPurchase = store.CreatePurchase(t.Context(), tx, testScope, nil)
 			_, unstockedPurchase = store.CreatePurchase(t.Context(), tx, testScope,
 				outstandingPurchase("prod_never_written", testAccount))
 
-			absentCompletion = store.CompletePurchase(t.Context(), tx, testScope, "pur_never_written", testNow)
-			absentPurchaseArchive = store.ArchivePurchase(t.Context(), tx, testScope, "pur_never_written")
+			refusedPurchase, absentCompletion = store.CompletePurchase(t.Context(), tx, testScope,
+				"pur_never_written", testNow)
+			test.Nil(t, refusedPurchase)
+
+			refusedPurchase, absentPurchaseArchive = store.ArchivePurchase(t.Context(), tx, testScope,
+				"pur_never_written")
+			test.Nil(t, refusedPurchase)
 
 			_, nilLedgerRow = store.RecordTransaction(t.Context(), tx, testScope, nil)
 
@@ -662,7 +741,9 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				TransactionStatus("whatever"))
 			absentLedgerStatus = store.SetTransactionStatus(t.Context(), tx, testScope, "txn_never_written",
 				TransactionSucceeded)
-			absentLedger = store.ArchiveTransaction(t.Context(), tx, testScope, "txn_never_written")
+			refusedLedgerRow, absentLedger = store.ArchiveTransaction(t.Context(), tx, testScope,
+				"txn_never_written")
+			test.Nil(t, refusedLedgerRow)
 
 			return nil
 		}))

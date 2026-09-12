@@ -239,8 +239,12 @@ func (s *Server) ArchiveSubscription(
 	id := request.GetSubscriptionId()
 	req.op.Set(subscriptionKey, id)
 
+	// The row the store answers with is discarded, for the reason ArchiveProduct
+	// discards a product: this response has no field for a subscription.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.store.ArchiveSubscription(ctx, tx, req.scope, id)
+		_, archiveErr := s.store.ArchiveSubscription(ctx, tx, req.scope, id)
+
+		return archiveErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "archiving subscription %q", id)

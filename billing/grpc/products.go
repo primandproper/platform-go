@@ -139,10 +139,10 @@ func (s *Server) ListProducts(
 // what the next sale costs and nothing about what anybody already paid — the
 // amount on a purchase and on a ledger row is that sale's own.
 //
-// The write and the read-back run in one transaction, so the response is the row
-// as stored rather than the request echoed with a timestamp guessed at. A second
-// caller revising the same product between them would otherwise be the version
-// this caller is told they wrote.
+// The response is the row the store's write answered with rather than the
+// request echoed with a timestamp guessed at — read back inside the write's own
+// transaction, so a second caller revising the same product cannot be the
+// version this caller is told they wrote.
 func (s *Server) UpdateProduct(
 	ctx context.Context,
 	request *billingpb.UpdateProductRequest,
@@ -168,14 +168,10 @@ func (s *Server) UpdateProduct(
 	var updated *billing.Product
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		if writeErr := s.store.UpdateProduct(ctx, tx, req.scope, product); writeErr != nil {
-			return writeErr
-		}
+		var writeErr error
+		updated, writeErr = s.store.UpdateProduct(ctx, tx, req.scope, product)
 
-		var readErr error
-		updated, readErr = s.store.GetProduct(ctx, tx, req.scope, id)
-
-		return readErr
+		return writeErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "updating product %q", id)
@@ -206,8 +202,16 @@ func (s *Server) ArchiveProduct(
 	id := request.GetProductId()
 	req.op.Set(productKey, id)
 
+	// The store answers with the product it withdrew, and nothing here carries
+	// it: ArchiveProductResponse has no field for a product, because a
+	// withdrawal on the wire says only that the product left the catalog. The
+	// row is for a consumer writing an entry beside the write, which this
+	// handler is not — its transaction holds this one call and nothing to
+	// describe it to.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.store.ArchiveProduct(ctx, tx, req.scope, id)
+		_, archiveErr := s.store.ArchiveProduct(ctx, tx, req.scope, id)
+
+		return archiveErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "archiving product %q", id)

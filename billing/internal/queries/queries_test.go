@@ -160,6 +160,75 @@ func TestRender_ExternalIDReadsSeeArchivedRows(T *testing.T) {
 	}
 }
 
+// TestRender_ArchiveReadBacksSeeOnlyArchivedRows pins the complement, which is
+// the only place in this corpus archived_at IS NOT NULL appears.
+//
+// It is what makes each of these an assertion rather than a second lookup: the
+// row an archive just moved is the row every keyed statement over its table is
+// written not to return, so a read-back carrying the ordinary predicate would
+// find nothing on the write it was called to describe. The inverse matters as
+// much — a read-back carrying no archived predicate at all would answer a guard
+// that matched nothing with a live row.
+func TestRender_ArchiveReadBacksSeeOnlyArchivedRows(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rendered := statements(t, d)
+
+			for _, table := range Emitted {
+				name := "GetArchived" + table.Singular
+
+				statement, ok := rendered[name]
+				must.True(t, ok, must.Sprintf("%s was not emitted", name))
+
+				test.StrContains(t, statement, querygen.ArchivedAtColumn+" IS NOT NULL",
+					test.Sprintf("%s does not assert the row it was called to confirm", name))
+				test.StrNotContains(t, statement, querygen.ArchivedAtColumn+" IS NULL",
+					test.Sprintf("%s cannot see the row its archive moved", name))
+
+				// It projects the whole table, so the row it returns converts
+				// into the keyed read's rather than needing a converter of its
+				// own — see billing/rows.go.
+				for _, column := range table.Columns {
+					test.StrContains(t, statement, table.Name+"."+column,
+						test.Sprintf("%s omits %s", name, column))
+				}
+			}
+		})
+	}
+}
+
+// TestRender_KeyedReadsSkipArchivedRows is the other side of it: the four
+// read-backs are the exception, and they are one.
+//
+// The four provider-identifier reads are deliberately not here — they see
+// archived rows because they are also the collision checks, which is
+// TestRender_ExternalIDReadsSeeArchivedRows' subject.
+func TestRender_KeyedReadsSkipArchivedRows(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rendered := statements(t, d)
+
+			for _, table := range Emitted {
+				name := "Get" + table.Singular
+
+				statement, ok := rendered[name]
+				must.True(t, ok, must.Sprintf("%s was not emitted", name))
+
+				test.StrContains(t, statement, querygen.ArchivedAtColumn+" IS NULL",
+					test.Sprintf("%s reaches a row somebody archived", name))
+			}
+		})
+	}
+}
+
 // TestRender_StatusWritesGuardOnWhatTheyAssign is what makes a redelivered
 // provider event write nothing.
 //

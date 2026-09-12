@@ -208,7 +208,7 @@ func runCreateGuardSuite(t *testing.T, env *storeEnv) {
 		subscription := mustCreateSubscription(t, env, store, testScope,
 			currentSubscription(product.ID, testAccount))
 
-		must.NoError(t, env.archiveSubscription(t, store, testScope, subscription.ID))
+		must.NoError(t, env.archiveSubscriptionErr(t, store, testScope, subscription.ID))
 
 		// Archiving is administrative and deliberately leaves the ledger alone,
 		// so the presence check behind a losing insert is archived-blind. A check
@@ -385,7 +385,7 @@ func runProductSuite(t *testing.T, env *storeEnv) {
 		first.ExternalProductID = "prod_stripe_2"
 		created := mustCreateProduct(t, env, store, testScope, first)
 
-		must.NoError(t, env.archiveProduct(t, store, testScope, created.ID))
+		must.NoError(t, env.archiveProductErr(t, store, testScope, created.ID))
 
 		second := recurringProduct("pro-again")
 		second.ExternalProductID = "prod_stripe_2"
@@ -407,7 +407,7 @@ func runProductSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		test.EqOp(t, created.ID, read.ID)
 
-		must.NoError(t, env.archiveProduct(t, store, testScope, created.ID))
+		must.NoError(t, env.archiveProductErr(t, store, testScope, created.ID))
 
 		_, err = store.GetProductByExternalID(t.Context(), env.reader(), testScope, "prod_stripe_3")
 		test.ErrorIs(t, err, ErrProductNotFound)
@@ -432,7 +432,17 @@ func runProductSuite(t *testing.T, env *storeEnv) {
 		created := mustCreateProduct(t, env, store, testScope, product)
 
 		created.AmountCents = 3_000
-		must.NoError(t, env.updateProduct(t, store, testScope, created))
+
+		updated, err := env.updateProduct(t, store, testScope, created)
+		must.NoError(t, err)
+
+		// What the write answered with is the stored row, stamps included —
+		// the update assigns no last_updated_at, so a caller assembling that
+		// value for itself could only have guessed at it.
+		must.NotNil(t, updated)
+		test.EqOp(t, int64(3_000), updated.AmountCents)
+		test.EqOp(t, "prod_stripe_4", updated.ExternalProductID)
+		test.NotNil(t, updated.LastUpdatedAt)
 
 		read, err := store.GetProduct(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
@@ -453,7 +463,7 @@ func runProductSuite(t *testing.T, env *storeEnv) {
 		second := mustCreateProduct(t, env, store, testScope, recurringProduct("basic"))
 		second.ExternalProductID = "prod_stripe_5"
 
-		test.ErrorIs(t, env.updateProduct(t, store, testScope, second), ErrProductExists)
+		test.ErrorIs(t, env.updateProductErr(t, store, testScope, second), ErrProductExists)
 	})
 
 	t.Run("reports existence, and stops reporting it once archived", func(t *testing.T) {
@@ -467,11 +477,22 @@ func runProductSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		test.True(t, exists)
 
-		must.NoError(t, env.archiveProduct(t, store, testScope, created.ID))
+		withdrawn, err := env.archiveProduct(t, store, testScope, created.ID)
+		must.NoError(t, err)
+
+		// The archive's own answer is the last description of the product a
+		// read by id gets: both reads below stop finding it from now on.
+		must.NotNil(t, withdrawn)
+		must.NotNil(t, withdrawn.ArchivedAt)
+		test.EqOp(t, created.Name, withdrawn.Name)
+		test.EqOp(t, created.AmountCents, withdrawn.AmountCents)
 
 		exists, err = store.ProductExists(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
 		test.False(t, exists)
+
+		_, err = store.GetProduct(t.Context(), env.reader(), testScope, created.ID)
+		test.ErrorIs(t, err, ErrProductNotFound)
 	})
 
 	t.Run("does not reach another scope's catalog", func(t *testing.T) {
@@ -484,7 +505,7 @@ func runProductSuite(t *testing.T, env *storeEnv) {
 		_, err := store.GetProduct(t.Context(), env.reader(), otherScope, created.ID)
 		test.ErrorIs(t, err, ErrProductNotFound)
 
-		test.ErrorIs(t, env.archiveProduct(t, store, otherScope, created.ID), ErrProductNotFound)
+		test.ErrorIs(t, env.archiveProductErr(t, store, otherScope, created.ID), ErrProductNotFound)
 
 		page, err := store.ListProducts(t.Context(), env.reader(), otherScope, nil)
 		must.NoError(t, err)
@@ -653,7 +674,16 @@ func runSubscriptionSuite(t *testing.T, env *storeEnv) {
 		created.Status = capitalism.SubscriptionStatusPastDue
 		created.CurrentPeriodEnd = testNow.Add(60 * 24 * time.Hour)
 
-		must.NoError(t, env.updateSubscription(t, store, testScope, created))
+		synced, err := env.updateSubscription(t, store, testScope, created)
+		must.NoError(t, err)
+
+		// The sync's answer carries the account too, which this write cannot
+		// assign — so a caller is told what the row says rather than what it
+		// proposed.
+		must.NotNil(t, synced)
+		test.EqOp(t, upgrade.ID, synced.ProductID)
+		test.EqOp(t, capitalism.SubscriptionStatusPastDue, synced.Status)
+		test.EqOp(t, testAccount, synced.BelongsToAccount)
 
 		read, err := store.GetSubscription(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
@@ -716,9 +746,16 @@ func runSubscriptionSuite(t *testing.T, env *storeEnv) {
 		ledger.SubscriptionID = created.ID
 		recorded := mustRecordTransaction(t, env, store, testScope, ledger)
 
-		must.NoError(t, env.archiveSubscription(t, store, testScope, created.ID))
+		retired, err := env.archiveSubscription(t, store, testScope, created.ID)
+		must.NoError(t, err)
 
-		_, err := store.GetSubscription(t.Context(), env.reader(), testScope, created.ID)
+		// The period the agreement was paid through is on the row the archive
+		// answered with, and on nothing a caller reads by id afterwards.
+		must.NotNil(t, retired)
+		must.NotNil(t, retired.ArchivedAt)
+		test.True(t, created.CurrentPeriodEnd.Equal(retired.CurrentPeriodEnd))
+
+		_, err = store.GetSubscription(t.Context(), env.reader(), testScope, created.ID)
 		test.ErrorIs(t, err, ErrSubscriptionNotFound)
 
 		stillThere, err := store.GetTransaction(t.Context(), env.reader(), testScope, recorded.ID)
@@ -757,7 +794,15 @@ func runPurchaseSuite(t *testing.T, env *storeEnv) {
 		// moved.
 		settled := testNow.Add(-2 * time.Hour)
 
-		must.NoError(t, env.completePurchase(t, store, testScope, created.ID, settled))
+		completed, err := env.completePurchase(t, store, testScope, created.ID, settled)
+		must.NoError(t, err)
+
+		// The receipt is written from this, rather than from a second read the
+		// caller makes for itself.
+		must.NotNil(t, completed)
+		must.NotNil(t, completed.CompletedAt)
+		test.True(t, completed.Complete())
+		test.True(t, settled.Equal(completed.CompletedAt.UTC()))
 
 		read, err := store.GetPurchase(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
@@ -766,7 +811,7 @@ func runPurchaseSuite(t *testing.T, env *storeEnv) {
 		test.True(t, settled.Equal(read.CompletedAt.UTC()))
 
 		test.ErrorIs(t,
-			env.completePurchase(t, store, testScope, created.ID, settled),
+			env.completePurchaseErr(t, store, testScope, created.ID, settled),
 			ErrAlreadyCompleted)
 	})
 
@@ -777,7 +822,14 @@ func runPurchaseSuite(t *testing.T, env *storeEnv) {
 		product := mustCreateProduct(t, env, store, testScope, oneTimeProduct("lifetime"))
 		created := mustCreatePurchase(t, env, store, testScope, outstandingPurchase(product.ID, testAccount))
 
-		must.NoError(t, env.completePurchase(t, store, testScope, created.ID, time.Time{}))
+		completed, err := env.completePurchase(t, store, testScope, created.ID, time.Time{})
+		must.NoError(t, err)
+
+		// The stamp is the one value this caller could not have named, and the
+		// write hands it straight back.
+		must.NotNil(t, completed)
+		must.NotNil(t, completed.CompletedAt)
+		test.True(t, testNow.Equal(completed.CompletedAt.UTC()))
 
 		read, err := store.GetPurchase(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
@@ -791,7 +843,7 @@ func runPurchaseSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		test.ErrorIs(t,
-			env.completePurchase(t, store, testScope, "nope", testNow),
+			env.completePurchaseErr(t, store, testScope, "nope", testNow),
 			ErrPurchaseNotFound)
 	})
 
