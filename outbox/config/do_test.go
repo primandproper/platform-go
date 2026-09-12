@@ -59,9 +59,7 @@ func TestRegisterRelay(T *testing.T) {
 		do.ProvideValue[context.Context](i, t.Context())
 		do.ProvideValue[database.Client](i, testDBClient(t))
 		do.ProvideValue(i, &Config{
-			Queue: messagequeuecfg.Config{
-				Publisher: messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop},
-			},
+			Queue: messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop},
 		})
 
 		RegisterRelay(i)

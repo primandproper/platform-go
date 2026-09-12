@@ -30,7 +30,21 @@ type Config struct {
 	// to. It has to name one: the noop publisher is right for tests and wrong
 	// for production — messages would be claimed, "published" nowhere, and
 	// marked done — so it is selected deliberately rather than fallen back to.
-	Queue messagequeuecfg.Config `env:",init" envPrefix:"QUEUE_" json:"queue,omitzero" yaml:"queue,omitempty"`
+	//
+	// It is the publisher half alone rather than a whole messagequeuecfg.Config,
+	// because an outbox relay publishes and never consumes. The pair would put
+	// a CONSUMER_ block under this prefix that parses cleanly, validates
+	// cleanly and is read by nothing — OUTBOX_QUEUE_CONSUMER_PROVIDER and four
+	// providers' worth of settings beneath it, all of them doing nothing and
+	// none of them saying so.
+	//
+	// It is also why this nesting keeps a prefix service.Config spells
+	// differently. MESSAGE_QUEUE_ is where the service's own consumer and
+	// publisher pair lives; this is one publisher belonging to one component,
+	// which is a different thing rather than the same thing under a second
+	// name. internal/configroster's rule reaches a nesting whose type
+	// service.Config also nests, and after the narrowing this is not one.
+	Queue messagequeuecfg.MessageQueueConfig `env:",init" envPrefix:"QUEUE_" json:"queue,omitzero" yaml:"queue,omitempty"`
 
 	// Relay carries the outbox's own knobs. Its Dialect and TableName also
 	// drive the Writer, so the writing and claiming halves cannot disagree
@@ -134,7 +148,13 @@ func NewRelay(
 		return nil, errors.Wrap(err, "validating outbox config")
 	}
 
-	provider, err := messagequeuecfg.NewPublisherProvider(ctx, &cfg.Queue,
+	// NewPublisherProvider takes the consumer/publisher pair and reads only the
+	// publisher out of it, so the half this config declares is lifted back into
+	// one on the way in. The wrapper is here rather than in the config's shape
+	// because it is this call's requirement, not an operator's.
+	queue := messagequeuecfg.Config{Publisher: cfg.Queue}
+
+	provider, err := messagequeuecfg.NewPublisherProvider(ctx, &queue,
 		messagequeuecfg.WithLogger(logger),
 		messagequeuecfg.WithTracerProvider(tracerProvider),
 		messagequeuecfg.WithMetricsProvider(metricsProvider))

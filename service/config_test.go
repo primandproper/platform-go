@@ -123,10 +123,10 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		cfg := &Config{
 			Name: "example",
 			Outbox: &outboxcfg.Config{
-				Queue: messagequeuecfg.Config{
-					Consumer:  messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop},
-					Publisher: messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop},
-				},
+				// One publisher, because that is all a relay has. The
+				// consumer this used to name alongside it was read by
+				// nothing.
+				Queue: messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop},
 			},
 		}
 

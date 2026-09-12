@@ -37,6 +37,12 @@ func names[T any](components []named[T]) []string {
 // noopQueue names the publisher and consumer that go nowhere, which is what a
 // lifecycle test wants: the point is that the loop starts and stops, not that
 // anything it claims reaches a broker.
+// noopPublisher is the publisher half alone, which is what a component that
+// only publishes declares. The outbox relay is one.
+func noopPublisher() messagequeuecfg.MessageQueueConfig {
+	return messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop}
+}
+
 func noopQueue() messagequeuecfg.Config {
 	return messagequeuecfg.Config{
 		Consumer:  messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop},
@@ -90,7 +96,7 @@ func TestNew(T *testing.T) {
 			Name:     "example",
 			Database: sqliteConfig(t),
 			Outbox: &outboxcfg.Config{
-				Queue: noopQueue(),
+				Queue: noopPublisher(),
 				Relay: outbox.RelayConfig{TablePrefix: "example"},
 			},
 			JobsPool: &jobscfg.PoolConfig{
