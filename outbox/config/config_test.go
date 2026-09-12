@@ -20,7 +20,7 @@ import (
 func sqliteConfig() *Config {
 	return &Config{
 		Relay: outbox.RelayConfig{},
-		Queue: messagequeuecfg.Config{Publisher: messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop}},
+		Queue: messagequeuecfg.MessageQueueConfig{Provider: messagequeuecfg.ProviderNoop},
 	}
 }
 
@@ -205,11 +205,9 @@ func TestNewRelay(T *testing.T) {
 		// PubSub with no project ID fails client construction, which is the
 		// cheapest way to make the provider step fail without a network.
 		cfg := sqliteConfig()
-		cfg.Queue = messagequeuecfg.Config{
-			Publisher: messagequeuecfg.MessageQueueConfig{
-				Provider: messagequeuecfg.ProviderPubSub,
-				PubSub:   pubsub.Config{},
-			},
+		cfg.Queue = messagequeuecfg.MessageQueueConfig{
+			Provider: messagequeuecfg.ProviderPubSub,
+			PubSub:   pubsub.Config{},
 		}
 
 		r, err := NewRelay(t.Context(), cfg, sqliteClient())
