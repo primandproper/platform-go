@@ -127,6 +127,21 @@ func TestMinter_Mint(T *testing.T) {
 		test.EqOp(t, link.ExpiresAt.Add(time.Hour), store.stored(t, link.ID).PurgeAfter)
 	})
 
+	// The absence of a resolution is nil rather than an instant nobody wrote.
+	// A zero time.Time here would read as a stamp everywhere the record is
+	// rendered, and the column the shipped store keeps it in is NULL for
+	// exactly the rows this one is.
+	T.Run("a freshly minted record carries no resolution stamp", func(t *testing.T) {
+		t.Parallel()
+
+		m, store := newTestMinterStore(t)
+
+		link, err := m.Mint(t.Context(), testAction, testSubject)
+		must.NoError(t, err)
+
+		test.Nil(t, store.stored(t, link.ID).ResolvedAt)
+	})
+
 	T.Run("mints two different tokens for the same subject", func(t *testing.T) {
 		t.Parallel()
 
@@ -740,10 +755,16 @@ func rendered(record *Record) string {
 	parts := []string{
 		record.CreatedAt.String(),
 		record.ExpiresAt.String(),
-		record.ResolvedAt.String(),
 		string(record.Action),
 		string(record.Subject),
 	}
+
+	// An active link carries no resolution stamp, and the record this flattens
+	// is usually one, so the field is appended rather than dereferenced.
+	if record.ResolvedAt != nil {
+		parts = append(parts, record.ResolvedAt.String())
+	}
+
 	for k, v := range record.Metadata {
 		parts = append(parts, k, v)
 	}
