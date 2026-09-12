@@ -96,12 +96,14 @@ func ExampleDispatcher_Register() {
 	// The scope is the argument rather than a field on the endpoint.
 	for id, scope := range subscribers {
 		if err := client.WithTransaction(ctx, func(tx database.Tx) error {
-			return dispatcher.Register(ctx, tx, scope, &webhooks.Endpoint{
+			_, registerErr := dispatcher.Register(ctx, tx, scope, &webhooks.Endpoint{
 				ID:            id,
 				URL:           "https://93.184.216.34/hooks/" + id,
 				Secret:        secret,
 				Subscriptions: webhooks.SubscribeTo(OrderUpdated),
 			})
+
+			return registerErr
 		}); err != nil {
 			panic(err)
 		}

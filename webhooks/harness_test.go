@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
@@ -194,20 +195,59 @@ func newSQLiteClient(t *testing.T) database.Client {
 // write and a read sharing one, a write the caller unwinds — open theirs
 // explicitly and call the Store directly.
 
-func saveEndpoint(t *testing.T, store Store, scope tenancy.Scope, endpoint *Endpoint) error {
+func saveEndpoint(t *testing.T, store Store, scope tenancy.Scope, endpoint *Endpoint) (*Endpoint, error) {
 	t.Helper()
 
-	return inTx(t, store, func(tx database.Tx) error {
-		return store.SaveEndpoint(t.Context(), tx, scope, endpoint)
+	var saved *Endpoint
+
+	err := inTx(t, store, func(tx database.Tx) error {
+		var saveErr error
+		saved, saveErr = store.SaveEndpoint(t.Context(), tx, scope, endpoint)
+
+		return saveErr
 	})
+
+	return saved, err
 }
 
-func archiveEndpoint(t *testing.T, store Store, scope tenancy.Scope, endpointID string) error {
+// mustSaveEndpoint is the same write for the cases that are not about it
+// failing, and it is what most of the suite calls.
+//
+// The three writes each have one of these, for the reason the helpers above
+// exist at all: a row plus an error at every call site would bury what each
+// case is checking. A case that wants the refusal calls the returning form and
+// asserts on the error; a case that wants neither reads this as a statement.
+func mustSaveEndpoint(t *testing.T, store Store, scope tenancy.Scope, endpoint *Endpoint) *Endpoint {
 	t.Helper()
 
-	return inTx(t, store, func(tx database.Tx) error {
-		return store.ArchiveEndpoint(t.Context(), tx, scope, endpointID)
+	saved, err := saveEndpoint(t, store, scope, endpoint)
+	must.NoError(t, err)
+
+	return saved
+}
+
+func archiveEndpoint(t *testing.T, store Store, scope tenancy.Scope, endpointID string) (*Endpoint, error) {
+	t.Helper()
+
+	var archived *Endpoint
+
+	err := inTx(t, store, func(tx database.Tx) error {
+		var archiveErr error
+		archived, archiveErr = store.ArchiveEndpoint(t.Context(), tx, scope, endpointID)
+
+		return archiveErr
 	})
+
+	return archived, err
+}
+
+func mustArchiveEndpoint(t *testing.T, store Store, scope tenancy.Scope, endpointID string) *Endpoint {
+	t.Helper()
+
+	archived, err := archiveEndpoint(t, store, scope, endpointID)
+	must.NoError(t, err)
+
+	return archived
 }
 
 func addSubscription(t *testing.T, store Store, scope tenancy.Scope, endpointID string, eventType EventType) (*Subscription, error) {
@@ -225,12 +265,28 @@ func addSubscription(t *testing.T, store Store, scope tenancy.Scope, endpointID 
 	return subscription, err
 }
 
-func archiveSubscription(t *testing.T, store Store, scope tenancy.Scope, subscriptionID string) error {
+func archiveSubscription(t *testing.T, store Store, scope tenancy.Scope, subscriptionID string) (*Subscription, error) {
 	t.Helper()
 
-	return inTx(t, store, func(tx database.Tx) error {
-		return store.ArchiveSubscription(t.Context(), tx, scope, subscriptionID)
+	var archived *Subscription
+
+	err := inTx(t, store, func(tx database.Tx) error {
+		var archiveErr error
+		archived, archiveErr = store.ArchiveSubscription(t.Context(), tx, scope, subscriptionID)
+
+		return archiveErr
 	})
+
+	return archived, err
+}
+
+func mustArchiveSubscription(t *testing.T, store Store, scope tenancy.Scope, subscriptionID string) *Subscription {
+	t.Helper()
+
+	archived, err := archiveSubscription(t, store, scope, subscriptionID)
+	must.NoError(t, err)
+
+	return archived
 }
 
 // registerEndpoint saves an endpoint in testScope, subscribed to the given
@@ -255,9 +311,10 @@ func registerScopedEndpoint(t *testing.T, store Store, scope tenancy.Scope, id s
 		Subscriptions: SubscribeTo(events...),
 	}
 
-	must.NoError(t, saveEndpoint(t, store, scope, endpoint))
-
-	return endpoint
+	// The saved row rather than the argument: the save no longer writes onto
+	// what it was handed, so the fixture's subscription IDs and stamps are only
+	// on what it answered with.
+	return mustSaveEndpoint(t, store, scope, endpoint)
 }
 
 // dispatchTo writes a delivery and fans it out to the named endpoints, the way
@@ -343,6 +400,18 @@ func ctxFor(t *testing.T) context.Context {
 	t.Helper()
 
 	return t.Context()
+}
+
+// mustListSubscriptions pages one endpoint's live subscriptions, for the cases
+// that need the rows an endpoint write deliberately did not read back.
+func mustListSubscriptions(t *testing.T, store Store, scope tenancy.Scope, endpointID string) []*Subscription {
+	t.Helper()
+
+	page, err := store.ListSubscriptions(t.Context(), readerOf(t, store), scope, endpointID,
+		filtering.DefaultQueryFilter())
+	must.NoError(t, err)
+
+	return page.Data
 }
 
 // subscriptionFor finds an endpoint's subscription to one event type, failing

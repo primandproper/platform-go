@@ -305,7 +305,13 @@ type Endpoint struct {
 	// On the way in it is the set to register: SubscribeTo builds one from event
 	// types, and SaveEndpoint reconciles the stored rows against it, so an entry
 	// that is not there any more is archived rather than deleted. On the way out
-	// the Store fills it with the live rows, IDs and timestamps included.
+	// it is the live rows, IDs and timestamps included — on the endpoint the
+	// Store hands back rather than on the one it was passed, which it does not
+	// write to.
+	//
+	// Store.ArchiveEndpoint is the one place an Endpoint arrives with this empty
+	// and no claim that the endpoint subscribes to nothing: an archive moves the
+	// endpoint row and leaves the subscriptions where they are, and it says so.
 	//
 	// It is rows rather than a []EventType because a subscription is something an
 	// application's own API lets a user retire one of, and a flat list can only be

@@ -152,7 +152,7 @@ func webhooksdbDialect(d dialect.Dialect) (webhooksdb.Dialect, error) {
 var ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhooks database client")
 
 // SaveEndpoint upserts the endpoint and reconciles its subscription set, both
-// through the caller's transaction.
+// through the caller's transaction, and answers with the stored row.
 //
 // It takes the transaction rather than opening one for two reasons that happen
 // to point the same way. A half-registered endpoint would either receive events
@@ -166,53 +166,68 @@ var ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParamet
 // binds is what the caller named. An endpoint that names no scope adopts it; one
 // naming a different tenant is ErrScopeMismatch. The row and the predicate
 // therefore cannot disagree.
-func (s *SQLStore) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) error {
+//
+// Everything the save settles — the adopted scope, the stamps the database
+// wrote, the identities of subscriptions that were revived rather than created
+// — lands on the value this returns and not on the argument, which is the
+// caller's. The endpoint row is read back afterwards because an upsert cannot
+// say what it stored: created_at and created_by are not part of what a
+// re-registration updates, so on an update they are the row's own and on an
+// insert they are the database's clock. That read is the one statement this
+// method adds; the live subscriptions come out of the reconciliation, which
+// already had to read them.
+func (s *SQLStore) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) (*Endpoint, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "saving webhook endpoint")
+		return nil, op.Error(ErrNilExecutor, "saving webhook endpoint")
 	}
 
 	if endpoint == nil {
-		return op.Error(ErrNilEndpoint, "saving webhook endpoint")
+		return nil, op.Error(ErrNilEndpoint, "saving webhook endpoint")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "saving webhook endpoint %q", endpoint.ID)
+		return nil, op.Error(err, "saving webhook endpoint %q", endpoint.ID)
 	}
 
-	if err := adoptEndpointScope(scope, endpoint); err != nil {
-		return op.Error(err, "saving webhook endpoint %q", endpoint.ID)
+	// The scope is adopted onto a copy. The argument belongs to the caller, and
+	// a write that settles a field on it is the second spelling of the answer
+	// this method now returns — the one a caller cannot decline to receive.
+	written := *endpoint
+
+	if err := adoptEndpointScope(scope, &written); err != nil {
+		return nil, op.Error(err, "saving webhook endpoint %q", written.ID)
 	}
 
-	op.Set(endpointIDKey, endpoint.ID).
-		Set(endpointURLKey, endpoint.URL)
+	op.Set(endpointIDKey, written.ID).
+		Set(endpointURLKey, written.URL)
 
-	headers, err := json.Marshal(endpoint.Headers)
+	headers, err := json.Marshal(written.Headers)
 	if err != nil {
-		return op.Error(err, "marshaling webhook endpoint headers")
+		return nil, op.Error(err, "marshaling webhook endpoint headers")
 	}
 
-	events := endpoint.EventTypes()
+	events := written.EventTypes()
 
-	if err = s.checkEndpointScope(ctx, tx, scope, endpoint.ID); err != nil {
-		return op.Error(err, "saving webhook endpoint %q", endpoint.ID)
+	if err = s.checkEndpointScope(ctx, tx, scope, written.ID); err != nil {
+		return nil, op.Error(err, "saving webhook endpoint %q", written.ID)
 	}
 
 	if err = s.q.UpsertEndpoint(ctx, tx, webhooksdb.UpsertEndpointParams{
-		ID:             endpoint.ID,
+		ID:             written.ID,
 		Scope:          scope,
-		CreatedBy:      ownerOrNil(endpoint.CreatedBy),
-		Name:           endpoint.Name,
-		URL:            endpoint.URL,
-		ContentType:    endpoint.ContentType,
-		SecretCurrent:  endpoint.Secret.Current,
-		SecretPrevious: secretOrNil(endpoint.Secret.Previous),
+		CreatedBy:      ownerOrNil(written.CreatedBy),
+		Name:           written.Name,
+		URL:            written.URL,
+		ContentType:    written.ContentType,
+		SecretCurrent:  written.Secret.Current,
+		SecretPrevious: secretOrNil(written.Secret.Previous),
 		Headers:        headers,
-		Disabled:       endpoint.Disabled,
+		Disabled:       written.Disabled,
 	}); err != nil {
-		return op.Error(err, "upserting webhook endpoint")
+		return nil, op.Error(err, "upserting webhook endpoint")
 	}
 
 	// One statement per named event type rather than one multi-row write.
@@ -222,23 +237,63 @@ func (s *SQLStore) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenan
 	//
 	// Each carries a freshly generated id that the converging case throws
 	// away: a row that already names this (endpoint, event type) is revived
-	// in place and keeps the id it had, which is why the caller's
-	// Subscriptions are filled from a read below rather than from these.
+	// in place and keeps the id it had, which is why the returned
+	// Subscriptions come from a read below rather than from these.
 	for _, event := range events {
 		if err = s.q.UpsertSubscription(ctx, tx, webhooksdb.UpsertSubscriptionParams{
 			ID:         identifiers.New(),
-			EndpointID: endpoint.ID,
+			EndpointID: written.ID,
 			EventType:  event.String(),
 		}); err != nil {
-			return op.Error(err, "upserting webhook endpoint subscription")
+			return nil, op.Error(err, "upserting webhook endpoint subscription")
 		}
 	}
 
-	if endpoint.Subscriptions, err = s.reconcileSubscriptions(ctx, tx, endpoint.ID, events); err != nil {
-		return op.Error(err, "saving webhook endpoint %q", endpoint.ID)
+	live, err := s.reconcileSubscriptions(ctx, tx, written.ID, events)
+	if err != nil {
+		return nil, op.Error(err, "saving webhook endpoint %q", written.ID)
 	}
 
-	return nil
+	saved, err := s.readEndpoint(ctx, tx, scope, written.ID)
+	if err != nil {
+		return nil, op.Error(err, "reading back the saved webhook endpoint %q", written.ID)
+	}
+
+	saved.Subscriptions = live
+
+	return saved, nil
+}
+
+// readEndpoint reads one endpoint row on the caller's executor, without its
+// subscriptions, and reports an absent one as an error wrapping
+// database/sql.ErrNoRows.
+//
+// It is the one endpoint read the three consumer-facing endpoint methods share
+// — the get, the save's read-back and the archive's — and it deliberately does
+// not decide what an absent row means, because the three do not agree: for the
+// save it cannot happen, for the get it is a not-found, and for the archive it
+// is the state the caller asked for. Each says so where it is answered.
+//
+// The statement is GetEndpoint, which returns archived endpoints. That is what
+// makes it the archive's read-back as well: the row the archive just moved is
+// exactly the row a liveness predicate would hide.
+func (s *SQLStore) readEndpoint(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	endpointID string,
+) (*Endpoint, error) {
+	row, err := s.q.GetEndpoint(ctx, q, webhooksdb.GetEndpointParams{
+		ID:    endpointID,
+		Scope: scope,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	columns := endpointFromGet(&row)
+
+	return columns.endpoint()
 }
 
 // adoptEndpointScope settles which tenant a save is for, and writes the answer
@@ -364,17 +419,7 @@ func (s *SQLStore) GetEndpoint(ctx context.Context, q database.SQLQueryExecutor,
 		return nil, op.Error(err, "reading webhook endpoint %q", endpointID)
 	}
 
-	row, err := s.q.GetEndpoint(ctx, q, webhooksdb.GetEndpointParams{
-		ID:    endpointID,
-		Scope: scope,
-	})
-	if err != nil {
-		return nil, op.Error(err, "reading webhook endpoint %q", endpointID)
-	}
-
-	columns := endpointFromGet(&row)
-
-	endpoint, err := columns.endpoint()
+	endpoint, err := s.readEndpoint(ctx, q, scope, endpointID)
 	if err != nil {
 		return nil, op.Error(err, "reading webhook endpoint %q", endpointID)
 	}
@@ -452,8 +497,20 @@ func (s *SQLStore) ListEndpoints(ctx context.Context, q database.SQLQueryExecuto
 }
 
 // ArchiveEndpoint retires one of the scope's endpoints, through the caller's
-// transaction. An endpoint in another scope is not touched.
-func (s *SQLStore) ArchiveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) error {
+// transaction, and returns the row as it now stands. An endpoint in another
+// scope is not touched, and reads from here as one that is not there.
+//
+// The count is still deliberately dropped, and the read that follows is
+// unconditional rather than a disambiguation of it: an archive that names
+// nothing and an archive of something already archived are both "this endpoint
+// is not live", which is the state the caller asked for, and the row now says
+// which of the two it was without the count being consulted. An identifier that
+// names nothing answers nil, because there is no row to describe it with.
+//
+// The subscriptions are not read back. This statement wrote one column in one
+// table and the value describes that row; ListSubscriptions reaches the rest,
+// unchanged, for the price this method declines to charge every caller.
+func (s *SQLStore) ArchiveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) (*Endpoint, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(endpointIDKey, endpointID),
@@ -461,25 +518,38 @@ func (s *SQLStore) ArchiveEndpoint(ctx context.Context, tx database.Tx, scope te
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving webhook endpoint %q", endpointID)
+		return nil, op.Error(ErrNilExecutor, "archiving webhook endpoint %q", endpointID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving webhook endpoint %q", endpointID)
+		return nil, op.Error(err, "archiving webhook endpoint %q", endpointID)
 	}
 
-	// The count is deliberately dropped. An archive that names nothing and an
-	// archive of something already archived are both "this endpoint is not
-	// live", which is the state the caller asked for; the distinction between
-	// them is a read, and GetEndpoint is that read.
 	if _, err := s.q.ArchiveEndpoint(ctx, tx, webhooksdb.ArchiveEndpointParams{
 		ID:    endpointID,
 		Scope: scope,
 	}); err != nil {
-		return op.Error(err, "archiving webhook endpoint %q", endpointID)
+		return nil, op.Error(err, "archiving webhook endpoint %q", endpointID)
 	}
 
-	return nil
+	archived, err := s.readEndpoint(ctx, tx, scope, endpointID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// The absence is the answer rather than a value that failed to
+			// arrive, which is why it is not a sentinel. This method has
+			// answered an identifier that names nothing with success since it
+			// shipped, and a refusal would make the archive the one method on
+			// this surface that reports whether an identifier exists in
+			// somebody else's tenant. What the returned row changes is only
+			// that a caller can now see there was nothing to describe.
+			//nolint:nilnil // An absent row is this method's contract, not a failed read; see above.
+			return nil, nil
+		}
+
+		return nil, op.Error(err, "reading back the archived webhook endpoint %q", endpointID)
+	}
+
+	return archived, nil
 }
 
 // AddSubscription subscribes one of the scope's endpoints to eventType.
@@ -638,14 +708,17 @@ func (s *SQLStore) ListSubscriptions(ctx context.Context, q database.SQLQueryExe
 }
 
 // ArchiveSubscription retires one of the scope's subscriptions, through the
-// caller's transaction. A subscription under another scope's endpoint is not
-// touched.
+// caller's transaction, and returns the row as it now stands. A subscription
+// under another scope's endpoint is not touched, and reads from here as one
+// that is not there.
 //
-// Like ArchiveEndpoint it does not report whether it matched a row. An archive
+// Like ArchiveEndpoint it does not consult the affected-row count. An archive
 // that names nothing and an archive of something already archived are both
-// "this subscription is not live", which is the state the caller asked for; the
-// distinction between them is a read, and GetSubscription is that read.
-func (s *SQLStore) ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+// "this subscription is not live", which is the state the caller asked for, and
+// the returned row is what says which of the two happened and when — the
+// question "when did they stop receiving this" answered at the moment it stops,
+// rather than by a GetSubscription somebody has to remember to issue.
+func (s *SQLStore) ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*Subscription, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(subscriptionIDKey, subscriptionID),
@@ -653,21 +726,41 @@ func (s *SQLStore) ArchiveSubscription(ctx context.Context, tx database.Tx, scop
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "archiving webhook subscription %q", subscriptionID)
+		return nil, op.Error(ErrNilExecutor, "archiving webhook subscription %q", subscriptionID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "archiving webhook subscription %q", subscriptionID)
+		return nil, op.Error(err, "archiving webhook subscription %q", subscriptionID)
 	}
 
 	if _, err := s.q.ArchiveSubscription(ctx, tx, webhooksdb.ArchiveSubscriptionParams{
 		ID:    subscriptionID,
 		Scope: scope,
 	}); err != nil {
-		return op.Error(err, "archiving webhook subscription %q", subscriptionID)
+		return nil, op.Error(err, "archiving webhook subscription %q", subscriptionID)
 	}
 
-	return nil
+	// GetSubscription is the read-back for the reason GetEndpoint is the other
+	// one: it returns archived rows, which is the only kind this write leaves
+	// behind, and it reaches the scope through the endpoint exactly as the
+	// archive above does.
+	row, err := s.q.GetSubscription(ctx, tx, webhooksdb.GetSubscriptionParams{
+		ID:    subscriptionID,
+		Scope: scope,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			//nolint:nilnil // An absent row is this method's contract, not a failed read; the reasoning is on ArchiveEndpoint.
+			return nil, nil
+		}
+
+		return nil, op.Error(err, "reading back the archived webhook subscription %q", subscriptionID)
+	}
+
+	columns := subscriptionFromGet(&row)
+	archived := columns.subscription()
+
+	return &archived, nil
 }
 
 // EndpointsForEvent resolves the fan-out set within one scope, using the

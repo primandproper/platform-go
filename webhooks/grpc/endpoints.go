@@ -77,31 +77,29 @@ func (s *Server) SaveEndpoint(
 		return nil, err
 	}
 
-	// The read is inside the transaction, and it is the reason
-	// webhooks.Store's reads take a database.SQLQueryExecutor rather than a
-	// reader: a Tx satisfies that interface, so this one sees the write it
-	// follows. On Client.Reader() it would be a read of a database that does not
-	// yet contain the row — the endpoint would come back as not found, or, on a
-	// re-registration, as the version this call just replaced.
+	// The response is the endpoint Register answered with, which is the row the
+	// store read back inside this transaction rather than the argument this
+	// handler assembled. That distinction is the whole of what this call sends:
+	// the argument carries no timestamps — the database stamps those — and on a
+	// re-registration it carries no created_at or created_by at all, because
+	// those are not part of what a save updates. Returning it would answer with
+	// "registered in 1970" and with whoever is calling now recorded as whoever
+	// registered it.
 	//
-	// It is here because Register fills the endpoint's identity and its live
-	// subscriptions but not the timestamps, which the database stamps. Returning
-	// the argument instead would answer a save with created_at at the epoch,
-	// which is a client rendering "registered in 1970" rather than a client
-	// having to ask again.
-	saved := endpoint
+	// There is no second read here any more. Register's own is inside the
+	// transaction, which is the reason webhooks.Store's reads take a
+	// database.SQLQueryExecutor rather than a reader: a Tx satisfies that
+	// interface, so the read sees the write it follows, where one on
+	// Client.Reader() would not.
+	var saved *webhooks.Endpoint
 
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		if registerErr := s.dispatcher.Register(ctx, tx, req.scope, endpoint); registerErr != nil {
+		registered, registerErr := s.dispatcher.Register(ctx, tx, req.scope, endpoint)
+		if registerErr != nil {
 			return registerErr
 		}
 
-		read, readErr := s.store.GetEndpoint(ctx, tx, req.scope, endpoint.ID)
-		if readErr != nil {
-			return readErr
-		}
-
-		saved = read
+		saved = registered
 
 		return nil
 	}); err != nil {
@@ -201,7 +199,8 @@ func (s *Server) ListEndpoints(
 // An identifier that names nothing in the caller's tenant is answered OK rather
 // than NotFound, which is webhooks.Store.ArchiveEndpoint's own decision arriving
 // on the wire: an archive that named nothing and an archive of something already
-// archived are both the state the caller asked for. It is the right answer here
+// archived are both the state the caller asked for, and the store says so by
+// handing back a nil endpoint rather than an error. It is the right answer here
 // as well as there — a NotFound would make this the one method that says whether
 // an identifier exists in somebody else's tenant.
 func (s *Server) ArchiveEndpoint(
@@ -218,8 +217,14 @@ func (s *Server) ArchiveEndpoint(
 	id := request.GetEndpointId()
 	req.op.Set(endpointKey, id)
 
+	// The archived row the store answers with is discarded: this response has
+	// nowhere to put it, and the store returns it for the consumer writing an
+	// audit entry beside the write rather than for a handler that already said
+	// which endpoint it archived.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.store.ArchiveEndpoint(ctx, tx, req.scope, id)
+		_, archiveErr := s.store.ArchiveEndpoint(ctx, tx, req.scope, id)
+
+		return archiveErr
 	}); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.Internal, "archiving webhook endpoint %q", id)

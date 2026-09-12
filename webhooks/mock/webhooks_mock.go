@@ -28,10 +28,10 @@ var _ webhooks.Store = &StoreMock{}
 //			AddSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType webhooks.EventType) (*webhooks.Subscription, error) {
 //				panic("mock out the AddSubscription method")
 //			},
-//			ArchiveEndpointFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) error {
+//			ArchiveEndpointFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) (*webhooks.Endpoint, error) {
 //				panic("mock out the ArchiveEndpoint method")
 //			},
-//			ArchiveSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+//			ArchiveSubscriptionFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*webhooks.Subscription, error) {
 //				panic("mock out the ArchiveSubscription method")
 //			},
 //			BacklogFunc: func(ctx context.Context) (int64, time.Time, error) {
@@ -76,7 +76,7 @@ var _ webhooks.Store = &StoreMock{}
 //			RequeueFunc: func(ctx context.Context, deliveryID string, endpointID string, at time.Time) error {
 //				panic("mock out the Requeue method")
 //			},
-//			SaveEndpointFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) error {
+//			SaveEndpointFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) (*webhooks.Endpoint, error) {
 //				panic("mock out the SaveEndpoint method")
 //			},
 //		}
@@ -90,10 +90,10 @@ type StoreMock struct {
 	AddSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType webhooks.EventType) (*webhooks.Subscription, error)
 
 	// ArchiveEndpointFunc mocks the ArchiveEndpoint method.
-	ArchiveEndpointFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) error
+	ArchiveEndpointFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) (*webhooks.Endpoint, error)
 
 	// ArchiveSubscriptionFunc mocks the ArchiveSubscription method.
-	ArchiveSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error
+	ArchiveSubscriptionFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*webhooks.Subscription, error)
 
 	// BacklogFunc mocks the Backlog method.
 	BacklogFunc func(ctx context.Context) (int64, time.Time, error)
@@ -138,7 +138,7 @@ type StoreMock struct {
 	RequeueFunc func(ctx context.Context, deliveryID string, endpointID string, at time.Time) error
 
 	// SaveEndpointFunc mocks the SaveEndpoint method.
-	SaveEndpointFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) error
+	SaveEndpointFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) (*webhooks.Endpoint, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -408,7 +408,7 @@ func (mock *StoreMock) AddSubscriptionCalls() []struct {
 }
 
 // ArchiveEndpoint calls ArchiveEndpointFunc.
-func (mock *StoreMock) ArchiveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) error {
+func (mock *StoreMock) ArchiveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) (*webhooks.Endpoint, error) {
 	if mock.ArchiveEndpointFunc == nil {
 		panic("StoreMock.ArchiveEndpointFunc: method is nil but Store.ArchiveEndpoint was just called")
 	}
@@ -452,7 +452,7 @@ func (mock *StoreMock) ArchiveEndpointCalls() []struct {
 }
 
 // ArchiveSubscription calls ArchiveSubscriptionFunc.
-func (mock *StoreMock) ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+func (mock *StoreMock) ArchiveSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*webhooks.Subscription, error) {
 	if mock.ArchiveSubscriptionFunc == nil {
 		panic("StoreMock.ArchiveSubscriptionFunc: method is nil but Store.ArchiveSubscription was just called")
 	}
@@ -1104,7 +1104,7 @@ func (mock *StoreMock) RequeueCalls() []struct {
 }
 
 // SaveEndpoint calls SaveEndpointFunc.
-func (mock *StoreMock) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) error {
+func (mock *StoreMock) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) (*webhooks.Endpoint, error) {
 	if mock.SaveEndpointFunc == nil {
 		panic("StoreMock.SaveEndpointFunc: method is nil but Store.SaveEndpoint was just called")
 	}
@@ -1160,7 +1160,7 @@ var _ webhooks.Dispatcher = &DispatcherMock{}
 //			DispatchFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, delivery *webhooks.Delivery) error {
 //				panic("mock out the Dispatch method")
 //			},
-//			RegisterFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) error {
+//			RegisterFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) (*webhooks.Endpoint, error) {
 //				panic("mock out the Register method")
 //			},
 //			ReplayFunc: func(ctx context.Context, scope tenancy.Scope, deliveryID string, endpointID string) error {
@@ -1169,7 +1169,7 @@ var _ webhooks.Dispatcher = &DispatcherMock{}
 //			SubscribeFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType webhooks.EventType) (*webhooks.Subscription, error) {
 //				panic("mock out the Subscribe method")
 //			},
-//			UnsubscribeFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+//			UnsubscribeFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*webhooks.Subscription, error) {
 //				panic("mock out the Unsubscribe method")
 //			},
 //		}
@@ -1183,7 +1183,7 @@ type DispatcherMock struct {
 	DispatchFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, delivery *webhooks.Delivery) error
 
 	// RegisterFunc mocks the Register method.
-	RegisterFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) error
+	RegisterFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) (*webhooks.Endpoint, error)
 
 	// ReplayFunc mocks the Replay method.
 	ReplayFunc func(ctx context.Context, scope tenancy.Scope, deliveryID string, endpointID string) error
@@ -1192,7 +1192,7 @@ type DispatcherMock struct {
 	SubscribeFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType webhooks.EventType) (*webhooks.Subscription, error)
 
 	// UnsubscribeFunc mocks the Unsubscribe method.
-	UnsubscribeFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error
+	UnsubscribeFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*webhooks.Subscription, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -1306,7 +1306,7 @@ func (mock *DispatcherMock) DispatchCalls() []struct {
 }
 
 // Register calls RegisterFunc.
-func (mock *DispatcherMock) Register(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) error {
+func (mock *DispatcherMock) Register(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) (*webhooks.Endpoint, error) {
 	if mock.RegisterFunc == nil {
 		panic("DispatcherMock.RegisterFunc: method is nil but Dispatcher.Register was just called")
 	}
@@ -1442,7 +1442,7 @@ func (mock *DispatcherMock) SubscribeCalls() []struct {
 }
 
 // Unsubscribe calls UnsubscribeFunc.
-func (mock *DispatcherMock) Unsubscribe(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+func (mock *DispatcherMock) Unsubscribe(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*webhooks.Subscription, error) {
 	if mock.UnsubscribeFunc == nil {
 		panic("DispatcherMock.UnsubscribeFunc: method is nil but Dispatcher.Unsubscribe was just called")
 	}

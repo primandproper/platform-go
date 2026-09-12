@@ -246,11 +246,19 @@ func (h *harness) seed(tb testing.TB, scope tenancy.Scope, events ...webhooks.Ev
 		Subscriptions: webhooks.SubscribeTo(events...),
 	}
 
+	// The registered row rather than the argument: Register settles the
+	// identifier and the content type on a copy, so a seed that handed back what
+	// it passed in would hand back an endpoint with no ID.
+	var registered *webhooks.Endpoint
+
 	must.NoError(tb, h.db.WithTransaction(tb.Context(), func(tx database.Tx) error {
-		return h.dispatcher.Register(tb.Context(), tx, scope, endpoint)
+		var registerErr error
+		registered, registerErr = h.dispatcher.Register(tb.Context(), tx, scope, endpoint)
+
+		return registerErr
 	}))
 
-	return endpoint
+	return registered
 }
 
 // messageCarries reports whether the encoded form of a message contains the

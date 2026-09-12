@@ -36,16 +36,22 @@ type Dispatcher interface {
 	// StoreDispatcher.Replay.
 	Replay(ctx context.Context, scope tenancy.Scope, deliveryID, endpointID string) error
 	// Register validates and stores an endpoint in scope, through the caller's
-	// transaction. Validation is not optional and not separable: an unvalidated
-	// endpoint is an SSRF target.
-	Register(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) error
+	// transaction, and returns the endpoint as it was stored. Validation is not
+	// optional and not separable: an unvalidated endpoint is an SSRF target.
+	//
+	// The argument is not written to. A registration that named no identifier has
+	// one minted for it, one that named no content type is defaulted, and both
+	// land on the returned value — which is the only place the database's stamps
+	// were ever going to be.
+	Register(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) (*Endpoint, error)
 	// Subscribe adds one event type to one of the scope's endpoints, gating on the
 	// catalog, and returns the subscription — through the caller's transaction.
 	Subscribe(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType EventType) (*Subscription, error)
 	// Unsubscribe retires one of the scope's subscriptions by ID, through the
 	// caller's transaction, leaving the endpoint and its other subscriptions
-	// alone.
-	Unsubscribe(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error
+	// alone, and returns the row it retired — or nil where the ID named nothing
+	// in scope, which is Store.ArchiveSubscription's answer arriving unchanged.
+	Unsubscribe(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*Subscription, error)
 }
 
 var _ Dispatcher = (*StoreDispatcher)(nil)
@@ -137,47 +143,58 @@ func NewDispatcher(store Store, reader database.SQLQueryExecutor, opts ...Dispat
 // account row that now has one, belong in the same commit. An endpoint that
 // names no scope adopts the argument; one naming a different tenant is
 // ErrScopeMismatch, and is refused before anything is validated or written.
-func (d *StoreDispatcher) Register(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) error {
+//
+// What comes back is the endpoint as the store holds it, stamps included, and
+// the argument is left as the caller wrote it. The identifier a registration
+// did not name, the content type it did not set and the scope it adopted are
+// settled onto a copy, which is the value that is validated, the value that is
+// written, and the value this returns — so a caller reading the endpoint it just
+// registered reads one thing rather than an argument that was filled in partway
+// and a row that knows the rest.
+func (d *StoreDispatcher) Register(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *Endpoint) (*Endpoint, error) {
 	ctx, op := d.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "registering webhook endpoint")
+		return nil, op.Error(ErrNilExecutor, "registering webhook endpoint")
 	}
 
 	if endpoint == nil {
-		return op.Error(ErrNilEndpoint, "registering webhook endpoint")
+		return nil, op.Error(ErrNilEndpoint, "registering webhook endpoint")
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "registering webhook endpoint")
+		return nil, op.Error(err, "registering webhook endpoint")
 	}
+
+	candidate := *endpoint
 
 	// The scope is settled before Validate rather than after, so that an endpoint
 	// carrying somebody else's is refused as the mix-up it is instead of being
 	// validated as though it were this caller's.
-	if err := adoptEndpointScope(scope, endpoint); err != nil {
-		return op.Error(err, "registering webhook endpoint")
+	if err := adoptEndpointScope(scope, &candidate); err != nil {
+		return nil, op.Error(err, "registering webhook endpoint")
 	}
 
-	endpoint.EnsureDefaults()
+	candidate.EnsureDefaults()
 
-	if endpoint.ID == "" {
-		endpoint.ID = identifiers.New()
+	if candidate.ID == "" {
+		candidate.ID = identifiers.New()
 	}
 
-	op.Set(endpointIDKey, endpoint.ID).
-		SpanOnly(endpointURLKey, endpoint.URL)
+	op.Set(endpointIDKey, candidate.ID).
+		SpanOnly(endpointURLKey, candidate.URL)
 
-	if err := endpoint.Validate(ctx, d.catalog, d.checkURL); err != nil {
-		return op.Error(err, "validating webhook endpoint")
+	if err := candidate.Validate(ctx, d.catalog, d.checkURL); err != nil {
+		return nil, op.Error(err, "validating webhook endpoint")
 	}
 
-	if err := d.store.SaveEndpoint(ctx, tx, scope, endpoint); err != nil {
-		return op.Error(err, "saving webhook endpoint")
+	registered, err := d.store.SaveEndpoint(ctx, tx, scope, &candidate)
+	if err != nil {
+		return nil, op.Error(err, "saving webhook endpoint")
 	}
 
-	return nil
+	return registered, nil
 }
 
 // Subscribe adds one event type to an existing endpoint, without rewriting the
@@ -244,7 +261,12 @@ func (d *StoreDispatcher) Subscribe(ctx context.Context, tx database.Tx, scope t
 // There is no catalog gate here, and there should not be: an event type can be
 // removed from an application's catalog, and the subscriptions to it are exactly
 // what somebody then needs to be able to retire.
-func (d *StoreDispatcher) Unsubscribe(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) error {
+//
+// It hands back the row the store retired, which is where the answer to "when
+// did they stop receiving this" is readable without asking a second time. An ID
+// that names nothing under one of the scope's endpoints is a nil subscription
+// and no error, unchanged from what the store has always said about it.
+func (d *StoreDispatcher) Unsubscribe(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*Subscription, error) {
 	ctx, op := d.o11y.Begin(ctx,
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(subscriptionIDKey, subscriptionID),
@@ -252,22 +274,23 @@ func (d *StoreDispatcher) Unsubscribe(ctx context.Context, tx database.Tx, scope
 	defer op.End()
 
 	if tx == nil {
-		return op.Error(ErrNilExecutor, "unsubscribing webhook subscription %q", subscriptionID)
+		return nil, op.Error(ErrNilExecutor, "unsubscribing webhook subscription %q", subscriptionID)
 	}
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "unsubscribing webhook subscription %q", subscriptionID)
+		return nil, op.Error(err, "unsubscribing webhook subscription %q", subscriptionID)
 	}
 
 	if subscriptionID == "" {
-		return op.Error(platformerrors.ErrInvalidIDProvided, "unsubscribing webhook subscription")
+		return nil, op.Error(platformerrors.ErrInvalidIDProvided, "unsubscribing webhook subscription")
 	}
 
-	if err := d.store.ArchiveSubscription(ctx, tx, scope, subscriptionID); err != nil {
-		return op.Error(err, "unsubscribing webhook subscription %q", subscriptionID)
+	retired, err := d.store.ArchiveSubscription(ctx, tx, scope, subscriptionID)
+	if err != nil {
+		return nil, op.Error(err, "unsubscribing webhook subscription %q", subscriptionID)
 	}
 
-	return nil
+	return retired, nil
 }
 
 // Dispatch fans a delivery out to its subscribers, inside the caller's
