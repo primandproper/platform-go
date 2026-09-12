@@ -2,15 +2,14 @@
 Package sentinelmatrix is where this module's domain sentinels are checked
 against the statuses they resolve to, and it holds nothing else.
 
-The mappings themselves live beside the sentinels: dataprivacy, links,
-operations and sessions each export an HTTPMapper and a GRPCMapper holding the
-cases for their own errors, because errors/http and errors/grpc are primitives
-and cannot import the tier above them. That is the right place for a mapping and
-the wrong place for a roster — each of those packages can see only its own
-sentinels, and the failure this package exists to catch is the one nobody is
-looking at: a sentinel added to a package months later, mapped nowhere, reaching
-a client as a 500 or as codes.Unknown while every test in its own package stays
-green.
+The mappings themselves live beside the sentinels: every package Packages names
+exports an HTTPMapper and a GRPCMapper holding the cases for its own errors,
+because errors/http and errors/grpc are primitives and cannot import the tier
+above them. That is the right place for a mapping and the wrong place for a
+roster — each of those packages can see only its own sentinels, and the failure
+this package exists to catch is the one nobody is looking at: a sentinel added
+to a package months later, mapped nowhere, reaching a client as a 500 or as
+codes.Unknown while every test in its own package stays green.
 
 So the roster is here, and it is a decision per sentinel rather than a list of
 the mapped ones. Every exported Err in the packages Packages names is one of three
@@ -47,6 +46,15 @@ out, so the walk moved with it and widened: primitives-go's internal/tierguard
 fails on an import of platform-go from anywhere in that module, test files and
 go.mod included, and it needs no roster because the answer is the same for every
 package there.
+
+There is a second roster, and it names a subset: ClientSafePackages is the
+packages that additionally declare a ClientSafeSentinels list, the refusals whose
+own wording a gRPC status may quote rather than sending the name of the code. It
+is checked against source in both directions too, for the failure that has no
+symptom anywhere else — a list declared and registered nowhere changes nothing a
+package's own tests can see, and only changes what somebody staring at a browser
+is told. Before it, prose was the only thing that said how many there were, and
+three passages said four, six and eight while the source held nine and fifteen.
 
 The roster is a package-level var rather than a test fixture, because two other
 test binaries need the same expectation. errormappers.Register is the one call
