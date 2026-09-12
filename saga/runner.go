@@ -59,6 +59,13 @@ type StoreRunner[T any] struct {
 // holds a transaction wants StartInTransaction and this client is never
 // consulted for it.
 //
+// Nil is refused anyway. Which of the two a call site reaches for is a fact
+// about that call site rather than about the Runner — one object carries both
+// methods — so accepting nil here would move the failure from a constructor
+// that returns an error to a Start that panics on the first saga somebody
+// tried to begin. A dependency a method cannot work without is not the kind of
+// absence this module resolves to a noop.
+//
 // T is the state type. It must match the type the named definition was
 // registered with; Start and Get report ErrStateTypeMismatch rather than
 // decoding a saga's state into a struct that merely happens to parse.

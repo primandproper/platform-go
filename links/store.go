@@ -152,6 +152,24 @@ type Store interface {
 	// reset, a locked account, or an erasure, and none of those means "in this
 	// tenant only".
 	//
+	// It takes no executor, and this is the one of the four where a caller
+	// plausibly has a transaction to offer: the reset that completes, the
+	// account that locks and the erasure that runs each write something of
+	// their own at the same moment. They still cannot hand it over. Store is a
+	// seam satisfied by holding records addressable by id and by subject, and
+	// links/database is one implementation of it rather than the shape of it —
+	// a database.Tx on this method alone would narrow the interface to storage
+	// on the caller's own database, on behalf of the only three callers in the
+	// package that could supply one.
+	//
+	// What that costs is the caller's to order correctly. A revocation that
+	// commits while the caller's own write rolls back leaves a person
+	// re-requesting a link, which is a nuisance; a caller that commits a
+	// password change and then fails to revoke leaves live reset links behind
+	// a credential that has already changed, which is the thing this method
+	// exists to prevent. Revoke first and commit second, exactly as Resolve
+	// says for the same reason.
+	//
 	// It does not consult a link's deadline, because nothing in this package
 	// decides liveness in SQL — Record.Usable does, in Go, against the Minter's
 	// clock. A link that expired without ever being resolved is therefore moved
