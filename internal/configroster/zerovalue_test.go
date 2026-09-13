@@ -5,19 +5,30 @@ import (
 	"testing"
 
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
+	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
+	webauthncredentialscfg "github.com/primandproper/platform-go/v14/authentication/webauthncredentials/config"
+	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
+	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
 	entitlementscfg "github.com/primandproper/platform-go/v14/entitlements/config"
+	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
+	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
 	linkscfg "github.com/primandproper/platform-go/v14/links/config"
+	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
 	meteringcfg "github.com/primandproper/platform-go/v14/metering/config"
+	notificationscfg "github.com/primandproper/platform-go/v14/notifications/config"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
 	rbaccfg "github.com/primandproper/platform-go/v14/rbac/config"
 	retentioncfg "github.com/primandproper/platform-go/v14/retention/config"
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
 	sessionscfg "github.com/primandproper/platform-go/v14/sessions/config"
+	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
 	shreddingcfg "github.com/primandproper/platform-go/v14/shredding/config"
 	timerscfg "github.com/primandproper/platform-go/v14/timers/config"
+	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
 	webhookscfg "github.com/primandproper/platform-go/v14/webhooks/config"
+	"github.com/primandproper/platform-go/v14/workqueue"
 
 	analyticscfg "github.com/primandproper/primitives-go/v2/analytics/config"
 	tokenscfg "github.com/primandproper/primitives-go/v2/authentication/tokens/config"
@@ -65,47 +76,54 @@ type zeroValued interface {
 // what its struct tags carry.
 type defaulter interface{ EnsureDefaults() }
 
-// TestZeroValueConfigIsDecisive asserts, for every config subpackage, that a
-// hand-built zero Config either defaults into validity or names the field it
-// needs.
-//
-// The two outcomes are both fine and the third is not: a zero config that
-// validates clean and is then refused by its own constructor. That was the
-// state of most of this layer — a provider field with no Required rule, or a
-// leaf provider's rules made unreachable — and the failure it produced was a
-// deployment that passed every check the operator could run and died at boot,
-// or worse, ran.
-//
-// So each case declares which of the two answers it expects, and the invalid
-// ones name a field the message must mention. Adding a config subpackage means
-// adding a line here and deciding, once, which answer is right for it.
-//
-// The configs are hand-built rather than env-parsed, which is the case the
-// `env:",init"` sweeps above cannot cover: a caller assembling a Config in Go
-// never goes through env.Parse, so anything a struct tag would have supplied is
-// absent, and the only defaults that run are the ones EnsureDefaults applies.
-func TestZeroValueConfigIsDecisive(T *testing.T) {
-	T.Parallel()
+// zeroValueCase is one config's answer to the question
+// TestZeroValueConfigIsDecisive asks, and exactly one of needs and why is set.
+type zeroValueCase struct {
+	cfg zeroValued
+	// name is the config subpackage.
+	name string
+	// needs is a fragment of the message a zero config must report. Empty
+	// means the zero config is expected to default into validity instead.
+	needs string
+	// why records the reason a zero config is a working one, for the cases
+	// where it is. Unread by TestZeroValueConfigIsDecisive; it is the thing
+	// worth stating.
+	why string
+}
 
-	cases := []struct {
-		cfg zeroValued
-		// name is the config subpackage.
-		name string
-		// needs is a fragment of the message a zero config must report. Empty
-		// means the zero config is expected to default into validity instead.
-		needs string
-		// why records the reason a zero config is a working one, for the cases
-		// where it is. Unread by the test; it is the thing worth stating.
-		why string
-	}{
+// zeroValueCases is the roster both tests in this file read.
+//
+// It is a function rather than a var because the test below calls
+// EnsureDefaults on every config in it, and a package-level slice would hand
+// the second reader a set of configs the first one had already defaulted.
+//
+// Every config subpackage in this module is named here, which is not a promise
+// this list makes about itself — TestEveryConfigPackageIsRostered walks the tree
+// and fails on a package that is missing. The primitives-go entries are a
+// courtesy in the other direction: that module's coverage is its own to keep,
+// and nothing here can walk its tree.
+func zeroValueCases() []zeroValueCase {
+	return []zeroValueCase{
 		{name: "analytics", cfg: &analyticscfg.Config{}, needs: "provider"},
 		{name: "audit", cfg: &auditcfg.Config{}, needs: "dialect"},
 		{name: "authentication/tokens", cfg: &tokenscfg.Config{}, needs: "provider"},
+		// It is decisive for the store, which is what a zero config builds.
+		// What it still cannot do is serve: NewServer refuses an empty issuer,
+		// and that is checked in oauth2server.NewServer rather than here
+		// because the issuer is the embedded primitive config's field and a
+		// deployment wiring only the store has none to name.
+		{name: "authentication/oauth2serverstore", cfg: &oauth2serverstorecfg.Config{}, why: "the provider defaults to database, and the store under it reads its tables from a prefix that defaults too"},
+		{name: "authentication/webauthncredentials", cfg: &webauthncredentialscfg.Config{}, needs: "rpID"},
 		{name: "rbac", cfg: &rbaccfg.Config{}, why: "the static resolver needs no infrastructure and grants nothing"},
+		{name: "billing", cfg: &billingcfg.Config{}, why: "the table prefix is the only field, and what a deployment sells is rows rather than environment"},
 		{name: "cache", cfg: &cachecfg.Config{}, needs: "provider"},
 		{name: "capitalism", cfg: &capitalismcfg.Config{}, needs: "provider"},
 		{name: "circuitbreaking", cfg: &circuitbreakingcfg.Config{}, why: "every threshold has a default"},
 		{name: "circuitbreaking/partitioned", cfg: &partitionedcfg.Config{}, why: "it is the base breaker's defaults, per key"},
+		// The target catalog is not configuration and so is not checked here: a
+		// store with no targets accepts no writes, which comments.NewSQLStore
+		// rules is a wiring mistake rather than a config one.
+		{name: "comments", cfg: &commentscfg.Config{}, why: "the table prefix is the only field and it defaults"},
 		{name: "cryptography/encryption", cfg: &encryptioncfg.Config{}, needs: "provider"},
 		{name: "shredding", cfg: &shreddingcfg.Config{}, why: "shredding defaults to the key store it is handed"},
 		{name: "database", cfg: &databasecfg.Config{}, needs: "hostname"},
@@ -117,6 +135,8 @@ func TestZeroValueConfigIsDecisive(T *testing.T) {
 		{name: "eventstream", cfg: &eventstreamcfg.Config{}, needs: "provider"},
 		{name: "featureflags", cfg: &featureflagscfg.Config{}, needs: "provider"},
 		{name: "idempotency", cfg: &idempotencycfg.Config{}, needs: "provider"},
+		{name: "identity", cfg: &identitycfg.Config{}, why: "the table prefix defaults, and both invitation lifetimes default to the pair identitygrpc already enforces against each other"},
+		{name: "issuereports", cfg: &issuereportscfg.Config{}, why: "the table prefix is the only field and it defaults"},
 		{name: "jobs/pool", cfg: &jobscfg.PoolConfig{}, needs: "topic"},
 		{name: "jobs/scheduler", cfg: &jobscfg.SchedulerConfig{}, needs: "provider"},
 		// It needed a provider until there was only one store. What a zero
@@ -125,8 +145,14 @@ func TestZeroValueConfigIsDecisive(T *testing.T) {
 		// a caller passes as options are only visible at that point.
 		{name: "links", cfg: &linkscfg.Config{}, why: "the one store reads its table from the client, and every other field has a default"},
 		{name: "llm", cfg: &llmcfg.Config{}, needs: "provider"},
+		{name: "mediaregistry", cfg: &mediaregistrycfg.Config{}, why: "the table prefix is the only field, and the bucket the bytes go to is not this package's to configure"},
 		{name: "messagequeue", cfg: &messagequeuecfg.Config{}, needs: "provider"},
 		{name: "metering", cfg: &meteringcfg.Config{}, why: "metering counts in memory until a store is named"},
+		// The one config subpackage in this module with no EnsureDefaults, and
+		// deliberately: its one field's default is the empty prefix, so an
+		// unset field already is the default and a defaulting step would be
+		// assigning "" to "".
+		{name: "notifications", cfg: &notificationscfg.Config{}, why: "the table prefix is the only field and unset is its default"},
 		// Unlike the other optional seams below, an unset provider is not the
 		// opt-out here: notifying nobody for the life of a process has to be
 		// asked for by name.
@@ -147,12 +173,43 @@ func TestZeroValueConfigIsDecisive(T *testing.T) {
 		{name: "search/vector", cfg: &vectorsearchcfg.Config{}, needs: "provider"},
 		{name: "secrets", cfg: &secretscfg.Config{}, why: "an unset provider reads secrets from the environment"},
 		{name: "sessions", cfg: &sessionscfg.Config{}, needs: "provider"},
+		{name: "settings", cfg: &settingscfg.Config{}, why: "the table prefix is the only field, and which settings exist is rows rather than environment"},
 		{name: "timers", cfg: &timerscfg.Config{}, needs: "name"},
+		{name: "waitlists", cfg: &waitlistscfg.Config{}, why: "the table prefix is the only field, and which waitlists exist is rows rather than environment"},
 		{name: "webhooks", cfg: &webhookscfg.Config{}, why: "the sender's worker, client and breaker all have defaults"},
 		{name: "webhooks/inbound", cfg: &inboundcfg.Config{}, needs: "provider"},
+		// workqueuecfg declares no Config of its own — it takes this one — so
+		// this is the leaf's, which is the config an operator actually sets.
+		// See configPackagesTakingALeafConfig.
+		{name: "workqueue", cfg: &workqueue.Config{}, needs: "name"},
 	}
+}
 
-	for _, tc := range cases {
+// TestZeroValueConfigIsDecisive asserts, for every config subpackage, that a
+// hand-built zero Config either defaults into validity or names the field it
+// needs.
+//
+// The two outcomes are both fine and the third is not: a zero config that
+// validates clean and is then refused by its own constructor. That was the
+// state of most of this layer — a provider field with no Required rule, or a
+// leaf provider's rules made unreachable — and the failure it produced was a
+// deployment that passed every check the operator could run and died at boot,
+// or worse, ran.
+//
+// So each case declares which of the two answers it expects, and the invalid
+// ones name a field the message must mention. Adding a config subpackage means
+// adding a line to zeroValueCases and deciding, once, which answer is right for
+// it — which TestEveryConfigPackageIsRostered turns from a comment into a
+// failing test.
+//
+// The configs are hand-built rather than env-parsed, which is the case the
+// `env:",init"` sweeps above cannot cover: a caller assembling a Config in Go
+// never goes through env.Parse, so anything a struct tag would have supplied is
+// absent, and the only defaults that run are the ones EnsureDefaults applies.
+func TestZeroValueConfigIsDecisive(T *testing.T) {
+	T.Parallel()
+
+	for _, tc := range zeroValueCases() {
 		T.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

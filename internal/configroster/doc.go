@@ -1,7 +1,14 @@
-// Package configroster holds the two tests that walk every config subpackage in
+// Package configroster holds the tests that walk every config subpackage in
 // the module at once: the one that says a zero-valued config either validates or
-// says why it cannot, and the one that says a config naming a provider must
-// carry that provider's block.
+// says why it cannot, the one that says a config naming a provider must carry
+// that provider's block, and the one that says the first of those names every
+// config subpackage this module ships.
+//
+// That last one is what keeps the other two from being lists. A roster of
+// packages is complete on the day it is written and never again, so the one here
+// is checked against the directories rather than against its own comment — the
+// same reading service's TestEveryConfigPackageHasAField takes of the fields on
+// its Config.
 //
 // They have no production code of their own, and the package exists so that they
 // have somewhere to live that is honest about what they are.
@@ -9,7 +16,7 @@
 // # Why they are not in cfgnorm
 //
 // They were, because cfgnorm is the package whose helpers the rules are about —
-// Provider, ZeroToNil, EnsureSweepInterval, SweepIntervalRule. But what the two
+// Provider, ZeroToNil, EnsureSweepInterval, SweepIntervalRule. But what those
 // tests actually assert is a property of every config in the tree, so between
 // them they import roughly fifty config subpackages, from both tiers.
 //
