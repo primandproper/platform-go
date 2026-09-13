@@ -158,6 +158,24 @@ function — the list is complete and read from the DDL, so a between-tests
 TRUNCATE, a backup policy or a privacy inventory names every one of them without
 anybody copying seven names out of the schema.
 
+# What the directory owes a subject
+
+This package holds the names, the addresses and the credentials, so it meets the
+dataprivacy seam like any other store of personal data.
+[github.com/primandproper/platform-go/v14/identity/privacy] ships the two halves:
+a dataprivacy.Collector that returns who somebody is to the directory, and a
+dataprivacy.Eraser that destroys them. It is a package of its own rather than two
+methods here, so that a service with a login form and no privacy pipeline does
+not compile the operations queue and the scheduler behind it.
+
+Two things about the erasure are worth knowing before you wire one up. It is two
+writes rather than one — [InvitationStore.EraseInvitationsForSubject] and then
+[AdminWriter.EraseUser] — because identity_invitations references neither user it
+names and so cascades from nothing, and the first reads the subject's address off
+the row the second destroys. And neither of them can resolve an account the
+subject owned: EraseUser is not refusable, so an owned account survives naming an
+owner who no longer exists. Transfer or archive those before the request runs.
+
 # The operations, and what a consumer still writes
 
 A registration is three writes in one transaction:

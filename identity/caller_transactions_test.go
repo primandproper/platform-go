@@ -315,6 +315,11 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 
 				return err
 			}},
+			{name: "GetUserIncludingArchived", run: func() error {
+				_, err := store.GetUserIncludingArchived(t.Context(), nil, testScope, "u")
+
+				return err
+			}},
 			{name: "ListUsers", run: func() error {
 				_, err := store.ListUsers(t.Context(), nil, testScope, nil)
 
@@ -438,12 +443,12 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return err
 			}},
 			{name: "ListInvitationsFromUser", run: func() error {
-				_, err := store.ListInvitationsFromUser(t.Context(), nil, testScope, "u", nil)
+				_, err := store.ListInvitationsFromUser(t.Context(), nil, testScope, "u", InvitationPending, nil)
 
 				return err
 			}},
 			{name: "ListInvitationsForEmailAddress", run: func() error {
-				_, err := store.ListInvitationsForEmailAddress(t.Context(), nil, testScope, "g@example.com", nil)
+				_, err := store.ListInvitationsForEmailAddress(t.Context(), nil, testScope, "g@example.com", InvitationPending, nil)
 
 				return err
 			}},
@@ -454,6 +459,11 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			}},
 			{name: "SetInvitationStatus", run: func() error {
 				return store.SetInvitationStatus(t.Context(), nil, testScope, "i", InvitationRejected, "")
+			}},
+			{name: "EraseInvitationsForSubject", run: func() error {
+				_, err := store.EraseInvitationsForSubject(t.Context(), nil, testScope, "u")
+
+				return err
 			}},
 		}
 

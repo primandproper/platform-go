@@ -59,7 +59,7 @@ reasons behind the three exceptions.
 ### Identity & access
 | Package                              | Purpose                                                                       | Implementations                  |
 |--------------------------------------|-------------------------------------------------------------------------------|----------------------------------|
-| `identity`                           | Users, accounts, memberships and invitations, and the lifecycle over them     | postgres, mysql, sqlite (+ grpc) |
+| `identity`                           | Users, accounts, memberships and invitations, the lifecycle over them, and `identity/privacy`, the directory's contribution to a subject access request | postgres, mysql, sqlite (+ grpc) |
 | `authentication/signin`              | Sign-in: the order the engines and the directory are used in, owning no table | — (+ grpc)                       |
 | `authentication/passwordreset`       | Password reset tokens: digest at rest, single use enforced by the store       | postgres, mysql, sqlite          |
 | `authentication/webauthncredentials` | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |

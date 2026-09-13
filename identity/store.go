@@ -387,6 +387,30 @@ type DirectoryReader interface {
 	// archived clause — and it reaches every read by id, GetPrincipal included.
 	GetUser(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) (*User, error)
 
+	// GetUserIncludingArchived reads one of the scope's users whether or not
+	// they have been archived.
+	//
+	// It is the read a privacy request makes, and the only read on this
+	// interface indifferent to the archived stamp. Every other single-user read
+	// here excludes archived rows, which is what makes an archived user absent
+	// from GetUser and from every Principal built out of one — and that is the
+	// wrong answer for exactly one caller. A person exercising a right of access
+	// or erasure has almost always been deactivated first, the request being
+	// what follows the deactivation rather than what precedes it, so an export
+	// routed through GetUser would export nothing and an erasure routed through
+	// it would destroy nothing, and both would report success over a person
+	// still in the table.
+	//
+	// It is not a wider GetUser. A sign-in, a roster, a Principal and a support
+	// console all want the live directory, and a caller reading through this one
+	// instead is a caller whose deactivations have stopped meaning anything.
+	GetUserIncludingArchived(
+		ctx context.Context,
+		q database.SQLQueryExecutor,
+		scope tenancy.Scope,
+		userID string,
+	) (*User, error)
+
 	// ListUsers pages the scope's directory, users redacted.
 	//
 	// Ordered by id and cursor-paginated on it, which is what makes the page and
@@ -742,6 +766,15 @@ type AdminWriter interface {
 	// account, and archiving those accounts here would take other members
 	// offline because one of them exercised a right. Resolve the subject's
 	// accounts before erasing them.
+	//
+	// It destroys the user row and what the schema hangs off it — the service
+	// roles, the memberships, and the roles those carry, through ON DELETE
+	// CASCADE — and nothing else. It does not touch the invitations table, which
+	// references neither user it names and so cascades from nothing: a subject
+	// erased by this method alone is still in identity_invitations under their
+	// own name and address. EraseInvitationsForSubject is the write that fixes
+	// that, and it runs first, on this same transaction, because it reads the
+	// subject's address off the row this one destroys.
 	EraseUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
 
 	// ArchiveAccount soft-deletes an account and ends every membership in it, in
@@ -898,23 +931,35 @@ type InvitationStore interface {
 		invitationID, token string,
 	) (*Invitation, error)
 
-	// ListInvitationsFromUser pages the pending invitations a user has sent,
-	// redacted.
+	// ListInvitationsFromUser pages the invitations a user has sent in one
+	// status, redacted.
+	//
+	// The status is an argument rather than the pending it used to be, because
+	// the answered invitations were not reachable at all: a sender could not see
+	// what had been declined, and a subject access request could not export what
+	// its subject had been answered. It stays a required argument rather than an
+	// optional narrowing because the index behind this read is partial on
+	// pending rows, so "every status" is a table scan wearing a filter's
+	// clothes. A caller that wants two statuses asks twice and knows it did.
 	ListInvitationsFromUser(
 		ctx context.Context,
 		q database.SQLQueryExecutor,
 		scope tenancy.Scope,
 		userID string,
+		status InvitationStatus,
 		filter *filtering.QueryFilter,
 	) (*filtering.QueryFilteredResult[Invitation], error)
 
-	// ListInvitationsForEmailAddress pages the pending invitations addressed to
-	// an email address, redacted — what a newly registered user is shown.
+	// ListInvitationsForEmailAddress pages the invitations addressed to an email
+	// address in one status, redacted — with InvitationPending, what a newly
+	// registered user is shown. See ListInvitationsFromUser on why the status is
+	// an argument and why it is a required one.
 	ListInvitationsForEmailAddress(
 		ctx context.Context,
 		q database.SQLQueryExecutor,
 		scope tenancy.Scope,
 		emailAddress string,
+		status InvitationStatus,
 		filter *filtering.QueryFilter,
 	) (*filtering.QueryFilteredResult[Invitation], error)
 
@@ -961,6 +1006,38 @@ type InvitationStore interface {
 		status InvitationStatus,
 		statusNote string,
 	) error
+
+	// EraseInvitationsForSubject destroys every invitation addressed to a
+	// subject and takes the subject off every invitation they sent, through the
+	// caller's transaction.
+	//
+	// It exists because EraseUser reaches none of this. This table carries no
+	// REFERENCES to either user it names, so nothing cascades to it, and a
+	// subject destroyed from the directory is left in it under their own name
+	// and address — on rows no read here can reach once the directory row is
+	// gone.
+	//
+	// The two halves are treated differently because they are different rows. An
+	// invitation addressed to the subject is theirs and is deleted, whichever of
+	// the two ways this table names them; blanking it would leave a pending
+	// offer nobody can be shown, still redeemable by whoever holds the link. An
+	// invitation the subject sent is the recipient's row, and survives with the
+	// sender and the sender's message taken off it. The counts come back apart
+	// for that reason.
+	//
+	// It runs before EraseUser, on the same transaction, and does not assume it:
+	// the subject's address is read here rather than passed in — a scope and an
+	// id key every other method on this interface, and an address assembled
+	// somewhere else is the derivation the module's column rule exists to rule
+	// out — through GetUserIncludingArchived, so called after EraseUser it
+	// returns an error wrapping ErrUserNotFound rather than erasing nothing and
+	// reporting success.
+	EraseInvitationsForSubject(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		userID string,
+	) (InvitationErasure, error)
 }
 
 // Store is the whole persistence seam for the identity directory: every
@@ -974,7 +1051,7 @@ type InvitationStore interface {
 //
 // # Depend on a narrower one
 //
-// Store is forty-eight methods, which is the right size for the thing that
+// Store is fifty methods, which is the right size for the thing that
 // implements it and the wrong size for almost everything that calls it. It is a
 // union of nine interfaces, each named for a job rather than for a table, and a
 // caller should name the smallest one that covers what it does: a sign-in
@@ -982,7 +1059,7 @@ type InvitationStore interface {
 // support console takes a DirectoryReader.
 //
 // This is not only about the size of a test double, though a three-method fake
-// beats a forty-eight-method mock. It is that the narrow interface is a
+// beats a fifty-method mock. It is that the narrow interface is a
 // statement about reach, checked by the compiler: a handler that holds a
 // DirectoryReader cannot ban a user, and one that holds a ProfileWriter cannot
 // write a credential or move an account's ownership. Depending on Store gives
@@ -1065,10 +1142,11 @@ type InvitationStore interface {
 // A refused write answers with a nil row. The sentinels are unchanged, and none
 // of them arrives beside a value: the row comes back only alongside a nil error.
 //
-// EraseUser is the one write here that could answer with what it destroyed and
-// does not. It returns how many rows went, because nothing describes them at any
-// distance afterwards and the rows are the subject's own data — handing them back
-// would be handing back what the erasure exists to remove.
+// The two erasures could answer with what they destroyed and do not. Each
+// returns how many rows went — EraseUser a count, EraseInvitationsForSubject the
+// two counts its two treatments produce — because nothing describes those rows
+// at any distance afterwards and they are the subject's own data, so handing
+// them back would be handing back what the erasure exists to remove.
 //
 // The field writes keep their error. Each of them assigns one fact the caller
 // already holds, to a row every read here still reaches on the transaction that
