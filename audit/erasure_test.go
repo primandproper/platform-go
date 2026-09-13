@@ -1,6 +1,8 @@
 package audit
 
 import (
+	stderrors "errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -202,6 +204,37 @@ func TestErasure_DeleteScopes(T *testing.T) {
 		test.Error(t, err)
 	})
 
+	T.Run("rolls back with the erasure that opened the transaction", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+
+		record(t, client, recorder, entryFor(tenancy.Of("user_1"), "r1"), entryFor(tenancy.Of("user_1"), "r2"))
+
+		// The deletion succeeds and the erasure it belongs to fails after it.
+		// Taking a Tx is what makes this the only arrangement available: an
+		// autocommit handle would have committed the deletion already, and the
+		// surviving request record would describe an erasure that did not
+		// happen in reverse — a subject told their log was kept, and no log.
+		errFulfilment := stderrors.New("the erasure this deletion belongs to failed")
+
+		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
+			deleted, deleteErr := newTestErasure(t).DeleteScopes(t.Context(), q, []tenancy.Scope{tenancy.Of("user_1")})
+			must.NoError(t, deleteErr)
+			test.EqOp(t, int64(2), deleted)
+
+			return errFulfilment
+		})
+
+		test.ErrorIs(t, err, errFulfilment)
+
+		// Entries and chain row both, because both statements were inside the
+		// transaction that rolled back.
+		test.EqOp(t, 2, countRows(t, client, "audit_log_entries", "scope = 'user_1'"))
+		test.EqOp(t, 1, countRows(t, client, "audit_log_chains", "scope = 'user_1'"))
+	})
+
 	T.Run("reports a chain table it cannot write", func(t *testing.T) {
 		t.Parallel()
 
@@ -279,5 +312,76 @@ func TestErasure_CountMentions(T *testing.T) {
 
 		_, err := newTestErasure(t).CountMentions(t.Context(), client.Reader(), "user_1")
 		test.Error(t, err)
+	})
+}
+
+func TestErasure_ExecutorConvention(T *testing.T) {
+	T.Parallel()
+
+	// The two methods take deliberately different executors, and the difference
+	// is the whole of the guarantee: a database.Tx is producible only by
+	// database.RunInTransaction, so DeleteScopes cannot be reached from an
+	// autocommit handle, while CountMentions takes the wider type a Tx also
+	// satisfies so that the count run inside the erasure sees the deletion.
+	// Widening the write would compile and would say nothing, which is why the
+	// shape is asserted rather than left to the doc comment.
+	T.Run("the write takes a transaction and the read takes an executor", func(t *testing.T) {
+		t.Parallel()
+
+		erasureType := reflect.TypeFor[*Erasure]()
+
+		for _, tc := range []struct {
+			executor reflect.Type
+			method   string
+		}{
+			{method: "DeleteScopes", executor: reflect.TypeFor[database.Tx]()},
+			{method: "CountMentions", executor: reflect.TypeFor[database.SQLQueryExecutor]()},
+		} {
+			method, ok := erasureType.MethodByName(tc.method)
+			must.True(t, ok, must.Sprintf("Erasure has no method %s", tc.method))
+
+			// Index 0 is the receiver and index 1 the context, so the executor
+			// is the third parameter of the method value's type.
+			test.EqOp(t, tc.executor, method.Type.In(2), test.Sprintf("%s executor parameter", tc.method))
+		}
+	})
+
+	T.Run("the count run in the erasure's transaction sees the deletion", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+
+		// The subject's own scope, which goes, and a mention of them inside
+		// somebody else's, which cannot.
+		mine := entryFor(tenancy.Of("user_1"), "r1")
+		mine.Actor.ID = "user_1"
+
+		elsewhere := entryFor(tenancy.Of("acct_9"), "r2")
+		elsewhere.Actor.ID = "user_1"
+
+		record(t, client, recorder, mine)
+		record(t, client, recorder, elsewhere)
+
+		var remaining int64
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
+			e := newTestErasure(t)
+
+			if _, err := e.DeleteScopes(t.Context(), q, []tenancy.Scope{tenancy.Of("user_1")}); err != nil {
+				return err
+			}
+
+			var err error
+			remaining, err = e.CountMentions(t.Context(), q, "user_1")
+
+			return err
+		}))
+
+		// One, not two: the entry in the subject's own scope was deleted by the
+		// uncommitted statement this read can see. A read narrowed to
+		// Client.Reader() would have reported it as retained and told the
+		// subject a number that was already wrong.
+		test.EqOp(t, int64(1), remaining)
 	})
 }
