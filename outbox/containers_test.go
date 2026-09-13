@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/outbox/internal/outboxdb"
 	"github.com/primandproper/platform-go/v14/outbox/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
@@ -16,6 +17,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database/mysql"
 	"github.com/primandproper/primitives-go/v2/database/postgres"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/testutils/containers/mysqltest"
 	"github.com/primandproper/primitives-go/v2/testutils/containers/pgtest"
 
@@ -26,6 +28,17 @@ import (
 // defaultMySQLImage pins the MariaDB flavor this suite exercises; mysqltest's
 // default is stock MySQL.
 const defaultMySQLImage = "mariadb:11"
+
+// suitePoolSize is how many connections the suite's one client may open.
+//
+// It has to exceed one, and the reason is the whole of what the concurrency
+// subtests below can see. A pool of one hands the second transaction's BEGIN a
+// connection only once the first has committed, so two relays can never be in
+// their claim transactions at the same time and a claim that leases rows
+// another relay already holds looks correct. The subtests still assert the
+// property rather than the pool; this is what gives them a chance to observe
+// it being violated.
+const suitePoolSize = 8
 
 // tableCounter names a fresh table per subtest. Subtests share one container,
 // so they must not share a table — the claim predicate is global to the table
@@ -288,17 +301,18 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		test.Eq(t, []string{`{"id":"first"}`, `{"id":"second"}`, `{"id":"third"}`}, rec.payloads())
 	})
 
-	// The lock clause is the one part of the claim that only a real server can
-	// answer for, and it is the part a lease cannot substitute for: two relays
-	// selecting at the same instant must take disjoint batches, or both publish
-	// the same message before either writes a lease. Under ClaimLease that is
-	// precisely what does happen, which is why this runs under the other mode.
-	t.Run("concurrent skip-locked relays divide the backlog", func(t *testing.T) {
+	// Two relays selecting at the same instant must come away with disjoint
+	// batches, and this is the assertion only a real server can make: two
+	// transactions genuinely overlapping, rather than two statements in one.
+	//
+	// It runs under both modes, because both owe it. SKIP LOCKED divides the
+	// backlog at the select, by locking each batch as it is read; the lease
+	// mode divides it at the claim, whose guarded UPDATE hands a contested
+	// batch to one relay and leaves the other holding ids it did not win — and
+	// whose read-back therefore asks for its own claim rather than for those
+	// ids. Before that pair, a lease-mode fleet published every row twice.
+	t.Run("concurrent relays divide the backlog", func(t *testing.T) {
 		t.Parallel()
-
-		if env.claimMode != ClaimSkipLocked {
-			t.Skip("lease-only claiming makes no disjointness promise")
-		}
 
 		const (
 			messages  = 24
@@ -329,9 +343,14 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 
 		var wg sync.WaitGroup
 
+		// One cycle per message each, rather than one per batch: a relay that
+		// loses a contested claim in the lease mode publishes nothing that
+		// cycle, so the fleet needs more cycles than the backlog divides
+		// into. The surplus ones run against a drained table and cost a
+		// select that returns nothing.
 		for _, relay := range []*Relay{first, second} {
 			wg.Go(func() {
-				for range messages/batchSize + 1 {
+				for range messages {
 					relay.cycle(t.Context())
 				}
 			})
@@ -341,9 +360,138 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 
 		// Every message published, and none of them twice: the two counts are
 		// the two halves of "disjoint", and neither alone would catch a claim
-		// that stopped skipping.
+		// that stopped dividing. A fleet that double-claims still drains the
+		// table, so the depth reads clean and only the publish count says so.
 		test.EqOp(t, 0, countIn(t, env.client, table, "published_at IS NULL"))
 		test.SliceLen(t, messages, append(firstRec.payloads(), secondRec.payloads()...))
+	})
+
+	// The interleaving the guard exists for, held open on purpose.
+	//
+	// A relay's own cycle can never be caught between its select and its claim
+	// — they run inside one transaction — so the state that breaks a
+	// lease-mode fleet is two transactions whose selects both land before
+	// either claim writes. That is the ordinary interleaving of two relays
+	// polling the same table, and it is rare enough per cycle that a suite
+	// racing two relays freely can pass through luck. This one arranges it:
+	// both selects complete, and only then do the claims run.
+	//
+	// Addressed by id alone, as the claim once was, both transactions take
+	// every row and both read every row back. What must happen instead is that
+	// each row is taken by exactly one of them.
+	t.Run("overlapping claims take disjoint rows", func(t *testing.T) {
+		t.Parallel()
+
+		const (
+			messages  = 8
+			batchSize = 4
+		)
+
+		c := newStubClock()
+		table := env.newTable(t)
+		w := env.writer(t, c, table)
+
+		relay, _ := newTestRelay(t, env.client, c, func(cfg *RelayConfig) {
+			cfg.ClaimMode = env.claimMode
+			cfg.TablePrefix = table
+			cfg.BatchSize = batchSize
+		})
+
+		for i := range messages {
+			must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+				return w.Enqueue(t.Context(), q, Message{Topic: "orders", Payload: map[string]any{"id": i}})
+			}))
+		}
+
+		now := c.Now().UTC()
+		leaseUntil := now.Add(DefaultLeaseDuration)
+
+		var (
+			// selected is the barrier. Both transactions hold whatever their
+			// select gave them until the other has one too.
+			selected sync.WaitGroup
+			claims   sync.WaitGroup
+
+			mu    sync.Mutex
+			taken = map[string]int{}
+
+			// Collected rather than asserted in the goroutine: a failed
+			// assertion from one is not the test's own goroutine to fail.
+			failures [2]error
+		)
+
+		selected.Add(2)
+
+		for i := range 2 {
+			claims.Go(func() {
+				failures[i] = env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+					ids, err := relay.selectClaimable(t.Context(), q, now)
+					if err != nil {
+						return platformerrors.Wrap(err, "selecting")
+					}
+
+					selected.Done()
+					selected.Wait()
+
+					// A fresh name per claim, which is what the relay mints.
+					token := identifiers.New()
+
+					if err = relay.q.ClaimOutboxMessages(t.Context(), q, outboxdb.ClaimOutboxMessagesParams{
+						ClaimedUntil:   &leaseUntil,
+						ClaimedBy:      &token,
+						LeaseExpiredBy: &now,
+						IDs:            ids,
+					}); err != nil {
+						return platformerrors.Wrap(err, "claiming")
+					}
+
+					rows, err := relay.q.FetchClaimedOutboxMessages(t.Context(), q, outboxdb.FetchClaimedOutboxMessagesParams{
+						ClaimedBy: &token,
+						IDs:       ids,
+					})
+					if err != nil {
+						return platformerrors.Wrap(err, "reading back")
+					}
+
+					mu.Lock()
+					defer mu.Unlock()
+
+					for j := range rows {
+						taken[rows[j].ID]++
+					}
+
+					return nil
+				})
+			})
+		}
+
+		claims.Wait()
+
+		// At most one of the two may be refused, and a refusal is one of the
+		// two shapes a server answers a contested claim in. Postgres
+		// re-evaluates the guard once the row lock clears, so the loser's
+		// UPDATE simply matches nothing; MariaDB refuses the transaction
+		// outright — "record has changed since last read" — which the relay
+		// reports as a failed claim and its next cycle retries. Both leave the
+		// rows to the winner, which is the property; which one a server picks
+		// is the server's business.
+		refused := 0
+
+		for i := range failures {
+			if failures[i] != nil {
+				refused++
+			}
+		}
+
+		must.LessEq(t, 1, refused, must.Sprintf("both claims refused: %v; %v", failures[0], failures[1]))
+
+		// Something was claimed — a pair of empty batches would satisfy
+		// disjointness and prove nothing.
+		test.MapNotEmpty(t, taken)
+
+		for id, n := range taken {
+			test.EqOp(t, 1, n, test.Sprintf("message %q was taken %d times", id, n))
+		}
 	})
 
 	t.Run("reports backlog depth and age", func(t *testing.T) {
@@ -419,12 +567,16 @@ func TestOutbox_Postgres(T *testing.T) {
 	T.Parallel()
 
 	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
-		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
+		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{
+			connectionString: pg.ConnectionString,
+			maxOpenConns:     suitePoolSize,
+		})
 		must.NoError(T, err)
 		T.Cleanup(func() { _ = client.Close() })
 
-		// Both claim modes: SKIP LOCKED is the path that only a real server can
-		// validate, and ClaimLease is what a single-relay deployment runs.
+		// Both claim modes: SKIP LOCKED is the path that only a real server
+		// can validate, and ClaimLease is the one whose exclusivity is the
+		// claim's own rather than the select's.
 		for _, mode := range []ClaimMode{ClaimSkipLocked, ClaimLease} {
 			T.Run(string(mode), func(t *testing.T) {
 				t.Parallel()
@@ -445,7 +597,10 @@ func runWithMySQL(tb testing.TB, fn func(ctx context.Context, client database.Cl
 	tb.Helper()
 
 	mysqltest.Run(tb, func(ctx context.Context, my *mysqltest.Instance) {
-		client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{connectionString: my.ConnectionString})
+		client, err := mysql.NewDatabaseClient(ctx, &testClientConfig{
+			connectionString: my.ConnectionString,
+			maxOpenConns:     suitePoolSize,
+		})
 		must.NoError(tb, err)
 		tb.Cleanup(func() { _ = client.Close() })
 

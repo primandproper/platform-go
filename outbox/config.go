@@ -41,8 +41,19 @@ const (
 	// ClaimSkipLocked claims with FOR UPDATE SKIP LOCKED, so several relays can
 	// run at once without contending. Requires Postgres or MySQL.
 	ClaimSkipLocked ClaimMode = "skip_locked"
-	// ClaimLease claims with a lease alone. Correct everywhere — and the only
-	// option on SQLite — and the right choice when a single relay is running.
+	// ClaimLease claims with a lease alone: the select takes no row lock, and
+	// the claim leases a row only while it is still free and reads back what it
+	// won. Correct everywhere, on any number of relays — and the only option on
+	// SQLite.
+	//
+	// Correct is not the same as fast. Relays here contend rather than skip:
+	// several of them read the same batch, one wins it, and the others publish
+	// nothing that cycle. Some servers go further than handing the loser an
+	// empty claim — MariaDB refuses the losing transaction outright, which the
+	// relay reports as a failed claim and its next cycle retries. Nothing is
+	// lost either way, and a fleet on Postgres or MySQL still wants
+	// ClaimSkipLocked, where the losers take a different batch instead of a
+	// second run at this one.
 	ClaimLease ClaimMode = "lease"
 )
 

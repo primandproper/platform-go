@@ -7,9 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/outbox/internal/outboxdb"
+
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/messagequeue"
 	messagequeuemock "github.com/primandproper/primitives-go/v2/messagequeue/mock"
 	retrycfg "github.com/primandproper/primitives-go/v2/retry/config"
@@ -379,6 +382,161 @@ func TestRelay_ordering(T *testing.T) {
 
 		test.Eq(t, []string{`{"id":"first"}`, `{"id":"second"}`}, rec.payloads())
 	})
+}
+
+// TestRelay_claim_guardsTheLease is the double-claim, driven at the two
+// statements it happens between.
+//
+// A relay's own claim() runs the select and the update in one transaction, so
+// it can never be caught between them — which is exactly why the bug this
+// pins was invisible from the outside. In the lease mode the select takes no
+// row lock, so two relays ordinarily come away holding the same ids, and what
+// decides which of them publishes is the guarded UPDATE and the read-back that
+// asks for its name. Both are exercised here against the real SQL, with the
+// selects already done and the two claims left to interleave.
+func TestRelay_claim_guardsTheLease(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a second claim of the same batch takes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, _ := newTestRelay(t, client, c)
+		w := newTestWriter(t, c)
+
+		enqueue(t, client, w,
+			Message{Topic: "orders", Payload: map[string]any{"id": "a"}},
+			Message{Topic: "orders", Payload: map[string]any{"id": "b"}},
+		)
+
+		first, second := claimTwice(t, client, relay, c, allIDs)
+
+		// The whole batch to the first claim and none of it to the second. A
+		// read-back addressed by the ids alone would hand both relays both
+		// rows, which is the double publish.
+		test.SliceLen(t, 2, first)
+		test.SliceEmpty(t, second)
+
+		// The loser's UPDATE matched nothing, so it also spent nobody's
+		// attempt: a message must not be one claim closer to quarantine for
+		// having been asked about.
+		test.EqOp(t, 2, countRows(t, client, "attempts = 1"))
+	})
+
+	T.Run("a claim takes the free part of a batch and reads back only that", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, _ := newTestRelay(t, client, c)
+		w := newTestWriter(t, c)
+
+		enqueue(t, client, w,
+			Message{Topic: "orders", Payload: map[string]any{"id": "a"}},
+			Message{Topic: "orders", Payload: map[string]any{"id": "b"}},
+		)
+
+		// The first claim asks for the head of the batch; the second asks for
+		// all of it, the way a relay with a larger batch size or a staler
+		// select would. This is the case an affected-row count cannot answer:
+		// the second claim won some of what it asked for, and only the name it
+		// stamped says which.
+		first, second := claimTwice(t, client, relay, c, func(ids []string) []string { return ids[:1] })
+
+		test.SliceLen(t, 1, first)
+		test.SliceLen(t, 1, second)
+
+		// Disjoint, which is the point — the two claims name different rows.
+		test.NotEqOp(t, first[0].ID, second[0].ID)
+	})
+
+	T.Run("an expired lease is claimable again", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, _ := newTestRelay(t, client, c)
+		w := newTestWriter(t, c)
+
+		enqueue(t, client, w, Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+
+		claimed, err := relay.claim(t.Context())
+		must.NoError(t, err)
+		test.SliceLen(t, 1, claimed)
+
+		// The guard is the select's own lease test repeated, so it has to lapse
+		// on the same terms: a relay that died holding this row must not have
+		// taken it out of circulation, and the new claim's name replaces the
+		// dead one's.
+		c.advance(DefaultLeaseDuration + time.Second)
+
+		reclaimed, err := relay.claim(t.Context())
+		must.NoError(t, err)
+		test.SliceLen(t, 1, reclaimed)
+		test.EqOp(t, 1, countRows(t, client, "attempts = 2"))
+	})
+}
+
+// allIDs is the batch a claim asks for when it asks for everything its select
+// returned, which is what a relay does.
+func allIDs(ids []string) []string { return ids }
+
+// claimTwice runs two claims over one select, the way two relays in the lease
+// mode do, and returns what each of them read back.
+//
+// Both claims run on one transaction. That is not the interleaving in
+// production — there it is two transactions and the engine's row lock that
+// orders them — but it is the same pair of statements in the same order, and it
+// is the half the guard is responsible for: a transaction sees its own writes,
+// so the second claim tests the horizon the first one wrote. What a server does
+// under two concurrent transactions is asserted against real servers in
+// containers_test.go.
+//
+// asked narrows what the second claim requests, so a caller can arrange either
+// the identical batch or a straddling one.
+func claimTwice(
+	t *testing.T,
+	client database.Client,
+	relay *Relay,
+	c *stubClock,
+	asked func([]string) []string,
+) (first, second []outboxdb.FetchClaimedOutboxMessagesRow) {
+	t.Helper()
+
+	now := c.Now().UTC()
+	leaseUntil := now.Add(DefaultLeaseDuration)
+
+	must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
+		ids, err := relay.selectClaimable(t.Context(), q, now)
+		must.NoError(t, err)
+		must.SliceNotEmpty(t, ids)
+
+		claim := func(ids []string) []outboxdb.FetchClaimedOutboxMessagesRow {
+			token := identifiers.New()
+
+			must.NoError(t, relay.q.ClaimOutboxMessages(t.Context(), q, outboxdb.ClaimOutboxMessagesParams{
+				ClaimedUntil:   &leaseUntil,
+				ClaimedBy:      &token,
+				LeaseExpiredBy: &now,
+				IDs:            ids,
+			}))
+
+			rows, fetchErr := relay.q.FetchClaimedOutboxMessages(t.Context(), q, outboxdb.FetchClaimedOutboxMessagesParams{
+				ClaimedBy: &token,
+				IDs:       ids,
+			})
+			must.NoError(t, fetchErr)
+
+			return rows
+		}
+
+		first, second = claim(asked(ids)), claim(ids)
+
+		return nil
+	}))
+
+	return first, second
 }
 
 func TestRelay_backlog(T *testing.T) {

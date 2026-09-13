@@ -59,8 +59,10 @@ FOR UPDATE SKIP LOCKED;
 -- name: ClaimOutboxMessages :exec
 UPDATE outbox_messages SET
 	claimed_until = sqlc.arg(claimed_until),
+	claimed_by = sqlc.arg(claimed_by),
 	attempts = attempts + 1
-WHERE id = ANY(sqlc.arg(ids)::text[]);
+WHERE (claimed_until IS NULL OR claimed_until <= sqlc.arg(lease_expired_by))
+	AND id = ANY(sqlc.arg(ids)::text[]);
 
 -- name: FetchClaimedOutboxMessages :many
 SELECT
@@ -70,19 +72,22 @@ SELECT
 	payload,
 	attempts
 FROM outbox_messages
-WHERE id = ANY(sqlc.arg(ids)::text[])
+WHERE claimed_by = sqlc.arg(claimed_by)
+	AND id = ANY(sqlc.arg(ids)::text[])
 ORDER BY created_at, id;
 
 -- name: MarkOutboxMessagesPublished :exec
 UPDATE outbox_messages SET
 	published_at = sqlc.arg(published_at),
 	claimed_until = NULL,
+	claimed_by = NULL,
 	last_error = NULL
 WHERE id = ANY(sqlc.arg(ids)::text[]);
 
 -- name: RecordOutboxMessageFailure :execrows
 UPDATE outbox_messages SET
 	claimed_until = sqlc.narg(claimed_until),
+	claimed_by = sqlc.narg(claimed_by),
 	next_attempt = sqlc.arg(next_attempt),
 	last_error = sqlc.narg(last_error),
 	quarantined = sqlc.arg(quarantined)

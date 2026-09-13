@@ -591,7 +591,9 @@ and a row would misreport it either way:
 - **`outbox`** stores and relays on all three. Its `LISTEN`/`NOTIFY` wakeup is
   Postgres-only and reported as `outbox.ErrNotifyUnsupported` if configured
   elsewhere; without it a relay polls, which is later rather than wrong. Its
-  `SKIP LOCKED` claim mode degrades to a lease on SQLite.
+  `SKIP LOCKED` claim mode degrades to a lease on SQLite — which claims just
+  as exclusively, by guarding the write on the lease it read, and only contends
+  where the lock would have skipped.
 - **`retention`** sweeps all three, and ships no DDL: the table, the timestamp
   column and the batch key arrive from a `Policy` written at run time, so there
   is no schema of this module's to render for a dialect.

@@ -13,8 +13,10 @@ import (
 
 const claimOutboxMessagesSQLite = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = ?1,
+	claimed_by = ?2,
 	attempts = attempts + 1
-WHERE id IN (/*SLICE:ids*/?)`
+WHERE (claimed_until IS NULL OR claimed_until <= ?3)
+	AND id IN (/*SLICE:ids*/?)`
 
 const fetchClaimedOutboxMessagesSQLite = `SELECT
 	id,
@@ -23,7 +25,8 @@ const fetchClaimedOutboxMessagesSQLite = `SELECT
 	payload,
 	attempts
 FROM {{prefix}}outbox_messages
-WHERE id IN (/*SLICE:ids*/?)
+WHERE claimed_by = ?1
+	AND id IN (/*SLICE:ids*/?)
 ORDER BY created_at, id`
 
 const insertOutboxMessageSQLite = `
@@ -46,6 +49,7 @@ INSERT INTO {{prefix}}outbox_messages (
 const markOutboxMessagesPublishedSQLite = `UPDATE {{prefix}}outbox_messages SET
 	published_at = ?1,
 	claimed_until = NULL,
+	claimed_by = NULL,
 	last_error = NULL
 WHERE id IN (/*SLICE:ids*/?)`
 
@@ -76,10 +80,11 @@ WHERE id IN (
 
 const recordOutboxMessageFailureSQLite = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = ?1,
-	next_attempt = ?2,
-	last_error = ?3,
-	quarantined = ?4
-WHERE id = ?5`
+	claimed_by = ?2,
+	next_attempt = ?3,
+	last_error = ?4,
+	quarantined = ?5
+WHERE id = ?6`
 
 const selectClaimableOutboxMessagesSQLite = `SELECT m.id
 FROM {{prefix}}outbox_messages AS m
@@ -180,9 +185,13 @@ func timeTextPtr(t *time.Time) any {
 func (q *sqliteQueries) ClaimOutboxMessages(ctx context.Context, db DBTX, arg ClaimOutboxMessagesParams) error {
 	query := q.claimOutboxMessages
 
-	args := make([]any, 0, 1+len(arg.IDs))
+	args := make([]any, 0, 3+len(arg.IDs))
 
 	args = append(args, timeTextPtr(arg.ClaimedUntil))
+
+	args = append(args, arg.ClaimedBy)
+
+	args = append(args, timeTextPtr(arg.LeaseExpiredBy))
 
 	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
 
@@ -199,7 +208,9 @@ func (q *sqliteQueries) ClaimOutboxMessages(ctx context.Context, db DBTX, arg Cl
 func (q *sqliteQueries) FetchClaimedOutboxMessages(ctx context.Context, db DBTX, arg FetchClaimedOutboxMessagesParams) ([]FetchClaimedOutboxMessagesRow, error) {
 	query := q.fetchClaimedOutboxMessages
 
-	args := make([]any, 0, len(arg.IDs))
+	args := make([]any, 0, 1+len(arg.IDs))
+
+	args = append(args, arg.ClaimedBy)
 
 	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
 
@@ -302,6 +313,7 @@ func (q *sqliteQueries) ReapPublishedOutboxMessages(ctx context.Context, db DBTX
 func (q *sqliteQueries) RecordOutboxMessageFailure(ctx context.Context, db DBTX, arg RecordOutboxMessageFailureParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordOutboxMessageFailure,
 		timeTextPtr(arg.ClaimedUntil),
+		arg.ClaimedBy,
 		timeText(arg.NextAttempt),
 		arg.LastError,
 		arg.Quarantined,
@@ -390,11 +402,14 @@ func (q *sqliteQueries) SelectClaimableOutboxMessagesSkipLocked(ctx context.Cont
 // transposition at run time.
 var (
 	_ = struct {
-		ClaimedUntil *time.Time
-		IDs          []string
+		ClaimedUntil   *time.Time
+		ClaimedBy      *string
+		LeaseExpiredBy *time.Time
+		IDs            []string
 	}(ClaimOutboxMessagesParams{})
 	_ = struct {
-		IDs []string
+		ClaimedBy *string
+		IDs       []string
 	}(FetchClaimedOutboxMessagesParams{})
 	_ = struct {
 		ID           string
@@ -424,6 +439,7 @@ var (
 	}(ReapPublishedOutboxMessagesParams{})
 	_ = struct {
 		ClaimedUntil *time.Time
+		ClaimedBy    *string
 		NextAttempt  time.Time
 		LastError    *string
 		Quarantined  bool

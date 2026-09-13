@@ -162,6 +162,17 @@ func TestFailureColumns_LeaveTheClaimsCountAndTheRetirementAlone(t *testing.T) {
 	test.False(t, slices.Contains(FailureColumns, PublishedAtColumn))
 }
 
+// TestFailureColumns_ReleaseTheLeaseAndItsHolder keeps the two halves of a
+// lease together. A failed publish has to make the row reclaimable before its
+// horizon would have lapsed on its own, and a horizon cleared without the name
+// that was on it leaves a free row reading as one somebody is still holding.
+func TestFailureColumns_ReleaseTheLeaseAndItsHolder(t *testing.T) {
+	t.Parallel()
+
+	test.True(t, slices.Contains(FailureColumns, ClaimedUntilColumn))
+	test.True(t, slices.Contains(FailureColumns, ClaimedByColumn))
+}
+
 // TestRender_EmitsTheStatementsTheOutboxExecutes pins the set, since a query
 // emitted here and not executed is SQL nobody checks the other way round: sqlc
 // would be reading a statement the outbox does not run.
@@ -287,6 +298,55 @@ func TestRender_TheClaimSkipsWhatItMustNeverPublishTwice(T *testing.T) {
 	}
 }
 
+// TestRender_TheClaimTakesTheLeaseRatherThanAssumingIt is the guard, and it is
+// the one predicate in this corpus whose absence is invisible to a single
+// relay.
+//
+// The select's lease test does not hold anything in the lease mode — nothing is
+// locked, so two relays read the same ids and an UPDATE addressed by id alone
+// has the second overwrite the first's lease. Both then fetch, and both
+// publish. The test repeated on the write is what makes the claim a claim.
+func TestRender_TheClaimTakesTheLeaseRatherThanAssumingIt(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			claim := statement(t, Render(d), "ClaimOutboxMessages")
+
+			test.StrContains(t, claim,
+				"("+ClaimedUntilColumn+" IS NULL OR "+ClaimedUntilColumn+" <= sqlc.arg("+LeaseExpiredByArg+"))")
+
+			// And it writes the name the read-back asks for. The horizon cannot
+			// serve as that name: two relays reading their clocks in the same
+			// instant compute the same one, and SQLite stores it to the second
+			// besides.
+			test.StrContains(t, claim, ClaimedByColumn+" = sqlc.arg("+ClaimedByColumn+")")
+		})
+	}
+}
+
+// TestRender_TheReadBackAsksForTheClaimAndNotTheBatch is the guard's other
+// half, and the reason the guard alone is not enough.
+//
+// A relay that lost part of its batch to another relay is still holding every
+// id its select returned. Addressed by those ids, the read-back hands it rows
+// the other relay is publishing — the double publish, reopened one statement
+// after it was closed.
+func TestRender_TheReadBackAsksForTheClaimAndNotTheBatch(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			test.StrContains(t, statement(t, Render(d), "FetchClaimedOutboxMessages"),
+				ClaimedByColumn+" = sqlc.arg("+ClaimedByColumn+")")
+		})
+	}
+}
+
 // TestRender_TheClaimBoundsTheBatch pins the limit, because an unbounded claim
 // is one that leases the whole backlog into a single relay's memory and holds
 // every one of those leases while it publishes them serially.
@@ -328,10 +388,11 @@ func TestRender_TheClaimIncrementsTheAttempt(T *testing.T) {
 	}
 }
 
-// TestRender_MarkPublishedClearsTheLeaseAndTheReason pins the two NULLs the
+// TestRender_MarkPublishedClearsTheLeaseAndTheReason pins the three NULLs the
 // statement owns. A published message holding a lease is a row a later claim
-// would wait on, and one still carrying the reason an earlier attempt failed is
-// a row an operator reads as broken.
+// would wait on, one still naming the claim that held it is a row an operator
+// reads as in flight, and one still carrying the reason an earlier attempt
+// failed is a row an operator reads as broken.
 func TestRender_MarkPublishedClearsTheLeaseAndTheReason(T *testing.T) {
 	T.Parallel()
 
@@ -342,6 +403,7 @@ func TestRender_MarkPublishedClearsTheLeaseAndTheReason(T *testing.T) {
 			marked := statement(t, Render(d), "MarkOutboxMessagesPublished")
 
 			test.StrContains(t, marked, ClaimedUntilColumn+" = NULL")
+			test.StrContains(t, marked, ClaimedByColumn+" = NULL")
 			test.StrContains(t, marked, LastErrorColumn+" = NULL")
 		})
 	}

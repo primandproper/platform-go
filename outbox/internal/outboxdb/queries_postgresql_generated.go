@@ -13,8 +13,10 @@ import (
 
 const claimOutboxMessagesPostgreSQL = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = $1,
+	claimed_by = $2,
 	attempts = attempts + 1
-WHERE id = ANY($2::text[])`
+WHERE (claimed_until IS NULL OR claimed_until <= $3)
+	AND id = ANY($4::text[])`
 
 const fetchClaimedOutboxMessagesPostgreSQL = `SELECT
 	id,
@@ -23,7 +25,8 @@ const fetchClaimedOutboxMessagesPostgreSQL = `SELECT
 	payload,
 	attempts
 FROM {{prefix}}outbox_messages
-WHERE id = ANY($1::text[])
+WHERE claimed_by = $1
+	AND id = ANY($2::text[])
 ORDER BY created_at, id`
 
 const insertOutboxMessagePostgreSQL = `
@@ -46,6 +49,7 @@ INSERT INTO {{prefix}}outbox_messages (
 const markOutboxMessagesPublishedPostgreSQL = `UPDATE {{prefix}}outbox_messages SET
 	published_at = $1,
 	claimed_until = NULL,
+	claimed_by = NULL,
 	last_error = NULL
 WHERE id = ANY($2::text[])`
 
@@ -77,10 +81,11 @@ WHERE id IN (
 
 const recordOutboxMessageFailurePostgreSQL = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = $1,
-	next_attempt = $2,
-	last_error = $3,
-	quarantined = $4
-WHERE id = $5`
+	claimed_by = $2,
+	next_attempt = $3,
+	last_error = $4,
+	quarantined = $5
+WHERE id = $6`
 
 const selectClaimableOutboxMessagesPostgreSQL = `SELECT m.id
 FROM {{prefix}}outbox_messages AS m
@@ -152,6 +157,8 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 func (q *postgresqlQueries) ClaimOutboxMessages(ctx context.Context, db DBTX, arg ClaimOutboxMessagesParams) error {
 	_, err := db.ExecContext(ctx, q.claimOutboxMessages,
 		arg.ClaimedUntil,
+		arg.ClaimedBy,
+		arg.LeaseExpiredBy,
 		arg.IDs,
 	)
 
@@ -161,6 +168,7 @@ func (q *postgresqlQueries) ClaimOutboxMessages(ctx context.Context, db DBTX, ar
 // FetchClaimedOutboxMessages runs the :many query against postgresql.
 func (q *postgresqlQueries) FetchClaimedOutboxMessages(ctx context.Context, db DBTX, arg FetchClaimedOutboxMessagesParams) ([]FetchClaimedOutboxMessagesRow, error) {
 	rows, err := db.QueryContext(ctx, q.fetchClaimedOutboxMessages,
+		arg.ClaimedBy,
 		arg.IDs,
 	)
 	if err != nil {
@@ -248,6 +256,7 @@ func (q *postgresqlQueries) ReapPublishedOutboxMessages(ctx context.Context, db 
 func (q *postgresqlQueries) RecordOutboxMessageFailure(ctx context.Context, db DBTX, arg RecordOutboxMessageFailureParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordOutboxMessageFailure,
 		arg.ClaimedUntil,
+		arg.ClaimedBy,
 		arg.NextAttempt,
 		arg.LastError,
 		arg.Quarantined,
@@ -336,11 +345,14 @@ func (q *postgresqlQueries) SelectClaimableOutboxMessagesSkipLocked(ctx context.
 // transposition at run time.
 var (
 	_ = struct {
-		ClaimedUntil *time.Time
-		IDs          []string
+		ClaimedUntil   *time.Time
+		ClaimedBy      *string
+		LeaseExpiredBy *time.Time
+		IDs            []string
 	}(ClaimOutboxMessagesParams{})
 	_ = struct {
-		IDs []string
+		ClaimedBy *string
+		IDs       []string
 	}(FetchClaimedOutboxMessagesParams{})
 	_ = struct {
 		ID           string
@@ -370,6 +382,7 @@ var (
 	}(ReapPublishedOutboxMessagesParams{})
 	_ = struct {
 		ClaimedUntil *time.Time
+		ClaimedBy    *string
 		NextAttempt  time.Time
 		LastError    *string
 		Quarantined  bool

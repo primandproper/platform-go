@@ -53,6 +53,18 @@ const (
 	// that lease has lapsed. It is nullable, and an unset lease is the
 	// unclaimed state rather than a lease that expired at the zero time.
 	ClaimedUntilColumn = "claimed_until"
+	// ClaimedByColumn names the claim that holds the lease: a fresh identifier
+	// the relay mints for one claim transaction and writes beside the horizon.
+	// It is what makes "the rows this relay won" a fact in the row rather than
+	// an inference from the batch it asked for — see claimMessages.
+	//
+	// The horizon cannot serve as that name. Two relays reading their clocks in
+	// the same instant compute the same horizon, and the stored value is
+	// coarser than the read besides — a second on SQLite — so a read-back keyed
+	// on it hands one relay the rows another one leased. It is nullable for
+	// claimed_until's reason: no holder is an absence rather than a name
+	// nobody answers to.
+	ClaimedByColumn = "claimed_by"
 	// PublishedAtColumn is stamped when the broker accepted the message. Rows
 	// are marked rather than deleted so a duplicate or a gap can be
 	// investigated afterwards, and the reap removes them once they age out.
@@ -105,6 +117,7 @@ var Columns = []string{
 	querygen.CreatedAtColumn,
 	NextAttemptColumn,
 	ClaimedUntilColumn,
+	ClaimedByColumn,
 	PublishedAtColumn,
 	AttemptsColumn,
 	LastErrorColumn,
@@ -126,8 +139,9 @@ var InsertColumns = []string{
 	NextAttemptColumn,
 }
 
-// FailureColumns is what a failed publish assigns: the lease released, the
-// retry scheduled, the reason recorded, and the terminal flag.
+// FailureColumns is what a failed publish assigns: the lease released and its
+// holder with it, the retry scheduled, the reason recorded, and the terminal
+// flag.
 //
 // It is the table's mutable set less published_at and attempts, and both
 // absences are load-bearing. A failure that assigned published_at would retire
@@ -137,6 +151,7 @@ var InsertColumns = []string{
 // attempt.
 var FailureColumns = []string{
 	ClaimedUntilColumn,
+	ClaimedByColumn,
 	NextAttemptColumn,
 	LastErrorColumn,
 	QuarantinedColumn,
@@ -145,11 +160,11 @@ var FailureColumns = []string{
 // ClaimedColumns is what the read of a leased batch projects, which is a
 // message to publish and not a message row.
 //
-// The four state columns are left out because the Relay is holding the rows
-// rather than asking about them: it wrote the lease, it computes the next
-// attempt from the count, and published_at is what it is about to write. The
-// attempt count is here because the failure path compares it against the
-// quarantine threshold.
+// The state columns are left out because the Relay is holding the rows rather
+// than asking about them: it wrote the lease and the name on it, it computes
+// the next attempt from the count, and published_at is what it is about to
+// write. The attempt count is here because the failure path compares it
+// against the quarantine threshold.
 var ClaimedColumns = []string{
 	querygen.IDColumn,
 	TopicColumn,
@@ -163,7 +178,7 @@ var ClaimedColumns = []string{
 // sqlc.narg yields a parameter that can express a NULL the server will reject,
 // and a nullable one bound through sqlc.arg yields one that cannot express the
 // NULL the column takes; both are quiet.
-var Nullable = []string{ClaimedUntilColumn, PublishedAtColumn, LastErrorColumn}
+var Nullable = []string{ClaimedUntilColumn, ClaimedByColumn, PublishedAtColumn, LastErrorColumn}
 
 // Render returns the canonical sqlc input for one dialect: every statement the
 // Writer and the Relay execute, in the order below, as the bytes the committed
@@ -348,7 +363,23 @@ func SkipLockedName(name string) string {
 	return name + "SkipLocked"
 }
 
-// claimMessages leases the selected rows.
+// claimMessages leases the selected rows, and takes the lease rather than
+// assuming it.
+//
+// The lease test is the whole of the claim's exclusivity, and the id set is not
+// it. Two relays in the lease mode select without locking, so both ordinarily
+// read the same ids back; an UPDATE addressed by id alone would have the second
+// overwrite the first's lease, and both would go on to publish the same rows.
+// Repeating the select's own test here makes the write conditional on the row
+// still being free, and the engine's row lock makes the test and the write one
+// step: the loser's UPDATE waits, re-reads the committed horizon, and matches
+// nothing. Under SKIP LOCKED the select already holds the rows, so the test is
+// redundant there and costs that mode one comparison.
+//
+// The claim's name goes in beside the horizon, so that the read-back which
+// follows can ask for the rows this claim actually took. A relay that lost part
+// of a batch and won the rest is the case an affected-row count cannot answer;
+// see ClaimedByColumn for why the horizon cannot be that name.
 //
 // It is written out because it assigns an expression: the attempt count is
 // incremented here rather than on failure, so that a relay which crashes
@@ -364,19 +395,30 @@ func claimMessages(g *querygen.Generator) *querygen.Query {
 		Annotation: querygen.QueryAnnotation{Name: "ClaimOutboxMessages", Type: querygen.ExecType},
 		Content: fmt.Sprintf(`UPDATE %s SET
 	%s = sqlc.arg(%s),
+	%s = sqlc.arg(%s),
 	%s = %s + 1
-WHERE %s;`,
+WHERE (%s IS NULL OR %s <= sqlc.arg(%s))
+	AND %s;`,
 			OutboxTable,
 			ClaimedUntilColumn, ClaimedUntilColumn,
+			ClaimedByColumn, ClaimedByColumn,
 			AttemptsColumn, AttemptsColumn,
+			ClaimedUntilColumn, ClaimedUntilColumn, LeaseExpiredByArg,
 			g.SetCondition(querygen.IDColumn, IDsArg),
 		),
 	}
 }
 
-// fetchClaimed projects the leased rows, oldest first.
+// fetchClaimed projects the rows one claim took, oldest first.
 //
-// It is written out for its ordering rather than its shape. querygen's batched
+// The claim's name is in the predicate and not just the id set, because the ids
+// are what the relay asked for and the name is what it got. A relay whose
+// guarded UPDATE lost part of its batch to another relay is still holding every
+// id it selected, and a read-back addressed by those ids alone would hand it
+// rows the other relay is publishing — the double publish the guard exists to
+// close, reopened one statement later.
+//
+// It is written out for that predicate and for its ordering. querygen's batched
 // read orders by the column it keyed on, so that a consumer walking the rows
 // sees one key's rows together; what this one owes is the publish order, which
 // is (created_at, id) — the same tuple the claim predicate calls "earlier", and
@@ -387,9 +429,10 @@ WHERE %s;`,
 func fetchClaimed(g *querygen.Generator) *querygen.Query {
 	return &querygen.Query{
 		Annotation: querygen.QueryAnnotation{Name: "FetchClaimedOutboxMessages", Type: querygen.ManyType},
-		Content: fmt.Sprintf("SELECT\n\t%s\nFROM %s\nWHERE %s\nORDER BY %s, %s;",
+		Content: fmt.Sprintf("SELECT\n\t%s\nFROM %s\nWHERE %s = sqlc.arg(%s)\n\tAND %s\nORDER BY %s, %s;",
 			strings.Join(ClaimedColumns, ",\n\t"),
 			OutboxTable,
+			ClaimedByColumn, ClaimedByColumn,
 			g.SetCondition(querygen.IDColumn, IDsArg),
 			querygen.CreatedAtColumn,
 			querygen.IDColumn,
@@ -402,21 +445,24 @@ func fetchClaimed(g *querygen.Generator) *querygen.Query {
 // The rows are kept rather than deleted, so a duplicate or a gap can be
 // investigated later; the reap removes them once they age past retention.
 //
-// The two columns cleared are assigned NULL outright rather than bound. There
+// The three columns cleared are assigned NULL outright rather than bound. There
 // is no value a caller could pass that should leave a published message holding
-// a lease or carrying the reason an earlier attempt failed, so the statement
-// owns both — which is querygen's own argument for a guard, applied to a SET.
+// a lease, naming the claim that held it, or carrying the reason an earlier
+// attempt failed, so the statement owns all three — which is querygen's own
+// argument for a guard, applied to a SET.
 func markPublished(g *querygen.Generator) *querygen.Query {
 	return &querygen.Query{
 		Annotation: querygen.QueryAnnotation{Name: "MarkOutboxMessagesPublished", Type: querygen.ExecType},
 		Content: fmt.Sprintf(`UPDATE %s SET
 	%s = sqlc.arg(%s),
 	%s = NULL,
+	%s = NULL,
 	%s = NULL
 WHERE %s;`,
 			OutboxTable,
 			PublishedAtColumn, PublishedAtColumn,
 			ClaimedUntilColumn,
+			ClaimedByColumn,
 			LastErrorColumn,
 			g.SetCondition(querygen.IDColumn, IDsArg),
 		),

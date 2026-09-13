@@ -17,19 +17,32 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// testClientConfig is the minimum database.ClientConfig a SQLite client needs.
+// testClientConfig is the minimum database.ClientConfig a test client needs.
 type testClientConfig struct {
 	connectionString string
+
+	// maxOpenConns is one unless a suite asks for more. One is right for the
+	// SQLite harness, which has a single writer anyway, and it is what the
+	// container suites ran on until a test needed two transactions open at
+	// once: a pool of one serializes them into a queue, which is the shape
+	// that cannot observe two relays contending at all.
+	maxOpenConns int
 }
 
 var _ database.ClientConfig = (*testClientConfig)(nil)
 
-func (c *testClientConfig) GetReadConnectionString() string   { return c.connectionString }
-func (c *testClientConfig) GetWriteConnectionString() string  { return c.connectionString }
-func (c *testClientConfig) GetMaxPingAttempts() uint64        { return 1 }
-func (c *testClientConfig) GetPingWaitPeriod() time.Duration  { return time.Millisecond }
-func (c *testClientConfig) GetMaxIdleConns() int              { return 2 }
-func (c *testClientConfig) GetMaxOpenConns() int              { return 1 }
+func (c *testClientConfig) GetReadConnectionString() string  { return c.connectionString }
+func (c *testClientConfig) GetWriteConnectionString() string { return c.connectionString }
+func (c *testClientConfig) GetMaxPingAttempts() uint64       { return 1 }
+func (c *testClientConfig) GetPingWaitPeriod() time.Duration { return time.Millisecond }
+func (c *testClientConfig) GetMaxIdleConns() int             { return 2 }
+func (c *testClientConfig) GetMaxOpenConns() int {
+	if c.maxOpenConns > 0 {
+		return c.maxOpenConns
+	}
+
+	return 1
+}
 func (c *testClientConfig) GetConnMaxLifetime() time.Duration { return time.Minute }
 
 // stubClock is a manually advanced clock. The relay reads time at claim,

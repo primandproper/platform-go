@@ -85,7 +85,7 @@ func TestStatements(T *testing.T) {
 
 		required := []string{
 			"id", "topic", "partition_key", "payload", "created_at",
-			"next_attempt", "claimed_until", "published_at", "attempts", "last_error", "quarantined",
+			"next_attempt", "claimed_until", "claimed_by", "published_at", "attempts", "last_error", "quarantined",
 		}
 
 		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
