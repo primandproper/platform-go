@@ -31,7 +31,7 @@ func BenchmarkPlanChecker_Check(b *testing.B) {
 	checker := benchChecker(b)
 
 	// Warm the assignment cache so the loop measures hits.
-	_, err := checker.Check(ctx, "acct_01HZY0000000000000", featureSearch)
+	_, err := checker.Check(ctx, testScope, "acct_01HZY0000000000000", featureSearch)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func BenchmarkPlanChecker_Check(b *testing.B) {
 	// A boolean feature the plan includes: the cheapest yes there is.
 	b.Run("allowed/cached", func(b *testing.B) {
 		for b.Loop() {
-			decisionSink, _ = checker.Check(ctx, "acct_01HZY0000000000000", featureSearch)
+			decisionSink, _ = checker.Check(ctx, testScope, "acct_01HZY0000000000000", featureSearch)
 		}
 	})
 
@@ -50,7 +50,7 @@ func BenchmarkPlanChecker_Check(b *testing.B) {
 	// do not have is not entirely up to the service.
 	b.Run("denied/cached", func(b *testing.B) {
 		for b.Loop() {
-			decisionSink, _ = checker.Check(ctx, "acct_01HZY0000000000000", "no_such_feature")
+			decisionSink, _ = checker.Check(ctx, testScope, "acct_01HZY0000000000000", "no_such_feature")
 		}
 	})
 
@@ -61,7 +61,7 @@ func BenchmarkPlanChecker_Check(b *testing.B) {
 		var i int
 		for b.Loop() {
 			i++
-			decisionSink, _ = checker.Check(ctx, "acct_"+itoa(i), featureSearch)
+			decisionSink, _ = checker.Check(ctx, testScope, "acct_"+itoa(i), featureSearch)
 		}
 	})
 }
@@ -73,20 +73,20 @@ func BenchmarkPlanChecker_CheckQuantity(b *testing.B) {
 	ctx := b.Context()
 	checker := benchChecker(b)
 
-	_, err := checker.CheckQuantity(ctx, "acct_01HZY0000000000000", featureSearch, 1)
+	_, err := checker.CheckQuantity(ctx, testScope, "acct_01HZY0000000000000", featureSearch, 1)
 	if err != nil {
 		b.Fatal(err)
 	}
 
 	b.Run("quantity=1", func(b *testing.B) {
 		for b.Loop() {
-			decisionSink, _ = checker.CheckQuantity(ctx, "acct_01HZY0000000000000", featureSearch, 1)
+			decisionSink, _ = checker.CheckQuantity(ctx, testScope, "acct_01HZY0000000000000", featureSearch, 1)
 		}
 	})
 
 	b.Run("quantity=100", func(b *testing.B) {
 		for b.Loop() {
-			decisionSink, _ = checker.CheckQuantity(ctx, "acct_01HZY0000000000000", featureSearch, 100)
+			decisionSink, _ = checker.CheckQuantity(ctx, testScope, "acct_01HZY0000000000000", featureSearch, 100)
 		}
 	})
 }

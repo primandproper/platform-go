@@ -57,11 +57,13 @@ func TestStatements(T *testing.T) {
 		}
 	})
 
-	T.Run("keys the event ledger on the idempotency key", func(t *testing.T) {
+	T.Run("keys the event ledger on the scope, the meter, and the idempotency key", func(t *testing.T) {
 		t.Parallel()
 
 		// The dedupe that makes counting exactly-once. If this stops being the
-		// primary key, every retry becomes a second invoice line.
+		// primary key, every retry becomes a second invoice line — and if the
+		// scope stops leading it, one tenant's request ID dedupes another
+		// tenant's usage away and neither is billed for it.
 		for _, d := range allDialects {
 			stmts, err := Statements(d, "mtr")
 			must.NoError(t, err)
@@ -72,7 +74,8 @@ func TestStatements(T *testing.T) {
 					found = true
 
 					test.StrContains(t, stmt, "idempotency_key", test.Sprintf("dialect %s", d))
-					test.StrContains(t, stmt, "PRIMARY KEY", test.Sprintf("dialect %s", d))
+					test.StrContains(t, stmt, "PRIMARY KEY (scope, meter, idempotency_key)",
+						test.Sprintf("dialect %s", d))
 				}
 			}
 
@@ -80,7 +83,7 @@ func TestStatements(T *testing.T) {
 		}
 	})
 
-	T.Run("keys totals on subject, meter, and period", func(t *testing.T) {
+	T.Run("keys totals on scope, subject, meter, and period", func(t *testing.T) {
 		t.Parallel()
 
 		for _, d := range allDialects {
@@ -92,7 +95,7 @@ func TestStatements(T *testing.T) {
 				if strings.Contains(stmt, "CREATE TABLE") && strings.Contains(stmt, "mtr_metering_totals") {
 					found = true
 
-					test.StrContains(t, stmt, "PRIMARY KEY (subject, meter, period_start)",
+					test.StrContains(t, stmt, "PRIMARY KEY (scope, subject, meter, period_start)",
 						test.Sprintf("dialect %s", d))
 				}
 			}

@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/featureflags"
 	featureflagsmock "github.com/primandproper/primitives-go/v2/featureflags/mock"
 	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test/must"
 )
@@ -25,6 +26,14 @@ import (
 // is what the catalog indexes grants by — and a typo in a literal produces a
 // test that passes for the wrong reason: an unregistered feature and a
 // misspelled one are the same string to the catalog.
+// testScope is the tenant every check in this suite is made for. It is a named
+// scope rather than tenancy.Global(), so a Check that dropped the argument on the
+// way to metering would fail here rather than pass.
+var (
+	testScope  = tenancy.Of("tenant_1")
+	otherScope = tenancy.Of("tenant_2")
+)
+
 const (
 	testAccount = "account_123"
 
@@ -202,7 +211,7 @@ func failingFlags(err error) featureflags.FeatureFlagManager {
 // staticEnforcer answers every Check with decision.
 func staticEnforcer(decision *metering.Decision, err error) metering.Enforcer {
 	return &meteringmock.EnforcerMock{
-		CheckFunc: func(context.Context, string, string, int64) (*metering.Decision, error) {
+		CheckFunc: func(context.Context, tenancy.Scope, string, string, int64) (*metering.Decision, error) {
 			return decision, err
 		},
 	}

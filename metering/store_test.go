@@ -29,6 +29,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 	suiteConsume(t, env)
 	suiteFlushLifecycle(t, env)
 	suiteReap(t, env)
+	suiteTenancy(t, env)
 }
 
 func TestSQLStore_SQLite(T *testing.T) {
@@ -319,7 +320,7 @@ func suiteRecord(t *testing.T, env *storeEnv) {
 				return err
 			}
 
-			result, err := store.Record(t.Context(), tx, []Entry{newEntry("req-1", 9, AggregationSum)}, baseTime)
+			result, err := store.Record(t.Context(), tx, testScope, []Entry{newEntry("req-1", 9, AggregationSum)}, baseTime)
 			test.EqOp(t, 1, result.Accepted)
 
 			return err
@@ -337,12 +338,12 @@ func suiteRecord(t *testing.T, env *storeEnv) {
 		// write was just given. A read narrowed to Reader() would be reading a
 		// database that does not yet hold the row its caller just wrote.
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
-			if _, err := store.Record(t.Context(), tx,
+			if _, err := store.Record(t.Context(), tx, testScope,
 				[]Entry{newEntry("req-1", 9, AggregationSum)}, baseTime); err != nil {
 				return err
 			}
 
-			inside, err := store.Total(t.Context(), tx, testSubject, testMeter, monthBounds)
+			inside, err := store.Total(t.Context(), tx, testScope, testSubject, testMeter, monthBounds)
 			must.NoError(t, err)
 			test.EqOp(t, int64(9), inside.Quantity)
 
@@ -355,13 +356,13 @@ func suiteRecord(t *testing.T, env *storeEnv) {
 
 		store := env.newStore(t)
 
-		_, err := store.Record(t.Context(), nil, []Entry{newEntry("req-1", 1, AggregationSum)}, baseTime)
+		_, err := store.Record(t.Context(), nil, testScope, []Entry{newEntry("req-1", 1, AggregationSum)}, baseTime)
 		test.ErrorIs(t, err, ErrNilExecutor)
 
-		_, err = store.Total(t.Context(), nil, testSubject, testMeter, monthBounds)
+		_, err = store.Total(t.Context(), nil, testScope, testSubject, testMeter, monthBounds)
 		test.ErrorIs(t, err, ErrNilExecutor)
 
-		_, err = store.Consume(t.Context(), nil, newEntry("req-1", 1, AggregationSum), 100, BehaviorBlock, baseTime)
+		_, err = store.Consume(t.Context(), nil, testScope, newEntry("req-1", 1, AggregationSum), 100, BehaviorBlock, baseTime)
 		test.ErrorIs(t, err, ErrNilExecutor)
 	})
 
@@ -371,7 +372,7 @@ func suiteRecord(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		test.ErrorIs(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
-			_, err := store.Record(t.Context(), tx, []Entry{newEntry("req-1", 9, AggregationSum)}, baseTime)
+			_, err := store.Record(t.Context(), tx, testScope, []Entry{newEntry("req-1", 9, AggregationSum)}, baseTime)
 			must.NoError(t, err)
 
 			return errArbitrary
@@ -596,7 +597,7 @@ func suiteConsume(t *testing.T, env *storeEnv) {
 		// caller's own statement, and it goes in the same transaction — which is
 		// the whole reason this method takes one.
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
-			decision, err := store.Consume(t.Context(), tx,
+			decision, err := store.Consume(t.Context(), tx, testScope,
 				newEntry("req-1", 30, AggregationSum), 100, BehaviorBlock, baseTime)
 			if err != nil {
 				return err
@@ -621,7 +622,7 @@ func suiteConsume(t *testing.T, env *storeEnv) {
 		// transaction and the work failed in another, leaving a customer billed
 		// for something that never happened.
 		test.ErrorIs(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
-			decision, err := store.Consume(t.Context(), tx,
+			decision, err := store.Consume(t.Context(), tx, testScope,
 				newEntry("req-1", 30, AggregationSum), 100, BehaviorBlock, baseTime)
 			must.NoError(t, err)
 			must.True(t, decision.Allowed)

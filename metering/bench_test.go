@@ -94,7 +94,7 @@ func BenchmarkQuotaEnforcer_Check(b *testing.B) {
 
 	b.Run("allowed", func(b *testing.B) {
 		for b.Loop() {
-			decisionSink, _ = env.enforcer.Check(ctx, testSubject, testMeter, 1)
+			decisionSink, _ = env.enforcer.Check(ctx, testScope, testSubject, testMeter, 1)
 		}
 	})
 
@@ -104,7 +104,7 @@ func BenchmarkQuotaEnforcer_Check(b *testing.B) {
 		denied := newTestEnforcer(b, BehaviorBlock, 0)
 
 		for b.Loop() {
-			decisionSink, _ = denied.enforcer.Check(ctx, testSubject, testMeter, 1)
+			decisionSink, _ = denied.enforcer.Check(ctx, testScope, testSubject, testMeter, 1)
 		}
 	})
 
@@ -112,7 +112,7 @@ func BenchmarkQuotaEnforcer_Check(b *testing.B) {
 	// quota decision, and resolves without touching the store.
 	b.Run("unknownMeter", func(b *testing.B) {
 		for b.Loop() {
-			decisionSink, _ = env.enforcer.Check(ctx, testSubject, "no_such_meter", 1)
+			decisionSink, _ = env.enforcer.Check(ctx, testScope, testSubject, "no_such_meter", 1)
 		}
 	})
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/charset/plainname"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.
@@ -23,6 +24,7 @@ const serviceName = "metering"
 // to break usage down by — and a span exporter is not the place to discover that
 // somebody started dimensioning by email address.
 const (
+	scopeKey       = "metering.scope"
 	subjectKey     = "metering.subject"
 	meterKey       = "metering.meter"
 	quantityKey    = "metering.quantity"
@@ -566,7 +568,14 @@ type Recorder interface {
 	// opens one with database.Client.WithTransaction and passes the Tx it is
 	// handed — an ingest endpoint whose only job is to record usage is exactly
 	// that caller, and it is one line.
-	Record(ctx context.Context, tx database.Tx, u ...Usage) error
+	//
+	// The scope is the batch's, and it is an argument rather than a field on
+	// Usage: a scope read off a record the caller assembled somewhere else makes
+	// "whose usage is this" a question answerable only by reading that record.
+	// A single-tenant application passes tenancy.Global() and behaves exactly as
+	// it did before the column existed. Usage for two tenants is two calls, in
+	// the two transactions their two requests are holding.
+	Record(ctx context.Context, tx database.Tx, scope tenancy.Scope, u ...Usage) error
 }
 
 // Enforcer answers whether a subject may consume, and optionally records that
@@ -599,7 +608,12 @@ type Enforcer interface {
 	// Check reports whether quantity may be consumed, without recording it. The
 	// returned decision may be stale by up to the meter's staleness budget; see
 	// Decision.Stale.
-	Check(ctx context.Context, subject, meter string, quantity int64) (*Decision, error)
+	//
+	// The scope is part of what is read, and part of the cache key beneath it.
+	// Two tenants that happen to name the same subject hold two totals, and a
+	// check that could not tell them apart would answer one tenant's quota
+	// question with the other's usage.
+	Check(ctx context.Context, scope tenancy.Scope, subject, meter string, quantity int64) (*Decision, error)
 
 	// Consume checks and records atomically against the durable total.
 	//
@@ -611,10 +625,16 @@ type Enforcer interface {
 	// Write the work this authorizes in tx. Returning the error rather than
 	// swallowing it is what lets a refusal unwind the transaction; a caller that
 	// commits anyway commits none of Consume's work, and all of their own.
-	Consume(ctx context.Context, tx database.Tx, subject, meter string, quantity int64) (*Decision, error)
+	Consume(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		subject, meter string,
+		quantity int64,
+	) (*Decision, error)
 
 	// ConsumeUsage is Consume over a full Usage record, so a caller can supply
 	// its own idempotency key, an event time, and dimensions. It is the method to
 	// reach for on any path that can be retried.
-	ConsumeUsage(ctx context.Context, tx database.Tx, u Usage) (*Decision, error)
+	ConsumeUsage(ctx context.Context, tx database.Tx, scope tenancy.Scope, u Usage) (*Decision, error)
 }

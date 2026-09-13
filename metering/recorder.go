@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -128,18 +129,34 @@ func (r *DurableRecorder) initInstruments() error {
 }
 
 // Record implements Recorder.
-func (r *DurableRecorder) Record(ctx context.Context, tx database.Tx, u ...Usage) error {
+func (r *DurableRecorder) Record(ctx context.Context, tx database.Tx, scope tenancy.Scope, u ...Usage) error {
 	if tx == nil {
 		return ErrNilExecutor
 	}
 
-	return r.record(ctx, tx, u)
+	// Refused here as well as in the store, because this is the boundary the
+	// caller reached: a batch the recorder validated, resolved periods for, and
+	// then handed to a store that declined it would spend the work and report
+	// the same error one layer further from whoever wrote the call.
+	if err := scope.Validate(); err != nil {
+		return err
+	}
+
+	return r.record(ctx, tx, scope, u)
 }
 
 // record prepares every usage record, then hands the survivors to the store in
 // configured chunks.
-func (r *DurableRecorder) record(ctx context.Context, tx database.Tx, usages []Usage) error {
-	ctx, op := r.o11y.Begin(ctx, observability.WithValue(batchSizeKey, len(usages)))
+func (r *DurableRecorder) record(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	usages []Usage,
+) error {
+	ctx, op := r.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		batchSizeKey: len(usages),
+		scopeKey:     scope.String(),
+	}))
 	defer op.End()
 
 	if len(usages) == 0 {
@@ -166,7 +183,7 @@ func (r *DurableRecorder) record(ctx context.Context, tx database.Tx, usages []U
 	for chunk := range chunks(entries, r.cfg.BatchSize) {
 		var result RecordResult
 
-		if result, err = r.store.Record(ctx, tx, chunk, now); err != nil {
+		if result, err = r.store.Record(ctx, tx, scope, chunk, now); err != nil {
 			return op.Error(err, "recording metering usage")
 		}
 

@@ -197,21 +197,24 @@ func TestRender_KeysEveryTotalStatementOnTheNaturalKey(T *testing.T) {
 }
 
 // TestRender_DedupesOnTheMeterAndTheKey pins the ledger's own key, which is the
-// pair rather than the idempotency key alone.
+// scope and the meter as well as the idempotency key.
 //
 // Callers are told to use a request ID, and one request routinely feeds several
 // meters — an API call billing both a request count and a byte count. Keyed on
 // the key alone the second meter's insert is silently deduped against the
-// first, and that customer is under-billed for it forever.
+// first, and that customer is under-billed for it forever. The scope is in it
+// for the same shape of reason one tenant up: two tenants' request IDs come from
+// two sequences nobody reconciled, so a key shared between them would dedupe one
+// tenant's usage against the other's and bill neither.
 func TestRender_DedupesOnTheMeterAndTheKey(T *testing.T) {
 	T.Parallel()
 
-	T.Run("postgres names the pair as the conflict target", func(t *testing.T) {
+	T.Run("postgres names the whole key as the conflict target", func(t *testing.T) {
 		t.Parallel()
 
 		insert := statement(t, Render(dialect.Postgres), InsertEventQuery)
 
-		test.StrContains(t, insert, "ON CONFLICT (meter, idempotency_key) DO NOTHING")
+		test.StrContains(t, insert, "ON CONFLICT (scope, meter, idempotency_key) DO NOTHING")
 		test.StrNotContains(t, insert, "INSERT IGNORE")
 	})
 
@@ -477,10 +480,12 @@ func TestRender_KeepsRetentionOffUnflushedPeriods(T *testing.T) {
 		// resolve against the totals table its own subquery names, which is a
 		// predicate that runs and dooms the wrong rows.
 		test.StrContains(t, statement(t, Render(dialect.Postgres), PruneEventsQuery),
-			"NOT EXISTS (SELECT 1 FROM metering_totals t WHERE t.subject = doomed.subject")
+			"NOT EXISTS (SELECT 1 FROM metering_totals t WHERE t.scope = doomed.scope"+
+				" AND t.subject = doomed.subject")
 
 		test.StrContains(t, statement(t, Render(dialect.MySQL), PruneEventsQuery),
-			"NOT EXISTS (SELECT 1 FROM metering_totals t WHERE t.subject = metering_events.subject")
+			"NOT EXISTS (SELECT 1 FROM metering_totals t WHERE t.scope = metering_events.scope"+
+				" AND t.subject = metering_events.subject")
 	})
 
 	T.Run("the guard compares the two quantities", func(t *testing.T) {

@@ -9,49 +9,57 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 const applyMeteringConsumeSQLite = `UPDATE {{prefix}}metering_totals SET
 	quantity = ?1,
 	last_occurred_at = ?2,
 	last_updated_at = ?3
-WHERE subject = ?4
-	AND meter = ?5
-	AND period_start = ?6`
+WHERE scope = ?4
+	AND subject = ?5
+	AND meter = ?6
+	AND period_start = ?7`
 
 const claimMeteringTotalSQLite = `UPDATE {{prefix}}metering_totals SET
 	claimed_until = ?1,
 	flush_attempts = flush_attempts + 1
-WHERE subject = ?2
-	AND meter = ?3
-	AND period_start = ?4
+WHERE scope = ?2
+	AND subject = ?3
+	AND meter = ?4
+	AND period_start = ?5
 	AND quantity > flushed_quantity`
 
 const foldMeteringTotalLastSQLite = `UPDATE {{prefix}}metering_totals SET
 	quantity = CASE WHEN last_occurred_at < ?1 THEN ?2 ELSE quantity END,
 	last_occurred_at = CASE WHEN last_occurred_at < ?1 THEN ?1 ELSE last_occurred_at END,
 	last_updated_at = ?3
-WHERE subject = ?4
-	AND meter = ?5
-	AND period_start = ?6`
+WHERE scope = ?4
+	AND subject = ?5
+	AND meter = ?6
+	AND period_start = ?7`
 
 const foldMeteringTotalMaxSQLite = `UPDATE {{prefix}}metering_totals SET
 	quantity = CASE WHEN quantity < ?1 THEN ?1 ELSE quantity END,
 	last_occurred_at = CASE WHEN last_occurred_at < ?2 THEN ?2 ELSE last_occurred_at END,
 	last_updated_at = ?3
-WHERE subject = ?4
-	AND meter = ?5
-	AND period_start = ?6`
+WHERE scope = ?4
+	AND subject = ?5
+	AND meter = ?6
+	AND period_start = ?7`
 
 const foldMeteringTotalSumSQLite = `UPDATE {{prefix}}metering_totals SET
 	quantity = quantity + ?1,
 	last_occurred_at = CASE WHEN last_occurred_at < ?2 THEN ?2 ELSE last_occurred_at END,
 	last_updated_at = ?3
-WHERE subject = ?4
-	AND meter = ?5
-	AND period_start = ?6`
+WHERE scope = ?4
+	AND subject = ?5
+	AND meter = ?6
+	AND period_start = ?7`
 
 const getMeteringTotalSQLite = `SELECT
+	{{prefix}}metering_totals.scope,
 	{{prefix}}metering_totals.subject,
 	{{prefix}}metering_totals.meter,
 	{{prefix}}metering_totals.period_start,
@@ -65,11 +73,13 @@ const getMeteringTotalSQLite = `SELECT
 	{{prefix}}metering_totals.next_flush,
 	{{prefix}}metering_totals.last_error
 FROM {{prefix}}metering_totals
-WHERE {{prefix}}metering_totals.subject = ?1
-	AND {{prefix}}metering_totals.meter = ?2
-	AND {{prefix}}metering_totals.period_start = ?3`
+WHERE {{prefix}}metering_totals.scope = ?1
+	AND {{prefix}}metering_totals.subject = ?2
+	AND {{prefix}}metering_totals.meter = ?3
+	AND {{prefix}}metering_totals.period_start = ?4`
 
 const getMeteringTotalForUpdateSQLite = `SELECT
+	{{prefix}}metering_totals.scope,
 	{{prefix}}metering_totals.subject,
 	{{prefix}}metering_totals.meter,
 	{{prefix}}metering_totals.period_start,
@@ -83,12 +93,14 @@ const getMeteringTotalForUpdateSQLite = `SELECT
 	{{prefix}}metering_totals.next_flush,
 	{{prefix}}metering_totals.last_error
 FROM {{prefix}}metering_totals
-WHERE {{prefix}}metering_totals.subject = ?1
-	AND {{prefix}}metering_totals.meter = ?2
-	AND {{prefix}}metering_totals.period_start = ?3`
+WHERE {{prefix}}metering_totals.scope = ?1
+	AND {{prefix}}metering_totals.subject = ?2
+	AND {{prefix}}metering_totals.meter = ?3
+	AND {{prefix}}metering_totals.period_start = ?4`
 
 const insertMeteringEventSQLite = `
 INSERT OR IGNORE INTO {{prefix}}metering_events (
+	scope,
 	idempotency_key,
 	subject,
 	meter,
@@ -105,10 +117,12 @@ INSERT OR IGNORE INTO {{prefix}}metering_events (
 	?5,
 	?6,
 	?7,
-	?8
+	?8,
+	?9
 )`
 
 const insertMeteringTotalSQLite = `INSERT OR IGNORE INTO {{prefix}}metering_totals (
+	scope,
 	subject,
 	meter,
 	period_start,
@@ -129,7 +143,8 @@ const insertMeteringTotalSQLite = `INSERT OR IGNORE INTO {{prefix}}metering_tota
 	?7,
 	?8,
 	?9,
-	?10
+	?10,
+	?11
 )`
 
 const markMeteringTotalFlushedSQLite = `UPDATE {{prefix}}metering_totals SET
@@ -140,24 +155,26 @@ const markMeteringTotalFlushedSQLite = `UPDATE {{prefix}}metering_totals SET
 	claimed_until = NULL,
 	last_error = '',
 	last_updated_at = ?3
-WHERE subject = ?4
-	AND meter = ?5
-	AND period_start = ?6
-	AND flush_sequence = ?7`
+WHERE scope = ?4
+	AND subject = ?5
+	AND meter = ?6
+	AND period_start = ?7
+	AND flush_sequence = ?8`
 
 const meteringEventExistsSQLite = `SELECT EXISTS (
 	SELECT 1
 	FROM {{prefix}}metering_events
-	WHERE {{prefix}}metering_events.meter = ?1
-		AND {{prefix}}metering_events.idempotency_key = ?2
+	WHERE {{prefix}}metering_events.scope = ?1
+		AND {{prefix}}metering_events.meter = ?2
+		AND {{prefix}}metering_events.idempotency_key = ?3
 )`
 
 const pruneMeteringEventsSQLite = `DELETE FROM {{prefix}}metering_events
-WHERE (meter, idempotency_key) IN (
-	SELECT doomed.meter, doomed.idempotency_key
+WHERE (scope, meter, idempotency_key) IN (
+	SELECT doomed.scope, doomed.meter, doomed.idempotency_key
 	FROM {{prefix}}metering_events AS doomed
 	WHERE doomed.recorded_at <= ?1
-		AND NOT EXISTS (SELECT 1 FROM {{prefix}}metering_totals t WHERE t.subject = doomed.subject AND t.meter = doomed.meter AND t.period_start = doomed.period_start AND t.quantity > t.flushed_quantity)
+		AND NOT EXISTS (SELECT 1 FROM {{prefix}}metering_totals t WHERE t.scope = doomed.scope AND t.subject = doomed.subject AND t.meter = doomed.meter AND t.period_start = doomed.period_start AND t.quantity > t.flushed_quantity)
 	ORDER BY doomed.recorded_at ASC
 	LIMIT ?2
 )`
@@ -167,12 +184,14 @@ const releaseMeteringFlushSQLite = `UPDATE {{prefix}}metering_totals SET
 	last_error = ?2,
 	claimed_until = ?3,
 	last_updated_at = ?4
-WHERE subject = ?5
-	AND meter = ?6
-	AND period_start = ?7
-	AND flush_sequence = ?8`
+WHERE scope = ?5
+	AND subject = ?6
+	AND meter = ?7
+	AND period_start = ?8
+	AND flush_sequence = ?9`
 
 const selectFlushableMeteringTotalsSQLite = `SELECT
+	{{prefix}}metering_totals.scope,
 	{{prefix}}metering_totals.subject,
 	{{prefix}}metering_totals.meter,
 	{{prefix}}metering_totals.period_start,
@@ -190,7 +209,7 @@ WHERE {{prefix}}metering_totals.quantity > {{prefix}}metering_totals.flushed_qua
 	AND {{prefix}}metering_totals.next_flush <= ?1
 	AND {{prefix}}metering_totals.flush_attempts < ?2
 	AND ({{prefix}}metering_totals.claimed_until IS NULL OR {{prefix}}metering_totals.claimed_until <= ?3)
-ORDER BY {{prefix}}metering_totals.next_flush, {{prefix}}metering_totals.subject, {{prefix}}metering_totals.meter
+ORDER BY {{prefix}}metering_totals.next_flush, {{prefix}}metering_totals.scope, {{prefix}}metering_totals.subject, {{prefix}}metering_totals.meter
 LIMIT COALESCE(?4, 50)`
 
 // sqliteQueries answers every query in Querier against sqlite.
@@ -268,6 +287,7 @@ func (q *sqliteQueries) ApplyMeteringConsume(ctx context.Context, db DBTX, arg A
 		arg.Quantity,
 		timeText(arg.LastOccurredAt),
 		timeTextPtr(arg.LastUpdatedAt),
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		timeText(arg.PeriodStart),
@@ -283,6 +303,7 @@ func (q *sqliteQueries) ApplyMeteringConsume(ctx context.Context, db DBTX, arg A
 func (q *sqliteQueries) ClaimMeteringTotal(ctx context.Context, db DBTX, arg ClaimMeteringTotalParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.claimMeteringTotal,
 		timeTextPtr(arg.ClaimedUntil),
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		timeText(arg.PeriodStart),
@@ -300,6 +321,7 @@ func (q *sqliteQueries) FoldMeteringTotalLast(ctx context.Context, db DBTX, arg 
 		timeText(arg.LastOccurredAt),
 		arg.Quantity,
 		timeTextPtr(arg.LastUpdatedAt),
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		timeText(arg.PeriodStart),
@@ -317,6 +339,7 @@ func (q *sqliteQueries) FoldMeteringTotalMax(ctx context.Context, db DBTX, arg F
 		arg.Quantity,
 		timeText(arg.LastOccurredAt),
 		timeTextPtr(arg.LastUpdatedAt),
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		timeText(arg.PeriodStart),
@@ -334,6 +357,7 @@ func (q *sqliteQueries) FoldMeteringTotalSum(ctx context.Context, db DBTX, arg F
 		arg.Quantity,
 		timeText(arg.LastOccurredAt),
 		timeTextPtr(arg.LastUpdatedAt),
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		timeText(arg.PeriodStart),
@@ -348,6 +372,7 @@ func (q *sqliteQueries) FoldMeteringTotalSum(ctx context.Context, db DBTX, arg F
 // GetMeteringTotal runs the :one query against sqlite.
 func (q *sqliteQueries) GetMeteringTotal(ctx context.Context, db DBTX, arg GetMeteringTotalParams) (GetMeteringTotalRow, error) {
 	row := db.QueryRowContext(ctx, q.getMeteringTotal,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		timeText(arg.PeriodStart),
@@ -356,6 +381,7 @@ func (q *sqliteQueries) GetMeteringTotal(ctx context.Context, db DBTX, arg GetMe
 	var i GetMeteringTotalRow
 
 	err := row.Scan(
+		&i.Scope,
 		&i.Subject,
 		&i.Meter,
 		&i.PeriodStart,
@@ -376,6 +402,7 @@ func (q *sqliteQueries) GetMeteringTotal(ctx context.Context, db DBTX, arg GetMe
 // GetMeteringTotalForUpdate runs the :one query against sqlite.
 func (q *sqliteQueries) GetMeteringTotalForUpdate(ctx context.Context, db DBTX, arg GetMeteringTotalForUpdateParams) (GetMeteringTotalForUpdateRow, error) {
 	row := db.QueryRowContext(ctx, q.getMeteringTotalForUpdate,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		timeText(arg.PeriodStart),
@@ -384,6 +411,7 @@ func (q *sqliteQueries) GetMeteringTotalForUpdate(ctx context.Context, db DBTX, 
 	var i GetMeteringTotalForUpdateRow
 
 	err := row.Scan(
+		&i.Scope,
 		&i.Subject,
 		&i.Meter,
 		&i.PeriodStart,
@@ -404,6 +432,7 @@ func (q *sqliteQueries) GetMeteringTotalForUpdate(ctx context.Context, db DBTX, 
 // InsertMeteringEvent runs the :execrows query against sqlite.
 func (q *sqliteQueries) InsertMeteringEvent(ctx context.Context, db DBTX, arg InsertMeteringEventParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.insertMeteringEvent,
+		arg.Scope,
 		arg.IdempotencyKey,
 		arg.Subject,
 		arg.Meter,
@@ -423,6 +452,7 @@ func (q *sqliteQueries) InsertMeteringEvent(ctx context.Context, db DBTX, arg In
 // InsertMeteringTotal runs the :execrows query against sqlite.
 func (q *sqliteQueries) InsertMeteringTotal(ctx context.Context, db DBTX, arg InsertMeteringTotalParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.insertMeteringTotal,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		timeText(arg.PeriodStart),
@@ -447,6 +477,7 @@ func (q *sqliteQueries) MarkMeteringTotalFlushed(ctx context.Context, db DBTX, a
 		arg.FlushedQuantity,
 		timeText(arg.NextFlush),
 		timeTextPtr(arg.LastUpdatedAt),
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		timeText(arg.PeriodStart),
@@ -462,6 +493,7 @@ func (q *sqliteQueries) MarkMeteringTotalFlushed(ctx context.Context, db DBTX, a
 // MeteringEventExists runs the :one query against sqlite.
 func (q *sqliteQueries) MeteringEventExists(ctx context.Context, db DBTX, arg MeteringEventExistsParams) (MeteringEventExistsRow, error) {
 	row := db.QueryRowContext(ctx, q.meteringEventExists,
+		arg.Scope,
 		arg.Meter,
 		arg.IdempotencyKey,
 	)
@@ -495,6 +527,7 @@ func (q *sqliteQueries) ReleaseMeteringFlush(ctx context.Context, db DBTX, arg R
 		arg.LastError,
 		timeTextPtr(arg.ClaimedUntil),
 		timeTextPtr(arg.LastUpdatedAt),
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		timeText(arg.PeriodStart),
@@ -527,6 +560,7 @@ func (q *sqliteQueries) SelectFlushableMeteringTotals(ctx context.Context, db DB
 		var i SelectFlushableMeteringTotalsRow
 
 		if err := rows.Scan(
+			&i.Scope,
 			&i.Subject,
 			&i.Meter,
 			&i.PeriodStart,
@@ -564,12 +598,14 @@ var (
 		Quantity       int64
 		LastOccurredAt time.Time
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
 	}(ApplyMeteringConsumeParams{})
 	_ = struct {
 		ClaimedUntil *time.Time
+		Scope        tenancy.Scope
 		Subject      string
 		Meter        string
 		PeriodStart  time.Time
@@ -578,6 +614,7 @@ var (
 		LastOccurredAt time.Time
 		Quantity       int64
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
@@ -586,6 +623,7 @@ var (
 		Quantity       int64
 		LastOccurredAt time.Time
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
@@ -594,16 +632,19 @@ var (
 		Quantity       int64
 		LastOccurredAt time.Time
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
 	}(FoldMeteringTotalSumParams{})
 	_ = struct {
+		Scope       tenancy.Scope
 		Subject     string
 		Meter       string
 		PeriodStart time.Time
 	}(GetMeteringTotalParams{})
 	_ = struct {
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time
@@ -618,11 +659,13 @@ var (
 		LastError       string
 	}(GetMeteringTotalRow{})
 	_ = struct {
+		Scope       tenancy.Scope
 		Subject     string
 		Meter       string
 		PeriodStart time.Time
 	}(GetMeteringTotalForUpdateParams{})
 	_ = struct {
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time
@@ -637,6 +680,7 @@ var (
 		LastError       string
 	}(GetMeteringTotalForUpdateRow{})
 	_ = struct {
+		Scope          tenancy.Scope
 		IdempotencyKey string
 		Subject        string
 		Meter          string
@@ -647,6 +691,7 @@ var (
 		Dimensions     []byte
 	}(InsertMeteringEventParams{})
 	_ = struct {
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
@@ -662,12 +707,14 @@ var (
 		FlushedQuantity int64
 		NextFlush       time.Time
 		LastUpdatedAt   *time.Time
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time
 		FlushSequence   int64
 	}(MarkMeteringTotalFlushedParams{})
 	_ = struct {
+		Scope          tenancy.Scope
 		Meter          string
 		IdempotencyKey string
 	}(MeteringEventExistsParams{})
@@ -683,6 +730,7 @@ var (
 		LastError     string
 		ClaimedUntil  *time.Time
 		LastUpdatedAt *time.Time
+		Scope         tenancy.Scope
 		Subject       string
 		Meter         string
 		PeriodStart   time.Time
@@ -695,6 +743,7 @@ var (
 		ResultLimit    int64
 	}(SelectFlushableMeteringTotalsParams{})
 	_ = struct {
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time

@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -189,13 +190,29 @@ func (e *QuotaEnforcer) initInstruments() error {
 }
 
 // Check implements Enforcer.
-func (e *QuotaEnforcer) Check(ctx context.Context, subject, meter string, quantity int64) (*Decision, error) {
+func (e *QuotaEnforcer) Check(
+	ctx context.Context,
+	scope tenancy.Scope,
+	subject, meter string,
+	quantity int64,
+) (*Decision, error) {
 	ctx, op := e.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		scopeKey:    scope.String(),
 		subjectKey:  subject,
 		meterKey:    meter,
 		quantityKey: quantity,
 	}))
 	defer op.End()
+
+	// Refused before the counter, the timer, the quota resolve, and — the one
+	// that matters — before the fail-open branch below can reach for it. An unset
+	// scope is the caller's bug rather than a store that could not be read, and
+	// failing open on it would answer a question nobody asked with a decision
+	// that allows. It is not a check this deployment made, either, so it does not
+	// land in the rate or the latency somebody watches.
+	if err := scope.Validate(); err != nil {
+		return nil, op.Error(err, "checking metering quota")
+	}
 
 	defer op.Time(ctx, e.clock, e.checkHist, meterAttr(meter))()
 
@@ -208,7 +225,7 @@ func (e *QuotaEnforcer) Check(ctx context.Context, subject, meter string, quanti
 
 	annotatePeriod(op, m.Aggregation, bounds)
 
-	used, stale, err := e.usage(ctx, op, m, subject, bounds)
+	used, stale, err := e.usage(ctx, op, m, scope, subject, bounds)
 	if err != nil {
 		if !e.cfg.FailOpen {
 			return nil, op.Error(err, "reading metering usage")
@@ -244,6 +261,7 @@ func (e *QuotaEnforcer) Check(ctx context.Context, subject, meter string, quanti
 func (e *QuotaEnforcer) Consume(
 	ctx context.Context,
 	tx database.Tx,
+	scope tenancy.Scope,
 	subject, meter string,
 	quantity int64,
 ) (*Decision, error) {
@@ -251,7 +269,7 @@ func (e *QuotaEnforcer) Consume(
 	// call distinct, which is right for a call that is not being retried and
 	// wrong for one that is — see the Enforcer interface, and reach for
 	// ConsumeUsage on any path that can retry.
-	return e.ConsumeUsage(ctx, tx, Usage{
+	return e.ConsumeUsage(ctx, tx, scope, Usage{
 		Subject:        subject,
 		Meter:          meter,
 		Quantity:       quantity,
@@ -262,8 +280,14 @@ func (e *QuotaEnforcer) Consume(
 // ConsumeUsage implements Enforcer.
 //
 //nolint:gocritic // hugeParam: Usage is taken by value to match Recorder.Record's variadic
-func (e *QuotaEnforcer) ConsumeUsage(ctx context.Context, tx database.Tx, u Usage) (*Decision, error) {
+func (e *QuotaEnforcer) ConsumeUsage(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	u Usage,
+) (*Decision, error) {
 	ctx, op := e.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		scopeKey:    scope.String(),
 		subjectKey:  u.Subject,
 		meterKey:    u.Meter,
 		quantityKey: u.Quantity,
@@ -272,6 +296,10 @@ func (e *QuotaEnforcer) ConsumeUsage(ctx context.Context, tx database.Tx, u Usag
 
 	if tx == nil {
 		return nil, op.Error(ErrNilExecutor, "consuming metering quota")
+	}
+
+	if err := scope.Validate(); err != nil {
+		return nil, op.Error(err, "consuming metering quota")
 	}
 
 	defer op.Time(ctx, e.clock, e.consumeHist, meterAttr(u.Meter))()
@@ -296,7 +324,7 @@ func (e *QuotaEnforcer) ConsumeUsage(ctx context.Context, tx database.Tx, u Usag
 	// No fail-open path. Consume's whole promise is that the answer is exact, and
 	// an exact answer has nowhere to fail open to: allowing usage the store could
 	// not record is allowing usage nobody will ever be billed for.
-	decision, err := e.store.Consume(ctx, tx, Entry{
+	decision, err := e.store.Consume(ctx, tx, scope, Entry{
 		Usage:       u,
 		Bounds:      bounds,
 		Aggregation: m.Aggregation,
@@ -315,7 +343,7 @@ func (e *QuotaEnforcer) ConsumeUsage(ctx context.Context, tx database.Tx, u Usag
 	// the next Check reads the durable total, which is the number this call
 	// produced; if it rolls back, the next Check reads the durable total, which
 	// is the number from before it. Either way the cost is one cache miss.
-	e.evict(ctx, op, u.Subject, u.Meter, bounds)
+	e.evict(ctx, op, scope, u.Subject, u.Meter, bounds)
 
 	e.observeDecision(ctx, decision)
 	e.annotate(op, decision)
@@ -368,10 +396,11 @@ func (e *QuotaEnforcer) usage(
 	ctx context.Context,
 	op observability.Operation,
 	m Meter,
+	scope tenancy.Scope,
 	subject string,
 	bounds Bounds,
 ) (used int64, stale bool, err error) {
-	key := e.cacheKey(subject, m.Name, bounds)
+	key := e.cacheKey(scope, subject, m.Name, bounds)
 
 	if e.totals != nil {
 		cached, cacheErr := e.totals.Get(ctx, key)
@@ -391,12 +420,12 @@ func (e *QuotaEnforcer) usage(
 
 	op.Set(cacheHitKey, false)
 
-	total, err := e.store.Total(ctx, e.reader, subject, m.Name, bounds)
+	total, err := e.store.Total(ctx, e.reader, scope, subject, m.Name, bounds)
 	if err != nil {
 		return 0, false, err
 	}
 
-	e.writeThrough(ctx, op, subject, m.Name, bounds, total.Quantity)
+	e.writeThrough(ctx, op, scope, subject, m.Name, bounds, total.Quantity)
 
 	// Not stale: this came from the durable store this instant. The staleness
 	// budget starts now, for whoever reads the cache entry next.
@@ -413,6 +442,7 @@ func (e *QuotaEnforcer) usage(
 func (e *QuotaEnforcer) evict(
 	ctx context.Context,
 	op observability.Operation,
+	scope tenancy.Scope,
 	subject, meter string,
 	bounds Bounds,
 ) {
@@ -420,7 +450,7 @@ func (e *QuotaEnforcer) evict(
 		return
 	}
 
-	if err := e.totals.Delete(ctx, e.cacheKey(subject, meter, bounds)); err != nil {
+	if err := e.totals.Delete(ctx, e.cacheKey(scope, subject, meter, bounds)); err != nil {
 		e.cacheErrCounter.Add(ctx, 1, meterAttr(meter))
 		op.Acknowledge(err, "evicting metering total from cache")
 	}
@@ -436,6 +466,7 @@ func (e *QuotaEnforcer) evict(
 func (e *QuotaEnforcer) writeThrough(
 	ctx context.Context,
 	op observability.Operation,
+	scope tenancy.Scope,
 	subject, meter string,
 	bounds Bounds,
 	quantity int64,
@@ -471,20 +502,27 @@ func (e *QuotaEnforcer) writeThrough(
 
 	entry := &CachedTotal{Quantity: quantity, PeriodEnd: bounds.End.UTC()}
 
-	if err := e.totals.Set(ctx, e.cacheKey(subject, meter, bounds), entry, cache.WithExpiry(staleness)); err != nil {
+	if err := e.totals.Set(ctx, e.cacheKey(scope, subject, meter, bounds), entry, cache.WithExpiry(staleness)); err != nil {
 		e.cacheErrCounter.Add(ctx, 1, meterAttr(meter))
 		op.Acknowledge(err, "caching metering total")
 	}
 }
 
-// cacheKey renders the cache key for one subject, meter, and period.
+// cacheKey renders the cache key for one scope, subject, meter, and period.
 //
 // The period start is part of the key rather than something the entry is checked
 // against, so a new period is a new key and cannot be answered by the old one's
 // entry. The alternative — one key per subject and meter, with the period stored
 // inside — makes the rollover depend on every reader remembering to compare.
-func (e *QuotaEnforcer) cacheKey(subject, meter string, bounds Bounds) string {
-	return e.cfg.CachePrefix + subject + ":" + meter + ":" +
+//
+// The scope leads it, for the reason it leads the totals table's primary key: two
+// tenants may name the same subject, and a key that could not tell them apart
+// would answer one tenant's quota question with the other's usage — and would go
+// on doing it for the staleness budget, from a cache nobody can see into. It is
+// the scope's owner rather than its rendering, because String spells the global
+// scope "<global>" for a human reading a log and a key is not that.
+func (e *QuotaEnforcer) cacheKey(scope tenancy.Scope, subject, meter string, bounds Bounds) string {
+	return e.cfg.CachePrefix + scope.Owner() + ":" + subject + ":" + meter + ":" +
 		strconv.FormatInt(bounds.Start.UTC().Unix(), 10)
 }
 

@@ -11,10 +11,10 @@ import (
 // The two tables metering owns, at their canonical spelling — what the emitted
 // .sql names, and what metering/migrations renders at the consumer's prefix.
 const (
-	// EventsTable is the ingest ledger: one row per (meter, idempotency key),
-	// written once and never updated.
+	// EventsTable is the ingest ledger: one row per (scope, meter, idempotency
+	// key), written once and never updated.
 	EventsTable = "metering_events"
-	// TotalsTable is the aggregate, one row per (subject, meter, period).
+	// TotalsTable is the aggregate, one row per (scope, subject, meter, period).
 	TotalsTable = "metering_totals"
 )
 
@@ -34,14 +34,19 @@ var TableNames = []string{EventsTable, TotalsTable}
 // those renders SQL sqlc rejects, which is the good case, or names a different
 // column, which is not.
 const (
+	// ScopeColumn is whose data a row is, and the leading component of both
+	// tables' natural keys. It binds as a tenancy.Scope rather than the string
+	// inside one — see metering/unison.yaml — so a statement handed an unset
+	// scope is a driver error rather than a read of the global one.
+	ScopeColumn = "scope"
 	// IdempotencyKeyColumn is the caller's key for one usage record, and the
-	// second half of the events table's natural key.
+	// last component of the events table's natural key.
 	IdempotencyKeyColumn = "idempotency_key"
 	// SubjectColumn is whose usage a row records.
 	SubjectColumn = "subject"
-	// MeterColumn is what is being counted. It is the first half of the events
-	// table's natural key, because one request routinely feeds several meters
-	// under one idempotency key.
+	// MeterColumn is what is being counted. It sits in the events table's
+	// natural key ahead of the idempotency key, because one request routinely
+	// feeds several meters under one key.
 	MeterColumn = "meter"
 	// QuantityColumn is the usage: one record's on an event row, the period's
 	// folded total on a totals row.
@@ -51,7 +56,7 @@ const (
 	// RecordedAtColumn is when the ledger row was written, and the column the
 	// retention pass draws its horizon against.
 	RecordedAtColumn = "recorded_at"
-	// PeriodStartColumn is the window the usage falls in, and the third
+	// PeriodStartColumn is the window the usage falls in, and the last
 	// component of the totals table's natural key.
 	PeriodStartColumn = "period_start"
 	// DimensionsColumn is the record's encoded dimensions, or NULL.
@@ -110,6 +115,7 @@ const (
 // server-stamped one would put a row's retention horizon on a different clock
 // from the flush deadline beside it.
 var EventColumns = []string{
+	ScopeColumn,
 	IdempotencyKeyColumn,
 	SubjectColumn,
 	MeterColumn,
@@ -132,6 +138,7 @@ var EventNullableColumns = []string{DimensionsColumn}
 // cross-check against the shipped DDL, which is the one place a column added to
 // the schema and not to this package stops being invisible.
 var TotalColumns = []string{
+	ScopeColumn,
 	SubjectColumn,
 	MeterColumn,
 	PeriodStartColumn,
@@ -172,6 +179,7 @@ var TotalColumns = []string{
 //     than projecting it; a flusher holding a lease has no use for its own
 //     expiry, since the lease it must respect is the one it took.
 var TotalProjection = []string{
+	ScopeColumn,
 	SubjectColumn,
 	MeterColumn,
 	PeriodStartColumn,
@@ -214,6 +222,7 @@ var TotalProjection = []string{
 // which converges to a pointer in the generated row and makes every read of a
 // last error ask whether this deployment is the one where it can be absent.
 var TotalInsertColumns = []string{
+	ScopeColumn,
 	SubjectColumn,
 	MeterColumn,
 	PeriodStartColumn,
@@ -300,36 +309,45 @@ const (
 	ReleaseFlushQuery = "ReleaseMeteringFlush"
 )
 
-// eventKeyMatches is the ledger's natural key as predicates: the pair that
-// addresses exactly one row, and the conflict target the insert skips a
+// eventKeyMatches is the ledger's natural key as predicates: the three columns
+// that address exactly one row, and the conflict target the insert skips a
 // collision on.
 //
-// The meter leads, and that ordering is the DDL's. The primary key is (meter,
-// idempotency_key) rather than the key alone because callers are told to use a
-// request ID, and one request routinely feeds several meters — keyed on the key
-// alone the second meter's insert is silently deduped against the first, and
-// that customer is under-billed forever.
+// The ordering is the DDL's. The scope leads because the dedupe is per tenant —
+// two tenants' request IDs come from two sequences nobody reconciled, so a key
+// shared between them would dedupe one tenant's usage against the other's and
+// bill neither. The meter is in it for the same shape of reason one level down:
+// callers are told to use a request ID, and one request routinely feeds several
+// meters, so keyed on the key alone the second meter's insert is silently
+// deduped against the first and that customer is under-billed forever.
 //
 // It is a function rather than a package-level slice because every caller
 // appends to what it returns, and a shared slice appended to is a slice whose
 // backing array two statements can come to share.
 func eventKeyMatches() []querygen.Match {
 	return []querygen.Match{
+		{Column: ScopeColumn},
 		{Column: MeterColumn},
 		{Column: IdempotencyKeyColumn},
 	}
 }
 
-// totalKeyMatches is the totals table's natural key as predicates: the three
+// totalKeyMatches is the totals table's natural key as predicates: the four
 // columns that address exactly one row.
 //
-// (subject, meter, period_start) is the primary key, and it is what every
+// (scope, subject, meter, period_start) is the primary key, and it is what every
 // statement over this table keys on — the conflict target of the seed, the
 // predicate of each fold, of the consume, of the claim and of both settles.
 // There is no id to key on and no second way to say it, which is what
 // [querygen.Match] has always been for.
+//
+// The scope leads it, and it is a component of the key rather than a filter laid
+// over one: two tenants' usage of the same meter in the same window is two
+// totals and two invoice lines, and a key that left the scope out would fold
+// them into one row neither tenant could be billed from.
 func totalKeyMatches() []querygen.Match {
 	return []querygen.Match{
+		{Column: ScopeColumn},
 		{Column: SubjectColumn},
 		{Column: MeterColumn},
 		{Column: PeriodStartColumn},
@@ -362,6 +380,15 @@ func totalKeyMatches() []querygen.Match {
 // spell six ways. Seeding first says it once. It also unifies the two paths
 // that write a total — the fold and Consume's apply — which previously opened
 // their rows differently and stamped last_updated_at differently for it.
+//
+// # Every statement binds the scope
+//
+// Both tables' natural keys lead with it, so the scope is a component of every
+// predicate here rather than a filter laid over one — see [totalKeyMatches] and
+// [eventKeyMatches]. The two statements that do not name it are this package's
+// own machinery and say so: the claim's read drains every tenant's flush backlog
+// at once and orders by the scope rather than matching on it, and the retention
+// pass draws one horizon across all of them. Neither answers a consumer read.
 //
 // # last_occurred_at only ever moves forward
 //
@@ -466,6 +493,12 @@ func eventExistsQuery(g *querygen.Generator) *querygen.Query {
 // qualifier is asked for rather than assumed because the two arms name the
 // pruned table differently.
 //
+// The correlation is on the total's whole key, the scope included. An event row
+// matched against a total of a different tenant would be a row whose retention
+// was decided by somebody else's flush backlog, which is both directions of
+// wrong: a doomed row spared for a debt it is no evidence of, and a row deleted
+// while the total it belongs to still owes the provider.
+//
 // The rows are addressed by the events table's own natural key, which is the
 // row-value comparison [querygen.Prune].Key exists for, and the pass drains
 // oldest first so a backlog's age is a number somebody can watch.
@@ -473,21 +506,21 @@ func pruneEventsQuery(g *querygen.Generator) *querygen.Query {
 	doomed := g.PruneQualifier(EventsTable)
 
 	// The totals table is aliased because the doomed row's own qualifier is
-	// already the longer of the two names, and the three key comparisons read
+	// already the longer of the two names, and the four key comparisons read
 	// as a key when both sides are short enough to sit on one line.
 	const totals = "t"
 
 	unflushed := fmt.Sprintf(
 		"NOT EXISTS (SELECT 1 FROM %[1]s %[2]s WHERE %[2]s.%[3]s = %[4]s.%[3]s"+
 			" AND %[2]s.%[5]s = %[4]s.%[5]s AND %[2]s.%[6]s = %[4]s.%[6]s"+
-			" AND %[2]s.%[7]s > %[2]s.%[8]s)",
-		TotalsTable, totals, SubjectColumn, doomed, MeterColumn, PeriodStartColumn,
-		QuantityColumn, FlushedQuantityColumn,
+			" AND %[2]s.%[7]s = %[4]s.%[7]s AND %[2]s.%[8]s > %[2]s.%[9]s)",
+		TotalsTable, totals, ScopeColumn, doomed, SubjectColumn, MeterColumn,
+		PeriodStartColumn, QuantityColumn, FlushedQuantityColumn,
 	)
 
 	return g.PruneQuery(PruneEventsQuery, EventsTable,
 		querygen.Prune{
-			Key:        []string{MeterColumn, IdempotencyKeyColumn},
+			Key:        []string{ScopeColumn, MeterColumn, IdempotencyKeyColumn},
 			Order:      []querygen.Order{{Column: RecordedAtColumn}},
 			Conditions: []string{unflushed},
 		},
@@ -673,7 +706,11 @@ func selectFlushableQuery(g *querygen.Generator) *querygen.Query {
 		claimable,
 	}
 
-	ordered := querygen.QualifyAll(TotalsTable, []string{NextFlushColumn, SubjectColumn, MeterColumn})
+	// The scope is in the ordering rather than in a predicate: the claim drains
+	// every tenant's backlog at once, and it is the tie-break the subject stopped
+	// being able to carry alone once two tenants could name the same subject.
+	ordered := querygen.QualifyAll(TotalsTable,
+		[]string{NextFlushColumn, ScopeColumn, SubjectColumn, MeterColumn})
 
 	content := fmt.Sprintf("SELECT\n\t%s\nFROM %s\nWHERE %s\nORDER BY %s\n%s%s;",
 		strings.Join(querygen.QualifyAll(TotalsTable, TotalProjection), ",\n\t"),

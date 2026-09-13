@@ -9,6 +9,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // buildCatalog declares the features the code gates on and the plans that
@@ -59,7 +60,7 @@ func ExampleChecker() {
 		panic(err)
 	}
 
-	decision, err := checker.Check(context.Background(), "account_123", "sso")
+	decision, err := checker.Check(context.Background(), tenancy.Global(), "account_123", "sso")
 	if err != nil {
 		panic(err)
 	}
@@ -82,7 +83,7 @@ func ExampleChecker_denial() {
 		panic(err)
 	}
 
-	decision, err := checker.Check(context.Background(), "account_123", "advanced_search")
+	decision, err := checker.Check(context.Background(), tenancy.Global(), "account_123", "advanced_search")
 	if err != nil {
 		panic(err)
 	}
@@ -128,14 +129,20 @@ func ExampleChecker_permissions() {
 // metering package — and gives it entitlements.NewQuotaSource.
 type noopEnforcer struct{}
 
-func (noopEnforcer) Check(context.Context, string, string, int64) (*metering.Decision, error) {
+func (noopEnforcer) Check(
+	context.Context, tenancy.Scope, string, string, int64,
+) (*metering.Decision, error) {
 	return &metering.Decision{}, nil
 }
 
-func (noopEnforcer) Consume(context.Context, database.Tx, string, string, int64) (*metering.Decision, error) {
+func (noopEnforcer) Consume(
+	context.Context, database.Tx, tenancy.Scope, string, string, int64,
+) (*metering.Decision, error) {
 	return &metering.Decision{}, nil
 }
 
-func (noopEnforcer) ConsumeUsage(context.Context, database.Tx, metering.Usage) (*metering.Decision, error) {
+func (noopEnforcer) ConsumeUsage(
+	context.Context, database.Tx, tenancy.Scope, metering.Usage,
+) (*metering.Decision, error) {
 	return &metering.Decision{}, nil
 }

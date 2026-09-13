@@ -31,3 +31,6 @@ options:
     # The page size, which SQLite resolves no type for at all and Postgres
     # resolves none for through the claim read's COALESCE.
     - {column: "*.result_limit", go_type: int64}
+    # Scope binds as the type, not a string derived from it, so an unset scope
+    # is a driver error instead of a row filed under the global one.
+    - {column: "*.scope", go_type: github.com/primandproper/primitives-go/v2/tenancy.Scope}

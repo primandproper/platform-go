@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Entry is one usage record with everything the store needs to file it: which
@@ -71,6 +72,12 @@ type Total struct {
 	// reading the row does not need the registry to interpret it.
 	Aggregation Aggregation
 
+	// Scope is whose data this total is, read back off the row. It is what the
+	// flush settlements bind: a claimed total is addressed by the whole of its
+	// key, and the flusher holding it has no other way to say which tenant's
+	// row it holds.
+	Scope tenancy.Scope
+
 	// Quantity is the aggregated total for the period.
 	Quantity int64
 
@@ -128,9 +135,25 @@ func (t *Total) Delta() int64 {
 // which is why it lives here and not in a cache.
 //
 // Consume is atomic. The read of the total, the decision made against it, and
-// the write that follows must be one serialized unit per (subject, meter,
+// the write that follows must be one serialized unit per (scope, subject, meter,
 // period), or two concurrent consumers both see room under the limit and both
 // take it.
+//
+// # The scope is the caller's too
+//
+// Every consumer-facing method takes a tenancy.Scope, and it is an argument
+// rather than a field on Entry or Usage for the reason the module's tenancy
+// convention gives: a scope read off a struct the caller assembled somewhere
+// else makes "whose usage is this" answerable only by reading that struct. Both
+// tables carry the scope in a column, leading both natural keys, so two tenants
+// recording against one meter in one window are two totals and two invoice
+// lines, and one tenant's idempotency key cannot silence another's usage.
+//
+// The four machinery methods take none, and that is the same carve-out the
+// executor gets rather than a second one: ClaimFlushable drains every tenant's
+// flush backlog at once and ReapEvents draws one horizon across all of them,
+// while MarkFlushed and ReleaseFlush bind the scope off the Total they are
+// handed — the row this flusher holds, not a tenant a caller named.
 //
 // # The transaction is the caller's, except where there is no caller
 //
@@ -173,7 +196,18 @@ type Store interface {
 	// the batch. It is entirely atomic in the sense the transaction describes:
 	// an error returned from here is an error the caller unwinds, and nothing
 	// this call wrote survives it.
-	Record(ctx context.Context, tx database.Tx, entries []Entry, at time.Time) (RecordResult, error)
+	//
+	// Every entry in the batch is recorded for scope. A batch spanning two
+	// tenants is two calls, which is what the argument being the batch's rather
+	// than the entry's says: usage is ingested by whoever is holding the
+	// transaction, and one transaction belongs to one tenant's request.
+	Record(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		entries []Entry,
+		at time.Time,
+	) (RecordResult, error)
 
 	// Total reads one subject's total for a meter and period. It returns a zero
 	// Total, and no error, for a period nothing has been recorded against — an
@@ -183,7 +217,18 @@ type Store interface {
 	// A dashboard or a quota check holding no transaction passes Client.Reader();
 	// a caller that has just recorded usage passes the Tx it recorded in, and
 	// reads a total that includes what that transaction has not yet committed.
-	Total(ctx context.Context, q database.SQLQueryExecutor, subject, meter string, bounds Bounds) (*Total, error)
+	//
+	// There is no unscoped variant. A read that omitted the scope would answer
+	// with whichever tenant's row the key happened to reach first, which for a
+	// primary key that leads with the scope is no row at all — and the caller
+	// who reached for it is the caller who has not thought about tenancy.
+	Total(
+		ctx context.Context,
+		q database.SQLQueryExecutor,
+		scope tenancy.Scope,
+		subject, meter string,
+		bounds Bounds,
+	) (*Total, error)
 
 	// Consume atomically decides whether entry may be recorded against a limit,
 	// records it if so, and returns the decision, all in the caller's
@@ -206,6 +251,7 @@ type Store interface {
 	Consume(
 		ctx context.Context,
 		tx database.Tx,
+		scope tenancy.Scope,
 		entry Entry,
 		limit int64,
 		behavior QuotaBehavior,
@@ -214,6 +260,13 @@ type Store interface {
 
 	// ClaimFlushable leases the next batch of totals with usage the provider has
 	// not been told about, incrementing their attempt counts.
+	//
+	// It takes no scope, and crosses every one of them. A flusher is the
+	// component servicing itself rather than answering a consumer read: the
+	// backlog it drains is the deployment's, and a per-tenant flusher would be a
+	// worker nobody could schedule without first enumerating the tenants. Each
+	// Total it returns carries the scope its row holds, which is what the two
+	// settlements bind.
 	//
 	// It takes no executor. A lease exists so that the provider round trip that
 	// follows it happens outside a transaction — the claim has to be committed
@@ -226,6 +279,10 @@ type Store interface {
 
 	// MarkFlushed records a successful post: the flushed quantity advances to
 	// what was posted and the sequence increments, both in one statement.
+	//
+	// The scope is bound off total rather than passed: this settles the row this
+	// flusher claimed, and a scope the caller supplied would be a second opinion
+	// about which row that is.
 	//
 	// It is guarded on the sequence the flusher read, so a flusher whose lease
 	// lapsed while it was posting cannot advance a sequence a second flusher has
@@ -242,6 +299,8 @@ type Store interface {
 
 	// ReleaseFlush returns a total to the flushable set after a failed post,
 	// recording why and when it may be retried.
+	//
+	// The scope is bound off total, for MarkFlushed's reason.
 	//
 	// It takes no executor, for MarkFlushed's reason: it is the other half of
 	// the same guarded settlement, reached down the failure path of the same
@@ -261,7 +320,14 @@ type Store interface {
 	// evidence for an invoice line with it, and would let a redelivery of that
 	// same event be counted a second time.
 	//
-	// It takes no executor. Retention spans every subject and answers no
+	// It takes neither a scope nor an executor, and the scope is the load-bearing
+	// half: retention is one horizon over the whole table, and a per-tenant sweep
+	// would be a scheduler that has to enumerate the tenants before it can keep
+	// a table from growing. What it does not cross is a total's key — an event
+	// row is spared while the total it belongs to, that tenant's, still owes the
+	// provider usage.
+	//
+	// Retention spans every subject and answers no
 	// consumer read — it returns a count, not rows — and it runs from a
 	// scheduler tick rather than from anybody's request, so there is no
 	// transaction for it to join and no caller who would want it in theirs.

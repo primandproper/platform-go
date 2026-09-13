@@ -21,6 +21,7 @@ import (
 	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	tracingnoop "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -224,12 +225,12 @@ func TestConstructors(T *testing.T) {
 		// The assembled pieces agree about the tables, which is the whole reason
 		// they read one config.
 		must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
-			return recorder.Record(t.Context(), tx, metering.Usage{
+			return recorder.Record(t.Context(), tx, tenancy.Global(), metering.Usage{
 				Subject: "account-1", Meter: "api_requests", Quantity: 5, IdempotencyKey: "req-1",
 			})
 		}))
 
-		decision, err := enforcer.Check(t.Context(), "account-1", "api_requests", 1)
+		decision, err := enforcer.Check(t.Context(), tenancy.Global(), "account-1", "api_requests", 1)
 		must.NoError(t, err)
 		test.EqOp(t, int64(6), decision.Used)
 
@@ -291,7 +292,7 @@ func TestConstructors(T *testing.T) {
 		must.NoError(t, err)
 
 		must.NoError(t, client.WithTransaction(t.Context(), func(tx database.Tx) error {
-			return recorder.Record(t.Context(), tx, metering.Usage{
+			return recorder.Record(t.Context(), tx, tenancy.Global(), metering.Usage{
 				Subject: "account-1", Meter: "api_requests", Quantity: 5, IdempotencyKey: "req-1",
 			})
 		}))
@@ -328,7 +329,7 @@ func TestConstructors(T *testing.T) {
 		)
 		must.NoError(t, err)
 
-		decision, err := enforcer.Check(t.Context(), "account-1", "api_requests", 1)
+		decision, err := enforcer.Check(t.Context(), tenancy.Global(), "account-1", "api_requests", 1)
 		must.NoError(t, err)
 		test.False(t, decision.Allowed)
 		test.EqOp(t, int64(1), decision.Limit)
@@ -435,7 +436,7 @@ func TestConstructors(T *testing.T) {
 
 		// Reaching the custom tables at all is the assertion: a mismatch would
 		// surface as a missing table rather than a construction error.
-		_, err = store.Total(t.Context(), client.Reader(), "account-1", "api_requests", metering.Bounds{
+		_, err = store.Total(t.Context(), client.Reader(), tenancy.Global(), "account-1", "api_requests", metering.Bounds{
 			Start: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
 			End:   time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC),
 		})

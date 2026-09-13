@@ -12,6 +12,7 @@ import (
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/featureflags"
 	featureflagsnoop "github.com/primandproper/primitives-go/v2/featureflags/noop"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/samber/do/v2"
 	"github.com/shoenig/test"
@@ -80,7 +81,7 @@ func TestRegisterChecker(T *testing.T) {
 		checker, err := do.Invoke[entitlements.Checker](i)
 		must.NoError(t, err)
 
-		d, err := checker.Check(t.Context(), "account_123", "advanced_search")
+		d, err := checker.Check(t.Context(), tenancy.Global(), "account_123", "advanced_search")
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
 	})

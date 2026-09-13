@@ -14,6 +14,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -158,13 +159,19 @@ func (c *PlanChecker) initInstruments() error {
 }
 
 // Check implements Checker.
-func (c *PlanChecker) Check(ctx context.Context, account, feature string, opts ...CheckOption) (*Decision, error) {
-	return c.CheckQuantity(ctx, account, feature, 1, opts...)
+func (c *PlanChecker) Check(
+	ctx context.Context,
+	scope tenancy.Scope,
+	account, feature string,
+	opts ...CheckOption,
+) (*Decision, error) {
+	return c.CheckQuantity(ctx, scope, account, feature, 1, opts...)
 }
 
 // CheckQuantity implements Checker.
 func (c *PlanChecker) CheckQuantity(
 	ctx context.Context,
+	scope tenancy.Scope,
 	account, feature string,
 	quantity int64,
 	opts ...CheckOption,
@@ -172,6 +179,7 @@ func (c *PlanChecker) CheckQuantity(
 	co := newCheckOptions(opts)
 
 	ctx, op := c.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		scopeKey:    scope.String(),
 		accountKey:  account,
 		featureKey:  feature,
 		quantityKey: quantity,
@@ -184,6 +192,15 @@ func (c *PlanChecker) CheckQuantity(
 
 	if account == "" {
 		return nil, op.Error(ErrEmptyAccount, "checking entitlement")
+	}
+
+	// Refused here rather than only where it is used. A quota feature's answer
+	// comes from metering, which would refuse it anyway, and a boolean feature's
+	// does not reach metering at all — so a checker that let the zero value
+	// through would accept a lost scope on whichever features happen not to have
+	// a limit yet, and start refusing the day somebody adds one.
+	if err := scope.Validate(); err != nil {
+		return nil, op.Error(err, "checking entitlement")
 	}
 
 	f, ok := c.catalog.Feature(feature)
@@ -233,7 +250,7 @@ func (c *PlanChecker) CheckQuantity(
 		return c.finish(ctx, op, c.decideBoolean(ctx, op, account, &f, plan, included, stale, co.attributes)), nil
 	}
 
-	return c.decideQuota(ctx, op, account, &f, plan, grant, included, quantity, stale)
+	return c.decideQuota(ctx, op, scope, account, &f, plan, grant, included, quantity, stale)
 }
 
 // decideBoolean answers a boolean feature from the plan and the grant flag.
@@ -272,6 +289,7 @@ func (c *PlanChecker) decideBoolean(
 func (c *PlanChecker) decideQuota(
 	ctx context.Context,
 	op observability.Operation,
+	scope tenancy.Scope,
 	account string,
 	f *Feature,
 	plan string,
@@ -306,7 +324,7 @@ func (c *PlanChecker) decideQuota(
 		return c.finish(ctx, op, d), nil
 	}
 
-	decision, err := c.enforcer.Check(ctx, account, f.Meter, quantity)
+	decision, err := c.enforcer.Check(ctx, scope, account, f.Meter, quantity)
 	if err != nil {
 		return nil, op.Error(err, "checking metering quota for feature %q", f.Key)
 	}

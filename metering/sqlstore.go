@@ -19,6 +19,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // DefaultTablePrefix is the namespace the metering tables carry when none is
@@ -183,21 +184,29 @@ func meteringdbDialect(d dialect.Dialect) (meteringdb.Dialect, error) {
 func (s *SQLStore) Record(
 	ctx context.Context,
 	tx database.Tx,
+	scope tenancy.Scope,
 	entries []Entry,
 	at time.Time,
 ) (RecordResult, error) {
-	ctx, op := s.o11y.Begin(ctx, observability.WithValue(batchSizeKey, len(entries)))
+	ctx, op := s.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		batchSizeKey: len(entries),
+		scopeKey:     scope.String(),
+	}))
 	defer op.End()
 
 	if tx == nil {
 		return RecordResult{}, op.Error(ErrNilExecutor, "recording metering usage")
 	}
 
+	if err := scope.Validate(); err != nil {
+		return RecordResult{}, op.Error(err, "recording metering usage")
+	}
+
 	if len(entries) == 0 {
 		return RecordResult{}, nil
 	}
 
-	result, err := s.record(ctx, op, tx, entries, at)
+	result, err := s.record(ctx, op, tx, scope, entries, at)
 	if err != nil {
 		return RecordResult{}, err
 	}
@@ -219,6 +228,7 @@ func (s *SQLStore) record(
 	ctx context.Context,
 	op observability.Operation,
 	q meteringdb.DBTX,
+	scope tenancy.Scope,
 	entries []Entry,
 	at time.Time,
 ) (RecordResult, error) {
@@ -230,7 +240,7 @@ func (s *SQLStore) record(
 	for i := range entries {
 		entry := &entries[i]
 
-		inserted, err := s.insertEvent(ctx, q, entry, at)
+		inserted, err := s.insertEvent(ctx, q, scope, entry, at)
 		if err != nil {
 			return RecordResult{}, op.Error(err, "recording metering usage event")
 		}
@@ -251,7 +261,7 @@ func (s *SQLStore) record(
 	// same function, so the grouping cannot change the answer.
 	groups := groupEntries(accepted, s.resolution)
 	for i := range groups {
-		if err := s.fold(ctx, q, &groups[i], at); err != nil {
+		if err := s.fold(ctx, q, scope, &groups[i], at); err != nil {
 			return RecordResult{}, op.Error(err, "folding metering usage into its total")
 		}
 	}
@@ -268,8 +278,14 @@ func (s *SQLStore) record(
 // one — silently, and in the direction that under-bills. The seed skips a row
 // that is already there, and the fold is an UPDATE the server evaluates when it
 // gets there.
-func (s *SQLStore) fold(ctx context.Context, q meteringdb.DBTX, group *entryGroup, at time.Time) error {
-	if err := s.openTotal(ctx, q, group.subject, group.meter, group.aggregation, group.bounds, at); err != nil {
+func (s *SQLStore) fold(
+	ctx context.Context,
+	q meteringdb.DBTX,
+	scope tenancy.Scope,
+	group *entryGroup,
+	at time.Time,
+) error {
+	if err := s.openTotal(ctx, q, scope, group.subject, group.meter, group.aggregation, group.bounds, at); err != nil {
 		return err
 	}
 
@@ -279,6 +295,7 @@ func (s *SQLStore) fold(ctx context.Context, q meteringdb.DBTX, group *entryGrou
 		Quantity:       group.quantity,
 		LastOccurredAt: group.lastOccurredAt.UTC(),
 		LastUpdatedAt:  &stamped,
+		Scope:          scope,
 		Subject:        group.subject,
 		Meter:          group.meter,
 		PeriodStart:    group.bounds.Start.UTC(),
@@ -303,6 +320,7 @@ func (s *SQLStore) fold(ctx context.Context, q meteringdb.DBTX, group *entryGrou
 			LastOccurredAt: params.LastOccurredAt,
 			Quantity:       params.Quantity,
 			LastUpdatedAt:  params.LastUpdatedAt,
+			Scope:          params.Scope,
 			Subject:        params.Subject,
 			Meter:          params.Meter,
 			PeriodStart:    params.PeriodStart,
@@ -328,12 +346,14 @@ func (s *SQLStore) fold(ctx context.Context, q meteringdb.DBTX, group *entryGrou
 func (s *SQLStore) openTotal(
 	ctx context.Context,
 	q meteringdb.DBTX,
+	scope tenancy.Scope,
 	subject, meter string,
 	aggregation Aggregation,
 	bounds Bounds,
 	at time.Time,
 ) error {
 	_, err := s.q.InsertMeteringTotal(ctx, q, meteringdb.InsertMeteringTotalParams{
+		Scope:          scope,
 		Subject:        subject,
 		Meter:          meter,
 		PeriodStart:    bounds.Start.UTC(),
@@ -351,10 +371,16 @@ func (s *SQLStore) openTotal(
 	return err
 }
 
-// eventExists reports whether this entry's (meter, idempotency_key) is already
-// in the ledger.
-func (s *SQLStore) eventExists(ctx context.Context, q meteringdb.DBTX, entry *Entry) (bool, error) {
+// eventExists reports whether this entry's (scope, meter, idempotency_key) is
+// already in the ledger.
+func (s *SQLStore) eventExists(
+	ctx context.Context,
+	q meteringdb.DBTX,
+	scope tenancy.Scope,
+	entry *Entry,
+) (bool, error) {
 	row, err := s.q.MeteringEventExists(ctx, q, meteringdb.MeteringEventExistsParams{
+		Scope:          scope,
 		Meter:          entry.Meter,
 		IdempotencyKey: entry.IdempotencyKey,
 	})
@@ -374,6 +400,7 @@ func (s *SQLStore) eventExists(ctx context.Context, q meteringdb.DBTX, entry *En
 func (s *SQLStore) insertEvent(
 	ctx context.Context,
 	q meteringdb.DBTX,
+	scope tenancy.Scope,
 	entry *Entry,
 	at time.Time,
 ) (bool, error) {
@@ -383,6 +410,7 @@ func (s *SQLStore) insertEvent(
 	}
 
 	affected, err := s.q.InsertMeteringEvent(ctx, q, meteringdb.InsertMeteringEventParams{
+		Scope:          scope,
 		IdempotencyKey: entry.IdempotencyKey,
 		Subject:        entry.Subject,
 		Meter:          entry.Meter,
@@ -402,10 +430,12 @@ func (s *SQLStore) insertEvent(
 func (s *SQLStore) Total(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
 	subject, meter string,
 	bounds Bounds,
 ) (*Total, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		scopeKey:       scope.String(),
 		subjectKey:     subject,
 		meterKey:       meter,
 		periodStartKey: bounds.Start,
@@ -417,7 +447,12 @@ func (s *SQLStore) Total(
 		return nil, op.Error(ErrNilExecutor, "reading metering total")
 	}
 
+	if err := scope.Validate(); err != nil {
+		return nil, op.Error(err, "reading metering total")
+	}
+
 	row, err := s.q.GetMeteringTotal(ctx, q, meteringdb.GetMeteringTotalParams{
+		Scope:       scope,
 		Subject:     subject,
 		Meter:       meter,
 		PeriodStart: bounds.Start.UTC(),
@@ -427,7 +462,13 @@ func (s *SQLStore) Total(
 			// An absent row is a number, not a missing value: nothing recorded
 			// means nothing used. Returning an error here would make every read
 			// path branch on the ordinary case of a period that has just begun.
+			//
+			// The scope is carried onto that zero total rather than left unset,
+			// because it is the scope this read asked about: a caller folding the
+			// answer back into a write would otherwise be handed a Total no
+			// statement would accept.
 			return &Total{
+				Scope:       scope,
 				Subject:     subject,
 				Meter:       meter,
 				PeriodStart: bounds.Start.UTC(),
@@ -449,12 +490,14 @@ func (s *SQLStore) Total(
 func (s *SQLStore) Consume(
 	ctx context.Context,
 	tx database.Tx,
+	scope tenancy.Scope,
 	entry Entry,
 	limit int64,
 	behavior QuotaBehavior,
 	at time.Time,
 ) (*Decision, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		scopeKey:       scope.String(),
 		subjectKey:     entry.Subject,
 		meterKey:       entry.Meter,
 		quantityKey:    entry.Quantity,
@@ -470,7 +513,11 @@ func (s *SQLStore) Consume(
 		return nil, op.Error(ErrNilExecutor, "consuming metering quota")
 	}
 
-	decision, err := s.consume(ctx, op, tx, &entry, limit, behavior, at)
+	if err := scope.Validate(); err != nil {
+		return nil, op.Error(err, "consuming metering quota")
+	}
+
+	decision, err := s.consume(ctx, op, tx, scope, &entry, limit, behavior, at)
 	if err != nil {
 		return nil, err
 	}
@@ -503,16 +550,18 @@ func (s *SQLStore) consume(
 	ctx context.Context,
 	op observability.Operation,
 	q meteringdb.DBTX,
+	scope tenancy.Scope,
 	entry *Entry,
 	limit int64,
 	behavior QuotaBehavior,
 	at time.Time,
 ) (*Decision, error) {
-	if err := s.openTotal(ctx, q, entry.Subject, entry.Meter, entry.Aggregation, entry.Bounds, at); err != nil {
+	if err := s.openTotal(ctx, q, scope, entry.Subject, entry.Meter, entry.Aggregation, entry.Bounds, at); err != nil {
 		return nil, op.Error(err, "opening metering total")
 	}
 
 	row, err := s.q.GetMeteringTotalForUpdate(ctx, q, meteringdb.GetMeteringTotalForUpdateParams{
+		Scope:       scope,
 		Subject:     entry.Subject,
 		Meter:       entry.Meter,
 		PeriodStart: entry.Bounds.Start.UTC(),
@@ -551,7 +600,7 @@ func (s *SQLStore) consume(
 		// burning the idempotency key on a consume that recorded nothing would make
 		// the caller's next retry look like a duplicate and be answered with a
 		// total that never included their usage.
-		counted, probeErr := s.eventExists(ctx, q, entry)
+		counted, probeErr := s.eventExists(ctx, q, scope, entry)
 		if probeErr != nil {
 			return nil, op.Error(probeErr, "probing metering dedupe")
 		}
@@ -567,7 +616,7 @@ func (s *SQLStore) consume(
 		return decision, nil
 	}
 
-	inserted, err := s.insertEvent(ctx, q, entry, at)
+	inserted, err := s.insertEvent(ctx, q, scope, entry, at)
 	if err != nil {
 		return nil, op.Error(err, "recording metering usage event")
 	}
@@ -594,6 +643,7 @@ func (s *SQLStore) consume(
 		Quantity:       projected,
 		LastOccurredAt: laterOf(total.LastOccurredAt, occurred),
 		LastUpdatedAt:  &stamped,
+		Scope:          scope,
 		Subject:        entry.Subject,
 		Meter:          entry.Meter,
 		PeriodStart:    entry.Bounds.Start.UTC(),
@@ -688,9 +738,13 @@ func (s *SQLStore) claim(
 
 		affected, leaseErr := s.q.ClaimMeteringTotal(ctx, q, meteringdb.ClaimMeteringTotalParams{
 			ClaimedUntil: &leased,
-			Subject:      total.Subject,
-			Meter:        total.Meter,
-			PeriodStart:  total.PeriodStart,
+			// Bound off the row just read, not off a scope anybody named: this
+			// pass crosses every tenant, and the lease has to address the row
+			// it selected.
+			Scope:       total.Scope,
+			Subject:     total.Subject,
+			Meter:       total.Meter,
+			PeriodStart: total.PeriodStart,
 		})
 		if leaseErr != nil {
 			return nil, op.Error(leaseErr, "claiming flushable metering total")
@@ -719,6 +773,7 @@ func (s *SQLStore) MarkFlushed(ctx context.Context, total *Total, flushed int64,
 	}
 
 	op.SetValues(map[string]any{
+		scopeKey:       total.Scope.String(),
 		subjectKey:     total.Subject,
 		meterKey:       total.Meter,
 		sequenceKey:    total.FlushSequence,
@@ -734,6 +789,7 @@ func (s *SQLStore) MarkFlushed(ctx context.Context, total *Total, flushed int64,
 		FlushedQuantity: flushed,
 		NextFlush:       at.UTC(),
 		LastUpdatedAt:   &stamped,
+		Scope:           total.Scope,
 		Subject:         total.Subject,
 		Meter:           total.Meter,
 		PeriodStart:     total.PeriodStart.UTC(),
@@ -753,6 +809,7 @@ func (s *SQLStore) ReleaseFlush(ctx context.Context, total *Total, lastErr strin
 	}
 
 	op.SetValues(map[string]any{
+		scopeKey:       total.Scope.String(),
 		subjectKey:     total.Subject,
 		meterKey:       total.Meter,
 		sequenceKey:    total.FlushSequence,
@@ -772,6 +829,7 @@ func (s *SQLStore) ReleaseFlush(ctx context.Context, total *Total, lastErr strin
 		LastError:     lastErr,
 		ClaimedUntil:  nil,
 		LastUpdatedAt: &stamped,
+		Scope:         total.Scope,
 		Subject:       total.Subject,
 		Meter:         total.Meter,
 		PeriodStart:   total.PeriodStart.UTC(),
@@ -958,7 +1016,7 @@ func laterOf(a, b time.Time) time.Time {
 // worse, as two same-typed columns silently transposed.
 //
 // It takes the claim read's row type because every read of this table projects
-// the same twelve columns in the same order, so the three generated row structs
+// the same thirteen columns in the same order, so the three generated row structs
 // are one shape under three names and the two single-row reads convert to this
 // one. That conversion is checked: a projection that drifted would change one
 // struct and not the others, and the conversion would stop compiling.
@@ -974,6 +1032,7 @@ func totalFrom(row *meteringdb.SelectFlushableMeteringTotalsRow) *Total {
 		PeriodEnd:       row.PeriodEnd.UTC(),
 		LastOccurredAt:  row.LastOccurredAt.UTC(),
 		NextFlush:       row.NextFlush.UTC(),
+		Scope:           row.Scope,
 		Subject:         row.Subject,
 		Meter:           row.Meter,
 		LastError:       row.LastError,
