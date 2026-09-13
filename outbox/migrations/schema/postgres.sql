@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS outbox_messages (
     created_at    TIMESTAMPTZ NOT NULL,
     next_attempt  TIMESTAMPTZ NOT NULL,
     claimed_until TIMESTAMPTZ,
+    claimed_by    TEXT,
     published_at  TIMESTAMPTZ,
     attempts      INTEGER NOT NULL DEFAULT 0,
     last_error    TEXT,

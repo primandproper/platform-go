@@ -11,13 +11,16 @@ import (
 
 // ClaimOutboxMessagesParams are the arguments to ClaimOutboxMessages.
 type ClaimOutboxMessagesParams struct {
-	ClaimedUntil *time.Time
-	IDs          []string
+	ClaimedUntil   *time.Time
+	ClaimedBy      *string
+	LeaseExpiredBy *time.Time
+	IDs            []string
 }
 
 // FetchClaimedOutboxMessagesParams are the arguments to FetchClaimedOutboxMessages.
 type FetchClaimedOutboxMessagesParams struct {
-	IDs []string
+	ClaimedBy *string
+	IDs       []string
 }
 
 // FetchClaimedOutboxMessagesRow is one row of FetchClaimedOutboxMessages's result.
@@ -59,6 +62,7 @@ type ReapPublishedOutboxMessagesParams struct {
 // RecordOutboxMessageFailureParams are the arguments to RecordOutboxMessageFailure.
 type RecordOutboxMessageFailureParams struct {
 	ClaimedUntil *time.Time
+	ClaimedBy    *string
 	NextAttempt  time.Time
 	LastError    *string
 	Quarantined  bool

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}outbox_messages (
     created_at    DATETIME(6)  NOT NULL,
     next_attempt  DATETIME(6)  NOT NULL,
     claimed_until DATETIME(6)  NULL,
+    claimed_by    VARCHAR(64)  NULL,
     published_at  DATETIME(6)  NULL,
     attempts      INT          NOT NULL DEFAULT 0,
     last_error    TEXT         NULL,

@@ -13,8 +13,10 @@ import (
 
 const claimOutboxMessagesMySQL = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = ?,
+	claimed_by = ?,
 	attempts = attempts + 1
-WHERE id IN (/*SLICE:ids*/?)`
+WHERE (claimed_until IS NULL OR claimed_until <= ?)
+	AND id IN (/*SLICE:ids*/?)`
 
 const fetchClaimedOutboxMessagesMySQL = `SELECT
 	id,
@@ -23,7 +25,8 @@ const fetchClaimedOutboxMessagesMySQL = `SELECT
 	payload,
 	attempts
 FROM {{prefix}}outbox_messages
-WHERE id IN (/*SLICE:ids*/?)
+WHERE claimed_by = ?
+	AND id IN (/*SLICE:ids*/?)
 ORDER BY created_at, id`
 
 const insertOutboxMessageMySQL = `
@@ -46,6 +49,7 @@ INSERT INTO {{prefix}}outbox_messages (
 const markOutboxMessagesPublishedMySQL = `UPDATE {{prefix}}outbox_messages SET
 	published_at = ?,
 	claimed_until = NULL,
+	claimed_by = NULL,
 	last_error = NULL
 WHERE id IN (/*SLICE:ids*/?)`
 
@@ -72,6 +76,7 @@ LIMIT ?`
 
 const recordOutboxMessageFailureMySQL = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = ?,
+	claimed_by = ?,
 	next_attempt = ?,
 	last_error = ?,
 	quarantined = ?
@@ -147,9 +152,13 @@ func newMySQL(prefix string) *mysqlQueries {
 func (q *mysqlQueries) ClaimOutboxMessages(ctx context.Context, db DBTX, arg ClaimOutboxMessagesParams) error {
 	query := q.claimOutboxMessages
 
-	args := make([]any, 0, 1+len(arg.IDs))
+	args := make([]any, 0, 3+len(arg.IDs))
 
 	args = append(args, arg.ClaimedUntil)
+
+	args = append(args, arg.ClaimedBy)
+
+	args = append(args, arg.LeaseExpiredBy)
 
 	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
 
@@ -166,7 +175,9 @@ func (q *mysqlQueries) ClaimOutboxMessages(ctx context.Context, db DBTX, arg Cla
 func (q *mysqlQueries) FetchClaimedOutboxMessages(ctx context.Context, db DBTX, arg FetchClaimedOutboxMessagesParams) ([]FetchClaimedOutboxMessagesRow, error) {
 	query := q.fetchClaimedOutboxMessages
 
-	args := make([]any, 0, len(arg.IDs))
+	args := make([]any, 0, 1+len(arg.IDs))
+
+	args = append(args, arg.ClaimedBy)
 
 	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
 
@@ -270,6 +281,7 @@ func (q *mysqlQueries) ReapPublishedOutboxMessages(ctx context.Context, db DBTX,
 func (q *mysqlQueries) RecordOutboxMessageFailure(ctx context.Context, db DBTX, arg RecordOutboxMessageFailureParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordOutboxMessageFailure,
 		arg.ClaimedUntil,
+		arg.ClaimedBy,
 		arg.NextAttempt,
 		arg.LastError,
 		arg.Quarantined,
@@ -358,11 +370,14 @@ func (q *mysqlQueries) SelectClaimableOutboxMessagesSkipLocked(ctx context.Conte
 // transposition at run time.
 var (
 	_ = struct {
-		ClaimedUntil *time.Time
-		IDs          []string
+		ClaimedUntil   *time.Time
+		ClaimedBy      *string
+		LeaseExpiredBy *time.Time
+		IDs            []string
 	}(ClaimOutboxMessagesParams{})
 	_ = struct {
-		IDs []string
+		ClaimedBy *string
+		IDs       []string
 	}(FetchClaimedOutboxMessagesParams{})
 	_ = struct {
 		ID           string
@@ -392,6 +407,7 @@ var (
 	}(ReapPublishedOutboxMessagesParams{})
 	_ = struct {
 		ClaimedUntil *time.Time
+		ClaimedBy    *string
 		NextAttempt  time.Time
 		LastError    *string
 		Quarantined  bool

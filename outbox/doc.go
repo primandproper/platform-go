@@ -132,15 +132,22 @@ redelivers on restart. Consumers must tolerate duplicates. messagequeue.Publishe
 does carry a per-message deduplication key, but the Relay does not set one, so
 callers who need dedupe still put their own idempotency key inside the payload.
 
-Ordering depends on the claim mode and on Message.Key. ClaimSkipLocked lets
-several relays run concurrently and interleave batches, which gives up global
-ordering. Per-key ordering survives regardless, because the claim predicate
-admits a keyed message only when no older message with that key is still
-pending: at most one message per key is ever in flight across the whole fleet,
-so its successor cannot be published until it lands. Unkeyed messages skip that
-check and claim freely. ClaimLease serializes on a single relay and preserves
-global order. Postgres and MySQL support both modes; SQLite has no SKIP LOCKED
-and always uses ClaimLease.
+Ordering depends on how many relays are running and on Message.Key. Several
+relays interleave batches under either claim mode, which gives up global
+ordering; a single relay preserves it. Per-key ordering survives regardless,
+because the claim predicate admits a keyed message only when no older message
+with that key is still pending: at most one message per key is ever in flight
+across the whole fleet, so its successor cannot be published until it lands.
+Unkeyed messages skip that check and claim freely.
+
+What the mode decides is how the fleet divides the backlog, not whether it
+divides it. ClaimSkipLocked locks the batch as it selects it, so a second relay
+selecting at the same instant skips past to a batch of its own. ClaimLease
+selects without locking, so relays ordinarily read the same batch and the
+guarded claim hands it to whichever of them gets there first — the losers write
+no lease, read back no rows, and publish nothing that cycle. Both are exclusive;
+only one of them is contention-free, which is why a fleet on Postgres or MySQL
+wants the locking mode. SQLite has no SKIP LOCKED and always uses ClaimLease.
 
 All of that holds up to the publish call and not past it. The Relay does not
 forward Message.Key as the publisher's ordering key, so what a broker does with

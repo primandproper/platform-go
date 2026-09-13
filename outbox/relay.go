@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/messagequeue"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/keys"
@@ -39,7 +40,9 @@ const (
 	messageCountKey    = "outbox.message_count"
 	partitionKeyKey    = "outbox.partition_key"
 	attemptsKey        = "outbox.attempts"
+	selectedKey        = "outbox.selected"
 	claimedKey         = "outbox.claimed"
+	claimTokenKey      = "outbox.claim_token"
 	claimModeKey       = "outbox.claim_mode"
 	batchSizeKey       = "outbox.batch_size"
 	backlogDepthKey    = "outbox.backlog_depth"
@@ -413,13 +416,29 @@ func (r *Relay) publisherFor(ctx context.Context, topic string) (messagequeue.Pu
 	return p, nil
 }
 
-// claim selects a batch, leases it, and reads it back — all in one
-// transaction, so two relays cannot lease the same rows.
+// claim selects a batch, takes what of it is still free, and reads back the
+// rows it took — all in one transaction.
+//
+// The batch the select returns is a request rather than a holding. In the lease
+// mode the select takes no lock, so two relays ordinarily read the same ids;
+// what divides them is the guarded UPDATE, which leases a row only while it is
+// still free and stamps this claim's name on the ones it wins. The read-back
+// then asks for that name rather than for the ids, so a relay that lost some or
+// all of its batch publishes only what it actually holds. See
+// outbox/internal/queries.
+//
+// The name is minted here, once per claim, rather than carried on the Relay: it
+// identifies the claim and not the relay, so a second cycle cannot read back a
+// first cycle's rows. It goes onto the span as well as into the row, which is
+// what lets an operator join a stuck lease to the cycle that took it.
 func (r *Relay) claim(ctx context.Context) ([]claimedMessage, error) {
+	claimToken := identifiers.New()
+
 	ctx, op := r.o11y.Begin(ctx, observability.WithValues(map[string]any{
-		claimModeKey: string(r.cfg.ClaimMode),
-		batchSizeKey: r.cfg.BatchSize,
-		"db.system":  string(r.dialect),
+		claimModeKey:  string(r.cfg.ClaimMode),
+		batchSizeKey:  r.cfg.BatchSize,
+		claimTokenKey: claimToken,
+		"db.system":   string(r.dialect),
 	}))
 	defer op.End()
 
@@ -433,20 +452,31 @@ func (r *Relay) claim(ctx context.Context) ([]claimedMessage, error) {
 			return platformerrors.Wrap(err, "selecting claimable outbox messages")
 		}
 
+		op.Set(selectedKey, len(ids))
+
 		if len(ids) == 0 {
 			return nil
 		}
 
 		leaseUntil := now.Add(r.cfg.LeaseDuration)
 
+		// The horizon this claim writes and the horizon it tests against are
+		// the two ends of one lease, bound from the one clock read above: a
+		// row is free when its lease has reached now, and held until now plus
+		// the duration.
 		if err = r.q.ClaimOutboxMessages(ctx, q, outboxdb.ClaimOutboxMessagesParams{
-			ClaimedUntil: &leaseUntil,
-			IDs:          ids,
+			ClaimedUntil:   &leaseUntil,
+			ClaimedBy:      &claimToken,
+			LeaseExpiredBy: &now,
+			IDs:            ids,
 		}); err != nil {
 			return platformerrors.Wrap(err, "claiming outbox messages")
 		}
 
-		rows, err := r.q.FetchClaimedOutboxMessages(ctx, q, outboxdb.FetchClaimedOutboxMessagesParams{IDs: ids})
+		rows, err := r.q.FetchClaimedOutboxMessages(ctx, q, outboxdb.FetchClaimedOutboxMessagesParams{
+			ClaimedBy: &claimToken,
+			IDs:       ids,
+		})
 		if err != nil {
 			return platformerrors.Wrap(err, "reading claimed outbox messages")
 		}
@@ -512,10 +542,12 @@ func (r *Relay) recordFailure(ctx context.Context, msg *claimedMessage, cause er
 
 	// The lease is released by binding it to nothing rather than by leaving it
 	// out of the statement: a message whose publish failed must be reclaimable
-	// before its lease would have lapsed on its own.
+	// before its lease would have lapsed on its own. The name on the lease goes
+	// with it, so a free row never reads as one somebody is still holding.
 	if _, err := r.q.RecordOutboxMessageFailure(ctx, r.client.Writer(), outboxdb.RecordOutboxMessageFailureParams{
 		ID:           msg.id,
 		ClaimedUntil: nil,
+		ClaimedBy:    nil,
 		NextAttempt:  nextAttempt,
 		LastError:    &lastErr,
 		Quarantined:  quarantine,
