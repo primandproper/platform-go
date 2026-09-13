@@ -184,12 +184,24 @@ rather than off the struct that was passed to it.
 A user without an account, or an account without an owner, is the failure mode
 every application discovers in production rather than in a test, and the shape
 above is what rules it out — which is why [Service] ships it rather than this
-documentation showing it. [Service.Register] is that block, and its eight
+documentation showing it. [Service.Register] is that block, and its twenty-one
 siblings are the rest of what the block-writing turned out to be: the
 invitation lifecycle, an ownership transfer, a default-account switch, an
-archival with its membership fan-out, and the two administrative status
-changes. Measured in the consumer this package was extracted from, the layer
+archival with its membership fan-out, the two administrative status changes,
+the profile and account saves, an agreement, the two roster writes, and the
+seven credential writes. Measured in the consumer this package was extracted from, the layer
 those replace is a little over two thousand lines.
+
+The credential seven are the group that needed an argument, because
+[github.com/primandproper/platform-go/v14/authentication/signin] already writes
+three of them and asks for the current password first. That is the right rule
+for somebody changing their own credential and an impossible one for every flow
+that has no current password to ask for: a reset answering a mailed link, an
+operator forcing a change, a verification link that is itself the proof. Those
+flows were reaching [CredentialStore] directly, and a store write is a place a
+consumer's audit entry has nothing to commit with — so each of them is an
+operation here too, hooked the same way, holding no more policy than the rest.
+[Service.UpdateUserPassword] carries the long form.
 
 The transaction is the Service's there rather than the caller's, which is the
 one place this package departs from the module's store convention and does so
