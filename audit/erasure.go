@@ -25,10 +25,18 @@ import (
 // subject, the basis retained entries are kept under, and the registry the
 // eraser is wired into.
 //
-// Like the Recorder, it holds no database handle. Each method takes the
-// caller's executor, so both statements run inside the erasure transaction
+// Like the Recorder, it holds no database handle. DeleteScopes takes the
+// caller's transaction and CountMentions the wider executor, which is the
+// module's store shape and here it is load-bearing rather than conventional:
+// both of the deletion's statements run inside the erasure transaction
 // dataprivacy opened — an audit deletion that committed while the erasure it
-// belongs to rolled back would be a record of something that did not happen.
+// belongs to rolled back would be a record of something that did not happen —
+// and a database.Tx is producible only by database.RunInTransaction, so the
+// signature is what makes that a compile-time fact instead of a sentence.
+// The count takes the wider type because database.Tx satisfies it, so the
+// caller inside the erasure transaction still sees that transaction's own
+// deletion and a caller merely asking what would be retained needs no
+// transaction to ask.
 //
 // # Why the division is what it is
 //
@@ -117,8 +125,14 @@ func (e *Erasure) Describe() string {
 // render is the one tenancy.Global names — so a resolver that lost a scope
 // somewhere in the middle of its list would delete the platform's own log
 // instead of dropping a member from a set.
-func (e *Erasure) DeleteScopes(ctx context.Context, q database.SQLQueryExecutor, scopes []tenancy.Scope) (int64, error) {
-	if q == nil {
+//
+// The transaction is the argument's type rather than the caller's promise. This
+// is the most destructive write the module ships — it removes a subject's whole
+// chain, entries and chain rows both — and the two statements it sends have to
+// land or fail together, so an autocommit handle is not a thing a caller may
+// hand it.
+func (e *Erasure) DeleteScopes(ctx context.Context, tx database.Tx, scopes []tenancy.Scope) (int64, error) {
+	if tx == nil {
 		return 0, ErrNilExecutor
 	}
 
@@ -131,13 +145,13 @@ func (e *Erasure) DeleteScopes(ctx context.Context, q database.SQLQueryExecutor,
 		return 0, err
 	}
 
-	deleted, err := e.q.DeleteAuditLogEntriesInScopes(ctx, q,
+	deleted, err := e.q.DeleteAuditLogEntriesInScopes(ctx, tx,
 		auditdb.DeleteAuditLogEntriesInScopesParams{Scopes: owners})
 	if err != nil {
 		return 0, platformerrors.Wrap(err, "deleting audit entries for subject scopes")
 	}
 
-	if err = e.q.DeleteAuditChainsInScopes(ctx, q,
+	if err = e.q.DeleteAuditChainsInScopes(ctx, tx,
 		auditdb.DeleteAuditChainsInScopesParams{Scopes: owners}); err != nil {
 		return 0, platformerrors.Wrap(err, "deleting audit chains for subject scopes")
 	}
