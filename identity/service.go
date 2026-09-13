@@ -35,6 +35,20 @@ const (
 	opRecordAgreement          = "record_agreement"
 	opSetMembershipRoles       = "set_membership_roles"
 	opRemoveMembership         = "remove_membership"
+
+	// The credential operations, in credential_service.go. They are in the same
+	// block because they label the same instruments: a dashboard asking how many
+	// identity operations failed means all of them.
+	opUpdateUserPassword              = "update_user_password"
+	opSetUserRequiresPasswordChange   = "set_user_requires_password_change"
+	opUpdateUserTwoFactorSecret       = "update_user_two_factor_secret"
+	opMarkUserTwoFactorSecretVerified = "mark_user_two_factor_secret_verified"
+	// gosec's credential pattern matches the name below rather than anything in
+	// the value, which is a metric label naming a statement. The token itself is
+	// minted per user by the caller and appears in no constant here.
+	opSetUserEmailAddressVerificationToken = "set_user_email_address_verification_token" //nolint:gosec // G101
+	opMarkUserEmailAddressVerified         = "mark_user_email_address_verified"
+	opMarkUserEmailAddressUnverified       = "mark_user_email_address_unverified"
 )
 
 // Registration is what a completed registration produced: the user, the account

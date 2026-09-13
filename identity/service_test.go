@@ -22,8 +22,8 @@ var errHookRefused = platformerrors.New("hook said no")
 
 // recordingHooks is the Hooks a case reads back: which hook ran, and with what.
 //
-// It embeds NoopHooks rather than implementing all fifteen, which is the shape the
-// documentation tells consumers to use — so the suite exercises that shape as
+// It embeds NoopHooks rather than implementing all twenty-two, which is the shape
+// the documentation tells consumers to use — so the suite exercises that shape as
 // well as the hooks it overrides.
 type recordingHooks struct {
 	NoopHooks
@@ -40,6 +40,9 @@ type recordingHooks struct {
 	membership   *Membership
 	user         *User
 
+	// What the credential hooks were told about the column their write cleared.
+	previousVerifiedAt *time.Time
+
 	previousOwnerUserID string
 	previousAccountID   string
 	previousStatus      AccountStatus
@@ -51,7 +54,8 @@ type recordingHooks struct {
 	agreements       []Agreement
 	endedMemberships []*Membership
 
-	mu sync.Mutex
+	mu                       sync.Mutex
+	previouslyRequiredChange bool
 }
 
 var _ Hooks = (*recordingHooks)(nil)
@@ -245,6 +249,86 @@ func (h *recordingHooks) AfterRemoveMembership(
 	h.membership, h.newDefaultAccountID = membership, newDefaultAccountID
 
 	return h.record(ctx, tx, "remove_membership")
+}
+
+// The seven credential hooks. They record the user and, for the three that get
+// one, the value of the column their write cleared.
+
+func (h *recordingHooks) AfterUpdateUserPassword(
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, user *User, previouslyRequiredChange bool,
+) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.user, h.previouslyRequiredChange = user, previouslyRequiredChange
+
+	return h.record(ctx, tx, "password")
+}
+
+func (h *recordingHooks) AfterSetUserRequiresPasswordChange(
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, user *User,
+) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.user = user
+
+	return h.record(ctx, tx, "requires_password_change")
+}
+
+func (h *recordingHooks) AfterUpdateUserTwoFactorSecret(
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, user *User, previousSecretVerifiedAt *time.Time,
+) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.user, h.previousVerifiedAt = user, previousSecretVerifiedAt
+
+	return h.record(ctx, tx, "totp_secret")
+}
+
+func (h *recordingHooks) AfterMarkUserTwoFactorSecretVerified(
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, user *User,
+) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.user = user
+
+	return h.record(ctx, tx, "totp_verified")
+}
+
+func (h *recordingHooks) AfterSetUserEmailAddressVerificationToken(
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, user *User, previousAddressVerifiedAt *time.Time,
+) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.user, h.previousVerifiedAt = user, previousAddressVerifiedAt
+
+	return h.record(ctx, tx, "email_token")
+}
+
+func (h *recordingHooks) AfterMarkUserEmailAddressVerified(
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, user *User,
+) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.user = user
+
+	return h.record(ctx, tx, "email_verified")
+}
+
+func (h *recordingHooks) AfterMarkUserEmailAddressUnverified(
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, user *User,
+) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.user = user
+
+	return h.record(ctx, tx, "email_unverified")
 }
 
 // newService builds a Service over a freshly migrated set of tables, and hands
@@ -1246,7 +1330,7 @@ func TestNoopHooks(t *testing.T) {
 	// of all of them — one that returned an error would abort an operation its
 	// embedder never opted into — and a list here is a second place to forget a
 	// method, which is what a written-out one did when Hooks grew from ten to
-	// fifteen.
+	// fifteen and again at twenty-two.
 	hooksType := reflect.TypeFor[Hooks]()
 	noop := reflect.ValueOf(hooks)
 

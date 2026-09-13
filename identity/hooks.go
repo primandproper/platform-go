@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"time"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -204,6 +205,141 @@ type Hooks interface {
 		membership *Membership,
 		newDefaultAccountID string,
 	) error
+
+	// The credential hooks, one per write in [CredentialStore] — the half of
+	// the directory the authentication engines write to.
+	//
+	// None of them sees a credential. The user each is handed is redacted, so
+	// the hash, the TOTP secret and the verification token are gone before a
+	// hook could record one, and that is the point rather than a limitation: a
+	// hook is by definition something that writes elsewhere, and a live
+	// second-factor secret or an unredeemed verification link written anywhere
+	// twice is a credential with two holders. What is recordable is that the
+	// credential moved, whose it was, and when — and the columns carrying those
+	// three all survive redaction.
+	//
+	// Three of the seven take a second argument, and in each case it is the
+	// value of a column the write cleared on its way past rather than as its
+	// purpose: the forced-change flag UpdateUserPassword releases, and the
+	// verification stamp the two issuing writes drop. A hook is told what it
+	// could not have read for itself a statement later, and nothing else.
+
+	// AfterUpdateUserPassword is called with the user whose password changed, as
+	// the write left them and redacted, and whether a change had been forced on
+	// them before it.
+	//
+	// Neither hash is here, the new one because it is a credential and the old
+	// one because it is a credential somebody may still be trying. What the row
+	// carries is PasswordLastChangedAt, stamped by this write, which is the fact
+	// a record of a rotation is written from.
+	//
+	// previouslyRequiredChange is the flag the write released. It is an argument
+	// because the write clears it, so a hook reading the row afterwards finds
+	// false either way — and "the user completed a change an operator compelled"
+	// is not the entry "the user rotated a password they still knew".
+	AfterUpdateUserPassword(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		user *User,
+		previouslyRequiredChange bool,
+	) error
+
+	// AfterSetUserRequiresPasswordChange is called with the user an operator
+	// forced or released a password change on, read back after the write and
+	// redacted.
+	//
+	// No before-image, unlike the two role setters. The row carries
+	// RequiresPasswordChange and this write assigned it, so what the hook reads
+	// is what the operator chose; a bool's previous value would let an entry say
+	// the requirement was already in force, which is not what the requirement
+	// being imposed is a record of.
+	AfterSetUserRequiresPasswordChange(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *User) error
+
+	// AfterUpdateUserTwoFactorSecret is called with the user who was issued a
+	// new second-factor secret, redacted, and the moment the secret it replaced
+	// had been proven.
+	//
+	// The new secret is unproven — the store will not be told otherwise — so
+	// between this and AfterMarkUserTwoFactorSecretVerified the user holds no
+	// second factor at all.
+	//
+	// previousSecretVerifiedAt is the proof the write dropped, and is nil for a
+	// user who never demonstrated possession of the secret they held. It is what
+	// separates a consumer alerting on "a proven second factor was replaced"
+	// from one watching an enrollment get restarted, which are the same row and
+	// very different events.
+	AfterUpdateUserTwoFactorSecret(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		user *User,
+		previousSecretVerifiedAt *time.Time,
+	) error
+
+	// AfterMarkUserTwoFactorSecretVerified is called with the user who proved
+	// possession of the secret they hold, redacted.
+	//
+	// It is the row the write answered with, so TwoFactorSecretVerifiedAt holds
+	// the moment being recorded rather than whatever it held a statement
+	// earlier. A replayed verification never reaches here at all: the write
+	// matches nothing and the operation fails with ErrUserNotFound.
+	AfterMarkUserTwoFactorSecretVerified(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		user *User,
+	) error
+
+	// AfterSetUserEmailAddressVerificationToken is called with the user a
+	// verification link was minted for, read back after the write and redacted,
+	// and the moment their address had last been proven.
+	//
+	// The token is not here, and the mail is not sent from here either — see
+	// what this interface says a held-open transaction costs. What belongs in
+	// the hook is the outbox row the mail is sent from, and the token belongs to
+	// whoever minted it, which is the caller.
+	//
+	// previousAddressVerifiedAt is the proof the write dropped, because a row
+	// may not say both "proven" and "a link is outstanding". It is nil for the
+	// ordinary case, a link minted for an address nobody has proven yet, and set
+	// for the one worth alerting on: an address that was proven and now is not.
+	AfterSetUserEmailAddressVerificationToken(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		user *User,
+		previousAddressVerifiedAt *time.Time,
+	) error
+
+	// AfterMarkUserEmailAddressVerified is called with the user whose address is
+	// now proven, read back after the write and redacted.
+	//
+	// The address on that row is the fact worth recording: the column this write
+	// stamps says when something was proven and never which address it was. Two
+	// clicks on one link reach here once, since the second finds the token
+	// already burned.
+	AfterMarkUserEmailAddressVerified(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		user *User,
+	) error
+
+	// AfterMarkUserEmailAddressUnverified is called with the user whose address
+	// stopped being proven, as the write answered with them, redacted.
+	//
+	// No previous stamp, unlike the two writes that drop a proof on the way to
+	// doing something else: withdrawing it is what this write is for, and what a
+	// record of that needs is the address the proof was withdrawn from rather
+	// than the moment it was made. That address is on the row, which is the
+	// reason the store answers with one.
+	AfterMarkUserEmailAddressUnverified(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		user *User,
+	) error
 }
 
 var _ Hooks = NoopHooks{}
@@ -226,8 +362,8 @@ var _ Hooks = NoopHooks{}
 //		return h.audit.Record(ctx, tx, scope, "user.registered", r.User.ID)
 //	}
 //
-// Embedding rather than implementing all fifteen is what keeps a method added to
-// Hooks later from breaking every consumer — a new operation arrives as a
+// Embedding rather than implementing all twenty-two is what keeps a method added
+// to Hooks later from breaking every consumer — a new operation arrives as a
 // no-op they can then choose to override.
 type NoopHooks struct{}
 
@@ -322,6 +458,55 @@ func (NoopHooks) AfterSetMembershipRoles(
 // AfterRemoveMembership does nothing.
 func (NoopHooks) AfterRemoveMembership(
 	context.Context, database.Tx, tenancy.Scope, *Membership, string,
+) error {
+	return nil
+}
+
+// AfterUpdateUserPassword does nothing.
+func (NoopHooks) AfterUpdateUserPassword(
+	context.Context, database.Tx, tenancy.Scope, *User, bool,
+) error {
+	return nil
+}
+
+// AfterSetUserRequiresPasswordChange does nothing.
+func (NoopHooks) AfterSetUserRequiresPasswordChange(
+	context.Context, database.Tx, tenancy.Scope, *User,
+) error {
+	return nil
+}
+
+// AfterUpdateUserTwoFactorSecret does nothing.
+func (NoopHooks) AfterUpdateUserTwoFactorSecret(
+	context.Context, database.Tx, tenancy.Scope, *User, *time.Time,
+) error {
+	return nil
+}
+
+// AfterMarkUserTwoFactorSecretVerified does nothing.
+func (NoopHooks) AfterMarkUserTwoFactorSecretVerified(
+	context.Context, database.Tx, tenancy.Scope, *User,
+) error {
+	return nil
+}
+
+// AfterSetUserEmailAddressVerificationToken does nothing.
+func (NoopHooks) AfterSetUserEmailAddressVerificationToken(
+	context.Context, database.Tx, tenancy.Scope, *User, *time.Time,
+) error {
+	return nil
+}
+
+// AfterMarkUserEmailAddressVerified does nothing.
+func (NoopHooks) AfterMarkUserEmailAddressVerified(
+	context.Context, database.Tx, tenancy.Scope, *User,
+) error {
+	return nil
+}
+
+// AfterMarkUserEmailAddressUnverified does nothing.
+func (NoopHooks) AfterMarkUserEmailAddressUnverified(
+	context.Context, database.Tx, tenancy.Scope, *User,
 ) error {
 	return nil
 }
