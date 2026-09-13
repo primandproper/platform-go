@@ -48,6 +48,11 @@ type Backend[T any] struct {
 	clock clock.Clock
 	o11y  observability.Observer
 
+	// stopSweeper ends the sweep goroutine WithSweeper started, and is nil when
+	// none was. It is what Close has to release, because it is the only thing
+	// this backend owns — see Close.
+	stopSweeper context.CancelFunc
+
 	sweptCounter       metrics.Int64Counter
 	sweepErrorsCounter metrics.Int64Counter
 }
@@ -104,7 +109,11 @@ func NewBackend[T any](cfg *Config, db database.Client, opts ...Option) (*Backen
 		return nil, err
 	}
 
+	// The context is the one WithSweeper derived, and its cancel is what Close
+	// ends the goroutine with.
 	if o.sweepCtx != nil {
+		b.stopSweeper = o.stopSweeper
+
 		go b.sweepEvery(o.sweepCtx, o.sweepInterval)
 	}
 
@@ -315,7 +324,26 @@ func (b *Backend[T]) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// Close releases the database client.
+// Close stops the sweeper WithSweeper started and reports nothing. It is safe
+// to call more than once, and on a backend that started no sweeper.
+//
+// It deliberately does not close the database.Client. The client is the
+// caller's — NewBackend takes one that is already open, and in a service it is
+// the same handle every other store in the process reads and writes through, so
+// a Close here that shut the pool down would take the audit log, the webhook
+// queue and everything else with it. The composition root closes what it opened,
+// after the components using it have stopped.
+//
+// What is left to release is therefore this backend's own goroutine, which the
+// context passed to WithSweeper otherwise bounds. Ending it here means a caller
+// who wants the sweep to stop has a way to say so that does not require them to
+// cancel a context that is not only this backend's — and it is what stops a
+// closed store logging a failed sweep every interval for the rest of the
+// process's life.
 func (b *Backend[T]) Close() error {
-	return b.db.Close()
+	if b.stopSweeper != nil {
+		b.stopSweeper()
+	}
+
+	return nil
 }

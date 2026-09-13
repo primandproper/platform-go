@@ -93,6 +93,25 @@ func TestWithSweeper(T *testing.T) {
 		o = newOptions([]Option{WithSweeper(context.Background(), 0)})
 		must.Nil(t, o.sweepCtx)
 	})
+
+	T.Run("a second sweeper ends the context the first derived", func(t *testing.T) {
+		t.Parallel()
+
+		// The context is the option's rather than the caller's, so the copy a
+		// replaced option left behind is the option's to end — nothing is
+		// running on it, and it would otherwise sit on the caller's context
+		// until that one was cancelled.
+		o := newOptions(nil)
+		WithSweeper(t.Context(), time.Second)(o)
+
+		superseded := o.sweepCtx
+
+		WithSweeper(t.Context(), time.Minute)(o)
+
+		test.ErrorIs(t, superseded.Err(), context.Canceled)
+		test.NoError(t, o.sweepCtx.Err())
+		test.EqOp(t, time.Minute, o.sweepInterval)
+	})
 }
 
 // wallRecord is a record stamped from the wall clock, for the synctest bubbles
@@ -119,4 +138,88 @@ func rowCount(t *testing.T, backend *Backend[principal]) int {
 		QueryRowContext(t.Context(), "SELECT COUNT(*) FROM sessions").Scan(&count))
 
 	return count
+}
+
+// Close is this backend's shutdown and nobody else's.
+//
+// The client it was built over belongs to whoever opened it, which in a service
+// is the composition root and every other store in the process. What Close has
+// to release is the one thing this backend started for itself.
+func TestBackend_Close(T *testing.T) {
+	T.Parallel()
+
+	T.Run("leaves the caller's client open", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		client := newTestClient(t)
+
+		backend, err := NewBackend[principal](&Config{}, client)
+		must.NoError(t, err)
+
+		must.NoError(t, backend.Close())
+
+		// The pool still answers, which is what the audit log, the webhook
+		// queue and everything else sharing this handle depend on.
+		var count int
+		must.NoError(t, client.Writer().
+			QueryRowContext(ctx, "SELECT COUNT(*) FROM sessions").Scan(&count))
+		test.EqOp(t, 0, count)
+
+		// A backend built afterwards writes through it, and the closed one
+		// reads what that backend wrote.
+		other, err := NewBackend[principal](&Config{}, client)
+		must.NoError(t, err)
+
+		must.NoError(t, other.Create(ctx, "id-1", wallRecord(), time.Minute))
+
+		got, err := backend.Load(ctx, "id-1")
+		must.NoError(t, err)
+		must.NotNil(t, got)
+		test.EqOp(t, "u_1", got.Data.UserID)
+	})
+
+	// The wall clock is deliberate rather than the fake one the other tests
+	// use: inside a synctest bubble clock.NewClock reads the bubble's time, so
+	// the sweeper's ticker advances with time.Sleep and needs no test double.
+	T.Run("stops the sweeper", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			client := newTestClient(t)
+
+			backend, err := NewBackend[principal](&Config{}, client, WithSweeper(t.Context(), time.Second))
+			must.NoError(t, err)
+
+			must.NoError(t, backend.Close())
+			synctest.Wait()
+
+			must.NoError(t, backend.Create(t.Context(), "id-1", wallRecord(), time.Second))
+
+			time.Sleep(time.Minute)
+			synctest.Wait()
+
+			// Still there, well past its deadline and past several ticks,
+			// because nothing is sweeping any more. Left running it would also
+			// be sweeping through a client the caller may since have closed,
+			// logging a failure every interval for the rest of the process.
+			test.EqOp(t, 1, rowCount(t, backend))
+		})
+	})
+
+	T.Run("is safe more than once, and on a backend with no sweeper", func(t *testing.T) {
+		t.Parallel()
+
+		backend, _ := newTestBackend(t)
+		test.Nil(t, backend.stopSweeper)
+
+		must.NoError(t, backend.Close())
+		must.NoError(t, backend.Close())
+
+		swept, err := NewBackend[principal](&Config{}, newTestClient(t), WithSweeper(t.Context(), time.Minute))
+		must.NoError(t, err)
+
+		must.NoError(t, swept.Close())
+		must.NoError(t, swept.Close())
+	})
 }

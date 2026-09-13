@@ -313,8 +313,11 @@ type (
 		// cookie from the absolute timeout rather than from a second setting
 		// that could drift from this one.
 		Policy() Policy
-		// Close releases what the store holds — the backend's connection pool,
-		// a background sweep — and is safe to call more than once.
+		// Close releases what the store holds — the backend's background
+		// sweep, a cache connection — and is safe to call more than once. A
+		// database.Client is not among them: a backend handed one did not open
+		// it, and the composition root that did closes it once everything
+		// reading through it has stopped.
 		Close() error
 	}
 
@@ -380,8 +383,10 @@ type (
 		// stored under keepID when that is not empty, and reports how many
 		// went.
 		DeleteAllHeld(ctx context.Context, holder Holder, keepID string) (int, error)
-		// Close releases the backend's resources and is safe to call more than
-		// once.
+		// Close releases what the backend itself started — a background sweep
+		// — and is safe to call more than once. A database.Client the backend
+		// was constructed with is the caller's rather than the backend's, and
+		// closing it here would take down every other store in the process.
 		Close() error
 	}
 )

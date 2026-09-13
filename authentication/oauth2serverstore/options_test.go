@@ -1,6 +1,7 @@
 package oauth2serverstore
 
 import (
+	"context"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -106,7 +107,27 @@ func TestOptions(T *testing.T) {
 
 		configured := newOptions([]Option{WithSweeper(t.Context(), time.Minute)})
 		test.NotNil(t, configured.sweepCtx)
+		test.NotNil(t, configured.stopSweeper)
 		test.EqOp(t, time.Minute, configured.sweepInterval)
+	})
+
+	T.Run("a second sweeper ends the context the first derived", func(t *testing.T) {
+		t.Parallel()
+
+		// The context is the option's rather than the caller's, so the copy a
+		// replaced option left behind is the option's to end — nothing is
+		// running on it, and it would otherwise sit on the caller's context
+		// until that one was cancelled.
+		o := newOptions(nil)
+		WithSweeper(t.Context(), time.Minute)(o)
+
+		superseded := o.sweepCtx
+
+		WithSweeper(t.Context(), 2*time.Minute)(o)
+
+		test.ErrorIs(t, superseded.Err(), context.Canceled)
+		test.NoError(t, o.sweepCtx.Err())
+		test.EqOp(t, 2*time.Minute, o.sweepInterval)
 	})
 }
 
