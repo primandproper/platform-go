@@ -48,6 +48,11 @@ WHERE archived_at IS NULL
 	AND scope = sqlc.arg(scope)
 	AND principal = sqlc.arg(principal);
 
+-- name: DeleteNotificationsForPrincipal :execrows
+DELETE FROM notifications_inbox
+WHERE scope = sqlc.arg(scope)
+	AND principal = sqlc.arg(principal);
+
 -- name: GetNotification :one
 SELECT
 	notifications_inbox.id,
@@ -343,6 +348,11 @@ WHERE id = sqlc.arg(id)
 DELETE FROM notifications_devices
 WHERE platform = sqlc.arg(platform)
 	AND token = sqlc.arg(token);
+
+-- name: DeleteDevicesForPrincipal :execrows
+DELETE FROM notifications_devices
+WHERE scope = sqlc.arg(scope)
+	AND principal = sqlc.arg(principal);
 
 -- name: GetDeviceByToken :one
 SELECT

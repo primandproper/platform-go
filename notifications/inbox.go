@@ -444,6 +444,58 @@ func (s *SQLStore) ArchiveNotification(
 	return archivedNotificationFromRow(&archived), nil
 }
 
+// DeleteNotificationsForPrincipal destroys every notification this scope holds
+// for the principal and reports how many rows went.
+//
+// There is no guard and no read-back, and both absences are the method rather
+// than an omission. Zero rows is the honest answer for a subject who was never
+// told anything, so a guard would turn "nothing to erase" into a refusal a
+// privacy run has to special-case; and the rows this destroyed are destroyed, so
+// there is nothing left to read back. The count is what the caller reports as
+// erased.
+//
+// It is the one statement over this table with no archived predicate — see
+// notifications/internal/queries, where querygen renders it that way for the
+// delete alone — so a notification somebody dismissed before asking to be
+// forgotten goes with the rest.
+func (s *SQLStore) DeleteNotificationsForPrincipal(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	principal string,
+) (int64, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(principalKey, principal),
+	)
+	defer op.End()
+
+	if tx == nil {
+		return 0, op.Error(ErrNilExecutor, "erasing every notification for a principal")
+	}
+
+	if err := scope.Validate(); err != nil {
+		return 0, op.Error(err, "erasing every notification for a principal")
+	}
+
+	if principal == "" {
+		return 0, op.Error(ErrEmptyPrincipal, "erasing every notification for a principal")
+	}
+
+	count, err := s.q.DeleteNotificationsForPrincipal(ctx, tx,
+		notificationsdb.DeleteNotificationsForPrincipalParams{
+			Scope:     scope,
+			Principal: principal,
+		})
+	if err != nil {
+		return 0, op.Error(err, "erasing every notification for a principal")
+	}
+
+	op.SpanOnly(countKey, count)
+
+	return count, nil
+}
+
 // adoptScope settles which tenant a write is for, and writes the answer back
 // onto the entity.
 //

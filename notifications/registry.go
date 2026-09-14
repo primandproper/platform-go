@@ -286,6 +286,57 @@ func (s *SQLStore) InvalidateDeviceToken(ctx context.Context, platform, token st
 	return nil
 }
 
+// DeleteDevicesForPrincipal removes every registration this scope holds for the
+// principal and reports how many rows went.
+//
+// There is no guard and no read-back, for the reasons
+// [SQLStore.DeleteNotificationsForPrincipal] gives: somebody who never installed
+// the app has no handsets, which is an answer rather than a refusal, and the rows
+// this removed are gone.
+//
+// It runs on the caller's transaction, unlike the other write here that deletes
+// rows nobody named individually. [SQLStore.InvalidateDeviceToken] is the
+// registry servicing itself on a provider's verdict, mid round trip, with no
+// consumer request behind it; this is a consumer request — a privacy run — and
+// the rest of what that run destroys is in the transaction it hands over.
+func (s *SQLStore) DeleteDevicesForPrincipal(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	principal string,
+) (int64, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(principalKey, principal),
+	)
+	defer op.End()
+
+	if tx == nil {
+		return 0, op.Error(ErrNilExecutor, "erasing every device for a principal")
+	}
+
+	if err := scope.Validate(); err != nil {
+		return 0, op.Error(err, "erasing every device for a principal")
+	}
+
+	if principal == "" {
+		return 0, op.Error(ErrEmptyPrincipal, "erasing every device for a principal")
+	}
+
+	count, err := s.q.DeleteDevicesForPrincipal(ctx, tx,
+		notificationsdb.DeleteDevicesForPrincipalParams{
+			Scope:     scope,
+			Principal: principal,
+		})
+	if err != nil {
+		return 0, op.Error(err, "erasing every device for a principal")
+	}
+
+	op.SpanOnly(countKey, count)
+
+	return count, nil
+}
+
 // validDevice is what the registry requires of a registration before it stores
 // one.
 //

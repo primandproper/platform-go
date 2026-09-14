@@ -45,6 +45,14 @@ const deleteDeviceTokenMySQL = `DELETE FROM {{prefix}}notifications_devices
 WHERE platform = ?
 	AND token = ?`
 
+const deleteDevicesForPrincipalMySQL = `DELETE FROM {{prefix}}notifications_devices
+WHERE scope = ?
+	AND principal = ?`
+
+const deleteNotificationsForPrincipalMySQL = `DELETE FROM {{prefix}}notifications_inbox
+WHERE scope = ?
+	AND principal = ?`
+
 const getArchivedNotificationMySQL = `SELECT
 	{{prefix}}notifications_inbox.id,
 	{{prefix}}notifications_inbox.scope,
@@ -451,6 +459,8 @@ type mysqlQueries struct {
 	archiveNotification               string
 	createNotification                string
 	deleteDeviceToken                 string
+	deleteDevicesForPrincipal         string
+	deleteNotificationsForPrincipal   string
 	getArchivedNotification           string
 	getDevice                         string
 	getDeviceByToken                  string
@@ -475,6 +485,8 @@ func newMySQL(prefix string) *mysqlQueries {
 		archiveNotification:               strings.ReplaceAll(archiveNotificationMySQL, prefixMarker, prefix),
 		createNotification:                strings.ReplaceAll(createNotificationMySQL, prefixMarker, prefix),
 		deleteDeviceToken:                 strings.ReplaceAll(deleteDeviceTokenMySQL, prefixMarker, prefix),
+		deleteDevicesForPrincipal:         strings.ReplaceAll(deleteDevicesForPrincipalMySQL, prefixMarker, prefix),
+		deleteNotificationsForPrincipal:   strings.ReplaceAll(deleteNotificationsForPrincipalMySQL, prefixMarker, prefix),
 		getArchivedNotification:           strings.ReplaceAll(getArchivedNotificationMySQL, prefixMarker, prefix),
 		getDevice:                         strings.ReplaceAll(getDeviceMySQL, prefixMarker, prefix),
 		getDeviceByToken:                  strings.ReplaceAll(getDeviceByTokenMySQL, prefixMarker, prefix),
@@ -528,6 +540,32 @@ func (q *mysqlQueries) DeleteDeviceToken(ctx context.Context, db DBTX, arg Delet
 	result, err := db.ExecContext(ctx, q.deleteDeviceToken,
 		arg.Platform,
 		arg.Token,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// DeleteDevicesForPrincipal runs the :execrows query against mysql.
+func (q *mysqlQueries) DeleteDevicesForPrincipal(ctx context.Context, db DBTX, arg DeleteDevicesForPrincipalParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteDevicesForPrincipal,
+		arg.Scope,
+		arg.Principal,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// DeleteNotificationsForPrincipal runs the :execrows query against mysql.
+func (q *mysqlQueries) DeleteNotificationsForPrincipal(ctx context.Context, db DBTX, arg DeleteNotificationsForPrincipalParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteNotificationsForPrincipal,
+		arg.Scope,
+		arg.Principal,
 	)
 	if err != nil {
 		return 0, err
@@ -1120,6 +1158,14 @@ var (
 		Platform string
 		Token    string
 	}(DeleteDeviceTokenParams{})
+	_ = struct {
+		Scope     tenancy.Scope
+		Principal string
+	}(DeleteDevicesForPrincipalParams{})
+	_ = struct {
+		Scope     tenancy.Scope
+		Principal string
+	}(DeleteNotificationsForPrincipalParams{})
 	_ = struct {
 		ID        string
 		Scope     tenancy.Scope

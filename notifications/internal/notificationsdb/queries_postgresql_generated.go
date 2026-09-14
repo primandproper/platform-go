@@ -45,6 +45,14 @@ const deleteDeviceTokenPostgreSQL = `DELETE FROM {{prefix}}notifications_devices
 WHERE platform = $1
 	AND token = $2`
 
+const deleteDevicesForPrincipalPostgreSQL = `DELETE FROM {{prefix}}notifications_devices
+WHERE scope = $1
+	AND principal = $2`
+
+const deleteNotificationsForPrincipalPostgreSQL = `DELETE FROM {{prefix}}notifications_inbox
+WHERE scope = $1
+	AND principal = $2`
+
 const getArchivedNotificationPostgreSQL = `SELECT
 	{{prefix}}notifications_inbox.id,
 	{{prefix}}notifications_inbox.scope,
@@ -451,6 +459,8 @@ type postgresqlQueries struct {
 	archiveNotification               string
 	createNotification                string
 	deleteDeviceToken                 string
+	deleteDevicesForPrincipal         string
+	deleteNotificationsForPrincipal   string
 	getArchivedNotification           string
 	getDevice                         string
 	getDeviceByToken                  string
@@ -475,6 +485,8 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		archiveNotification:               strings.ReplaceAll(archiveNotificationPostgreSQL, prefixMarker, prefix),
 		createNotification:                strings.ReplaceAll(createNotificationPostgreSQL, prefixMarker, prefix),
 		deleteDeviceToken:                 strings.ReplaceAll(deleteDeviceTokenPostgreSQL, prefixMarker, prefix),
+		deleteDevicesForPrincipal:         strings.ReplaceAll(deleteDevicesForPrincipalPostgreSQL, prefixMarker, prefix),
+		deleteNotificationsForPrincipal:   strings.ReplaceAll(deleteNotificationsForPrincipalPostgreSQL, prefixMarker, prefix),
 		getArchivedNotification:           strings.ReplaceAll(getArchivedNotificationPostgreSQL, prefixMarker, prefix),
 		getDevice:                         strings.ReplaceAll(getDevicePostgreSQL, prefixMarker, prefix),
 		getDeviceByToken:                  strings.ReplaceAll(getDeviceByTokenPostgreSQL, prefixMarker, prefix),
@@ -528,6 +540,32 @@ func (q *postgresqlQueries) DeleteDeviceToken(ctx context.Context, db DBTX, arg 
 	result, err := db.ExecContext(ctx, q.deleteDeviceToken,
 		arg.Platform,
 		arg.Token,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// DeleteDevicesForPrincipal runs the :execrows query against postgresql.
+func (q *postgresqlQueries) DeleteDevicesForPrincipal(ctx context.Context, db DBTX, arg DeleteDevicesForPrincipalParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteDevicesForPrincipal,
+		arg.Scope,
+		arg.Principal,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// DeleteNotificationsForPrincipal runs the :execrows query against postgresql.
+func (q *postgresqlQueries) DeleteNotificationsForPrincipal(ctx context.Context, db DBTX, arg DeleteNotificationsForPrincipalParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteNotificationsForPrincipal,
+		arg.Scope,
+		arg.Principal,
 	)
 	if err != nil {
 		return 0, err
@@ -1056,6 +1094,14 @@ var (
 		Platform string
 		Token    string
 	}(DeleteDeviceTokenParams{})
+	_ = struct {
+		Scope     tenancy.Scope
+		Principal string
+	}(DeleteDevicesForPrincipalParams{})
+	_ = struct {
+		Scope     tenancy.Scope
+		Principal string
+	}(DeleteNotificationsForPrincipalParams{})
 	_ = struct {
 		ID        string
 		Scope     tenancy.Scope

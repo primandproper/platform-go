@@ -30,6 +30,12 @@ var _ notifications.Store = &StoreMock{}
 //			CreateNotificationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) (*notifications.Notification, error) {
 //				panic("mock out the CreateNotification method")
 //			},
+//			DeleteDevicesForPrincipalFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error) {
+//				panic("mock out the DeleteDevicesForPrincipal method")
+//			},
+//			DeleteNotificationsForPrincipalFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error) {
+//				panic("mock out the DeleteNotificationsForPrincipal method")
+//			},
 //			GetNotificationFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
 //				panic("mock out the GetNotification method")
 //			},
@@ -72,6 +78,12 @@ type StoreMock struct {
 
 	// CreateNotificationFunc mocks the CreateNotification method.
 	CreateNotificationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) (*notifications.Notification, error)
+
+	// DeleteDevicesForPrincipalFunc mocks the DeleteDevicesForPrincipal method.
+	DeleteDevicesForPrincipalFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error)
+
+	// DeleteNotificationsForPrincipalFunc mocks the DeleteNotificationsForPrincipal method.
+	DeleteNotificationsForPrincipalFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error)
 
 	// GetNotificationFunc mocks the GetNotification method.
 	GetNotificationFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error)
@@ -128,6 +140,28 @@ type StoreMock struct {
 			Scope tenancy.Scope
 			// Notification is the notification argument value.
 			Notification *notifications.Notification
+		}
+		// DeleteDevicesForPrincipal holds details about calls to the DeleteDevicesForPrincipal method.
+		DeleteDevicesForPrincipal []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+		}
+		// DeleteNotificationsForPrincipal holds details about calls to the DeleteNotificationsForPrincipal method.
+		DeleteNotificationsForPrincipal []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
 		}
 		// GetNotification holds details about calls to the GetNotification method.
 		GetNotification []struct {
@@ -250,18 +284,20 @@ type StoreMock struct {
 			DeviceID string
 		}
 	}
-	lockArchiveNotification      sync.RWMutex
-	lockCreateNotification       sync.RWMutex
-	lockGetNotification          sync.RWMutex
-	lockInvalidateDeviceToken    sync.RWMutex
-	lockListDevices              sync.RWMutex
-	lockListDevicesByPrincipals  sync.RWMutex
-	lockListNotifications        sync.RWMutex
-	lockListUnreadNotifications  sync.RWMutex
-	lockMarkAllNotificationsRead sync.RWMutex
-	lockMarkNotificationRead     sync.RWMutex
-	lockRegisterDevice           sync.RWMutex
-	lockRevokeDevice             sync.RWMutex
+	lockArchiveNotification             sync.RWMutex
+	lockCreateNotification              sync.RWMutex
+	lockDeleteDevicesForPrincipal       sync.RWMutex
+	lockDeleteNotificationsForPrincipal sync.RWMutex
+	lockGetNotification                 sync.RWMutex
+	lockInvalidateDeviceToken           sync.RWMutex
+	lockListDevices                     sync.RWMutex
+	lockListDevicesByPrincipals         sync.RWMutex
+	lockListNotifications               sync.RWMutex
+	lockListUnreadNotifications         sync.RWMutex
+	lockMarkAllNotificationsRead        sync.RWMutex
+	lockMarkNotificationRead            sync.RWMutex
+	lockRegisterDevice                  sync.RWMutex
+	lockRevokeDevice                    sync.RWMutex
 }
 
 // ArchiveNotification calls ArchiveNotificationFunc.
@@ -353,6 +389,94 @@ func (mock *StoreMock) CreateNotificationCalls() []struct {
 	mock.lockCreateNotification.RLock()
 	calls = mock.calls.CreateNotification
 	mock.lockCreateNotification.RUnlock()
+	return calls
+}
+
+// DeleteDevicesForPrincipal calls DeleteDevicesForPrincipalFunc.
+func (mock *StoreMock) DeleteDevicesForPrincipal(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error) {
+	if mock.DeleteDevicesForPrincipalFunc == nil {
+		panic("StoreMock.DeleteDevicesForPrincipalFunc: method is nil but Store.DeleteDevicesForPrincipal was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+	}{
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		Principal: principal,
+	}
+	mock.lockDeleteDevicesForPrincipal.Lock()
+	mock.calls.DeleteDevicesForPrincipal = append(mock.calls.DeleteDevicesForPrincipal, callInfo)
+	mock.lockDeleteDevicesForPrincipal.Unlock()
+	return mock.DeleteDevicesForPrincipalFunc(ctx, tx, scope, principal)
+}
+
+// DeleteDevicesForPrincipalCalls gets all the calls that were made to DeleteDevicesForPrincipal.
+// Check the length with:
+//
+//	len(mockedStore.DeleteDevicesForPrincipalCalls())
+func (mock *StoreMock) DeleteDevicesForPrincipalCalls() []struct {
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	Principal string
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+	}
+	mock.lockDeleteDevicesForPrincipal.RLock()
+	calls = mock.calls.DeleteDevicesForPrincipal
+	mock.lockDeleteDevicesForPrincipal.RUnlock()
+	return calls
+}
+
+// DeleteNotificationsForPrincipal calls DeleteNotificationsForPrincipalFunc.
+func (mock *StoreMock) DeleteNotificationsForPrincipal(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error) {
+	if mock.DeleteNotificationsForPrincipalFunc == nil {
+		panic("StoreMock.DeleteNotificationsForPrincipalFunc: method is nil but Store.DeleteNotificationsForPrincipal was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+	}{
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		Principal: principal,
+	}
+	mock.lockDeleteNotificationsForPrincipal.Lock()
+	mock.calls.DeleteNotificationsForPrincipal = append(mock.calls.DeleteNotificationsForPrincipal, callInfo)
+	mock.lockDeleteNotificationsForPrincipal.Unlock()
+	return mock.DeleteNotificationsForPrincipalFunc(ctx, tx, scope, principal)
+}
+
+// DeleteNotificationsForPrincipalCalls gets all the calls that were made to DeleteNotificationsForPrincipal.
+// Check the length with:
+//
+//	len(mockedStore.DeleteNotificationsForPrincipalCalls())
+func (mock *StoreMock) DeleteNotificationsForPrincipalCalls() []struct {
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	Principal string
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+	}
+	mock.lockDeleteNotificationsForPrincipal.RLock()
+	calls = mock.calls.DeleteNotificationsForPrincipal
+	mock.lockDeleteNotificationsForPrincipal.RUnlock()
 	return calls
 }
 
@@ -832,6 +956,9 @@ var _ notifications.Inbox = &InboxMock{}
 //			CreateNotificationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) (*notifications.Notification, error) {
 //				panic("mock out the CreateNotification method")
 //			},
+//			DeleteNotificationsForPrincipalFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error) {
+//				panic("mock out the DeleteNotificationsForPrincipal method")
+//			},
 //			GetNotificationFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error) {
 //				panic("mock out the GetNotification method")
 //			},
@@ -859,6 +986,9 @@ type InboxMock struct {
 
 	// CreateNotificationFunc mocks the CreateNotification method.
 	CreateNotificationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, notification *notifications.Notification) (*notifications.Notification, error)
+
+	// DeleteNotificationsForPrincipalFunc mocks the DeleteNotificationsForPrincipal method.
+	DeleteNotificationsForPrincipalFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error)
 
 	// GetNotificationFunc mocks the GetNotification method.
 	GetNotificationFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, principal string, notificationID string) (*notifications.Notification, error)
@@ -900,6 +1030,17 @@ type InboxMock struct {
 			Scope tenancy.Scope
 			// Notification is the notification argument value.
 			Notification *notifications.Notification
+		}
+		// DeleteNotificationsForPrincipal holds details about calls to the DeleteNotificationsForPrincipal method.
+		DeleteNotificationsForPrincipal []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
 		}
 		// GetNotification holds details about calls to the GetNotification method.
 		GetNotification []struct {
@@ -965,13 +1106,14 @@ type InboxMock struct {
 			NotificationID string
 		}
 	}
-	lockArchiveNotification      sync.RWMutex
-	lockCreateNotification       sync.RWMutex
-	lockGetNotification          sync.RWMutex
-	lockListNotifications        sync.RWMutex
-	lockListUnreadNotifications  sync.RWMutex
-	lockMarkAllNotificationsRead sync.RWMutex
-	lockMarkNotificationRead     sync.RWMutex
+	lockArchiveNotification             sync.RWMutex
+	lockCreateNotification              sync.RWMutex
+	lockDeleteNotificationsForPrincipal sync.RWMutex
+	lockGetNotification                 sync.RWMutex
+	lockListNotifications               sync.RWMutex
+	lockListUnreadNotifications         sync.RWMutex
+	lockMarkAllNotificationsRead        sync.RWMutex
+	lockMarkNotificationRead            sync.RWMutex
 }
 
 // ArchiveNotification calls ArchiveNotificationFunc.
@@ -1063,6 +1205,50 @@ func (mock *InboxMock) CreateNotificationCalls() []struct {
 	mock.lockCreateNotification.RLock()
 	calls = mock.calls.CreateNotification
 	mock.lockCreateNotification.RUnlock()
+	return calls
+}
+
+// DeleteNotificationsForPrincipal calls DeleteNotificationsForPrincipalFunc.
+func (mock *InboxMock) DeleteNotificationsForPrincipal(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error) {
+	if mock.DeleteNotificationsForPrincipalFunc == nil {
+		panic("InboxMock.DeleteNotificationsForPrincipalFunc: method is nil but Inbox.DeleteNotificationsForPrincipal was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+	}{
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		Principal: principal,
+	}
+	mock.lockDeleteNotificationsForPrincipal.Lock()
+	mock.calls.DeleteNotificationsForPrincipal = append(mock.calls.DeleteNotificationsForPrincipal, callInfo)
+	mock.lockDeleteNotificationsForPrincipal.Unlock()
+	return mock.DeleteNotificationsForPrincipalFunc(ctx, tx, scope, principal)
+}
+
+// DeleteNotificationsForPrincipalCalls gets all the calls that were made to DeleteNotificationsForPrincipal.
+// Check the length with:
+//
+//	len(mockedInbox.DeleteNotificationsForPrincipalCalls())
+func (mock *InboxMock) DeleteNotificationsForPrincipalCalls() []struct {
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	Principal string
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+	}
+	mock.lockDeleteNotificationsForPrincipal.RLock()
+	calls = mock.calls.DeleteNotificationsForPrincipal
+	mock.lockDeleteNotificationsForPrincipal.RUnlock()
 	return calls
 }
 
@@ -1312,6 +1498,9 @@ var _ notifications.Registry = &RegistryMock{}
 //
 //		// make and configure a mocked notifications.Registry
 //		mockedRegistry := &RegistryMock{
+//			DeleteDevicesForPrincipalFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error) {
+//				panic("mock out the DeleteDevicesForPrincipal method")
+//			},
 //			InvalidateDeviceTokenFunc: func(ctx context.Context, platform string, token string) error {
 //				panic("mock out the InvalidateDeviceToken method")
 //			},
@@ -1334,6 +1523,9 @@ var _ notifications.Registry = &RegistryMock{}
 //
 //	}
 type RegistryMock struct {
+	// DeleteDevicesForPrincipalFunc mocks the DeleteDevicesForPrincipal method.
+	DeleteDevicesForPrincipalFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error)
+
 	// InvalidateDeviceTokenFunc mocks the InvalidateDeviceToken method.
 	InvalidateDeviceTokenFunc func(ctx context.Context, platform string, token string) error
 
@@ -1351,6 +1543,17 @@ type RegistryMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// DeleteDevicesForPrincipal holds details about calls to the DeleteDevicesForPrincipal method.
+		DeleteDevicesForPrincipal []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// Principal is the principal argument value.
+			Principal string
+		}
 		// InvalidateDeviceToken holds details about calls to the InvalidateDeviceToken method.
 		InvalidateDeviceToken []struct {
 			// Ctx is the ctx argument value.
@@ -1409,11 +1612,56 @@ type RegistryMock struct {
 			DeviceID string
 		}
 	}
-	lockInvalidateDeviceToken   sync.RWMutex
-	lockListDevices             sync.RWMutex
-	lockListDevicesByPrincipals sync.RWMutex
-	lockRegisterDevice          sync.RWMutex
-	lockRevokeDevice            sync.RWMutex
+	lockDeleteDevicesForPrincipal sync.RWMutex
+	lockInvalidateDeviceToken     sync.RWMutex
+	lockListDevices               sync.RWMutex
+	lockListDevicesByPrincipals   sync.RWMutex
+	lockRegisterDevice            sync.RWMutex
+	lockRevokeDevice              sync.RWMutex
+}
+
+// DeleteDevicesForPrincipal calls DeleteDevicesForPrincipalFunc.
+func (mock *RegistryMock) DeleteDevicesForPrincipal(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error) {
+	if mock.DeleteDevicesForPrincipalFunc == nil {
+		panic("RegistryMock.DeleteDevicesForPrincipalFunc: method is nil but Registry.DeleteDevicesForPrincipal was just called")
+	}
+	callInfo := struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+	}{
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		Principal: principal,
+	}
+	mock.lockDeleteDevicesForPrincipal.Lock()
+	mock.calls.DeleteDevicesForPrincipal = append(mock.calls.DeleteDevicesForPrincipal, callInfo)
+	mock.lockDeleteDevicesForPrincipal.Unlock()
+	return mock.DeleteDevicesForPrincipalFunc(ctx, tx, scope, principal)
+}
+
+// DeleteDevicesForPrincipalCalls gets all the calls that were made to DeleteDevicesForPrincipal.
+// Check the length with:
+//
+//	len(mockedRegistry.DeleteDevicesForPrincipalCalls())
+func (mock *RegistryMock) DeleteDevicesForPrincipalCalls() []struct {
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	Principal string
+} {
+	var calls []struct {
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		Principal string
+	}
+	mock.lockDeleteDevicesForPrincipal.RLock()
+	calls = mock.calls.DeleteDevicesForPrincipal
+	mock.lockDeleteDevicesForPrincipal.RUnlock()
+	return calls
 }
 
 // InvalidateDeviceToken calls InvalidateDeviceTokenFunc.

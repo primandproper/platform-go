@@ -351,6 +351,53 @@ func (e *storeEnv) revoke(
 	return revoked, err
 }
 
+// eraseNotifications destroys every notification a scope holds for a principal,
+// in a transaction of its own, handing back the count the write reported
+// alongside its error.
+//
+// Same shape as markAllRead, for the same reason: this is a write that moves a
+// set, so the count is the whole of what it answers with and a case that ignored
+// it would be asserting nothing about the thing the method returns.
+func (e *storeEnv) eraseNotifications(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	principal string,
+) (count int64, err error) {
+	tb.Helper()
+
+	err = e.inTx(tb, func(tx database.Tx) error {
+		var eraseErr error
+
+		count, eraseErr = store.DeleteNotificationsForPrincipal(tb.Context(), tx, scope, principal)
+
+		return eraseErr
+	})
+
+	return count, err
+}
+
+// eraseDevices removes every registration a scope holds for a principal, in a
+// transaction of its own, handing back the count and the error.
+func (e *storeEnv) eraseDevices(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	principal string,
+) (count int64, err error) {
+	tb.Helper()
+
+	err = e.inTx(tb, func(tx database.Tx) error {
+		var eraseErr error
+
+		count, eraseErr = store.DeleteDevicesForPrincipal(tb.Context(), tx, scope, principal)
+
+		return eraseErr
+	})
+
+	return count, err
+}
+
 // newNotification is one inbox row's worth of input, with everything the store
 // requires filled in.
 func newNotification(principal, topic, title string) *Notification {

@@ -136,14 +136,28 @@ func Render(d dialect.Dialect) string {
 	return querygen.RenderFile(rendered)
 }
 
-// inboxWrites is the four statements that create a notification and move it
-// through its life: created, read, read in bulk, archived.
+// inboxWrites is the five statements that create a notification, move it through
+// its life — created, read, read in bulk, archived — and, at the end, destroy it.
 //
-// Three of the four are keyed on the scope and the principal as well as on
-// whatever else they name, and the fourth is the insert, which keys on nothing
+// Four of the five are keyed on the scope and the principal as well as on
+// whatever else they name, and the fifth is the insert, which keys on nothing
 // because an INSERT does not. There is no update: a notification is not edited,
 // so the columns a caller supplies are supplied once and the only mutable thing
 // about the row is whether it has been read.
+//
+// The last of them is the erasure, and it is a DELETE rather than the archive
+// because the archive is not one. Archiving stamps archived_at and leaves the
+// title, the body and the link in place — which is the whole of what a
+// notification says about a person — so a right to be forgotten answered with it
+// would leave a row still holding everything the subject asked to have
+// destroyed.
+//
+// It is also the one statement over this table that carries no archived
+// predicate, which is querygen.Generator.DeleteQuery's own decision rather than
+// this file's: a subject who dismissed their notifications before asking for
+// them to go is a subject whose erasure has to reach the dismissed ones, and a
+// delete written like every other statement here would be the one that could
+// not.
 func inboxWrites(g *querygen.Generator) []*querygen.Query {
 	scope := querygen.Match{Column: ScopeColumn}
 	principal := querygen.Match{Column: PrincipalColumn}
@@ -176,6 +190,13 @@ func inboxWrites(g *querygen.Generator) []*querygen.Query {
 		markRead,
 		markAllRead,
 		g.ArchiveQuery("ArchiveNotification", InboxTable, Inbox.Columns, scope, principal),
+
+		// The erasure, keyed on the person and nothing else — the column list
+		// goes over without the id for the same reason the bulk mark-read's
+		// does, and what is left is "every notification this scope holds for
+		// this principal".
+		g.DeleteQuery("DeleteNotificationsForPrincipal", InboxTable,
+			Inbox.ColumnsExcept(querygen.IDColumn), scope, principal),
 	}
 }
 
@@ -233,8 +254,8 @@ func inboxReads(g *querygen.Generator) []*querygen.Query {
 		scope, principal, querygen.Match{Column: ReadAtColumn, Against: querygen.NoValue})...)
 }
 
-// deviceWrites is the registration and the two ways a token leaves the
-// registry, and the difference between the two departures is who decided.
+// deviceWrites is the registration and the three ways a token leaves the
+// registry, and what separates the departures is who decided.
 //
 // RegisterDevice converges on the token rather than inserting, because the token
 // is the handset and a handset re-registers on every app launch, on every token
@@ -248,6 +269,12 @@ func inboxReads(g *querygen.Generator) []*querygen.Query {
 // like every other consumer read here. DeleteDeviceToken is the provider's, and
 // it is the one statement in this schema with no scope in its predicate — see
 // the store, which documents why the hook cannot have one.
+//
+// DeleteDevicesForPrincipal is the third, and it is a regulator's: it takes
+// every handset a person has registered in one scope, because a device token is
+// a stable identifier a third party can address that person's phone with and it
+// is stored in the clear. It is RevokeDevice with the id predicate left off,
+// which is what handing the column list over without the id does.
 func deviceWrites(g *querygen.Generator) []*querygen.Query {
 	return []*querygen.Query{
 		g.UpsertQuery("RegisterDevice", DevicesTable,
@@ -266,6 +293,11 @@ func deviceWrites(g *querygen.Generator) []*querygen.Query {
 			Devices.ColumnsExcept(querygen.IDColumn),
 			querygen.Match{Column: PlatformColumn},
 			querygen.Match{Column: TokenColumn}),
+
+		g.DeleteQuery("DeleteDevicesForPrincipal", DevicesTable,
+			Devices.ColumnsExcept(querygen.IDColumn),
+			querygen.Match{Column: ScopeColumn},
+			querygen.Match{Column: PrincipalColumn}),
 	}
 }
 

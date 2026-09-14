@@ -2,9 +2,9 @@
 // two halves of notifications: the in-app inbox a bell icon reads, and the
 // registry of handsets a push is addressed to.
 //
-// Nine of the twelve methods across notifications.Inbox and
-// notifications.Registry are here and three deliberately are not. The service
-// comment at the bottom of this file names all three and says which shape of
+// Nine of the fourteen methods across notifications.Inbox and
+// notifications.Registry are here and five deliberately are not. The service
+// comment at the bottom of this file names all five and says which shape of
 // machinery each one is.
 //
 // This file is shipped inside the published Go module, and it is the file
@@ -126,13 +126,12 @@ const (
 // notifications/grpc -- because "the caller owns the row" answers which rows,
 // not whether this deployment offers the call at all.
 //
-// # The three that are not here
+// # The five that are not here
 //
-// Twelve methods across notifications.Inbox and notifications.Registry, nine
-// RPCs, and the three absences are three different shapes of machinery rather
-// than three instances of one. Each argues its own case on its Store method,
-// which is where a reader of the Go API is standing when the question occurs to
-// them.
+// Fourteen methods across notifications.Inbox and notifications.Registry, nine
+// RPCs, and the five absences are four different shapes of machinery rather than
+// five instances of one. Each argues its own case on its Store method, which is
+// where a reader of the Go API is standing when the question occurs to them.
 //
 // CreateNotification is the transactional companion. It files a notification in
 // the caller's transaction so that it commits with the thing the notification
@@ -160,6 +159,18 @@ const (
 // a provider actually returned; published as an RPC it is a call that deletes
 // any handset's registration in any tenant on the say-so of a caller claiming
 // the provider said so.
+//
+// DeleteNotificationsForPrincipal and DeleteDevicesForPrincipal are the fourth
+// shape and the only one that is two methods, because it is one shape over two
+// tables: the erasure. Each names a principal and destroys every row under it,
+// and neither has a client. A person clearing a notification is calling
+// ArchiveNotification, which stamps one row they named and leaves it readable;
+// one signing a handset out is calling RevokeDevice, which removes one
+// registration they named. What these two answer is a dataprivacy request an
+// operator has already confirmed, arriving through notifications/privacy, and
+// what they commit in is the transaction the rest of that subject's erasure is
+// in -- so an RPC would be both a call no client should be able to make and a
+// commit at a moment the erasure does not choose.
 type NotificationsServiceClient interface {
 	ListNotifications(ctx context.Context, in *ListNotificationsRequest, opts ...grpc.CallOption) (*ListNotificationsResponse, error)
 	ListUnreadNotifications(ctx context.Context, in *ListUnreadNotificationsRequest, opts ...grpc.CallOption) (*ListUnreadNotificationsResponse, error)
@@ -284,13 +295,12 @@ func (c *notificationsServiceClient) RevokeDevice(ctx context.Context, in *Revok
 // notifications/grpc -- because "the caller owns the row" answers which rows,
 // not whether this deployment offers the call at all.
 //
-// # The three that are not here
+// # The five that are not here
 //
-// Twelve methods across notifications.Inbox and notifications.Registry, nine
-// RPCs, and the three absences are three different shapes of machinery rather
-// than three instances of one. Each argues its own case on its Store method,
-// which is where a reader of the Go API is standing when the question occurs to
-// them.
+// Fourteen methods across notifications.Inbox and notifications.Registry, nine
+// RPCs, and the five absences are four different shapes of machinery rather than
+// five instances of one. Each argues its own case on its Store method, which is
+// where a reader of the Go API is standing when the question occurs to them.
 //
 // CreateNotification is the transactional companion. It files a notification in
 // the caller's transaction so that it commits with the thing the notification
@@ -318,6 +328,18 @@ func (c *notificationsServiceClient) RevokeDevice(ctx context.Context, in *Revok
 // a provider actually returned; published as an RPC it is a call that deletes
 // any handset's registration in any tenant on the say-so of a caller claiming
 // the provider said so.
+//
+// DeleteNotificationsForPrincipal and DeleteDevicesForPrincipal are the fourth
+// shape and the only one that is two methods, because it is one shape over two
+// tables: the erasure. Each names a principal and destroys every row under it,
+// and neither has a client. A person clearing a notification is calling
+// ArchiveNotification, which stamps one row they named and leaves it readable;
+// one signing a handset out is calling RevokeDevice, which removes one
+// registration they named. What these two answer is a dataprivacy request an
+// operator has already confirmed, arriving through notifications/privacy, and
+// what they commit in is the transaction the rest of that subject's erasure is
+// in -- so an RPC would be both a call no client should be able to make and a
+// commit at a moment the erasure does not choose.
 type NotificationsServiceServer interface {
 	ListNotifications(context.Context, *ListNotificationsRequest) (*ListNotificationsResponse, error)
 	ListUnreadNotifications(context.Context, *ListUnreadNotificationsRequest) (*ListUnreadNotificationsResponse, error)

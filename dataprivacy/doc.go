@@ -268,9 +268,10 @@ The fan-out follows the same rule: Collector.Collect and Eraser.Erase are handed
 the confinement beside the subject, so a domain that scopes its rows narrows by
 a value it was passed rather than one it dug out. The privacy adapters this
 module ships — comments/privacy, issuereports/privacy, waitlists/privacy,
-billing/privacy and dataprivacy/auditerasure — each take a resolver that turns
-that confinement into the scopes their own tables use, because what a tenant
-means is the consumer's model rather than this package's.
+billing/privacy, notifications/privacy's two pairs and dataprivacy/auditerasure —
+each take a resolver that turns that confinement into the scopes their own tables
+use, because what a tenant means is the consumer's model rather than this
+package's.
 
 # Asking after a request
 
