@@ -58,7 +58,7 @@ func suiteTenancy(t *testing.T, env *storeEnv) {
 
 		// Zero and no error, which is what an absent row means here — nothing
 		// recorded is a number rather than a missing value. What matters is that
-		// it is the answer the neighbour gets for a period somebody else filled.
+		// it is the answer the neighbor gets for a period somebody else filled.
 		nextDoor := env.mustTotalAs(t, store, otherScope)
 		test.EqOp(t, int64(0), nextDoor.Quantity)
 
@@ -279,7 +279,7 @@ func TestQuotaEnforcer_Tenancy(T *testing.T) {
 		env := newTestEnforcer(t, BehaviorBlock, 100)
 
 		// Recorded for one tenant, and read by both. The first Check populates the
-		// cache; the second must miss it rather than be served the neighbour's
+		// cache; the second must miss it rather than be served the neighbor's
 		// number.
 		must.NoError(t, mustRecordAs(t, env.db, env.store, testScope, newEntry("req-1", 40, AggregationSum)))
 

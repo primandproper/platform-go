@@ -351,7 +351,7 @@ const testMeter = "api_requests"
 const testSubject = "account-1"
 
 // testScope is the tenant most of this suite records for, and otherScope is the
-// neighbour every isolation assertion is made against.
+// neighbor every isolation assertion is made against.
 //
 // Neither is tenancy.Global(). The global scope is stored as the empty
 // identifier, so a suite that used it everywhere would pass just as well against
