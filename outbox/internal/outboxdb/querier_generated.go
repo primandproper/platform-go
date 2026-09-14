@@ -48,8 +48,11 @@ type Querier interface {
 	FetchClaimedOutboxMessages(ctx context.Context, db DBTX, arg FetchClaimedOutboxMessagesParams) ([]FetchClaimedOutboxMessagesRow, error)
 	// InsertOutboxMessage runs the :exec query.
 	InsertOutboxMessage(ctx context.Context, db DBTX, arg InsertOutboxMessageParams) error
-	// MarkOutboxMessagesPublished runs the :exec query.
-	MarkOutboxMessagesPublished(ctx context.Context, db DBTX, arg MarkOutboxMessagesPublishedParams) error
+	// MarkOutboxMessagesPublished runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	MarkOutboxMessagesPublished(ctx context.Context, db DBTX, arg MarkOutboxMessagesPublishedParams) (int64, error)
 	// OutboxBacklog runs the :one query.
 	OutboxBacklog(ctx context.Context, db DBTX) (OutboxBacklogRow, error)
 	// ReapPublishedOutboxMessages runs the :execrows query.

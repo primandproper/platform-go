@@ -347,6 +347,51 @@ func TestRender_TheReadBackAsksForTheClaimAndNotTheBatch(T *testing.T) {
 	}
 }
 
+// TestRender_TheOutcomeWritesAskForTheClaimThatTookTheRow is the far end of the
+// same name, and the half a claim guard cannot cover on its own.
+//
+// The claim divides the rows; these two decide what becomes of them, and they
+// run after the broker round trip rather than inside the claim's transaction.
+// A relay slow enough to overrun its lease has had its rows taken by somebody
+// else by then, and addressed by their ids alone the retirement retires another
+// relay's work before it happened and the failure write reschedules, releases
+// or quarantines a publish that is still in flight.
+//
+// Both bind the name under HeldByArg rather than under the column, because both
+// also assign the column: a guard sharing the assignment's argument would be
+// requiring the row to already hold what it is about to write.
+func TestRender_TheOutcomeWritesAskForTheClaimThatTookTheRow(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			for _, name := range []string{"MarkOutboxMessagesPublished", "RecordOutboxMessageFailure"} {
+				test.StrContains(t, statement(t, Render(d), name),
+					ClaimedByColumn+" = sqlc.arg("+HeldByArg+")",
+					test.Sprintf("statement %q", name))
+			}
+		})
+	}
+}
+
+// TestRender_TheRetirementReportsHowManyRowsItTook, because a guard whose
+// losses nobody counts is a guard nobody can tell is firing. The retirement is
+// the one statement that can see a lease overrun — it asked for n rows and got
+// fewer — and :exec throws that number away.
+func TestRender_TheRetirementReportsHowManyRowsItTook(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			test.StrContains(t, Render(d), "-- name: MarkOutboxMessagesPublished :execrows")
+		})
+	}
+}
+
 // TestRender_TheClaimBoundsTheBatch pins the limit, because an unbounded claim
 // is one that leases the whole backlog into a single relay's memory and holds
 // every one of those leases while it publishes them serially.

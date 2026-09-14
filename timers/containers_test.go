@@ -222,6 +222,149 @@ func runTimerSuite(t *testing.T, client database.Client) {
 		test.True(t, second[0].Reclaimed)
 	})
 
+	// The other half of a lapsed lease: what the worker that lost it is allowed
+	// to write when it finally finishes.
+	//
+	// This is the race the run_at fence cannot see. A claim does not move
+	// run_at, so the straggler and the holder are identical by key and by
+	// instant, and only the name the claim stamped tells them apart.
+	t.Run("a straggler cannot report an outcome for a firing somebody else took", func(t *testing.T) {
+		t.Parallel()
+
+		// lapse claims a firing, lets the lease run out, reclaims it, and hands
+		// back both claims' view of the one row. The first is the straggler.
+		lapse := func(t *testing.T, key string) (set *Timers[string], straggler, holder Due[string]) {
+			t.Helper()
+
+			set = newSet(t, client, nil)
+			must.NoError(t, set.ScheduleAt(t.Context(), key, past(), nil))
+
+			first, err := set.Claim(t.Context(), 10, 200*time.Millisecond)
+			must.NoError(t, err)
+			must.SliceLen(t, 1, first)
+
+			time.Sleep(400 * time.Millisecond)
+
+			second, err := set.Claim(t.Context(), 10, time.Hour)
+			must.NoError(t, err)
+			must.SliceLen(t, 1, second)
+			must.True(t, second[0].Reclaimed)
+
+			// One row, two claims, two names — and the same instant on both,
+			// which is exactly why the instant cannot fence this.
+			must.EqOp(t, first[0].Key, second[0].Key)
+			must.True(t, first[0].RunAt.Equal(second[0].RunAt))
+			must.NotEqOp(t, "", first[0].LeasedBy)
+			must.NotEqOp(t, first[0].LeasedBy, second[0].LeasedBy)
+
+			return set, first[0], second[0]
+		}
+
+		t.Run("its Complete retires nothing", func(t *testing.T) {
+			t.Parallel()
+
+			set, straggler, holder := lapse(t, "slow-completer")
+
+			must.NoError(t, set.Complete(t.Context(), straggler))
+
+			// Still outstanding. Retiring it here would record the firing as
+			// done before the second worker's handler finished — and then
+			// exclude that worker's own Release as already-fired, which is how
+			// the firing would be lost rather than merely doubled.
+			stats, err := set.Stats(t.Context())
+			must.NoError(t, err)
+			test.EqOp(t, int64(0), stats.Fired)
+			test.EqOp(t, int64(1), stats.Outstanding)
+
+			// The holder's own Complete lands, so what the fence refused was the
+			// straggler rather than the statement.
+			must.NoError(t, set.Complete(t.Context(), holder))
+
+			stats, err = set.Stats(t.Context())
+			must.NoError(t, err)
+			test.EqOp(t, int64(1), stats.Fired)
+		})
+
+		t.Run("its Release hands nothing back", func(t *testing.T) {
+			t.Parallel()
+
+			set, straggler, holder := lapse(t, "slow-releaser")
+
+			must.NoError(t, set.Release(t.Context(), time.Hour, platformerrors.New("straggler"), straggler))
+
+			// The holder's lease is intact and its schedule has not moved: a
+			// hand-back here would push the timer an hour out from under a
+			// worker that is still firing it.
+			claimed, err := set.Claim(t.Context(), 10, time.Minute)
+			must.NoError(t, err)
+			test.SliceEmpty(t, claimed)
+
+			must.NoError(t, set.Complete(t.Context(), holder))
+
+			stats, err := set.Stats(t.Context())
+			must.NoError(t, err)
+			test.EqOp(t, int64(1), stats.Fired)
+		})
+	})
+
+	// The complement, and the reason the fence is the claim's name rather than
+	// the lease's liveness. Worker.pass completes on a detached context with a
+	// full lease of grace precisely so a handler that overran still records what
+	// it did, and a liveness test would throw that away.
+	t.Run("a lapsed lease nobody else took still completes", func(t *testing.T) {
+		t.Parallel()
+
+		set := newSet(t, client, nil)
+		must.NoError(t, set.ScheduleAt(t.Context(), "slow-but-alone", past(), nil))
+
+		claimed, err := set.Claim(t.Context(), 10, 200*time.Millisecond)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
+
+		time.Sleep(400 * time.Millisecond)
+
+		must.NoError(t, set.Complete(t.Context(), claimed...))
+
+		stats, err := set.Stats(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), stats.Fired)
+	})
+
+	// The case that needs both fences, and the one the instant alone gets wrong:
+	// a reschedule to the same instant leaves run_at exactly where it was, so a
+	// straggler's Complete is indistinguishable from the holder's by every fact
+	// the row held before the claim got a name.
+	t.Run("a straggler cannot retire a firing rescheduled to the same instant", func(t *testing.T) {
+		t.Parallel()
+
+		set := newSet(t, client, nil)
+		at := past()
+		must.NoError(t, set.ScheduleAt(t.Context(), "redelivered", at, nil))
+
+		straggler, err := set.Claim(t.Context(), 10, 200*time.Millisecond)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, straggler)
+
+		time.Sleep(400 * time.Millisecond)
+
+		// An at-least-once upstream redelivers "start trial". The instant did
+		// not move, so the lease and its name are deliberately left alone — but
+		// the lease has lapsed, so a second worker takes the firing.
+		must.NoError(t, set.ScheduleAt(t.Context(), "redelivered", at, nil))
+
+		holder, err := set.Claim(t.Context(), 10, time.Hour)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, holder)
+		must.True(t, holder[0].RunAt.Equal(straggler[0].RunAt))
+
+		must.NoError(t, set.Complete(t.Context(), straggler...))
+
+		stats, err := set.Stats(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), stats.Fired)
+		test.EqOp(t, int64(1), stats.Outstanding)
+	})
+
 	t.Run("the oldest debt fires first", func(t *testing.T) {
 		t.Parallel()
 

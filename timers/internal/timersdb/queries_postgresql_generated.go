@@ -30,13 +30,14 @@ const claimDueTimersPostgreSQL = `WITH due AS (
 		{{prefix}}scheduled_timers.timer_key,
 		{{prefix}}scheduled_timers.lease_until AS prior_lease
 	FROM {{prefix}}scheduled_timers
-	WHERE {{prefix}}scheduled_timers.timer_set = $2 AND {{prefix}}scheduled_timers.fired_at IS NULL AND {{prefix}}scheduled_timers.lease_until <= CURRENT_TIMESTAMP AND {{prefix}}scheduled_timers.run_at <= CURRENT_TIMESTAMP AND ($3::int <= 0 OR {{prefix}}scheduled_timers.attempts < $3::int)
+	WHERE {{prefix}}scheduled_timers.timer_set = $3 AND {{prefix}}scheduled_timers.fired_at IS NULL AND {{prefix}}scheduled_timers.lease_until <= CURRENT_TIMESTAMP AND {{prefix}}scheduled_timers.run_at <= CURRENT_TIMESTAMP AND ($4::int <= 0 OR {{prefix}}scheduled_timers.attempts < $4::int)
 	ORDER BY {{prefix}}scheduled_timers.run_at, {{prefix}}scheduled_timers.timer_key
-	LIMIT $4::int
+	LIMIT $5::int
 	FOR UPDATE SKIP LOCKED
 )
 UPDATE {{prefix}}scheduled_timers SET
 	lease_until = CURRENT_TIMESTAMP + ($1::bigint * INTERVAL '1 microsecond'),
+	leased_by = $2,
 	attempts = {{prefix}}scheduled_timers.attempts + 1
 FROM due
 WHERE {{prefix}}scheduled_timers.timer_set = due.timer_set
@@ -53,10 +54,11 @@ const completeTimersPostgreSQL = `WITH target AS (
 	SELECT {{prefix}}scheduled_timers.timer_set, {{prefix}}scheduled_timers.timer_key
 	FROM {{prefix}}scheduled_timers
 	WHERE {{prefix}}scheduled_timers.timer_set = $1
-		AND ({{prefix}}scheduled_timers.timer_key, {{prefix}}scheduled_timers.run_at) IN (
-			SELECT keys.timer_key, instants.run_at
+		AND ({{prefix}}scheduled_timers.timer_key, {{prefix}}scheduled_timers.run_at, {{prefix}}scheduled_timers.leased_by) IN (
+			SELECT keys.timer_key, instants.run_at, holders.leased_by
 			FROM unnest($2::text[]) WITH ORDINALITY AS keys(timer_key, ordinal)
 				JOIN unnest($3::timestamptz[]) WITH ORDINALITY AS instants(run_at, ordinal) USING (ordinal)
+				JOIN unnest($4::text[]) WITH ORDINALITY AS holders(leased_by, ordinal) USING (ordinal)
 		)
 	ORDER BY {{prefix}}scheduled_timers.timer_set, {{prefix}}scheduled_timers.timer_key
 	FOR UPDATE
@@ -64,6 +66,7 @@ const completeTimersPostgreSQL = `WITH target AS (
 UPDATE {{prefix}}scheduled_timers SET
 	fired_at = CURRENT_TIMESTAMP,
 	lease_until = TIMESTAMPTZ 'epoch',
+	leased_by = NULL,
 	last_error = NULL
 FROM target
 WHERE {{prefix}}scheduled_timers.timer_set = target.timer_set
@@ -106,16 +109,18 @@ const releaseTimersPostgreSQL = `WITH target AS (
 	FROM {{prefix}}scheduled_timers
 	WHERE {{prefix}}scheduled_timers.timer_set = $3
 		AND {{prefix}}scheduled_timers.fired_at IS NULL
-		AND ({{prefix}}scheduled_timers.timer_key, {{prefix}}scheduled_timers.run_at) IN (
-			SELECT keys.timer_key, instants.run_at
+		AND ({{prefix}}scheduled_timers.timer_key, {{prefix}}scheduled_timers.run_at, {{prefix}}scheduled_timers.leased_by) IN (
+			SELECT keys.timer_key, instants.run_at, holders.leased_by
 			FROM unnest($4::text[]) WITH ORDINALITY AS keys(timer_key, ordinal)
 				JOIN unnest($5::timestamptz[]) WITH ORDINALITY AS instants(run_at, ordinal) USING (ordinal)
+				JOIN unnest($6::text[]) WITH ORDINALITY AS holders(leased_by, ordinal) USING (ordinal)
 		)
 	ORDER BY {{prefix}}scheduled_timers.timer_set, {{prefix}}scheduled_timers.timer_key
 	FOR UPDATE
 )
 UPDATE {{prefix}}scheduled_timers SET
 	lease_until = TIMESTAMPTZ 'epoch',
+	leased_by = NULL,
 	run_at = CURRENT_TIMESTAMP + ($1::bigint * INTERVAL '1 microsecond'),
 	last_error = $2
 FROM target
@@ -152,6 +157,10 @@ ON CONFLICT (timer_set, timer_key) DO UPDATE SET
 	lease_until = CASE
 		WHEN {{prefix}}scheduled_timers.run_at IS DISTINCT FROM excluded.run_at THEN TIMESTAMPTZ 'epoch'
 		ELSE {{prefix}}scheduled_timers.lease_until
+	END,
+	leased_by = CASE
+		WHEN {{prefix}}scheduled_timers.run_at IS DISTINCT FROM excluded.run_at THEN NULL
+		ELSE {{prefix}}scheduled_timers.leased_by
 	END`
 
 // postgresqlQueries answers every query in Querier against postgresql.
@@ -198,6 +207,7 @@ func (q *postgresqlQueries) CancelTimers(ctx context.Context, db DBTX, arg Cance
 func (q *postgresqlQueries) ClaimDueTimers(ctx context.Context, db DBTX, arg ClaimDueTimersParams) ([]ClaimDueTimersRow, error) {
 	rows, err := db.QueryContext(ctx, q.claimDueTimers,
 		arg.LeaseMicroseconds,
+		arg.LeasedBy,
 		arg.TimerSet,
 		arg.AttemptCeiling,
 		arg.ClaimLimit,
@@ -240,6 +250,7 @@ func (q *postgresqlQueries) CompleteTimers(ctx context.Context, db DBTX, arg Com
 		arg.TimerSet,
 		arg.TimerKeys,
 		arg.RunAts,
+		arg.LeasedBys,
 	)
 	if err != nil {
 		return 0, err
@@ -308,6 +319,7 @@ func (q *postgresqlQueries) ReleaseTimers(ctx context.Context, db DBTX, arg Rele
 		arg.TimerSet,
 		arg.TimerKeys,
 		arg.RunAts,
+		arg.LeasedBys,
 	)
 	if err != nil {
 		return 0, err
@@ -341,6 +353,7 @@ var (
 	}(CancelTimersParams{})
 	_ = struct {
 		LeaseMicroseconds int64
+		LeasedBy          *string
 		TimerSet          string
 		AttemptCeiling    int64
 		ClaimLimit        int64
@@ -357,6 +370,7 @@ var (
 		TimerSet  string
 		TimerKeys []string
 		RunAts    []time.Time
+		LeasedBys []string
 	}(CompleteTimersParams{})
 	_ = struct {
 		TimerSet       string
@@ -389,6 +403,7 @@ var (
 		TimerSet          string
 		TimerKeys         []string
 		RunAts            []time.Time
+		LeasedBys         []string
 	}(ReleaseTimersParams{})
 	_ = struct {
 		TimerSet  string

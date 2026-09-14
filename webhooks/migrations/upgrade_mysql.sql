@@ -46,3 +46,10 @@ CREATE UNIQUE INDEX {{PREFIX}}webhooks_subscriptions_id_idx
 
 CREATE INDEX {{PREFIX}}webhooks_subscriptions_endpoint_idx
     ON {{PREFIX}}webhooks_subscriptions (endpoint_id, archived_at, id);
+
+-- The dispatch's lease gained a holder: the name of the claim that took it,
+-- which the two writes that report a delivery's outcome now present again so a
+-- worker whose lease lapsed cannot retire or reschedule a dispatch somebody
+-- else has since taken. Nullable, so every existing row reads as unheld, which
+-- is what a row nobody has claimed since this ran in fact is.
+ALTER TABLE {{PREFIX}}webhooks_dispatches ADD COLUMN claimed_by VARCHAR(64);

@@ -37,6 +37,7 @@ WHERE archived_at IS NULL
 
 const claimDispatchesSQLite = `UPDATE {{prefix}}webhooks_dispatches SET
 	claimed_until = ?1,
+	claimed_by = ?2,
 	attempts = attempts + 1,
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE id IN (/*SLICE:ids*/?)`
@@ -541,10 +542,12 @@ ORDER BY {{prefix}}webhooks_subscriptions.event_type ASC`
 const markDispatchDeliveredSQLite = `UPDATE {{prefix}}webhooks_dispatches SET
 	delivered_at = ?1,
 	claimed_until = ?2,
-	last_error = ?3,
+	claimed_by = ?3,
+	last_error = ?4,
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE archived_at IS NULL
-	AND id = ?4`
+	AND id = ?5
+	AND claimed_by = ?6`
 
 const reapAttemptsSQLite = `DELETE FROM {{prefix}}webhooks_attempts
 WHERE {{prefix}}webhooks_attempts.id IN (
@@ -581,24 +584,27 @@ WHERE {{prefix}}webhooks_dispatches.id IN (
 
 const recordDispatchFailureSQLite = `UPDATE {{prefix}}webhooks_dispatches SET
 	claimed_until = ?1,
-	attempts = ?2,
-	next_attempt = ?3,
-	last_error = ?4,
-	dead = ?5,
+	claimed_by = ?2,
+	attempts = ?3,
+	next_attempt = ?4,
+	last_error = ?5,
+	dead = ?6,
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE archived_at IS NULL
-	AND id = ?6`
+	AND id = ?7
+	AND claimed_by = ?8`
 
 const requeueDispatchSQLite = `UPDATE {{prefix}}webhooks_dispatches SET
 	next_attempt = ?1,
 	claimed_until = ?2,
-	delivered_at = ?3,
-	dead = ?4,
-	attempts = ?5,
+	claimed_by = ?3,
+	delivered_at = ?4,
+	dead = ?5,
+	attempts = ?6,
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE archived_at IS NULL
-	AND delivery_id = ?6
-	AND endpoint_id = ?7`
+	AND delivery_id = ?7
+	AND endpoint_id = ?8`
 
 const selectClaimableDispatchesSQLite = `SELECT m.id
 FROM {{prefix}}webhooks_dispatches AS m
@@ -811,9 +817,11 @@ func (q *sqliteQueries) ArchiveSubscriptionByPair(ctx context.Context, db DBTX, 
 func (q *sqliteQueries) ClaimDispatches(ctx context.Context, db DBTX, arg ClaimDispatchesParams) (int64, error) {
 	query := q.claimDispatches
 
-	args := make([]any, 0, 1+len(arg.IDs))
+	args := make([]any, 0, 2+len(arg.IDs))
 
 	args = append(args, timeTextPtr(arg.ClaimedUntil))
+
+	args = append(args, arg.ClaimedBy)
 
 	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
 
@@ -1419,8 +1427,10 @@ func (q *sqliteQueries) MarkDispatchDelivered(ctx context.Context, db DBTX, arg 
 	result, err := db.ExecContext(ctx, q.markDispatchDelivered,
 		timeTextPtr(arg.DeliveredAt),
 		timeTextPtr(arg.ClaimedUntil),
+		arg.ClaimedBy,
 		arg.LastError,
 		arg.ID,
+		arg.HeldBy,
 	)
 	if err != nil {
 		return 0, err
@@ -1470,11 +1480,13 @@ func (q *sqliteQueries) ReapDispatches(ctx context.Context, db DBTX, arg ReapDis
 func (q *sqliteQueries) RecordDispatchFailure(ctx context.Context, db DBTX, arg RecordDispatchFailureParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordDispatchFailure,
 		timeTextPtr(arg.ClaimedUntil),
+		arg.ClaimedBy,
 		arg.Attempts,
 		timeText(arg.NextAttempt),
 		arg.LastError,
 		arg.Dead,
 		arg.ID,
+		arg.HeldBy,
 	)
 	if err != nil {
 		return 0, err
@@ -1488,6 +1500,7 @@ func (q *sqliteQueries) RequeueDispatch(ctx context.Context, db DBTX, arg Requeu
 	result, err := db.ExecContext(ctx, q.requeueDispatch,
 		timeText(arg.NextAttempt),
 		timeTextPtr(arg.ClaimedUntil),
+		arg.ClaimedBy,
 		timeTextPtr(arg.DeliveredAt),
 		arg.Dead,
 		arg.Attempts,
@@ -1585,6 +1598,7 @@ var (
 	}(ArchiveSubscriptionByPairParams{})
 	_ = struct {
 		ClaimedUntil *time.Time
+		ClaimedBy    *string
 		IDs          []string
 	}(ClaimDispatchesParams{})
 	_ = struct {
@@ -1869,8 +1883,10 @@ var (
 	_ = struct {
 		DeliveredAt  *time.Time
 		ClaimedUntil *time.Time
+		ClaimedBy    *string
 		LastError    *string
 		ID           string
+		HeldBy       *string
 	}(MarkDispatchDeliveredParams{})
 	_ = struct {
 		ResultLimit int64
@@ -1884,15 +1900,18 @@ var (
 	}(ReapDispatchesParams{})
 	_ = struct {
 		ClaimedUntil *time.Time
+		ClaimedBy    *string
 		Attempts     int64
 		NextAttempt  time.Time
 		LastError    *string
 		Dead         bool
 		ID           string
+		HeldBy       *string
 	}(RecordDispatchFailureParams{})
 	_ = struct {
 		NextAttempt  time.Time
 		ClaimedUntil *time.Time
+		ClaimedBy    *string
 		DeliveredAt  *time.Time
 		Dead         bool
 		Attempts     int64

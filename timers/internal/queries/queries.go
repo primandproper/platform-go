@@ -51,6 +51,24 @@ const (
 	// so the due predicate is one comparison instead of a comparison plus a
 	// NULL branch every future writer would have to remember.
 	LeaseColumn = "lease_until"
+	// HolderColumn names the claim that holds the lease: one identifier per
+	// claim, minted by the set and written beside the horizon, so a write
+	// reporting what became of a firing can say which claim is reporting.
+	//
+	// The instant fences a reschedule; this fences a reclaim, and neither
+	// covers the other. A lease lapses on a worker that is merely slow, not
+	// dead; a second worker claims the same (key, run_at) — a claim does not
+	// move run_at — and the first arrives later with an outcome that the
+	// instant cannot tell apart from the second's.
+	//
+	// It is nullable, where lease_until is NOT NULL with an epoch sentinel, and
+	// the two are not inconsistent. That sentinel exists because the due
+	// predicate branches on the horizon and a NULL branch is one every future
+	// writer would have to remember; nothing branches on the holder — its only
+	// reader is a membership test, and NULL already matches nothing there. What
+	// a NOT NULL DEFAULT '' would buy instead is a name every unheld row answers
+	// to, and '' is the Go zero value a hand-built Due carries.
+	HolderColumn = "leased_by"
 	// FiredAtColumn is when the timer fired, and NULL while it has not. It is
 	// the column every read excludes on and the column the retirement assigns,
 	// which makes it the one place in this schema a guard and an assignment
@@ -96,6 +114,10 @@ const (
 	RetentionArg = "retention_microseconds"
 	// ReapLimitArg caps one reaping pass.
 	ReapLimitArg = "reap_limit"
+	// HoldersArg is the batch of claim names that fences those keys, bound as
+	// one array and read positionally against KeysArg. See Render on the
+	// arrays.
+	HoldersArg = "leased_bys"
 )
 
 // ordinal is what the two parallel arrays are joined on.
@@ -131,6 +153,7 @@ var Columns = []string{
 	querygen.LastUpdatedAtColumn,
 	querygen.ArchivedAtColumn,
 	LeaseColumn,
+	HolderColumn,
 	FiredAtColumn,
 	LastErrorColumn,
 }
@@ -219,8 +242,11 @@ func Render(d dialect.Dialect) string {
 // so the new instant wins outright, and the attempt count and last error reset
 // with it because this is a fresh schedule rather than a retry of the old one.
 //
-// The lease is revoked if and only if the instant actually moved, which is the
-// one place those two cases have to be told apart. A move frees the row
+// The lease is revoked if and only if the instant actually moved, and the name
+// on it is revoked under the very same condition — they are the two halves of
+// one fact, and a row freed by one reading and held by the other is a row two
+// writers disagree about. This is the one place those two cases have to be told
+// apart. A move frees the row
 // immediately: the worker holding the lease is firing a schedule that no longer
 // exists — the run_at fence already stops their retirement landing, see
 // [completeTimers] — so leaving the lease in place would only make the new
@@ -246,6 +272,10 @@ ON CONFLICT (%[6]s, %[5]s) DO UPDATE SET
 	%[14]s = CASE
 		WHEN %[1]s.%[7]s IS DISTINCT FROM excluded.%[7]s THEN %[15]s
 		ELSE %[1]s.%[14]s
+	END,
+	%[16]s = CASE
+		WHEN %[1]s.%[7]s IS DISTINCT FROM excluded.%[7]s THEN NULL
+		ELSE %[1]s.%[16]s
 	END`,
 	TimersTable,
 	strings.Join(InsertColumns(), ",\n\t"),
@@ -269,6 +299,7 @@ ON CONFLICT (%[6]s, %[5]s) DO UPDATE SET
 	querygen.NowExpression,
 	LeaseColumn,
 	epoch,
+	HolderColumn,
 )
 
 // scheduledBatch renders the three arrays a schedule binds, joined back into
@@ -281,12 +312,16 @@ func scheduledBatch() string {
 	}, "\n")
 }
 
-// firedBatch renders the two arrays a keyed write binds — the keys and the
-// instants that fence them — joined back into the pairs that address a firing.
+// firedBatch renders the three arrays a keyed write binds — the keys, the
+// instants that fence them, and the claims that hold them — joined back into
+// the triples that address a firing.
 func firedBatch() string {
-	return "SELECT keys." + KeyColumn + ", instants." + RunAtColumn + "\n\t\t\tFROM " +
-		unnested(KeysArg, "text", "keys", KeyColumn) + "\n\t\t\t\tJOIN " +
-		unnested(RunAtsArg, "timestamptz", "instants", RunAtColumn) + " USING (" + ordinal + ")"
+	return "SELECT keys." + KeyColumn + ", instants." + RunAtColumn + ", holders." + HolderColumn +
+		"\n\t\t\tFROM " + unnested(KeysArg, "text", "keys", KeyColumn) +
+		"\n\t\t\t\tJOIN " + unnested(RunAtsArg, "timestamptz", "instants", RunAtColumn) +
+		" USING (" + ordinal + ")" +
+		"\n\t\t\t\tJOIN " + unnested(HoldersArg, "text", "holders", HolderColumn) +
+		" USING (" + ordinal + ")"
 }
 
 // unnested renders one bound array as a table of its elements and their
@@ -329,6 +364,11 @@ func unnested(argument, sqlType, alias, column string) string {
 // subtraction against the reader's clock. So is the answer to whether this
 // claim is a reclaim, which is the prior lease read before the new one
 // overwrites it — a fact that exists only inside this statement.
+//
+// The claim's name goes in beside the horizon and is not returned: the caller
+// minted it and is holding it, so reading it back would be asking the database
+// to confirm a value nothing else could have written. What it is for is the two
+// writes that come after — see [firedTriples].
 var claimDueTimers = fmt.Sprintf(`WITH due AS (
 	SELECT
 		%[1]s.%[2]s,
@@ -342,6 +382,7 @@ var claimDueTimers = fmt.Sprintf(`WITH due AS (
 )
 UPDATE %[1]s SET
 	%[4]s = %[8]s + %[9]s,
+	%[14]s = sqlc.arg(%[14]s),
 	%[10]s = %[1]s.%[10]s + 1
 FROM due
 WHERE %[1]s.%[2]s = due.%[2]s
@@ -366,6 +407,7 @@ RETURNING
 	PayloadColumn,
 	microsecondsSince(querygen.Qualify(TimersTable, RunAtColumn)),
 	epoch,
+	HolderColumn,
 )
 
 // readNextDueTimer is the sleep hint: how long until the nearest outstanding
@@ -400,8 +442,15 @@ WHERE %[3]s`,
 // than deleted, so "did the expiry run, and when" stays answerable after the
 // fact; the reaper removes them once they age past the retention window.
 //
-// A firing is addressed by its key and its instant together, and that pair is
-// the whole of this package's answer to the reschedule race. A retirement
+// A firing is addressed by its key, its instant and the claim holding it, and
+// those three are this package's answer to two different races. The instant
+// answers the reschedule; the claim answers the reclaim, which the instant
+// cannot see because a claim does not move run_at. See [firedTriples].
+//
+// The claim's name is released with the lease. A retired firing that still
+// answered to the claim that fired it would answer to it again once a reschedule
+// restarts the row, and that worker's retried completion would then retire a
+// fresh claim's firing. A retirement
 // carrying a stale run_at matches nothing, so a timer moved while it was being
 // fired keeps its new schedule instead of being marked fired against the old
 // one. That is the same "matches nothing" outcome a lapsed lease already
@@ -413,9 +462,10 @@ WHERE %[3]s`,
 // last_updated_at is deliberately not stamped. It records that the timer's own
 // schedule changed, which a retirement does not do; the reschedule is the one
 // statement here that writes it.
-var completeTimers = lockedTargets("", firedPairs()) + fmt.Sprintf(`UPDATE %[1]s SET
+var completeTimers = lockedTargets("", firedTriples()) + fmt.Sprintf(`UPDATE %[1]s SET
 	%[2]s = %[3]s,
 	%[4]s = %[5]s,
+	%[8]s = NULL,
 	%[6]s = NULL
 FROM target
 WHERE %[7]s`,
@@ -426,6 +476,7 @@ WHERE %[7]s`,
 	epoch,
 	LastErrorColumn,
 	targetJoin(),
+	HolderColumn,
 )
 
 // releaseTimers is an early lease hand-back: drop the lease, push the timer out
@@ -438,12 +489,16 @@ WHERE %[7]s`,
 // has been retried five times does not look five delays late; the stalled count
 // in [readTimerStats] is what surfaces that instead.
 //
-// Already-fired rows are excluded rather than resurrected, and the run_at fence
-// applies here exactly as it does to a retirement: a release against a schedule
-// that has since moved must not drag the new one backwards.
+// Already-fired rows are excluded rather than resurrected, and both fences apply
+// here exactly as they do to a retirement: a release against a schedule that has
+// since moved must not drag the new one backwards, and one from a claim that has
+// since been taken over must not drop a lease its successor is holding, push
+// that successor's timer out, or overwrite its record of why with a cause from
+// an attempt nobody is waiting on.
 var releaseTimers = lockedTargets(
-	querygen.Qualify(TimersTable, FiredAtColumn)+" IS NULL", firedPairs()) + fmt.Sprintf(`UPDATE %[1]s SET
+	querygen.Qualify(TimersTable, FiredAtColumn)+" IS NULL", firedTriples()) + fmt.Sprintf(`UPDATE %[1]s SET
 	%[2]s = %[3]s,
+	%[10]s = NULL,
 	%[4]s = %[5]s + %[6]s,
 	%[7]s = sqlc.narg(%[8]s)
 FROM target
@@ -457,6 +512,7 @@ WHERE %[9]s`,
 	LastErrorColumn,
 	LastErrorArg,
 	targetJoin(),
+	HolderColumn,
 )
 
 // cancelTimers deletes named timers, whatever their schedule and whether or not
@@ -617,13 +673,23 @@ func lockedTargets(guard, match string) string {
 `, TimersTable, SetColumn, KeyColumn, strings.Join(predicates, "\n\t\tAND "))
 }
 
-// firedPairs renders the membership test a keyed write addresses its firings
-// with: the key and the instant together, matched against the two parallel
-// arrays the caller bound.
-func firedPairs() string {
-	return fmt.Sprintf("(%s, %s) IN (\n\t\t\t%s\n\t\t)",
+// firedTriples renders the membership test a keyed write addresses its firings
+// with: the key, the instant and the claim holding it together, matched against
+// the three parallel arrays the caller bound.
+//
+// The instant and the claim fence two different things and neither covers the
+// other. The instant stops a retirement carrying a schedule that has since
+// moved, so a rescheduled timer keeps its new schedule. The claim stops one
+// carrying a lease that has since been taken over — a reclaim leaves run_at
+// exactly where it was, so the instant cannot tell the straggler from the holder
+// — and without it a slow worker's completion retires a firing the second worker
+// is still running, and that worker's own release is then excluded as
+// already-fired, leaving the timer recorded fired having never succeeded.
+func firedTriples() string {
+	return fmt.Sprintf("(%s, %s, %s) IN (\n\t\t\t%s\n\t\t)",
 		querygen.Qualify(TimersTable, KeyColumn),
 		querygen.Qualify(TimersTable, RunAtColumn),
+		querygen.Qualify(TimersTable, HolderColumn),
 		firedBatch())
 }
 

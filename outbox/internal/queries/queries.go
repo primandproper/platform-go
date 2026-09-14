@@ -105,6 +105,16 @@ const (
 	BeforeArg = "before"
 	// IDsArg is the set of message ids a claim leases, reads back, and retires.
 	IDsArg = querygen.IDsArg
+	// HeldByArg is the claim a retirement or a failure says it is reporting on:
+	// the name the relay stamped when it took the rows, presented again when it
+	// comes back to say what happened to them.
+	//
+	// It is a second name for claimed_by because the two ends of the comparison
+	// are two arguments. Both writes assign that column — one clears it, one
+	// binds it — so a guard sharing the assignment's name would be requiring the
+	// row to already hold the value it is about to write, which is legal SQL
+	// that guards nothing. See querygen.Match.Arg, which exists for this.
+	HeldByArg = "held_by"
 )
 
 // Columns is every column, in the order the DDL declares them and every
@@ -440,10 +450,25 @@ func fetchClaimed(g *querygen.Generator) *querygen.Query {
 	}
 }
 
-// markPublished retires the rows the broker accepted.
+// markPublished retires the rows the broker accepted, and only the ones this
+// claim is still holding.
 //
 // The rows are kept rather than deleted, so a duplicate or a gap can be
 // investigated later; the reap removes them once they age past retention.
+//
+// The claim's name is in the predicate because the ids are not enough. A relay
+// whose lease lapsed while it was slow is still holding every id it selected,
+// and a second relay has since taken those rows and is publishing them; a
+// retirement addressed by the ids alone would retire the second relay's work
+// before it happened, and the second relay's own failure write would then be
+// refused as a retirement it must not undo. The name says which claim is
+// speaking, so the straggler retires nothing. See claimMessages for where the
+// name comes from, and ClaimedByColumn for why it is a name rather than the
+// horizon.
+//
+// It is annotated :execrows rather than :exec for that guard's sake: the count
+// is how the Relay learns it lost rows it thought it held, which is a lease it
+// overran and the one thing worth saying out loud about it.
 //
 // The three columns cleared are assigned NULL outright rather than bound. There
 // is no value a caller could pass that should leave a published message holding
@@ -452,18 +477,20 @@ func fetchClaimed(g *querygen.Generator) *querygen.Query {
 // argument for a guard, applied to a SET.
 func markPublished(g *querygen.Generator) *querygen.Query {
 	return &querygen.Query{
-		Annotation: querygen.QueryAnnotation{Name: "MarkOutboxMessagesPublished", Type: querygen.ExecType},
+		Annotation: querygen.QueryAnnotation{Name: "MarkOutboxMessagesPublished", Type: querygen.ExecRowsType},
 		Content: fmt.Sprintf(`UPDATE %s SET
 	%s = sqlc.arg(%s),
 	%s = NULL,
 	%s = NULL,
 	%s = NULL
-WHERE %s;`,
+WHERE %s = sqlc.arg(%s)
+	AND %s;`,
 			OutboxTable,
 			PublishedAtColumn, PublishedAtColumn,
 			ClaimedUntilColumn,
 			ClaimedByColumn,
 			LastErrorColumn,
+			ClaimedByColumn, HeldByArg,
 			g.SetCondition(querygen.IDColumn, IDsArg),
 		),
 	}
@@ -476,8 +503,16 @@ WHERE %s;`,
 // It is the one write here querygen renders whole, because it is the one that
 // assigns bound values to a row addressed by its id — which is the shape that
 // package is nearly all of.
+//
+// The claim's name is a guard on it for markPublished's reason, read the other
+// way round: a straggler's failure write would push back the next attempt of a
+// message a second relay is mid-publish on, release that relay's lease out from
+// under it, and — on a message whose attempts are spent — quarantine a publish
+// that was about to succeed. The name is bound under HeldByArg rather than under
+// the column, because this statement also assigns the column.
 func recordFailure(g *querygen.Generator) *querygen.Query {
-	return g.UpdateQuery("RecordOutboxMessageFailure", OutboxTable, Columns, FailureColumns, Nullable)
+	return g.UpdateQuery("RecordOutboxMessageFailure", OutboxTable, Columns, FailureColumns, Nullable,
+		querygen.Match{Column: ClaimedByColumn, Arg: HeldByArg})
 }
 
 // backlog is the health probe: how many messages are waiting, and when the

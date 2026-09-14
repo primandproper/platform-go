@@ -18,6 +18,7 @@ type CancelTimersParams struct {
 // ClaimDueTimersParams are the arguments to ClaimDueTimers.
 type ClaimDueTimersParams struct {
 	LeaseMicroseconds int64
+	LeasedBy          *string
 	TimerSet          string
 	AttemptCeiling    int64
 	ClaimLimit        int64
@@ -38,6 +39,7 @@ type CompleteTimersParams struct {
 	TimerSet  string
 	TimerKeys []string
 	RunAts    []time.Time
+	LeasedBys []string
 }
 
 // ReadNextDueTimerParams are the arguments to ReadNextDueTimer.
@@ -82,6 +84,7 @@ type ReleaseTimersParams struct {
 	TimerSet          string
 	TimerKeys         []string
 	RunAts            []time.Time
+	LeasedBys         []string
 }
 
 // ScheduleTimersParams are the arguments to ScheduleTimers.

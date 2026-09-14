@@ -32,18 +32,35 @@ That is why this package has no clock.Clock option, alone among the platform's
 scheduling components. Process clocks never have to agree, which is the whole
 reason a fleet can coordinate through one table.
 
-# Failure recovery is expiry, and only expiry
+# Failure recovery is expiry; exclusivity is a name
 
-There are no fencing tokens and no heartbeats. A worker that dies simply lets its
-lease lapse, and the item is handed to somebody else. Nothing detects the death;
-nothing has to.
+There are no heartbeats. A worker that dies simply lets its lease lapse, and the
+item is handed to somebody else. Nothing detects the death; nothing has to.
 
 The price of that simplicity is that work must be idempotent. Two workers can
 briefly hold the same key — a lease lapses while its holder is merely slow, not
-dead — and a straggler's late Complete lands on an item somebody else has already
-finished. Both are waste, not corruption, as long as doing the work twice is the
-same as doing it once. Item.Reclaimed marks a claim that took over a lapsed
-lease, so the duplicate window is at least visible.
+dead — so the item gets done twice. Item.Reclaimed marks a claim that took over a
+lapsed lease, so that window is visible.
+
+What is not a price is the item being recorded wrong. A claim stamps a name on
+every row it takes and hands it back on Item.LeasedBy, and Complete and Release
+address an item by its key and that name together. So the straggler's late
+Complete matches nothing instead of retiring an item the second worker is still
+working on — which would have excluded that worker's own Release as
+already-completed and left the item done with the work never performed. Its late
+Release matches nothing for the same reason, rather than dropping a lease
+somebody is holding and putting the item in front of a third worker.
+
+The name is the fence, not the lease's liveness, and the difference shows up in
+one case: a worker whose lease lapsed with nobody else claiming still holds the
+item, and its Complete still lands. Refusing it would only mean doing the work
+again. Matching nothing is not an error — an item the queue never held, one an
+operator removed, and one somebody else now holds are the same answer to a caller
+— so what a short match gets is a counter and a log line.
+
+One consequence reaches a caller: Complete and Release report on a claim, so
+they take the Items that Claim handed out. There is no way to retire an item
+without having held it; Remove is how a queue drops work nobody claimed.
 
 # The two details that cost real incidents
 
@@ -80,15 +97,19 @@ otherwise the lease lapses on its own and the item returns anyway.
 	// ...
 	for _, item := range items {
 	    if err := do(ctx, item.Key); err != nil {
-	        _ = queue.Release(ctx, time.Minute, err, item.Key)
+	        _ = queue.Release(ctx, time.Minute, err, item)
 
 	        continue
 	    }
 
-	    done = append(done, item.Key)
+	    done = append(done, item)
 	}
 
 	err = queue.Complete(ctx, done...)
+
+Hand back the Item rather than its key. An item is addressed by its key and the
+claim holding it together, and passing the value Claim gave you is what applies
+that fence without anybody having to think about it.
 
 A claim's limit counts the items it actually leased, not the rows it looked at:
 Postgres applies the LIMIT above the lock, so rows a concurrent claimer holds are
@@ -158,9 +179,9 @@ production.
 A batch reaches those statements as one bound array per column rather than as a
 tuple or a placeholder run, so the text of a statement does not depend on how
 many items are in the call. Enqueue splits its merged batch into three parallel
-arrays — key, priority, delay — and Complete, Release, and Remove each bind one
-array of keys, in primary-key order, which is where the lock-ordering discipline
-above is applied.
+arrays — key, priority, delay — Complete and Release bind two, the key and the
+claim holding it, and Remove binds one. All of them are in primary-key order,
+which is where the lock-ordering discipline above is applied.
 
 # Creating the table
 

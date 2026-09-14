@@ -127,7 +127,7 @@ func runQueueSuite(t *testing.T, client database.Client) {
 			test.False(t, items[i].Reclaimed)
 		}
 
-		must.NoError(t, q.Complete(t.Context(), "a", "b"))
+		must.NoError(t, q.Complete(t.Context(), items...))
 
 		stats, err := q.Stats(t.Context())
 		must.NoError(t, err)
@@ -174,6 +174,109 @@ func runQueueSuite(t *testing.T, client database.Client) {
 		test.True(t, second[0].Reclaimed)
 	})
 
+	// The other half of a lapsed lease: what the worker that lost it is allowed
+	// to write when it finally finishes.
+	//
+	// Two workers, one item, and the first one slow rather than dead. Every
+	// instant here is the server's — the lease runs out on its clock and the
+	// sleep is only this process waiting for that to have happened — which is
+	// what makes the interleaving arrangeable rather than raced for.
+	t.Run("a straggler cannot report an outcome for an item somebody else took", func(t *testing.T) {
+		t.Parallel()
+
+		// lapse claims an item, lets the lease run out, reclaims it, and hands
+		// back both claims' view of the one row. The first is the straggler.
+		lapse := func(t *testing.T, key string) (q *Queue[string], straggler, holder Item[string]) {
+			t.Helper()
+
+			q = newQueue(t, client, nil)
+			must.NoError(t, q.EnqueueKeys(t.Context(), key))
+
+			first, err := q.Claim(t.Context(), 10, 200*time.Millisecond)
+			must.NoError(t, err)
+			must.SliceLen(t, 1, first)
+
+			time.Sleep(400 * time.Millisecond)
+
+			second, err := q.Claim(t.Context(), 10, time.Hour)
+			must.NoError(t, err)
+			must.SliceLen(t, 1, second)
+			must.True(t, second[0].Reclaimed)
+
+			// One row, two claims, two names. Nothing else about the row
+			// distinguishes them — the key is the same and so is everything
+			// derived from it, which is why the name had to be added.
+			must.EqOp(t, first[0].Key, second[0].Key)
+			must.NotEqOp(t, "", first[0].LeasedBy)
+			must.NotEqOp(t, first[0].LeasedBy, second[0].LeasedBy)
+
+			return q, first[0], second[0]
+		}
+
+		t.Run("its completion retires nothing", func(t *testing.T) {
+			t.Parallel()
+
+			q, straggler, holder := lapse(t, "slow-completer")
+
+			must.NoError(t, q.Complete(t.Context(), straggler))
+
+			// Still outstanding. Retiring it here would record the work as done
+			// before the second worker did it — and then exclude that worker's
+			// own release as already-completed, which is how the item would be
+			// lost rather than merely done twice.
+			stats, err := q.Stats(t.Context())
+			must.NoError(t, err)
+			test.EqOp(t, int64(0), stats.Completed)
+			test.EqOp(t, int64(1), stats.Pending)
+
+			// The holder's own completion lands, so what the fence refused was
+			// the straggler rather than the statement.
+			must.NoError(t, q.Complete(t.Context(), holder))
+
+			stats, err = q.Stats(t.Context())
+			must.NoError(t, err)
+			test.EqOp(t, int64(1), stats.Completed)
+		})
+
+		t.Run("its release hands nothing back", func(t *testing.T) {
+			t.Parallel()
+
+			q, straggler, _ := lapse(t, "slow-releaser")
+
+			must.NoError(t, q.Release(t.Context(), 0, platformerrors.New("straggler"), straggler))
+
+			// The holder's lease is intact: a hand-back here would put the item
+			// in front of a third worker while the second is still doing it.
+			stats, err := q.Stats(t.Context())
+			must.NoError(t, err)
+			test.EqOp(t, int64(1), stats.Leased)
+			test.EqOp(t, int64(0), stats.Ready)
+		})
+	})
+
+	// The complement, and the reason the fence is the claim's name rather than
+	// the lease's liveness: a worker whose lease ran out with nobody else
+	// claiming still holds the item, and the work it did is recorded rather
+	// than done again.
+	t.Run("a lapsed lease nobody else took still completes", func(t *testing.T) {
+		t.Parallel()
+
+		q := newQueue(t, client, nil)
+		must.NoError(t, q.EnqueueKeys(t.Context(), "slow-but-alone"))
+
+		claimed, err := q.Claim(t.Context(), 10, 200*time.Millisecond)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
+
+		time.Sleep(400 * time.Millisecond)
+
+		must.NoError(t, q.Complete(t.Context(), claimed...))
+
+		stats, err := q.Stats(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), stats.Completed)
+	})
+
 	// Completing releases the lease too, so a restarted item is immediately
 	// claimable rather than waiting out the lease it was completed under.
 	t.Run("completing an item releases its lease", func(t *testing.T) {
@@ -182,9 +285,9 @@ func runQueueSuite(t *testing.T, client database.Client) {
 		q := newQueue(t, client, nil)
 		must.NoError(t, q.EnqueueKeys(t.Context(), "recycled"))
 
-		_, err := q.Claim(t.Context(), 10, time.Hour)
+		claimed, err := q.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
-		must.NoError(t, q.Complete(t.Context(), "recycled"))
+		must.NoError(t, q.Complete(t.Context(), claimed...))
 		must.NoError(t, q.EnqueueKeys(t.Context(), "recycled"))
 
 		items, err := q.Claim(t.Context(), 10, time.Minute)
@@ -265,7 +368,7 @@ func runQueueSuite(t *testing.T, client database.Client) {
 		must.NoError(t, err)
 		must.SliceLen(t, 1, items)
 
-		must.NoError(t, q.Release(t.Context(), 0, nil, "k"))
+		must.NoError(t, q.Release(t.Context(), 0, nil, items...))
 		must.NoError(t, q.Enqueue(t.Context(), Entry[string]{Key: "k", Delay: time.Hour}))
 
 		items, err = q.Claim(t.Context(), 10, time.Minute)
@@ -279,10 +382,10 @@ func runQueueSuite(t *testing.T, client database.Client) {
 		q := newQueue(t, client, nil)
 		must.NoError(t, q.EnqueueKeys(t.Context(), "handed-back"))
 
-		_, err := q.Claim(t.Context(), 10, time.Hour)
+		claimed, err := q.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
 
-		must.NoError(t, q.Release(t.Context(), 0, platformerrors.New("not my problem"), "handed-back"))
+		must.NoError(t, q.Release(t.Context(), 0, platformerrors.New("not my problem"), claimed...))
 
 		items, err := q.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -298,10 +401,10 @@ func runQueueSuite(t *testing.T, client database.Client) {
 		q := newQueue(t, client, nil)
 		must.NoError(t, q.EnqueueKeys(t.Context(), "backed-off"))
 
-		_, err := q.Claim(t.Context(), 10, time.Hour)
+		claimed, err := q.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
 
-		must.NoError(t, q.Release(t.Context(), time.Hour, platformerrors.New("try later"), "backed-off"))
+		must.NoError(t, q.Release(t.Context(), time.Hour, platformerrors.New("try later"), claimed...))
 
 		items, err := q.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -316,10 +419,15 @@ func runQueueSuite(t *testing.T, client database.Client) {
 		q := newQueue(t, client, nil)
 		must.NoError(t, q.EnqueueKeys(t.Context(), "done"))
 
-		_, err := q.Claim(t.Context(), 10, time.Hour)
+		claimed, err := q.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
-		must.NoError(t, q.Complete(t.Context(), "done"))
-		must.NoError(t, q.Release(t.Context(), 0, platformerrors.New("straggler"), "done"))
+		must.NoError(t, q.Complete(t.Context(), claimed...))
+
+		// The same claim's own late release, which the completion above already
+		// refuses on its own terms — the row is completed. The claim fence
+		// refuses it a second way, and the two are different straggler stories;
+		// see the lapsed-lease subtests below for the other one.
+		must.NoError(t, q.Release(t.Context(), 0, platformerrors.New("straggler"), claimed...))
 
 		items, err := q.Claim(t.Context(), 10, time.Minute)
 		must.NoError(t, err)
@@ -331,8 +439,13 @@ func runQueueSuite(t *testing.T, client database.Client) {
 
 		q := newQueue(t, client, nil)
 
-		test.NoError(t, q.Complete(t.Context(), "never-enqueued"))
-		test.NoError(t, q.Release(t.Context(), 0, nil, "never-enqueued"))
+		// An Item nothing handed out, which is what a key the queue never held
+		// looks like from here: no row carries the key, and none carries the
+		// empty name either.
+		unknown := Item[string]{Key: "never-enqueued"}
+
+		test.NoError(t, q.Complete(t.Context(), unknown))
+		test.NoError(t, q.Release(t.Context(), 0, nil, unknown))
 	})
 
 	t.Run("remove drops an item whether or not it is leased", func(t *testing.T) {
@@ -341,8 +454,9 @@ func runQueueSuite(t *testing.T, client database.Client) {
 		q := newQueue(t, client, nil)
 		must.NoError(t, q.EnqueueKeys(t.Context(), "leased", "idle"))
 
-		_, err := q.Claim(t.Context(), 1, time.Hour)
+		claimed, err := q.Claim(t.Context(), 1, time.Hour)
 		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
 
 		must.NoError(t, q.Remove(t.Context(), "leased", "idle"))
 
@@ -352,7 +466,7 @@ func runQueueSuite(t *testing.T, client database.Client) {
 
 		// The worker still holding the removed item can report success without
 		// anything blowing up, which is what makes Remove usable at all.
-		test.NoError(t, q.Complete(t.Context(), "leased"))
+		test.NoError(t, q.Complete(t.Context(), claimed...))
 	})
 
 	t.Run("reap removes completed items past retention", func(t *testing.T) {
@@ -361,9 +475,9 @@ func runQueueSuite(t *testing.T, client database.Client) {
 		q := newQueue(t, client, func(cfg *Config) { cfg.Retention = time.Second })
 
 		must.NoError(t, q.EnqueueKeys(t.Context(), "old"))
-		_, err := q.Claim(t.Context(), 10, time.Hour)
+		claimed, err := q.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
-		must.NoError(t, q.Complete(t.Context(), "old"))
+		must.NoError(t, q.Complete(t.Context(), claimed...))
 
 		// Inside the window, nothing is eligible.
 		reaped, err := q.Reap(t.Context())
@@ -394,7 +508,7 @@ func runQueueSuite(t *testing.T, client database.Client) {
 			items, claimErr := q.Claim(t.Context(), 10, time.Hour)
 			must.NoError(t, claimErr)
 			must.SliceLen(t, 1, items, must.Sprintf("attempt %d", attempt))
-			must.NoError(t, q.Release(t.Context(), 0, platformerrors.New("still broken"), "poison"))
+			must.NoError(t, q.Release(t.Context(), 0, platformerrors.New("still broken"), items...))
 		}
 
 		items, err := q.Claim(t.Context(), 10, time.Hour)
@@ -474,7 +588,7 @@ func runQueueSuite(t *testing.T, client database.Client) {
 					}
 					mu.Unlock()
 
-					must.NoError(t, q.Complete(context.Background(), claimedKeys(claimed)...))
+					must.NoError(t, q.Complete(context.Background(), claimed...))
 				}
 			})
 		}
@@ -545,7 +659,7 @@ func runQueueSuite(t *testing.T, client database.Client) {
 			must.SliceLen(t, 1, items)
 			test.EqOp(t, key, items[0].Key)
 
-			must.NoError(t, q.Complete(t.Context(), key))
+			must.NoError(t, q.Complete(t.Context(), items...))
 		}
 	})
 
@@ -588,7 +702,14 @@ func runQueueSuite(t *testing.T, client database.Client) {
 		test.True(t, stats.OldestReadyAge >= 500*time.Millisecond,
 			test.Sprintf("oldest ready age was %s", stats.OldestReadyAge))
 
-		must.NoError(t, q.Complete(t.Context(), "waiting"))
+		// Drained the way a worker drains it — claimed, then completed. There is
+		// no longer a way to retire an item without holding it, which is the
+		// point of the fence: Complete reports on a claim.
+		claimed, err := q.Claim(t.Context(), 10, time.Minute)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
+
+		must.NoError(t, q.Complete(t.Context(), claimed...))
 
 		stats, err = q.Stats(t.Context())
 		must.NoError(t, err)
@@ -785,7 +906,7 @@ func TestWorkQueue_StructKeys(T *testing.T) {
 			test.SliceContains(T, got, key)
 		}
 
-		must.NoError(T, q.Complete(ctx, want...))
+		must.NoError(T, q.Complete(ctx, items...))
 
 		stats, err := q.Stats(ctx)
 		must.NoError(T, err)

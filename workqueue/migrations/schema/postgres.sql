@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS work_queue_items (
     enqueued_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     available_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     lease_until  TIMESTAMPTZ NOT NULL DEFAULT 'epoch',
+    leased_by    TEXT,
     completed_at TIMESTAMPTZ,
     last_error   TEXT,
     PRIMARY KEY (queue_name, item_key)

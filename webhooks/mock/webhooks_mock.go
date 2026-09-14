@@ -61,7 +61,7 @@ var _ webhooks.Store = &StoreMock{}
 //			ListSubscriptionsFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, endpointID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[webhooks.Subscription], error) {
 //				panic("mock out the ListSubscriptions method")
 //			},
-//			MarkDeliveredFunc: func(ctx context.Context, dispatchID string, at time.Time) error {
+//			MarkDeliveredFunc: func(ctx context.Context, dispatchID string, claimedBy string, at time.Time) error {
 //				panic("mock out the MarkDelivered method")
 //			},
 //			ReapFunc: func(ctx context.Context, before time.Time, limit int) (int64, error) {
@@ -70,7 +70,7 @@ var _ webhooks.Store = &StoreMock{}
 //			RecordAttemptFunc: func(ctx context.Context, attempt *webhooks.Attempt) error {
 //				panic("mock out the RecordAttempt method")
 //			},
-//			RecordFailureFunc: func(ctx context.Context, dispatchID string, attempts int, nextAttempt time.Time, lastErr string, dead bool) error {
+//			RecordFailureFunc: func(ctx context.Context, dispatchID string, claimedBy string, attempts int, nextAttempt time.Time, lastErr string, dead bool) error {
 //				panic("mock out the RecordFailure method")
 //			},
 //			RequeueFunc: func(ctx context.Context, deliveryID string, endpointID string, at time.Time) error {
@@ -123,7 +123,7 @@ type StoreMock struct {
 	ListSubscriptionsFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, endpointID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[webhooks.Subscription], error)
 
 	// MarkDeliveredFunc mocks the MarkDelivered method.
-	MarkDeliveredFunc func(ctx context.Context, dispatchID string, at time.Time) error
+	MarkDeliveredFunc func(ctx context.Context, dispatchID string, claimedBy string, at time.Time) error
 
 	// ReapFunc mocks the Reap method.
 	ReapFunc func(ctx context.Context, before time.Time, limit int) (int64, error)
@@ -132,7 +132,7 @@ type StoreMock struct {
 	RecordAttemptFunc func(ctx context.Context, attempt *webhooks.Attempt) error
 
 	// RecordFailureFunc mocks the RecordFailure method.
-	RecordFailureFunc func(ctx context.Context, dispatchID string, attempts int, nextAttempt time.Time, lastErr string, dead bool) error
+	RecordFailureFunc func(ctx context.Context, dispatchID string, claimedBy string, attempts int, nextAttempt time.Time, lastErr string, dead bool) error
 
 	// RequeueFunc mocks the Requeue method.
 	RequeueFunc func(ctx context.Context, deliveryID string, endpointID string, at time.Time) error
@@ -282,6 +282,8 @@ type StoreMock struct {
 			Ctx context.Context
 			// DispatchID is the dispatchID argument value.
 			DispatchID string
+			// ClaimedBy is the claimedBy argument value.
+			ClaimedBy string
 			// At is the at argument value.
 			At time.Time
 		}
@@ -307,6 +309,8 @@ type StoreMock struct {
 			Ctx context.Context
 			// DispatchID is the dispatchID argument value.
 			DispatchID string
+			// ClaimedBy is the claimedBy argument value.
+			ClaimedBy string
 			// Attempts is the attempts argument value.
 			Attempts int
 			// NextAttempt is the nextAttempt argument value.
@@ -892,23 +896,25 @@ func (mock *StoreMock) ListSubscriptionsCalls() []struct {
 }
 
 // MarkDelivered calls MarkDeliveredFunc.
-func (mock *StoreMock) MarkDelivered(ctx context.Context, dispatchID string, at time.Time) error {
+func (mock *StoreMock) MarkDelivered(ctx context.Context, dispatchID string, claimedBy string, at time.Time) error {
 	if mock.MarkDeliveredFunc == nil {
 		panic("StoreMock.MarkDeliveredFunc: method is nil but Store.MarkDelivered was just called")
 	}
 	callInfo := struct {
 		Ctx        context.Context
 		DispatchID string
+		ClaimedBy  string
 		At         time.Time
 	}{
 		Ctx:        ctx,
 		DispatchID: dispatchID,
+		ClaimedBy:  claimedBy,
 		At:         at,
 	}
 	mock.lockMarkDelivered.Lock()
 	mock.calls.MarkDelivered = append(mock.calls.MarkDelivered, callInfo)
 	mock.lockMarkDelivered.Unlock()
-	return mock.MarkDeliveredFunc(ctx, dispatchID, at)
+	return mock.MarkDeliveredFunc(ctx, dispatchID, claimedBy, at)
 }
 
 // MarkDeliveredCalls gets all the calls that were made to MarkDelivered.
@@ -918,11 +924,13 @@ func (mock *StoreMock) MarkDelivered(ctx context.Context, dispatchID string, at 
 func (mock *StoreMock) MarkDeliveredCalls() []struct {
 	Ctx        context.Context
 	DispatchID string
+	ClaimedBy  string
 	At         time.Time
 } {
 	var calls []struct {
 		Ctx        context.Context
 		DispatchID string
+		ClaimedBy  string
 		At         time.Time
 	}
 	mock.lockMarkDelivered.RLock()
@@ -1008,13 +1016,14 @@ func (mock *StoreMock) RecordAttemptCalls() []struct {
 }
 
 // RecordFailure calls RecordFailureFunc.
-func (mock *StoreMock) RecordFailure(ctx context.Context, dispatchID string, attempts int, nextAttempt time.Time, lastErr string, dead bool) error {
+func (mock *StoreMock) RecordFailure(ctx context.Context, dispatchID string, claimedBy string, attempts int, nextAttempt time.Time, lastErr string, dead bool) error {
 	if mock.RecordFailureFunc == nil {
 		panic("StoreMock.RecordFailureFunc: method is nil but Store.RecordFailure was just called")
 	}
 	callInfo := struct {
 		Ctx         context.Context
 		DispatchID  string
+		ClaimedBy   string
 		Attempts    int
 		NextAttempt time.Time
 		LastErr     string
@@ -1022,6 +1031,7 @@ func (mock *StoreMock) RecordFailure(ctx context.Context, dispatchID string, att
 	}{
 		Ctx:         ctx,
 		DispatchID:  dispatchID,
+		ClaimedBy:   claimedBy,
 		Attempts:    attempts,
 		NextAttempt: nextAttempt,
 		LastErr:     lastErr,
@@ -1030,7 +1040,7 @@ func (mock *StoreMock) RecordFailure(ctx context.Context, dispatchID string, att
 	mock.lockRecordFailure.Lock()
 	mock.calls.RecordFailure = append(mock.calls.RecordFailure, callInfo)
 	mock.lockRecordFailure.Unlock()
-	return mock.RecordFailureFunc(ctx, dispatchID, attempts, nextAttempt, lastErr, dead)
+	return mock.RecordFailureFunc(ctx, dispatchID, claimedBy, attempts, nextAttempt, lastErr, dead)
 }
 
 // RecordFailureCalls gets all the calls that were made to RecordFailure.
@@ -1040,6 +1050,7 @@ func (mock *StoreMock) RecordFailure(ctx context.Context, dispatchID string, att
 func (mock *StoreMock) RecordFailureCalls() []struct {
 	Ctx         context.Context
 	DispatchID  string
+	ClaimedBy   string
 	Attempts    int
 	NextAttempt time.Time
 	LastErr     string
@@ -1048,6 +1059,7 @@ func (mock *StoreMock) RecordFailureCalls() []struct {
 	var calls []struct {
 		Ctx         context.Context
 		DispatchID  string
+		ClaimedBy   string
 		Attempts    int
 		NextAttempt time.Time
 		LastErr     string

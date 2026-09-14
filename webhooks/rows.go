@@ -158,6 +158,11 @@ func endpointFromClaimedRow(r *webhooksdb.FetchClaimedDispatchesRow) endpointCol
 // claimedFromRow builds the unit the worker delivers: the dispatch, the payload
 // and event it carries, the tenant it belongs to, and the subscriber resolved
 // at claim time.
+//
+// The claim's name is not read back off the row. The Store minted it a statement
+// earlier and is holding it, and reading it back would be asking the database to
+// confirm a value nobody else could have written between the two statements —
+// see SQLStore.Claim, which stamps it on what this returns.
 func claimedFromRow(r *webhooksdb.FetchClaimedDispatchesRow) (ClaimedDispatch, error) {
 	endpoint := endpointFromClaimedRow(r)
 

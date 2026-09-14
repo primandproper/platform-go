@@ -478,6 +478,108 @@ func TestRelay_claim_guardsTheLease(T *testing.T) {
 	})
 }
 
+// TestRelay_outcomeWrites_fenceOnTheClaim drives the interleaving from the far
+// side of the publish.
+//
+// The claim guard divides the rows; this is what happens after. A relay slow
+// enough to overrun its lease has had its rows taken by the time it comes back
+// to say what became of them, and both of the writes it makes then — the
+// retirement and the failure record — would otherwise land on somebody else's
+// row. The lapse is arranged with the stub clock rather than raced for.
+func TestRelay_outcomeWrites_fenceOnTheClaim(T *testing.T) {
+	T.Parallel()
+
+	// lapse takes one message through a claim, a lease expiry and a second
+	// claim, and hands back both claims' view of it. The first is the straggler.
+	lapse := func(t *testing.T) (client database.Client, relay *Relay, straggler, holder claimedMessage) {
+		t.Helper()
+
+		c := newStubClock()
+		client = newTestClient(t)
+		relay, _ = newTestRelay(t, client, c)
+		w := newTestWriter(t, c)
+
+		enqueue(t, client, w, Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+
+		first, err := relay.claim(t.Context())
+		must.NoError(t, err)
+		must.SliceLen(t, 1, first)
+
+		c.advance(DefaultLeaseDuration + time.Second)
+
+		second, err := relay.claim(t.Context())
+		must.NoError(t, err)
+		must.SliceLen(t, 1, second)
+
+		// Two claims of one row, and the names they stamped are different —
+		// which is the whole of what the guards below compare.
+		must.NotEqOp(t, first[0].claimToken, second[0].claimToken)
+
+		return client, relay, first[0], second[0]
+	}
+
+	T.Run("a straggler's retirement retires nothing", func(t *testing.T) {
+		t.Parallel()
+
+		client, relay, straggler, holder := lapse(t)
+
+		must.NoError(t, relay.markPublished(t.Context(), straggler.claimToken, []string{straggler.id}))
+
+		// Still unpublished and still leased: the second relay is mid-publish,
+		// and retiring its row here is the lost delivery the guard exists for.
+		test.EqOp(t, 1, countRows(t, client, "published_at IS NULL"))
+		test.EqOp(t, 1, countRows(t, client, "claimed_by IS NOT NULL"))
+
+		// And the holder's own retirement still works, so the guard refuses the
+		// straggler rather than the statement.
+		must.NoError(t, relay.markPublished(t.Context(), holder.claimToken, []string{holder.id}))
+		test.EqOp(t, 0, countRows(t, client, "published_at IS NULL"))
+	})
+
+	T.Run("a straggler's failure record records nothing", func(t *testing.T) {
+		t.Parallel()
+
+		client, relay, straggler, _ := lapse(t)
+
+		// The straggler exhausted its attempts, so an unguarded write here
+		// would not merely reschedule the holder's row — it would quarantine
+		// a publish that is still in flight.
+		straggler.attempts = int(relay.cfg.Backoff.MaxAttempts)
+
+		relay.recordFailure(t.Context(), &straggler, platformerrors.New("broker refused"))
+
+		test.EqOp(t, 0, countRows(t, client, "quarantined = TRUE"))
+		test.EqOp(t, 0, countRows(t, client, "last_error IS NOT NULL"))
+
+		// The holder's lease is intact: a released lease here would hand the
+		// row to a third relay while the second one is still publishing it.
+		test.EqOp(t, 1, countRows(t, client, "claimed_by IS NOT NULL"))
+	})
+
+	T.Run("a lapsed lease nobody else took still retires", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, _ := newTestRelay(t, client, c)
+		w := newTestWriter(t, c)
+
+		enqueue(t, client, w, Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+
+		claimed, err := relay.claim(t.Context())
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
+
+		// Past the horizon, and nobody reclaimed. The guard asks who holds the
+		// row rather than whether the lease is fresh, so this relay still does
+		// — and the work it actually did is recorded rather than repeated.
+		c.advance(DefaultLeaseDuration + time.Second)
+
+		must.NoError(t, relay.markPublished(t.Context(), claimed[0].claimToken, []string{claimed[0].id}))
+		test.EqOp(t, 0, countRows(t, client, "published_at IS NULL"))
+	})
+}
+
 // allIDs is the batch a claim asks for when it asks for everything its select
 // returned, which is what a relay does.
 func allIDs(ids []string) []string { return ids }

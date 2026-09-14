@@ -76,13 +76,14 @@ WHERE claimed_by = sqlc.arg(claimed_by)
 	AND id IN (sqlc.slice(ids))
 ORDER BY created_at, id;
 
--- name: MarkOutboxMessagesPublished :exec
+-- name: MarkOutboxMessagesPublished :execrows
 UPDATE outbox_messages SET
 	published_at = sqlc.arg(published_at),
 	claimed_until = NULL,
 	claimed_by = NULL,
 	last_error = NULL
-WHERE id IN (sqlc.slice(ids));
+WHERE claimed_by = sqlc.arg(held_by)
+	AND id IN (sqlc.slice(ids));
 
 -- name: RecordOutboxMessageFailure :execrows
 UPDATE outbox_messages SET
@@ -91,7 +92,8 @@ UPDATE outbox_messages SET
 	next_attempt = sqlc.arg(next_attempt),
 	last_error = sqlc.narg(last_error),
 	quarantined = sqlc.arg(quarantined)
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id)
+	AND claimed_by = sqlc.arg(held_by);
 
 -- name: OutboxBacklog :one
 SELECT

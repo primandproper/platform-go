@@ -175,13 +175,13 @@ func TestSQLStore_PropagatesFailures(T *testing.T) {
 	T.Run("MarkDelivered", func(t *testing.T) {
 		t.Parallel()
 
-		test.ErrorIs(t, newFailingStore(t).MarkDelivered(t.Context(), "d", baseTime), errDatabase)
+		test.ErrorIs(t, newFailingStore(t).MarkDelivered(t.Context(), "d", "claim-1", baseTime), errDatabase)
 	})
 
 	T.Run("RecordFailure", func(t *testing.T) {
 		t.Parallel()
 
-		test.ErrorIs(t, newFailingStore(t).RecordFailure(t.Context(), "d", 1, baseTime, "boom", false), errDatabase)
+		test.ErrorIs(t, newFailingStore(t).RecordFailure(t.Context(), "d", "claim-1", 1, baseTime, "boom", false), errDatabase)
 	})
 
 	T.Run("RecordAttempt", func(t *testing.T) {
@@ -232,7 +232,7 @@ func TestWorker_SurvivesStoreFailures(T *testing.T) {
 		server := newAcceptingServer(t)
 
 		w := newTestWorker(t, &fakeStore{
-			markDelivered: func(context.Context, string, time.Time) error { return errDatabase },
+			markDelivered: func(context.Context, string, string, time.Time) error { return errDatabase },
 		})
 
 		// The subscriber has the payload but the row still looks pending — the
@@ -249,7 +249,7 @@ func TestWorker_SurvivesStoreFailures(T *testing.T) {
 
 		w := newTestWorker(t, &fakeStore{
 			recordAttempt: func(context.Context, *Attempt) error { return errDatabase },
-			markDelivered: func(context.Context, string, time.Time) error {
+			markDelivered: func(context.Context, string, string, time.Time) error {
 				marked = true
 
 				return nil
@@ -269,7 +269,7 @@ func TestWorker_SurvivesStoreFailures(T *testing.T) {
 		server := newRefusingServer(t)
 
 		w := newTestWorker(t, &fakeStore{
-			recordFailure: func(context.Context, string, int, time.Time, string, bool) error {
+			recordFailure: func(context.Context, string, string, int, time.Time, string, bool) error {
 				return errDatabase
 			},
 		})

@@ -16,13 +16,14 @@ const claimDueItemsPostgreSQL = `WITH due AS (
 		{{prefix}}work_queue_items.item_key,
 		{{prefix}}work_queue_items.lease_until AS prior_lease
 	FROM {{prefix}}work_queue_items
-	WHERE {{prefix}}work_queue_items.queue_name = $2 AND {{prefix}}work_queue_items.completed_at IS NULL AND {{prefix}}work_queue_items.lease_until <= CURRENT_TIMESTAMP AND {{prefix}}work_queue_items.available_at <= CURRENT_TIMESTAMP AND ($3::int <= 0 OR {{prefix}}work_queue_items.attempts < $3::int)
+	WHERE {{prefix}}work_queue_items.queue_name = $3 AND {{prefix}}work_queue_items.completed_at IS NULL AND {{prefix}}work_queue_items.lease_until <= CURRENT_TIMESTAMP AND {{prefix}}work_queue_items.available_at <= CURRENT_TIMESTAMP AND ($4::int <= 0 OR {{prefix}}work_queue_items.attempts < $4::int)
 	ORDER BY {{prefix}}work_queue_items.priority DESC, {{prefix}}work_queue_items.available_at, {{prefix}}work_queue_items.item_key
-	LIMIT $4::int
+	LIMIT $5::int
 	FOR UPDATE SKIP LOCKED
 )
 UPDATE {{prefix}}work_queue_items SET
 	lease_until = CURRENT_TIMESTAMP + ($1::bigint * INTERVAL '1 microsecond'),
+	leased_by = $2,
 	attempts = {{prefix}}work_queue_items.attempts + 1
 FROM due
 WHERE {{prefix}}work_queue_items.queue_name = due.queue_name
@@ -37,13 +38,18 @@ const completeItemsPostgreSQL = `WITH target AS (
 	SELECT {{prefix}}work_queue_items.queue_name, {{prefix}}work_queue_items.item_key
 	FROM {{prefix}}work_queue_items
 	WHERE {{prefix}}work_queue_items.queue_name = $1
-		AND {{prefix}}work_queue_items.item_key = ANY($2::text[])
+		AND ({{prefix}}work_queue_items.item_key, {{prefix}}work_queue_items.leased_by) IN (
+			SELECT keys.item_key, holders.leased_by
+			FROM unnest($2::text[]) WITH ORDINALITY AS keys(item_key, ordinal)
+				JOIN unnest($3::text[]) WITH ORDINALITY AS holders(leased_by, ordinal) USING (ordinal)
+		)
 	ORDER BY {{prefix}}work_queue_items.queue_name, {{prefix}}work_queue_items.item_key
 	FOR UPDATE
 )
 UPDATE {{prefix}}work_queue_items SET
 	completed_at = CURRENT_TIMESTAMP,
 	lease_until = TIMESTAMPTZ 'epoch',
+	leased_by = NULL,
 	last_error = NULL
 FROM target
 WHERE {{prefix}}work_queue_items.queue_name = target.queue_name
@@ -122,12 +128,17 @@ const releaseItemsPostgreSQL = `WITH target AS (
 	FROM {{prefix}}work_queue_items
 	WHERE {{prefix}}work_queue_items.queue_name = $3
 		AND {{prefix}}work_queue_items.completed_at IS NULL
-		AND {{prefix}}work_queue_items.item_key = ANY($4::text[])
+		AND ({{prefix}}work_queue_items.item_key, {{prefix}}work_queue_items.leased_by) IN (
+			SELECT keys.item_key, holders.leased_by
+			FROM unnest($4::text[]) WITH ORDINALITY AS keys(item_key, ordinal)
+				JOIN unnest($5::text[]) WITH ORDINALITY AS holders(leased_by, ordinal) USING (ordinal)
+		)
 	ORDER BY {{prefix}}work_queue_items.queue_name, {{prefix}}work_queue_items.item_key
 	FOR UPDATE
 )
 UPDATE {{prefix}}work_queue_items SET
 	lease_until = TIMESTAMPTZ 'epoch',
+	leased_by = NULL,
 	available_at = CURRENT_TIMESTAMP + ($1::bigint * INTERVAL '1 microsecond'),
 	last_error = $2
 FROM target
@@ -176,6 +187,7 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 func (q *postgresqlQueries) ClaimDueItems(ctx context.Context, db DBTX, arg ClaimDueItemsParams) ([]ClaimDueItemsRow, error) {
 	rows, err := db.QueryContext(ctx, q.claimDueItems,
 		arg.LeaseMicroseconds,
+		arg.LeasedBy,
 		arg.QueueName,
 		arg.AttemptCeiling,
 		arg.ClaimLimit,
@@ -215,6 +227,7 @@ func (q *postgresqlQueries) CompleteItems(ctx context.Context, db DBTX, arg Comp
 	result, err := db.ExecContext(ctx, q.completeItems,
 		arg.QueueName,
 		arg.ItemKeys,
+		arg.LeasedBys,
 	)
 	if err != nil {
 		return 0, err
@@ -277,6 +290,7 @@ func (q *postgresqlQueries) ReleaseItems(ctx context.Context, db DBTX, arg Relea
 		arg.LastError,
 		arg.QueueName,
 		arg.ItemKeys,
+		arg.LeasedBys,
 	)
 	if err != nil {
 		return 0, err
@@ -307,6 +321,7 @@ func (q *postgresqlQueries) RemoveItems(ctx context.Context, db DBTX, arg Remove
 var (
 	_ = struct {
 		LeaseMicroseconds int64
+		LeasedBy          *string
 		QueueName         string
 		AttemptCeiling    int64
 		ClaimLimit        int64
@@ -320,6 +335,7 @@ var (
 	_ = struct {
 		QueueName string
 		ItemKeys  []string
+		LeasedBys []string
 	}(CompleteItemsParams{})
 	_ = struct {
 		QueueName         string
@@ -349,6 +365,7 @@ var (
 		LastError         *string
 		QueueName         string
 		ItemKeys          []string
+		LeasedBys         []string
 	}(ReleaseItemsParams{})
 	_ = struct {
 		QueueName string

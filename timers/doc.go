@@ -51,14 +51,27 @@ SELECT … FOR UPDATE SKIP LOCKED statement, so two claimants can never hold the
 same firing, and a firing is retired by marking the row rather than by anything
 in the worker's memory.
 
-There are no fencing tokens and no heartbeats. A worker that dies simply lets
-its lease lapse and the timer is handed to somebody else; nothing detects the
-death, and nothing has to. The price is that a lease which lapses while its
-holder is merely slow produces two firings, so handlers must be idempotent.
-Due.Reclaimed marks a firing that took over a lapsed lease, so the duplicate
-window is at least visible.
+There are no heartbeats. A worker that dies simply lets its lease lapse and the
+timer is handed to somebody else; nothing detects the death, and nothing has to.
+The price is that a lease which lapses while its holder is merely slow produces
+two firings, so handlers must be idempotent. Due.Reclaimed marks a firing that
+took over a lapsed lease, so that window is visible.
 
-# Rescheduling, and the fence that makes it safe
+What is not a price is the firing being recorded wrong. A claim stamps a name on
+every row it takes and hands it back on Due.LeasedBy, and Complete and Release
+match on it — so the slow worker's eventual Complete retires nothing, rather
+than marking fired a firing the second worker is still running and then excluding
+that worker's own Release as already-fired, which is how a firing would be
+recorded done having never succeeded.
+
+The name is the fence, not the lease's liveness, and the difference is
+load-bearing: a worker whose lease lapsed with nobody else claiming still holds
+the firing, and its Complete still lands. Worker.pass depends on exactly that —
+it completes on a context detached from the worker's, with a full lease of
+grace, so a handler that overran still records what it did. Matching nothing is
+not an error; a short match gets a counter and a log line.
+
+# Rescheduling, and the second fence that makes it safe
 
 Scheduling a key that already has a timer moves it, and the new instant wins
 outright — later as readily as earlier, because "the trial was extended" is the
@@ -67,16 +80,24 @@ express it.
 
 That raises a race a work queue does not have: a timer rescheduled during the
 seconds it is being fired. Claim hands back Due.RunAt, and Complete and Release
-match on it as well as on the key, so a worker holding a stale instant marks
-nothing and the new schedule stands. Pass the Due value back rather than its key
-and the fence applies without anybody having to think about it.
+match on it as well as on the key and the claim, so a worker holding a stale
+instant marks nothing and the new schedule stands. Pass the Due value back rather
+than its key and both fences apply without anybody having to think about it.
 
-A move drops the lease along with it, so the new schedule is claimable at once
-rather than waiting out a lease nothing can still discharge. Rescheduling to the
-instant a timer already has is not a move and leaves the lease alone — that is
-what an at-least-once upstream redelivering "start trial" looks like, and
-treating it as a move would free a row somebody is firing and let a second worker
-fire it too.
+The two answer different races and neither covers the other. The instant catches
+a schedule that moved; the claim catches a lease that was taken over, which the
+instant cannot see because a claim leaves run_at exactly where it was. The case
+that needs both is a reschedule to the instant a timer already has, below: the
+row's schedule is unchanged, its lease may have lapsed and been reclaimed, and
+the name is the only thing that says so.
+
+A move drops the lease and the name on it along with the schedule, so the new
+schedule is claimable at once rather than waiting out a lease nothing can still
+discharge — and so that the worker holding the old one cannot come back and
+report on the new. Rescheduling to the instant a timer already has is not a move
+and leaves both alone — that is what an at-least-once upstream redelivering
+"start trial" looks like, and treating it as a move would free a row somebody is
+firing and let a second worker fire it too.
 
 What cannot be undone is a handler already running. A timer moved during its own
 firing may still have fired once — nothing can reach into a goroutine and stop

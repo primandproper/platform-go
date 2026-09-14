@@ -202,6 +202,24 @@ redelivers on restart. Subscribers must tolerate duplicates, and
 DeliveryIDHeader is the key to deduplicate on — it is stable across every
 attempt and every replay of one delivery.
 
+A lease does not make that duplicate a corruption, and the claim's name is why.
+Leases lapse on workers that are merely slow, not dead, so a second worker
+reclaims a dispatch the first one is still sending; the first eventually comes
+back with an outcome for a row it no longer holds. Claim stamps a name on the
+row and hands it back on ClaimedDispatch.ClaimedBy, and MarkDelivered and
+RecordFailure present it again, so a straggler's success retires nothing and its
+failure reschedules, releases and kills nothing. Pass the ClaimedDispatch back
+rather than its id and that applies without anybody having to think about it.
+What is left is the duplicate request, which the subscriber deduplicates on
+DeliveryIDHeader.
+
+The name is the guard rather than the lease's liveness, and the difference shows
+up in one case: a worker whose horizon passed with nobody reclaiming still holds
+the dispatch, and its outcome still lands. Refusing it would only mean sending
+the webhook again. Matching nothing is not an error — there is no different
+thing a worker could do with one — and it lands on the span and in the log
+instead.
+
 Failures back off exponentially with full jitter via retrycfg.DelayFor, persisted
 as a timestamp so the schedule survives a restart. Past Backoff.MaxAttempts the
 dispatch is marked dead: skipped by every future claim, counted, and left for an

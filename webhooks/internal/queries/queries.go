@@ -61,6 +61,7 @@ const (
 	OrderingKeyColumn  = "ordering_key"
 	NextAttemptColumn  = "next_attempt"
 	ClaimedUntilColumn = "claimed_until"
+	ClaimedByColumn    = "claimed_by"
 	DeliveredAtColumn  = "delivered_at"
 	AttemptsColumn     = "attempts"
 	LastErrorColumn    = "last_error"
@@ -90,6 +91,18 @@ const (
 	LeaseExpiredByArg = "lease_expired_by"
 	// ClaimedUntilArg is the lease horizon a claim writes.
 	ClaimedUntilArg = "claimed_until"
+	// ClaimedByArg is the name a claim writes beside that horizon: one
+	// identifier per claim, minted by the store, recording which claim holds
+	// the row rather than merely that somebody does.
+	ClaimedByArg = "claimed_by"
+	// HeldByArg is that same name presented again by a write reporting what
+	// became of the dispatch, as the guard on it.
+	//
+	// It is a second name for one value because both of those writes also
+	// assign claimed_by — they release the lease. Under one argument name each
+	// would be requiring the row to already hold the value it is about to
+	// write, which is legal SQL that guards nothing; see querygen.Match.Arg.
+	HeldByArg = "held_by"
 	// CreatedAtArg is the creation instant the two authored inserts bind. See
 	// the package comment on why those two are not the database's to stamp.
 	CreatedAtArg = "created_at"
@@ -169,9 +182,16 @@ var Deliveries = Table{
 // Dispatches is one endpoint's copy of one delivery: the row the worker claims,
 // retries, and eventually gives up on.
 //
-// Its five state columns are updatable, and the three writes that move them
-// each name their own subset rather than the whole of it — a mark-delivered
-// that also assigned next_attempt would reschedule the row it just retired.
+// Its six state columns are updatable, and the three writes that move them each
+// name their own subset rather than the whole of it — a mark-delivered that also
+// assigned next_attempt would reschedule the row it just retired.
+//
+// claimed_by travels with claimed_until in every one of those three, because the
+// two are the halves of one lease. A write that cleared the horizon and left the
+// name would leave a free row reading as one somebody is still holding, and — the
+// reason it matters more than tidiness — that stale name is a name the worker
+// who wrote it can still present, so a dispatch requeued or redelivered later
+// would answer to a claim that ended long ago.
 var Dispatches = Table{
 	Name: DispatchesTable,
 	Columns: []string{
@@ -184,13 +204,14 @@ var Dispatches = Table{
 		querygen.ArchivedAtColumn,
 		NextAttemptColumn,
 		ClaimedUntilColumn,
+		ClaimedByColumn,
 		DeliveredAtColumn,
 		AttemptsColumn,
 		LastErrorColumn,
 		DeadColumn,
 	},
-	Nullable:  []string{ClaimedUntilColumn, DeliveredAtColumn, LastErrorColumn},
-	Updatable: []string{NextAttemptColumn, ClaimedUntilColumn, DeliveredAtColumn, AttemptsColumn, LastErrorColumn, DeadColumn},
+	Nullable:  []string{ClaimedUntilColumn, ClaimedByColumn, DeliveredAtColumn, LastErrorColumn},
+	Updatable: []string{NextAttemptColumn, ClaimedUntilColumn, ClaimedByColumn, DeliveredAtColumn, AttemptsColumn, LastErrorColumn, DeadColumn},
 }
 
 // Attempts is the delivery log: append-only, and read through the delivery
@@ -542,10 +563,27 @@ func dispatchQueries(g *querygen.Generator) []*querygen.Query {
 	// table's mutable set. A mark-delivered that also assigned next_attempt
 	// would reschedule the row it just retired, and a requeue that assigned
 	// last_error would erase the reason the replay was needed.
+	//
+	// The first two carry the claim they are reporting on as a guard, and that
+	// is the one predicate here whose absence is invisible to a single worker.
+	// A lease lapses while its holder is merely slow, not dead; a second worker
+	// reclaims the dispatch and starts sending it; and the first worker then
+	// arrives with an outcome. Addressed by the dispatch id alone, its
+	// mark-delivered retires a delivery that has not happened yet — and the
+	// second worker's own failure write is then refused as a retirement it must
+	// not undo, so the dispatch is recorded delivered having never been sent.
+	// Its failure write is the same thing in reverse: it releases a lease the
+	// second worker is holding and hands the dispatch to a third.
+	//
+	// The guard is the claim's name and not the lease's liveness. A worker whose
+	// horizon has passed with nobody else reclaiming still holds the row, and
+	// its outcome still lands — dropping it would only mean sending the webhook
+	// again.
 	delivered := g.UpdateQuery("MarkDispatchDelivered", DispatchesTable,
 		Dispatches.Columns,
-		[]string{DeliveredAtColumn, ClaimedUntilColumn, LastErrorColumn},
+		[]string{DeliveredAtColumn, ClaimedUntilColumn, ClaimedByColumn, LastErrorColumn},
 		Dispatches.Nullable,
+		querygen.Match{Column: ClaimedByColumn, Arg: HeldByArg},
 	)
 
 	// attempts is assigned rather than left as the claim incremented it,
@@ -556,8 +594,9 @@ func dispatchQueries(g *querygen.Generator) []*querygen.Query {
 	// every dispatch queued behind it.
 	failed := g.UpdateQuery("RecordDispatchFailure", DispatchesTable,
 		Dispatches.Columns,
-		[]string{ClaimedUntilColumn, AttemptsColumn, NextAttemptColumn, LastErrorColumn, DeadColumn},
+		[]string{ClaimedUntilColumn, ClaimedByColumn, AttemptsColumn, NextAttemptColumn, LastErrorColumn, DeadColumn},
 		Dispatches.Nullable,
+		querygen.Match{Column: ClaimedByColumn, Arg: HeldByArg},
 	)
 
 	// The operator's re-drive, keyed on the (delivery, endpoint) pair rather
@@ -566,9 +605,18 @@ func dispatchQueries(g *querygen.Generator) []*querygen.Query {
 	// continued, which is the whole point of a replay: a dead dispatch has
 	// already exhausted its budget, and requeuing it without a reset would have
 	// it die again on the next attempt.
+	//
+	// It clears the holder with the lease but does not guard on one, and the
+	// asymmetry is the difference between the two kinds of caller. A worker
+	// addresses a row it took; an operator addresses a pair, holding no claim
+	// and needing none — a replay that could be refused by whichever worker last
+	// touched the dispatch would be a replay nobody could perform. Clearing the
+	// name is not optional, though: a requeued dispatch that still answered to
+	// the old claim could be retired by that worker's late mark-delivered, which
+	// is the very outcome the replay exists to undo.
 	requeue := g.UpdateQuery("RequeueDispatch", DispatchesTable,
 		Dispatches.ColumnsExcept(querygen.IDColumn),
-		[]string{NextAttemptColumn, ClaimedUntilColumn, DeliveredAtColumn, DeadColumn, AttemptsColumn},
+		[]string{NextAttemptColumn, ClaimedUntilColumn, ClaimedByColumn, DeliveredAtColumn, DeadColumn, AttemptsColumn},
 		Dispatches.Nullable,
 		querygen.Match{Column: DeliveryIDColumn},
 		querygen.Match{Column: EndpointIDColumn},
@@ -709,13 +757,19 @@ ORDER BY %[1]s.%[12]s, %[1]s.%[3]s
 	}
 }
 
-// claimDispatches leases the selected rows.
+// claimDispatches leases the selected rows, and names the claim that took them.
 //
 // It is authored because it assigns an expression: the attempt count is
 // incremented here rather than on failure, so that a worker which crashes
 // mid-delivery has still consumed an attempt and a dispatch that reliably kills
 // its worker eventually goes dead instead of being reclaimed forever. querygen
 // assigns bound values, and `attempts = attempts + 1` is not one.
+//
+// The name goes in beside the horizon because the horizon cannot serve as one.
+// It is what the two outcome writes present again to say which claim they are
+// reporting on, and a horizon is not a name: two workers reading their clocks in
+// one instant compute the same one, and it is stored to the second on SQLite
+// besides. One identifier per claim, minted by the store.
 //
 // The set binds last, as every set predicate in this module does: on the two
 // dialects with no array type it expands to one marker per element, and an
@@ -725,11 +779,13 @@ func claimDispatches(g *querygen.Generator) *querygen.Query {
 		Annotation: querygen.QueryAnnotation{Name: "ClaimDispatches", Type: querygen.ExecRowsType},
 		Content: fmt.Sprintf(`UPDATE %s SET
 	%s = sqlc.arg(%s),
+	%s = sqlc.arg(%s),
 	%s = %s + 1,
 	%s = %s
 WHERE %s;`,
 			DispatchesTable,
 			ClaimedUntilColumn, ClaimedUntilArg,
+			ClaimedByColumn, ClaimedByArg,
 			AttemptsColumn, AttemptsColumn,
 			querygen.LastUpdatedAtColumn, g.StoredNow(),
 			g.SetCondition(querygen.IDColumn, IDsArg),

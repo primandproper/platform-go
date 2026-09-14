@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS scheduled_timers (
     last_updated_at TIMESTAMPTZ,
     archived_at     TIMESTAMPTZ,
     lease_until     TIMESTAMPTZ NOT NULL DEFAULT 'epoch',
+    leased_by       TEXT,
     fired_at        TIMESTAMPTZ,
     last_error      TEXT,
     PRIMARY KEY (timer_set, timer_key)
