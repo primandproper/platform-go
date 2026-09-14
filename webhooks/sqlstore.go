@@ -954,12 +954,15 @@ func (s *SQLStore) Claim(ctx context.Context, now time.Time, limit int, leaseUnt
 }
 
 // MarkDelivered retires an accepted dispatch, if this claim still holds it.
-func (s *SQLStore) MarkDelivered(ctx context.Context, dispatchID, claimedBy string, at time.Time) error {
-	ctx, op := s.o11y.Begin(ctx,
-		observability.WithValue(dispatchIDKey, dispatchID),
-		observability.WithValue(claimedByKey, claimedBy),
-	)
+func (s *SQLStore) MarkDelivered(ctx context.Context, claim *ClaimedDispatch, at time.Time) error {
+	ctx, op := s.o11y.Begin(ctx)
 	defer op.End()
+
+	if claim == nil {
+		return op.Error(platformerrors.ErrNilInputParameter, "nil webhook claim")
+	}
+
+	op.Set(dispatchIDKey, claim.ID).Set(claimedByKey, claim.ClaimedBy)
 
 	// The lease and the last failure are cleared, and the row is kept rather
 	// than deleted so the delivery log has something to point at; the reaper
@@ -973,15 +976,15 @@ func (s *SQLStore) MarkDelivered(ctx context.Context, dispatchID, claimedBy stri
 		DeliveredAt:  timeOrNil(at),
 		ClaimedUntil: nil,
 		ClaimedBy:    nil,
-		HeldBy:       &claimedBy,
+		HeldBy:       &claim.ClaimedBy,
 		LastError:    nil,
-		ID:           dispatchID,
+		ID:           claim.ID,
 	})
 	if err != nil {
-		return op.Error(err, "marking webhook dispatch %q delivered", dispatchID)
+		return op.Error(err, "marking webhook dispatch %q delivered", claim.ID)
 	}
 
-	s.reportFenced(ctx, op, affected, dispatchID, "retire")
+	s.reportFenced(ctx, op, affected, claim.ID, "retire")
 
 	return nil
 }
@@ -1019,18 +1022,20 @@ func (s *SQLStore) reportFenced(
 // still holds it.
 func (s *SQLStore) RecordFailure(
 	ctx context.Context,
-	dispatchID, claimedBy string,
+	claim *ClaimedDispatch,
 	attempts int,
 	nextAttempt time.Time,
 	lastErr string,
 	dead bool,
 ) error {
-	ctx, op := s.o11y.Begin(ctx,
-		observability.WithValue(dispatchIDKey, dispatchID),
-		observability.WithValue(claimedByKey, claimedBy),
-		observability.WithValue(deadKey, dead),
-	)
+	ctx, op := s.o11y.Begin(ctx, observability.WithValue(deadKey, dead))
 	defer op.End()
+
+	if claim == nil {
+		return op.Error(platformerrors.ErrNilInputParameter, "nil webhook claim")
+	}
+
+	op.Set(dispatchIDKey, claim.ID).Set(claimedByKey, claim.ClaimedBy)
 
 	if attempts < 0 {
 		attempts = 0
@@ -1050,18 +1055,18 @@ func (s *SQLStore) RecordFailure(
 	affected, err := s.q.RecordDispatchFailure(ctx, s.client.Writer(), webhooksdb.RecordDispatchFailureParams{
 		ClaimedUntil: nil,
 		ClaimedBy:    nil,
-		HeldBy:       &claimedBy,
+		HeldBy:       &claim.ClaimedBy,
 		Attempts:     int64(attempts),
 		NextAttempt:  nextAttempt.UTC(),
 		LastError:    textOrNil(lastErr),
 		Dead:         dead,
-		ID:           dispatchID,
+		ID:           claim.ID,
 	})
 	if err != nil {
-		return op.Error(err, "recording webhook dispatch %q failure", dispatchID)
+		return op.Error(err, "recording webhook dispatch %q failure", claim.ID)
 	}
 
-	s.reportFenced(ctx, op, affected, dispatchID, "reschedule")
+	s.reportFenced(ctx, op, affected, claim.ID, "reschedule")
 
 	return nil
 }

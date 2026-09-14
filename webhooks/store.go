@@ -67,8 +67,8 @@ type ClaimedDispatch struct {
 	//
 	// It is what MarkDelivered and RecordFailure present again, and what makes
 	// "I am still the one holding this" a fact in the row rather than an
-	// assumption. A worker hands the whole ClaimedDispatch back rather than its
-	// id, and the fence applies without anybody having to think about it.
+	// assumption. Both take this whole value rather than an id and a name, so
+	// there is no way to present a claim that did not come with the dispatch.
 	//
 	// It lives here rather than on Dispatch because Dispatch is what an operator
 	// reads, and which worker is mid-flight on a row is not a property of the
@@ -350,14 +350,21 @@ type Store interface {
 	// executor: it releases a lease Claim committed, and the request it is
 	// reporting on has already happened.
 	//
-	// It takes the claim as well as the dispatch, and does nothing at all unless
-	// the row still names it. A lease lapses while its holder is merely slow,
-	// not dead; by the time a slow worker reports success, a second one may hold
-	// the dispatch and be sending it, and retiring that row would record a
-	// delivery that has not happened — and then refuse the second worker's own
-	// failure write as a retirement it must not undo. Pass back the
-	// ClaimedDispatch rather than its id and the fence applies without anybody
-	// having to think about it.
+	// It takes the whole ClaimedDispatch rather than its id, and does nothing at
+	// all unless the row still names that claim. A lease lapses while its holder
+	// is merely slow, not dead; by the time a slow worker reports success, a
+	// second one may hold the dispatch and be sending it, and retiring that row
+	// would record a delivery that has not happened — and then refuse the second
+	// worker's own failure write as a retirement it must not undo.
+	//
+	// The value Claim handed out is the argument, rather than the two fields
+	// read off it, for the reason workqueue.Queue.Complete and timers.Complete
+	// take theirs: an id and a claim name are both strings, so a signature that
+	// took them apart would let a caller pair one claim's name with another
+	// claim's dispatch and fence nothing at all — while compiling. Hand back
+	// what Claim gave you and the fence applies without anybody having to think
+	// about it. A nil claim is an error wrapping errors.ErrNilInputParameter;
+	// it is the one thing here that is not a lost race.
 	//
 	// A worker whose lease merely lapsed, with nobody else reclaiming, still
 	// holds the row and still retires it. The question the guard asks is who
@@ -366,7 +373,7 @@ type Store interface {
 	// It is not an error to match nothing, for the reason nothing else here
 	// treats a lost race as one: the webhook was delivered, somebody else will
 	// record that it was, and there is no action for the caller to take.
-	MarkDelivered(ctx context.Context, dispatchID, claimedBy string, at time.Time) error
+	MarkDelivered(ctx context.Context, claim *ClaimedDispatch, at time.Time) error
 	// RecordFailure releases the lease, schedules the retry, and sets dead once
 	// the dispatch has exhausted its attempts. Like MarkDelivered it takes no
 	// executor, and carries the claim for the same reason — read the other way
@@ -378,7 +385,7 @@ type Store interface {
 	// attempts is persisted as given rather than left as Claim incremented it,
 	// so the caller can decline to charge an attempt for a failure the
 	// subscriber never saw — an open circuit being the case that matters.
-	RecordFailure(ctx context.Context, dispatchID, claimedBy string, attempts int, nextAttempt time.Time, lastErr string, dead bool) error
+	RecordFailure(ctx context.Context, claim *ClaimedDispatch, attempts int, nextAttempt time.Time, lastErr string, dead bool) error
 	// RecordAttempt appends to the delivery log. It takes no executor for the same
 	// reason: the attempt it records is one the worker has already made, and a log
 	// line that rolls back with somebody else's transaction is a delivery nothing

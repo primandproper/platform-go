@@ -332,7 +332,7 @@ func (w *Worker) handle(ctx context.Context, dispatch *ClaimedDispatch) {
 	if err == nil {
 		w.sentCounter.Add(ctx, 1, eventTypeAttr(dispatch.EventType))
 
-		if markErr := w.store.MarkDelivered(ctx, dispatch.ID, dispatch.ClaimedBy, w.clock.Now().UTC()); markErr != nil {
+		if markErr := w.store.MarkDelivered(ctx, dispatch, w.clock.Now().UTC()); markErr != nil {
 			// The subscriber has the payload but the row still looks pending.
 			// The next cycle redelivers it — this is precisely the at-least-once
 			// window the package documentation describes.
@@ -563,7 +563,7 @@ func (w *Worker) recordFailure(ctx context.Context, dispatch *ClaimedDispatch, c
 	})
 
 	if err := w.store.RecordFailure(
-		ctx, dispatch.ID, dispatch.ClaimedBy, attempts, nextAttempt, truncateError(cause), dead,
+		ctx, dispatch, attempts, nextAttempt, truncateError(cause), dead,
 	); err != nil {
 		// The lease still expires on its own, so the dispatch is retried
 		// regardless — just later than intended.

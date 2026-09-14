@@ -394,7 +394,7 @@ func TestWorker_circuitBreaking(T *testing.T) {
 		)
 
 		store := &fakeStore{
-			recordFailure: func(_ context.Context, _, _ string, attempts int, nextAttempt time.Time, _ string, dead bool) error {
+			recordFailure: func(_ context.Context, _ *ClaimedDispatch, attempts int, nextAttempt time.Time, _ string, dead bool) error {
 				gotDead = dead
 				gotNextAttempt = nextAttempt
 				gotAttempts = attempts
@@ -511,8 +511,8 @@ func TestWorker_handle(T *testing.T) {
 		)
 
 		w := newTestWorker(t, &fakeStore{
-			markDelivered: func(_ context.Context, dispatchID, _ string, _ time.Time) error {
-				marked = dispatchID
+			markDelivered: func(_ context.Context, claim *ClaimedDispatch, _ time.Time) error {
+				marked = claim.ID
 
 				return nil
 			},
@@ -546,7 +546,7 @@ func TestWorker_handle(T *testing.T) {
 		)
 
 		w := newTestWorker(t, &fakeStore{
-			recordFailure: func(_ context.Context, _, _ string, _ int, _ time.Time, lastErr string, dead bool) error {
+			recordFailure: func(_ context.Context, _ *ClaimedDispatch, _ int, _ time.Time, lastErr string, dead bool) error {
 				gotDead = dead
 				gotLastErr = lastErr
 
@@ -573,7 +573,7 @@ func TestWorker_handle(T *testing.T) {
 		var gotDead bool
 
 		w := newTestWorker(t, &fakeStore{
-			recordFailure: func(_ context.Context, _, _ string, _ int, _ time.Time, _ string, dead bool) error {
+			recordFailure: func(_ context.Context, _ *ClaimedDispatch, _ int, _ time.Time, _ string, dead bool) error {
 				gotDead = dead
 
 				return nil
@@ -597,7 +597,7 @@ func TestWorker_handle(T *testing.T) {
 		var gotDead bool
 
 		w := newTestWorker(t, &fakeStore{
-			recordFailure: func(_ context.Context, _, _ string, _ int, _ time.Time, _ string, dead bool) error {
+			recordFailure: func(_ context.Context, _ *ClaimedDispatch, _ int, _ time.Time, _ string, dead bool) error {
 				gotDead = dead
 
 				return nil
@@ -678,9 +678,9 @@ func TestWorker_cycle(T *testing.T) {
 			claim: func(context.Context, time.Time, int, time.Time) ([]ClaimedDispatch, error) {
 				return batch, nil
 			},
-			markDelivered: func(_ context.Context, dispatchID, _ string, _ time.Time) error {
+			markDelivered: func(_ context.Context, claim *ClaimedDispatch, _ time.Time) error {
 				markedMu.Lock()
-				marked = append(marked, dispatchID)
+				marked = append(marked, claim.ID)
 				markedMu.Unlock()
 
 				return nil
@@ -704,7 +704,7 @@ func TestWorker_cycle(T *testing.T) {
 
 				return nil, nil
 			},
-			markDelivered: func(context.Context, string, string, time.Time) error {
+			markDelivered: func(context.Context, *ClaimedDispatch, time.Time) error {
 				t.Error("nothing should have been delivered")
 
 				return nil

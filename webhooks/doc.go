@@ -208,8 +208,10 @@ reclaims a dispatch the first one is still sending; the first eventually comes
 back with an outcome for a row it no longer holds. Claim stamps a name on the
 row and hands it back on ClaimedDispatch.ClaimedBy, and MarkDelivered and
 RecordFailure present it again, so a straggler's success retires nothing and its
-failure reschedules, releases and kills nothing. Pass the ClaimedDispatch back
-rather than its id and that applies without anybody having to think about it.
+failure reschedules, releases and kills nothing. Both take the whole
+ClaimedDispatch rather than an id and a name, so there is no way to present a
+claim that did not come with the dispatch, and the fence applies without
+anybody having to think about it.
 What is left is the duplicate request, which the subscriber deduplicates on
 DeliveryIDHeader.
 
