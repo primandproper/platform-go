@@ -14,9 +14,9 @@ import (
 
 // This file is the roster of which store methods cross onto the wire, and it is
 // the ruling rather than a description of it. notifications.Inbox and
-// notifications.Registry declare twelve methods between them and this service
-// serves nine; the three absences are each a decision, and a thirteenth method
-// is in neither list until somebody says which.
+// notifications.Registry declare fourteen methods between them and this service
+// serves nine; the five absences are each a decision, and a fifteenth method is
+// in neither list until somebody says which.
 //
 // The mechanism is webhooks/grpc's, adopted rather than re-derived, and it is
 // internal/sentinelmatrix's applied to methods instead of sentinels — for the
@@ -28,7 +28,7 @@ import (
 // absent is every method on the two seams this service deliberately does not
 // serve, with the shape of machinery it is recorded beside it.
 //
-// Three entries and three different shapes, which is what makes this package the
+// Five entries and four different shapes, which is what makes this package the
 // place the distinction is worth reading. Each reason is the short form of one
 // the Store method itself carries; that is where the long version lives, because
 // a reader of the Go API should find the answer where they are standing.
@@ -48,6 +48,17 @@ var absent = map[string]string{
 	// the word of APNs or FCM; as an RPC it is a caller claiming a provider said
 	// so, about any handset in any tenant.
 	"InvalidateDeviceToken": "the hook a push provider's verdict reaches, scoped to nobody",
+
+	// The erasure, and the one shape here that covers two methods because it
+	// covers two tables. Each names a principal and destroys everything under it,
+	// which is the one thing no client may ask for about anybody, itself
+	// included: a person dismissing a notification calls ArchiveNotification and
+	// one signing a handset out calls RevokeDevice. The caller is
+	// notifications/privacy, driven by a dataprivacy request an operator has
+	// already confirmed, and the transaction it commits in is the one the rest of
+	// that subject's erasure is in.
+	"DeleteNotificationsForPrincipal": "the erasure, which names a principal and destroys every row under it",
+	"DeleteDevicesForPrincipal":       "the erasure, which names a principal and removes every handset under it",
 }
 
 // storeMethods is every method on the two seams, read off the interfaces rather
@@ -168,5 +179,5 @@ func TestTheSurfaceIsNine(T *testing.T) {
 	T.Parallel()
 
 	test.SliceLen(T, 9, rpcNames())
-	test.SliceLen(T, 12, storeMethods())
+	test.SliceLen(T, 14, storeMethods())
 }

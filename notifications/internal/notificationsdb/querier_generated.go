@@ -54,6 +54,16 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	DeleteDeviceToken(ctx context.Context, db DBTX, arg DeleteDeviceTokenParams) (int64, error)
+	// DeleteDevicesForPrincipal runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	DeleteDevicesForPrincipal(ctx context.Context, db DBTX, arg DeleteDevicesForPrincipalParams) (int64, error)
+	// DeleteNotificationsForPrincipal runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	DeleteNotificationsForPrincipal(ctx context.Context, db DBTX, arg DeleteNotificationsForPrincipalParams) (int64, error)
 	// GetArchivedNotification runs the :one query.
 	GetArchivedNotification(ctx context.Context, db DBTX, arg GetArchivedNotificationParams) (GetArchivedNotificationRow, error)
 	// GetDevice runs the :one query.

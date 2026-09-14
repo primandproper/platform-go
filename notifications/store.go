@@ -53,7 +53,7 @@ import (
 // the registry servicing itself on a provider's word rather than answering a
 // consumer, and it says so on its own doc.
 //
-// # Nine of these twelve are on the wire and three are not
+// # Nine of these fourteen are on the wire and five are not
 //
 // notifications/grpc serves the inbox as six RPCs — ListNotifications,
 // ListUnreadNotifications, GetNotification, MarkNotificationRead,
@@ -62,13 +62,16 @@ import (
 // and a device screen are made of, and the second three have a caller that is
 // literally a handset.
 //
-// The three that stay off it are three *different* shapes of machinery rather
-// than three instances of one, which is what makes this package the place to
-// read the distinction: [Inbox.CreateNotification] is the transactional
-// companion, [Registry.ListDevicesByPrincipals] is the internal fan-out, and
-// [Registry.InvalidateDeviceToken] is the provider callback hook. Each argues
-// its own case on its own method below, because a reader of this file is
-// standing where the question occurs to them.
+// The five that stay off it are four *different* shapes of machinery rather than
+// five instances of one, which is what makes this package the place to read the
+// distinction: [Inbox.CreateNotification] is the transactional companion,
+// [Registry.ListDevicesByPrincipals] is the internal fan-out,
+// [Registry.InvalidateDeviceToken] is the provider callback hook, and
+// [Inbox.DeleteNotificationsForPrincipal] and [Registry.DeleteDevicesForPrincipal]
+// are one shape over two tables — the erasure, whose caller is a privacy request
+// rather than anybody holding a connection. Each argues its own case on its own
+// method below, because a reader of this file is standing where the question
+// occurs to them.
 //
 // # The scope is an argument, on every method
 //
@@ -82,7 +85,7 @@ import (
 // entity whose scope disagrees with the argument is [ErrScopeMismatch] rather
 // than either value quietly winning; one that names none adopts the argument.
 //
-// # Five of these writes hand back the row they moved, and two do not
+// # Five of these writes hand back the row they moved, and four do not
 //
 // [Inbox.CreateNotification], [Inbox.MarkNotificationRead],
 // [Inbox.ArchiveNotification], [Registry.RegisterDevice] and
@@ -108,9 +111,12 @@ import (
 // did I just write" is a module where the answer depends on which method you
 // called.
 //
-// The two that do not are the two with no row to describe.
+// The four that do not are the four with no row to describe.
 // [Inbox.MarkAllNotificationsRead] moves a set rather than a row and reports how
-// many; [Registry.InvalidateDeviceToken] is machinery — it takes neither
+// many, and [Inbox.DeleteNotificationsForPrincipal] and
+// [Registry.DeleteDevicesForPrincipal] do the same with less left over: a
+// deletion by principal was never about one row, and the rows it was about are
+// gone. [Registry.InvalidateDeviceToken] is machinery — it takes neither
 // executor nor scope, and it is idempotent, so a token already gone is the
 // state its caller asked for and there is nothing that was moved.
 //
@@ -249,6 +255,43 @@ type Inbox interface {
 	// ErrNotificationNotFound, because an archived notification is not in the
 	// inbox and this method addresses the inbox.
 	ArchiveNotification(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal, notificationID string) (*Notification, error)
+
+	// DeleteNotificationsForPrincipal destroys every notification this scope
+	// holds for the principal, through the caller's transaction, and reports how
+	// many rows went. A nil tx is an error wrapping ErrNilExecutor.
+	//
+	// It is the erasure, and it is the only write here that removes an inbox row.
+	// Archiving is not erasure: [Inbox.ArchiveNotification] stamps a row and
+	// leaves its title, its body and its link, which is the whole of what a
+	// notification says about somebody — so a right to be forgotten answered with
+	// the archive is answered with a row still holding everything the subject
+	// asked to have destroyed. The rows go.
+	//
+	// It reaches archived notifications, and for the same reason. Every other
+	// statement over this table excludes them, because excluding them is what
+	// "the inbox" means; a subject who dismissed their notifications before
+	// asking for them to be destroyed would otherwise have the dismissed ones
+	// survive, which is the erasure failing on exactly the rows somebody had
+	// already said they were done with.
+	//
+	// The count is the answer rather than a diagnostic — it is what an erasure
+	// reports as destroyed — and zero is a legitimate one, because a principal
+	// holding nothing here is refused nothing. It is the count this transaction
+	// wrote, so a caller that unwinds has destroyed nothing, and the number they
+	// were handed describes a state that never committed.
+	//
+	// It takes the caller's transaction because an erasure is several domains at
+	// once. A subject's notifications, their comments and their signups either
+	// all go or none do, and a privacy run that committed this one and then
+	// failed would report somebody as erased from a table it had half left.
+	//
+	// It is off the wire, and the reason is what it names. A principal and
+	// nothing else, and everything under it destroyed — which is the one thing no
+	// client may ask for about anybody, itself included. A person dismissing a
+	// notification is calling ArchiveNotification; the caller here is
+	// notifications/privacy, driven by a dataprivacy request an operator has
+	// already confirmed.
+	DeleteNotificationsForPrincipal(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error)
 }
 
 // Registry is the persistence seam for device tokens: what a push is addressed
@@ -337,6 +380,38 @@ type Registry interface {
 	// session ends, the refresh token is revoked, the handset stops being
 	// addressable. Those are one fact, and this is the write that joins them.
 	RevokeDevice(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal, deviceID string) (*Device, error)
+
+	// DeleteDevicesForPrincipal removes every registration this scope holds for
+	// the principal, through the caller's transaction, and reports how many rows
+	// went. A nil tx is an error wrapping ErrNilExecutor.
+	//
+	// It is the erasure half of the registry, and what it destroys is the row in
+	// this schema that most wants destroying. A device token is a stable
+	// identifier a third party can address somebody's handset with, stored in the
+	// clear, and it outlives every other trace of them unless something removes
+	// it. [Registry.RevokeDevice] removes one its owner named, which is a
+	// sign-out rather than an erasure — and a subject asking to be forgotten has
+	// no list of ids to name.
+	//
+	// The count is the answer, and zero is a legitimate one: somebody who never
+	// installed the app has no handsets, and that is not a refusal. It is the
+	// count this transaction wrote, so a caller that unwinds has removed nothing.
+	//
+	// It takes the caller's transaction for the reason
+	// [Inbox.DeleteNotificationsForPrincipal] gives: an erasure spans domains,
+	// and the half that committed on its own is what makes a report of what was
+	// destroyed untrue.
+	//
+	// It is scoped, and that is what separates it from
+	// [Registry.InvalidateDeviceToken]. The hook acts on a token a provider named
+	// and so cannot know which tenant the handset was registered under; this acts
+	// on a person a privacy request named, and the request is what carries the
+	// scopes. The omission the hook argues for would be, here, a call that
+	// reached into every tenant on a caller's word.
+	//
+	// It is off the wire for the reason its inbox twin is: it names a principal,
+	// and removes everything under it.
+	DeleteDevicesForPrincipal(ctx context.Context, tx database.Tx, scope tenancy.Scope, principal string) (int64, error)
 
 	// InvalidateDeviceToken removes a token the provider has permanently
 	// rejected, whoever it belongs to.

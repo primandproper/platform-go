@@ -111,10 +111,11 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	// with a single entry, because it takes no filter to carry a direction.
 	want := []string{
 		"CreateNotification", "MarkNotificationRead", "MarkAllNotificationsRead", "ArchiveNotification",
+		"DeleteNotificationsForPrincipal",
 		"GetNotification", "GetArchivedNotification",
 		"ListNotifications", "ListNotificationsDescending",
 		"ListUnreadNotifications", "ListUnreadNotificationsDescending",
-		"RegisterDevice", "RevokeDevice", "DeleteDeviceToken",
+		"RegisterDevice", "RevokeDevice", "DeleteDeviceToken", "DeleteDevicesForPrincipal",
 		"GetDevice", "GetDeviceByToken", "ListDevices", "ListDevicesDescending", "ListDevicesByPrincipals",
 	}
 
@@ -214,6 +215,70 @@ func TestRender_GuardsTheReadStamp(T *testing.T) {
 
 				test.StrContains(t, body, ReadAtColumn+" IS NULL",
 					test.Sprintf("%s does not guard on the row being unread", name))
+			}
+		})
+	}
+}
+
+// TestRender_ErasesArchivedNotificationsToo pins the one property the inbox
+// erasure depends on and the only statement over this table that has it: no
+// archived predicate.
+//
+// Everything else here excludes archived rows, because excluding them is what
+// "the inbox" means, and a delete written the same way would be the one
+// statement that could not reach the rows it exists for — a subject who
+// dismissed their notifications before asking for them to be destroyed would
+// have the dismissed ones survive. querygen.Generator.DeleteQuery renders it
+// this way deliberately; this is where that stops being somebody else's
+// decision.
+func TestRender_ErasesArchivedNotificationsToo(T *testing.T) {
+	T.Parallel()
+
+	const erasure = "DeleteNotificationsForPrincipal"
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			body := statements(Render(d))[erasure]
+			must.NotEq(t, "", body)
+
+			test.StrNotContains(t, body, querygen.ArchivedAtColumn,
+				test.Sprintf("%s reasons about archived_at, so it cannot erase a dismissed notification", erasure))
+
+			// And it is a delete rather than the archive, which is the other half
+			// of the same ruling: a stamped row still holds the title, the body
+			// and the link.
+			test.StrContains(t, body, "DELETE FROM",
+				test.Sprintf("%s is not a delete", erasure))
+		})
+	}
+}
+
+// TestRender_ScopesTheTwoErasuresToOnePerson is the pair of predicates that keep
+// an erasure from becoming a truncate.
+//
+// Neither statement names an id, which is the point — a subject asking to be
+// forgotten has no list of them — so the scope and the principal are the whole
+// of the key, and a lost predicate is a statement that reaches somebody else's
+// rows rather than one that reaches none.
+func TestRender_ScopesTheTwoErasuresToOnePerson(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			for _, name := range []string{"DeleteNotificationsForPrincipal", "DeleteDevicesForPrincipal"} {
+				body := statements(Render(d))[name]
+				must.NotEq(t, "", body)
+
+				test.StrContains(t, body, ScopeColumn+" =",
+					test.Sprintf("%s does not filter on the scope", name))
+				test.StrContains(t, body, PrincipalColumn+" =",
+					test.Sprintf("%s does not filter on the principal", name))
+				test.StrNotContains(t, body, querygen.IDColumn+" =",
+					test.Sprintf("%s keys on an id an erasure has no way to name", name))
 			}
 		})
 	}

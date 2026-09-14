@@ -2,9 +2,9 @@
 // two halves of notifications: the in-app inbox a bell icon reads, and the
 // registry of handsets a push is addressed to.
 //
-// Nine of the twelve methods across notifications.Inbox and
-// notifications.Registry are here and three deliberately are not. The service
-// comment at the bottom of this file names all three and says which shape of
+// Nine of the fourteen methods across notifications.Inbox and
+// notifications.Registry are here and five deliberately are not. The service
+// comment at the bottom of this file names all five and says which shape of
 // machinery each one is.
 //
 // This file is shipped inside the published Go module, and it is the file

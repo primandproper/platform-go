@@ -36,6 +36,18 @@ type DeleteDeviceTokenParams struct {
 	Token    string
 }
 
+// DeleteDevicesForPrincipalParams are the arguments to DeleteDevicesForPrincipal.
+type DeleteDevicesForPrincipalParams struct {
+	Scope     tenancy.Scope
+	Principal string
+}
+
+// DeleteNotificationsForPrincipalParams are the arguments to DeleteNotificationsForPrincipal.
+type DeleteNotificationsForPrincipalParams struct {
+	Scope     tenancy.Scope
+	Principal string
+}
+
 // GetArchivedNotificationParams are the arguments to GetArchivedNotification.
 type GetArchivedNotificationParams struct {
 	ID        string

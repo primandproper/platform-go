@@ -45,6 +45,14 @@ const deleteDeviceTokenSQLite = `DELETE FROM {{prefix}}notifications_devices
 WHERE platform = ?1
 	AND token = ?2`
 
+const deleteDevicesForPrincipalSQLite = `DELETE FROM {{prefix}}notifications_devices
+WHERE scope = ?1
+	AND principal = ?2`
+
+const deleteNotificationsForPrincipalSQLite = `DELETE FROM {{prefix}}notifications_inbox
+WHERE scope = ?1
+	AND principal = ?2`
+
 const getArchivedNotificationSQLite = `SELECT
 	{{prefix}}notifications_inbox.id,
 	{{prefix}}notifications_inbox.scope,
@@ -451,6 +459,8 @@ type sqliteQueries struct {
 	archiveNotification               string
 	createNotification                string
 	deleteDeviceToken                 string
+	deleteDevicesForPrincipal         string
+	deleteNotificationsForPrincipal   string
 	getArchivedNotification           string
 	getDevice                         string
 	getDeviceByToken                  string
@@ -475,6 +485,8 @@ func newSQLite(prefix string) *sqliteQueries {
 		archiveNotification:               strings.ReplaceAll(archiveNotificationSQLite, prefixMarker, prefix),
 		createNotification:                strings.ReplaceAll(createNotificationSQLite, prefixMarker, prefix),
 		deleteDeviceToken:                 strings.ReplaceAll(deleteDeviceTokenSQLite, prefixMarker, prefix),
+		deleteDevicesForPrincipal:         strings.ReplaceAll(deleteDevicesForPrincipalSQLite, prefixMarker, prefix),
+		deleteNotificationsForPrincipal:   strings.ReplaceAll(deleteNotificationsForPrincipalSQLite, prefixMarker, prefix),
 		getArchivedNotification:           strings.ReplaceAll(getArchivedNotificationSQLite, prefixMarker, prefix),
 		getDevice:                         strings.ReplaceAll(getDeviceSQLite, prefixMarker, prefix),
 		getDeviceByToken:                  strings.ReplaceAll(getDeviceByTokenSQLite, prefixMarker, prefix),
@@ -558,6 +570,32 @@ func (q *sqliteQueries) DeleteDeviceToken(ctx context.Context, db DBTX, arg Dele
 	result, err := db.ExecContext(ctx, q.deleteDeviceToken,
 		arg.Platform,
 		arg.Token,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// DeleteDevicesForPrincipal runs the :execrows query against sqlite.
+func (q *sqliteQueries) DeleteDevicesForPrincipal(ctx context.Context, db DBTX, arg DeleteDevicesForPrincipalParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteDevicesForPrincipal,
+		arg.Scope,
+		arg.Principal,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// DeleteNotificationsForPrincipal runs the :execrows query against sqlite.
+func (q *sqliteQueries) DeleteNotificationsForPrincipal(ctx context.Context, db DBTX, arg DeleteNotificationsForPrincipalParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteNotificationsForPrincipal,
+		arg.Scope,
+		arg.Principal,
 	)
 	if err != nil {
 		return 0, err
@@ -1095,6 +1133,14 @@ var (
 		Platform string
 		Token    string
 	}(DeleteDeviceTokenParams{})
+	_ = struct {
+		Scope     tenancy.Scope
+		Principal string
+	}(DeleteDevicesForPrincipalParams{})
+	_ = struct {
+		Scope     tenancy.Scope
+		Principal string
+	}(DeleteNotificationsForPrincipalParams{})
 	_ = struct {
 		ID        string
 		Scope     tenancy.Scope

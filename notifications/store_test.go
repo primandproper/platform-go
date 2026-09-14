@@ -395,6 +395,94 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 		test.Nil(t, untitled)
 	})
 
+	t.Run("erasing a principal's inbox destroys every row, dismissed ones included", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		live := env.mustCreate(t, store, testScope,
+			newNotification(testPrincipal, "order.shipped", "Your order shipped"))
+		read := env.mustCreate(t, store, testScope,
+			newNotification(testPrincipal, "invite.received", "Somebody invited you"))
+		dismissed := env.mustCreate(t, store, testScope,
+			newNotification(testPrincipal, "payment.failed", "Your payment failed"))
+
+		_, err := env.markRead(t, store, testScope, testPrincipal, read.ID)
+		must.NoError(t, err)
+
+		// Dismissed first, deliberately. The archive is the write somebody
+		// reaches for when they mean "get rid of it", and it leaves the title,
+		// the body and the link — so a subject who cleared their inbox before
+		// asking to be forgotten is the case an erasure written like every other
+		// statement here would silently skip.
+		archived, err := env.archive(t, store, testScope, testPrincipal, dismissed.ID)
+		must.NoError(t, err)
+		must.NotNil(t, archived.ArchivedAt)
+
+		count, err := env.eraseNotifications(t, store, testScope, testPrincipal)
+		must.NoError(t, err)
+		test.EqOp(t, int64(3), count)
+
+		// Nothing left under any read, archived rows included — which is the one
+		// read that could still have found the dismissed one.
+		remaining, err := store.ListNotifications(t.Context(), env.reader(), testScope, testPrincipal,
+			&filtering.QueryFilter{IncludeArchived: pointer.To(true)})
+		must.NoError(t, err)
+		test.SliceEmpty(t, remaining.Data)
+		test.EqOp(t, uint64(0), remaining.FilteredCount)
+
+		for _, gone := range []*Notification{live, read, archived} {
+			_, err = store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, gone.ID)
+			test.ErrorIs(t, err, ErrNotificationNotFound, test.Sprintf("%s survived the erasure", gone.ID))
+		}
+	})
+
+	t.Run("erasing an inbox leaves another principal's and another scope's alone", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		mine := env.mustCreate(t, store, testScope,
+			newNotification(testPrincipal, "order.shipped", "mine"))
+
+		theirs := newNotification(otherPrincipal, "order.shipped", "a colleague's")
+		theirsFiled := env.mustCreate(t, store, testScope, theirs)
+
+		elsewhere := newNotification(testPrincipal, "order.shipped", "the same person, another tenant")
+		elsewhere.Scope = otherScope
+		elsewhereFiled := env.mustCreate(t, store, otherScope, elsewhere)
+
+		count, err := env.eraseNotifications(t, store, testScope, testPrincipal)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), count)
+
+		_, err = store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, mine.ID)
+		test.ErrorIs(t, err, ErrNotificationNotFound)
+
+		// Both predicates are load-bearing, and a lost one is a statement that
+		// reaches somebody else's rows rather than one that reaches none.
+		survivor, err := store.GetNotification(t.Context(), env.reader(), testScope, otherPrincipal, theirsFiled.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "a colleague's", survivor.Title)
+
+		survivor, err = store.GetNotification(t.Context(), env.reader(), otherScope, testPrincipal, elsewhereFiled.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "the same person, another tenant", survivor.Title)
+	})
+
+	t.Run("erasing an inbox that holds nothing is zero rather than a refusal", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		// A subject who was never told anything is the ordinary case for a
+		// privacy run over a table they never touched, so this is the answer
+		// rather than an error the caller has to special-case.
+		count, err := env.eraseNotifications(t, store, testScope, otherPrincipal)
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), count)
+	})
+
 	t.Run("refuses a read that names no scope or no principal", func(t *testing.T) {
 		t.Parallel()
 
@@ -419,6 +507,15 @@ func runInboxSuite(t *testing.T, env *storeEnv) {
 		archived, err := env.archive(t, store, testScope, "", "notif_1")
 		test.ErrorIs(t, err, ErrEmptyPrincipal)
 		test.Nil(t, archived)
+
+		// The erasure most of all. The empty principal is not a wildcard here
+		// either, and a statement that accepted it would be keyed on the scope
+		// alone — an erasure that emptied the tenant.
+		_, err = env.eraseNotifications(t, store, testScope, "")
+		test.ErrorIs(t, err, ErrEmptyPrincipal)
+
+		_, err = env.eraseNotifications(t, store, tenancy.Scope{}, testPrincipal)
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
 	})
 }
 
@@ -673,6 +770,80 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 		refused(newDevice(testPrincipal, PlatformIOS, ""), testScope, ErrEmptyToken)
 	})
 
+	t.Run("erasing a principal's devices removes every handset and reports how many", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		phone := env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-phone"))
+		tablet := env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformAndroid, "token-tablet"))
+
+		count, err := env.eraseDevices(t, store, testScope, testPrincipal)
+		must.NoError(t, err)
+		test.EqOp(t, int64(2), count)
+
+		// The rows are gone rather than flagged, which is what stops the push:
+		// there is no soft delete in this schema and nothing for a sender to
+		// remember to exclude.
+		devices, err := store.ListDevices(t.Context(), env.reader(), testScope, testPrincipal, nil)
+		must.NoError(t, err)
+		test.SliceEmpty(t, devices.Data)
+
+		fanOut, err := store.ListDevicesByPrincipals(t.Context(), env.reader(), testScope, []string{testPrincipal})
+		must.NoError(t, err)
+		test.SliceEmpty(t, fanOut)
+
+		// And the tokens are free again, which is the other half of the row being
+		// gone: the natural key no longer names anything, so the same handset can
+		// register afresh if the person comes back.
+		for _, was := range []*Device{phone, tablet} {
+			revoked, revokeErr := env.revoke(t, store, testScope, testPrincipal, was.ID)
+			test.ErrorIs(t, revokeErr, ErrDeviceNotFound)
+			test.Nil(t, revoked)
+		}
+	})
+
+	t.Run("erasing devices leaves another principal's and another scope's alone", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		mine := env.mustRegister(t, store, testScope, newDevice(testPrincipal, PlatformIOS, "token-mine"))
+		theirs := env.mustRegister(t, store, testScope, newDevice(otherPrincipal, PlatformIOS, "token-theirs"))
+
+		elsewhere := newDevice(testPrincipal, PlatformIOS, "token-elsewhere")
+		elsewhere.Scope = otherScope
+		elsewhereRegistered := env.mustRegister(t, store, otherScope, elsewhere)
+
+		count, err := env.eraseDevices(t, store, testScope, testPrincipal)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), count)
+
+		gone, err := env.revoke(t, store, testScope, testPrincipal, mine.ID)
+		test.ErrorIs(t, err, ErrDeviceNotFound)
+		test.Nil(t, gone)
+
+		colleague, err := store.ListDevices(t.Context(), env.reader(), testScope, otherPrincipal, nil)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, colleague.Data)
+		test.EqOp(t, theirs.ID, colleague.Data[0].ID)
+
+		otherTenant, err := store.ListDevices(t.Context(), env.reader(), otherScope, testPrincipal, nil)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, otherTenant.Data)
+		test.EqOp(t, elsewhereRegistered.ID, otherTenant.Data[0].ID)
+	})
+
+	t.Run("erasing devices for somebody with no handsets is zero rather than a refusal", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		count, err := env.eraseDevices(t, store, testScope, otherPrincipal)
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), count)
+	})
+
 	t.Run("refuses a read that names no scope or no principal", func(t *testing.T) {
 		t.Parallel()
 
@@ -690,6 +861,12 @@ func runRegistrySuite(t *testing.T, env *storeEnv) {
 		revoked, err := env.revoke(t, store, testScope, "", "device_1")
 		test.ErrorIs(t, err, ErrEmptyPrincipal)
 		test.Nil(t, revoked)
+
+		_, err = env.eraseDevices(t, store, testScope, "")
+		test.ErrorIs(t, err, ErrEmptyPrincipal)
+
+		_, err = env.eraseDevices(t, store, tenancy.Scope{}, testPrincipal)
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
 	})
 }
 
@@ -939,10 +1116,61 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, revoked.ID, devices[0].ID)
 	})
 
+	t.Run("a rolled back erasure leaves both tables as they were", func(t *testing.T) {
+		t.Parallel()
+
+		// An erasure is several domains at once, and the one that committed on
+		// its own is what makes a report of what was destroyed untrue. Both
+		// writes take the request's transaction for exactly this, and the counts
+		// they hand back describe a state that never committed.
+		store := env.newStore(t)
+
+		told := env.mustCreate(t, store, testScope,
+			newNotification(testPrincipal, "order.shipped", "still there afterwards"))
+		handset := env.mustRegister(t, store, testScope,
+			newDevice(testPrincipal, PlatformIOS, "token-still-addressable"))
+
+		var inboxRows, deviceRows int64
+
+		err := env.inTx(t, func(tx database.Tx) error {
+			var txErr error
+
+			if inboxRows, txErr = store.DeleteNotificationsForPrincipal(t.Context(), tx,
+				testScope, testPrincipal); txErr != nil {
+				return txErr
+			}
+
+			if deviceRows, txErr = store.DeleteDevicesForPrincipal(t.Context(), tx,
+				testScope, testPrincipal); txErr != nil {
+				return txErr
+			}
+
+			// Standing in for the rest of the privacy run: another domain's
+			// eraser, or the request record itself, refusing.
+			return errCompanionWrite
+		})
+		must.ErrorIs(t, err, errCompanionWrite)
+
+		// Both counts were honest about the statement and are now describing
+		// nothing, which is what their docs say and why a caller reports them
+		// only after the transaction commits.
+		test.EqOp(t, int64(1), inboxRows)
+		test.EqOp(t, int64(1), deviceRows)
+
+		survivor, err := store.GetNotification(t.Context(), env.reader(), testScope, testPrincipal, told.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "still there afterwards", survivor.Title)
+
+		addressable, err := store.ListDevices(t.Context(), env.reader(), testScope, testPrincipal, nil)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, addressable.Data)
+		test.EqOp(t, handset.ID, addressable.Data[0].ID)
+	})
+
 	t.Run("every method a consumer calls refuses a nil executor", func(t *testing.T) {
 		t.Parallel()
 
-		// Every one of the eleven, not a representative one. There is no
+		// Every one of the thirteen, not a representative one. There is no
 		// connection of the store's own for a consumer-facing method to fall back
 		// to, so one that did anything but refuse would be reaching for something
 		// that is not there.
@@ -986,6 +1214,12 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		must.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.ListDevicesByPrincipals(t.Context(), nil, testScope, []string{testPrincipal})
+		must.ErrorIs(t, err, ErrNilExecutor)
+
+		_, err = store.DeleteNotificationsForPrincipal(t.Context(), nil, testScope, testPrincipal)
+		must.ErrorIs(t, err, ErrNilExecutor)
+
+		_, err = store.DeleteDevicesForPrincipal(t.Context(), nil, testScope, testPrincipal)
 		must.ErrorIs(t, err, ErrNilExecutor)
 	})
 }
