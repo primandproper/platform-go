@@ -14,6 +14,7 @@ import (
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/featureflags"
 	featureflagsmock "github.com/primandproper/primitives-go/v2/featureflags/mock"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -89,15 +90,21 @@ func testEnforcer() metering.Enforcer {
 
 type stubEnforcer struct{}
 
-func (stubEnforcer) Check(context.Context, string, string, int64) (*metering.Decision, error) {
+func (stubEnforcer) Check(
+	context.Context, tenancy.Scope, string, string, int64,
+) (*metering.Decision, error) {
 	return &metering.Decision{Allowed: true}, nil
 }
 
-func (stubEnforcer) Consume(context.Context, database.Tx, string, string, int64) (*metering.Decision, error) {
+func (stubEnforcer) Consume(
+	context.Context, database.Tx, tenancy.Scope, string, string, int64,
+) (*metering.Decision, error) {
 	return &metering.Decision{Allowed: true}, nil
 }
 
-func (stubEnforcer) ConsumeUsage(context.Context, database.Tx, metering.Usage) (*metering.Decision, error) {
+func (stubEnforcer) ConsumeUsage(
+	context.Context, database.Tx, tenancy.Scope, metering.Usage,
+) (*metering.Decision, error) {
 	return &metering.Decision{Allowed: true}, nil
 }
 
@@ -203,7 +210,7 @@ func TestNewChecker(T *testing.T) {
 			entitlements.NewStaticPlanSource("pro"), WithEnforcer(testEnforcer()))
 		must.NoError(t, err)
 
-		d, err := checker.Check(t.Context(), "account_123", "advanced_search")
+		d, err := checker.Check(t.Context(), tenancy.Global(), "account_123", "advanced_search")
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
 	})
@@ -261,7 +268,7 @@ func TestNewChecker(T *testing.T) {
 			WithFeatureFlags(enabledFlags("advanced_search_grant")))
 		must.NoError(t, err)
 
-		d, err := checker.Check(t.Context(), "account_123", "advanced_search")
+		d, err := checker.Check(t.Context(), tenancy.Global(), "account_123", "advanced_search")
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
 	})
@@ -283,7 +290,7 @@ func TestNewChecker(T *testing.T) {
 			WithEnforcer(testEnforcer()), WithAssignmentCache(assignments))
 		must.NoError(t, err)
 
-		d, err := checker.Check(t.Context(), "account_123", "advanced_search")
+		d, err := checker.Check(t.Context(), tenancy.Global(), "account_123", "advanced_search")
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
 	})

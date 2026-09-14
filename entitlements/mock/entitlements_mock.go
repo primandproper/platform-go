@@ -10,6 +10,7 @@ import (
 	"github.com/primandproper/platform-go/v14/entitlements"
 
 	"github.com/primandproper/primitives-go/v2/authorization"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Ensure, that CheckerMock does implement entitlements.Checker.
@@ -22,10 +23,10 @@ var _ entitlements.Checker = &CheckerMock{}
 //
 //		// make and configure a mocked entitlements.Checker
 //		mockedChecker := &CheckerMock{
-//			CheckFunc: func(ctx context.Context, account string, feature string, opts ...entitlements.CheckOption) (*entitlements.Decision, error) {
+//			CheckFunc: func(ctx context.Context, scope tenancy.Scope, account string, feature string, opts ...entitlements.CheckOption) (*entitlements.Decision, error) {
 //				panic("mock out the Check method")
 //			},
-//			CheckQuantityFunc: func(ctx context.Context, account string, feature string, quantity int64, opts ...entitlements.CheckOption) (*entitlements.Decision, error) {
+//			CheckQuantityFunc: func(ctx context.Context, scope tenancy.Scope, account string, feature string, quantity int64, opts ...entitlements.CheckOption) (*entitlements.Decision, error) {
 //				panic("mock out the CheckQuantity method")
 //			},
 //			PermissionsFunc: func(ctx context.Context, account string, opts ...entitlements.CheckOption) (*authorization.PermissionSet, error) {
@@ -39,10 +40,10 @@ var _ entitlements.Checker = &CheckerMock{}
 //	}
 type CheckerMock struct {
 	// CheckFunc mocks the Check method.
-	CheckFunc func(ctx context.Context, account string, feature string, opts ...entitlements.CheckOption) (*entitlements.Decision, error)
+	CheckFunc func(ctx context.Context, scope tenancy.Scope, account string, feature string, opts ...entitlements.CheckOption) (*entitlements.Decision, error)
 
 	// CheckQuantityFunc mocks the CheckQuantity method.
-	CheckQuantityFunc func(ctx context.Context, account string, feature string, quantity int64, opts ...entitlements.CheckOption) (*entitlements.Decision, error)
+	CheckQuantityFunc func(ctx context.Context, scope tenancy.Scope, account string, feature string, quantity int64, opts ...entitlements.CheckOption) (*entitlements.Decision, error)
 
 	// PermissionsFunc mocks the Permissions method.
 	PermissionsFunc func(ctx context.Context, account string, opts ...entitlements.CheckOption) (*authorization.PermissionSet, error)
@@ -53,6 +54,8 @@ type CheckerMock struct {
 		Check []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
 			// Account is the account argument value.
 			Account string
 			// Feature is the feature argument value.
@@ -64,6 +67,8 @@ type CheckerMock struct {
 		CheckQuantity []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
 			// Account is the account argument value.
 			Account string
 			// Feature is the feature argument value.
@@ -89,17 +94,19 @@ type CheckerMock struct {
 }
 
 // Check calls CheckFunc.
-func (mock *CheckerMock) Check(ctx context.Context, account string, feature string, opts ...entitlements.CheckOption) (*entitlements.Decision, error) {
+func (mock *CheckerMock) Check(ctx context.Context, scope tenancy.Scope, account string, feature string, opts ...entitlements.CheckOption) (*entitlements.Decision, error) {
 	if mock.CheckFunc == nil {
 		panic("CheckerMock.CheckFunc: method is nil but Checker.Check was just called")
 	}
 	callInfo := struct {
 		Ctx     context.Context
+		Scope   tenancy.Scope
 		Account string
 		Feature string
 		Opts    []entitlements.CheckOption
 	}{
 		Ctx:     ctx,
+		Scope:   scope,
 		Account: account,
 		Feature: feature,
 		Opts:    opts,
@@ -107,7 +114,7 @@ func (mock *CheckerMock) Check(ctx context.Context, account string, feature stri
 	mock.lockCheck.Lock()
 	mock.calls.Check = append(mock.calls.Check, callInfo)
 	mock.lockCheck.Unlock()
-	return mock.CheckFunc(ctx, account, feature, opts...)
+	return mock.CheckFunc(ctx, scope, account, feature, opts...)
 }
 
 // CheckCalls gets all the calls that were made to Check.
@@ -116,12 +123,14 @@ func (mock *CheckerMock) Check(ctx context.Context, account string, feature stri
 //	len(mockedChecker.CheckCalls())
 func (mock *CheckerMock) CheckCalls() []struct {
 	Ctx     context.Context
+	Scope   tenancy.Scope
 	Account string
 	Feature string
 	Opts    []entitlements.CheckOption
 } {
 	var calls []struct {
 		Ctx     context.Context
+		Scope   tenancy.Scope
 		Account string
 		Feature string
 		Opts    []entitlements.CheckOption
@@ -133,18 +142,20 @@ func (mock *CheckerMock) CheckCalls() []struct {
 }
 
 // CheckQuantity calls CheckQuantityFunc.
-func (mock *CheckerMock) CheckQuantity(ctx context.Context, account string, feature string, quantity int64, opts ...entitlements.CheckOption) (*entitlements.Decision, error) {
+func (mock *CheckerMock) CheckQuantity(ctx context.Context, scope tenancy.Scope, account string, feature string, quantity int64, opts ...entitlements.CheckOption) (*entitlements.Decision, error) {
 	if mock.CheckQuantityFunc == nil {
 		panic("CheckerMock.CheckQuantityFunc: method is nil but Checker.CheckQuantity was just called")
 	}
 	callInfo := struct {
 		Ctx      context.Context
+		Scope    tenancy.Scope
 		Account  string
 		Feature  string
 		Quantity int64
 		Opts     []entitlements.CheckOption
 	}{
 		Ctx:      ctx,
+		Scope:    scope,
 		Account:  account,
 		Feature:  feature,
 		Quantity: quantity,
@@ -153,7 +164,7 @@ func (mock *CheckerMock) CheckQuantity(ctx context.Context, account string, feat
 	mock.lockCheckQuantity.Lock()
 	mock.calls.CheckQuantity = append(mock.calls.CheckQuantity, callInfo)
 	mock.lockCheckQuantity.Unlock()
-	return mock.CheckQuantityFunc(ctx, account, feature, quantity, opts...)
+	return mock.CheckQuantityFunc(ctx, scope, account, feature, quantity, opts...)
 }
 
 // CheckQuantityCalls gets all the calls that were made to CheckQuantity.
@@ -162,6 +173,7 @@ func (mock *CheckerMock) CheckQuantity(ctx context.Context, account string, feat
 //	len(mockedChecker.CheckQuantityCalls())
 func (mock *CheckerMock) CheckQuantityCalls() []struct {
 	Ctx      context.Context
+	Scope    tenancy.Scope
 	Account  string
 	Feature  string
 	Quantity int64
@@ -169,6 +181,7 @@ func (mock *CheckerMock) CheckQuantityCalls() []struct {
 } {
 	var calls []struct {
 		Ctx      context.Context
+		Scope    tenancy.Scope
 		Account  string
 		Feature  string
 		Quantity int64

@@ -15,6 +15,7 @@ import (
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/featureflags"
 	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -123,7 +124,7 @@ func TestPlanChecker_Check_boolean(T *testing.T) {
 	T.Run("a plan that includes the feature allows", func(t *testing.T) {
 		t.Parallel()
 
-		d, err := newChecker(t, staticPlans(planPro)).Check(t.Context(), testAccount, featureSearch)
+		d, err := newChecker(t, staticPlans(planPro)).Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
@@ -137,7 +138,7 @@ func TestPlanChecker_Check_boolean(T *testing.T) {
 	T.Run("a plan that excludes the feature denies", func(t *testing.T) {
 		t.Parallel()
 
-		d, err := newChecker(t, staticPlans(planFree)).Check(t.Context(), testAccount, featureSearch)
+		d, err := newChecker(t, staticPlans(planFree)).Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
@@ -150,7 +151,7 @@ func TestPlanChecker_Check_boolean(T *testing.T) {
 
 		// A boolean feature has no amount, and rendering "0 remaining" for one is
 		// the bug Unbounded exists to make impossible.
-		d, err := newChecker(t, staticPlans(planPro)).Check(t.Context(), testAccount, featureSearch)
+		d, err := newChecker(t, staticPlans(planPro)).Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.EqOp(t, Unbounded, d.Limit)
@@ -162,7 +163,7 @@ func TestPlanChecker_Check_boolean(T *testing.T) {
 
 		c := newChecker(t, staticPlans(planFree), WithFeatureFlags(enabledFlags(flagSearchGrant)))
 
-		d, err := c.Check(t.Context(), testAccount, featureSearch)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
@@ -174,7 +175,7 @@ func TestPlanChecker_Check_boolean(T *testing.T) {
 
 		c := newChecker(t, staticPlans(planPro), WithFeatureFlags(enabledFlags(flagSearchKill)))
 
-		d, err := c.Check(t.Context(), testAccount, featureSearch)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
@@ -187,7 +188,7 @@ func TestPlanChecker_Check_boolean(T *testing.T) {
 		c := newChecker(t, staticPlans(planFree),
 			WithFeatureFlags(enabledFlags(flagSearchGrant, flagSearchKill)))
 
-		d, err := c.Check(t.Context(), testAccount, featureSearch)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
@@ -200,7 +201,7 @@ func TestPlanChecker_Check_boolean(T *testing.T) {
 		flags, recorded := capturingFlags(flagSearchGrant)
 		c := newChecker(t, staticPlans(planFree), WithFeatureFlags(flags))
 
-		d, err := c.Check(t.Context(), testAccount, featureSearch,
+		d, err := c.Check(t.Context(), testScope, testAccount, featureSearch,
 			WithTargetingAttributes(map[string]any{"region": "eu-west-1", "beta": true}))
 
 		must.NoError(t, err)
@@ -223,7 +224,7 @@ func TestPlanChecker_Check_boolean(T *testing.T) {
 		flags, recorded := capturingFlags(flagSearchGrant)
 		c := newChecker(t, staticPlans(planFree), WithFeatureFlags(flags))
 
-		_, err := c.Check(t.Context(), testAccount, featureSearch)
+		_, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 		must.NoError(t, err)
 
 		seen := recorded()
@@ -241,7 +242,7 @@ func TestPlanChecker_Check_boolean(T *testing.T) {
 		// configuration, not a degraded one.
 		c := newChecker(t, staticPlans(planPro))
 
-		d, err := c.Check(t.Context(), testAccount, featureSearch)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
@@ -257,12 +258,12 @@ func TestPlanChecker_Check_boolean(T *testing.T) {
 		errFlags := platformerrors.New("flag provider is down")
 
 		included := newChecker(t, staticPlans(planPro), WithFeatureFlags(failingFlags(errFlags)))
-		d, err := included.Check(t.Context(), testAccount, featureSearch)
+		d, err := included.Check(t.Context(), testScope, testAccount, featureSearch)
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
 
 		excluded := newChecker(t, staticPlans(planFree), WithFeatureFlags(failingFlags(errFlags)))
-		d, err = excluded.Check(t.Context(), testAccount, featureSearch)
+		d, err = excluded.Check(t.Context(), testScope, testAccount, featureSearch)
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
 	})
@@ -276,13 +277,13 @@ func TestPlanChecker_Check_boolean(T *testing.T) {
 		// both mean "nobody has told me otherwise", and the plan answers either
 		// way. Asserting it here keeps that a decision rather than an oversight.
 		included := newChecker(t, staticPlans(planPro), WithFeatureFlags(failingFlags(featureflags.ErrFlagNotFound)))
-		d, err := included.Check(t.Context(), testAccount, featureSearch)
+		d, err := included.Check(t.Context(), testScope, testAccount, featureSearch)
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
 		test.EqOp(t, ReasonPlanIncludes, d.Reason)
 
 		excluded := newChecker(t, staticPlans(planFree), WithFeatureFlags(failingFlags(featureflags.ErrFlagNotFound)))
-		d, err = excluded.Check(t.Context(), testAccount, featureSearch)
+		d, err = excluded.Check(t.Context(), testScope, testAccount, featureSearch)
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
 	})
@@ -302,7 +303,7 @@ func TestPlanChecker_Check_quota(T *testing.T) {
 			ResetsAt: resets,
 		}, nil)))
 
-		d, err := c.Check(t.Context(), testAccount, featureTokens)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureTokens)
 
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
@@ -322,7 +323,7 @@ func TestPlanChecker_Check_quota(T *testing.T) {
 			Limit:   1000,
 		}, nil)))
 
-		d, err := c.Check(t.Context(), testAccount, featureTokens)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureTokens)
 
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
@@ -342,7 +343,7 @@ func TestPlanChecker_Check_quota(T *testing.T) {
 			Behavior: metering.BehaviorAllowOverage,
 		}, nil)))
 
-		d, err := c.Check(t.Context(), testAccount, featureTokens)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureTokens)
 
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
@@ -358,17 +359,64 @@ func TestPlanChecker_Check_quota(T *testing.T) {
 		// is spent, which is the moment the question is being asked.
 		var asked atomic.Int64
 		c := newChecker(t, staticPlans(planPro), WithEnforcer(&meteringmock.EnforcerMock{
-			CheckFunc: func(_ context.Context, _, _ string, quantity int64) (*metering.Decision, error) {
+			CheckFunc: func(_ context.Context, _ tenancy.Scope, _, _ string, quantity int64) (*metering.Decision, error) {
 				asked.Store(quantity)
 
 				return &metering.Decision{Allowed: true, Limit: 1000}, nil
 			},
 		}))
 
-		_, err := c.Check(t.Context(), testAccount, featureTokens)
+		_, err := c.Check(t.Context(), testScope, testAccount, featureTokens)
 
 		must.NoError(t, err)
 		test.EqOp(t, int64(1), asked.Load())
+	})
+
+	T.Run("refuses an unset scope on either kind of feature", func(t *testing.T) {
+		t.Parallel()
+
+		// Both kinds, because which one a key names is the catalog's answer and it
+		// changes when somebody adds a limit to a feature that had none. A boolean
+		// check reads no usage, so nothing below this would notice a lost scope.
+		var calls atomic.Int64
+		c := newChecker(t, staticPlans(planPro), WithEnforcer(&meteringmock.EnforcerMock{
+			CheckFunc: func(context.Context, tenancy.Scope, string, string, int64) (*metering.Decision, error) {
+				calls.Add(1)
+
+				return &metering.Decision{Allowed: true}, nil
+			},
+		}))
+
+		_, err := c.Check(t.Context(), tenancy.Scope{}, testAccount, featureTokens)
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+
+		_, err = c.Check(t.Context(), tenancy.Scope{}, testAccount, featureSearch)
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+
+		test.EqOp(t, int64(0), calls.Load())
+	})
+
+	T.Run("passes the scope through to metering", func(t *testing.T) {
+		t.Parallel()
+
+		// The scope is not this package's column — nothing here owns a table — and
+		// it is on the signature only so that metering's read can be told which
+		// tenant's usage answers a quota feature. An argument dropped on the way
+		// there would leave every tenant sharing one total, and nothing in this
+		// package's own assertions would notice.
+		var asked tenancy.Scope
+		c := newChecker(t, staticPlans(planPro), WithEnforcer(&meteringmock.EnforcerMock{
+			CheckFunc: func(_ context.Context, scope tenancy.Scope, _, _ string, _ int64) (*metering.Decision, error) {
+				asked = scope
+
+				return &metering.Decision{Allowed: true, Limit: 1000}, nil
+			},
+		}))
+
+		_, err := c.Check(t.Context(), otherScope, testAccount, featureTokens)
+
+		must.NoError(t, err)
+		test.EqOp(t, otherScope, asked)
 	})
 
 	T.Run("passes an explicit quantity through", func(t *testing.T) {
@@ -376,14 +424,14 @@ func TestPlanChecker_Check_quota(T *testing.T) {
 
 		var asked atomic.Int64
 		c := newChecker(t, staticPlans(planPro), WithEnforcer(&meteringmock.EnforcerMock{
-			CheckFunc: func(_ context.Context, _, _ string, quantity int64) (*metering.Decision, error) {
+			CheckFunc: func(_ context.Context, _ tenancy.Scope, _, _ string, quantity int64) (*metering.Decision, error) {
 				asked.Store(quantity)
 
 				return &metering.Decision{Allowed: true, Limit: 1000}, nil
 			},
 		}))
 
-		_, err := c.CheckQuantity(t.Context(), testAccount, featureTokens, 5000)
+		_, err := c.CheckQuantity(t.Context(), testScope, testAccount, featureTokens, 5000)
 
 		must.NoError(t, err)
 		test.EqOp(t, int64(5000), asked.Load())
@@ -394,14 +442,14 @@ func TestPlanChecker_Check_quota(T *testing.T) {
 
 		var calls atomic.Int64
 		c := newChecker(t, staticPlans(planFree), WithEnforcer(&meteringmock.EnforcerMock{
-			CheckFunc: func(context.Context, string, string, int64) (*metering.Decision, error) {
+			CheckFunc: func(context.Context, tenancy.Scope, string, string, int64) (*metering.Decision, error) {
 				calls.Add(1)
 
 				return &metering.Decision{Allowed: true}, nil
 			},
 		}))
 
-		d, err := c.Check(t.Context(), testAccount, featureTokens)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureTokens)
 
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
@@ -416,14 +464,14 @@ func TestPlanChecker_Check_quota(T *testing.T) {
 		// would be spending latency to learn nothing.
 		var calls atomic.Int64
 		c := newChecker(t, staticPlans(planEnterprise), WithEnforcer(&meteringmock.EnforcerMock{
-			CheckFunc: func(context.Context, string, string, int64) (*metering.Decision, error) {
+			CheckFunc: func(context.Context, tenancy.Scope, string, string, int64) (*metering.Decision, error) {
 				calls.Add(1)
 
 				return &metering.Decision{Allowed: true}, nil
 			},
 		}))
 
-		d, err := c.Check(t.Context(), testAccount, featureTokens)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureTokens)
 
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
@@ -440,14 +488,14 @@ func TestPlanChecker_Check_quota(T *testing.T) {
 		c := newChecker(t, staticPlans(planPro),
 			WithFeatureFlags(enabledFlags(flagTokensKill)),
 			WithEnforcer(&meteringmock.EnforcerMock{
-				CheckFunc: func(context.Context, string, string, int64) (*metering.Decision, error) {
+				CheckFunc: func(context.Context, tenancy.Scope, string, string, int64) (*metering.Decision, error) {
 					calls.Add(1)
 
 					return &metering.Decision{Allowed: true}, nil
 				},
 			}))
 
-		d, err := c.Check(t.Context(), testAccount, featureTokens)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureTokens)
 
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
@@ -464,7 +512,7 @@ func TestPlanChecker_Check_quota(T *testing.T) {
 		errCheck := platformerrors.New("metering is down")
 		c := newChecker(t, staticPlans(planPro), WithEnforcer(staticEnforcer(nil, errCheck)))
 
-		d, err := c.Check(t.Context(), testAccount, featureTokens)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureTokens)
 
 		test.ErrorIs(t, err, errCheck)
 		test.Nil(t, d)
@@ -479,7 +527,7 @@ func TestPlanChecker_Check_quota(T *testing.T) {
 			Stale:   true,
 		}, nil)))
 
-		d, err := c.Check(t.Context(), testAccount, featureTokens)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureTokens)
 
 		must.NoError(t, err)
 		test.True(t, d.Stale)
@@ -496,7 +544,7 @@ func TestPlanChecker_Check_planResolution(T *testing.T) {
 		// report filed with the wrong team.
 		c := newChecker(t, failingPlans(ErrNoPlan))
 
-		d, err := c.Check(t.Context(), testAccount, featureSearch)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
@@ -506,7 +554,7 @@ func TestPlanChecker_Check_planResolution(T *testing.T) {
 	T.Run("an empty plan name is treated as no plan", func(t *testing.T) {
 		t.Parallel()
 
-		d, err := newChecker(t, staticPlans("")).Check(t.Context(), testAccount, featureSearch)
+		d, err := newChecker(t, staticPlans("")).Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.EqOp(t, ReasonNoPlan, d.Reason)
@@ -517,7 +565,7 @@ func TestPlanChecker_Check_planResolution(T *testing.T) {
 
 		// Distinct from ReasonNoPlan because it wants a different person woken
 		// up: this is a catalog that has drifted from the plan store.
-		d, err := newChecker(t, staticPlans("legacy_gold")).Check(t.Context(), testAccount, featureSearch)
+		d, err := newChecker(t, staticPlans("legacy_gold")).Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
@@ -530,7 +578,7 @@ func TestPlanChecker_Check_planResolution(T *testing.T) {
 
 		c := newChecker(t, failingPlans(platformerrors.New("plan store is down")))
 
-		d, err := c.Check(t.Context(), testAccount, featureSearch)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
@@ -546,7 +594,7 @@ func TestPlanChecker_Check_planResolution(T *testing.T) {
 			WithEnforcer(staticEnforcer(&metering.Decision{Allowed: true, Limit: 1000}, nil)))
 		must.NoError(t, err)
 
-		d, err := c.Check(t.Context(), testAccount, featureSearch)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
@@ -565,7 +613,7 @@ func TestPlanChecker_Check_planResolution(T *testing.T) {
 			WithEnforcer(staticEnforcer(&metering.Decision{Allowed: true}, nil)))
 		must.NoError(t, err)
 
-		d, err := c.Check(t.Context(), testAccount, featureSearch)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.False(t, d.Allowed)
@@ -579,7 +627,7 @@ func TestPlanChecker_Check_inputs(T *testing.T) {
 	T.Run("rejects an empty account", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newChecker(t, staticPlans(planPro)).Check(t.Context(), "", featureSearch)
+		_, err := newChecker(t, staticPlans(planPro)).Check(t.Context(), testScope, "", featureSearch)
 
 		test.ErrorIs(t, err, ErrEmptyAccount)
 	})
@@ -589,7 +637,7 @@ func TestPlanChecker_Check_inputs(T *testing.T) {
 
 		// Answering "your plan does not include it" would have somebody ship a
 		// permanently dark feature and open a billing ticket.
-		_, err := newChecker(t, staticPlans(planPro)).Check(t.Context(), testAccount, "nope")
+		_, err := newChecker(t, staticPlans(planPro)).Check(t.Context(), testScope, testAccount, "nope")
 
 		test.ErrorIs(t, err, ErrUnknownFeature)
 	})
@@ -611,7 +659,7 @@ func TestPlanChecker_caching(T *testing.T) {
 		c := newChecker(t, plans, WithCache(newAssignmentCache(t)))
 
 		for range 3 {
-			_, err := c.Check(t.Context(), testAccount, featureSearch)
+			_, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 			must.NoError(t, err)
 		}
 
@@ -623,11 +671,11 @@ func TestPlanChecker_caching(T *testing.T) {
 
 		c := newChecker(t, staticPlans(planPro), WithCache(newAssignmentCache(t)))
 
-		first, err := c.Check(t.Context(), testAccount, featureSearch)
+		first, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 		must.NoError(t, err)
 		test.False(t, first.Stale)
 
-		second, err := c.Check(t.Context(), testAccount, featureSearch)
+		second, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 		must.NoError(t, err)
 		test.True(t, second.Stale)
 	})
@@ -644,12 +692,12 @@ func TestPlanChecker_caching(T *testing.T) {
 
 		c := newChecker(t, plans, WithCache(newAssignmentCache(t)))
 
-		_, err := c.Check(t.Context(), testAccount, featureSearch)
+		_, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 		must.NoError(t, err)
 
 		must.NoError(t, c.Invalidate(t.Context(), testAccount))
 
-		_, err = c.Check(t.Context(), testAccount, featureSearch)
+		_, err = c.Check(t.Context(), testScope, testAccount, featureSearch)
 		must.NoError(t, err)
 
 		test.EqOp(t, int64(2), calls.Load())
@@ -688,7 +736,7 @@ func TestPlanChecker_caching(T *testing.T) {
 			},
 		}))
 
-		d, err := c.Check(t.Context(), testAccount, featureSearch)
+		d, err := c.Check(t.Context(), testScope, testAccount, featureSearch)
 
 		must.NoError(t, err)
 		test.True(t, d.Allowed)
@@ -715,7 +763,7 @@ func TestPlanChecker_caching(T *testing.T) {
 		must.NoError(t, err)
 
 		for range 2 {
-			_, checkErr := c.Check(t.Context(), testAccount, featureSearch)
+			_, checkErr := c.Check(t.Context(), testScope, testAccount, featureSearch)
 			must.NoError(t, checkErr)
 		}
 

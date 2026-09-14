@@ -2,6 +2,7 @@
 
 -- name: InsertMeteringEvent :execrows
 INSERT IGNORE INTO metering_events (
+	scope,
 	idempotency_key,
 	subject,
 	meter,
@@ -11,6 +12,7 @@ INSERT IGNORE INTO metering_events (
 	period_start,
 	dimensions
 ) VALUES (
+	sqlc.arg(scope),
 	sqlc.arg(idempotency_key),
 	sqlc.arg(subject),
 	sqlc.arg(meter),
@@ -25,19 +27,21 @@ INSERT IGNORE INTO metering_events (
 SELECT EXISTS (
 	SELECT 1
 	FROM metering_events
-	WHERE metering_events.meter = sqlc.arg(meter)
+	WHERE metering_events.scope = sqlc.arg(scope)
+		AND metering_events.meter = sqlc.arg(meter)
 		AND metering_events.idempotency_key = sqlc.arg(idempotency_key)
 );
 
 -- name: PruneMeteringEvents :execrows
 DELETE FROM metering_events
 WHERE recorded_at <= sqlc.arg(horizon)
-	AND NOT EXISTS (SELECT 1 FROM metering_totals t WHERE t.subject = metering_events.subject AND t.meter = metering_events.meter AND t.period_start = metering_events.period_start AND t.quantity > t.flushed_quantity)
+	AND NOT EXISTS (SELECT 1 FROM metering_totals t WHERE t.scope = metering_events.scope AND t.subject = metering_events.subject AND t.meter = metering_events.meter AND t.period_start = metering_events.period_start AND t.quantity > t.flushed_quantity)
 ORDER BY recorded_at ASC
 LIMIT ?;
 
 -- name: InsertMeteringTotal :execrows
 INSERT IGNORE INTO metering_totals (
+	scope,
 	subject,
 	meter,
 	period_start,
@@ -49,6 +53,7 @@ INSERT IGNORE INTO metering_totals (
 	last_error,
 	created_at
 ) VALUES (
+	sqlc.arg(scope),
 	sqlc.arg(subject),
 	sqlc.arg(meter),
 	sqlc.arg(period_start),
@@ -63,6 +68,7 @@ INSERT IGNORE INTO metering_totals (
 
 -- name: GetMeteringTotal :one
 SELECT
+	metering_totals.scope,
 	metering_totals.subject,
 	metering_totals.meter,
 	metering_totals.period_start,
@@ -76,12 +82,14 @@ SELECT
 	metering_totals.next_flush,
 	metering_totals.last_error
 FROM metering_totals
-WHERE metering_totals.subject = sqlc.arg(subject)
+WHERE metering_totals.scope = sqlc.arg(scope)
+	AND metering_totals.subject = sqlc.arg(subject)
 	AND metering_totals.meter = sqlc.arg(meter)
 	AND metering_totals.period_start = sqlc.arg(period_start);
 
 -- name: GetMeteringTotalForUpdate :one
 SELECT
+	metering_totals.scope,
 	metering_totals.subject,
 	metering_totals.meter,
 	metering_totals.period_start,
@@ -95,7 +103,8 @@ SELECT
 	metering_totals.next_flush,
 	metering_totals.last_error
 FROM metering_totals
-WHERE metering_totals.subject = sqlc.arg(subject)
+WHERE metering_totals.scope = sqlc.arg(scope)
+	AND metering_totals.subject = sqlc.arg(subject)
 	AND metering_totals.meter = sqlc.arg(meter)
 	AND metering_totals.period_start = sqlc.arg(period_start)
 FOR UPDATE;
@@ -105,7 +114,8 @@ UPDATE metering_totals SET
 	quantity = quantity + sqlc.arg(quantity),
 	last_occurred_at = CASE WHEN last_occurred_at < sqlc.arg(last_occurred_at) THEN sqlc.arg(last_occurred_at) ELSE last_occurred_at END,
 	last_updated_at = sqlc.narg(last_updated_at)
-WHERE subject = sqlc.arg(subject)
+WHERE scope = sqlc.arg(scope)
+	AND subject = sqlc.arg(subject)
 	AND meter = sqlc.arg(meter)
 	AND period_start = sqlc.arg(period_start);
 
@@ -114,7 +124,8 @@ UPDATE metering_totals SET
 	quantity = CASE WHEN quantity < sqlc.arg(quantity) THEN sqlc.arg(quantity) ELSE quantity END,
 	last_occurred_at = CASE WHEN last_occurred_at < sqlc.arg(last_occurred_at) THEN sqlc.arg(last_occurred_at) ELSE last_occurred_at END,
 	last_updated_at = sqlc.narg(last_updated_at)
-WHERE subject = sqlc.arg(subject)
+WHERE scope = sqlc.arg(scope)
+	AND subject = sqlc.arg(subject)
 	AND meter = sqlc.arg(meter)
 	AND period_start = sqlc.arg(period_start);
 
@@ -123,7 +134,8 @@ UPDATE metering_totals SET
 	quantity = CASE WHEN last_occurred_at < sqlc.arg(last_occurred_at) THEN sqlc.arg(quantity) ELSE quantity END,
 	last_occurred_at = CASE WHEN last_occurred_at < sqlc.arg(last_occurred_at) THEN sqlc.arg(last_occurred_at) ELSE last_occurred_at END,
 	last_updated_at = sqlc.narg(last_updated_at)
-WHERE subject = sqlc.arg(subject)
+WHERE scope = sqlc.arg(scope)
+	AND subject = sqlc.arg(subject)
 	AND meter = sqlc.arg(meter)
 	AND period_start = sqlc.arg(period_start);
 
@@ -132,12 +144,14 @@ UPDATE metering_totals SET
 	quantity = sqlc.arg(quantity),
 	last_occurred_at = sqlc.arg(last_occurred_at),
 	last_updated_at = sqlc.narg(last_updated_at)
-WHERE subject = sqlc.arg(subject)
+WHERE scope = sqlc.arg(scope)
+	AND subject = sqlc.arg(subject)
 	AND meter = sqlc.arg(meter)
 	AND period_start = sqlc.arg(period_start);
 
 -- name: SelectFlushableMeteringTotals :many
 SELECT
+	metering_totals.scope,
 	metering_totals.subject,
 	metering_totals.meter,
 	metering_totals.period_start,
@@ -155,7 +169,7 @@ WHERE metering_totals.quantity > metering_totals.flushed_quantity
 	AND metering_totals.next_flush <= sqlc.arg(due_at)
 	AND metering_totals.flush_attempts < sqlc.arg(max_attempts)
 	AND (metering_totals.claimed_until IS NULL OR metering_totals.claimed_until <= sqlc.arg(lease_expired_by))
-ORDER BY metering_totals.next_flush, metering_totals.subject, metering_totals.meter
+ORDER BY metering_totals.next_flush, metering_totals.scope, metering_totals.subject, metering_totals.meter
 LIMIT ?
 FOR UPDATE SKIP LOCKED;
 
@@ -163,7 +177,8 @@ FOR UPDATE SKIP LOCKED;
 UPDATE metering_totals SET
 	claimed_until = sqlc.narg(claimed_until),
 	flush_attempts = flush_attempts + 1
-WHERE subject = sqlc.arg(subject)
+WHERE scope = sqlc.arg(scope)
+	AND subject = sqlc.arg(subject)
 	AND meter = sqlc.arg(meter)
 	AND period_start = sqlc.arg(period_start)
 	AND quantity > flushed_quantity;
@@ -177,7 +192,8 @@ UPDATE metering_totals SET
 	claimed_until = NULL,
 	last_error = '',
 	last_updated_at = sqlc.narg(last_updated_at)
-WHERE subject = sqlc.arg(subject)
+WHERE scope = sqlc.arg(scope)
+	AND subject = sqlc.arg(subject)
 	AND meter = sqlc.arg(meter)
 	AND period_start = sqlc.arg(period_start)
 	AND flush_sequence = sqlc.arg(flush_sequence);
@@ -188,7 +204,8 @@ UPDATE metering_totals SET
 	last_error = sqlc.arg(last_error),
 	claimed_until = sqlc.narg(claimed_until),
 	last_updated_at = sqlc.narg(last_updated_at)
-WHERE subject = sqlc.arg(subject)
+WHERE scope = sqlc.arg(scope)
+	AND subject = sqlc.arg(subject)
 	AND meter = sqlc.arg(meter)
 	AND period_start = sqlc.arg(period_start)
 	AND flush_sequence = sqlc.arg(flush_sequence);

@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -128,19 +129,37 @@ func (r *DurableRecorder) initInstruments() error {
 }
 
 // Record implements Recorder.
-func (r *DurableRecorder) Record(ctx context.Context, tx database.Tx, u ...Usage) error {
-	if tx == nil {
-		return ErrNilExecutor
-	}
-
-	return r.record(ctx, tx, u)
+func (r *DurableRecorder) Record(ctx context.Context, tx database.Tx, scope tenancy.Scope, u ...Usage) error {
+	return r.record(ctx, tx, scope, u)
 }
 
 // record prepares every usage record, then hands the survivors to the store in
 // configured chunks.
-func (r *DurableRecorder) record(ctx context.Context, tx database.Tx, usages []Usage) error {
-	ctx, op := r.o11y.Begin(ctx, observability.WithValue(batchSizeKey, len(usages)))
+func (r *DurableRecorder) record(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	usages []Usage,
+) error {
+	ctx, op := r.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		batchSizeKey: len(usages),
+		scopeKey:     scope.String(),
+	}))
 	defer op.End()
+
+	// Both guards are the store's, repeated at the boundary the caller actually
+	// reached: a batch this recorder validated, resolved periods for, and then
+	// handed to a store that declined it would spend the work and report the
+	// same error one layer further from whoever wrote the call. They sit under
+	// the operation rather than above it, as SQLStore.Record's do, so a refusal
+	// carries the scope it refused and lands on the span somebody is reading.
+	if tx == nil {
+		return op.Error(ErrNilExecutor, "recording metering usage")
+	}
+
+	if err := scope.Validate(); err != nil {
+		return op.Error(err, "recording metering usage")
+	}
 
 	if len(usages) == 0 {
 		return nil
@@ -166,7 +185,7 @@ func (r *DurableRecorder) record(ctx context.Context, tx database.Tx, usages []U
 	for chunk := range chunks(entries, r.cfg.BatchSize) {
 		var result RecordResult
 
-		if result, err = r.store.Record(ctx, tx, chunk, now); err != nil {
+		if result, err = r.store.Record(ctx, tx, scope, chunk, now); err != nil {
 			return op.Error(err, "recording metering usage")
 		}
 

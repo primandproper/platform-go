@@ -57,7 +57,7 @@ func (e *enforcerEnv) consumeUsage(tb testing.TB, u Usage) (*Decision, error) {
 	tb.Helper()
 
 	return inTx(tb, e.db.client, func(tx database.Tx) (*Decision, error) {
-		return e.enforcer.ConsumeUsage(tb.Context(), tx, u)
+		return e.enforcer.ConsumeUsage(tb.Context(), tx, testScope, u)
 	})
 }
 
@@ -116,7 +116,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 
 		env := newTestEnforcer(t, BehaviorBlock, 100)
 
-		decision, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 10)
+		decision, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 10)
 		must.NoError(t, err)
 
 		test.True(t, decision.Allowed)
@@ -135,7 +135,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 
 		must.NoError(t, mustRecord(t, env.db, env.store, newEntry("seed", 95, AggregationSum)))
 
-		decision, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 10)
+		decision, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 10)
 		must.NoError(t, err)
 
 		// Not "are they under the limit now" but "would this take them over",
@@ -152,7 +152,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 
 		must.NoError(t, mustRecord(t, env.db, env.store, newEntry("seed", 40, AggregationSum)))
 
-		decision, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		decision, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		test.False(t, decision.Stale)
@@ -166,7 +166,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 
 		must.NoError(t, mustRecord(t, env.db, env.store, newEntry("seed", 40, AggregationSum)))
 
-		_, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		_, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		// Usage the cache does not know about yet. The staleness budget is
@@ -174,7 +174,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 		// the number is fresh.
 		must.NoError(t, mustRecord(t, env.db, env.store, newEntry("more", 50, AggregationSum)))
 
-		decision, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		decision, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		test.True(t, decision.Stale)
@@ -188,7 +188,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 
 		must.NoError(t, mustRecord(t, env.db, env.store, newEntry("seed", 40, AggregationSum)))
 
-		_, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		_, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		must.NoError(t, mustRecord(t, env.db, env.store, newEntry("more", 50, AggregationSum)))
@@ -198,7 +198,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 		// construction rather than by everybody remembering to invalidate.
 		env.clock.advance(DefaultStaleness + time.Second)
 
-		decision, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		decision, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		test.False(t, decision.Stale)
@@ -231,14 +231,14 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 
 		must.NoError(t, mustRecord(t, db, store, newEntry("seed", 40, AggregationSum)))
 
-		_, err = enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		_, err = enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		must.NoError(t, mustRecord(t, db, store, newEntry("more", 50, AggregationSum)))
 
 		c.advance(2 * time.Second)
 
-		decision, err := enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		decision, err := enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		test.False(t, decision.Stale)
@@ -257,12 +257,12 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 		// with the last period's total — a quota that starts full on the first.
 		env.clock.advance(monthBounds.End.Sub(baseTime) - 5*time.Second)
 
-		_, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		_, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		env.clock.advance(6 * time.Second)
 
-		decision, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		decision, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		test.False(t, decision.Stale)
@@ -281,7 +281,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 
 		must.NoError(t, mustRecord(t, db, store, newEntry("seed", 40, AggregationSum)))
 
-		decision, err := enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		decision, err := enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		// Correct, and a durable read every time — which is the thing the package
@@ -348,7 +348,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 
 		// A cache that is down turns Check into a durable read, which is slow and
 		// correct. The wrong response to a degraded cache is to stop answering.
-		decision, err := enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		decision, err := enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		test.EqOp(t, int64(41), decision.Used)
@@ -371,7 +371,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 
 		must.NoError(t, mustRecord(t, env.db, env.store, newEntry("seed", 40, AggregationSum)))
 
-		_, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		_, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		test.SliceEmpty(t, instruments.recorded("_cache_errors"))
@@ -393,7 +393,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 			WithEnforcerClock(newStubClock()), WithEnforcerCache(missing))
 		must.NoError(t, err)
 
-		decision, err := enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		decision, err := enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		test.EqOp(t, int64(1), decision.Used)
@@ -404,7 +404,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 
 		env := newTestEnforcer(t, BehaviorBlock, 100)
 
-		_, err := env.enforcer.Check(t.Context(), testSubject, "not_registered", 1)
+		_, err := env.enforcer.Check(t.Context(), testScope, testSubject, "not_registered", 1)
 
 		test.ErrorIs(t, err, ErrUnknownMeter)
 	})
@@ -426,7 +426,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 
 		// Unmetered is not unlimited, and this package will not pretend
 		// otherwise.
-		_, err = enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		_, err = enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 
 		test.ErrorIs(t, err, ErrNoQuota)
 	})
@@ -442,7 +442,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 				return Quota{Meter: testMeter, Limit: 10, Behavior: BehaviorBlock, Period: PeriodDay}, nil
 			})))
 
-		_, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		_, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 
 		test.ErrorIs(t, err, ErrPeriodMismatch)
 	})
@@ -455,7 +455,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 				return Quota{}, errArbitrary
 			})))
 
-		_, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		_, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 
 		test.ErrorIs(t, err, errArbitrary)
 	})
@@ -468,7 +468,7 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 				return Bounds{}, errArbitrary
 			})))
 
-		_, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		_, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 
 		test.ErrorIs(t, err, errArbitrary)
 	})
@@ -488,11 +488,11 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 				return Quota{Meter: meter, Limit: limit, Behavior: BehaviorBlock, Period: PeriodMonth}, nil
 			})))
 
-		free, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 50)
+		free, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 50)
 		must.NoError(t, err)
 		test.False(t, free.Allowed)
 
-		enterprise, err := env.enforcer.Check(t.Context(), "enterprise", testMeter, 50)
+		enterprise, err := env.enforcer.Check(t.Context(), testScope, "enterprise", testMeter, 50)
 		must.NoError(t, err)
 		test.True(t, enterprise.Allowed)
 	})
@@ -520,7 +520,7 @@ func TestQuotaEnforcer_CheckFailurePolicy(T *testing.T) {
 
 		// The right answer whenever the quota guards something that costs money:
 		// an outage that lets every subject past every limit bills the operator.
-		_, err := newFailing(t, false).Check(t.Context(), testSubject, testMeter, 1)
+		_, err := newFailing(t, false).Check(t.Context(), testScope, testSubject, testMeter, 1)
 
 		test.ErrorIs(t, err, errArbitrary)
 	})
@@ -528,7 +528,7 @@ func TestQuotaEnforcer_CheckFailurePolicy(T *testing.T) {
 	T.Run("fails open when configured to", func(t *testing.T) {
 		t.Parallel()
 
-		decision, err := newFailing(t, true).Check(t.Context(), testSubject, testMeter, 1)
+		decision, err := newFailing(t, true).Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		test.True(t, decision.Allowed)
@@ -647,7 +647,7 @@ func TestQuotaEnforcer_Consume(T *testing.T) {
 		// read and gets a number that is true rather than one that was true if
 		// the caller's transaction committed. It did here, and the durable read
 		// says so.
-		decision, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 0)
+		decision, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 0)
 		must.NoError(t, err)
 
 		test.False(t, decision.Stale)
@@ -661,13 +661,13 @@ func TestQuotaEnforcer_Consume(T *testing.T) {
 
 		// Warm the cache, so there is an entry for the consume to invalidate and
 		// a hit for the Check afterwards to find if it does not.
-		_, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 0)
+		_, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 0)
 		must.NoError(t, err)
 
 		// The shape this port exists for, failing: the work the consume
 		// authorized did not commit, so neither did the usage.
 		test.ErrorIs(t, env.db.client.WithTransaction(t.Context(), func(tx database.Tx) error {
-			decision, consumeErr := env.enforcer.Consume(t.Context(), tx, testSubject, testMeter, 30)
+			decision, consumeErr := env.enforcer.Consume(t.Context(), tx, testScope, testSubject, testMeter, 30)
 			must.NoError(t, consumeErr)
 			test.True(t, decision.Allowed)
 
@@ -676,7 +676,7 @@ func TestQuotaEnforcer_Consume(T *testing.T) {
 
 		// A written-through total would report 30 here for the whole staleness
 		// budget — refusing requests against usage nobody incurred.
-		decision, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 0)
+		decision, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 0)
 		must.NoError(t, err)
 
 		test.EqOp(t, int64(0), decision.Used)
@@ -770,10 +770,10 @@ func TestQuotaEnforcer_ConsumeUsage(T *testing.T) {
 
 		env := newTestEnforcer(t, BehaviorBlock, 100)
 
-		_, err := env.enforcer.Consume(t.Context(), nil, testSubject, testMeter, 1)
+		_, err := env.enforcer.Consume(t.Context(), nil, testScope, testSubject, testMeter, 1)
 		test.ErrorIs(t, err, ErrNilExecutor)
 
-		_, err = env.enforcer.ConsumeUsage(t.Context(), nil, Usage{
+		_, err = env.enforcer.ConsumeUsage(t.Context(), nil, testScope, Usage{
 			Subject: testSubject, Meter: testMeter, Quantity: 1, IdempotencyKey: "req-1",
 		})
 		test.ErrorIs(t, err, ErrNilExecutor)
@@ -814,16 +814,21 @@ func TestQuotaEnforcer_cacheKey(T *testing.T) {
 
 	env := newTestEnforcer(T, BehaviorBlock, 100)
 
-	key := env.enforcer.cacheKey(testSubject, testMeter, monthBounds)
+	key := env.enforcer.cacheKey(testScope, testSubject, testMeter, monthBounds)
 
-	test.EqOp(T, DefaultCachePrefix+testSubject+":"+testMeter+":"+
+	test.EqOp(T, DefaultCachePrefix+testScope.Owner()+":"+testSubject+":"+testMeter+":"+
 		strconv.FormatInt(monthBounds.Start.Unix(), 10), key)
 
 	// The period start is part of the key rather than something the entry is
 	// checked against, so a new period is a new key and cannot be answered by the
 	// old one's entry.
 	next := Bounds{Start: monthBounds.End, End: monthBounds.End.AddDate(0, 1, 0)}
-	test.NotEqOp(T, key, env.enforcer.cacheKey(testSubject, testMeter, next))
+	test.NotEqOp(T, key, env.enforcer.cacheKey(testScope, testSubject, testMeter, next))
+
+	// And neither is the scope, for the same reason: two tenants may name the
+	// same subject, and one entry answering for both would serve one tenant's
+	// quota question with the other's usage for the whole staleness budget.
+	test.NotEqOp(T, key, env.enforcer.cacheKey(otherScope, testSubject, testMeter, monthBounds))
 }
 
 func TestQuotaEnforcer_writeThrough(T *testing.T) {
@@ -842,7 +847,7 @@ func TestQuotaEnforcer_writeThrough(T *testing.T) {
 		_, op := enforcer.o11y.Begin(t.Context())
 		defer op.End()
 
-		enforcer.writeThrough(t.Context(), op, testSubject, testMeter, monthBounds, 5)
+		enforcer.writeThrough(t.Context(), op, testScope, testSubject, testMeter, monthBounds, 5)
 	})
 
 	T.Run("does nothing for a meter that is not registered", func(t *testing.T) {
@@ -853,9 +858,9 @@ func TestQuotaEnforcer_writeThrough(T *testing.T) {
 		_, op := env.enforcer.o11y.Begin(t.Context())
 		defer op.End()
 
-		env.enforcer.writeThrough(t.Context(), op, testSubject, "not_registered", monthBounds, 5)
+		env.enforcer.writeThrough(t.Context(), op, testScope, testSubject, "not_registered", monthBounds, 5)
 
-		_, err := env.totals.Get(t.Context(), env.enforcer.cacheKey(testSubject, "not_registered", monthBounds))
+		_, err := env.totals.Get(t.Context(), env.enforcer.cacheKey(testScope, testSubject, "not_registered", monthBounds))
 		test.ErrorIs(t, err, cache.ErrNotFound)
 	})
 
@@ -871,9 +876,9 @@ func TestQuotaEnforcer_writeThrough(T *testing.T) {
 		_, op := env.enforcer.o11y.Begin(t.Context())
 		defer op.End()
 
-		env.enforcer.writeThrough(t.Context(), op, testSubject, testMeter, monthBounds, 5)
+		env.enforcer.writeThrough(t.Context(), op, testScope, testSubject, testMeter, monthBounds, 5)
 
-		_, err := env.totals.Get(t.Context(), env.enforcer.cacheKey(testSubject, testMeter, monthBounds))
+		_, err := env.totals.Get(t.Context(), env.enforcer.cacheKey(testScope, testSubject, testMeter, monthBounds))
 		test.ErrorIs(t, err, cache.ErrNotFound)
 	})
 }

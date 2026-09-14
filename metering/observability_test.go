@@ -82,7 +82,7 @@ func TestQuotaEnforcer_observesThePeriodAndAggregation(T *testing.T) {
 		obs := observability.NewRecordingObserver()
 		env.enforcer.o11y = obs
 
-		_, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		_, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 
 		op := observedWindow(t, obs, monthBounds)
@@ -125,7 +125,7 @@ func TestQuotaEnforcer_observesThePeriodAndAggregation(T *testing.T) {
 		obs := observability.NewRecordingObserver()
 		env.enforcer.o11y = obs
 
-		decision, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 1)
+		decision, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
 		must.NoError(t, err)
 		test.True(t, decision.Stale)
 

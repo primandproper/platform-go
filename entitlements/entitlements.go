@@ -9,6 +9,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/charset/plainname"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // serviceName names the loggers, spans, and metrics this package emits.
@@ -19,6 +20,7 @@ const serviceName = "entitlements"
 // the entitlements. prefix is applied uniformly — an un-namespaced attribute
 // name collides with every other component writing to the same trace.
 const (
+	scopeKey     = "entitlements.scope"
 	accountKey   = "entitlements.account"
 	featureKey   = "entitlements.feature"
 	planKey      = "entitlements.plan"
@@ -490,7 +492,19 @@ type Checker interface {
 	// One unit rather than none, because "may I consume nothing" is true at
 	// exactly the moment a quota is spent, and that is the moment the question is
 	// being asked.
-	Check(ctx context.Context, account, feature string, opts ...CheckOption) (*Decision, error)
+	//
+	// The scope is whose usage a quota feature is answered from, and it is
+	// metering's column rather than this package's: nothing here owns a table.
+	// It is on the signature because a caller does not know which kind of feature
+	// a key names — that is the catalog's answer, and it changes when somebody
+	// adds a limit to a feature that had none. A single-tenant application passes
+	// tenancy.Global().
+	Check(
+		ctx context.Context,
+		scope tenancy.Scope,
+		account, feature string,
+		opts ...CheckOption,
+	) (*Decision, error)
 
 	// CheckQuantity is Check for a caller that knows how much it is about to
 	// consume: whether the account may use quantity more of the feature this
@@ -500,10 +514,21 @@ type Checker interface {
 	// before it runs — a completion whose token count was estimated, a bulk
 	// import whose row count is in hand. Asking for one unit and then consuming
 	// five thousand is how a limit is exceeded by a factor nobody chose.
-	CheckQuantity(ctx context.Context, account, feature string, quantity int64, opts ...CheckOption) (*Decision, error)
+	CheckQuantity(
+		ctx context.Context,
+		scope tenancy.Scope,
+		account, feature string,
+		quantity int64,
+		opts ...CheckOption,
+	) (*Decision, error)
 
 	// Permissions resolves the account's boolean entitlements into a permission
 	// set, for a caller building a session.
+	//
+	// It takes no scope, and the asymmetry with Check is the whole reason to say
+	// so: a permission set is drawn from the boolean features alone, which are
+	// answered from the catalog and the account's plan and read no usage at all.
+	// A scope here would be an argument nothing in the call could use.
 	//
 	// The result is meant to be OR'd with whatever the principal's roles grant:
 	//

@@ -9,49 +9,57 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 const applyMeteringConsumePostgreSQL = `UPDATE {{prefix}}metering_totals SET
 	quantity = $1,
 	last_occurred_at = $2,
 	last_updated_at = $3
-WHERE subject = $4
-	AND meter = $5
-	AND period_start = $6`
+WHERE scope = $4
+	AND subject = $5
+	AND meter = $6
+	AND period_start = $7`
 
 const claimMeteringTotalPostgreSQL = `UPDATE {{prefix}}metering_totals SET
 	claimed_until = $1,
 	flush_attempts = flush_attempts + 1
-WHERE subject = $2
-	AND meter = $3
-	AND period_start = $4
+WHERE scope = $2
+	AND subject = $3
+	AND meter = $4
+	AND period_start = $5
 	AND quantity > flushed_quantity`
 
 const foldMeteringTotalLastPostgreSQL = `UPDATE {{prefix}}metering_totals SET
 	quantity = CASE WHEN last_occurred_at < $1 THEN $2 ELSE quantity END,
 	last_occurred_at = CASE WHEN last_occurred_at < $1 THEN $1 ELSE last_occurred_at END,
 	last_updated_at = $3
-WHERE subject = $4
-	AND meter = $5
-	AND period_start = $6`
+WHERE scope = $4
+	AND subject = $5
+	AND meter = $6
+	AND period_start = $7`
 
 const foldMeteringTotalMaxPostgreSQL = `UPDATE {{prefix}}metering_totals SET
 	quantity = CASE WHEN quantity < $1 THEN $1 ELSE quantity END,
 	last_occurred_at = CASE WHEN last_occurred_at < $2 THEN $2 ELSE last_occurred_at END,
 	last_updated_at = $3
-WHERE subject = $4
-	AND meter = $5
-	AND period_start = $6`
+WHERE scope = $4
+	AND subject = $5
+	AND meter = $6
+	AND period_start = $7`
 
 const foldMeteringTotalSumPostgreSQL = `UPDATE {{prefix}}metering_totals SET
 	quantity = quantity + $1,
 	last_occurred_at = CASE WHEN last_occurred_at < $2 THEN $2 ELSE last_occurred_at END,
 	last_updated_at = $3
-WHERE subject = $4
-	AND meter = $5
-	AND period_start = $6`
+WHERE scope = $4
+	AND subject = $5
+	AND meter = $6
+	AND period_start = $7`
 
 const getMeteringTotalPostgreSQL = `SELECT
+	{{prefix}}metering_totals.scope,
 	{{prefix}}metering_totals.subject,
 	{{prefix}}metering_totals.meter,
 	{{prefix}}metering_totals.period_start,
@@ -65,11 +73,13 @@ const getMeteringTotalPostgreSQL = `SELECT
 	{{prefix}}metering_totals.next_flush,
 	{{prefix}}metering_totals.last_error
 FROM {{prefix}}metering_totals
-WHERE {{prefix}}metering_totals.subject = $1
-	AND {{prefix}}metering_totals.meter = $2
-	AND {{prefix}}metering_totals.period_start = $3`
+WHERE {{prefix}}metering_totals.scope = $1
+	AND {{prefix}}metering_totals.subject = $2
+	AND {{prefix}}metering_totals.meter = $3
+	AND {{prefix}}metering_totals.period_start = $4`
 
 const getMeteringTotalForUpdatePostgreSQL = `SELECT
+	{{prefix}}metering_totals.scope,
 	{{prefix}}metering_totals.subject,
 	{{prefix}}metering_totals.meter,
 	{{prefix}}metering_totals.period_start,
@@ -83,13 +93,15 @@ const getMeteringTotalForUpdatePostgreSQL = `SELECT
 	{{prefix}}metering_totals.next_flush,
 	{{prefix}}metering_totals.last_error
 FROM {{prefix}}metering_totals
-WHERE {{prefix}}metering_totals.subject = $1
-	AND {{prefix}}metering_totals.meter = $2
-	AND {{prefix}}metering_totals.period_start = $3
+WHERE {{prefix}}metering_totals.scope = $1
+	AND {{prefix}}metering_totals.subject = $2
+	AND {{prefix}}metering_totals.meter = $3
+	AND {{prefix}}metering_totals.period_start = $4
 FOR UPDATE`
 
 const insertMeteringEventPostgreSQL = `
 INSERT INTO {{prefix}}metering_events (
+	scope,
 	idempotency_key,
 	subject,
 	meter,
@@ -106,11 +118,13 @@ INSERT INTO {{prefix}}metering_events (
 	$5,
 	$6,
 	$7,
-	$8
+	$8,
+	$9
 )
-ON CONFLICT (meter, idempotency_key) DO NOTHING`
+ON CONFLICT (scope, meter, idempotency_key) DO NOTHING`
 
 const insertMeteringTotalPostgreSQL = `INSERT INTO {{prefix}}metering_totals (
+	scope,
 	subject,
 	meter,
 	period_start,
@@ -131,9 +145,10 @@ const insertMeteringTotalPostgreSQL = `INSERT INTO {{prefix}}metering_totals (
 	$7,
 	$8,
 	$9,
-	$10
+	$10,
+	$11
 )
-ON CONFLICT (subject, meter, period_start) DO NOTHING`
+ON CONFLICT (scope, subject, meter, period_start) DO NOTHING`
 
 const markMeteringTotalFlushedPostgreSQL = `UPDATE {{prefix}}metering_totals SET
 	flushed_quantity = $1,
@@ -143,24 +158,26 @@ const markMeteringTotalFlushedPostgreSQL = `UPDATE {{prefix}}metering_totals SET
 	claimed_until = NULL,
 	last_error = '',
 	last_updated_at = $3
-WHERE subject = $4
-	AND meter = $5
-	AND period_start = $6
-	AND flush_sequence = $7`
+WHERE scope = $4
+	AND subject = $5
+	AND meter = $6
+	AND period_start = $7
+	AND flush_sequence = $8`
 
 const meteringEventExistsPostgreSQL = `SELECT EXISTS (
 	SELECT 1
 	FROM {{prefix}}metering_events
-	WHERE {{prefix}}metering_events.meter = $1
-		AND {{prefix}}metering_events.idempotency_key = $2
+	WHERE {{prefix}}metering_events.scope = $1
+		AND {{prefix}}metering_events.meter = $2
+		AND {{prefix}}metering_events.idempotency_key = $3
 )`
 
 const pruneMeteringEventsPostgreSQL = `DELETE FROM {{prefix}}metering_events
-WHERE (meter, idempotency_key) IN (
-	SELECT doomed.meter, doomed.idempotency_key
+WHERE (scope, meter, idempotency_key) IN (
+	SELECT doomed.scope, doomed.meter, doomed.idempotency_key
 	FROM {{prefix}}metering_events AS doomed
 	WHERE doomed.recorded_at <= $1
-		AND NOT EXISTS (SELECT 1 FROM {{prefix}}metering_totals t WHERE t.subject = doomed.subject AND t.meter = doomed.meter AND t.period_start = doomed.period_start AND t.quantity > t.flushed_quantity)
+		AND NOT EXISTS (SELECT 1 FROM {{prefix}}metering_totals t WHERE t.scope = doomed.scope AND t.subject = doomed.subject AND t.meter = doomed.meter AND t.period_start = doomed.period_start AND t.quantity > t.flushed_quantity)
 	ORDER BY doomed.recorded_at ASC
 	LIMIT $2
 	FOR UPDATE SKIP LOCKED
@@ -171,12 +188,14 @@ const releaseMeteringFlushPostgreSQL = `UPDATE {{prefix}}metering_totals SET
 	last_error = $2,
 	claimed_until = $3,
 	last_updated_at = $4
-WHERE subject = $5
-	AND meter = $6
-	AND period_start = $7
-	AND flush_sequence = $8`
+WHERE scope = $5
+	AND subject = $6
+	AND meter = $7
+	AND period_start = $8
+	AND flush_sequence = $9`
 
 const selectFlushableMeteringTotalsPostgreSQL = `SELECT
+	{{prefix}}metering_totals.scope,
 	{{prefix}}metering_totals.subject,
 	{{prefix}}metering_totals.meter,
 	{{prefix}}metering_totals.period_start,
@@ -194,7 +213,7 @@ WHERE {{prefix}}metering_totals.quantity > {{prefix}}metering_totals.flushed_qua
 	AND {{prefix}}metering_totals.next_flush <= $1
 	AND {{prefix}}metering_totals.flush_attempts < $2
 	AND ({{prefix}}metering_totals.claimed_until IS NULL OR {{prefix}}metering_totals.claimed_until <= $3)
-ORDER BY {{prefix}}metering_totals.next_flush, {{prefix}}metering_totals.subject, {{prefix}}metering_totals.meter
+ORDER BY {{prefix}}metering_totals.next_flush, {{prefix}}metering_totals.scope, {{prefix}}metering_totals.subject, {{prefix}}metering_totals.meter
 LIMIT COALESCE($4, 50)
 FOR UPDATE SKIP LOCKED`
 
@@ -243,6 +262,7 @@ func (q *postgresqlQueries) ApplyMeteringConsume(ctx context.Context, db DBTX, a
 		arg.Quantity,
 		arg.LastOccurredAt,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -258,6 +278,7 @@ func (q *postgresqlQueries) ApplyMeteringConsume(ctx context.Context, db DBTX, a
 func (q *postgresqlQueries) ClaimMeteringTotal(ctx context.Context, db DBTX, arg ClaimMeteringTotalParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.claimMeteringTotal,
 		arg.ClaimedUntil,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -275,6 +296,7 @@ func (q *postgresqlQueries) FoldMeteringTotalLast(ctx context.Context, db DBTX, 
 		arg.LastOccurredAt,
 		arg.Quantity,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -292,6 +314,7 @@ func (q *postgresqlQueries) FoldMeteringTotalMax(ctx context.Context, db DBTX, a
 		arg.Quantity,
 		arg.LastOccurredAt,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -309,6 +332,7 @@ func (q *postgresqlQueries) FoldMeteringTotalSum(ctx context.Context, db DBTX, a
 		arg.Quantity,
 		arg.LastOccurredAt,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -323,6 +347,7 @@ func (q *postgresqlQueries) FoldMeteringTotalSum(ctx context.Context, db DBTX, a
 // GetMeteringTotal runs the :one query against postgresql.
 func (q *postgresqlQueries) GetMeteringTotal(ctx context.Context, db DBTX, arg GetMeteringTotalParams) (GetMeteringTotalRow, error) {
 	row := db.QueryRowContext(ctx, q.getMeteringTotal,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -331,6 +356,7 @@ func (q *postgresqlQueries) GetMeteringTotal(ctx context.Context, db DBTX, arg G
 	var i GetMeteringTotalRow
 
 	err := row.Scan(
+		&i.Scope,
 		&i.Subject,
 		&i.Meter,
 		&i.PeriodStart,
@@ -351,6 +377,7 @@ func (q *postgresqlQueries) GetMeteringTotal(ctx context.Context, db DBTX, arg G
 // GetMeteringTotalForUpdate runs the :one query against postgresql.
 func (q *postgresqlQueries) GetMeteringTotalForUpdate(ctx context.Context, db DBTX, arg GetMeteringTotalForUpdateParams) (GetMeteringTotalForUpdateRow, error) {
 	row := db.QueryRowContext(ctx, q.getMeteringTotalForUpdate,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -359,6 +386,7 @@ func (q *postgresqlQueries) GetMeteringTotalForUpdate(ctx context.Context, db DB
 	var i GetMeteringTotalForUpdateRow
 
 	err := row.Scan(
+		&i.Scope,
 		&i.Subject,
 		&i.Meter,
 		&i.PeriodStart,
@@ -379,6 +407,7 @@ func (q *postgresqlQueries) GetMeteringTotalForUpdate(ctx context.Context, db DB
 // InsertMeteringEvent runs the :execrows query against postgresql.
 func (q *postgresqlQueries) InsertMeteringEvent(ctx context.Context, db DBTX, arg InsertMeteringEventParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.insertMeteringEvent,
+		arg.Scope,
 		arg.IdempotencyKey,
 		arg.Subject,
 		arg.Meter,
@@ -398,6 +427,7 @@ func (q *postgresqlQueries) InsertMeteringEvent(ctx context.Context, db DBTX, ar
 // InsertMeteringTotal runs the :execrows query against postgresql.
 func (q *postgresqlQueries) InsertMeteringTotal(ctx context.Context, db DBTX, arg InsertMeteringTotalParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.insertMeteringTotal,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -422,6 +452,7 @@ func (q *postgresqlQueries) MarkMeteringTotalFlushed(ctx context.Context, db DBT
 		arg.FlushedQuantity,
 		arg.NextFlush,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -437,6 +468,7 @@ func (q *postgresqlQueries) MarkMeteringTotalFlushed(ctx context.Context, db DBT
 // MeteringEventExists runs the :one query against postgresql.
 func (q *postgresqlQueries) MeteringEventExists(ctx context.Context, db DBTX, arg MeteringEventExistsParams) (MeteringEventExistsRow, error) {
 	row := db.QueryRowContext(ctx, q.meteringEventExists,
+		arg.Scope,
 		arg.Meter,
 		arg.IdempotencyKey,
 	)
@@ -470,6 +502,7 @@ func (q *postgresqlQueries) ReleaseMeteringFlush(ctx context.Context, db DBTX, a
 		arg.LastError,
 		arg.ClaimedUntil,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -502,6 +535,7 @@ func (q *postgresqlQueries) SelectFlushableMeteringTotals(ctx context.Context, d
 		var i SelectFlushableMeteringTotalsRow
 
 		if err := rows.Scan(
+			&i.Scope,
 			&i.Subject,
 			&i.Meter,
 			&i.PeriodStart,
@@ -539,12 +573,14 @@ var (
 		Quantity       int64
 		LastOccurredAt time.Time
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
 	}(ApplyMeteringConsumeParams{})
 	_ = struct {
 		ClaimedUntil *time.Time
+		Scope        tenancy.Scope
 		Subject      string
 		Meter        string
 		PeriodStart  time.Time
@@ -553,6 +589,7 @@ var (
 		LastOccurredAt time.Time
 		Quantity       int64
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
@@ -561,6 +598,7 @@ var (
 		Quantity       int64
 		LastOccurredAt time.Time
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
@@ -569,16 +607,19 @@ var (
 		Quantity       int64
 		LastOccurredAt time.Time
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
 	}(FoldMeteringTotalSumParams{})
 	_ = struct {
+		Scope       tenancy.Scope
 		Subject     string
 		Meter       string
 		PeriodStart time.Time
 	}(GetMeteringTotalParams{})
 	_ = struct {
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time
@@ -593,11 +634,13 @@ var (
 		LastError       string
 	}(GetMeteringTotalRow{})
 	_ = struct {
+		Scope       tenancy.Scope
 		Subject     string
 		Meter       string
 		PeriodStart time.Time
 	}(GetMeteringTotalForUpdateParams{})
 	_ = struct {
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time
@@ -612,6 +655,7 @@ var (
 		LastError       string
 	}(GetMeteringTotalForUpdateRow{})
 	_ = struct {
+		Scope          tenancy.Scope
 		IdempotencyKey string
 		Subject        string
 		Meter          string
@@ -622,6 +666,7 @@ var (
 		Dimensions     []byte
 	}(InsertMeteringEventParams{})
 	_ = struct {
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
@@ -637,12 +682,14 @@ var (
 		FlushedQuantity int64
 		NextFlush       time.Time
 		LastUpdatedAt   *time.Time
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time
 		FlushSequence   int64
 	}(MarkMeteringTotalFlushedParams{})
 	_ = struct {
+		Scope          tenancy.Scope
 		Meter          string
 		IdempotencyKey string
 	}(MeteringEventExistsParams{})
@@ -658,6 +705,7 @@ var (
 		LastError     string
 		ClaimedUntil  *time.Time
 		LastUpdatedAt *time.Time
+		Scope         tenancy.Scope
 		Subject       string
 		Meter         string
 		PeriodStart   time.Time
@@ -670,6 +718,7 @@ var (
 		ResultLimit    int64
 	}(SelectFlushableMeteringTotalsParams{})
 	_ = struct {
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time

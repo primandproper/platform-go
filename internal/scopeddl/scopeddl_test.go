@@ -69,6 +69,7 @@ var tenancyColumns = map[string][]string{
 	"sessions/database": {"sessions.scope"},
 	"settings":          {"settings_definitions.scope", "settings_values.scope"},
 	"mediaregistry":     {"uploads_objects.scope"},
+	"metering":          {"metering_events.scope", "metering_totals.scope"},
 	"waitlists":         {"waitlist_signups.scope", "waitlists.scope"},
 	"webhooks":          {"webhooks_deliveries.scope", "webhooks_endpoints.scope"},
 }

@@ -90,7 +90,7 @@ func TestSQLStore_DatabaseFaults(T *testing.T) {
 		t.Parallel()
 
 		_, store := newBrokenStore(t)
-		total := &Total{Subject: testSubject, Meter: testMeter, PeriodStart: monthBounds.Start}
+		total := &Total{Scope: testScope, Subject: testSubject, Meter: testMeter, PeriodStart: monthBounds.Start}
 
 		test.Error(t, store.MarkFlushed(t.Context(), total, 1, baseTime))
 		test.Error(t, store.ReleaseFlush(t.Context(), total, "boom", baseTime))
@@ -257,7 +257,7 @@ func TestSQLStore_GuardMisses(T *testing.T) {
 		// flushers each believing they own the next sequence number is how the
 		// same delta reaches the provider under two different keys.
 		err := store.MarkFlushed(t.Context(), &Total{
-			Subject: testSubject, Meter: testMeter, PeriodStart: monthBounds.Start,
+			Scope: testScope, Subject: testSubject, Meter: testMeter, PeriodStart: monthBounds.Start,
 		}, 1, baseTime)
 
 		must.Error(t, err)
@@ -270,7 +270,7 @@ func TestSQLStore_GuardMisses(T *testing.T) {
 		store := newSQLiteEnv(t).newStore(t)
 
 		err := store.ReleaseFlush(t.Context(), &Total{
-			Subject: testSubject, Meter: testMeter, PeriodStart: monthBounds.Start,
+			Scope: testScope, Subject: testSubject, Meter: testMeter, PeriodStart: monthBounds.Start,
 		}, "boom", baseTime)
 
 		test.Error(t, err)
@@ -471,7 +471,7 @@ func TestSQLStore_UnreadableResults(T *testing.T) {
 		client, store := newUnreadableStore(t)
 
 		_, err := inTx(t, client, func(tx database.Tx) (RecordResult, error) {
-			return store.Record(t.Context(), tx, []Entry{newEntry("req-1", 1, AggregationSum)}, baseTime)
+			return store.Record(t.Context(), tx, testScope, []Entry{newEntry("req-1", 1, AggregationSum)}, baseTime)
 		})
 
 		test.ErrorIs(t, err, errArbitrary)
@@ -495,7 +495,7 @@ func TestSQLStore_UnreadableResults(T *testing.T) {
 		_, store := newUnreadableStore(t)
 
 		err := store.MarkFlushed(t.Context(), &Total{
-			Subject: testSubject, Meter: testMeter, PeriodStart: monthBounds.Start,
+			Scope: testScope, Subject: testSubject, Meter: testMeter, PeriodStart: monthBounds.Start,
 		}, 1, baseTime)
 
 		test.ErrorIs(t, err, errArbitrary)

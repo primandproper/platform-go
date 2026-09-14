@@ -9,20 +9,24 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 const applyMeteringConsumeMySQL = `UPDATE {{prefix}}metering_totals SET
 	quantity = ?,
 	last_occurred_at = ?,
 	last_updated_at = ?
-WHERE subject = ?
+WHERE scope = ?
+	AND subject = ?
 	AND meter = ?
 	AND period_start = ?`
 
 const claimMeteringTotalMySQL = `UPDATE {{prefix}}metering_totals SET
 	claimed_until = ?,
 	flush_attempts = flush_attempts + 1
-WHERE subject = ?
+WHERE scope = ?
+	AND subject = ?
 	AND meter = ?
 	AND period_start = ?
 	AND quantity > flushed_quantity`
@@ -31,7 +35,8 @@ const foldMeteringTotalLastMySQL = `UPDATE {{prefix}}metering_totals SET
 	quantity = CASE WHEN last_occurred_at < ? THEN ? ELSE quantity END,
 	last_occurred_at = CASE WHEN last_occurred_at < ? THEN ? ELSE last_occurred_at END,
 	last_updated_at = ?
-WHERE subject = ?
+WHERE scope = ?
+	AND subject = ?
 	AND meter = ?
 	AND period_start = ?`
 
@@ -39,7 +44,8 @@ const foldMeteringTotalMaxMySQL = `UPDATE {{prefix}}metering_totals SET
 	quantity = CASE WHEN quantity < ? THEN ? ELSE quantity END,
 	last_occurred_at = CASE WHEN last_occurred_at < ? THEN ? ELSE last_occurred_at END,
 	last_updated_at = ?
-WHERE subject = ?
+WHERE scope = ?
+	AND subject = ?
 	AND meter = ?
 	AND period_start = ?`
 
@@ -47,11 +53,13 @@ const foldMeteringTotalSumMySQL = `UPDATE {{prefix}}metering_totals SET
 	quantity = quantity + ?,
 	last_occurred_at = CASE WHEN last_occurred_at < ? THEN ? ELSE last_occurred_at END,
 	last_updated_at = ?
-WHERE subject = ?
+WHERE scope = ?
+	AND subject = ?
 	AND meter = ?
 	AND period_start = ?`
 
 const getMeteringTotalMySQL = `SELECT
+	{{prefix}}metering_totals.scope,
 	{{prefix}}metering_totals.subject,
 	{{prefix}}metering_totals.meter,
 	{{prefix}}metering_totals.period_start,
@@ -65,11 +73,13 @@ const getMeteringTotalMySQL = `SELECT
 	{{prefix}}metering_totals.next_flush,
 	{{prefix}}metering_totals.last_error
 FROM {{prefix}}metering_totals
-WHERE {{prefix}}metering_totals.subject = ?
+WHERE {{prefix}}metering_totals.scope = ?
+	AND {{prefix}}metering_totals.subject = ?
 	AND {{prefix}}metering_totals.meter = ?
 	AND {{prefix}}metering_totals.period_start = ?`
 
 const getMeteringTotalForUpdateMySQL = `SELECT
+	{{prefix}}metering_totals.scope,
 	{{prefix}}metering_totals.subject,
 	{{prefix}}metering_totals.meter,
 	{{prefix}}metering_totals.period_start,
@@ -83,13 +93,15 @@ const getMeteringTotalForUpdateMySQL = `SELECT
 	{{prefix}}metering_totals.next_flush,
 	{{prefix}}metering_totals.last_error
 FROM {{prefix}}metering_totals
-WHERE {{prefix}}metering_totals.subject = ?
+WHERE {{prefix}}metering_totals.scope = ?
+	AND {{prefix}}metering_totals.subject = ?
 	AND {{prefix}}metering_totals.meter = ?
 	AND {{prefix}}metering_totals.period_start = ?
 FOR UPDATE`
 
 const insertMeteringEventMySQL = `
 INSERT IGNORE INTO {{prefix}}metering_events (
+	scope,
 	idempotency_key,
 	subject,
 	meter,
@@ -106,10 +118,12 @@ INSERT IGNORE INTO {{prefix}}metering_events (
 	?,
 	?,
 	?,
+	?,
 	?
 )`
 
 const insertMeteringTotalMySQL = `INSERT IGNORE INTO {{prefix}}metering_totals (
+	scope,
 	subject,
 	meter,
 	period_start,
@@ -130,6 +144,7 @@ const insertMeteringTotalMySQL = `INSERT IGNORE INTO {{prefix}}metering_totals (
 	?,
 	?,
 	?,
+	?,
 	?
 )`
 
@@ -141,7 +156,8 @@ const markMeteringTotalFlushedMySQL = `UPDATE {{prefix}}metering_totals SET
 	claimed_until = NULL,
 	last_error = '',
 	last_updated_at = ?
-WHERE subject = ?
+WHERE scope = ?
+	AND subject = ?
 	AND meter = ?
 	AND period_start = ?
 	AND flush_sequence = ?`
@@ -149,13 +165,14 @@ WHERE subject = ?
 const meteringEventExistsMySQL = `SELECT EXISTS (
 	SELECT 1
 	FROM {{prefix}}metering_events
-	WHERE {{prefix}}metering_events.meter = ?
+	WHERE {{prefix}}metering_events.scope = ?
+		AND {{prefix}}metering_events.meter = ?
 		AND {{prefix}}metering_events.idempotency_key = ?
 )`
 
 const pruneMeteringEventsMySQL = `DELETE FROM {{prefix}}metering_events
 WHERE recorded_at <= ?
-	AND NOT EXISTS (SELECT 1 FROM {{prefix}}metering_totals t WHERE t.subject = {{prefix}}metering_events.subject AND t.meter = {{prefix}}metering_events.meter AND t.period_start = {{prefix}}metering_events.period_start AND t.quantity > t.flushed_quantity)
+	AND NOT EXISTS (SELECT 1 FROM {{prefix}}metering_totals t WHERE t.scope = {{prefix}}metering_events.scope AND t.subject = {{prefix}}metering_events.subject AND t.meter = {{prefix}}metering_events.meter AND t.period_start = {{prefix}}metering_events.period_start AND t.quantity > t.flushed_quantity)
 ORDER BY recorded_at ASC
 LIMIT ?`
 
@@ -164,12 +181,14 @@ const releaseMeteringFlushMySQL = `UPDATE {{prefix}}metering_totals SET
 	last_error = ?,
 	claimed_until = ?,
 	last_updated_at = ?
-WHERE subject = ?
+WHERE scope = ?
+	AND subject = ?
 	AND meter = ?
 	AND period_start = ?
 	AND flush_sequence = ?`
 
 const selectFlushableMeteringTotalsMySQL = `SELECT
+	{{prefix}}metering_totals.scope,
 	{{prefix}}metering_totals.subject,
 	{{prefix}}metering_totals.meter,
 	{{prefix}}metering_totals.period_start,
@@ -187,7 +206,7 @@ WHERE {{prefix}}metering_totals.quantity > {{prefix}}metering_totals.flushed_qua
 	AND {{prefix}}metering_totals.next_flush <= ?
 	AND {{prefix}}metering_totals.flush_attempts < ?
 	AND ({{prefix}}metering_totals.claimed_until IS NULL OR {{prefix}}metering_totals.claimed_until <= ?)
-ORDER BY {{prefix}}metering_totals.next_flush, {{prefix}}metering_totals.subject, {{prefix}}metering_totals.meter
+ORDER BY {{prefix}}metering_totals.next_flush, {{prefix}}metering_totals.scope, {{prefix}}metering_totals.subject, {{prefix}}metering_totals.meter
 LIMIT ?
 FOR UPDATE SKIP LOCKED`
 
@@ -236,6 +255,7 @@ func (q *mysqlQueries) ApplyMeteringConsume(ctx context.Context, db DBTX, arg Ap
 		arg.Quantity,
 		arg.LastOccurredAt,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -251,6 +271,7 @@ func (q *mysqlQueries) ApplyMeteringConsume(ctx context.Context, db DBTX, arg Ap
 func (q *mysqlQueries) ClaimMeteringTotal(ctx context.Context, db DBTX, arg ClaimMeteringTotalParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.claimMeteringTotal,
 		arg.ClaimedUntil,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -270,6 +291,7 @@ func (q *mysqlQueries) FoldMeteringTotalLast(ctx context.Context, db DBTX, arg F
 		arg.LastOccurredAt,
 		arg.LastOccurredAt,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -289,6 +311,7 @@ func (q *mysqlQueries) FoldMeteringTotalMax(ctx context.Context, db DBTX, arg Fo
 		arg.LastOccurredAt,
 		arg.LastOccurredAt,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -307,6 +330,7 @@ func (q *mysqlQueries) FoldMeteringTotalSum(ctx context.Context, db DBTX, arg Fo
 		arg.LastOccurredAt,
 		arg.LastOccurredAt,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -321,6 +345,7 @@ func (q *mysqlQueries) FoldMeteringTotalSum(ctx context.Context, db DBTX, arg Fo
 // GetMeteringTotal runs the :one query against mysql.
 func (q *mysqlQueries) GetMeteringTotal(ctx context.Context, db DBTX, arg GetMeteringTotalParams) (GetMeteringTotalRow, error) {
 	row := db.QueryRowContext(ctx, q.getMeteringTotal,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -329,6 +354,7 @@ func (q *mysqlQueries) GetMeteringTotal(ctx context.Context, db DBTX, arg GetMet
 	var i GetMeteringTotalRow
 
 	err := row.Scan(
+		&i.Scope,
 		&i.Subject,
 		&i.Meter,
 		&i.PeriodStart,
@@ -349,6 +375,7 @@ func (q *mysqlQueries) GetMeteringTotal(ctx context.Context, db DBTX, arg GetMet
 // GetMeteringTotalForUpdate runs the :one query against mysql.
 func (q *mysqlQueries) GetMeteringTotalForUpdate(ctx context.Context, db DBTX, arg GetMeteringTotalForUpdateParams) (GetMeteringTotalForUpdateRow, error) {
 	row := db.QueryRowContext(ctx, q.getMeteringTotalForUpdate,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -357,6 +384,7 @@ func (q *mysqlQueries) GetMeteringTotalForUpdate(ctx context.Context, db DBTX, a
 	var i GetMeteringTotalForUpdateRow
 
 	err := row.Scan(
+		&i.Scope,
 		&i.Subject,
 		&i.Meter,
 		&i.PeriodStart,
@@ -377,6 +405,7 @@ func (q *mysqlQueries) GetMeteringTotalForUpdate(ctx context.Context, db DBTX, a
 // InsertMeteringEvent runs the :execrows query against mysql.
 func (q *mysqlQueries) InsertMeteringEvent(ctx context.Context, db DBTX, arg InsertMeteringEventParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.insertMeteringEvent,
+		arg.Scope,
 		arg.IdempotencyKey,
 		arg.Subject,
 		arg.Meter,
@@ -396,6 +425,7 @@ func (q *mysqlQueries) InsertMeteringEvent(ctx context.Context, db DBTX, arg Ins
 // InsertMeteringTotal runs the :execrows query against mysql.
 func (q *mysqlQueries) InsertMeteringTotal(ctx context.Context, db DBTX, arg InsertMeteringTotalParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.insertMeteringTotal,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -420,6 +450,7 @@ func (q *mysqlQueries) MarkMeteringTotalFlushed(ctx context.Context, db DBTX, ar
 		arg.FlushedQuantity,
 		arg.NextFlush,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -435,6 +466,7 @@ func (q *mysqlQueries) MarkMeteringTotalFlushed(ctx context.Context, db DBTX, ar
 // MeteringEventExists runs the :one query against mysql.
 func (q *mysqlQueries) MeteringEventExists(ctx context.Context, db DBTX, arg MeteringEventExistsParams) (MeteringEventExistsRow, error) {
 	row := db.QueryRowContext(ctx, q.meteringEventExists,
+		arg.Scope,
 		arg.Meter,
 		arg.IdempotencyKey,
 	)
@@ -468,6 +500,7 @@ func (q *mysqlQueries) ReleaseMeteringFlush(ctx context.Context, db DBTX, arg Re
 		arg.LastError,
 		arg.ClaimedUntil,
 		arg.LastUpdatedAt,
+		arg.Scope,
 		arg.Subject,
 		arg.Meter,
 		arg.PeriodStart,
@@ -500,6 +533,7 @@ func (q *mysqlQueries) SelectFlushableMeteringTotals(ctx context.Context, db DBT
 		var i SelectFlushableMeteringTotalsRow
 
 		if err := rows.Scan(
+			&i.Scope,
 			&i.Subject,
 			&i.Meter,
 			&i.PeriodStart,
@@ -537,12 +571,14 @@ var (
 		Quantity       int64
 		LastOccurredAt time.Time
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
 	}(ApplyMeteringConsumeParams{})
 	_ = struct {
 		ClaimedUntil *time.Time
+		Scope        tenancy.Scope
 		Subject      string
 		Meter        string
 		PeriodStart  time.Time
@@ -551,6 +587,7 @@ var (
 		LastOccurredAt time.Time
 		Quantity       int64
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
@@ -559,6 +596,7 @@ var (
 		Quantity       int64
 		LastOccurredAt time.Time
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
@@ -567,16 +605,19 @@ var (
 		Quantity       int64
 		LastOccurredAt time.Time
 		LastUpdatedAt  *time.Time
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
 	}(FoldMeteringTotalSumParams{})
 	_ = struct {
+		Scope       tenancy.Scope
 		Subject     string
 		Meter       string
 		PeriodStart time.Time
 	}(GetMeteringTotalParams{})
 	_ = struct {
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time
@@ -591,11 +632,13 @@ var (
 		LastError       string
 	}(GetMeteringTotalRow{})
 	_ = struct {
+		Scope       tenancy.Scope
 		Subject     string
 		Meter       string
 		PeriodStart time.Time
 	}(GetMeteringTotalForUpdateParams{})
 	_ = struct {
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time
@@ -610,6 +653,7 @@ var (
 		LastError       string
 	}(GetMeteringTotalForUpdateRow{})
 	_ = struct {
+		Scope          tenancy.Scope
 		IdempotencyKey string
 		Subject        string
 		Meter          string
@@ -620,6 +664,7 @@ var (
 		Dimensions     []byte
 	}(InsertMeteringEventParams{})
 	_ = struct {
+		Scope          tenancy.Scope
 		Subject        string
 		Meter          string
 		PeriodStart    time.Time
@@ -635,12 +680,14 @@ var (
 		FlushedQuantity int64
 		NextFlush       time.Time
 		LastUpdatedAt   *time.Time
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time
 		FlushSequence   int64
 	}(MarkMeteringTotalFlushedParams{})
 	_ = struct {
+		Scope          tenancy.Scope
 		Meter          string
 		IdempotencyKey string
 	}(MeteringEventExistsParams{})
@@ -656,6 +703,7 @@ var (
 		LastError     string
 		ClaimedUntil  *time.Time
 		LastUpdatedAt *time.Time
+		Scope         tenancy.Scope
 		Subject       string
 		Meter         string
 		PeriodStart   time.Time
@@ -668,6 +716,7 @@ var (
 		ResultLimit    int64
 	}(SelectFlushableMeteringTotalsParams{})
 	_ = struct {
+		Scope           tenancy.Scope
 		Subject         string
 		Meter           string
 		PeriodStart     time.Time

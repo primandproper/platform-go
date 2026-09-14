@@ -14,21 +14,27 @@ output — see [Render] and metering/internal/queriesgen.
 
 # The two tables, and why the split is load-bearing
 
-metering_events is the ingest ledger: one row per (meter, idempotency_key),
-written once and never updated. It is what makes counting exactly-once, and it
+metering_events is the ingest ledger: one row per (scope, meter,
+idempotency_key), written once and never updated. It is what makes counting exactly-once, and it
 is the evidence behind an invoice when somebody disputes one.
 
 metering_totals is the aggregate the read path and the flusher use. It is small
-— one row per subject, meter, and period — and it is the only thing Consume
+— one row per scope, subject, meter, and period — and it is the only thing Consume
 locks. Deriving it from the ledger on every read would be a group-by over a
 table that grows with traffic, on the path this package exists to keep cheap.
 
 Both are keyed on a natural key and neither carries an id. The ledger's is
-(meter, idempotency_key) rather than the key alone, because callers are told to
-use a request ID and one request routinely feeds several meters — keyed on the
-key alone the second meter's insert is silently deduped against the first, and
-that customer is under-billed forever. The totals table's is (subject, meter,
-period_start), which is the row a period's usage accumulates in.
+(scope, meter, idempotency_key) rather than the key alone, because callers are
+told to use a request ID and one request routinely feeds several meters — keyed
+on the key alone the second meter's insert is silently deduped against the first,
+and that customer is under-billed forever. The totals table's is (scope, subject,
+meter, period_start), which is the row a period's usage accumulates in.
+
+The scope leads both, and it is a key component rather than a filter laid over
+one. Two tenants' request IDs come from two sequences nobody reconciled, so a
+ledger key without it dedupes one tenant's usage against another's; and two
+tenants counting one meter in one window are two invoice lines, so a totals key
+without it folds them into a row neither can be billed from.
 
 Neither shape needs anything querygen did not already have. A single-row
 statement's id predicate is rendered from the column list it is handed — so a

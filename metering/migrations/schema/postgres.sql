@@ -1,4 +1,5 @@
 CREATE TABLE IF NOT EXISTS metering_events (
+    scope           TEXT NOT NULL,
     idempotency_key TEXT NOT NULL,
     subject         TEXT NOT NULL,
     meter           TEXT NOT NULL,
@@ -7,16 +8,17 @@ CREATE TABLE IF NOT EXISTS metering_events (
     recorded_at     TIMESTAMPTZ NOT NULL,
     period_start    TIMESTAMPTZ NOT NULL,
     dimensions      BYTEA,
-    PRIMARY KEY (meter, idempotency_key)
+    PRIMARY KEY (scope, meter, idempotency_key)
 );
 
 CREATE INDEX IF NOT EXISTS metering_events_period_idx
-    ON metering_events (subject, meter, period_start, occurred_at);
+    ON metering_events (scope, subject, meter, period_start, occurred_at);
 
 CREATE INDEX IF NOT EXISTS metering_events_reap_idx
     ON metering_events (recorded_at);
 
 CREATE TABLE IF NOT EXISTS metering_totals (
+    scope            TEXT NOT NULL,
     subject          TEXT NOT NULL,
     meter            TEXT NOT NULL,
     period_start     TIMESTAMPTZ NOT NULL,
@@ -33,13 +35,13 @@ CREATE TABLE IF NOT EXISTS metering_totals (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_updated_at  TIMESTAMPTZ,
     archived_at      TIMESTAMPTZ,
-    PRIMARY KEY (subject, meter, period_start)
+    PRIMARY KEY (scope, subject, meter, period_start)
 );
 
 CREATE INDEX IF NOT EXISTS metering_totals_flush_idx
-    ON metering_totals (next_flush, subject, meter)
+    ON metering_totals (next_flush, scope, subject, meter)
     WHERE quantity > flushed_quantity;
 
 CREATE INDEX IF NOT EXISTS metering_totals_subject_idx
-    ON metering_totals (subject, period_start DESC, meter);
+    ON metering_totals (scope, subject, period_start DESC, meter);
 

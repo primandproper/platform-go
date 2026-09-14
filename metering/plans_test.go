@@ -423,12 +423,12 @@ func TestPlanLimitSource_AgainstAnEnforcer(T *testing.T) {
 		env := newEnv(t, testProduct)
 
 		// The registry's own quota says 10; the plan says 3, and the plan wins.
-		decision, err := env.enforcer.Check(t.Context(), testSubject, testMeter, 3)
+		decision, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 3)
 		must.NoError(t, err)
 		test.True(t, decision.Allowed)
 		test.EqOp(t, int64(3), decision.Limit)
 
-		decision, err = env.enforcer.Check(t.Context(), testSubject, testMeter, 4)
+		decision, err = env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 4)
 		must.NoError(t, err)
 		test.False(t, decision.Allowed)
 	})

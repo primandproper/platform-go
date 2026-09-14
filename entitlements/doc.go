@@ -15,7 +15,7 @@ this gates.
 
 # The question
 
-	decision, err := checker.Check(ctx, accountID, "advanced_search")
+	decision, err := checker.Check(ctx, scope, accountID, "advanced_search")
 	if err != nil {
 	    return err
 	}
@@ -30,7 +30,7 @@ no I/O beyond a cached plan lookup. A quota feature — seats, API calls, tokens
 adds metering's cached read and comes back with Used, Limit, Remaining, and
 ResetsAt.
 
-	decision, err := checker.CheckQuantity(ctx, accountID, "llm_tokens", estimated)
+	decision, err := checker.CheckQuantity(ctx, scope, accountID, "llm_tokens", estimated)
 
 is the same question for a caller that knows how much it is about to consume.
 Check asks for one unit, because "may I consume nothing" is true at exactly the
@@ -153,7 +153,7 @@ account — and a provider can only target on what it was handed, so a rule
 written against a signal nobody passed silently takes its default branch.
 WithTargetingAttributes is where those go:
 
-	decision, err := checker.Check(ctx, accountID, "advanced_search",
+	decision, err := checker.Check(ctx, scope, accountID, "advanced_search",
 	    entitlements.WithTargetingAttributes(map[string]any{"region": req.Region}))
 
 They reach the flag provider and nothing else. Plan resolution, the plan cache,

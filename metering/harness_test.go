@@ -25,6 +25,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	metricsmock "github.com/primandproper/primitives-go/v2/observability/metrics/mock"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test/must"
 	"go.opentelemetry.io/otel/metric"
@@ -210,12 +211,27 @@ func mustInTx[T any](tb testing.TB, client database.Client, fn func(database.Tx)
 	return out
 }
 
-// record writes entries through the store in a transaction of its own.
+// record writes entries through the store in a transaction of its own, for the
+// scope this suite is mostly about.
 func (e *storeEnv) record(tb testing.TB, store Store, entries []Entry, at time.Time) (RecordResult, error) {
 	tb.Helper()
 
+	return e.recordAs(tb, store, testScope, entries, at)
+}
+
+// recordAs is record for a named scope, which is what the tests about two
+// tenants reach for.
+func (e *storeEnv) recordAs(
+	tb testing.TB,
+	store Store,
+	scope tenancy.Scope,
+	entries []Entry,
+	at time.Time,
+) (RecordResult, error) {
+	tb.Helper()
+
 	return inTx(tb, e.client, func(tx database.Tx) (RecordResult, error) {
-		return store.Record(tb.Context(), tx, entries, at)
+		return store.Record(tb.Context(), tx, scope, entries, at)
 	})
 }
 
@@ -242,8 +258,25 @@ func (e *storeEnv) consume(
 ) (*Decision, error) {
 	tb.Helper()
 
+	return e.consumeAs(tb, store, testScope, entry, limit, behavior, at)
+}
+
+// consumeAs is consume for a named scope.
+//
+//nolint:gocritic // hugeParam: Entry is taken by value to match Store.Consume
+func (e *storeEnv) consumeAs(
+	tb testing.TB,
+	store Store,
+	scope tenancy.Scope,
+	entry Entry,
+	limit int64,
+	behavior QuotaBehavior,
+	at time.Time,
+) (*Decision, error) {
+	tb.Helper()
+
 	return inTx(tb, e.client, func(tx database.Tx) (*Decision, error) {
-		return store.Consume(tb.Context(), tx, entry, limit, behavior, at)
+		return store.Consume(tb.Context(), tx, scope, entry, limit, behavior, at)
 	})
 }
 
@@ -252,7 +285,20 @@ func (e *storeEnv) consume(
 func (e *storeEnv) total(tb testing.TB, store Store, subject, meter string, bounds Bounds) (*Total, error) {
 	tb.Helper()
 
-	return store.Total(tb.Context(), e.client.Reader(), subject, meter, bounds)
+	return e.totalAs(tb, store, testScope, subject, meter, bounds)
+}
+
+// totalAs is total for a named scope.
+func (e *storeEnv) totalAs(
+	tb testing.TB,
+	store Store,
+	scope tenancy.Scope,
+	subject, meter string,
+	bounds Bounds,
+) (*Total, error) {
+	tb.Helper()
+
+	return store.Total(tb.Context(), e.client.Reader(), scope, subject, meter, bounds)
 }
 
 // mustTotal is total for the reads a test expects to succeed.
@@ -294,7 +340,7 @@ func consumeIn(
 	tb.Helper()
 
 	return inTx(tb, env.client, func(tx database.Tx) (*Decision, error) {
-		return enforcer.Consume(tb.Context(), tx, subject, meter, quantity)
+		return enforcer.Consume(tb.Context(), tx, testScope, subject, meter, quantity)
 	})
 }
 
@@ -303,6 +349,18 @@ const testMeter = "api_requests"
 
 // testSubject is the account most of this suite is about.
 const testSubject = "account-1"
+
+// testScope is the tenant most of this suite records for, and otherScope is the
+// neighbor every isolation assertion is made against.
+//
+// Neither is tenancy.Global(). The global scope is stored as the empty
+// identifier, so a suite that used it everywhere would pass just as well against
+// a store that dropped the column — which is the one outcome these tests exist
+// to catch.
+var (
+	testScope  = tenancy.Of("tenant-1")
+	otherScope = tenancy.Of("tenant-2")
+)
 
 // newTestRegistry builds a registry with one sum meter and one quota over it.
 func newTestRegistry(tb testing.TB, behavior QuotaBehavior, limit int64) *Registry {
@@ -503,7 +561,7 @@ type failingTotalStore struct {
 }
 
 func (s *failingTotalStore) Total(
-	context.Context, database.SQLQueryExecutor, string, string, Bounds,
+	context.Context, database.SQLQueryExecutor, tenancy.Scope, string, string, Bounds,
 ) (*Total, error) {
 	return nil, errArbitrary
 }
@@ -514,7 +572,7 @@ type failingConsumeStore struct {
 }
 
 func (s *failingConsumeStore) Consume(
-	context.Context, database.Tx, Entry, int64, QuotaBehavior, time.Time,
+	context.Context, database.Tx, tenancy.Scope, Entry, int64, QuotaBehavior, time.Time,
 ) (*Decision, error) {
 	return nil, errArbitrary
 }
@@ -568,6 +626,7 @@ type recordFailingStore struct {
 func (s *recordFailingStore) Record(
 	context.Context,
 	database.Tx,
+	tenancy.Scope,
 	[]Entry,
 	time.Time,
 ) (RecordResult, error) {

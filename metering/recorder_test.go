@@ -37,7 +37,7 @@ func recordThrough(tb testing.TB, env *storeEnv, recorder *DurableRecorder, u ..
 	tb.Helper()
 
 	_, err := inTx(tb, env.client, func(tx database.Tx) (struct{}, error) {
-		return struct{}{}, recorder.Record(tb.Context(), tx, u...)
+		return struct{}{}, recorder.Record(tb.Context(), tx, testScope, u...)
 	})
 
 	return err
@@ -267,7 +267,7 @@ func TestDurableRecorder_CallerTransaction(T *testing.T) {
 				return err
 			}
 
-			return recorder.Record(t.Context(), tx,
+			return recorder.Record(t.Context(), tx, testScope,
 				Usage{Subject: testSubject, Meter: testMeter, Quantity: 6, IdempotencyKey: "req-1"})
 		}))
 
@@ -282,7 +282,7 @@ func TestDurableRecorder_CallerTransaction(T *testing.T) {
 		// The usage and the work it describes are one fact: a crash between them
 		// leaves work committed that nobody was billed for.
 		test.ErrorIs(t, env.client.WithTransaction(t.Context(), func(tx database.Tx) error {
-			must.NoError(t, recorder.Record(t.Context(), tx,
+			must.NoError(t, recorder.Record(t.Context(), tx, testScope,
 				Usage{Subject: testSubject, Meter: testMeter, Quantity: 6, IdempotencyKey: "req-1"}))
 
 			return errArbitrary
@@ -296,7 +296,7 @@ func TestDurableRecorder_CallerTransaction(T *testing.T) {
 
 		recorder, _, _, _ := newTestRecorder(t)
 
-		test.ErrorIs(t, recorder.Record(t.Context(), nil,
+		test.ErrorIs(t, recorder.Record(t.Context(), nil, testScope,
 			Usage{Subject: testSubject, Meter: testMeter, Quantity: 1, IdempotencyKey: "req-1"}),
 			ErrNilExecutor)
 	})

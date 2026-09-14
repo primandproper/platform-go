@@ -7,6 +7,8 @@ package meteringdb
 
 import (
 	"time"
+
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // ApplyMeteringConsumeParams are the arguments to ApplyMeteringConsume.
@@ -14,6 +16,7 @@ type ApplyMeteringConsumeParams struct {
 	Quantity       int64
 	LastOccurredAt time.Time
 	LastUpdatedAt  *time.Time
+	Scope          tenancy.Scope
 	Subject        string
 	Meter          string
 	PeriodStart    time.Time
@@ -22,6 +25,7 @@ type ApplyMeteringConsumeParams struct {
 // ClaimMeteringTotalParams are the arguments to ClaimMeteringTotal.
 type ClaimMeteringTotalParams struct {
 	ClaimedUntil *time.Time
+	Scope        tenancy.Scope
 	Subject      string
 	Meter        string
 	PeriodStart  time.Time
@@ -32,6 +36,7 @@ type FoldMeteringTotalLastParams struct {
 	LastOccurredAt time.Time
 	Quantity       int64
 	LastUpdatedAt  *time.Time
+	Scope          tenancy.Scope
 	Subject        string
 	Meter          string
 	PeriodStart    time.Time
@@ -42,6 +47,7 @@ type FoldMeteringTotalMaxParams struct {
 	Quantity       int64
 	LastOccurredAt time.Time
 	LastUpdatedAt  *time.Time
+	Scope          tenancy.Scope
 	Subject        string
 	Meter          string
 	PeriodStart    time.Time
@@ -52,6 +58,7 @@ type FoldMeteringTotalSumParams struct {
 	Quantity       int64
 	LastOccurredAt time.Time
 	LastUpdatedAt  *time.Time
+	Scope          tenancy.Scope
 	Subject        string
 	Meter          string
 	PeriodStart    time.Time
@@ -59,6 +66,7 @@ type FoldMeteringTotalSumParams struct {
 
 // GetMeteringTotalParams are the arguments to GetMeteringTotal.
 type GetMeteringTotalParams struct {
+	Scope       tenancy.Scope
 	Subject     string
 	Meter       string
 	PeriodStart time.Time
@@ -66,6 +74,7 @@ type GetMeteringTotalParams struct {
 
 // GetMeteringTotalRow is one row of GetMeteringTotal's result.
 type GetMeteringTotalRow struct {
+	Scope           tenancy.Scope
 	Subject         string
 	Meter           string
 	PeriodStart     time.Time
@@ -82,6 +91,7 @@ type GetMeteringTotalRow struct {
 
 // GetMeteringTotalForUpdateParams are the arguments to GetMeteringTotalForUpdate.
 type GetMeteringTotalForUpdateParams struct {
+	Scope       tenancy.Scope
 	Subject     string
 	Meter       string
 	PeriodStart time.Time
@@ -89,6 +99,7 @@ type GetMeteringTotalForUpdateParams struct {
 
 // GetMeteringTotalForUpdateRow is one row of GetMeteringTotalForUpdate's result.
 type GetMeteringTotalForUpdateRow struct {
+	Scope           tenancy.Scope
 	Subject         string
 	Meter           string
 	PeriodStart     time.Time
@@ -105,6 +116,7 @@ type GetMeteringTotalForUpdateRow struct {
 
 // InsertMeteringEventParams are the arguments to InsertMeteringEvent.
 type InsertMeteringEventParams struct {
+	Scope          tenancy.Scope
 	IdempotencyKey string
 	Subject        string
 	Meter          string
@@ -117,6 +129,7 @@ type InsertMeteringEventParams struct {
 
 // InsertMeteringTotalParams are the arguments to InsertMeteringTotal.
 type InsertMeteringTotalParams struct {
+	Scope          tenancy.Scope
 	Subject        string
 	Meter          string
 	PeriodStart    time.Time
@@ -134,6 +147,7 @@ type MarkMeteringTotalFlushedParams struct {
 	FlushedQuantity int64
 	NextFlush       time.Time
 	LastUpdatedAt   *time.Time
+	Scope           tenancy.Scope
 	Subject         string
 	Meter           string
 	PeriodStart     time.Time
@@ -142,6 +156,7 @@ type MarkMeteringTotalFlushedParams struct {
 
 // MeteringEventExistsParams are the arguments to MeteringEventExists.
 type MeteringEventExistsParams struct {
+	Scope          tenancy.Scope
 	Meter          string
 	IdempotencyKey string
 }
@@ -163,6 +178,7 @@ type ReleaseMeteringFlushParams struct {
 	LastError     string
 	ClaimedUntil  *time.Time
 	LastUpdatedAt *time.Time
+	Scope         tenancy.Scope
 	Subject       string
 	Meter         string
 	PeriodStart   time.Time
@@ -179,6 +195,7 @@ type SelectFlushableMeteringTotalsParams struct {
 
 // SelectFlushableMeteringTotalsRow is one row of SelectFlushableMeteringTotals's result.
 type SelectFlushableMeteringTotalsRow struct {
+	Scope           tenancy.Scope
 	Subject         string
 	Meter           string
 	PeriodStart     time.Time

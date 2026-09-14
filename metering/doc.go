@@ -52,6 +52,34 @@ An Enforcer answers quota questions, on the request path.
 A Flusher posts accumulated usage to the billing provider, on a jobs.Scheduler
 tick in a worker.
 
+# Every consumer call names a tenant
+
+Usage belongs to somebody, and that somebody is a
+[github.com/primandproper/primitives-go/v2/tenancy.Scope] on every consumer-facing
+method here. Both tables carry it in a column, leading both natural keys: two
+tenants counting the same meter in the same window hold two totals and produce two
+invoice lines, and one tenant's idempotency key cannot dedupe another tenant's
+usage away. It is an argument rather than a field on [Usage], because a scope read
+off a record the caller assembled somewhere else makes "whose usage is this" a
+question answerable only by reading that record — which is the derivation the
+column exists to rule out.
+
+An application with one tenant passes [github.com/primandproper/primitives-go/v2/tenancy.Global]
+everywhere and gets exactly the behavior it had before the column existed, because
+the global scope is stored as the empty identifier. What it does not get is a
+default: the column carries none, and an unset scope is refused rather than filed
+under the global one — see [Store].
+
+There is no unscoped read. What crosses every scope is this package's own
+machinery and nothing a consumer calls: [Store.ClaimFlushable] drains the flush
+backlog for every tenant at once, [Store.ReapEvents] draws one retention horizon
+across all of them, and [Flusher] is the worker on a timer that calls both. A
+per-tenant flusher would be a worker nobody could schedule without first
+enumerating the tenants. The two settlements the flusher reaches through —
+[Store.MarkFlushed] and [Store.ReleaseFlush] — take no scope either, and bind the
+one on the [Total] the claim handed them: the row this flusher holds, rather than
+a tenant a caller named.
+
 # The transaction is the caller's
 
 Every write a consumer calls takes a
@@ -63,7 +91,7 @@ the package rather than a tax it charges:
 	        return err
 	    }
 
-	    return recorder.Record(ctx, tx, metering.Usage{
+	    return recorder.Record(ctx, tx, scope, metering.Usage{
 	        Subject:        accountID,
 	        Meter:          "stored_bytes",
 	        Quantity:       thing.Size,
@@ -140,12 +168,12 @@ Losing the cache costs latency until it repopulates and nothing else.
 # Check is fast and slightly stale; Consume is exact
 
 	// on a cheap path — a cached read, no write, no transaction
-	decision, err := enforcer.Check(ctx, accountID, "api_requests", 1)
+	decision, err := enforcer.Check(ctx, scope, accountID, "api_requests", 1)
 
 	// on an expensive one — locks the total, decides, and records the usage in
 	// the same transaction the work it authorizes is written in
 	err := client.WithTransaction(ctx, func(tx database.Tx) error {
-	    decision, err := enforcer.ConsumeUsage(ctx, tx, metering.Usage{
+	    decision, err := enforcer.ConsumeUsage(ctx, tx, scope, metering.Usage{
 	        Subject:        accountID,
 	        Meter:          "llm_tokens",
 	        Quantity:       tokens,
@@ -286,7 +314,8 @@ wiring time instead.
 
 The store is SQL, and this package ships the DDL for it (metering/migrations) for
 Postgres, MySQL, and SQLite. Two tables: an append-only event ledger keyed by
-idempotency key, and a totals table keyed by (subject, meter, period start).
+(scope, meter, idempotency key), and a totals table keyed by (scope, subject,
+meter, period start). Both keys lead with the scope; see above.
 
 The library owns the schema because the counting logic is inseparable from it —
 the dedupe is a primary key, the concurrent fold is an UPDATE expression, and the
