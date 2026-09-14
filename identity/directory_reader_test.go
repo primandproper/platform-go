@@ -39,6 +39,50 @@ func runDirectoryReaderSuite(t *testing.T, env *storeEnv) {
 		must.ErrorIs(t, err, tenancy.ErrNoScope)
 	})
 
+	t.Run("reads a user the directory has hidden, and only through the one read that may", func(t *testing.T) {
+		t.Parallel()
+
+		// The read a privacy request makes. A person exercising a right has
+		// usually been deactivated first, so an export or an erasure routed
+		// through GetUser would answer nothing and report success.
+		store := env.newStore(t)
+		user := seedUser(t, env, store, newUser("ada"))
+
+		live, err := store.GetUserIncludingArchived(t.Context(), env.reader(), testScope, user.ID)
+		must.NoError(t, err)
+		test.EqOp(t, user.ID, live.ID)
+
+		_, err = env.archiveUser(t, store, testScope, user.ID)
+		must.NoError(t, err)
+
+		_, err = store.GetUser(t.Context(), env.reader(), testScope, user.ID)
+		must.ErrorIs(t, err, ErrUserNotFound)
+
+		archived, err := store.GetUserIncludingArchived(t.Context(), env.reader(), testScope, user.ID)
+		must.NoError(t, err)
+		test.EqOp(t, user.ID, archived.ID)
+		test.EqOp(t, "ada@example.com", archived.EmailAddress)
+		must.NotNil(t, archived.ArchivedAt)
+	})
+
+	t.Run("does not reach another directory's hidden user, or one who was never there", func(t *testing.T) {
+		t.Parallel()
+
+		// Indifferent to the archived stamp is not indifferent to the scope:
+		// the widening is one predicate, and the other one is the column rule.
+		store := env.newStore(t)
+		user := seedUser(t, env, store, newUser("ada"))
+
+		_, err := env.archiveUser(t, store, testScope, user.ID)
+		must.NoError(t, err)
+
+		_, err = store.GetUserIncludingArchived(t.Context(), env.reader(), otherScope, user.ID)
+		must.ErrorIs(t, err, ErrUserNotFound)
+
+		_, err = store.GetUserIncludingArchived(t.Context(), env.reader(), testScope, "nobody")
+		must.ErrorIs(t, err, ErrUserNotFound)
+	})
+
 	t.Run("pages the directory, redacted", func(t *testing.T) {
 		t.Parallel()
 
