@@ -29,15 +29,15 @@ import (
 // and a mapping that only covered the RPCs this module ships would make the
 // answer depend on which transport happened to ask.
 //
-// What is deliberately absent is everything that wraps a platform sentinel. Ten
-// of this package's eighteen do — the nil arguments, the empty ones, and the
-// three that wrap errors.ErrUnrecognizedInputValue, which is where a value of
-// the wrong kind and a value outside its enumeration are already answered as
+// What is deliberately absent is everything that wraps a platform sentinel.
+// Eleven of this package's twenty do — the nil arguments, the empty ones, and
+// the three that wrap errors.ErrUnrecognizedInputValue, which is where a value
+// of the wrong kind and a value outside its enumeration are already answered as
 // bad requests. errors/http asks its platform mapper first, so a case here for
 // one of those would be unreachable, and internal/sentinelmatrix fails a row
 // that claims otherwise.
 //
-// That roster is where each of the eighteen is recorded as mapped, platform or
+// That roster is where each of the twenty is recorded as mapped, platform or
 // unhandled, and it fails when one is in none of the three.
 var (
 	// HTTPMapper maps this package's sentinels onto HTTP error codes.
@@ -70,9 +70,10 @@ var (
 // meant to read rather than as the four that happened to need registering. A
 // sentinel registered twice costs a second comparison and nothing else.
 //
-// Nothing else in this package is here. A nil executor, a stalled cursor and an
-// unknown kind describe the system to whoever is wiring it up, and a client
-// reading the code's name instead loses nothing.
+// Nothing else in this package is here. A nil executor, a stalled cursor, an
+// unknown kind and a catalog that declares one setting twice describe the system
+// to whoever is wiring it up, and a client reading the code's name instead loses
+// nothing.
 var ClientSafeSentinels = []error{
 	ErrDefinitionNameTaken,
 	ErrKindMismatch,
