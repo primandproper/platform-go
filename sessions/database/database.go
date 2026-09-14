@@ -66,7 +66,7 @@ var _ sessions.Backend[struct{}] = (*Backend[struct{}])(nil)
 // did not take — the one failure a user retries by signing in again, producing
 // another session that also appears not to exist. Session rows are small,
 // single-key, and short-lived; they are not the reads worth scaling out.
-func NewBackend[T any](cfg *Config, db database.Client, opts ...Option) (*Backend[T], error) {
+func NewBackend[T any](cfg *Config, db database.Client, opts ...Option) (_ *Backend[T], err error) {
 	if cfg == nil {
 		return nil, platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil session database config")
 	}
@@ -79,11 +79,22 @@ func NewBackend[T any](cfg *Config, db database.Client, opts ...Option) (*Backen
 		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "session store dialect %q", d)
 	}
 
-	if err := migrations.ValidatePrefix(cfg.TablePrefix); err != nil {
+	if err = migrations.ValidatePrefix(cfg.TablePrefix); err != nil {
 		return nil, err
 	}
 
 	o := newOptions(opts)
+
+	// WithSweeper derives the sweeper's context, so between here and the point
+	// below where this backend takes ownership of the cancel there is a live child
+	// of the caller's context that nothing would ever end. Returning an error in
+	// between would leave it hanging off that context for as long as that one
+	// lives, which in a composition root is the life of the process.
+	defer func() {
+		if err != nil && o.stopSweeper != nil {
+			o.stopSweeper()
+		}
+	}()
 
 	b := &Backend[T]{
 		db:    db,

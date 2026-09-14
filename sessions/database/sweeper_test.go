@@ -8,10 +8,15 @@ import (
 
 	"github.com/primandproper/platform-go/v14/sessions"
 
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	metricsmock "github.com/primandproper/primitives-go/v2/observability/metrics/mock"
+	metricsnoop "github.com/primandproper/primitives-go/v2/observability/metrics/noop"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"go.opentelemetry.io/otel/metric"
 )
 
 func TestWithSweeper(T *testing.T) {
@@ -222,4 +227,76 @@ func TestBackend_Close(T *testing.T) {
 		must.NoError(t, swept.Close())
 		must.NoError(t, swept.Close())
 	})
+}
+
+// A constructor that fails after WithSweeper has run ends the context it
+// derived.
+//
+// The cancel is kept by the option rather than made in NewBackend — see
+// WithSweeper for why — so between the option running and the backend taking
+// ownership of it there are three returns that could leave a live child of the
+// caller's context with nothing left to end it.
+func TestNewBackend_sweeperContextOnTheErrorPath(T *testing.T) {
+	T.Parallel()
+
+	// derivedBy applies WithSweeper and hands back the context it made, which
+	// is otherwise the options struct's alone.
+	derivedBy := func(ctx context.Context, into *context.Context) Option {
+		return func(o *options) {
+			WithSweeper(ctx, time.Minute)(o)
+			*into = o.sweepCtx
+		}
+	}
+
+	T.Run("a failed constructor cancels it", func(t *testing.T) {
+		t.Parallel()
+
+		var derived context.Context
+
+		backend, err := NewBackend[principal](&Config{}, newTestClient(t),
+			derivedBy(t.Context(), &derived),
+			WithMetricsProvider(failingMetricsProvider(serviceName+"_rows_swept")))
+
+		test.Nil(t, backend)
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), "creating swept session rows counter")
+
+		must.NotNil(t, derived)
+		test.ErrorIs(t, derived.Err(), context.Canceled)
+	})
+
+	T.Run("a backend that was built keeps it", func(t *testing.T) {
+		t.Parallel()
+
+		// The other half, and the reason the cancel is conditional: a defer
+		// that ended the context unconditionally would hand back a backend
+		// whose sweeper stopped before it ticked once.
+		var derived context.Context
+
+		backend, err := NewBackend[principal](&Config{}, newTestClient(t), derivedBy(t.Context(), &derived))
+		must.NoError(t, err)
+
+		must.NotNil(t, derived)
+		test.NoError(t, derived.Err())
+
+		must.NoError(t, backend.Close())
+		test.ErrorIs(t, derived.Err(), context.Canceled)
+	})
+}
+
+// failingMetricsProvider serves the noop provider's instruments for every name
+// except failOn, which reports an error.
+func failingMetricsProvider(failOn string) metrics.Provider {
+	base := metricsnoop.NewMetricsProvider()
+	boom := platformerrors.New("instrument unavailable")
+
+	return &metricsmock.ProviderMock{
+		NewInt64CounterFunc: func(name string, opts ...metric.Int64CounterOption) (metrics.Int64Counter, error) {
+			if name == failOn {
+				return nil, boom
+			}
+
+			return base.NewInt64Counter(name, opts...)
+		},
+	}
 }

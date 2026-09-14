@@ -63,7 +63,7 @@ type Store struct {
 // by logging in again, producing another code that also appears not to exist.
 // These rows are small, single-key, and short-lived; they are not the reads
 // worth scaling out.
-func NewStore(cfg *Config, db database.Client, opts ...Option) (*Store, error) {
+func NewStore(cfg *Config, db database.Client, opts ...Option) (_ *Store, err error) {
 	if cfg == nil {
 		return nil, platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil oauth2 database config")
 	}
@@ -77,11 +77,22 @@ func NewStore(cfg *Config, db database.Client, opts ...Option) (*Store, error) {
 		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "oauth2 store dialect %q", d)
 	}
 
-	if err := migrations.ValidatePrefix(cfg.TablePrefix); err != nil {
+	if err = migrations.ValidatePrefix(cfg.TablePrefix); err != nil {
 		return nil, err
 	}
 
 	o := newOptions(opts)
+
+	// WithSweeper derives the sweeper's context, so between here and the point
+	// below where this store takes ownership of the cancel there is a live child
+	// of the caller's context that nothing would ever end. Returning an error in
+	// between would leave it hanging off that context for as long as that one
+	// lives, which in a composition root is the life of the process.
+	defer func() {
+		if err != nil && o.stopSweeper != nil {
+			o.stopSweeper()
+		}
+	}()
 
 	s := &Store{
 		db:    db,
