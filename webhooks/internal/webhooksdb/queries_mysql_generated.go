@@ -37,6 +37,7 @@ WHERE archived_at IS NULL
 
 const claimDispatchesMySQL = `UPDATE {{prefix}}webhooks_dispatches SET
 	claimed_until = ?,
+	claimed_by = ?,
 	attempts = attempts + 1,
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE id IN (/*SLICE:ids*/?)`
@@ -541,10 +542,12 @@ ORDER BY {{prefix}}webhooks_subscriptions.event_type ASC`
 const markDispatchDeliveredMySQL = `UPDATE {{prefix}}webhooks_dispatches SET
 	delivered_at = ?,
 	claimed_until = ?,
+	claimed_by = ?,
 	last_error = ?,
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
-	AND id = ?`
+	AND id = ?
+	AND claimed_by = ?`
 
 const reapAttemptsMySQL = `DELETE FROM {{prefix}}webhooks_attempts
 WHERE {{prefix}}webhooks_attempts.id IN (
@@ -590,17 +593,20 @@ WHERE {{prefix}}webhooks_dispatches.id IN (
 
 const recordDispatchFailureMySQL = `UPDATE {{prefix}}webhooks_dispatches SET
 	claimed_until = ?,
+	claimed_by = ?,
 	attempts = ?,
 	next_attempt = ?,
 	last_error = ?,
 	dead = ?,
 	last_updated_at = CURRENT_TIMESTAMP(6)
 WHERE archived_at IS NULL
-	AND id = ?`
+	AND id = ?
+	AND claimed_by = ?`
 
 const requeueDispatchMySQL = `UPDATE {{prefix}}webhooks_dispatches SET
 	next_attempt = ?,
 	claimed_until = ?,
+	claimed_by = ?,
 	delivered_at = ?,
 	dead = ?,
 	attempts = ?,
@@ -791,9 +797,11 @@ func (q *mysqlQueries) ArchiveSubscriptionByPair(ctx context.Context, db DBTX, a
 func (q *mysqlQueries) ClaimDispatches(ctx context.Context, db DBTX, arg ClaimDispatchesParams) (int64, error) {
 	query := q.claimDispatches
 
-	args := make([]any, 0, 1+len(arg.IDs))
+	args := make([]any, 0, 2+len(arg.IDs))
 
 	args = append(args, arg.ClaimedUntil)
+
+	args = append(args, arg.ClaimedBy)
 
 	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
 
@@ -1459,8 +1467,10 @@ func (q *mysqlQueries) MarkDispatchDelivered(ctx context.Context, db DBTX, arg M
 	result, err := db.ExecContext(ctx, q.markDispatchDelivered,
 		arg.DeliveredAt,
 		arg.ClaimedUntil,
+		arg.ClaimedBy,
 		arg.LastError,
 		arg.ID,
+		arg.HeldBy,
 	)
 	if err != nil {
 		return 0, err
@@ -1510,11 +1520,13 @@ func (q *mysqlQueries) ReapDispatches(ctx context.Context, db DBTX, arg ReapDisp
 func (q *mysqlQueries) RecordDispatchFailure(ctx context.Context, db DBTX, arg RecordDispatchFailureParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordDispatchFailure,
 		arg.ClaimedUntil,
+		arg.ClaimedBy,
 		arg.Attempts,
 		arg.NextAttempt,
 		arg.LastError,
 		arg.Dead,
 		arg.ID,
+		arg.HeldBy,
 	)
 	if err != nil {
 		return 0, err
@@ -1528,6 +1540,7 @@ func (q *mysqlQueries) RequeueDispatch(ctx context.Context, db DBTX, arg Requeue
 	result, err := db.ExecContext(ctx, q.requeueDispatch,
 		arg.NextAttempt,
 		arg.ClaimedUntil,
+		arg.ClaimedBy,
 		arg.DeliveredAt,
 		arg.Dead,
 		arg.Attempts,
@@ -1625,6 +1638,7 @@ var (
 	}(ArchiveSubscriptionByPairParams{})
 	_ = struct {
 		ClaimedUntil *time.Time
+		ClaimedBy    *string
 		IDs          []string
 	}(ClaimDispatchesParams{})
 	_ = struct {
@@ -1909,8 +1923,10 @@ var (
 	_ = struct {
 		DeliveredAt  *time.Time
 		ClaimedUntil *time.Time
+		ClaimedBy    *string
 		LastError    *string
 		ID           string
+		HeldBy       *string
 	}(MarkDispatchDeliveredParams{})
 	_ = struct {
 		ResultLimit int64
@@ -1924,15 +1940,18 @@ var (
 	}(ReapDispatchesParams{})
 	_ = struct {
 		ClaimedUntil *time.Time
+		ClaimedBy    *string
 		Attempts     int64
 		NextAttempt  time.Time
 		LastError    *string
 		Dead         bool
 		ID           string
+		HeldBy       *string
 	}(RecordDispatchFailureParams{})
 	_ = struct {
 		NextAttempt  time.Time
 		ClaimedUntil *time.Time
+		ClaimedBy    *string
 		DeliveredAt  *time.Time
 		Dead         bool
 		Attempts     int64

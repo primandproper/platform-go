@@ -200,20 +200,24 @@ func sortAndDedupeTimers(rows []encodedTimer) []encodedTimer {
 // sortAndDedupeFirings puts a batch of firings into primary-key order and
 // removes exact repeats, for the writers that bind them directly.
 //
-// Two firings of one key with different instants are not repeats and both
+// Two firings of one key differing in either fence are not repeats and both
 // survive: at most one of them can match the row, and which one is the question
-// the fence exists to answer.
+// the fences exist to answer.
 func sortAndDedupeFirings(rows []firingRef) []firingRef {
 	slices.SortFunc(rows, func(a, b firingRef) int {
 		if byKey := strings.Compare(a.key, b.key); byKey != 0 {
 			return byKey
 		}
 
-		return a.runAt.Compare(b.runAt)
+		if byInstant := a.runAt.Compare(b.runAt); byInstant != 0 {
+			return byInstant
+		}
+
+		return strings.Compare(a.leasedBy, b.leasedBy)
 	})
 
 	return slices.CompactFunc(rows, func(a, b firingRef) bool {
-		return a.key == b.key && a.runAt.Equal(b.runAt)
+		return a.key == b.key && a.runAt.Equal(b.runAt) && a.leasedBy == b.leasedBy
 	})
 }
 

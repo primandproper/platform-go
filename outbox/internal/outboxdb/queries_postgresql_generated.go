@@ -51,7 +51,8 @@ const markOutboxMessagesPublishedPostgreSQL = `UPDATE {{prefix}}outbox_messages 
 	claimed_until = NULL,
 	claimed_by = NULL,
 	last_error = NULL
-WHERE id = ANY($2::text[])`
+WHERE claimed_by = $2
+	AND id = ANY($3::text[])`
 
 const outboxBacklogPostgreSQL = `SELECT
 	COUNT(*) AS depth,
@@ -85,7 +86,8 @@ const recordOutboxMessageFailurePostgreSQL = `UPDATE {{prefix}}outbox_messages S
 	next_attempt = $3,
 	last_error = $4,
 	quarantined = $5
-WHERE id = $6`
+WHERE id = $6
+	AND claimed_by = $7`
 
 const selectClaimableOutboxMessagesPostgreSQL = `SELECT m.id
 FROM {{prefix}}outbox_messages AS m
@@ -215,14 +217,18 @@ func (q *postgresqlQueries) InsertOutboxMessage(ctx context.Context, db DBTX, ar
 	return err
 }
 
-// MarkOutboxMessagesPublished runs the :exec query against postgresql.
-func (q *postgresqlQueries) MarkOutboxMessagesPublished(ctx context.Context, db DBTX, arg MarkOutboxMessagesPublishedParams) error {
-	_, err := db.ExecContext(ctx, q.markOutboxMessagesPublished,
+// MarkOutboxMessagesPublished runs the :execrows query against postgresql.
+func (q *postgresqlQueries) MarkOutboxMessagesPublished(ctx context.Context, db DBTX, arg MarkOutboxMessagesPublishedParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.markOutboxMessagesPublished,
 		arg.PublishedAt,
+		arg.HeldBy,
 		arg.IDs,
 	)
+	if err != nil {
+		return 0, err
+	}
 
-	return err
+	return result.RowsAffected()
 }
 
 // OutboxBacklog runs the :one query against postgresql.
@@ -261,6 +267,7 @@ func (q *postgresqlQueries) RecordOutboxMessageFailure(ctx context.Context, db D
 		arg.LastError,
 		arg.Quarantined,
 		arg.ID,
+		arg.HeldBy,
 	)
 	if err != nil {
 		return 0, err
@@ -370,6 +377,7 @@ var (
 	}(InsertOutboxMessageParams{})
 	_ = struct {
 		PublishedAt *time.Time
+		HeldBy      *string
 		IDs         []string
 	}(MarkOutboxMessagesPublishedParams{})
 	_ = struct {
@@ -387,6 +395,7 @@ var (
 		LastError    *string
 		Quarantined  bool
 		ID           string
+		HeldBy       *string
 	}(RecordOutboxMessageFailureParams{})
 	_ = struct {
 		Now            time.Time

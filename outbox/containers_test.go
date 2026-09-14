@@ -494,6 +494,54 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		}
 	})
 
+	// The other end of the same name, on a real server: what a relay that
+	// overran its lease is allowed to write once it comes back.
+	//
+	// The in-process suite pins this against SQLite, where the claim and the two
+	// outcome writes are the same text. It runs here because the guard is the
+	// one predicate in this corpus whose loser is decided by a server rather
+	// than by the statement: the straggler's UPDATE has to re-read a
+	// committed claimed_by written by a different transaction.
+	t.Run("a straggler cannot retire or fail the rows it lost", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		table := env.newTable(t)
+		w := env.writer(t, c, table)
+		relay, _ := env.relay(t, c, table)
+
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return w.Enqueue(t.Context(), q, Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+		}))
+
+		straggler, err := relay.claim(t.Context())
+		must.NoError(t, err)
+		must.SliceLen(t, 1, straggler)
+
+		c.advance(DefaultLeaseDuration + time.Second)
+
+		holder, err := relay.claim(t.Context())
+		must.NoError(t, err)
+		must.SliceLen(t, 1, holder)
+		must.NotEqOp(t, straggler[0].claimToken, holder[0].claimToken)
+
+		must.NoError(t, relay.markPublished(t.Context(), straggler[0].claimToken, []string{straggler[0].id}))
+
+		straggler[0].attempts = int(relay.cfg.Backoff.MaxAttempts)
+		relay.recordFailure(t.Context(), &straggler[0], platformerrors.New("broker refused"))
+
+		// Untouched on every count: not retired, not quarantined, and still
+		// leased to the relay that is publishing it.
+		test.EqOp(t, 1, countIn(t, env.client, table, "published_at IS NULL"))
+		test.EqOp(t, 0, countIn(t, env.client, table, "quarantined = TRUE"))
+		test.EqOp(t, 1, countIn(t, env.client, table, "claimed_by IS NOT NULL"))
+
+		// The holder's own retirement lands, so what the guard refused was the
+		// straggler and not the statement.
+		must.NoError(t, relay.markPublished(t.Context(), holder[0].claimToken, []string{holder[0].id}))
+		test.EqOp(t, 0, countIn(t, env.client, table, "published_at IS NULL"))
+	})
+
 	t.Run("reports backlog depth and age", func(t *testing.T) {
 		t.Parallel()
 

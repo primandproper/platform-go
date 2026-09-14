@@ -45,14 +45,18 @@ const (
 	attemptsKey       = "webhooks.attempts"
 	fanoutKey         = "webhooks.fanout"
 	claimedKey        = "webhooks.claimed"
-	statusCodeKey     = "webhooks.status_code"
-	circuitOpenKey    = "webhooks.circuit_open"
-	backlogDepthKey   = "webhooks.backlog_depth"
-	backlogAgeKey     = "webhooks.backlog_age_seconds"
-	reapedKey         = "webhooks.reaped"
-	replayedKey       = "webhooks.replayed"
-	deadKey           = "webhooks.dead"
-	limitKey          = "webhooks.limit"
+	// claimedByKey names the claim a statement is reporting on, spelled for
+	// the column it is read from and written to.
+	claimedByKey    = "webhooks.claimed_by"
+	fencedKey       = "webhooks.fenced"
+	statusCodeKey   = "webhooks.status_code"
+	circuitOpenKey  = "webhooks.circuit_open"
+	backlogDepthKey = "webhooks.backlog_depth"
+	backlogAgeKey   = "webhooks.backlog_age_seconds"
+	reapedKey       = "webhooks.reaped"
+	replayedKey     = "webhooks.replayed"
+	deadKey         = "webhooks.dead"
+	limitKey        = "webhooks.limit"
 
 	// The row counts a store read produced, which are what distinguish an empty
 	// page from a query that never ran.

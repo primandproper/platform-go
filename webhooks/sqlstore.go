@@ -870,8 +870,18 @@ func (s *SQLStore) Enqueue(ctx context.Context, tx database.Tx, delivery *Delive
 
 // Claim selects a batch, leases it, and reads it back — all in one transaction,
 // so two workers cannot lease the same rows.
+//
+// It also mints the name that lease is held under, and stamps it on what it
+// returns. The name identifies the claim rather than the worker, so a second
+// batch cannot report an outcome for a first one's rows, and it is what
+// MarkDelivered and RecordFailure present back. See webhooks/internal/queries.
 func (s *SQLStore) Claim(ctx context.Context, now time.Time, limit int, leaseUntil time.Time) ([]ClaimedDispatch, error) {
-	ctx, op := s.o11y.Begin(ctx, observability.WithValue(limitKey, limit))
+	claimToken := identifiers.New()
+
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(limitKey, limit),
+		observability.WithValue(claimedByKey, claimToken),
+	)
 	defer op.End()
 
 	var claimed []ClaimedDispatch
@@ -903,6 +913,7 @@ func (s *SQLStore) Claim(ctx context.Context, now time.Time, limit int, leaseUnt
 
 		if _, err = s.q.ClaimDispatches(ctx, q, webhooksdb.ClaimDispatchesParams{
 			ClaimedUntil: timeOrNil(leaseUntil),
+			ClaimedBy:    &claimToken,
 			IDs:          ids,
 		}); err != nil {
 			return platformerrors.Wrap(err, "claiming webhook dispatches")
@@ -926,6 +937,8 @@ func (s *SQLStore) Claim(ctx context.Context, now time.Time, limit int, leaseUnt
 				return convErr
 			}
 
+			dispatch.ClaimedBy = claimToken
+
 			claimed = append(claimed, dispatch)
 		}
 
@@ -940,33 +953,89 @@ func (s *SQLStore) Claim(ctx context.Context, now time.Time, limit int, leaseUnt
 	return claimed, nil
 }
 
-// MarkDelivered retires an accepted dispatch.
-func (s *SQLStore) MarkDelivered(ctx context.Context, dispatchID string, at time.Time) error {
-	ctx, op := s.o11y.Begin(ctx, observability.WithValue(dispatchIDKey, dispatchID))
+// MarkDelivered retires an accepted dispatch, if this claim still holds it.
+func (s *SQLStore) MarkDelivered(ctx context.Context, claim *ClaimedDispatch, at time.Time) error {
+	ctx, op := s.o11y.Begin(ctx)
 	defer op.End()
+
+	if claim == nil {
+		return op.Error(platformerrors.ErrNilInputParameter, "nil webhook claim")
+	}
+
+	op.Set(dispatchIDKey, claim.ID).Set(claimedByKey, claim.ClaimedBy)
 
 	// The lease and the last failure are cleared, and the row is kept rather
 	// than deleted so the delivery log has something to point at; the reaper
-	// removes it once it ages out.
-	if _, err := s.q.MarkDispatchDelivered(ctx, s.client.Writer(), webhooksdb.MarkDispatchDeliveredParams{
+	// removes it once it ages out. The name on the lease is cleared with it,
+	// so a requeued or redelivered dispatch never answers to a claim that ended.
+	//
+	// The same name is bound again as the guard, under HeldBy. Matching nothing
+	// means a second worker reclaimed this dispatch while this one was slow, and
+	// it is that worker's outcome that counts.
+	affected, err := s.q.MarkDispatchDelivered(ctx, s.client.Writer(), webhooksdb.MarkDispatchDeliveredParams{
 		DeliveredAt:  timeOrNil(at),
 		ClaimedUntil: nil,
+		ClaimedBy:    nil,
+		HeldBy:       &claim.ClaimedBy,
 		LastError:    nil,
-		ID:           dispatchID,
-	}); err != nil {
-		return op.Error(err, "marking webhook dispatch %q delivered", dispatchID)
+		ID:           claim.ID,
+	})
+	if err != nil {
+		return op.Error(err, "marking webhook dispatch %q delivered", claim.ID)
 	}
+
+	s.reportFenced(ctx, op, affected, claim.ID, "retire")
 
 	return nil
 }
 
-// RecordFailure schedules the retry, or marks the dispatch dead.
-func (s *SQLStore) RecordFailure(ctx context.Context, dispatchID string, attempts int, nextAttempt time.Time, lastErr string, dead bool) error {
-	ctx, op := s.o11y.Begin(ctx,
-		observability.WithValue(dispatchIDKey, dispatchID),
-		observability.WithValue(deadKey, dead),
-	)
+// reportFenced records an outcome write that matched no row.
+//
+// It is not an error and is not returned as one. These two writes report on a
+// request that has already been made, and losing the row means somebody else
+// holds the dispatch and will report on their own outcome: there is no different
+// thing the caller could do with an error, and the package treats a lost race as
+// an ordinary outcome everywhere else it has one.
+//
+// What it is not is silent. A fleet whose leases are shorter than its
+// subscribers are slow is doing every delivery twice, and this is the only
+// statement in the package that can see it happening. It lands on the span and
+// in the log rather than on a counter because this store is built with no
+// metrics provider — which is deliberate and not an oversight; see NewSQLStore
+// — and the worker, which has one, cannot see a row count from here.
+func (s *SQLStore) reportFenced(
+	_ context.Context,
+	op observability.Operation,
+	affected int64,
+	dispatchID, what string,
+) {
+	if affected > 0 {
+		return
+	}
+
+	op.SpanOnly(fencedKey, true)
+	s.o11y.Logger().WithValue(dispatchIDKey, dispatchID).
+		Info("webhook lease lapsed before the worker could " + what + " the dispatch; another worker holds it")
+}
+
+// RecordFailure schedules the retry, or marks the dispatch dead, if this claim
+// still holds it.
+func (s *SQLStore) RecordFailure(
+	ctx context.Context,
+	claim *ClaimedDispatch,
+	attempts int,
+	nextAttempt time.Time,
+	lastErr string,
+	dead bool,
+) error {
+	ctx, op := s.o11y.Begin(ctx, observability.WithValue(deadKey, dead))
 	defer op.End()
+
+	if claim == nil {
+		return op.Error(platformerrors.ErrNilInputParameter, "nil webhook claim")
+	}
+
+	op.Set(dispatchIDKey, claim.ID).Set(claimedByKey, claim.ClaimedBy)
 
 	if attempts < 0 {
 		attempts = 0
@@ -978,16 +1047,26 @@ func (s *SQLStore) RecordFailure(ctx context.Context, dispatchID string, attempt
 	// not every failure should cost an attempt: a delivery skipped by an open
 	// circuit never reached the subscriber, and the worker hands back the count
 	// it had before this claim.
-	if _, err := s.q.RecordDispatchFailure(ctx, s.client.Writer(), webhooksdb.RecordDispatchFailureParams{
+	//
+	// The guard is the claim, for MarkDelivered's reason read backwards: a
+	// straggler's failure write would reschedule a dispatch a second worker is
+	// mid-flight on, release that worker's lease to a third, and — once the
+	// attempts are spent — mark dead a delivery that was about to succeed.
+	affected, err := s.q.RecordDispatchFailure(ctx, s.client.Writer(), webhooksdb.RecordDispatchFailureParams{
 		ClaimedUntil: nil,
+		ClaimedBy:    nil,
+		HeldBy:       &claim.ClaimedBy,
 		Attempts:     int64(attempts),
 		NextAttempt:  nextAttempt.UTC(),
 		LastError:    textOrNil(lastErr),
 		Dead:         dead,
-		ID:           dispatchID,
-	}); err != nil {
-		return op.Error(err, "recording webhook dispatch %q failure", dispatchID)
+		ID:           claim.ID,
+	})
+	if err != nil {
+		return op.Error(err, "recording webhook dispatch %q failure", claim.ID)
 	}
+
+	s.reportFenced(ctx, op, affected, claim.ID, "reschedule")
 
 	return nil
 }

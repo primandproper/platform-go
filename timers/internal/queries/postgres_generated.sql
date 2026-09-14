@@ -30,6 +30,10 @@ ON CONFLICT (timer_set, timer_key) DO UPDATE SET
 	lease_until = CASE
 		WHEN scheduled_timers.run_at IS DISTINCT FROM excluded.run_at THEN TIMESTAMPTZ 'epoch'
 		ELSE scheduled_timers.lease_until
+	END,
+	leased_by = CASE
+		WHEN scheduled_timers.run_at IS DISTINCT FROM excluded.run_at THEN NULL
+		ELSE scheduled_timers.leased_by
 	END;
 
 -- name: ClaimDueTimers :many
@@ -46,6 +50,7 @@ WITH due AS (
 )
 UPDATE scheduled_timers SET
 	lease_until = CURRENT_TIMESTAMP + (sqlc.arg(lease_microseconds)::bigint * INTERVAL '1 microsecond'),
+	leased_by = sqlc.arg(leased_by),
 	attempts = scheduled_timers.attempts + 1
 FROM due
 WHERE scheduled_timers.timer_set = due.timer_set
@@ -70,10 +75,11 @@ WITH target AS (
 	SELECT scheduled_timers.timer_set, scheduled_timers.timer_key
 	FROM scheduled_timers
 	WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
-		AND (scheduled_timers.timer_key, scheduled_timers.run_at) IN (
-			SELECT keys.timer_key, instants.run_at
+		AND (scheduled_timers.timer_key, scheduled_timers.run_at, scheduled_timers.leased_by) IN (
+			SELECT keys.timer_key, instants.run_at, holders.leased_by
 			FROM unnest(sqlc.arg(timer_keys)::text[]) WITH ORDINALITY AS keys(timer_key, ordinal)
 				JOIN unnest(sqlc.arg(run_ats)::timestamptz[]) WITH ORDINALITY AS instants(run_at, ordinal) USING (ordinal)
+				JOIN unnest(sqlc.arg(leased_bys)::text[]) WITH ORDINALITY AS holders(leased_by, ordinal) USING (ordinal)
 		)
 	ORDER BY scheduled_timers.timer_set, scheduled_timers.timer_key
 	FOR UPDATE
@@ -81,6 +87,7 @@ WITH target AS (
 UPDATE scheduled_timers SET
 	fired_at = CURRENT_TIMESTAMP,
 	lease_until = TIMESTAMPTZ 'epoch',
+	leased_by = NULL,
 	last_error = NULL
 FROM target
 WHERE scheduled_timers.timer_set = target.timer_set
@@ -92,16 +99,18 @@ WITH target AS (
 	FROM scheduled_timers
 	WHERE scheduled_timers.timer_set = sqlc.arg(timer_set)
 		AND scheduled_timers.fired_at IS NULL
-		AND (scheduled_timers.timer_key, scheduled_timers.run_at) IN (
-			SELECT keys.timer_key, instants.run_at
+		AND (scheduled_timers.timer_key, scheduled_timers.run_at, scheduled_timers.leased_by) IN (
+			SELECT keys.timer_key, instants.run_at, holders.leased_by
 			FROM unnest(sqlc.arg(timer_keys)::text[]) WITH ORDINALITY AS keys(timer_key, ordinal)
 				JOIN unnest(sqlc.arg(run_ats)::timestamptz[]) WITH ORDINALITY AS instants(run_at, ordinal) USING (ordinal)
+				JOIN unnest(sqlc.arg(leased_bys)::text[]) WITH ORDINALITY AS holders(leased_by, ordinal) USING (ordinal)
 		)
 	ORDER BY scheduled_timers.timer_set, scheduled_timers.timer_key
 	FOR UPDATE
 )
 UPDATE scheduled_timers SET
 	lease_until = TIMESTAMPTZ 'epoch',
+	leased_by = NULL,
 	run_at = CURRENT_TIMESTAMP + (sqlc.arg(delay_microseconds)::bigint * INTERVAL '1 microsecond'),
 	last_error = sqlc.narg(last_error)
 FROM target

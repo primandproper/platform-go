@@ -44,12 +44,15 @@ nobody has to perform.
 
 # Upgrading
 
-UpgradeStatements and UpgradeSQL render the one schema change this package has
-made since it shipped: webhooks_subscriptions became identified, archivable rows
-rather than a bare (endpoint_id, event_type) mapping, and webhooks_endpoints
-gained the name and created_by columns. A deployment created by Statements as it
-stands today does not need it; a deployment that already holds subscription rows
-written against the older shape does, and it is the migration for them.
+UpgradeStatements and UpgradeSQL render the schema changes this package has made
+since it shipped: webhooks_subscriptions became identified, archivable rows
+rather than a bare (endpoint_id, event_type) mapping, webhooks_endpoints gained
+the name and created_by columns, and webhooks_dispatches gained claimed_by — the
+name of the claim holding the lease, which the writes reporting a delivery's
+outcome present again so a worker whose lease lapsed cannot retire or reschedule
+a dispatch somebody else has taken. A deployment created by Statements as it
+stands today does not need any of it; a deployment created against an older
+shape does, and this is the migration for them.
 
 	up, err := migrations.UpgradeSQL(dialect.Postgres, webhooks.DefaultTablePrefix)
 	// ...

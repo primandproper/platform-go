@@ -8,6 +8,7 @@ package workqueuedb
 // ClaimDueItemsParams are the arguments to ClaimDueItems.
 type ClaimDueItemsParams struct {
 	LeaseMicroseconds int64
+	LeasedBy          *string
 	QueueName         string
 	AttemptCeiling    int64
 	ClaimLimit        int64
@@ -25,6 +26,7 @@ type ClaimDueItemsRow struct {
 type CompleteItemsParams struct {
 	QueueName string
 	ItemKeys  []string
+	LeasedBys []string
 }
 
 // EnqueueItemsParams are the arguments to EnqueueItems.
@@ -64,6 +66,7 @@ type ReleaseItemsParams struct {
 	LastError         *string
 	QueueName         string
 	ItemKeys          []string
+	LeasedBys         []string
 }
 
 // RemoveItemsParams are the arguments to RemoveItems.

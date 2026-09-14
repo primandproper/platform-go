@@ -149,6 +149,22 @@ no lease, read back no rows, and publish nothing that cycle. Both are exclusive;
 only one of them is contention-free, which is why a fleet on Postgres or MySQL
 wants the locking mode. SQLite has no SKIP LOCKED and always uses ClaimLease.
 
+The name a claim stamps outlives the claim's transaction, and the two writes that
+report an outcome present it again. A relay slow enough to overrun its lease has
+had its rows taken by somebody else by the time it comes back, and a retirement
+or a failure record addressed by the ids alone would land on that relay's row —
+retiring a publish before it happened, or rescheduling, releasing and eventually
+quarantining one that is still in flight. Both writes name the claim instead, so
+a straggler's report matches nothing and the rows belong to whoever holds them
+now. What that costs is the duplicate publish the paragraph above already
+promises; what it buys is that the duplicate is never recorded as the only
+delivery.
+
+The guard asks who holds the row, not whether the lease is fresh. A relay whose
+horizon has passed with nobody else reclaiming still holds its rows, and its
+retirement still lands — the work was done, and dropping the record would only
+mean doing it again.
+
 All of that holds up to the publish call and not past it. The Relay does not
 forward Message.Key as the publisher's ordering key, so what a broker does with
 two messages sharing a key is the broker's business, not the outbox's.

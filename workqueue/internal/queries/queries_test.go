@@ -314,6 +314,71 @@ func TestRender_CompleteMarksRatherThanDeletes(T *testing.T) {
 	test.StrNotContains(T, complete, "DELETE")
 }
 
+// TestRender_TheOutcomeWritesFenceOnTheClaim is the guard, and it is the one
+// predicate in this corpus whose absence is invisible to a single worker.
+//
+// A lease lapses on a worker that is merely slow, not dead. A second worker
+// takes the item and starts the work, and the first one arrives later with an
+// outcome: under the key alone its completion retires the second worker's item
+// before the work happened — and the second worker's own release is then
+// excluded as already-completed, so the item is recorded done having never been
+// done. Its release is the same thing in reverse, handing a running item to a
+// third worker.
+func TestRender_TheOutcomeWritesFenceOnTheClaim(T *testing.T) {
+	T.Parallel()
+
+	rendered := corpus(T)
+
+	for _, name := range []string{"CompleteItems", "ReleaseItems"} {
+		// Inside the CTE rather than after it, so a row the fence excludes is
+		// never locked at all — and a straggler therefore contends with nobody.
+		before, _, found := strings.Cut(rendered[name], "FOR UPDATE")
+		must.True(T, found, must.Sprintf("statement %q", name))
+
+		test.StrContains(T, before, leasedPairs(), test.Sprintf("statement %q", name))
+	}
+}
+
+// TestRender_TheOutcomeWritesReleaseTheClaimWithTheLease keeps the two halves of
+// a lease together.
+//
+// A horizon dropped without the name on it leaves a free row reading as one
+// somebody still holds — and, worse than untidy, that name is one the worker
+// who wrote it can still present. A re-enqueue restarts the item, a second
+// worker claims it, and the first worker's retried completion answers to a
+// claim that ended: the fence undone by the write that was supposed to close it.
+func TestRender_TheOutcomeWritesReleaseTheClaimWithTheLease(T *testing.T) {
+	T.Parallel()
+
+	rendered := corpus(T)
+
+	for _, name := range []string{"CompleteItems", "ReleaseItems"} {
+		test.StrContains(T, rendered[name], LeaseColumn+" = "+epoch, test.Sprintf("statement %q", name))
+		test.StrContains(T, rendered[name], HolderColumn+" = NULL", test.Sprintf("statement %q", name))
+	}
+}
+
+// TestRender_TheClaimStampsTheNameTheOutcomeWritesFenceOn. The fence above has
+// nothing to compare against unless the claim writes one.
+func TestRender_TheClaimStampsTheNameTheOutcomeWritesFenceOn(T *testing.T) {
+	T.Parallel()
+
+	test.StrContains(T, statement(T, "ClaimDueItems"), HolderColumn+" = sqlc.arg("+HolderColumn+")")
+}
+
+// TestRender_TheEnqueueLeavesTheClaimAlone, for the reason it leaves the lease
+// alone: the two are halves of one fact, and a conflict clause that revoked the
+// name while the horizon stood — or the other way round — would leave a row a
+// worker still holds by one reading and not by the other.
+func TestRender_TheEnqueueLeavesTheClaimAlone(T *testing.T) {
+	T.Parallel()
+
+	enqueue := statement(T, "EnqueueItems")
+
+	test.StrNotContains(T, enqueue, LeaseColumn+" =")
+	test.StrNotContains(T, enqueue, HolderColumn+" =")
+}
+
 // TestRender_ReleaseHoldsTheItemBackAndRecordsWhy, and skips the ones somebody
 // else already finished: undoing their completion would turn the ordinary
 // consequence of a lapsed lease into a loop.
@@ -429,8 +494,8 @@ func TestRender_EveryBatchBindsAnArrayRatherThanAPlaceholderPerElement(T *testin
 
 	for name, arrays := range map[string][]string{
 		"EnqueueItems":  {KeysArg, PrioritiesArg, DelayArg},
-		"CompleteItems": {KeysArg},
-		"ReleaseItems":  {KeysArg},
+		"CompleteItems": {KeysArg, HoldersArg},
+		"ReleaseItems":  {KeysArg, HoldersArg},
 		"RemoveItems":   {KeysArg},
 	} {
 		for _, argument := range arrays {
@@ -439,18 +504,21 @@ func TestRender_EveryBatchBindsAnArrayRatherThanAPlaceholderPerElement(T *testin
 		}
 	}
 
-	// The enqueue is the one batch several columns wide, and its arrays are put
-	// back together on the position — which is what makes the nth key, the nth
-	// priority and the nth delay one entry.
-	test.StrContains(T, rendered["EnqueueItems"], "WITH ORDINALITY")
-	test.StrContains(T, rendered["EnqueueItems"], "USING ("+ordinal+")")
-
-	// A one-column batch needs none of that: an item is addressed by its key.
-	for _, name := range []string{"CompleteItems", "ReleaseItems", "RemoveItems"} {
-		test.StrContains(T, rendered[name], querygen.Qualify(ItemsTable, KeyColumn)+
-			" = ANY(sqlc.arg("+KeysArg+")::text[])", test.Sprintf("statement %q", name))
-		test.StrNotContains(T, rendered[name], "WITH ORDINALITY", test.Sprintf("statement %q", name))
+	// Three of the four are batches several columns wide, and their arrays are
+	// put back together on the position — which is what makes the nth key and
+	// the nth priority, or the nth key and the nth claim, one entry.
+	for _, name := range []string{"EnqueueItems", "CompleteItems", "ReleaseItems"} {
+		test.StrContains(T, rendered[name], "WITH ORDINALITY", test.Sprintf("statement %q", name))
+		test.StrContains(T, rendered[name], "USING ("+ordinal+")", test.Sprintf("statement %q", name))
 	}
+
+	// The removal is the one batch a single column wide, and that is the
+	// difference between the two kinds of caller rather than an inconsistency:
+	// an operator dropping work names rows, and holds no claim to present.
+	test.StrContains(T, rendered["RemoveItems"], querygen.Qualify(ItemsTable, KeyColumn)+
+		" = ANY(sqlc.arg("+KeysArg+")::text[])")
+	test.StrNotContains(T, rendered["RemoveItems"], "WITH ORDINALITY")
+	test.StrNotContains(T, rendered["RemoveItems"], HoldersArg)
 }
 
 // TestRender_NoStatementNamesAnUnprefixableTable. Every statement carries the

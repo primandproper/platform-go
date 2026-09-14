@@ -24,6 +24,15 @@ import (
 // point — the upgrade has to move a schema nothing in this repository creates any
 // more, and a fixture generated from today's files would drift into agreeing with
 // them.
+//
+// webhooks_deliveries and webhooks_dispatches are here for the same reason,
+// which is only half as obvious: dispatches predates claimed_by, and a fixture
+// built from today's DDL would create the column the upgrade is about to add.
+// Postgres spells its ALTER with IF NOT EXISTS and would survive that; MySQL and
+// SQLite cannot and would fail on a duplicate column — so a legacy fixture that
+// quietly agreed with the current schema would have turned that ALTER into
+// either a no-op or a hard failure, and never into a test of it. deliveries
+// comes with it because dispatches carries a foreign key into it.
 var legacySchema = map[dialect.Dialect]string{
 	dialect.Postgres: `
 CREATE TABLE {{PREFIX}}webhooks_endpoints (
@@ -46,6 +55,43 @@ CREATE TABLE {{PREFIX}}webhooks_subscriptions (
 );
 CREATE INDEX {{PREFIX}}webhooks_subscriptions_event_idx
     ON {{PREFIX}}webhooks_subscriptions (event_type, endpoint_id);
+CREATE TABLE {{PREFIX}}webhooks_deliveries (
+    id              TEXT PRIMARY KEY,
+    scope           TEXT NOT NULL,
+    event_type      TEXT NOT NULL,
+    payload         BYTEA NOT NULL,
+    ordering_key    TEXT NOT NULL DEFAULT '',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_updated_at TIMESTAMPTZ,
+    archived_at     TIMESTAMPTZ
+);
+CREATE TABLE {{PREFIX}}webhooks_dispatches (
+    id              TEXT PRIMARY KEY,
+    delivery_id     TEXT NOT NULL REFERENCES {{PREFIX}}webhooks_deliveries (id) ON DELETE CASCADE,
+    endpoint_id     TEXT NOT NULL,
+    ordering_key    TEXT NOT NULL DEFAULT '',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_updated_at TIMESTAMPTZ,
+    archived_at     TIMESTAMPTZ,
+    next_attempt    TIMESTAMPTZ NOT NULL,
+    claimed_until   TIMESTAMPTZ,
+    delivered_at    TIMESTAMPTZ,
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    dead            BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE (delivery_id, endpoint_id)
+);
+CREATE INDEX {{PREFIX}}webhooks_dispatches_claim_idx
+    ON {{PREFIX}}webhooks_dispatches (next_attempt, created_at, id)
+    WHERE delivered_at IS NULL AND dead = FALSE;
+CREATE INDEX {{PREFIX}}webhooks_dispatches_ordering_idx
+    ON {{PREFIX}}webhooks_dispatches (endpoint_id, ordering_key, created_at, id)
+    WHERE delivered_at IS NULL AND dead = FALSE;
+CREATE INDEX {{PREFIX}}webhooks_dispatches_replay_idx
+    ON {{PREFIX}}webhooks_dispatches (delivery_id, endpoint_id);
+CREATE INDEX {{PREFIX}}webhooks_dispatches_reap_idx
+    ON {{PREFIX}}webhooks_dispatches (delivered_at)
+    WHERE delivered_at IS NOT NULL;
 `,
 	dialect.MySQL: `
 CREATE TABLE {{PREFIX}}webhooks_endpoints (
@@ -70,6 +116,40 @@ CREATE TABLE {{PREFIX}}webhooks_subscriptions (
 );
 CREATE INDEX {{PREFIX}}webhooks_subscriptions_event_idx
     ON {{PREFIX}}webhooks_subscriptions (event_type, endpoint_id);
+CREATE TABLE {{PREFIX}}webhooks_deliveries (
+    id              VARCHAR(64) NOT NULL PRIMARY KEY,
+    scope           VARCHAR(255) NOT NULL,
+    event_type      VARCHAR(255) NOT NULL,
+    payload         LONGBLOB NOT NULL,
+    ordering_key    VARCHAR(255) NOT NULL DEFAULT '',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    last_updated_at DATETIME(6),
+    archived_at     DATETIME(6)
+);
+CREATE TABLE {{PREFIX}}webhooks_dispatches (
+    id              VARCHAR(64) NOT NULL PRIMARY KEY,
+    delivery_id     VARCHAR(64) NOT NULL,
+    endpoint_id     VARCHAR(64) NOT NULL,
+    ordering_key    VARCHAR(255) NOT NULL DEFAULT '',
+    created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    last_updated_at DATETIME(6),
+    archived_at     DATETIME(6),
+    next_attempt    DATETIME(6) NOT NULL,
+    claimed_until   DATETIME(6),
+    delivered_at    DATETIME(6),
+    attempts        INT NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    dead            BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE KEY {{PREFIX}}webhooks_dispatches_pair_uniq (delivery_id, endpoint_id),
+    CONSTRAINT {{PREFIX}}webhooks_dispatches_delivery_fk
+        FOREIGN KEY (delivery_id) REFERENCES {{PREFIX}}webhooks_deliveries (id) ON DELETE CASCADE
+);
+CREATE INDEX {{PREFIX}}webhooks_dispatches_claim_idx
+    ON {{PREFIX}}webhooks_dispatches (delivered_at, dead, next_attempt, created_at, id);
+CREATE INDEX {{PREFIX}}webhooks_dispatches_ordering_idx
+    ON {{PREFIX}}webhooks_dispatches (endpoint_id, ordering_key, delivered_at, dead, created_at, id);
+CREATE INDEX {{PREFIX}}webhooks_dispatches_reap_idx
+    ON {{PREFIX}}webhooks_dispatches (delivered_at, id);
 `,
 	dialect.SQLite: `
 CREATE TABLE {{PREFIX}}webhooks_endpoints (
@@ -92,6 +172,43 @@ CREATE TABLE {{PREFIX}}webhooks_subscriptions (
 );
 CREATE INDEX {{PREFIX}}webhooks_subscriptions_event_idx
     ON {{PREFIX}}webhooks_subscriptions (event_type, endpoint_id);
+CREATE TABLE {{PREFIX}}webhooks_deliveries (
+    id              TEXT PRIMARY KEY,
+    scope           TEXT NOT NULL,
+    event_type      TEXT NOT NULL,
+    payload         BLOB NOT NULL,
+    ordering_key    TEXT NOT NULL DEFAULT '',
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_updated_at DATETIME,
+    archived_at     DATETIME
+);
+CREATE TABLE {{PREFIX}}webhooks_dispatches (
+    id              TEXT PRIMARY KEY,
+    delivery_id     TEXT NOT NULL REFERENCES {{PREFIX}}webhooks_deliveries (id) ON DELETE CASCADE,
+    endpoint_id     TEXT NOT NULL,
+    ordering_key    TEXT NOT NULL DEFAULT '',
+    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_updated_at DATETIME,
+    archived_at     DATETIME,
+    next_attempt    DATETIME NOT NULL,
+    claimed_until   DATETIME,
+    delivered_at    DATETIME,
+    attempts        INTEGER NOT NULL DEFAULT 0,
+    last_error      TEXT,
+    dead            BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE (delivery_id, endpoint_id)
+);
+CREATE INDEX {{PREFIX}}webhooks_dispatches_claim_idx
+    ON {{PREFIX}}webhooks_dispatches (next_attempt, created_at, id)
+    WHERE delivered_at IS NULL AND dead = FALSE;
+CREATE INDEX {{PREFIX}}webhooks_dispatches_ordering_idx
+    ON {{PREFIX}}webhooks_dispatches (endpoint_id, ordering_key, created_at, id)
+    WHERE delivered_at IS NULL AND dead = FALSE;
+CREATE INDEX {{PREFIX}}webhooks_dispatches_replay_idx
+    ON {{PREFIX}}webhooks_dispatches (delivery_id, endpoint_id);
+CREATE INDEX {{PREFIX}}webhooks_dispatches_reap_idx
+    ON {{PREFIX}}webhooks_dispatches (delivered_at)
+    WHERE delivered_at IS NOT NULL;
 `,
 }
 
@@ -217,15 +334,17 @@ func migrateLegacy(t *testing.T, env *storeEnv) (client database.Client, prefix 
 		must.NoError(t, err, must.Sprintf("executing %q", stmt))
 	}
 
-	// The three tables the upgrade does not touch come from the current DDL. The
-	// two it does are already here in their old shape, and MySQL has no
+	// The one table the upgrade does not touch comes from the current DDL. The
+	// four it does are already here in their old shape, and MySQL has no
 	// CREATE INDEX IF NOT EXISTS to make re-creating their indexes a no-op.
 	stmts, err := migrations.Statements(env.dialect, prefix)
 	must.NoError(t, err)
 
 	for _, stmt := range stmts {
 		if strings.Contains(stmt, qualified+"webhooks_endpoints") ||
-			strings.Contains(stmt, qualified+"webhooks_subscriptions") {
+			strings.Contains(stmt, qualified+"webhooks_subscriptions") ||
+			strings.Contains(stmt, qualified+"webhooks_deliveries") ||
+			strings.Contains(stmt, qualified+"webhooks_dispatches") {
 			continue
 		}
 

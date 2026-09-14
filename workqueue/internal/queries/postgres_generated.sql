@@ -56,6 +56,7 @@ WITH due AS (
 )
 UPDATE work_queue_items SET
 	lease_until = CURRENT_TIMESTAMP + (sqlc.arg(lease_microseconds)::bigint * INTERVAL '1 microsecond'),
+	leased_by = sqlc.arg(leased_by),
 	attempts = work_queue_items.attempts + 1
 FROM due
 WHERE work_queue_items.queue_name = due.queue_name
@@ -71,13 +72,18 @@ WITH target AS (
 	SELECT work_queue_items.queue_name, work_queue_items.item_key
 	FROM work_queue_items
 	WHERE work_queue_items.queue_name = sqlc.arg(queue_name)
-		AND work_queue_items.item_key = ANY(sqlc.arg(item_keys)::text[])
+		AND (work_queue_items.item_key, work_queue_items.leased_by) IN (
+			SELECT keys.item_key, holders.leased_by
+			FROM unnest(sqlc.arg(item_keys)::text[]) WITH ORDINALITY AS keys(item_key, ordinal)
+				JOIN unnest(sqlc.arg(leased_bys)::text[]) WITH ORDINALITY AS holders(leased_by, ordinal) USING (ordinal)
+		)
 	ORDER BY work_queue_items.queue_name, work_queue_items.item_key
 	FOR UPDATE
 )
 UPDATE work_queue_items SET
 	completed_at = CURRENT_TIMESTAMP,
 	lease_until = TIMESTAMPTZ 'epoch',
+	leased_by = NULL,
 	last_error = NULL
 FROM target
 WHERE work_queue_items.queue_name = target.queue_name
@@ -89,12 +95,17 @@ WITH target AS (
 	FROM work_queue_items
 	WHERE work_queue_items.queue_name = sqlc.arg(queue_name)
 		AND work_queue_items.completed_at IS NULL
-		AND work_queue_items.item_key = ANY(sqlc.arg(item_keys)::text[])
+		AND (work_queue_items.item_key, work_queue_items.leased_by) IN (
+			SELECT keys.item_key, holders.leased_by
+			FROM unnest(sqlc.arg(item_keys)::text[]) WITH ORDINALITY AS keys(item_key, ordinal)
+				JOIN unnest(sqlc.arg(leased_bys)::text[]) WITH ORDINALITY AS holders(leased_by, ordinal) USING (ordinal)
+		)
 	ORDER BY work_queue_items.queue_name, work_queue_items.item_key
 	FOR UPDATE
 )
 UPDATE work_queue_items SET
 	lease_until = TIMESTAMPTZ 'epoch',
+	leased_by = NULL,
 	available_at = CURRENT_TIMESTAMP + (sqlc.arg(delay_microseconds)::bigint * INTERVAL '1 microsecond'),
 	last_error = sqlc.narg(last_error)
 FROM target

@@ -14,6 +14,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/postgres/pgretry"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 
@@ -34,6 +35,7 @@ const (
 	itemCountKey     = "workqueue.item_count"
 	claimedKey       = "workqueue.claimed"
 	reclaimedKey     = "workqueue.reclaimed"
+	fencedKey        = "workqueue.fenced"
 	claimLimitKey    = "workqueue.claim_limit"
 	leaseKey         = "workqueue.lease"
 	attemptKey       = "workqueue.attempt"
@@ -55,10 +57,25 @@ const microsPerMilli = 1000.0
 // exactly the process-clock dependency this package exists to remove; if a
 // worker needs to know whether it still holds the lease, the answer is to finish
 // and let Complete match nothing rather than to compare clocks.
+//
+// What it does carry is the claim's name, which is how Complete comes to match
+// nothing. That is a fact rather than a hope: the name is compared in the
+// statement, against a value only a later claim can have overwritten.
 type Item[K comparable] struct {
 	// Key names the work. It is the key that was enqueued, decoded back through
 	// the queue's codec.
 	Key K
+	// LeasedBy names this claim, and it is what Complete and Release address
+	// the item with alongside its key.
+	//
+	// It is not a timestamp, which is why it is here and a deadline is not: it
+	// is an identity, and comparing it involves no clock at all. The item is
+	// this claim's while the row still names it, and the moment another worker
+	// takes over a lapsed lease the row names theirs instead — so a straggler's
+	// Complete matches nothing rather than retiring work somebody else is in
+	// the middle of. Pass the Item back rather than its key and that applies
+	// without anybody having to think about it.
+	LeasedBy string
 	// Priority is the item's current priority, which may be higher than the one
 	// it was first enqueued with — re-enqueueing raises it.
 	Priority int
@@ -126,6 +143,7 @@ type Queue[K comparable] struct {
 	reclaimedCounter metrics.Int64Counter
 	completedCounter metrics.Int64Counter
 	releasedCounter  metrics.Int64Counter
+	fencedCounter    metrics.Int64Counter
 	removedCounter   metrics.Int64Counter
 	reapedCounter    metrics.Int64Counter
 	retryCounter     metrics.Int64Counter
@@ -288,6 +306,7 @@ func (q *Queue[K]) buildInstruments(metricsProvider metrics.Provider) error {
 		{&q.reclaimedCounter, "leases_expired"},
 		{&q.completedCounter, "items_completed"},
 		{&q.releasedCounter, "items_released"},
+		{&q.fencedCounter, "items_fenced"},
 		{&q.removedCounter, "items_removed"},
 		{&q.reapedCounter, "items_reaped"},
 		{&q.retryCounter, "write_retries"},
@@ -465,11 +484,16 @@ func (q *Queue[K]) reserveWake() time.Duration {
 // not subtracted. A short batch therefore means the queue is nearly drained, and
 // an empty one means it is.
 //
-// The lease is what the caller promises to finish inside. There is no
-// heartbeat and no way to extend one — a lease that lapses mid-work hands the
-// item to somebody else, and the original worker's eventual Complete lands on an
-// item that is already done. That is waste, not corruption, provided the work is
-// idempotent; if it is not, this package is the wrong tool.
+// The lease is what the caller promises to finish inside. There is no heartbeat
+// and no way to extend one — a lease that lapses mid-work hands the item to
+// somebody else, and both workers end up doing it. That is waste, provided the
+// work is idempotent; if it is not, this package is the wrong tool.
+//
+// It is waste rather than corruption because the claim also stamps a name, and
+// every Item this returns carries it. The original worker's eventual Complete
+// addresses the item under a name the row no longer holds and retires nothing,
+// so the duplicate stays a duplicate instead of becoming a lost item. See
+// Item.LeasedBy.
 func (q *Queue[K]) Claim(ctx context.Context, limit int, lease time.Duration) ([]Item[K], error) {
 	ctx, op := q.o11y.Begin(ctx, observability.WithValues(map[string]any{
 		claimLimitKey: limit,
@@ -538,11 +562,17 @@ func (q *Queue[K]) claim(ctx context.Context, limit int, lease time.Duration) ([
 func (q *Queue[K]) claimOnce(ctx context.Context, limit int, lease time.Duration) ([]Item[K], error) {
 	// The writer, not the reader: this is an UPDATE that happens to return rows,
 	// and a read replica would both fail it and lose every lease it handed out.
+	// The name is minted here rather than in claim, so a retried attempt is a
+	// new claim with a name of its own: an attempt that deadlocked may still
+	// have leased rows, and reusing its name would let the retry report on them.
+	leasedBy := identifiers.New()
+
 	rows, err := q.q.ClaimDueItems(ctx, q.client.Writer(), workqueuedb.ClaimDueItemsParams{
 		QueueName:         q.cfg.Name,
 		AttemptCeiling:    int64(q.cfg.attemptCeiling()),
 		ClaimLimit:        int64(limit),
 		LeaseMicroseconds: lease.Microseconds(),
+		LeasedBy:          &leasedBy,
 	})
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "leasing work queue items")
@@ -554,6 +584,7 @@ func (q *Queue[K]) claimOnce(ctx context.Context, limit int, lease time.Duration
 		item := Item[K]{
 			Priority:  int(rows[i].Priority),
 			Attempts:  int(rows[i].Attempts),
+			LeasedBy:  leasedBy,
 			Reclaimed: rows[i].Reclaimed,
 		}
 
@@ -580,20 +611,35 @@ func (q *Queue[K]) claimOnce(ctx context.Context, limit int, lease time.Duration
 // investigated afterwards; Reap removes them once they age past
 // Config.Retention.
 //
-// Keys the queue does not hold are ignored rather than reported. A straggler
-// whose lease lapsed, and whose item was completed by somebody else or removed
-// outright, has nothing useful to do with an error.
+// It takes the Items Claim handed out rather than bare keys, because an item is
+// addressed by its key and the claim holding it together. A lease lapses on a
+// worker that is merely slow, not dead, and by the time that worker finishes,
+// somebody else may hold the item and be doing the work; a completion under the
+// key alone would retire their item before the work happened — and their own
+// Release would then be excluded as already-completed, so the item would be
+// recorded done having never been done. Pass the Item back and the fence applies
+// without anybody having to think about it.
+//
+// Items the queue does not hold, and items this claim no longer holds, are
+// ignored rather than reported. A straggler whose lease lapsed, and whose item
+// was completed by somebody else or removed outright, has nothing useful to do
+// with an error.
+//
+// A lapsed lease nobody else took is still this claim's, and its completion
+// still lands. The fence asks who holds the item, not whether the lease is
+// fresh; refusing it would only mean doing the work again.
 //
 // Completing is idempotent, and re-enqueueing a completed key restarts it with a
 // fresh attempt count.
-func (q *Queue[K]) Complete(ctx context.Context, keys ...K) error {
-	ctx, op := q.o11y.Begin(ctx, observability.WithValue(itemCountKey, len(keys)))
+func (q *Queue[K]) Complete(ctx context.Context, items ...Item[K]) error {
+	ctx, op := q.o11y.Begin(ctx, observability.WithValue(itemCountKey, len(items)))
 	defer op.End()
 
-	affected, err := q.writeKeys(ctx, "complete", keys, func(encoded []string) (int64, error) {
+	affected, err := q.writeItems(ctx, "complete", items, func(keys, holders []string) (int64, error) {
 		return q.q.CompleteItems(ctx, q.client.Writer(), workqueuedb.CompleteItemsParams{
 			QueueName: q.cfg.Name,
-			ItemKeys:  encoded,
+			ItemKeys:  keys,
+			LeasedBys: holders,
 		})
 	})
 	if err != nil {
@@ -601,8 +647,37 @@ func (q *Queue[K]) Complete(ctx context.Context, keys ...K) error {
 	}
 
 	q.completedCounter.Add(ctx, affected, q.attrs)
+	q.reportFenced(ctx, op, "complete", len(items), affected)
 
 	return nil
+}
+
+// reportFenced records the items a write did not match.
+//
+// Not an error, and not returned as one: every one of these writes reports on
+// work that has already happened, and an item the queue never held, one an
+// operator removed, and one a second worker is now holding are all the same
+// answer to the caller — there is nothing else to do. What separates them is a
+// rate. A fleet whose leases are shorter than its work does every item twice
+// and shows up here, and this is the only statement that can see it.
+func (q *Queue[K]) reportFenced(
+	ctx context.Context,
+	op observability.Operation,
+	label string,
+	asked int,
+	affected int64,
+) {
+	fenced := int64(asked) - affected
+	if fenced <= 0 {
+		return
+	}
+
+	q.fencedCounter.Add(ctx, fenced, q.attrs)
+	op.SpanOnly(fencedKey, fenced)
+	q.o11y.Logger().WithValues(map[string]any{
+		itemCountKey: asked,
+		fencedKey:    fenced,
+	}).Info("work queue " + label + " matched fewer items than it named; their leases are somebody else's now")
 }
 
 // Release hands claimed items back to the queue before their leases lapse,
@@ -620,21 +695,27 @@ func (q *Queue[K]) Complete(ctx context.Context, keys ...K) error {
 // failing item comes straight back and spins against whatever it failed on.
 //
 // Items that have already been completed are skipped, so a late Release arriving
-// after somebody else finished the work cannot resurrect it.
-func (q *Queue[K]) Release(ctx context.Context, delay time.Duration, cause error, keys ...K) error {
-	ctx, op := q.o11y.Begin(ctx, observability.WithValue(itemCountKey, len(keys)))
+// after somebody else finished the work cannot resurrect it — and so are items
+// this claim no longer holds, which is Complete's fence read the other way
+// round: a straggler's hand-back would drop a lease a second worker is holding,
+// put the item in front of a third while the second is still working on it, and
+// overwrite that worker's record of why with one from an attempt nobody is
+// waiting on. It takes Items for that reason.
+func (q *Queue[K]) Release(ctx context.Context, delay time.Duration, cause error, items ...Item[K]) error {
+	ctx, op := q.o11y.Begin(ctx, observability.WithValue(itemCountKey, len(items)))
 	defer op.End()
 
 	delay = max(delay, 0)
 
 	lastError := truncatedCause(cause)
 
-	affected, err := q.writeKeys(ctx, "release", keys, func(encoded []string) (int64, error) {
+	affected, err := q.writeItems(ctx, "release", items, func(keys, holders []string) (int64, error) {
 		return q.q.ReleaseItems(ctx, q.client.Writer(), workqueuedb.ReleaseItemsParams{
 			QueueName:         q.cfg.Name,
 			DelayMicroseconds: delay.Microseconds(),
 			LastError:         lastError,
-			ItemKeys:          encoded,
+			ItemKeys:          keys,
+			LeasedBys:         holders,
 		})
 	})
 	if err != nil {
@@ -642,6 +723,7 @@ func (q *Queue[K]) Release(ctx context.Context, delay time.Duration, cause error
 	}
 
 	q.releasedCounter.Add(ctx, affected, q.attrs)
+	q.reportFenced(ctx, op, "release", len(items), affected)
 
 	return nil
 }
@@ -760,15 +842,19 @@ func (q *Queue[K]) Stats(ctx context.Context) (Stats, error) {
 	return stats, nil
 }
 
-// writeKeys is the shape every keyed writer shares: encode the keys, hand the
+// writeKeys is the shape a keyed writer shares: encode the keys, hand the
 // encoded batch to write, run it with the retry wrapper, and report how many
 // rows it touched.
 //
 // The keys are sorted before they are bound. That is the lock-ordering
-// discipline, applied at the one place all three writers pass through, so a
-// fourth added later inherits it rather than having to remember it — and the
-// batch crosses the seam as one bound array, so the statement's text does not
-// depend on how many keys are in it.
+// discipline, applied where the writers pass through it, so one added later
+// inherits it rather than having to remember it — and the batch crosses the
+// seam as one bound array, so the statement's text does not depend on how many
+// keys are in it.
+//
+// Remove is the writer this shape still fits: an operator naming rows holds no
+// claim on them. The two that report on a claim of their own go through
+// writeItems, which binds the claim beside the key.
 func (q *Queue[K]) writeKeys(
 	ctx context.Context,
 	label string,
@@ -797,6 +883,66 @@ func (q *Queue[K]) writeKeys(
 	})
 
 	return affected, err
+}
+
+// writeItems is writeKeys for the two writers that report what became of a
+// claim: it splits the batch into the two parallel arrays their statements bind
+// and keeps the nth key and the nth holder one item.
+//
+// The sort is the same lock-ordering discipline and is on the key, because the
+// key is what the primary key orders by; the holder breaks the remaining ties so
+// that two entries naming one key under two claims have a stable order rather
+// than an arbitrary one. Both are carried together, so the split cannot mispair
+// them.
+func (q *Queue[K]) writeItems(
+	ctx context.Context,
+	label string,
+	items []Item[K],
+	write func(keys, holders []string) (int64, error),
+) (int64, error) {
+	if len(items) == 0 {
+		return 0, nil
+	}
+
+	refs := make([]itemRef, 0, len(items))
+
+	for i := range items {
+		key, err := encodeKey(q.codec, items[i].Key)
+		if err != nil {
+			return 0, err
+		}
+
+		refs = append(refs, itemRef{key: key, leasedBy: items[i].LeasedBy})
+	}
+
+	refs = sortAndDedupeItems(refs)
+
+	keys := make([]string, 0, len(refs))
+	holders := make([]string, 0, len(refs))
+
+	for i := range refs {
+		keys = append(keys, refs[i].key)
+		holders = append(holders, refs[i].leasedBy)
+	}
+
+	var affected int64
+
+	err := q.retrier.Do(ctx, label, func() error {
+		var execErr error
+
+		affected, execErr = write(keys, holders)
+
+		return execErr
+	})
+
+	return affected, err
+}
+
+// itemRef is one claimed item reduced to what the statements bind: the encoded
+// key and the claim that fences it.
+type itemRef struct {
+	key      string
+	leasedBy string
 }
 
 // truncatedCause renders a release's cause as the nullable text the statement

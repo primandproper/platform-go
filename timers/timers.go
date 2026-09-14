@@ -13,6 +13,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/postgres/pgretry"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 
@@ -33,6 +34,7 @@ const (
 	timerCountKey    = "timers.timer_count"
 	claimedKey       = "timers.claimed"
 	reclaimedKey     = "timers.reclaimed"
+	fencedKey        = "timers.fenced"
 	claimLimitKey    = "timers.claim_limit"
 	leaseKey         = "timers.lease"
 	attemptKey       = "timers.attempt"
@@ -100,6 +102,18 @@ type Due[K comparable] struct {
 	// against a schedule it no longer has. Pass the Due value back rather than
 	// its key, and that fence applies without anybody having to think about it.
 	RunAt time.Time
+
+	// LeasedBy names this claim, and Complete and Release match on it too.
+	//
+	// It is the second of the two fences, and it answers the race the instant
+	// cannot see. A claim does not move run_at, so when a lease lapses on a
+	// worker that is merely slow and a second worker takes the same firing, the
+	// two are identical by key and by instant. The name is what tells them
+	// apart: a straggler's Complete matches nothing rather than retiring a
+	// firing the second worker is still running — which would then exclude that
+	// worker's own Release as already-fired, and leave the timer recorded fired
+	// having never succeeded.
+	LeasedBy string
 
 	// Key names the timer, decoded back through the set's codec.
 	Key K
@@ -174,6 +188,7 @@ type Timers[K comparable] struct {
 	reclaimedCounter metrics.Int64Counter
 	firedCounter     metrics.Int64Counter
 	releasedCounter  metrics.Int64Counter
+	fencedCounter    metrics.Int64Counter
 	cancelledCounter metrics.Int64Counter
 	reapedCounter    metrics.Int64Counter
 	retryCounter     metrics.Int64Counter
@@ -323,6 +338,7 @@ func (t *Timers[K]) buildInstruments(metricsProvider metrics.Provider) error {
 		{&t.reclaimedCounter, "leases_expired"},
 		{&t.firedCounter, "timers_fired"},
 		{&t.releasedCounter, "timers_released"},
+		{&t.fencedCounter, "timers_fenced"},
 		{&t.cancelledCounter, "timers_cancelled"},
 		{&t.reapedCounter, "timers_reaped"},
 		{&t.retryCounter, "write_retries"},
@@ -600,6 +616,11 @@ func (t *Timers[K]) claim(ctx context.Context, limit int, lease time.Duration) (
 
 // claimOnce is one attempt of claim.
 func (t *Timers[K]) claimOnce(ctx context.Context, limit int, lease time.Duration) ([]Due[K], error) {
+	// The name is minted here rather than in claim, so a retried attempt is a
+	// new claim with a name of its own: an attempt that deadlocked may still
+	// have leased rows, and reusing its name would let the retry report on them.
+	leasedBy := identifiers.New()
+
 	// The writer, not the reader: this is an UPDATE that happens to return rows,
 	// and a read replica would both fail it and lose every lease it handed out.
 	rows, err := t.q.ClaimDueTimers(ctx, t.client.Writer(), timersdb.ClaimDueTimersParams{
@@ -607,6 +628,7 @@ func (t *Timers[K]) claimOnce(ctx context.Context, limit int, lease time.Duratio
 		AttemptCeiling:    int64(t.cfg.attemptCeiling()),
 		ClaimLimit:        int64(limit),
 		LeaseMicroseconds: lease.Microseconds(),
+		LeasedBy:          &leasedBy,
 	})
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "leasing due timers")
@@ -617,6 +639,7 @@ func (t *Timers[K]) claimOnce(ctx context.Context, limit int, lease time.Duratio
 	for i := range rows {
 		fired := Due[K]{
 			RunAt:     rows[i].RunAt,
+			LeasedBy:  leasedBy,
 			Payload:   rows[i].Payload,
 			Late:      max(time.Duration(rows[i].LateMicroseconds)*time.Microsecond, 0),
 			Attempts:  int(rows[i].Attempts),
@@ -647,11 +670,23 @@ func (t *Timers[K]) claimOnce(ctx context.Context, limit int, lease time.Duratio
 // they age past Config.Retention.
 //
 // It takes the Due values Claim handed out rather than bare keys, because a
-// firing is identified by its key and its instant together. A timer rescheduled
-// while it was being fired no longer matches, so this marks nothing and the new
-// schedule survives — the same "matches nothing" outcome a lapsed lease already
-// produces. Cancelled and already-fired timers are ignored for the same reason:
-// a straggler has nothing useful to do with an error.
+// firing is identified by its key, its instant and the claim holding it. A timer
+// rescheduled while it was being fired no longer matches on the instant, and one
+// whose lease was taken over no longer matches on the claim; either way this
+// marks nothing and the row belongs to whoever holds it now. Cancelled and
+// already-fired timers are ignored for the same reason: a straggler has nothing
+// useful to do with an error.
+//
+// The reclaim is the case the instant alone cannot see, and the one that costs
+// something. A claim does not move run_at, so a slow worker's completion would
+// otherwise retire a firing a second worker is still running — and the second
+// worker's own Release would then be excluded as already-fired, leaving the
+// timer recorded fired having never succeeded.
+//
+// A lapsed lease nobody else took is still this claim's, and its completion
+// still lands: the fence asks who holds the firing, not whether the lease is
+// fresh. That is deliberate, and Worker.pass depends on it — it completes on a
+// detached context precisely so an overrun still records what it did.
 //
 // Completing is idempotent, and scheduling a completed key again restarts it.
 func (t *Timers[K]) Complete(ctx context.Context, fired ...Due[K]) error {
@@ -659,11 +694,12 @@ func (t *Timers[K]) Complete(ctx context.Context, fired ...Due[K]) error {
 	defer op.End()
 
 	affected, err := t.writeFirings(ctx, "complete", fired,
-		func(keys []string, instants []time.Time) (int64, error) {
+		func(keys []string, instants []time.Time, holders []string) (int64, error) {
 			return t.q.CompleteTimers(ctx, t.client.Writer(), timersdb.CompleteTimersParams{
 				TimerSet:  t.cfg.Name,
 				TimerKeys: keys,
 				RunAts:    instants,
+				LeasedBys: holders,
 			})
 		})
 	if err != nil {
@@ -671,8 +707,37 @@ func (t *Timers[K]) Complete(ctx context.Context, fired ...Due[K]) error {
 	}
 
 	t.firedCounter.Add(ctx, affected, t.attrs)
+	t.reportFenced(ctx, op, "complete", len(fired), affected)
 
 	return nil
+}
+
+// reportFenced records the firings a write did not match.
+//
+// Not an error, and not returned as one: both writes report on a handler that
+// has already run, and a timer the set never held, one that was cancelled, one
+// whose schedule moved and one a second worker now holds are the same answer to
+// the caller — there is nothing else to do. What separates them is a rate. A
+// fleet whose leases are shorter than its handlers fires every timer twice and
+// shows up here, and these are the only statements that can see it.
+func (t *Timers[K]) reportFenced(
+	ctx context.Context,
+	op observability.Operation,
+	label string,
+	asked int,
+	affected int64,
+) {
+	fenced := int64(asked) - affected
+	if fenced <= 0 {
+		return
+	}
+
+	t.fencedCounter.Add(ctx, fenced, t.attrs)
+	op.SpanOnly(fencedKey, fenced)
+	t.o11y.Logger().WithValues(map[string]any{
+		timerCountKey: asked,
+		fencedKey:     fenced,
+	}).Info("timers " + label + " matched fewer firings than it named; their leases are somebody else's now")
 }
 
 // Release hands firings back before their leases lapse, pushing each one out by
@@ -692,7 +757,11 @@ func (t *Timers[K]) Complete(ctx context.Context, fired ...Due[K]) error {
 // The delay moves the timer's instant rather than holding it behind a separate
 // column, so a released timer is genuinely rescheduled — and, as with Complete,
 // a release whose instant no longer matches the row does nothing, so a
-// reschedule that landed in the meantime is not dragged backwards.
+// reschedule that landed in the meantime is not dragged backwards. The claim
+// fences it the same way and for Complete's reason read backwards: a straggler's
+// hand-back would drop a lease a second worker is holding, push that worker's
+// timer out from under it, and overwrite its record of why with a cause from an
+// attempt nobody is waiting on.
 func (t *Timers[K]) Release(ctx context.Context, delay time.Duration, cause error, fired ...Due[K]) error {
 	ctx, op := t.o11y.Begin(ctx, observability.WithValue(timerCountKey, len(fired)))
 	defer op.End()
@@ -702,13 +771,14 @@ func (t *Timers[K]) Release(ctx context.Context, delay time.Duration, cause erro
 	lastError := truncatedCause(cause)
 
 	affected, err := t.writeFirings(ctx, "release", fired,
-		func(keys []string, instants []time.Time) (int64, error) {
+		func(keys []string, instants []time.Time, holders []string) (int64, error) {
 			return t.q.ReleaseTimers(ctx, t.client.Writer(), timersdb.ReleaseTimersParams{
 				TimerSet:          t.cfg.Name,
 				DelayMicroseconds: delay.Microseconds(),
 				LastError:         lastError,
 				TimerKeys:         keys,
 				RunAts:            instants,
+				LeasedBys:         holders,
 			})
 		})
 	if err != nil {
@@ -716,6 +786,7 @@ func (t *Timers[K]) Release(ctx context.Context, delay time.Duration, cause erro
 	}
 
 	t.releasedCounter.Add(ctx, affected, t.attrs)
+	t.reportFenced(ctx, op, "release", len(fired), affected)
 
 	return nil
 }
@@ -867,27 +938,28 @@ func (t *Timers[K]) Stats(ctx context.Context) (Stats, error) {
 	return stats, nil
 }
 
-// firingRef is one firing reduced to what the statements bind: the encoded key
-// and the instant that fences it.
+// firingRef is one firing reduced to what the statements bind: the encoded key,
+// the instant that fences it, and the claim that holds it.
 type firingRef struct {
-	runAt time.Time
-	key   string
+	runAt    time.Time
+	key      string
+	leasedBy string
 }
 
 // writeFirings is the shape Complete and Release share: encode the firings,
-// split them into the two arrays their statements bind, run the write with the
+// split them into the three arrays their statements bind, run the write with the
 // retry wrapper, and report how many rows it touched.
 //
 // The firings are sorted by key before they are split. That is the lock-ordering
 // discipline, applied at the one place both writers pass through, so a third
 // added later inherits it rather than having to remember it — and the split is
-// what keeps the pairing positional: the nth key and the nth instant are one
-// firing, which is the fact the statements' ORDINALITY join reads.
+// what keeps the pairing positional: the nth key, the nth instant and the nth
+// claim are one firing, which is the fact the statements' ORDINALITY join reads.
 func (t *Timers[K]) writeFirings(
 	ctx context.Context,
 	label string,
 	fired []Due[K],
-	write func(keys []string, instants []time.Time) (int64, error),
+	write func(keys []string, instants []time.Time, holders []string) (int64, error),
 ) (int64, error) {
 	if len(fired) == 0 {
 		return 0, nil
@@ -901,17 +973,19 @@ func (t *Timers[K]) writeFirings(
 			return 0, err
 		}
 
-		rows = append(rows, firingRef{key: key, runAt: fired[i].RunAt})
+		rows = append(rows, firingRef{key: key, runAt: fired[i].RunAt, leasedBy: fired[i].LeasedBy})
 	}
 
 	rows = sortAndDedupeFirings(rows)
 
 	keys := make([]string, 0, len(rows))
 	instants := make([]time.Time, 0, len(rows))
+	holders := make([]string, 0, len(rows))
 
 	for i := range rows {
 		keys = append(keys, rows[i].key)
 		instants = append(instants, rows[i].runAt)
+		holders = append(holders, rows[i].leasedBy)
 	}
 
 	var affected int64
@@ -919,7 +993,7 @@ func (t *Timers[K]) writeFirings(
 	err := t.retrier.Do(ctx, label, func() error {
 		var execErr error
 
-		affected, execErr = write(keys, instants)
+		affected, execErr = write(keys, instants, holders)
 
 		return execErr
 	})

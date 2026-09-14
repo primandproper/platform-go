@@ -411,7 +411,7 @@ func TestRelay_databaseFailures(T *testing.T) {
 
 		dropTable(t, client)
 
-		err := relay.markPublished(t.Context(), []string{"abc"})
+		err := relay.markPublished(t.Context(), "claim-1", []string{"abc"})
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "marking outbox messages published")
 	})

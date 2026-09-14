@@ -993,7 +993,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		// Still blocked while the first is in flight.
 		test.SliceEmpty(t, claimAll(t, store, baseTime.Add(time.Minute)))
 
-		must.NoError(t, store.MarkDelivered(ctxFor(t), claimed[0].ID, baseTime.Add(time.Minute)))
+		must.NoError(t, store.MarkDelivered(ctxFor(t), &claimed[0], baseTime.Add(time.Minute)))
 
 		next := claimAll(t, store, baseTime.Add(2*time.Minute))
 		must.SliceLen(t, 1, next)
@@ -1024,7 +1024,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		// Only "fast" completes its first dispatch.
 		for i := range first {
 			if first[i].EndpointID == "fast" {
-				must.NoError(t, store.MarkDelivered(ctxFor(t), first[i].ID, baseTime.Add(time.Minute)))
+				must.NoError(t, store.MarkDelivered(ctxFor(t), &first[i], baseTime.Add(time.Minute)))
 			}
 		}
 
@@ -1081,6 +1081,114 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, 2, reclaimed[0].Attempts)
 	})
 
+	// What a worker whose lease lapsed is allowed to write when it finally comes
+	// back, which is the half a claim's exclusivity cannot cover.
+	//
+	// The lapse is arranged rather than raced for: every instant here is an
+	// argument, so the interleaving that takes a slow worker minutes in
+	// production takes three statements.
+	t.Run("a straggler cannot report an outcome for a dispatch somebody else took", func(t *testing.T) {
+		t.Parallel()
+
+		// lapse claims a dispatch, expires the lease, reclaims it, and returns
+		// both claims' view of the one row. The first is the straggler.
+		lapse := func(t *testing.T, store Store) (straggler, holder ClaimedDispatch) {
+			t.Helper()
+
+			registerEndpoint(t, store, "endpoint-1", "order.created")
+			dispatchTo(t, store,
+				&Delivery{EventType: "order.created", Payload: testBody}, baseTime, "endpoint-1")
+
+			first, err := store.Claim(ctxFor(t), baseTime, 10, baseTime.Add(30*time.Second))
+			must.NoError(t, err)
+			must.SliceLen(t, 1, first)
+
+			second, err := store.Claim(ctxFor(t), baseTime.Add(31*time.Second), 10, baseTime.Add(2*time.Minute))
+			must.NoError(t, err)
+			must.SliceLen(t, 1, second)
+
+			// One row, two claims, two names. The names are what the outcome
+			// writes compare; a horizon would not do, because a horizon is not
+			// an identity.
+			must.EqOp(t, first[0].ID, second[0].ID)
+			must.NotEqOp(t, "", first[0].ClaimedBy)
+			must.NotEqOp(t, first[0].ClaimedBy, second[0].ClaimedBy)
+
+			return first[0], second[0]
+		}
+
+		t.Run("its mark-delivered retires nothing", func(t *testing.T) {
+			t.Parallel()
+
+			store := env.newStore(t)
+			straggler, holder := lapse(t, store)
+
+			must.NoError(t, store.MarkDelivered(ctxFor(t), &straggler, baseTime.Add(time.Minute)))
+
+			// Still waiting. Retiring it here would record a delivery that has
+			// not happened — and then refuse the second worker's own failure
+			// write as a retirement it must not undo, which is how the delivery
+			// would be lost outright rather than merely duplicated.
+			//
+			// Read through the backlog rather than by claiming, because a claim
+			// would take the row under a third name and leave the holder below
+			// a straggler itself.
+			depth, _, err := store.Backlog(ctxFor(t))
+			must.NoError(t, err)
+			test.EqOp(t, 1, depth)
+
+			// The holder's own retirement lands, so what the guard refused was
+			// the straggler rather than the statement.
+			must.NoError(t, store.MarkDelivered(ctxFor(t), &holder, baseTime.Add(time.Minute)))
+			test.SliceEmpty(t, claimAll(t, store, baseTime.Add(time.Hour)))
+		})
+
+		t.Run("its failure record reschedules nothing", func(t *testing.T) {
+			t.Parallel()
+
+			store := env.newStore(t)
+			straggler, _ := lapse(t, store)
+
+			// Dead and pushed an hour out, so an unguarded write would not
+			// merely reschedule the holder's dispatch — it would kill a delivery
+			// still in flight. Either half would make the row unclaimable at the
+			// instant below, and it is claimable.
+			must.NoError(t, store.RecordFailure(ctxFor(t),
+				&straggler, straggler.Attempts, baseTime.Add(time.Hour), "boom", true))
+
+			// A dead dispatch is out of the backlog, so the depth alone catches
+			// the flag; the claim catches the reschedule, which the depth cannot
+			// see. It runs second because it takes the row.
+			depth, _, err := store.Backlog(ctxFor(t))
+			must.NoError(t, err)
+			test.EqOp(t, 1, depth)
+
+			test.SliceLen(t, 1, claimAll(t, store, baseTime.Add(3*time.Minute)))
+		})
+	})
+
+	// The complement, and the reason the guard is the claim's name rather than
+	// the lease's liveness. A worker whose horizon has passed with nobody else
+	// reclaiming still holds the dispatch, and the work it actually did is
+	// recorded rather than done again.
+	t.Run("a lapsed lease nobody else took still retires", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		registerEndpoint(t, store, "endpoint-1", "order.created")
+
+		dispatchTo(t, store,
+			&Delivery{EventType: "order.created", Payload: testBody}, baseTime, "endpoint-1")
+
+		claimed, err := store.Claim(ctxFor(t), baseTime, 10, baseTime.Add(30*time.Second))
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
+
+		must.NoError(t, store.MarkDelivered(ctxFor(t), &claimed[0], baseTime.Add(time.Minute)))
+
+		test.SliceEmpty(t, claimAll(t, store, baseTime.Add(time.Hour)))
+	})
+
 	t.Run("respects the batch limit", func(t *testing.T) {
 		t.Parallel()
 
@@ -1111,14 +1219,20 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		must.SliceLen(t, 1, claimed)
 
 		// Retry scheduled into the future: not claimable yet, claimable after.
-		must.NoError(t, store.RecordFailure(ctxFor(t), claimed[0].ID, claimed[0].Attempts, baseTime.Add(5*time.Minute), "boom", false))
+		must.NoError(t, store.RecordFailure(ctxFor(t), &claimed[0], claimed[0].Attempts, baseTime.Add(5*time.Minute), "boom", false))
 
 		test.SliceEmpty(t, claimAll(t, store, baseTime.Add(time.Minute)))
-		test.SliceLen(t, 1, claimAll(t, store, baseTime.Add(6*time.Minute)))
+
+		// The retry is a fresh claim with a name of its own, and it is that
+		// claim's failure that kills the dispatch. Reporting the second outcome
+		// under the first claim's name would be a straggler, and the guard
+		// refuses one.
+		retried := claimAll(t, store, baseTime.Add(6*time.Minute))
+		must.SliceLen(t, 1, retried)
 
 		// Dead is terminal. Native boolean handling differs per dialect; this is
 		// the assertion that catches a TINYINT(1) mismatch.
-		must.NoError(t, store.RecordFailure(ctxFor(t), claimed[0].ID, claimed[0].Attempts, baseTime, "boom", true))
+		must.NoError(t, store.RecordFailure(ctxFor(t), &retried[0], retried[0].Attempts, baseTime, "boom", true))
 		test.SliceEmpty(t, claimAll(t, store, baseTime.Add(time.Hour)))
 	})
 
@@ -1141,7 +1255,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		must.EqOp(t, 1, claimed[0].Attempts)
 
 		// Hand back the count from before this claim incremented it.
-		must.NoError(t, store.RecordFailure(ctxFor(t), claimed[0].ID, 0, baseTime, "circuit open", false))
+		must.NoError(t, store.RecordFailure(ctxFor(t), &claimed[0], 0, baseTime, "circuit open", false))
 
 		next := claimAll(t, store, baseTime.Add(time.Minute))
 		must.SliceLen(t, 1, next)
@@ -1167,7 +1281,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		claimed := claimAll(t, store, baseTime)
 		must.SliceLen(t, 1, claimed)
 
-		must.NoError(t, store.RecordFailure(ctxFor(t), claimed[0].ID, claimed[0].Attempts, baseTime, "poison", true))
+		must.NoError(t, store.RecordFailure(ctxFor(t), &claimed[0], claimed[0].Attempts, baseTime, "poison", true))
 
 		next := claimAll(t, store, baseTime.Add(time.Minute))
 		test.SliceLen(t, 1, next)
@@ -1225,7 +1339,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		claimed := claimAll(t, store, baseTime)
 		must.SliceLen(t, 1, claimed)
-		must.NoError(t, store.RecordFailure(ctxFor(t), claimed[0].ID, claimed[0].Attempts, baseTime, "gave up", true))
+		must.NoError(t, store.RecordFailure(ctxFor(t), &claimed[0], claimed[0].Attempts, baseTime, "gave up", true))
 		must.SliceEmpty(t, claimAll(t, store, baseTime.Add(time.Hour)))
 
 		must.NoError(t, store.Requeue(ctxFor(t), delivery.ID, "endpoint-1", baseTime.Add(time.Hour)))
@@ -1249,7 +1363,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		claimed := claimAll(t, store, baseTime)
 		must.SliceLen(t, 1, claimed)
-		must.NoError(t, store.MarkDelivered(ctxFor(t), claimed[0].ID, baseTime))
+		must.NoError(t, store.MarkDelivered(ctxFor(t), &claimed[0], baseTime))
 
 		must.NoError(t, store.Requeue(ctxFor(t), delivery.ID, "endpoint-1", baseTime.Add(time.Hour)))
 		test.SliceLen(t, 1, claimAll(t, store, baseTime.Add(2*time.Hour)))
@@ -1299,7 +1413,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		claimed := claimAll(t, store, baseTime)
 		must.SliceLen(t, 1, claimed)
-		must.NoError(t, store.RecordFailure(ctxFor(t), claimed[0].ID, claimed[0].Attempts, baseTime, "poison", true))
+		must.NoError(t, store.RecordFailure(ctxFor(t), &claimed[0], claimed[0].Attempts, baseTime, "poison", true))
 
 		depth, _, err := store.Backlog(ctxFor(t))
 		must.NoError(t, err)
@@ -1322,7 +1436,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 			DeliveryID: delivery.ID, EndpointID: "endpoint-1",
 			AttemptCount: 1, StatusCode: 200, CreatedAt: baseTime,
 		}))
-		must.NoError(t, store.MarkDelivered(ctxFor(t), claimed[0].ID, baseTime))
+		must.NoError(t, store.MarkDelivered(ctxFor(t), &claimed[0], baseTime))
 
 		// Inside the retention window, nothing goes.
 		reaped, err := store.Reap(ctxFor(t), baseTime.Add(-time.Hour), 100)
@@ -1678,6 +1792,14 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.ErrorIs(t, saveErr, ErrNilEndpoint)
 
 		test.ErrorIs(t, store.RecordAttempt(ctxFor(t), nil), platformerrors.ErrNilInputParameter)
+
+		// The two fenced writes take the claim itself, so a nil one is a caller
+		// with no claim to present rather than a claim that lost its row — which
+		// is the one thing here that is an error and not an ordinary outcome.
+		test.ErrorIs(t, store.MarkDelivered(ctxFor(t), nil, baseTime), platformerrors.ErrNilInputParameter)
+		test.ErrorIs(t,
+			store.RecordFailure(ctxFor(t), nil, 0, baseTime, "boom", false),
+			platformerrors.ErrNilInputParameter)
 
 		must.NoError(t, env.client.WithTransaction(ctxFor(t), func(q database.Tx) error {
 			test.ErrorIs(t, store.Enqueue(ctxFor(t), q, nil, []string{"e"}, baseTime), ErrNilDelivery)

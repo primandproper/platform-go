@@ -23,6 +23,19 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}scheduled_timers (
     -- nullable. The due predicate is then one comparison instead of a
     -- comparison plus a NULL branch that every future writer has to remember.
     lease_until     TIMESTAMPTZ NOT NULL DEFAULT 'epoch',
+    -- The name of the claim holding that lease, which the retirement and the
+    -- hand-back present again so a worker whose lease lapsed cannot retire or
+    -- release a firing somebody else has since taken. run_at fences a
+    -- reschedule; this fences a reclaim, which leaves run_at exactly where it
+    -- was.
+    --
+    -- Nullable, where lease_until is not, and the two are not inconsistent. The
+    -- epoch sentinel above exists because the due predicate branches on the
+    -- horizon; nothing branches on the holder, whose only reader is a
+    -- membership test that already treats NULL as no match. NOT NULL DEFAULT ''
+    -- would instead give every unheld row a name — the empty string, which is
+    -- what a caller who forgot to pass one would bind.
+    leased_by       TEXT,
     fired_at        TIMESTAMPTZ,
     last_error      TEXT,
 

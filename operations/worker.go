@@ -260,7 +260,7 @@ func (w *Worker) execute(ctx context.Context, item workqueue.Item[string]) {
 		// either way — whoever owns the operation has their own item, and
 		// leaving this one to lapse would have us claim it again on the next
 		// pass and reach the same conclusion.
-		w.complete(writeCtx, item.Key)
+		w.complete(writeCtx, item)
 
 		if !stderrors.Is(err, ErrOperationNotFound) {
 			span.Acknowledge(err, "beginning operation")
@@ -276,7 +276,7 @@ func (w *Worker) execute(ctx context.Context, item workqueue.Item[string]) {
 	switch {
 	case result.abandon:
 		w.lostLeaseCounter.Add(ctx, 1, kindAttr(op.Kind))
-		w.complete(writeCtx, item.Key)
+		w.complete(writeCtx, item)
 
 		return
 
@@ -285,7 +285,7 @@ func (w *Worker) execute(ctx context.Context, item workqueue.Item[string]) {
 			span.Acknowledge(err, "releasing operation for retry")
 		}
 
-		if err = w.queue.Release(writeCtx, w.cfg.RetryDelay, errorOf(result.opErr), item.Key); err != nil {
+		if err = w.queue.Release(writeCtx, w.cfg.RetryDelay, errorOf(result.opErr), item); err != nil {
 			span.Acknowledge(err, "releasing operation queue item")
 		}
 
@@ -302,7 +302,7 @@ func (w *Worker) execute(ctx context.Context, item workqueue.Item[string]) {
 		span.Acknowledge(err, "recording operation outcome")
 	}
 
-	w.complete(writeCtx, item.Key)
+	w.complete(writeCtx, item)
 	w.countOutcome(ctx, op, result.state)
 }
 
@@ -492,9 +492,15 @@ func errorOf(opErr *Error) error {
 // complete retires the queue item. A failure is logged rather than propagated:
 // the lease lapses, the item comes back, and the guarded Begin refuses it
 // against a terminal row — a duplicate claim rather than a duplicate execution.
-func (w *Worker) complete(ctx context.Context, key string) {
-	if err := w.queue.Complete(ctx, key); err != nil {
-		w.o11y.Logger().WithValue(operationIDKey, key).Error("completing operation queue item", err)
+//
+// It takes the whole Item rather than its key because the queue's completion is
+// fenced on the claim that produced it, so a worker whose lease lapsed while it
+// was slow retires nothing instead of retiring the item its successor is
+// working on. That is the same outcome as the failure above and needs no
+// handling of its own.
+func (w *Worker) complete(ctx context.Context, item workqueue.Item[string]) {
+	if err := w.queue.Complete(ctx, item); err != nil {
+		w.o11y.Logger().WithValue(operationIDKey, item.Key).Error("completing operation queue item", err)
 	}
 }
 

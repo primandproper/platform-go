@@ -430,6 +430,7 @@ LIMIT COALESCE(sqlc.narg(result_limit), 50);
 -- name: ClaimDispatches :execrows
 UPDATE webhooks_dispatches SET
 	claimed_until = sqlc.arg(claimed_until),
+	claimed_by = sqlc.arg(claimed_by),
 	attempts = attempts + 1,
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE id IN (sqlc.slice(ids));
@@ -468,26 +469,31 @@ ORDER BY webhooks_dispatches.created_at, webhooks_dispatches.id;
 UPDATE webhooks_dispatches SET
 	delivered_at = sqlc.narg(delivered_at),
 	claimed_until = sqlc.narg(claimed_until),
+	claimed_by = sqlc.narg(claimed_by),
 	last_error = sqlc.narg(last_error),
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE archived_at IS NULL
-	AND id = sqlc.arg(id);
+	AND id = sqlc.arg(id)
+	AND claimed_by = sqlc.arg(held_by);
 
 -- name: RecordDispatchFailure :execrows
 UPDATE webhooks_dispatches SET
 	claimed_until = sqlc.narg(claimed_until),
+	claimed_by = sqlc.narg(claimed_by),
 	attempts = sqlc.arg(attempts),
 	next_attempt = sqlc.arg(next_attempt),
 	last_error = sqlc.narg(last_error),
 	dead = sqlc.arg(dead),
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE archived_at IS NULL
-	AND id = sqlc.arg(id);
+	AND id = sqlc.arg(id)
+	AND claimed_by = sqlc.arg(held_by);
 
 -- name: RequeueDispatch :execrows
 UPDATE webhooks_dispatches SET
 	next_attempt = sqlc.arg(next_attempt),
 	claimed_until = sqlc.narg(claimed_until),
+	claimed_by = sqlc.narg(claimed_by),
 	delivered_at = sqlc.narg(delivered_at),
 	dead = sqlc.arg(dead),
 	attempts = sqlc.arg(attempts),

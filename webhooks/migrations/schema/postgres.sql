@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS webhooks_dispatches (
     archived_at     TIMESTAMPTZ,
     next_attempt    TIMESTAMPTZ NOT NULL,
     claimed_until   TIMESTAMPTZ,
+    claimed_by      TEXT,
     delivered_at    TIMESTAMPTZ,
     attempts        INTEGER NOT NULL DEFAULT 0,
     last_error      TEXT,

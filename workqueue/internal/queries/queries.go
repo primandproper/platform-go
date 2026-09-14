@@ -54,6 +54,24 @@ const (
 	// so the claimable predicate is one comparison instead of a comparison plus
 	// a NULL branch every future writer would have to remember.
 	LeaseColumn = "lease_until"
+	// HolderColumn names the claim that holds the lease: one identifier per
+	// claim, minted by the queue and written beside the horizon, so a write
+	// reporting what became of an item can say which claim is reporting.
+	//
+	// The horizon cannot serve as that name, and neither can the key. A lease
+	// lapses on a worker that is merely slow; a second worker takes the item
+	// and the first arrives later with an outcome, and by then the two of them
+	// are indistinguishable by anything the row held before this column. See
+	// leasedPairs.
+	//
+	// It is nullable, where lease_until is NOT NULL with an epoch sentinel, and
+	// the two are not inconsistent. That sentinel exists because the claimable
+	// predicate branches on the horizon and a NULL branch is one every future
+	// writer would have to remember; nothing branches on the holder — its only
+	// reader is a membership test, and NULL already matches nothing there. What
+	// a NOT NULL DEFAULT '' would buy instead is a name every unheld row answers
+	// to, and '' is the Go zero value a hand-built Item carries.
+	HolderColumn = "leased_by"
 	// CompletedAtColumn is when the item was finished, and NULL while it has
 	// not been. It is the column every read excludes on and the column the
 	// retirement assigns, which makes it the one place in this schema a guard
@@ -103,6 +121,9 @@ const (
 	RetentionArg = "retention_microseconds"
 	// ReapLimitArg caps one reaping pass.
 	ReapLimitArg = "reap_limit"
+	// HoldersArg is the batch of claim names that fences those keys, bound as
+	// one array and read positionally against KeysArg. See leasedPairs.
+	HoldersArg = "leased_bys"
 )
 
 // ordinal is what the parallel arrays are joined on.
@@ -134,6 +155,7 @@ var Columns = []string{
 	EnqueuedAtColumn,
 	AvailableAtColumn,
 	LeaseColumn,
+	HolderColumn,
 	CompletedAtColumn,
 	LastErrorColumn,
 }
@@ -145,7 +167,8 @@ var Columns = []string{
 // and the comparisons against them have to come from one clock. attempts and
 // lease_until are written as the literals that mean "fresh", and completed_at
 // and last_error are left to the schema's NULL — a newly enqueued item has
-// neither finished nor failed.
+// neither finished nor failed. leased_by is left to its NULL for the same
+// reason: nobody holds an item nobody has claimed.
 func InsertColumns() []string {
 	return []string{
 		QueueColumn,
@@ -281,6 +304,41 @@ func enqueuedBatch() string {
 	}, "\n")
 }
 
+// keyedItems is the membership test a removal addresses its rows with: the keys
+// and nothing else, because an operator dropping work from the queue holds no
+// claim on it.
+func keyedItems() string {
+	return querygen.Qualify(ItemsTable, KeyColumn) + " = ANY(sqlc.arg(" + KeysArg + ")::text[])"
+}
+
+// leasedPairs renders the membership test the completion and the hand-back
+// address their rows with: the key and the claim that holds it together,
+// matched against the two parallel arrays the caller bound.
+//
+// The key alone is not an address here. A lease lapses on a worker that is
+// merely slow rather than dead; a second worker takes the item and starts the
+// work; and the first one arrives with an outcome for a key that is no longer
+// its own. Under the key alone its completion retires the second worker's item
+// before the work happened — and the second worker's own release is then
+// excluded as already-completed, so the item is recorded done having never been
+// done. Its release is the same thing in reverse, handing a running item to a
+// third worker.
+//
+// The pair is a pair for enqueuedBatch's reason and not a bound tuple list: the
+// statement's text must not grow with the batch. See ordinal.
+func leasedPairs() string {
+	return fmt.Sprintf("(%s, %s) IN (\n\t\t\t%s\n\t\t)",
+		querygen.Qualify(ItemsTable, KeyColumn),
+		querygen.Qualify(ItemsTable, HolderColumn),
+		strings.Join([]string{
+			"SELECT keys." + KeyColumn + ", holders." + HolderColumn,
+			"\t\t\tFROM " + unnested(KeysArg, "text", "keys", KeyColumn),
+			"\t\t\t\tJOIN " + unnested(HoldersArg, "text", "holders", HolderColumn) +
+				" USING (" + ordinal + ")",
+		}, "\n"),
+	)
+}
+
 // unnested renders one bound array as a table of its elements and their
 // positions.
 //
@@ -327,6 +385,11 @@ func outstanding() string {
 // than being released. That is the package's whole failure-recovery mechanism
 // firing, and this statement is the only place it is observable — the fact
 // stops existing the moment the new lease overwrites it.
+//
+// The claim's name goes in beside the horizon and is not returned: the caller
+// minted it and is holding it, so reading it back would be asking the database
+// to confirm a value nothing else could have written. What it is for is the two
+// writes that come after — see leasedPairs.
 var claimDueItems = fmt.Sprintf(`WITH due AS (
 	SELECT
 		%[1]s.%[2]s,
@@ -340,6 +403,7 @@ var claimDueItems = fmt.Sprintf(`WITH due AS (
 )
 UPDATE %[1]s SET
 	%[4]s = %[9]s + %[10]s,
+	%[13]s = sqlc.arg(%[14]s),
 	%[11]s = %[1]s.%[11]s + 1
 FROM due
 WHERE %[1]s.%[2]s = due.%[2]s
@@ -361,18 +425,29 @@ RETURNING
 	microseconds(LeaseArg),
 	AttemptsColumn,
 	epoch,
+	HolderColumn,
+	HolderColumn,
 )
 
 // completeItems retires finished items. Rows are marked rather than deleted, so
 // a duplicate or a gap can be investigated after the fact; the reaper removes
 // them once they age past the retention window.
 //
-// Keys the queue has never heard of are simply not matched. That is deliberate:
-// a straggler whose lease lapsed and whose item was since removed still gets to
-// report success without an error nobody could act on.
-var completeItems = lockedTargets("") + fmt.Sprintf(`UPDATE %[1]s SET
+// Items this claim no longer holds are not matched, and neither are keys the
+// queue has never heard of. Both are deliberate, and they are the same
+// deliberation: a straggler whose lease lapsed, or whose item was since removed,
+// reports success without an error nobody could act on — and, because the fence
+// is the claim rather than the key, without retiring work somebody else is in
+// the middle of.
+//
+// The name is released with the lease. A retired item that still answered to the
+// claim that finished it would answer to it again after a re-enqueue restarts
+// it, and that worker's retry of its own completion would then retire a fresh
+// claim's work.
+var completeItems = lockedTargets("", leasedPairs()) + fmt.Sprintf(`UPDATE %[1]s SET
 	%[2]s = %[3]s,
 	%[4]s = %[5]s,
+	%[8]s = NULL,
 	%[6]s = NULL
 FROM target
 WHERE %[7]s`,
@@ -383,6 +458,7 @@ WHERE %[7]s`,
 	epoch,
 	LastErrorColumn,
 	targetJoin(),
+	HolderColumn,
 )
 
 // releaseItems is an early lease hand-back: drop the lease, hold the item until
@@ -393,8 +469,15 @@ WHERE %[7]s`,
 // never locked at all. A late release arriving after somebody else finished the
 // work is the ordinary consequence of a lapsed lease, and undoing their
 // completion would turn that waste into a loop.
-var releaseItems = lockedTargets(outstanding()) + fmt.Sprintf(`UPDATE %[1]s SET
+//
+// The claim fences it for completeItems' reason read the other way round: a
+// straggler's hand-back would drop a lease a second worker is holding and put
+// the item in front of a third while the second is still working on it, and
+// would overwrite that worker's own record of why with one from an attempt
+// nobody is waiting on.
+var releaseItems = lockedTargets(outstanding(), leasedPairs()) + fmt.Sprintf(`UPDATE %[1]s SET
 	%[2]s = %[3]s,
+	%[10]s = NULL,
 	%[4]s = %[5]s + %[6]s,
 	%[7]s = sqlc.narg(%[8]s)
 FROM target
@@ -408,6 +491,7 @@ WHERE %[9]s`,
 	LastErrorColumn,
 	LastErrorArg,
 	targetJoin(),
+	HolderColumn,
 )
 
 // removeItems deletes named items, whether or not they are leased and whether
@@ -418,7 +502,7 @@ WHERE %[9]s`,
 // worker holding a lease on a removed item finds its completion matches
 // nothing, which is the same outcome as a lapsed lease and needs no extra
 // handling.
-var removeItems = lockedTargets("") + fmt.Sprintf(`DELETE FROM %[1]s
+var removeItems = lockedTargets("", keyedItems()) + fmt.Sprintf(`DELETE FROM %[1]s
 USING target
 WHERE %[2]s`, ItemsTable, targetJoin())
 
@@ -533,17 +617,18 @@ func claimablePredicate() string {
 // somebody already acted on, and skipping a locked row would report it as
 // unmatched.
 //
-// The keys arrive as one bound array, so an empty batch is a statement that
-// matches nothing rather than a syntax error; the queue answers that case
-// without a round trip anyway.
-func lockedTargets(guard string) string {
+// The batch arrives as bound arrays, so an empty one is a statement that matches
+// nothing rather than a syntax error; the queue answers that case without a
+// round trip anyway. match is how a writer says what its batch is a batch of:
+// keys alone for a removal, which is an operator naming rows, and (key, holder)
+// pairs for the two writers reporting on a claim of their own.
+func lockedTargets(guard, match string) string {
 	predicates := []string{querygen.Qualify(ItemsTable, QueueColumn) + " = sqlc.arg(" + QueueArg + ")"}
 	if guard != "" {
 		predicates = append(predicates, guard)
 	}
 
-	predicates = append(predicates,
-		querygen.Qualify(ItemsTable, KeyColumn)+" = ANY(sqlc.arg("+KeysArg+")::text[])")
+	predicates = append(predicates, match)
 
 	return fmt.Sprintf(`WITH target AS (
 	SELECT %[1]s.%[2]s, %[1]s.%[3]s

@@ -111,6 +111,9 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}webhooks_dispatches (
     archived_at     DATETIME,
     next_attempt    DATETIME NOT NULL,
     claimed_until   DATETIME,
+    -- The name of the claim that holds the lease. See the Postgres schema for
+    -- why it is nullable.
+    claimed_by      TEXT,
     delivered_at    DATETIME,
     attempts        INTEGER NOT NULL DEFAULT 0,
     last_error      TEXT,

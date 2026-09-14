@@ -43,6 +43,7 @@ const (
 	selectedKey        = "outbox.selected"
 	claimedKey         = "outbox.claimed"
 	claimTokenKey      = "outbox.claim_token"
+	retiredKey         = "outbox.retired"
 	claimModeKey       = "outbox.claim_mode"
 	batchSizeKey       = "outbox.batch_size"
 	backlogDepthKey    = "outbox.backlog_depth"
@@ -55,11 +56,17 @@ const (
 
 // claimedMessage is one row the relay has taken ownership of.
 type claimedMessage struct {
-	id       string
-	topic    string
-	key      string
-	payload  []byte
-	attempts int
+	id    string
+	topic string
+	key   string
+	// claimToken is the name the claim that produced this message stamped on
+	// the row, carried through the publish so the write that reports the
+	// outcome can present it again. Every message from one claim carries the
+	// same one: a claim is the unit that took the rows, and it is the unit that
+	// gets to say what became of them.
+	claimToken string
+	payload    []byte
+	attempts   int
 }
 
 // Relay moves committed outbox rows onto the broker. It owns a goroutine
@@ -92,6 +99,7 @@ type Relay struct {
 	publishedCounter   metrics.Int64Counter
 	failedCounter      metrics.Int64Counter
 	quarantinedCounter metrics.Int64Counter
+	fencedCounter      metrics.Int64Counter
 	reapedCounter      metrics.Int64Counter
 	claimErrCounter    metrics.Int64Counter
 	backlogGauge       metrics.Int64Gauge
@@ -177,6 +185,9 @@ func NewRelay(ctx context.Context, cfg *RelayConfig, client database.Client, pro
 	}
 	if r.quarantinedCounter, err = mp.NewInt64Counter(fmt.Sprintf("%s_messages_quarantined", serviceName)); err != nil {
 		return nil, platformerrors.Wrap(err, "creating messages quarantined counter")
+	}
+	if r.fencedCounter, err = mp.NewInt64Counter(fmt.Sprintf("%s_messages_fenced", serviceName)); err != nil {
+		return nil, platformerrors.Wrap(err, "creating messages fenced counter")
 	}
 	if r.reapedCounter, err = mp.NewInt64Counter(fmt.Sprintf("%s_messages_reaped", serviceName)); err != nil {
 		return nil, platformerrors.Wrap(err, "creating messages reaped counter")
@@ -357,7 +368,9 @@ func (r *Relay) cycle(ctx context.Context) {
 		return
 	}
 
-	if err = r.markPublished(ctx, published); err != nil {
+	// Every message in a batch came from one claim, so they all carry the same
+	// name and the retirement presents it once.
+	if err = r.markPublished(ctx, msgs[0].claimToken, published); err != nil {
 		// The messages are on the broker but still look unpublished. The next
 		// cycle republishes them — this is precisely the at-least-once window
 		// the package documentation describes.
@@ -484,11 +497,12 @@ func (r *Relay) claim(ctx context.Context) ([]claimedMessage, error) {
 		claimed = make([]claimedMessage, 0, len(rows))
 		for i := range rows {
 			claimed = append(claimed, claimedMessage{
-				id:       rows[i].ID,
-				topic:    rows[i].Topic,
-				key:      rows[i].PartitionKey,
-				payload:  rows[i].Payload,
-				attempts: int(rows[i].Attempts),
+				id:         rows[i].ID,
+				topic:      rows[i].Topic,
+				key:        rows[i].PartitionKey,
+				claimToken: claimToken,
+				payload:    rows[i].Payload,
+				attempts:   int(rows[i].Attempts),
 			})
 		}
 
@@ -503,15 +517,36 @@ func (r *Relay) claim(ctx context.Context) ([]claimedMessage, error) {
 	return claimed, nil
 }
 
-// markPublished retires the rows that made it to the broker.
-func (r *Relay) markPublished(ctx context.Context, ids []string) error {
+// markPublished retires the rows that made it to the broker, under the name the
+// claim that took them stamped.
+//
+// A short count is the lease being overrun: this relay was slow, its lease
+// lapsed, and another relay has since taken some of these rows and is
+// publishing them itself. The rows it took stay unretired here and are retired
+// by whoever holds them, so the fact is a duplicate publish rather than a lost
+// one — the at-least-once window the package documentation describes, observed
+// at the one statement that can see it. It is counted and said out loud rather
+// than returned, because there is nothing the caller could do differently and
+// the next cycle is already correct.
+func (r *Relay) markPublished(ctx context.Context, claimToken string, ids []string) error {
 	at := r.clock.Now().UTC()
 
-	if err := r.q.MarkOutboxMessagesPublished(ctx, r.client.Writer(), outboxdb.MarkOutboxMessagesPublishedParams{
+	retired, err := r.q.MarkOutboxMessagesPublished(ctx, r.client.Writer(), outboxdb.MarkOutboxMessagesPublishedParams{
 		PublishedAt: &at,
+		HeldBy:      &claimToken,
 		IDs:         ids,
-	}); err != nil {
+	})
+	if err != nil {
 		return platformerrors.Wrap(err, "marking outbox messages published")
+	}
+
+	if fenced := int64(len(ids)) - retired; fenced > 0 {
+		r.fencedCounter.Add(ctx, fenced)
+		r.o11y.Logger().WithValues(map[string]any{
+			claimTokenKey:   claimToken,
+			messageCountKey: len(ids),
+			retiredKey:      retired,
+		}).Info("outbox lease lapsed mid-publish; another relay holds the rest")
 	}
 
 	return nil
@@ -544,17 +579,34 @@ func (r *Relay) recordFailure(ctx context.Context, msg *claimedMessage, cause er
 	// out of the statement: a message whose publish failed must be reclaimable
 	// before its lease would have lapsed on its own. The name on the lease goes
 	// with it, so a free row never reads as one somebody is still holding.
-	if _, err := r.q.RecordOutboxMessageFailure(ctx, r.client.Writer(), outboxdb.RecordOutboxMessageFailureParams{
+	//
+	// The same name is bound again as the guard, under HeldByArg. A relay whose
+	// lease lapsed while it was slow must not schedule a retry for, release the
+	// lease of, or quarantine a message a second relay has since taken and may
+	// be about to publish successfully.
+	affected, err := r.q.RecordOutboxMessageFailure(ctx, r.client.Writer(), outboxdb.RecordOutboxMessageFailureParams{
 		ID:           msg.id,
 		ClaimedUntil: nil,
 		ClaimedBy:    nil,
+		HeldBy:       &msg.claimToken,
 		NextAttempt:  nextAttempt,
 		LastError:    &lastErr,
 		Quarantined:  quarantine,
-	}); err != nil {
+	})
+	if err != nil {
 		// The lease still expires on its own, so the message is retried
 		// regardless — just later than intended.
 		logger.Error("recording outbox publish failure", err)
+
+		return
+	}
+
+	if affected == 0 {
+		// Somebody else holds this row. Their outcome is the one that counts,
+		// and the failure this relay saw is theirs to rediscover if it is real.
+		r.fencedCounter.Add(ctx, 1, topicAttr(msg.topic))
+		logger.WithValue(claimTokenKey, msg.claimToken).
+			Info("outbox lease lapsed before the failure could be recorded; another relay holds the message")
 
 		return
 	}

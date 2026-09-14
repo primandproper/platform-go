@@ -4,6 +4,7 @@ import (
 	"context"
 	stderrors "errors"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/workqueue/internal/workqueuedb"
@@ -250,4 +251,24 @@ func sortAndDedupe(keys []string) []string {
 	slices.Sort(keys)
 
 	return slices.Compact(keys)
+}
+
+// sortAndDedupeItems is the same for the writers that bind a key and the claim
+// holding it, which have to move the two together or the positional join in
+// their statements pairs the nth key with somebody else's claim.
+//
+// The key leads the ordering because the key is what the primary key orders by,
+// and the lock-ordering discipline is the whole reason anything here is sorted.
+// Two entries naming one key under two claims are not duplicates — at most one
+// of them can match a row, and which one is the question being asked.
+func sortAndDedupeItems(refs []itemRef) []itemRef {
+	slices.SortFunc(refs, func(a, b itemRef) int {
+		if by := strings.Compare(a.key, b.key); by != 0 {
+			return by
+		}
+
+		return strings.Compare(a.leasedBy, b.leasedBy)
+	})
+
+	return slices.Compact(refs)
 }

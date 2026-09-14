@@ -49,3 +49,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS {{PREFIX}}webhooks_subscriptions_id_idx
 CREATE INDEX IF NOT EXISTS {{PREFIX}}webhooks_subscriptions_endpoint_idx
     ON {{PREFIX}}webhooks_subscriptions (endpoint_id, id)
     WHERE archived_at IS NULL;
+
+-- The dispatch's lease gained a holder: the name of the claim that took it,
+-- which the two writes that report a delivery's outcome now present again so a
+-- worker whose lease lapsed cannot retire or reschedule a dispatch somebody
+-- else has since taken. Nullable, so every existing row reads as unheld, which
+-- is what a row nobody has claimed since this ran in fact is.
+ALTER TABLE {{PREFIX}}webhooks_dispatches ADD COLUMN IF NOT EXISTS claimed_by TEXT;

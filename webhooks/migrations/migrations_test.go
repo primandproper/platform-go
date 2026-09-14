@@ -139,7 +139,12 @@ func TestUpgradeStatements(T *testing.T) {
 			// dialect — what is being checked is the column, not the spelling.
 			joined := strings.ReplaceAll(strings.Join(stmts, "\n"), "ADD COLUMN IF NOT EXISTS ", "ADD COLUMN ")
 
-			for _, column := range []string{"created_by", "name", "id", "created_at", "last_updated_at", "archived_at"} {
+			for _, column := range []string{
+				"created_by", "name", "id", "created_at", "last_updated_at", "archived_at",
+				// The dispatch's lease holder. Without it every claim writes a
+				// column an upgraded deployment does not have.
+				"claimed_by",
+			} {
 				test.True(t, strings.Contains(joined, "ADD COLUMN "+column),
 					test.Sprintf("dialect %q column %q", d, column))
 			}

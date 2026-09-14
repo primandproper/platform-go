@@ -213,6 +213,90 @@ func TestRender_ScopesEveryConsumerRead(T *testing.T) {
 	}
 }
 
+// TestRender_TheOutcomeWritesAskForTheClaimThatTookTheDispatch is the fence,
+// and it is the one predicate in this corpus whose absence is invisible to a
+// single worker.
+//
+// A lease lapses while its holder is merely slow, not dead. A second worker
+// reclaims the dispatch and starts sending it, and the first one then arrives
+// with an outcome: addressed by the dispatch id alone its mark-delivered retires
+// a delivery that has not happened, and its failure write reschedules, releases
+// and eventually kills one that is still in flight.
+//
+// Both bind the name under HeldByArg rather than under the column, because both
+// also assign the column — they release the lease. One argument for the two ends
+// of that comparison would have each requiring the row to already hold the value
+// it is about to write.
+func TestRender_TheOutcomeWritesAskForTheClaimThatTookTheDispatch(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			for _, name := range []string{"MarkDispatchDelivered", "RecordDispatchFailure"} {
+				body := statement(t, Render(d), name)
+
+				test.StrContains(t, body, ClaimedByColumn+" = sqlc.arg("+HeldByArg+")",
+					test.Sprintf("statement %q does not name the claim it reports on", name))
+				test.StrContains(t, body, ClaimedByColumn+" = sqlc.narg("+ClaimedByArg+")",
+					test.Sprintf("statement %q does not release the name with the lease", name))
+			}
+		})
+	}
+}
+
+// TestRender_TheClaimStampsTheNameTheOutcomeWritesAskFor. The guard above has
+// nothing to compare against unless the claim writes one, and the horizon cannot
+// serve: two workers reading their clocks in one instant compute the same one,
+// and SQLite stores it to the second besides.
+func TestRender_TheClaimStampsTheNameTheOutcomeWritesAskFor(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			test.StrContains(t, statement(t, Render(d), "ClaimDispatches"),
+				ClaimedByColumn+" = sqlc.arg("+ClaimedByArg+")")
+		})
+	}
+}
+
+// TestRender_TheRequeueClearsTheNameAndDoesNotAskForOne is the asymmetry between
+// the two kinds of caller, pinned.
+//
+// A worker addresses a row it took, so it is guarded. An operator addresses a
+// pair, holds no claim and needs none — a replay refusable by whichever worker
+// last touched the dispatch is a replay nobody could perform. Clearing the name
+// is not optional either way: a requeued dispatch still answering to the old
+// claim could be retired by that worker's late mark-delivered, which is the
+// outcome the replay exists to undo.
+func TestRender_TheRequeueClearsTheNameAndDoesNotAskForOne(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			requeue := statement(t, Render(d), "RequeueDispatch")
+
+			test.StrContains(t, requeue, ClaimedByColumn+" = sqlc.narg("+ClaimedByArg+")")
+			test.StrNotContains(t, requeue, HeldByArg)
+		})
+	}
+}
+
+// statement is one named statement of a rendered file.
+func statement(t *testing.T, rendered, name string) string {
+	t.Helper()
+
+	found, ok := statements(rendered)[name]
+	must.True(t, ok, must.Sprintf("no statement named %q", name))
+
+	return found
+}
+
 // statementNames lists the query names a rendered file declares, in the order
 // it declares them — which is the order Render assembles the groups in, and so
 // the order a reader of the .sql meets them.

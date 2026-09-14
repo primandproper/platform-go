@@ -111,6 +111,13 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}webhooks_dispatches (
     archived_at     TIMESTAMPTZ,
     next_attempt    TIMESTAMPTZ NOT NULL,
     claimed_until   TIMESTAMPTZ,
+    -- The name of the claim that holds the lease, minted per claim and
+    -- written beside the horizon, so the two writes that report a delivery's
+    -- outcome can say which claim is speaking. Nullable, because an unheld
+    -- row has no holder rather than a holder nobody answers to — and because
+    -- the empty string is a Go zero value, which under NOT NULL DEFAULT ''
+    -- would be a name every unheld row answers to.
+    claimed_by      TEXT,
     delivered_at    TIMESTAMPTZ,
     attempts        INTEGER NOT NULL DEFAULT 0,
     last_error      TEXT,

@@ -15,6 +15,17 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}work_queue_items (
     -- nullable. The claim predicate is then one comparison instead of a
     -- comparison plus a NULL branch that every future writer has to remember.
     lease_until  TIMESTAMPTZ NOT NULL DEFAULT 'epoch',
+    -- The name of the claim holding that lease, which the completion and the
+    -- hand-back present again so a worker whose lease lapsed cannot retire or
+    -- release an item somebody else has since taken.
+    --
+    -- Nullable, where lease_until is not, and the two are not inconsistent. The
+    -- epoch sentinel above exists because the claim predicate branches on the
+    -- horizon; nothing branches on the holder, whose only reader is a
+    -- membership test that already treats NULL as no match. NOT NULL DEFAULT ''
+    -- would instead give every unheld row a name — the empty string, which is
+    -- what a caller who forgot to pass one would bind.
+    leased_by    TEXT,
     completed_at TIMESTAMPTZ,
     last_error   TEXT,
 

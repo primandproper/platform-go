@@ -51,7 +51,8 @@ const markOutboxMessagesPublishedSQLite = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = NULL,
 	claimed_by = NULL,
 	last_error = NULL
-WHERE id IN (/*SLICE:ids*/?)`
+WHERE claimed_by = ?2
+	AND id IN (/*SLICE:ids*/?)`
 
 const outboxBacklogSQLite = `SELECT
 	COUNT(*) AS depth,
@@ -84,7 +85,8 @@ const recordOutboxMessageFailureSQLite = `UPDATE {{prefix}}outbox_messages SET
 	next_attempt = ?3,
 	last_error = ?4,
 	quarantined = ?5
-WHERE id = ?6`
+WHERE id = ?6
+	AND claimed_by = ?7`
 
 const selectClaimableOutboxMessagesSQLite = `SELECT m.id
 FROM {{prefix}}outbox_messages AS m
@@ -263,13 +265,15 @@ func (q *sqliteQueries) InsertOutboxMessage(ctx context.Context, db DBTX, arg In
 	return err
 }
 
-// MarkOutboxMessagesPublished runs the :exec query against sqlite.
-func (q *sqliteQueries) MarkOutboxMessagesPublished(ctx context.Context, db DBTX, arg MarkOutboxMessagesPublishedParams) error {
+// MarkOutboxMessagesPublished runs the :execrows query against sqlite.
+func (q *sqliteQueries) MarkOutboxMessagesPublished(ctx context.Context, db DBTX, arg MarkOutboxMessagesPublishedParams) (int64, error) {
 	query := q.markOutboxMessagesPublished
 
-	args := make([]any, 0, 1+len(arg.IDs))
+	args := make([]any, 0, 2+len(arg.IDs))
 
 	args = append(args, timeTextPtr(arg.PublishedAt))
+
+	args = append(args, arg.HeldBy)
 
 	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
 
@@ -277,9 +281,12 @@ func (q *sqliteQueries) MarkOutboxMessagesPublished(ctx context.Context, db DBTX
 		args = append(args, v)
 	}
 
-	_, err := db.ExecContext(ctx, query, args...)
+	result, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
 
-	return err
+	return result.RowsAffected()
 }
 
 // OutboxBacklog runs the :one query against sqlite.
@@ -318,6 +325,7 @@ func (q *sqliteQueries) RecordOutboxMessageFailure(ctx context.Context, db DBTX,
 		arg.LastError,
 		arg.Quarantined,
 		arg.ID,
+		arg.HeldBy,
 	)
 	if err != nil {
 		return 0, err
@@ -427,6 +435,7 @@ var (
 	}(InsertOutboxMessageParams{})
 	_ = struct {
 		PublishedAt *time.Time
+		HeldBy      *string
 		IDs         []string
 	}(MarkOutboxMessagesPublishedParams{})
 	_ = struct {
@@ -444,6 +453,7 @@ var (
 		LastError    *string
 		Quarantined  bool
 		ID           string
+		HeldBy       *string
 	}(RecordOutboxMessageFailureParams{})
 	_ = struct {
 		Now            time.Time

@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS webhooks_dispatches (
     archived_at     DATETIME(6),
     next_attempt    DATETIME(6) NOT NULL,
     claimed_until   DATETIME(6),
+    claimed_by      VARCHAR(64),
     delivered_at    DATETIME(6),
     attempts        INT NOT NULL DEFAULT 0,
     last_error      TEXT,

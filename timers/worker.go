@@ -241,6 +241,14 @@ func (w *Worker[K]) pass(ctx context.Context) (int, error) {
 	// clean deploy would leave every in-flight firing to be reclaimed and run
 	// again by whoever comes back up — turning the ordinary case into the
 	// duplicate-firing case.
+	//
+	// The timeout is a whole lease, which means these writes may well land after
+	// the lease they were taken under has expired. That is the single clearest
+	// reason the fence on Complete and Release is the claim's name rather than
+	// the lease's liveness: a horizon test would refuse exactly the write this
+	// context exists to preserve. The name still says this worker holds the
+	// firing right up until somebody else takes it, which is the only moment the
+	// write should stop landing.
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), w.cfg.Lease)
 	defer cancel()
 

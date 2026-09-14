@@ -170,14 +170,23 @@ func TestRender_ScheduleTakesTheNewInstantOutright(T *testing.T) {
 // reschedule to the same instant does not, because that is what an at-least-once
 // redelivery looks like and freeing the row there would hand a live firing to a
 // second worker.
+//
+// The name on the lease is revoked under the same condition and no other. Both
+// halves or neither: a row whose horizon says free and whose name says held is a
+// row two writers disagree about, and the one that reads the name is the fence.
 func TestRender_ScheduleRevokesTheLeaseOnlyWhenTheInstantMoved(T *testing.T) {
 	T.Parallel()
 
 	schedule := statement(T, "ScheduleTimers")
 
-	test.StrContains(T, schedule, "WHEN "+querygen.Qualify(TimersTable, RunAtColumn)+
-		" IS DISTINCT FROM excluded."+RunAtColumn+" THEN "+epoch)
+	moved := "WHEN " + querygen.Qualify(TimersTable, RunAtColumn) +
+		" IS DISTINCT FROM excluded." + RunAtColumn + " THEN "
+
+	test.StrContains(T, schedule, moved+epoch)
 	test.StrContains(T, schedule, "ELSE "+querygen.Qualify(TimersTable, LeaseColumn))
+
+	test.StrContains(T, schedule, moved+"NULL")
+	test.StrContains(T, schedule, "ELSE "+querygen.Qualify(TimersTable, HolderColumn))
 }
 
 // TestRender_ScheduleLeavesTheDatabaseItsOwnColumns. created_at is the schema's
@@ -283,9 +292,16 @@ func TestRender_NextDueMeasuresToWhenTheRowBecomesClaimable(T *testing.T) {
 	test.StrNotContains(T, nextDue, querygen.Qualify(TimersTable, RunAtColumn)+" <= ")
 }
 
-// TestRender_TheKeyedWritesFenceOnTheInstant. Without it, a timer rescheduled
-// during its own firing would be retired against the schedule it no longer has.
-func TestRender_TheKeyedWritesFenceOnTheInstant(T *testing.T) {
+// TestRender_TheKeyedWritesFenceOnTheInstantAndTheClaim, which answer two
+// different races and neither of which covers the other.
+//
+// Without the instant, a timer rescheduled during its own firing would be
+// retired against the schedule it no longer has. Without the claim, a firing
+// whose lease lapsed on a slow worker would be retired by that worker while a
+// second one is still running it — a claim leaves run_at exactly where it was,
+// so the instant cannot tell the two apart — and the second worker's own
+// release would then be excluded as already-fired.
+func TestRender_TheKeyedWritesFenceOnTheInstantAndTheClaim(T *testing.T) {
 	T.Parallel()
 
 	rendered := corpus(T)
@@ -293,13 +309,49 @@ func TestRender_TheKeyedWritesFenceOnTheInstant(T *testing.T) {
 	for _, name := range []string{"CompleteTimers", "ReleaseTimers"} {
 		test.StrContains(T, rendered[name],
 			"("+querygen.Qualify(TimersTable, KeyColumn)+", "+
-				querygen.Qualify(TimersTable, RunAtColumn)+") IN (",
+				querygen.Qualify(TimersTable, RunAtColumn)+", "+
+				querygen.Qualify(TimersTable, HolderColumn)+") IN (",
 			test.Sprintf("statement %q", name))
+
+		// Inside the CTE rather than after it, so a row the fence excludes is
+		// never locked at all — and a straggler therefore contends with nobody.
+		before, _, found := strings.Cut(rendered[name], "FOR UPDATE")
+		must.True(T, found, must.Sprintf("statement %q", name))
+		test.StrContains(T, before, HoldersArg, test.Sprintf("statement %q", name))
 	}
 
-	// A cancel is not a firing and carries no instant: "stop the trial-expiry
-	// email" is about the timer, whatever it is currently scheduled for.
+	// A cancel is neither a firing nor a claim: "stop the trial-expiry email" is
+	// about the timer, whatever it is currently scheduled for and whoever
+	// happens to be holding it.
 	test.StrNotContains(T, rendered["CancelTimers"], RunAtsArg)
+	test.StrNotContains(T, rendered["CancelTimers"], HoldersArg)
+}
+
+// TestRender_TheKeyedWritesReleaseTheClaimWithTheLease keeps the two halves of a
+// lease together.
+//
+// A horizon dropped without the name on it leaves a free row reading as one
+// somebody still holds — and, worse than untidy, that name is one the worker who
+// wrote it can still present. A reschedule restarts the row, a second worker
+// claims it, and the first worker's retried completion answers to a claim that
+// ended: the fence undone by the write that was supposed to close it.
+func TestRender_TheKeyedWritesReleaseTheClaimWithTheLease(T *testing.T) {
+	T.Parallel()
+
+	rendered := corpus(T)
+
+	for _, name := range []string{"CompleteTimers", "ReleaseTimers"} {
+		test.StrContains(T, rendered[name], LeaseColumn+" = "+epoch, test.Sprintf("statement %q", name))
+		test.StrContains(T, rendered[name], HolderColumn+" = NULL", test.Sprintf("statement %q", name))
+	}
+}
+
+// TestRender_TheClaimStampsTheNameTheKeyedWritesFenceOn. The fence above has
+// nothing to compare against unless the claim writes one.
+func TestRender_TheClaimStampsTheNameTheKeyedWritesFenceOn(T *testing.T) {
+	T.Parallel()
+
+	test.StrContains(T, statement(T, "ClaimDueTimers"), HolderColumn+" = sqlc.arg("+HolderColumn+")")
 }
 
 // TestRender_TheKeyedWritesLockInPrimaryKeyOrder. `UPDATE … WHERE timer_key IN
@@ -426,8 +478,8 @@ func TestRender_EveryBatchBindsAnArrayRatherThanATuplePerRow(T *testing.T) {
 
 	for name, arrays := range map[string][]string{
 		"ScheduleTimers": {KeysArg, RunAtsArg, PayloadsArg},
-		"CompleteTimers": {KeysArg, RunAtsArg},
-		"ReleaseTimers":  {KeysArg, RunAtsArg},
+		"CompleteTimers": {KeysArg, RunAtsArg, HoldersArg},
+		"ReleaseTimers":  {KeysArg, RunAtsArg, HoldersArg},
 		"CancelTimers":   {KeysArg},
 	} {
 		for _, argument := range arrays {

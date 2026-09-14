@@ -25,8 +25,8 @@ type fakeStore struct {
 	endpointsForEvent   func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, eventType EventType) ([]*Endpoint, error)
 	enqueue             func(ctx context.Context, q database.SQLQueryExecutor, delivery *Delivery, endpointIDs []string, now time.Time) error
 	claim               func(ctx context.Context, now time.Time, limit int, leaseUntil time.Time) ([]ClaimedDispatch, error)
-	markDelivered       func(ctx context.Context, dispatchID string, at time.Time) error
-	recordFailure       func(ctx context.Context, dispatchID string, attempts int, nextAttempt time.Time, lastErr string, dead bool) error
+	markDelivered       func(ctx context.Context, claim *ClaimedDispatch, at time.Time) error
+	recordFailure       func(ctx context.Context, claim *ClaimedDispatch, attempts int, nextAttempt time.Time, lastErr string, dead bool) error
 	recordAttempt       func(ctx context.Context, attempt *Attempt) error
 	addSubscription     func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType EventType) (*Subscription, error)
 	archiveSubscription func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*Subscription, error)
@@ -112,20 +112,20 @@ func (f *fakeStore) Claim(ctx context.Context, now time.Time, limit int, leaseUn
 	return f.claim(ctx, now, limit, leaseUntil)
 }
 
-func (f *fakeStore) MarkDelivered(ctx context.Context, dispatchID string, at time.Time) error {
+func (f *fakeStore) MarkDelivered(ctx context.Context, claim *ClaimedDispatch, at time.Time) error {
 	if f.markDelivered == nil {
 		return nil
 	}
 
-	return f.markDelivered(ctx, dispatchID, at)
+	return f.markDelivered(ctx, claim, at)
 }
 
-func (f *fakeStore) RecordFailure(ctx context.Context, dispatchID string, attempts int, nextAttempt time.Time, lastErr string, dead bool) error {
+func (f *fakeStore) RecordFailure(ctx context.Context, claim *ClaimedDispatch, attempts int, nextAttempt time.Time, lastErr string, dead bool) error {
 	if f.recordFailure == nil {
 		return nil
 	}
 
-	return f.recordFailure(ctx, dispatchID, attempts, nextAttempt, lastErr, dead)
+	return f.recordFailure(ctx, claim, attempts, nextAttempt, lastErr, dead)
 }
 
 func (f *fakeStore) RecordAttempt(ctx context.Context, attempt *Attempt) error {

@@ -56,19 +56,22 @@ func Example() {
 		return
 	}
 
-	done := make([]tileKey, 0, len(items))
+	// The items themselves rather than their keys: an item is addressed by its
+	// key and the claim holding it together, so handing back what Claim gave
+	// out is what keeps a lapsed lease from reporting on somebody else's work.
+	done := make([]workqueue.Item[tileKey], 0, len(items))
 
 	for _, item := range items {
 		if err = render(ctx, item.Key); err != nil {
 			// Hand it back with a delay and a reason. Skipping this is safe
 			// too — the lease lapses and the item returns anyway, just later
 			// and without the recorded cause.
-			_ = queue.Release(ctx, time.Minute, err, item.Key)
+			_ = queue.Release(ctx, time.Minute, err, item)
 
 			continue
 		}
 
-		done = append(done, item.Key)
+		done = append(done, item)
 	}
 
 	if err = queue.Complete(ctx, done...); err != nil {

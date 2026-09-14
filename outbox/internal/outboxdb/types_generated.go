@@ -44,6 +44,7 @@ type InsertOutboxMessageParams struct {
 // MarkOutboxMessagesPublishedParams are the arguments to MarkOutboxMessagesPublished.
 type MarkOutboxMessagesPublishedParams struct {
 	PublishedAt *time.Time
+	HeldBy      *string
 	IDs         []string
 }
 
@@ -67,6 +68,7 @@ type RecordOutboxMessageFailureParams struct {
 	LastError    *string
 	Quarantined  bool
 	ID           string
+	HeldBy       *string
 }
 
 // SelectClaimableOutboxMessagesParams are the arguments to SelectClaimableOutboxMessages.

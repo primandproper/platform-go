@@ -32,6 +32,7 @@ type ArchiveSubscriptionByPairParams struct {
 // ClaimDispatchesParams are the arguments to ClaimDispatches.
 type ClaimDispatchesParams struct {
 	ClaimedUntil *time.Time
+	ClaimedBy    *string
 	IDs          []string
 }
 
@@ -378,8 +379,10 @@ type ListSubscriptionsForEndpointRow struct {
 type MarkDispatchDeliveredParams struct {
 	DeliveredAt  *time.Time
 	ClaimedUntil *time.Time
+	ClaimedBy    *string
 	LastError    *string
 	ID           string
+	HeldBy       *string
 }
 
 // ReapAttemptsParams are the arguments to ReapAttempts.
@@ -401,17 +404,20 @@ type ReapDispatchesParams struct {
 // RecordDispatchFailureParams are the arguments to RecordDispatchFailure.
 type RecordDispatchFailureParams struct {
 	ClaimedUntil *time.Time
+	ClaimedBy    *string
 	Attempts     int64
 	NextAttempt  time.Time
 	LastError    *string
 	Dead         bool
 	ID           string
+	HeldBy       *string
 }
 
 // RequeueDispatchParams are the arguments to RequeueDispatch.
 type RequeueDispatchParams struct {
 	NextAttempt  time.Time
 	ClaimedUntil *time.Time
+	ClaimedBy    *string
 	DeliveredAt  *time.Time
 	Dead         bool
 	Attempts     int64

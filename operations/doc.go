@@ -256,8 +256,13 @@ client written against one kind of operation work against every other.
 
 A lease lapses while its holder is merely slow, not dead, and the operation is
 handed to somebody else; both run. That is inherent to lease-based recovery and
-this package does not pretend otherwise — the alternative is fencing tokens and
+this package does not pretend otherwise — stopping the first one would take
 heartbeats, and the same trade-off is discussed at more length in workqueue.
+
+What does not happen is the operation being recorded wrong. The queue fences
+its completion and its hand-back on the claim that produced the item, and
+operations.Store.Begin refuses a row somebody else already holds, so the worker
+that lost its lease runs the work a second time and then writes nothing.
 
 The cost is bounded and the tools are there. Reporter.Attempt hands the Runner
 the operation ID — stable across attempts, and so a natural idempotency key —
