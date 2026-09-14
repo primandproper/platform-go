@@ -26,8 +26,11 @@ func TestStore_ClosedDatabase(T *testing.T) {
 
 		ctx, store := t.Context(), newTestStore(t)
 
-		// Close is the store's own, and it is what releases the client.
-		must.NoError(t, store.Close())
+		// The client is closed directly rather than through store.Close, which
+		// deliberately leaves it open — it is the caller's handle, not this
+		// store's. An outage is the client going away underneath a store that
+		// is otherwise fine, which is exactly this.
+		must.NoError(t, store.db.Close())
 
 		now := time.Now().UTC()
 

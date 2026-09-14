@@ -48,6 +48,11 @@ type Backend[T any] struct {
 	clock clock.Clock
 	o11y  observability.Observer
 
+	// stopSweeper ends the sweep goroutine WithSweeper started, and is nil when
+	// none was. It is what Close has to release, because it is the only thing
+	// this backend owns — see Close.
+	stopSweeper context.CancelFunc
+
 	sweptCounter       metrics.Int64Counter
 	sweepErrorsCounter metrics.Int64Counter
 }
@@ -61,7 +66,7 @@ var _ sessions.Backend[struct{}] = (*Backend[struct{}])(nil)
 // did not take — the one failure a user retries by signing in again, producing
 // another session that also appears not to exist. Session rows are small,
 // single-key, and short-lived; they are not the reads worth scaling out.
-func NewBackend[T any](cfg *Config, db database.Client, opts ...Option) (*Backend[T], error) {
+func NewBackend[T any](cfg *Config, db database.Client, opts ...Option) (_ *Backend[T], err error) {
 	if cfg == nil {
 		return nil, platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil session database config")
 	}
@@ -74,11 +79,22 @@ func NewBackend[T any](cfg *Config, db database.Client, opts ...Option) (*Backen
 		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "session store dialect %q", d)
 	}
 
-	if err := migrations.ValidatePrefix(cfg.TablePrefix); err != nil {
+	if err = migrations.ValidatePrefix(cfg.TablePrefix); err != nil {
 		return nil, err
 	}
 
 	o := newOptions(opts)
+
+	// WithSweeper derives the sweeper's context, so between here and the point
+	// below where this backend takes ownership of the cancel there is a live child
+	// of the caller's context that nothing would ever end. Returning an error in
+	// between would leave it hanging off that context for as long as that one
+	// lives, which in a composition root is the life of the process.
+	defer func() {
+		if err != nil && o.stopSweeper != nil {
+			o.stopSweeper()
+		}
+	}()
 
 	b := &Backend[T]{
 		db:    db,
@@ -104,7 +120,11 @@ func NewBackend[T any](cfg *Config, db database.Client, opts ...Option) (*Backen
 		return nil, err
 	}
 
+	// The context is the one WithSweeper derived, and its cancel is what Close
+	// ends the goroutine with.
 	if o.sweepCtx != nil {
+		b.stopSweeper = o.stopSweeper
+
 		go b.sweepEvery(o.sweepCtx, o.sweepInterval)
 	}
 
@@ -315,7 +335,26 @@ func (b *Backend[T]) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// Close releases the database client.
+// Close stops the sweeper WithSweeper started and reports nothing. It is safe
+// to call more than once, and on a backend that started no sweeper.
+//
+// It deliberately does not close the database.Client. The client is the
+// caller's — NewBackend takes one that is already open, and in a service it is
+// the same handle every other store in the process reads and writes through, so
+// a Close here that shut the pool down would take the audit log, the webhook
+// queue and everything else with it. The composition root closes what it opened,
+// after the components using it have stopped.
+//
+// What is left to release is therefore this backend's own goroutine, which the
+// context passed to WithSweeper otherwise bounds. Ending it here means a caller
+// who wants the sweep to stop has a way to say so that does not require them to
+// cancel a context that is not only this backend's — and it is what stops a
+// closed store logging a failed sweep every interval for the rest of the
+// process's life.
 func (b *Backend[T]) Close() error {
-	return b.db.Close()
+	if b.stopSweeper != nil {
+		b.stopSweeper()
+	}
+
+	return nil
 }

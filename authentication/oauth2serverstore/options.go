@@ -27,6 +27,7 @@ type (
 
 		//nolint:containedctx // deliberate: see WithSweeper
 		sweepCtx      context.Context
+		stopSweeper   context.CancelFunc
 		sweepInterval time.Duration
 	}
 )
@@ -45,7 +46,7 @@ func newOptions(opts []Option) *options {
 }
 
 // WithSweeper starts a background sweep that removes dead records every
-// interval, until ctx is done.
+// interval, until ctx is done or Close is called — whichever comes first.
 //
 // Unlike a cache, a table does not reclaim its own expired rows, and this
 // schema has four of them — one of which an unauthenticated caller can write
@@ -60,7 +61,15 @@ func WithSweeper(ctx context.Context, interval time.Duration) Option {
 			return
 		}
 
-		o.sweepCtx = ctx
+		// The store's scope rather than the caller's: a cancel of its own is
+		// what lets Close end the goroutine without cancelling a context that
+		// belongs to more than this store. Applying the option twice ends the
+		// context the first application derived, which no store is running on.
+		if o.stopSweeper != nil {
+			o.stopSweeper()
+		}
+
+		o.sweepCtx, o.stopSweeper = context.WithCancel(ctx)
 		o.sweepInterval = interval
 	}
 }

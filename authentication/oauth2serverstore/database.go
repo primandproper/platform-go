@@ -46,6 +46,11 @@ type Store struct {
 	clock clock.Clock
 	o11y  observability.Observer
 
+	// stopSweeper ends the sweep goroutine WithSweeper started, and is nil when
+	// none was. It is what Close has to release, because it is the only thing
+	// this store owns — see Close.
+	stopSweeper context.CancelFunc
+
 	sweptCounter       metrics.Int64Counter
 	sweepErrorsCounter metrics.Int64Counter
 }
@@ -58,7 +63,7 @@ type Store struct {
 // by logging in again, producing another code that also appears not to exist.
 // These rows are small, single-key, and short-lived; they are not the reads
 // worth scaling out.
-func NewStore(cfg *Config, db database.Client, opts ...Option) (*Store, error) {
+func NewStore(cfg *Config, db database.Client, opts ...Option) (_ *Store, err error) {
 	if cfg == nil {
 		return nil, platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil oauth2 database config")
 	}
@@ -72,11 +77,22 @@ func NewStore(cfg *Config, db database.Client, opts ...Option) (*Store, error) {
 		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "oauth2 store dialect %q", d)
 	}
 
-	if err := migrations.ValidatePrefix(cfg.TablePrefix); err != nil {
+	if err = migrations.ValidatePrefix(cfg.TablePrefix); err != nil {
 		return nil, err
 	}
 
 	o := newOptions(opts)
+
+	// WithSweeper derives the sweeper's context, so between here and the point
+	// below where this store takes ownership of the cancel there is a live child
+	// of the caller's context that nothing would ever end. Returning an error in
+	// between would leave it hanging off that context for as long as that one
+	// lives, which in a composition root is the life of the process.
+	defer func() {
+		if err != nil && o.stopSweeper != nil {
+			o.stopSweeper()
+		}
+	}()
 
 	s := &Store{
 		db:    db,
@@ -104,7 +120,11 @@ func NewStore(cfg *Config, db database.Client, opts ...Option) (*Store, error) {
 		return nil, err
 	}
 
+	// The context is the one WithSweeper derived, and its cancel is what Close
+	// ends the goroutine with.
 	if o.sweepCtx != nil {
+		s.stopSweeper = o.stopSweeper
+
 		go s.sweepEvery(o.sweepCtx, o.sweepInterval)
 	}
 
@@ -628,9 +648,26 @@ func (s *Store) Sweep(ctx context.Context) (int64, error) {
 	return swept, nil
 }
 
-// Close releases the database client.
+// Close stops the sweeper WithSweeper started and reports nothing. It is safe
+// to call more than once, and on a store that started no sweeper.
+//
+// It deliberately does not close the database.Client. The client is the
+// caller's — NewStore takes one that is already open, and in a service it is the
+// same handle every other store in the process reads and writes through, so a
+// Close here that shut the pool down would take the audit log, the sessions
+// table and everything else with it. The composition root closes what it opened,
+// after the components using it have stopped.
+//
+// What is left to release is therefore this store's own goroutine, which the
+// context passed to WithSweeper otherwise bounds. Ending it here means a caller
+// who wants the sweep to stop has a way to say so that does not require them to
+// cancel a context that is not only this store's.
 func (s *Store) Close() error {
-	return s.db.Close()
+	if s.stopSweeper != nil {
+		s.stopSweeper()
+	}
+
+	return nil
 }
 
 // now reads the clock at the resolution every stamped time uses.

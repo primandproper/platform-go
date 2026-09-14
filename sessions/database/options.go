@@ -37,6 +37,7 @@ type (
 
 		//nolint:containedctx // deliberate: see WithSweeper
 		sweepCtx      context.Context
+		stopSweeper   context.CancelFunc
 		sweepInterval time.Duration
 	}
 )
@@ -81,15 +82,24 @@ func WithCodec(codec encoding.Codec) Option {
 // rather than from a scheduler that calls Sweep, which is the better answer for
 // a fleet — one sweeper, not one per replica.
 //
-// The context bounds the goroutine's life. Passing a nil context or a
-// non-positive interval starts nothing.
+// The context bounds the goroutine's life, and so does Close — whichever comes
+// first. Passing a nil context or a non-positive interval starts nothing.
 func WithSweeper(ctx context.Context, interval time.Duration) Option {
 	return func(o *options) {
 		if ctx == nil || interval <= 0 {
 			return
 		}
 
-		o.sweepCtx = ctx
+		// The backend's scope rather than the caller's: a cancel of its own is
+		// what lets Close end the goroutine without cancelling a context that
+		// belongs to more than this backend. Applying the option twice ends the
+		// context the first application derived, which no backend is running
+		// on.
+		if o.stopSweeper != nil {
+			o.stopSweeper()
+		}
+
+		o.sweepCtx, o.stopSweeper = context.WithCancel(ctx)
 		o.sweepInterval = interval
 	}
 }

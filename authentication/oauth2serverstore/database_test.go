@@ -2,6 +2,7 @@ package oauth2serverstore
 
 import (
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
@@ -35,9 +36,12 @@ func TestStore_Conformance(T *testing.T) {
 			store, err := NewStore(&Config{}, client, WithClock(c))
 			must.NoError(tb, err)
 
-			// Deliberately not closed: Close releases the database client, and
-			// the client here is shared by every subtest and by the second
-			// handle the cross-instance case builds.
+			// Closed at the end of the subtest, which the shared client
+			// survives: Close stops this store's sweeper and nothing else, so
+			// the second handle the cross-instance case builds still reads the
+			// same rows.
+			tb.Cleanup(func() { _ = store.Close() })
+
 			return store
 		})
 	})
@@ -284,4 +288,108 @@ func TestStore_DecodeFailureSurfaces(T *testing.T) {
 		test.Nil(t, got)
 		test.StrContains(t, err.Error(), "decoding registered scopes")
 	})
+}
+
+// Close is this store's shutdown and nobody else's.
+//
+// The client it was built over belongs to whoever opened it, which in a service
+// is the composition root and every other store in the process. What Close has
+// to release is the one thing this store started for itself.
+func TestStore_Close(T *testing.T) {
+	T.Parallel()
+
+	T.Run("leaves the caller's client open", func(t *testing.T) {
+		t.Parallel()
+
+		ctx := t.Context()
+		client := newTestClient(t)
+
+		store, err := NewStore(&Config{}, client)
+		must.NoError(t, err)
+
+		must.NoError(t, store.Close())
+
+		// The pool still answers, which is what the audit log, the sessions
+		// table and everything else sharing this handle depend on.
+		var count int
+		must.NoError(t, client.Writer().
+			QueryRowContext(ctx, "SELECT COUNT(*) FROM oauth2_clients").Scan(&count))
+		test.EqOp(t, 0, count)
+
+		// A store built afterwards writes through it, and the closed one reads
+		// what that store wrote.
+		other, err := NewStore(&Config{}, client)
+		must.NoError(t, err)
+
+		must.NoError(t, other.CreateClient(ctx, &oauth2server.Client{
+			CreatedAt: time.Now().UTC().Truncate(time.Microsecond), ID: "x",
+		}))
+
+		got, err := store.GetClient(ctx, "x")
+		must.NoError(t, err)
+		must.NotNil(t, got)
+		test.EqOp(t, "x", got.ID)
+	})
+
+	// The wall clock is deliberate rather than an injected fake: inside a
+	// synctest bubble clock.NewClock reads the bubble's time, so the sweeper's
+	// ticker advances with time.Sleep and needs no test double.
+	T.Run("stops the sweeper", func(t *testing.T) {
+		t.Parallel()
+
+		synctest.Test(t, func(t *testing.T) {
+			client := newTestClient(t)
+
+			store, err := NewStore(&Config{}, client, WithSweeper(t.Context(), 10*time.Second))
+			must.NoError(t, err)
+
+			must.NoError(t, store.Close())
+			synctest.Wait()
+
+			now := time.Now().UTC()
+			must.NoError(t, store.CreateAuthorizationCode(t.Context(), &oauth2server.AuthorizationCode{
+				IssuedAt:  now,
+				ExpiresAt: now.Add(time.Minute),
+				Hash:      oauth2server.Hash("abandoned"),
+				ClientID:  "x",
+			}))
+
+			time.Sleep(time.Minute + 10*time.Second)
+			synctest.Wait()
+
+			// Still there, well past its deadline and past several ticks,
+			// because nothing is sweeping any more. Left running it would also
+			// be sweeping through a client the caller may since have closed,
+			// logging a failure every interval for the rest of the process.
+			test.EqOp(t, 1, codeCount(t, store))
+		})
+	})
+
+	T.Run("is safe more than once, and on a store with no sweeper", func(t *testing.T) {
+		t.Parallel()
+
+		store := newTestStore(t)
+		test.Nil(t, store.stopSweeper)
+
+		must.NoError(t, store.Close())
+		must.NoError(t, store.Close())
+
+		swept, err := NewStore(&Config{}, newTestClient(t), WithSweeper(t.Context(), time.Minute))
+		must.NoError(t, err)
+
+		must.NoError(t, swept.Close())
+		must.NoError(t, swept.Close())
+	})
+}
+
+// codeCount counts what is actually in the authorization code table, which is
+// what a sweeper changes and a read cannot see.
+func codeCount(t *testing.T, store *Store) int {
+	t.Helper()
+
+	var count int
+	must.NoError(t, store.db.Writer().
+		QueryRowContext(t.Context(), "SELECT COUNT(*) FROM oauth2_authorization_codes").Scan(&count))
+
+	return count
 }
