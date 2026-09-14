@@ -158,6 +158,22 @@ USING target
 WHERE {{prefix}}work_queue_items.queue_name = target.queue_name
 	AND {{prefix}}work_queue_items.item_key = target.item_key`
 
+const requeueItemsPostgreSQL = `WITH target AS (
+	SELECT {{prefix}}work_queue_items.queue_name, {{prefix}}work_queue_items.item_key
+	FROM {{prefix}}work_queue_items
+	WHERE {{prefix}}work_queue_items.queue_name = $1
+		AND {{prefix}}work_queue_items.completed_at IS NULL
+		AND {{prefix}}work_queue_items.item_key = ANY($2::text[])
+	ORDER BY {{prefix}}work_queue_items.queue_name, {{prefix}}work_queue_items.item_key
+	FOR UPDATE
+)
+UPDATE {{prefix}}work_queue_items SET
+	attempts = 0,
+	available_at = CURRENT_TIMESTAMP
+FROM target
+WHERE {{prefix}}work_queue_items.queue_name = target.queue_name
+	AND {{prefix}}work_queue_items.item_key = target.item_key`
+
 // postgresqlQueries answers every query in Querier against postgresql.
 type postgresqlQueries struct {
 	claimDueItems      string
@@ -167,6 +183,7 @@ type postgresqlQueries struct {
 	reapCompletedItems string
 	releaseItems       string
 	removeItems        string
+	requeueItems       string
 }
 
 // newPostgreSQL returns the postgresql querier with prefix substituted into every
@@ -180,6 +197,7 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		reapCompletedItems: strings.ReplaceAll(reapCompletedItemsPostgreSQL, prefixMarker, prefix),
 		releaseItems:       strings.ReplaceAll(releaseItemsPostgreSQL, prefixMarker, prefix),
 		removeItems:        strings.ReplaceAll(removeItemsPostgreSQL, prefixMarker, prefix),
+		requeueItems:       strings.ReplaceAll(requeueItemsPostgreSQL, prefixMarker, prefix),
 	}
 }
 
@@ -312,6 +330,19 @@ func (q *postgresqlQueries) RemoveItems(ctx context.Context, db DBTX, arg Remove
 	return result.RowsAffected()
 }
 
+// RequeueItems runs the :execrows query against postgresql.
+func (q *postgresqlQueries) RequeueItems(ctx context.Context, db DBTX, arg RequeueItemsParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.requeueItems,
+		arg.QueueName,
+		arg.ItemKeys,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // Shape assertions.
 //
 // Each conversion below compiles only if the shared type still has exactly
@@ -371,4 +402,8 @@ var (
 		QueueName string
 		ItemKeys  []string
 	}(RemoveItemsParams{})
+	_ = struct {
+		QueueName string
+		ItemKeys  []string
+	}(RequeueItemsParams{})
 )

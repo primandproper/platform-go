@@ -42,6 +42,7 @@ const (
 	depthKey         = "workqueue.depth"
 	readyKey         = "workqueue.ready"
 	oldestReadyKey   = "workqueue.oldest_ready_age_seconds"
+	requeuedKey      = "workqueue.requeued"
 	reapedKey        = "workqueue.reaped"
 	notifyChannelKey = "workqueue.notify_channel"
 )
@@ -145,6 +146,7 @@ type Queue[K comparable] struct {
 	releasedCounter  metrics.Int64Counter
 	fencedCounter    metrics.Int64Counter
 	removedCounter   metrics.Int64Counter
+	requeuedCounter  metrics.Int64Counter
 	reapedCounter    metrics.Int64Counter
 	retryCounter     metrics.Int64Counter
 
@@ -308,6 +310,7 @@ func (q *Queue[K]) buildInstruments(metricsProvider metrics.Provider) error {
 		{&q.releasedCounter, "items_released"},
 		{&q.fencedCounter, "items_fenced"},
 		{&q.removedCounter, "items_removed"},
+		{&q.requeuedCounter, "items_requeued"},
 		{&q.reapedCounter, "items_reaped"},
 		{&q.retryCounter, "write_retries"},
 	}
@@ -751,6 +754,63 @@ func (q *Queue[K]) Remove(ctx context.Context, keys ...K) error {
 	q.removedCounter.Add(ctx, affected, q.attrs)
 
 	return nil
+}
+
+// Requeue hands stalled items back to the queue and reports how many it
+// revived: their attempt counters go back to zero and they become claimable
+// immediately.
+//
+// It is the way out of Config.MaxAttempts, and the only one. An item that has
+// exhausted its attempts is excluded from every claim and stays in the table so
+// that an operator can see what it died of; Enqueue will not revive it, because
+// a re-enqueue of an outstanding item merges rather than restarts, and a ceiling
+// that any read path's enqueue could lift would not be a ceiling. Call this once
+// the cause is fixed.
+//
+// What it keeps is why it exists rather than a Remove followed by an Enqueue.
+// The item's enqueued_at still says when the work was first asked for, its
+// priority still says how urgent it was, and its last error still says what went
+// wrong — the three facts a stalled row was kept around for, and the three a
+// delete-then-insert throws away.
+//
+// It takes keys rather than Items, like Remove and unlike Complete and Release:
+// an operator reviving work holds no claim on it. Reviving an item somebody
+// currently holds a lease on is allowed and does not disturb the lease — an item
+// can be leased and stalled at once, when the claim that reached the ceiling is
+// still running, and that worker's outcome is still its own to report.
+//
+// Items that have already been completed are not matched, and neither are keys
+// the queue has never heard of, which is what the returned count is for: an
+// operator naming forty keys and reviving twelve has twenty-eight that are
+// finished or gone. There is no other way to learn it — Stats.Stalled is an
+// aggregate, and nothing here reads a single item.
+func (q *Queue[K]) Requeue(ctx context.Context, keys ...K) (int64, error) {
+	ctx, op := q.o11y.Begin(ctx, observability.WithValue(itemCountKey, len(keys)))
+	defer op.End()
+
+	affected, err := q.writeKeys(ctx, "requeue", keys, func(encoded []string) (int64, error) {
+		return q.q.RequeueItems(ctx, q.client.Writer(), workqueuedb.RequeueItemsParams{
+			QueueName: q.cfg.Name,
+			ItemKeys:  encoded,
+		})
+	})
+	if err != nil {
+		return 0, op.Error(err, "requeueing work queue items")
+	}
+
+	op.Set(requeuedKey, affected)
+
+	if affected > 0 {
+		q.requeuedCounter.Add(ctx, affected, q.attrs)
+
+		// Revived items are claimable now, so whoever is parked on Wait should
+		// hear about it for the same reason an enqueue notifies — otherwise the
+		// work an operator just released waits out a poll interval. Nothing is
+		// notified when nothing moved.
+		q.notify(ctx)
+	}
+
+	return affected, nil
 }
 
 // Reap deletes completed items that have aged past Config.Retention, up to

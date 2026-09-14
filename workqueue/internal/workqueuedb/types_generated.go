@@ -74,3 +74,9 @@ type RemoveItemsParams struct {
 	QueueName string
 	ItemKeys  []string
 }
+
+// RequeueItemsParams are the arguments to RequeueItems.
+type RequeueItemsParams struct {
+	QueueName string
+	ItemKeys  []string
+}
