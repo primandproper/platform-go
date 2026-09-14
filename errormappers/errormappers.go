@@ -3,17 +3,22 @@ package errormappers
 import (
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
+	"github.com/primandproper/platform-go/v14/entitlements"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	"github.com/primandproper/platform-go/v14/links"
+	"github.com/primandproper/platform-go/v14/mediaregistry"
+	"github.com/primandproper/platform-go/v14/metering"
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
 	"github.com/primandproper/platform-go/v14/settings"
+	"github.com/primandproper/platform-go/v14/shredding"
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/webhooks"
 
@@ -149,4 +154,47 @@ func Register() {
 	// a signup form or clicking an unsubscribe link. See
 	// waitlists.ClientSafeSentinels.
 	grpcerrors.RegisterClientSafeSentinels(waitlists.ClientSafeSentinels...)
+
+	httperrors.RegisterHTTPErrorMapper(passwordreset.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(passwordreset.GRPCMapper)
+
+	// The other reader who is not signed in — that is the whole situation a
+	// reset link exists for. All three of its outcomes are one code on each
+	// transport, so without the list somebody holding a day-old link is told
+	// "FailedPrecondition" where the three sentinels exist to tell them which.
+	// See passwordreset.ClientSafeSentinels.
+	grpcerrors.RegisterClientSafeSentinels(passwordreset.ClientSafeSentinels...)
+
+	httperrors.RegisterHTTPErrorMapper(metering.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(metering.GRPCMapper)
+
+	// No client-safe sentinels for metering. Its six refusals are the ingest
+	// path's, the caller is a machine posting usage rather than a person reading
+	// a page, and what that caller branches on is the sentinel — which survives
+	// the wire whether or not gRPC is allowed to quote it. The field to fix is
+	// named in the message the HTTP mapper writes.
+	//
+	// The same reading for entitlements below: the two refusals a request path
+	// meets are platform sentinels, already mapped and already worded, and the
+	// one this package maps collides with nothing else it maps.
+	httperrors.RegisterHTTPErrorMapper(entitlements.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(entitlements.GRPCMapper)
+
+	httperrors.RegisterHTTPErrorMapper(shredding.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(shredding.GRPCMapper)
+
+	// No client-safe sentinels for shredding either, and here it is the codes
+	// rather than the reader: its three mapped refusals are NotFound, Aborted and
+	// InvalidArgument, so the code already says which happened. The one whose
+	// wording is deliberately *narrower* than the sentinel's is
+	// ErrSubjectShredded, which must not confirm to whoever is asking that a
+	// particular person was ever here.
+
+	httperrors.RegisterHTTPErrorMapper(mediaregistry.HTTPMapper)
+	grpcerrors.RegisterGRPCErrorMapper(mediaregistry.GRPCMapper)
+
+	// No client-safe sentinels for mediaregistry. Like webhooks, its refusals
+	// name a thing a consumer's upload form is about to re-send — a key, a
+	// belongs-to subject, a list of ids — and the message the mapper writes says
+	// which one.
 }

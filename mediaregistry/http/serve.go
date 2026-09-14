@@ -383,11 +383,14 @@ func (h *Handler) writeWhole(
 //
 // An absent object, an object in another tenant and an object the caller is not
 // entitled to arrive here as one error and leave as one answer. That mapping is
-// made here rather than through a registered HTTP error mapper: registry ships
-// none, and adding one would put the module's metadata sentinels on a wire that
-// carries no metadata — this route answers with an object or with this.
-// Everything else goes through errors/http, which maps the primitives, and
-// resolves to a 500 for the bucket failures that are the honest 500s.
+// made here rather than read out of the registry a mapper would be in, and it
+// stays that way now that mediaregistry ships a pair: this route answers with an
+// object or with this, so what a client is told must not depend on whether a
+// composition root remembered to call errormappers.Register. The two answers
+// agree — mediaregistry.HTTPMapper resolves ErrObjectNotFound to the same 404 —
+// and agreeing is the point rather than a coincidence to lean on. Everything
+// else goes through errors/http, which maps the primitives, and resolves to a
+// 500 for the bucket failures that are the honest 500s.
 func (h *Handler) refuse(ctx context.Context, res nethttp.ResponseWriter, span observability.Operation, err error) {
 	status, body := httpx.ToAPIResponse(err)
 

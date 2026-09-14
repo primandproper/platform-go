@@ -5,17 +5,22 @@ import (
 
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
+	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/dataprivacy"
+	"github.com/primandproper/platform-go/v14/entitlements"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	"github.com/primandproper/platform-go/v14/links"
+	"github.com/primandproper/platform-go/v14/mediaregistry"
+	"github.com/primandproper/platform-go/v14/metering"
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/sessions"
 	"github.com/primandproper/platform-go/v14/settings"
+	"github.com/primandproper/platform-go/v14/shredding"
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/webhooks"
 
@@ -78,6 +83,11 @@ const (
 	issueReportsPkg  = "issuereports"
 	settingsPkg      = "settings"
 	waitlistsPkg     = "waitlists"
+	passwordResetPkg = "authentication/passwordreset"
+	meteringPkg      = "metering"
+	entitlementsPkg  = "entitlements"
+	shreddingPkg     = "shredding"
+	mediaRegistryPkg = "mediaregistry"
 )
 
 // Decision is one sentinel and what this module decided it means on the wire.
@@ -727,6 +737,154 @@ var Matrix = map[string]map[string]Decision{
 		// honest reply.
 		"ErrCursorStalled": {Err: settings.ErrCursorStalled, Is: Unhandled},
 	},
+
+	passwordResetPkg: {
+		// The three a person meets, and the three the package documentation
+		// argues they are owed. One code and one gRPC status between them, with
+		// the difference carried in the message — which is why these three are
+		// also passwordreset.ClientSafeSentinels.
+		"ErrTokenNotFound": {Err: passwordreset.ErrTokenNotFound, Is: Mapped},
+		"ErrTokenExpired":  {Err: passwordreset.ErrTokenExpired, Is: Mapped},
+		"ErrTokenRedeemed": {Err: passwordreset.ErrTokenRedeemed, Is: Mapped},
+
+		// Two nil arguments and two empty ones, answered by the platform
+		// mappers because that is the tier those sentinels belong to.
+		"ErrEmptySecret":       {Err: passwordreset.ErrEmptySecret, Is: Platform},
+		"ErrEmptyUserID":       {Err: passwordreset.ErrEmptyUserID, Is: Platform},
+		"ErrNilConfig":         {Err: passwordreset.ErrNilConfig, Is: Platform},
+		"ErrNilDatabaseClient": {Err: passwordreset.ErrNilDatabaseClient, Is: Platform},
+
+		// A TTL of zero is an unset configuration field read at issuance. It
+		// reaches a client only through a service that shipped broken.
+		"ErrNonPositiveLifetime": {Err: passwordreset.ErrNonPositiveLifetime, Is: Unhandled},
+	},
+
+	meteringPkg: {
+		// The ingest path, which is the only path here a client is on. Five are
+		// what Usage.validate refuses a record for and the sixth is a meter the
+		// registry does not hold; all six are the caller's record being wrong
+		// rather than the service being unwell.
+		"ErrEmptySubject":          {Err: metering.ErrEmptySubject, Is: Mapped},
+		"ErrEmptyIdempotencyKey":   {Err: metering.ErrEmptyIdempotencyKey, Is: Mapped},
+		"ErrIdempotencyKeyTooLong": {Err: metering.ErrIdempotencyKeyTooLong, Is: Mapped},
+		"ErrInvalidMeterName":      {Err: metering.ErrInvalidMeterName, Is: Mapped},
+		"ErrNegativeQuantity":      {Err: metering.ErrNegativeQuantity, Is: Mapped},
+		"ErrUnknownMeter":          {Err: metering.ErrUnknownMeter, Is: Mapped},
+
+		// The seven nil arguments, which wrap errors.ErrNilInputParameter.
+		"ErrNilDatabaseClient":    {Err: metering.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilEntitlementReader": {Err: metering.ErrNilEntitlementReader, Is: Platform},
+		"ErrNilExecutor":          {Err: metering.ErrNilExecutor, Is: Platform},
+		"ErrNilProviderMapper":    {Err: metering.ErrNilProviderMapper, Is: Platform},
+		"ErrNilRegistry":          {Err: metering.ErrNilRegistry, Is: Platform},
+		"ErrNilStore":             {Err: metering.ErrNilStore, Is: Platform},
+		"ErrNilUsageReporter":     {Err: metering.ErrNilUsageReporter, Is: Platform},
+
+		// Everything raised while the registry is assembled. Two registrations
+		// under one name, a quota over a window its meter does not bucket by, a
+		// period nothing resolves, a billing period with no resolver, a limits
+		// table that cannot be served, an aggregation the store cannot compute,
+		// and an Enforcer asked about a meter nobody gave a quota. None of them
+		// is anything a client sent, and each one reaches a request only through
+		// a service that was built wrong.
+		"ErrDuplicateMeter":          {Err: metering.ErrDuplicateMeter, Is: Unhandled},
+		"ErrDuplicateQuota":          {Err: metering.ErrDuplicateQuota, Is: Unhandled},
+		"ErrInvalidPlanLimits":       {Err: metering.ErrInvalidPlanLimits, Is: Unhandled},
+		"ErrNoBillingPeriodResolver": {Err: metering.ErrNoBillingPeriodResolver, Is: Unhandled},
+		"ErrNoQuota":                 {Err: metering.ErrNoQuota, Is: Unhandled},
+		"ErrPeriodMismatch":          {Err: metering.ErrPeriodMismatch, Is: Unhandled},
+		"ErrUnknownPeriod":           {Err: metering.ErrUnknownPeriod, Is: Unhandled},
+		"ErrUnsupportedAggregation":  {Err: metering.ErrUnsupportedAggregation, Is: Unhandled},
+
+		// The flusher's two, raised inside a worker on a timer where nobody is
+		// waiting on a response. ErrNoProviderRef is not even a failure — the
+		// flusher reads it as "nothing to post" — and a panic recovered from a
+		// provider post is the component telling its own logs.
+		"ErrFlusherPanicked": {Err: metering.ErrFlusherPanicked, Is: Unhandled},
+		"ErrNoProviderRef":   {Err: metering.ErrNoProviderRef, Is: Unhandled},
+	},
+
+	entitlementsPkg: {
+		// The one answer about an account this package declares itself. The two
+		// a request path actually meets are below, and are the platform's.
+		"ErrNoPlan": {Err: entitlements.ErrNoPlan, Is: Mapped},
+
+		// ErrNotEntitled and ErrQuotaExhausted are aliases for the platform
+		// sentinels rather than errors of this package's own, which is what lets
+		// errors/http and errors/grpc map them without importing a SQL store and
+		// a job scheduler to do it. Three nil arguments join them.
+		"ErrNotEntitled":    {Err: entitlements.ErrNotEntitled, Is: Platform},
+		"ErrQuotaExhausted": {Err: entitlements.ErrQuotaExhausted, Is: Platform},
+		"ErrNilCatalog":     {Err: entitlements.ErrNilCatalog, Is: Platform},
+		"ErrNilPlanSource":  {Err: entitlements.ErrNilPlanSource, Is: Platform},
+		"ErrNilRegistry":    {Err: entitlements.ErrNilRegistry, Is: Platform},
+
+		// A catalog being built, and a Check naming a feature nobody declared.
+		// The second is the one worth pausing on: an unregistered feature key is
+		// a typo in the calling code, and answering it as a denial would have a
+		// consumer ship a permanently dark feature and blame the plan. The empty
+		// account is the same shape — a Check for nobody is a call the process
+		// made, not a claim a client can send.
+		"ErrDuplicateFeature":      {Err: entitlements.ErrDuplicateFeature, Is: Unhandled},
+		"ErrDuplicateGrant":        {Err: entitlements.ErrDuplicateGrant, Is: Unhandled},
+		"ErrDuplicatePlan":         {Err: entitlements.ErrDuplicatePlan, Is: Unhandled},
+		"ErrEmptyAccount":          {Err: entitlements.ErrEmptyAccount, Is: Unhandled},
+		"ErrEnforcerRequired":      {Err: entitlements.ErrEnforcerRequired, Is: Unhandled},
+		"ErrGrantFlagNotAllowed":   {Err: entitlements.ErrGrantFlagNotAllowed, Is: Unhandled},
+		"ErrInvalidFeatureKey":     {Err: entitlements.ErrInvalidFeatureKey, Is: Unhandled},
+		"ErrInvalidKind":           {Err: entitlements.ErrInvalidKind, Is: Unhandled},
+		"ErrInvalidPlanName":       {Err: entitlements.ErrInvalidPlanName, Is: Unhandled},
+		"ErrLimitOnBooleanFeature": {Err: entitlements.ErrLimitOnBooleanFeature, Is: Unhandled},
+		"ErrMeterNotAllowed":       {Err: entitlements.ErrMeterNotAllowed, Is: Unhandled},
+		"ErrMeterRequired":         {Err: entitlements.ErrMeterRequired, Is: Unhandled},
+		"ErrNegativeLimit":         {Err: entitlements.ErrNegativeLimit, Is: Unhandled},
+		"ErrUnknownFeature":        {Err: entitlements.ErrUnknownFeature, Is: Unhandled},
+		"ErrUnknownPlan":           {Err: entitlements.ErrUnknownPlan, Is: Unhandled},
+	},
+
+	shreddingPkg: {
+		// A destroyed key read as an absence, a shred that lost its race, and a
+		// subject naming nobody. The first is erasure working rather than a
+		// server fault, which is the whole reason it is not left to fall through
+		// to a 500.
+		"ErrSubjectShredded": {Err: shredding.ErrSubjectShredded, Is: Mapped},
+		"ErrShredContended":  {Err: shredding.ErrShredContended, Is: Mapped},
+		"ErrEmptySubjectID":  {Err: shredding.ErrEmptySubjectID, Is: Mapped},
+
+		// The five nil arguments, which wrap errors.ErrNilInputParameter.
+		"ErrNilDatabaseClient": {Err: shredding.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilInvalidator":    {Err: shredding.ErrNilInvalidator, Is: Platform},
+		"ErrNilKeyWrapper":     {Err: shredding.ErrNilKeyWrapper, Is: Platform},
+		"ErrNilPublisher":      {Err: shredding.ErrNilPublisher, Is: Platform},
+		"ErrNilStore":          {Err: shredding.ErrNilStore, Is: Platform},
+
+		// The two that are evidence rather than answers. A ciphertext for a
+		// subject with no key means the data and the keys table disagree —
+		// usually a restore of one without the other — and a live row holding no
+		// wrapped key is a row edited outside this package. Neither describes
+		// anything the caller did, and a 500 is what a deployment in that state
+		// has earned.
+		"ErrNoKey":              {Err: shredding.ErrNoKey, Is: Unhandled},
+		"ErrKeyMaterialMissing": {Err: shredding.ErrKeyMaterialMissing, Is: Unhandled},
+	},
+
+	mediaRegistryPkg: {
+		// The five a consumer's own upload handler can be told, which is the
+		// endpoint these are for — mediaregistry/http is the guarded serve and
+		// answers its own 404 before any encoding happens.
+		"ErrObjectNotFound":    {Err: mediaregistry.ErrObjectNotFound, Is: Mapped},
+		"ErrObjectKeyTaken":    {Err: mediaregistry.ErrObjectKeyTaken, Is: Mapped},
+		"ErrPartialSubject":    {Err: mediaregistry.ErrPartialSubject, Is: Mapped},
+		"ErrUnattachedSubject": {Err: mediaregistry.ErrUnattachedSubject, Is: Mapped},
+		"ErrTooManyObjectIDs":  {Err: mediaregistry.ErrTooManyObjectIDs, Is: Mapped},
+
+		// The five nil arguments, which wrap errors.ErrNilInputParameter.
+		"ErrNilDatabaseClient": {Err: mediaregistry.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilExecutor":       {Err: mediaregistry.ErrNilExecutor, Is: Platform},
+		"ErrNilReader":         {Err: mediaregistry.ErrNilReader, Is: Platform},
+		"ErrNilStore":          {Err: mediaregistry.ErrNilStore, Is: Platform},
+		"ErrNilUploadManager":  {Err: mediaregistry.ErrNilUploadManager, Is: Platform},
+	},
 }
 
 // Packages are the directories Matrix's rows are read out of, relative to the
@@ -740,6 +898,7 @@ var Packages = []string{
 	auditPkg, dataPrivacyPkg, identityPkg, linksPkg, operationsPkg,
 	sessionsPkg, signInPkg, oauth2ClientsPkg, notificationsPkg, commentsPkg,
 	webhooksPkg, billingPkg, issueReportsPkg, settingsPkg, waitlistsPkg,
+	passwordResetPkg, meteringPkg, entitlementsPkg, shreddingPkg, mediaRegistryPkg,
 }
 
 // Mappers is the pair of mappers a package exports. The switch is the one place
@@ -777,6 +936,16 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 		return settings.HTTPMapper, settings.GRPCMapper
 	case waitlistsPkg:
 		return waitlists.HTTPMapper, waitlists.GRPCMapper
+	case passwordResetPkg:
+		return passwordreset.HTTPMapper, passwordreset.GRPCMapper
+	case meteringPkg:
+		return metering.HTTPMapper, metering.GRPCMapper
+	case entitlementsPkg:
+		return entitlements.HTTPMapper, entitlements.GRPCMapper
+	case shreddingPkg:
+		return shredding.HTTPMapper, shredding.GRPCMapper
+	case mediaRegistryPkg:
+		return mediaregistry.HTTPMapper, mediaregistry.GRPCMapper
 	default:
 		panic("no mappers for " + pkg)
 	}
@@ -798,7 +967,7 @@ func Mappers(pkg string) (httperrors.HTTPErrorMapper, grpcerrors.GRPCErrorMapper
 // to add a row to it.
 var ClientSafePackages = []string{
 	linksPkg, identityPkg, signInPkg, oauth2ClientsPkg, commentsPkg,
-	billingPkg, issueReportsPkg, settingsPkg, waitlistsPkg,
+	billingPkg, issueReportsPkg, settingsPkg, waitlistsPkg, passwordResetPkg,
 }
 
 // ClientSafeSentinels is the list pkg declares safe for a gRPC status to quote
@@ -824,6 +993,8 @@ func ClientSafeSentinels(pkg string) []error {
 		return settings.ClientSafeSentinels
 	case waitlistsPkg:
 		return waitlists.ClientSafeSentinels
+	case passwordResetPkg:
+		return passwordreset.ClientSafeSentinels
 	default:
 		panic("no client-safe sentinels for " + pkg)
 	}
