@@ -388,9 +388,11 @@ func (h *Handler) writeWhole(
 // object or with this, so what a client is told must not depend on whether a
 // composition root remembered to call errormappers.Register. The two answers
 // agree — mediaregistry.HTTPMapper resolves ErrObjectNotFound to the same 404 —
-// and agreeing is the point rather than a coincidence to lean on. Everything
-// else goes through errors/http, which maps the primitives, and resolves to a
-// 500 for the bucket failures that are the honest 500s.
+// and agreeing is the point rather than a coincidence to lean on, so
+// TestHandler_refusalAgreesWithTheMapper drives this route and compares its
+// envelope against what the mapper returns rather than against a copy of this
+// line. Everything else goes through errors/http, which maps the primitives,
+// and resolves to a 500 for the bucket failures that are the honest 500s.
 func (h *Handler) refuse(ctx context.Context, res nethttp.ResponseWriter, span observability.Operation, err error) {
 	status, body := httpx.ToAPIResponse(err)
 

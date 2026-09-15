@@ -91,7 +91,7 @@ func TestMappers(T *testing.T) {
 // that what a client is told does not depend on whether a composition root
 // called errormappers.Register. This pair has to arrive at the same answer, or
 // the same missing object is a 404 on one path and something else on the other.
-func TestTheAbsenceAgreesWithTheServeRoute(T *testing.T) {
+func TestTheAbsenceIsWhatTheServeRouteAnswers(T *testing.T) {
 	T.Parallel()
 
 	code, msg, ok := mediaregistry.HTTPMapper.Map(mediaregistry.ErrObjectNotFound)
@@ -99,8 +99,13 @@ func TestTheAbsenceAgreesWithTheServeRoute(T *testing.T) {
 	test.EqOp(T, httperrors.ErrDataNotFound, code)
 	test.EqOp(T, 404, httperrors.HTTPStatusForCode(code))
 
-	// The message as well as the code, because "object not found" is what that
-	// route writes into the envelope itself.
+	// This side of the agreement only, spelled out: the mapper's own wording,
+	// pinned where the mapper is. It cannot check that the serve route says the
+	// same thing — the route is reachable only through a mounted handler, and
+	// a literal copied from it here would go on agreeing with whatever it held
+	// on the day it was typed. The comparison of the two answers is
+	// mediaregistry/http's TestHandler_refusalAgreesWithTheMapper, which drives
+	// the route and reads this value rather than a copy of it.
 	test.EqOp(T, "object not found", msg)
 }
 
