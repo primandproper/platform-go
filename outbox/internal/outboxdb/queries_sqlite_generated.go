@@ -15,7 +15,10 @@ const claimOutboxMessagesSQLite = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = ?1,
 	claimed_by = ?2,
 	attempts = attempts + 1
-WHERE (claimed_until IS NULL OR claimed_until <= ?3)
+WHERE published_at IS NULL
+	AND quarantined = FALSE
+	AND next_attempt <= ?3
+	AND (claimed_until IS NULL OR claimed_until <= ?4)
 	AND id IN (/*SLICE:ids*/?)`
 
 const fetchClaimedOutboxMessagesSQLite = `SELECT
@@ -187,11 +190,13 @@ func timeTextPtr(t *time.Time) any {
 func (q *sqliteQueries) ClaimOutboxMessages(ctx context.Context, db DBTX, arg ClaimOutboxMessagesParams) error {
 	query := q.claimOutboxMessages
 
-	args := make([]any, 0, 3+len(arg.IDs))
+	args := make([]any, 0, 4+len(arg.IDs))
 
 	args = append(args, timeTextPtr(arg.ClaimedUntil))
 
 	args = append(args, arg.ClaimedBy)
+
+	args = append(args, timeText(arg.Now))
 
 	args = append(args, timeTextPtr(arg.LeaseExpiredBy))
 
@@ -412,6 +417,7 @@ var (
 	_ = struct {
 		ClaimedUntil   *time.Time
 		ClaimedBy      *string
+		Now            time.Time
 		LeaseExpiredBy *time.Time
 		IDs            []string
 	}(ClaimOutboxMessagesParams{})

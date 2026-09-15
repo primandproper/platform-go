@@ -15,7 +15,10 @@ const claimOutboxMessagesMySQL = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = ?,
 	claimed_by = ?,
 	attempts = attempts + 1
-WHERE (claimed_until IS NULL OR claimed_until <= ?)
+WHERE published_at IS NULL
+	AND quarantined = FALSE
+	AND next_attempt <= ?
+	AND (claimed_until IS NULL OR claimed_until <= ?)
 	AND id IN (/*SLICE:ids*/?)`
 
 const fetchClaimedOutboxMessagesMySQL = `SELECT
@@ -154,11 +157,13 @@ func newMySQL(prefix string) *mysqlQueries {
 func (q *mysqlQueries) ClaimOutboxMessages(ctx context.Context, db DBTX, arg ClaimOutboxMessagesParams) error {
 	query := q.claimOutboxMessages
 
-	args := make([]any, 0, 3+len(arg.IDs))
+	args := make([]any, 0, 4+len(arg.IDs))
 
 	args = append(args, arg.ClaimedUntil)
 
 	args = append(args, arg.ClaimedBy)
+
+	args = append(args, arg.Now)
 
 	args = append(args, arg.LeaseExpiredBy)
 
@@ -380,6 +385,7 @@ var (
 	_ = struct {
 		ClaimedUntil   *time.Time
 		ClaimedBy      *string
+		Now            time.Time
 		LeaseExpiredBy *time.Time
 		IDs            []string
 	}(ClaimOutboxMessagesParams{})

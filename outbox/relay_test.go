@@ -620,6 +620,7 @@ func claimTwice(
 			must.NoError(t, relay.q.ClaimOutboxMessages(t.Context(), q, outboxdb.ClaimOutboxMessagesParams{
 				ClaimedUntil:   &leaseUntil,
 				ClaimedBy:      &token,
+				Now:            now,
 				LeaseExpiredBy: &now,
 				IDs:            ids,
 			}))

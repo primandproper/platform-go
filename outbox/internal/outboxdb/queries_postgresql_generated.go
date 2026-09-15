@@ -15,8 +15,11 @@ const claimOutboxMessagesPostgreSQL = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = $1,
 	claimed_by = $2,
 	attempts = attempts + 1
-WHERE (claimed_until IS NULL OR claimed_until <= $3)
-	AND id = ANY($4::text[])`
+WHERE published_at IS NULL
+	AND quarantined = FALSE
+	AND next_attempt <= $3
+	AND (claimed_until IS NULL OR claimed_until <= $4)
+	AND id = ANY($5::text[])`
 
 const fetchClaimedOutboxMessagesPostgreSQL = `SELECT
 	id,
@@ -160,6 +163,7 @@ func (q *postgresqlQueries) ClaimOutboxMessages(ctx context.Context, db DBTX, ar
 	_, err := db.ExecContext(ctx, q.claimOutboxMessages,
 		arg.ClaimedUntil,
 		arg.ClaimedBy,
+		arg.Now,
 		arg.LeaseExpiredBy,
 		arg.IDs,
 	)
@@ -354,6 +358,7 @@ var (
 	_ = struct {
 		ClaimedUntil   *time.Time
 		ClaimedBy      *string
+		Now            time.Time
 		LeaseExpiredBy *time.Time
 		IDs            []string
 	}(ClaimOutboxMessagesParams{})
