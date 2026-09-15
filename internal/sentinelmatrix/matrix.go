@@ -707,7 +707,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrStrandedValues":            {Err: settings.ErrStrandedValues, Is: Mapped},
 		"ErrValueNotFound":             {Err: settings.ErrValueNotFound, Is: Mapped},
 
-		// The ten that are somebody else's sentinel, answered by the platform
+		// The eleven that are somebody else's sentinel, answered by the platform
 		// mappers because that is the tier those sentinels belong to.
 		//
 		// The last three are the ones worth pausing on, because they are refusals
@@ -727,15 +727,21 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilDatabaseClient":     {Err: settings.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilDefinition":         {Err: settings.ErrNilDefinition, Is: Platform},
 		"ErrNilExecutor":           {Err: settings.ErrNilExecutor, Is: Platform},
+		"ErrNilStore":              {Err: settings.ErrNilStore, Is: Platform},
 		"ErrMalformedValue":        {Err: settings.ErrMalformedValue, Is: Platform},
 		"ErrNotEnumerated":         {Err: settings.ErrNotEnumerated, Is: Platform},
 		"ErrUnknownKind":           {Err: settings.ErrUnknownKind, Is: Platform},
 
-		// The one nobody answers. A paged read that answered with the cursor it
-		// was handed is a store misbehaving toward its own caller — it reaches a
-		// handler only through a service that shipped broken, and a 500 is the
-		// honest reply.
-		"ErrCursorStalled": {Err: settings.ErrCursorStalled, Is: Unhandled},
+		// The two nobody answers, both of which describe the deployment to
+		// whoever is wiring it up rather than a request to whoever sent it. A
+		// paged read that answered with the cursor it was handed is a store
+		// misbehaving toward its own caller — it reaches a handler only through a
+		// service that shipped broken. A catalog that declares one setting twice
+		// is a typo in the binary's own declaration, found at boot by
+		// settings.DeclareDefinitions and reachable from no request path at all.
+		// A 500 is the honest reply to both.
+		"ErrCursorStalled":        {Err: settings.ErrCursorStalled, Is: Unhandled},
+		"ErrDuplicateDeclaration": {Err: settings.ErrDuplicateDeclaration, Is: Unhandled},
 	},
 
 	passwordResetPkg: {

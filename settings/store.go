@@ -101,6 +101,13 @@ type Store interface {
 // tenancy.Global() to all of them. There is deliberately no unscoped variant of
 // any of these — see the tenancy package, and the settings package
 // documentation on why a definition and the values against it share a scope.
+//
+// [DeclareDefinitions] is the composition root's way in, and it is a function
+// over this interface rather than a fifteenth method on it. It needs three of
+// the five methods here and nothing else — the read by name, the create and the
+// edit — so it works against the SQL store, against a mock, and against any
+// other backing, and the question of what belongs on settings/grpc's wire is
+// left to the methods that actually persist something.
 type DefinitionStore interface {
 	// CreateDefinition adds a setting to the catalog inside the caller's
 	// transaction, and returns it as stored — with the id it was minted under
@@ -110,6 +117,11 @@ type DefinitionStore interface {
 	// It refuses a name already defined in this scope with
 	// ErrDefinitionNameTaken, a default the setting would not admit, and an
 	// enumeration holding an empty or repeated value.
+	//
+	// The refused name is what a composition root looping this over a catalog
+	// hits on its second boot, and [DeclareDefinitions] is the call that shape
+	// wanted: the same write for a setting the scope does not define, and a
+	// reconcile for one it does.
 	//
 	// The transaction is the caller's because a row in a consumer's schema is
 	// rarely written alone. An audit entry naming who defined the setting and a

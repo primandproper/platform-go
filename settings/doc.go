@@ -82,6 +82,47 @@ exactly the rules that drift when the pair is hand-rolled in an application:
     it is rows that exist, resolve, and fail to parse, for the subjects who chose
     a value somebody has just made illegal.
 
+# Declaring the catalog at boot
+
+The catalog is a deployment's decision, which means the declaration of it lives
+in the binary and has to survive being applied again on the next boot.
+[DeclareDefinitions] is that call: create-or-reconcile by name, over the
+caller's transaction, from a [Declaration] slice a composition root holds.
+
+	var catalog = []settings.Declaration{
+		{
+			Name:        "notifications.digest",
+			Description: "how often a digest email is sent",
+			Kind:        settings.KindString,
+			Default:     pointer.To("weekly"),
+			Enumeration: []string{"daily", "never", "weekly"},
+		},
+	}
+
+	err := client.WithTransaction(ctx, func(tx database.Tx) error {
+		_, txErr := settings.DeclareDefinitions(ctx, store, tx, tenancy.Global(), catalog)
+
+		return txErr
+	})
+
+Looping [Store.CreateDefinition] instead works exactly once: the second boot
+reaches a name the first one claimed and stops on [ErrDefinitionNameTaken]. What
+a consumer writes to get past that is a read, a comparison and a branch per
+setting, and the comparison is the part worth owning here — a boot that declares
+what the scope already defines writes nothing at all, which is what keeps a
+restart from stamping every definition and walking every stored value.
+
+It reconciles the settings it names and nothing else. A setting the declaration
+omits is left alone rather than retired, because a binary rolled back to last
+week's catalog would otherwise archive a setting shipped this week and strand
+every answer against it. Retiring one is [Store.ArchiveDefinition], said out
+loud.
+
+The refusals are why it is worth running on every boot. A new catalog that would
+narrow an enumeration under values subjects have already chosen is
+[ErrStrandedValues] naming the first of them, so the deployment fails to boot
+rather than serving answers that resolve and fail to parse.
+
 # Resolution has three answers, not two
 
 	(value, SourceSubject)  the subject chose it

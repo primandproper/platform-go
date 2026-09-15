@@ -15,6 +15,11 @@ var (
 	// ErrNilDefinition indicates a nil *Definition where one was required.
 	ErrNilDefinition = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil setting definition")
 
+	// ErrNilStore indicates a nil DefinitionStore where one was required. It is
+	// what [DeclareDefinitions] reports, being the one thing here that is handed
+	// the store rather than being it.
+	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil settings definition store")
+
 	// ErrNilExecutor indicates a nil executor. Every method here runs on one the
 	// caller supplies — a database.Tx for a write, an executor for a read — so
 	// there is no method that can fall back to a connection of the store's own.
@@ -103,6 +108,17 @@ var (
 	// stall are the ones the caller asked about, and a check that skipped them
 	// would approve an edit that strands values while reporting success.
 	ErrCursorStalled = platformerrors.New("settings paged read did not advance")
+
+	// ErrDuplicateDeclaration indicates a catalog handed to
+	// [DeclareDefinitions] that names one setting twice.
+	//
+	// It is refused rather than converged on. Each declaration is reconciled
+	// against the transaction the last one wrote in, so the second of a pair
+	// would be an edit to what the first had just created — reported as an edit
+	// to a setting nobody meant to edit, and where the two disagree, silently
+	// taking the later one. Both readings are a typo in the catalog the binary
+	// holds, and a boot is the right place to find one.
+	ErrDuplicateDeclaration = platformerrors.New("catalog declares one setting twice")
 
 	// ErrStrandedValues indicates an edit to a definition that some stored value
 	// no longer satisfies: a kind that value does not parse as, or an
