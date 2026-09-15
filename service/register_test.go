@@ -16,7 +16,6 @@ import (
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
 	"github.com/primandproper/platform-go/v14/saga"
 	sagacfg "github.com/primandproper/platform-go/v14/saga/config"
-	"github.com/primandproper/platform-go/v14/workqueue"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	"github.com/primandproper/primitives-go/v2/authentication/webauthn"
@@ -194,7 +193,7 @@ func TestRegister(T *testing.T) {
 
 		for _, svc := range []string{
 			do.NameOf[operations.Store](),
-			do.NameOf[*workqueue.Queue[string]](),
+			operationscfg.QueueKey,
 			do.NameOf[operations.Service](),
 			do.NameOf[*operations.Worker](),
 			do.NameOf[*operations.Watcher](),

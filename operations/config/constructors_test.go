@@ -7,6 +7,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/workqueue"
+	workqueuecfg "github.com/primandproper/platform-go/v14/workqueue/config"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -442,7 +443,7 @@ func TestRegisterQueue(T *testing.T) {
 		i := container(t, postgresClient())
 		RegisterQueue(i)
 
-		queue, err := do.Invoke[*workqueue.Queue[string]](i)
+		queue, err := InvokeQueue(i)
 		must.NoError(t, err)
 		must.NotNil(t, queue)
 		t.Cleanup(func() { _ = queue.Close(t.Context()) })
@@ -454,8 +455,51 @@ func TestRegisterQueue(T *testing.T) {
 		i := container(t, clientFor(dialect.SQLite))
 		RegisterQueue(i)
 
-		_, err := do.Invoke[*workqueue.Queue[string]](i)
+		_, err := InvokeQueue(i)
 		test.ErrorIs(t, err, dialect.ErrUnsupported)
+	})
+
+	// The collision QueueKey exists to prevent. A consumer draining its own
+	// string-keyed work registers exactly the type this package's queue has, and
+	// under an inferred key do panics on the second of the two — which is what
+	// this subtest asserts is gone, since the failure was a panic out of a
+	// container walk rather than an error anybody could handle.
+	T.Run("a consumer's own string-keyed queue registers beside it", func(t *testing.T) {
+		t.Parallel()
+
+		i := container(t, postgresClient())
+		RegisterQueue(i)
+
+		// Registered exactly the way a consumer would, through the generic
+		// registration, whose key is the inferred one.
+		do.ProvideValue(i, &workqueue.Config{Name: "consumer_work"})
+		workqueuecfg.RegisterQueue[string](i)
+
+		ours, err := InvokeQueue(i)
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = ours.Close(t.Context()) })
+
+		theirs, err := do.Invoke[*workqueue.Queue[string]](i)
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = theirs.Close(t.Context()) })
+
+		// Two values, and each is the one its own registration configured.
+		test.NotEqOp(t, ours, theirs)
+		test.EqOp(t, operations.DefaultQueueName, ours.Name())
+		test.EqOp(t, "consumer_work", theirs.Name())
+	})
+
+	// The same property read from the other side: the named key is not one do
+	// falls back to the inferred registration for.
+	T.Run("a consumer's queue alone does not answer for the operations queue", func(t *testing.T) {
+		t.Parallel()
+
+		i := container(t, postgresClient())
+		do.ProvideValue(i, &workqueue.Config{Name: "consumer_work"})
+		workqueuecfg.RegisterQueue[string](i)
+
+		_, err := InvokeQueue(i)
+		test.Error(t, err)
 	})
 }
 
@@ -476,7 +520,7 @@ func TestRegisterService(T *testing.T) {
 		must.NoError(t, err)
 		test.NotNil(t, svc)
 
-		queue, err := do.Invoke[*workqueue.Queue[string]](i)
+		queue, err := InvokeQueue(i)
 		must.NoError(t, err)
 		t.Cleanup(func() { _ = queue.Close(t.Context()) })
 	})
@@ -492,14 +536,31 @@ func TestRegisterService(T *testing.T) {
 
 		RegisterQueue(i)
 
-		first, err := do.Invoke[*workqueue.Queue[string]](i)
+		first, err := InvokeQueue(i)
 		must.NoError(t, err)
 		t.Cleanup(func() { _ = first.Close(t.Context()) })
 
-		second, err := do.Invoke[*workqueue.Queue[string]](i)
+		second, err := InvokeQueue(i)
 		must.NoError(t, err)
 
 		test.Eq(t, first, second)
+	})
+
+	// The service resolves QueueKey, not the inferred one, so a container
+	// holding only a consumer's string-keyed queue builds no service at all.
+	// Under an inferred key it would have built one over that queue, enqueueing
+	// operations onto somebody else's partition of the table.
+	T.Run("a consumer's queue is not the queue the service is built over", func(t *testing.T) {
+		t.Parallel()
+
+		i := container(t, postgresClient())
+		do.ProvideValue(i, operations.NewRegistry())
+
+		do.ProvideValue(i, &workqueue.Config{Name: "consumer_work"})
+		workqueuecfg.RegisterQueue[string](i)
+
+		_, err := do.Invoke[operations.Service](i)
+		test.Error(t, err)
 	})
 }
 
@@ -520,7 +581,7 @@ func TestRegisterWorker(T *testing.T) {
 		must.NoError(t, err)
 		test.NotNil(t, worker)
 
-		queue, err := do.Invoke[*workqueue.Queue[string]](i)
+		queue, err := InvokeQueue(i)
 		must.NoError(t, err)
 		t.Cleanup(func() { _ = queue.Close(t.Context()) })
 	})
@@ -568,7 +629,7 @@ func TestRegister_failingObservabilityIsAnError(T *testing.T) {
 			name:     "RegisterQueue",
 			register: RegisterQueue,
 			invoke: func(i do.Injector) error {
-				_, err := do.Invoke[*workqueue.Queue[string]](i)
+				_, err := InvokeQueue(i)
 
 				return err
 			},
@@ -722,7 +783,7 @@ func TestRegister_refuseAnInvalidConfig(T *testing.T) {
 		i := containerWith(t, postgresClient(), invalidConfig())
 		RegisterQueue(i)
 
-		_, err := do.Invoke[*workqueue.Queue[string]](i)
+		_, err := InvokeQueue(i)
 		must.Error(t, err)
 		test.ErrorContains(t, err, "retention")
 	})
@@ -740,7 +801,7 @@ func TestRegister_refuseAnInvalidConfig(T *testing.T) {
 		queue, err := NewQueue(t.Context(), &Config{}, postgresClient())
 		must.NoError(t, err)
 		t.Cleanup(func() { _ = queue.Close(t.Context()) })
-		do.ProvideValue(i, queue)
+		do.ProvideNamedValue(i, QueueKey, queue)
 
 		RegisterWorker(i)
 
