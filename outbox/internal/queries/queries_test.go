@@ -327,6 +327,70 @@ func TestRender_TheClaimTakesTheLeaseRatherThanAssumingIt(T *testing.T) {
 	}
 }
 
+// The lease is not the only column that decides whether a row is claimable, and
+// it is not the one that bit. A relay retiring a batch nulls the lease as it
+// stamps published_at, so a row that has just been published is indistinguishable
+// from a free one to a guard that tests the lease alone — and a straggler whose
+// select landed before the winner's claim, and whose claim lands after the
+// winner's retirement, publishes the batch a second time. Recording a failure
+// hands the lease back the same way, under a backoff and possibly a quarantine
+// flag that a lease-only guard would also walk straight past.
+//
+// So the claim owes every row-state test the select makes. This pins each of
+// them against the statement, because the bug was one of them missing and
+// nothing in a fleet says so out loud: the backlog still drains, the depth still
+// reads zero, and only a count of what reached the broker can tell.
+func TestRender_TheClaimRepeatsTheSelectsWholeRowStateTest(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				claim  = statement(t, Render(d), "ClaimOutboxMessages")
+				selekt = statement(t, Render(d), "SelectClaimableOutboxMessages")
+			)
+
+			for _, predicate := range []string{
+				PublishedAtColumn + " IS NULL",
+				QuarantinedColumn + " = FALSE",
+				NextAttemptColumn + " <= sqlc.arg(" + NowArg + ")",
+				"(" + ClaimedUntilColumn + " IS NULL OR " + ClaimedUntilColumn + " <= sqlc.arg(" + LeaseExpiredByArg + "))",
+			} {
+				test.StrContains(t, claim, predicate,
+					test.Sprintf("the claim does not repeat %q", predicate))
+
+				// The same spelling the select uses, modulo its alias: a guard
+				// that agreed in prose and differed in SQL would be the bug
+				// back again with a test over it.
+				test.StrContains(t, strings.ReplaceAll(selekt, "m.", ""), predicate,
+					test.Sprintf("the select does not make %q", predicate))
+			}
+		})
+	}
+}
+
+// What the claim deliberately does not repeat is the correlated ordering
+// subquery, and the omission is a decision rather than the same oversight.
+//
+// The claim can only narrow the set its select handed it, and the ordering
+// guarantee is a property of what was selected: a row whose predecessor is
+// still unpublished never enters the id set. Dropping rows at claim time cannot
+// reorder the ones that remain, so re-running a correlated self-join per row
+// would buy nothing and cost a subquery on the hottest write here.
+func TestRender_TheClaimDoesNotRepeatTheOrderingSubquery(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			test.StrNotContains(t, statement(t, Render(d), "ClaimOutboxMessages"), "NOT EXISTS")
+		})
+	}
+}
+
 // TestRender_TheReadBackAsksForTheClaimAndNotTheBatch is the guard's other
 // half, and the reason the guard alone is not enough.
 //

@@ -439,6 +439,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 					if err = relay.q.ClaimOutboxMessages(t.Context(), q, outboxdb.ClaimOutboxMessagesParams{
 						ClaimedUntil:   &leaseUntil,
 						ClaimedBy:      &token,
+						Now:            now,
 						LeaseExpiredBy: &now,
 						IDs:            ids,
 					}); err != nil {
@@ -492,6 +493,125 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		for id, n := range taken {
 			test.EqOp(t, 1, n, test.Sprintf("message %q was taken %d times", id, n))
 		}
+	})
+
+	// The same interleaving, against the other thing that can happen to a row
+	// between a select and the claim that follows it: not another claim, but
+	// the retirement of the row itself.
+	//
+	// A relay publishing a batch clears the lease as it stamps published_at —
+	// the claim is over, so the name and the horizon come off. That leaves a
+	// retired row looking exactly like a free one to anything testing the
+	// lease alone, and the claim's guard tested the lease alone. A relay whose
+	// select landed before the winner's claim, and whose own claim lands after
+	// the winner's retirement, therefore took rows that had already been
+	// published and published them a second time.
+	//
+	// So the guard owes the select's whole test and not just the half about
+	// leases: what disqualifies a row at selection time disqualifies it at
+	// claim time, because every one of those columns can be written by
+	// somebody else in between. Held open here rather than raced, because the
+	// window is a few milliseconds wide and a suite that races for it passes
+	// by luck four times in five.
+	t.Run("a claim does not take rows that were published while it waited", func(t *testing.T) {
+		t.Parallel()
+
+		const (
+			messages  = 4
+			batchSize = 4
+		)
+
+		c := newStubClock()
+		table := env.newTable(t)
+		w := env.writer(t, c, table)
+
+		// The winner runs a whole cycle; the straggler is driven statement by
+		// statement, so the interleaving is arranged rather than hoped for.
+		winner, winnerRec := newTestRelay(t, env.client, c, func(cfg *RelayConfig) {
+			cfg.ClaimMode = env.claimMode
+			cfg.TablePrefix = table
+			cfg.BatchSize = batchSize
+		})
+
+		straggler, _ := newTestRelay(t, env.client, c, func(cfg *RelayConfig) {
+			cfg.ClaimMode = env.claimMode
+			cfg.TablePrefix = table
+			cfg.BatchSize = batchSize
+		})
+
+		for i := range messages {
+			must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+				return w.Enqueue(t.Context(), q, Message{Topic: "orders", Payload: map[string]any{"id": i}})
+			}))
+		}
+
+		now := c.Now().UTC()
+		leaseUntil := now.Add(DefaultLeaseDuration)
+
+		token := identifiers.New()
+
+		// The straggler's transaction is allowed to be refused outright, which
+		// is the other shape a server answers a contested write in: Postgres
+		// re-evaluates the guard once the row lock clears and matches nothing,
+		// MariaDB reports "record has changed since last read" and rolls the
+		// whole thing back. A refusal claims nothing, so it satisfies what is
+		// being asserted here just as an empty match does; the assertions below
+		// are over the rows either way, and they are what decides.
+		claimErr := env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+			// The straggler's select, taken before anybody has claimed
+			// anything. Under SKIP LOCKED this holds the rows and the winner
+			// below simply finds none; under the lease mode it holds nothing
+			// and the winner takes them all. Both are fine — what neither may
+			// do is let the claim at the bottom have rows that got published.
+			ids, err := straggler.selectClaimable(t.Context(), q, now)
+			if err != nil {
+				return platformerrors.Wrap(err, "selecting")
+			}
+
+			// The winner's entire cycle, on its own connection: it claims,
+			// publishes, and retires the batch — which is the write that nulls
+			// the lease out from under the ids the straggler is holding.
+			winner.cycle(t.Context())
+
+			if err = straggler.q.ClaimOutboxMessages(t.Context(), q, outboxdb.ClaimOutboxMessagesParams{
+				ClaimedUntil:   &leaseUntil,
+				ClaimedBy:      &token,
+				Now:            now,
+				LeaseExpiredBy: &now,
+				IDs:            ids,
+			}); err != nil {
+				return platformerrors.Wrap(err, "claiming")
+			}
+
+			if _, err = straggler.q.FetchClaimedOutboxMessages(t.Context(), q, outboxdb.FetchClaimedOutboxMessagesParams{
+				ClaimedBy: &token,
+				IDs:       ids,
+			}); err != nil {
+				return platformerrors.Wrap(err, "reading back")
+			}
+
+			return nil
+		})
+		if claimErr != nil {
+			t.Logf("the straggler's claim was refused rather than emptied: %v", claimErr)
+		}
+
+		// The invariant, and it is the same sentence in both modes: nothing the
+		// straggler came away holding may already have been published.
+		//
+		// What that permits differs, which is why it is phrased about the rows
+		// rather than about a count. Under SKIP LOCKED the straggler's select
+		// took the locks, so the winner published nothing and the straggler
+		// holds all four legitimately — still unpublished, still its to send.
+		// Under the lease mode the winner published all four, so the straggler
+		// must hold none. A row that is both published and claimed here is the
+		// bug: a retired row handed back out because clearing its lease made it
+		// look free.
+		test.EqOp(t, 0, countIn(t, env.client, table,
+			"claimed_by = '"+token+"' AND published_at IS NOT NULL"))
+
+		// And whatever the winner did send, it sent once.
+		test.SliceLen(t, len(uniqueStrings(winnerRec.payloads())), winnerRec.payloads())
 	})
 
 	// The other end of the same name, on a real server: what a relay that
@@ -791,4 +911,21 @@ func TestMigrations_RealServers(T *testing.T) {
 			}
 		}
 	})
+}
+
+// uniqueStrings is the distinct set of s, preserving nothing but membership.
+func uniqueStrings(s []string) []string {
+	seen := make(map[string]struct{}, len(s))
+	out := make([]string, 0, len(s))
+
+	for _, v := range s {
+		if _, ok := seen[v]; ok {
+			continue
+		}
+
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+
+	return out
 }

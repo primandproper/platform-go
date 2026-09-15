@@ -13,6 +13,7 @@ import (
 type ClaimOutboxMessagesParams struct {
 	ClaimedUntil   *time.Time
 	ClaimedBy      *string
+	Now            time.Time
 	LeaseExpiredBy *time.Time
 	IDs            []string
 }

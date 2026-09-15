@@ -61,7 +61,10 @@ UPDATE outbox_messages SET
 	claimed_until = sqlc.arg(claimed_until),
 	claimed_by = sqlc.arg(claimed_by),
 	attempts = attempts + 1
-WHERE (claimed_until IS NULL OR claimed_until <= sqlc.arg(lease_expired_by))
+WHERE published_at IS NULL
+	AND quarantined = FALSE
+	AND next_attempt <= sqlc.arg(now)
+	AND (claimed_until IS NULL OR claimed_until <= sqlc.arg(lease_expired_by))
 	AND id = ANY(sqlc.arg(ids)::text[]);
 
 -- name: FetchClaimedOutboxMessages :many

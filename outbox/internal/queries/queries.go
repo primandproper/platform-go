@@ -381,10 +381,30 @@ func SkipLockedName(name string) string {
 // read the same ids back; an UPDATE addressed by id alone would have the second
 // overwrite the first's lease, and both would go on to publish the same rows.
 // Repeating the select's own test here makes the write conditional on the row
-// still being free, and the engine's row lock makes the test and the write one
-// step: the loser's UPDATE waits, re-reads the committed horizon, and matches
+// still being claimable, and the engine's row lock makes the test and the write
+// one step: the loser's UPDATE waits, re-reads the committed row, and matches
 // nothing. Under SKIP LOCKED the select already holds the rows, so the test is
-// redundant there and costs that mode one comparison.
+// redundant there and costs that mode four comparisons.
+//
+// It repeats the select's whole row-state test and not merely the half about
+// leases, because every one of those columns can be written by somebody else in
+// the gap. The lease is the obvious one and it is not the dangerous one: a
+// relay that publishes a batch clears the lease as it stamps published_at, so a
+// retired row looks exactly like a free one to anything testing the lease
+// alone. A straggler whose select landed before the winner's claim, and whose
+// own claim lands after the winner's retirement, then takes rows that have
+// already been sent and sends them again. Recording a failure has the same
+// shape — it writes the backoff and the quarantine flag and hands the lease
+// back — so a claim that ignored next_attempt would republish inside the
+// backoff somebody just set, and one that ignored quarantined would take a row
+// the fleet has given up on.
+//
+// What the guard is not is the correlated ordering subquery, and that omission
+// is deliberate rather than the same oversight one line down. This statement
+// can only ever narrow the set the select handed it, and the ordering guarantee
+// is a property of what was selected: a row whose predecessor is unpublished is
+// never in the id set to begin with. Dropping rows here cannot reorder what
+// remains.
 //
 // The claim's name goes in beside the horizon, so that the read-back which
 // follows can ask for the rows this claim actually took. A relay that lost part
@@ -407,12 +427,18 @@ func claimMessages(g *querygen.Generator) *querygen.Query {
 	%s = sqlc.arg(%s),
 	%s = sqlc.arg(%s),
 	%s = %s + 1
-WHERE (%s IS NULL OR %s <= sqlc.arg(%s))
+WHERE %s IS NULL
+	AND %s = FALSE
+	AND %s <= sqlc.arg(%s)
+	AND (%s IS NULL OR %s <= sqlc.arg(%s))
 	AND %s;`,
 			OutboxTable,
 			ClaimedUntilColumn, ClaimedUntilColumn,
 			ClaimedByColumn, ClaimedByColumn,
 			AttemptsColumn, AttemptsColumn,
+			PublishedAtColumn,
+			QuarantinedColumn,
+			NextAttemptColumn, NowArg,
 			ClaimedUntilColumn, ClaimedUntilColumn, LeaseExpiredByArg,
 			g.SetCondition(querygen.IDColumn, IDsArg),
 		),

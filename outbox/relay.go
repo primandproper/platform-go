@@ -480,6 +480,7 @@ func (r *Relay) claim(ctx context.Context) ([]claimedMessage, error) {
 		if err = r.q.ClaimOutboxMessages(ctx, q, outboxdb.ClaimOutboxMessagesParams{
 			ClaimedUntil:   &leaseUntil,
 			ClaimedBy:      &claimToken,
+			Now:            now,
 			LeaseExpiredBy: &now,
 			IDs:            ids,
 		}); err != nil {
