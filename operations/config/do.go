@@ -34,14 +34,36 @@ func RegisterStore(i do.Injector) {
 	})
 }
 
+// QueueKey is the injector key the operations queue is registered under, and the
+// one RegisterService and RegisterWorker resolve it by.
+//
+// The queue is named rather than left to its type because *workqueue.Queue[string]
+// is not a key this package gets to keep. A queue is generic over the key its
+// work is addressed by, string is the obvious one, and do infers a registration's
+// key from the provider's return type — so a consumer draining its own
+// string-keyed work through workqueuecfg.RegisterQueue[string] registers exactly
+// the type this package would have registered, and do panics on the second of
+// the two. The container is not the place to discover that two unrelated
+// components both schedule work by name, and a consumer should not have to wrap
+// their queue in a type of their own to say so.
+//
+// Naming this one leaves the inferred key where the generic registration puts
+// it, so the two register beside each other.
+const QueueKey = "operations.queue"
+
 // RegisterQueue registers the *workqueue.Queue[string] operations are dispatched
-// through.
+// through, under QueueKey.
 //
 // It is registered separately from the service because it is shared: the service
 // enqueues onto it, the worker claims from it, and both resolve the same value.
-// A Queue owns a goroutine; do's shutdown runs Close.
+//
+// A Queue owns a goroutine and has to be Closed, and the injector will not do
+// it: do recognizes a Shutdown method, and this module's background components
+// spell that Close. Resolve it with InvokeQueue and close it from the same place
+// you shut the rest of them down — after ingress is gone, so a request still in
+// flight can finish enqueueing.
 func RegisterQueue(i do.Injector) {
-	do.Provide(i, func(i do.Injector) (*workqueue.Queue[string], error) {
+	do.ProvideNamed(i, QueueKey, func(i do.Injector) (*workqueue.Queue[string], error) {
 		pillars, err := observability.InvokePillars(i)
 		if err != nil {
 			return nil, err
@@ -54,6 +76,17 @@ func RegisterQueue(i do.Injector) {
 			WithPillars(pillars),
 		)
 	})
+}
+
+// InvokeQueue resolves the queue RegisterQueue registered.
+//
+// It exists so that QueueKey is spelled once. A consumer has to reach the queue
+// for the same reason RegisterQueue is separate from RegisterService — somebody
+// has to Close it, and nothing in the container will — and a key they have to
+// spell themselves is a key that can be misspelled into a "service not found"
+// at the one moment a process is trying to shut down.
+func InvokeQueue(i do.Injector) (*workqueue.Queue[string], error) {
+	return do.InvokeNamed[*workqueue.Queue[string]](i, QueueKey)
 }
 
 // RegisterService registers an operations.Service over the registered store,
@@ -79,7 +112,7 @@ func RegisterService(i do.Injector) {
 			do.MustInvoke[*Config](i),
 			do.MustInvoke[database.Client](i),
 			do.MustInvoke[operations.Store](i),
-			do.MustInvoke[*workqueue.Queue[string]](i),
+			do.MustInvokeNamed[*workqueue.Queue[string]](i, QueueKey),
 			do.MustInvoke[*operations.Registry](i),
 			WithPillars(pillars),
 		)
@@ -104,7 +137,7 @@ func RegisterWorker(i do.Injector) {
 			do.MustInvoke[context.Context](i),
 			do.MustInvoke[*Config](i),
 			do.MustInvoke[operations.Store](i),
-			do.MustInvoke[*workqueue.Queue[string]](i),
+			do.MustInvokeNamed[*workqueue.Queue[string]](i, QueueKey),
 			do.MustInvoke[*operations.Registry](i),
 			WithPillars(pillars),
 		)
