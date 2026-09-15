@@ -405,22 +405,6 @@ var Memberships = Table{
 // [membershipUpsert]. The list is what gets a set, not what gets a statement.
 var Emitted = []*Table{&Users, &Accounts, &Invitations}
 
-// Stamped is the tables whose create still reads its creation time back on its
-// own, which is now the invitation alone.
-//
-// It used to be every emitted table. The user's and the account's creates
-// return the row they wrote, read back through the keyed read that already
-// exists — a row this transaction just inserted is not archived, so GetUser and
-// GetAccount reach it — and a whole row costs the round trip the stamp alone
-// cost. Two statements that read one column of a row the caller is being handed
-// in full are two statements nothing runs, so they are not emitted; see
-// [createdAtReads] and [archivedReads].
-//
-// The invitation's create still hands its argument back with the stamp written
-// onto it, so it is the one table left here. When it stops doing that, this list
-// and the loop that reads it go with it.
-var Stamped = []*Table{&Invitations}
-
 // Render returns the canonical sqlc input for d: every emitted table's standard
 // queries, and beside them every statement this schema runs that a standard set
 // does not describe — the keyed reads and lists, the field-specific and guarded
@@ -451,7 +435,6 @@ func Render(d dialect.Dialect) string {
 	}
 
 	rendered = append(rendered, keyedInvitationLists(g)...)
-	rendered = append(rendered, createdAtReads(g)...)
 	rendered = append(rendered, archivedReads(g)...)
 	rendered = append(rendered, subjectReads(g)...)
 	rendered = append(rendered, keyedUserReads(g)...)
@@ -874,34 +857,6 @@ func membershipWrites(g *querygen.Generator) []*querygen.Query {
 	}
 }
 
-// createdAtReads is the read-back of the one column an emitted table's create
-// does not carry: the creation time the database assigned it.
-//
-// created_at is database-owned — it is not in any create's column list, and the
-// schema gives it a DEFAULT — so the value the caller handed over still holds
-// the zero time when the INSERT returns, and the store reads it back inside the
-// same transaction. One per table in [Stamped], because a query name is a Go
-// method name and the table is not a parameter of one.
-//
-// It keys on the id alone. The scope is absent because this is not a read a
-// caller reaches: it is the create's read-back of the row it has just written,
-// by the id it minted for it, and the row is not visible to anything else until
-// the transaction commits. The column list is the id and nothing else, which is
-// also what leaves the archived predicate off a row that cannot be archived yet.
-func createdAtReads(g *querygen.Generator) []*querygen.Query {
-	rendered := make([]*querygen.Query, 0, len(Stamped))
-
-	for _, table := range Stamped {
-		rendered = append(rendered, g.ReadQuery(
-			"Get"+table.Singular+"CreatedAt", table.Name,
-			[]string{querygen.IDColumn},
-			querygen.Read{Projection: []string{querygen.CreatedAtColumn}},
-		))
-	}
-
-	return rendered
-}
-
 // archivedReads is the pair of reads the two archivals answer with: the user or
 // the account the write just hid, on the transaction that hid it.
 //
@@ -921,13 +876,13 @@ func createdAtReads(g *querygen.Generator) []*querygen.Query {
 // was called to confirm, and a guard that matched nothing cannot be read back as
 // a success.
 //
-// There is no third for the memberships an archival ends alongside the row, and
-// no companion for a create or an update. Neither of those leaves the directory,
-// so the ordinary keyed read reaches both on the transaction that wrote them,
-// and the read-back each makes is that statement rather than one of its own —
-// which is why two of the three createdAtReads above are gone: a create that
-// reads the whole row back has no use for a statement that reads one column of
-// it.
+// There is no companion for a create or an update, and none for the memberships
+// an archival ends alongside the row. Neither a create nor an update leaves the
+// directory, so the ordinary keyed read reaches both on the transaction that
+// wrote them, and the read-back each makes is that statement rather than one of
+// its own — which is why the three reads of created_at that used to sit above
+// this one are gone entirely: a create that reads the whole row back has no use
+// for a statement that reads one column of it.
 func archivedReads(g *querygen.Generator) []*querygen.Query {
 	var (
 		scope    = querygen.Match{Column: ScopeColumn}

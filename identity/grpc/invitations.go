@@ -94,13 +94,14 @@ func (s *Server) Invite(
 		ExpiresAt:        expiresAt,
 	}
 
-	if err = s.svc.Invite(ctx, scopeOf(principal), invitation); err != nil {
+	issued, err := s.svc.Invite(ctx, scopeOf(principal), invitation)
+	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "issuing an invitation")
 	}
 
-	op.Set(invitationIDKey, invitation.ID)
+	op.Set(invitationIDKey, issued.ID)
 
-	return &identitypb.InviteResponse{Invitation: InvitationToProto(invitation.Redacted())}, nil
+	return &identitypb.InviteResponse{Invitation: InvitationToProto(issued.Redacted())}, nil
 }
 
 // AcceptInvitation answers an invitation and mints the membership it promised.

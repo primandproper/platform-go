@@ -36,7 +36,7 @@ var _ identity.Store = &StoreMock{}
 //			CreateAccountFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) (*identity.Account, error) {
 //				panic("mock out the CreateAccount method")
 //			},
-//			CreateInvitationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *identity.Invitation) error {
+//			CreateInvitationFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *identity.Invitation) (*identity.Invitation, error) {
 //				panic("mock out the CreateInvitation method")
 //			},
 //			CreateMembershipFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, membership *identity.Membership) (*identity.Membership, error) {
@@ -194,7 +194,7 @@ type StoreMock struct {
 	CreateAccountFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, account *identity.Account) (*identity.Account, error)
 
 	// CreateInvitationFunc mocks the CreateInvitation method.
-	CreateInvitationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *identity.Invitation) error
+	CreateInvitationFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *identity.Invitation) (*identity.Invitation, error)
 
 	// CreateMembershipFunc mocks the CreateMembership method.
 	CreateMembershipFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, membership *identity.Membership) (*identity.Membership, error)
@@ -1193,7 +1193,7 @@ func (mock *StoreMock) CreateAccountCalls() []struct {
 }
 
 // CreateInvitation calls CreateInvitationFunc.
-func (mock *StoreMock) CreateInvitation(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *identity.Invitation) error {
+func (mock *StoreMock) CreateInvitation(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *identity.Invitation) (*identity.Invitation, error) {
 	if mock.CreateInvitationFunc == nil {
 		panic("StoreMock.CreateInvitationFunc: method is nil but Store.CreateInvitation was just called")
 	}

@@ -46,14 +46,16 @@ type Hooks interface {
 	// membership a registration minted, all three already written.
 	AfterRegister(ctx context.Context, tx database.Tx, scope tenancy.Scope, registration *Registration) error
 
-	// AfterInvite is called with the invitation that was issued — the caller's
-	// own value, with its ID and CreatedAt filled in by the write.
+	// AfterInvite is called with the invitation that was issued, as the write
+	// wrote it: the row read back on this transaction, with the ID it minted
+	// and the creation time the database stamped, rather than the value the
+	// caller assembled.
 	//
-	// It is therefore the one invitation a hook sees carrying its Token, since
-	// the caller minted it: the invitations the other three hooks receive were
-	// read back by the Service and are redacted. A hook that queues the link
-	// for mailing takes the token from here, and one that records the
-	// invitation must not record the token with it.
+	// It is the one invitation a hook sees carrying its Token, because the
+	// column holds the token the caller minted and this read-back is not
+	// redacted; the invitations the other three hooks receive are. A hook that
+	// queues the link for mailing takes the token from here, and one that
+	// records the invitation must not record the token with it.
 	AfterInvite(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *Invitation) error
 
 	// AfterAcceptInvitation is called with the answered invitation and the

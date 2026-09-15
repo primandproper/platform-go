@@ -528,19 +528,28 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 			"grace@example.com", "the-token", futureExpiry())
 		invitation.ID = ""
 
-		must.NoError(t, service.Invite(t.Context(), testScope, invitation))
+		issued, err := service.Invite(t.Context(), testScope, invitation)
+		must.NoError(t, err)
 
-		test.NotEq(t, "", invitation.ID)
-		test.False(t, invitation.CreatedAt.IsZero())
+		// The row the write wrote, carrying what only the database could
+		// settle. The caller's value is left as they assembled it.
+		must.NotNil(t, issued)
+		test.NotEq(t, "", issued.ID)
+		test.False(t, issued.CreatedAt.IsZero())
+		test.EqOp(t, "", invitation.ID)
+		test.True(t, invitation.CreatedAt.IsZero())
 
 		test.EqOp(t, 1, hooks.ran("invite"))
 
-		// The caller's own value, so the token a hook needs to mail the link is
-		// still on it — the one invitation in this package that is not redacted.
+		// The token a hook needs to mail the link survives the read-back —
+		// this is the one invitation in this package that is not redacted —
+		// and the hook sees the same row the caller is handed.
 		must.NotNil(t, hooks.invitation)
 		test.EqOp(t, "the-token", hooks.invitation.Token)
+		test.EqOp(t, "the-token", issued.Token)
+		test.EqOp(t, issued.ID, hooks.invitation.ID)
 
-		read, err := store.GetInvitation(t.Context(), env.reader(), testScope, invitation.ID)
+		read, err := store.GetInvitation(t.Context(), env.reader(), testScope, issued.ID)
 		must.NoError(t, err)
 		test.EqOp(t, InvitationPending, read.Status)
 	})
@@ -558,9 +567,14 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		invitation := newInvitation(registration.User, registration.Account.ID,
 			"grace@example.com", "the-token", futureExpiry())
 
-		must.ErrorIs(t, service.Invite(t.Context(), testScope, invitation), errHookRefused)
+		issued, err := service.Invite(t.Context(), testScope, invitation)
+		must.ErrorIs(t, err, errHookRefused)
 
-		_, err := store.GetInvitation(t.Context(), env.reader(), testScope, invitation.ID)
+		// A refused write answers with a nil row: the sentinel never arrives
+		// beside a value.
+		test.Nil(t, issued)
+
+		_, err = store.GetInvitation(t.Context(), env.reader(), testScope, invitation.ID)
 		must.ErrorIs(t, err, ErrInvitationNotFound)
 	})
 
@@ -569,7 +583,8 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 
 		service, _ := env.newService(t, &recordingHooks{})
 
-		must.ErrorIs(t, service.Invite(t.Context(), testScope, nil), ErrNilInvitation)
+		_, err := service.Invite(t.Context(), testScope, nil)
+		must.ErrorIs(t, err, ErrNilInvitation)
 	})
 
 	t.Run("accepts an invitation, minting the membership it promised", func(t *testing.T) {
@@ -581,12 +596,12 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		sender := registerAda(t, service, "ada")
 		recipient := seedUser(t, env, store, newUser("grace"))
 
-		invitation := newInvitation(sender.User, sender.Account.ID,
-			recipient.EmailAddress, "the-token", futureExpiry())
-		must.NoError(t, service.Invite(t.Context(), testScope, invitation))
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User, sender.Account.ID,
+			recipient.EmailAddress, "the-token", futureExpiry()))
+		must.NoError(t, err)
 
 		acceptance, err := service.AcceptInvitation(t.Context(), testScope,
-			invitation.ID, "the-token", recipient.ID, "glad to")
+			issued.ID, "the-token", recipient.ID, "glad to")
 		must.NoError(t, err)
 
 		test.EqOp(t, InvitationAccepted, acceptance.Invitation.Status)
@@ -619,17 +634,17 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		sender := registerAda(t, service, "ada")
 		recipient := seedUser(t, env, store, newUser("grace"))
 
-		invitation := newInvitation(sender.User, sender.Account.ID,
-			recipient.EmailAddress, "the-token", futureExpiry())
-		must.NoError(t, service.Invite(t.Context(), testScope, invitation))
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User, sender.Account.ID,
+			recipient.EmailAddress, "the-token", futureExpiry()))
+		must.NoError(t, err)
 
 		hooks.probe = func(context.Context, database.Tx) error { return errHookRefused }
 
-		_, err := service.AcceptInvitation(t.Context(), testScope,
-			invitation.ID, "the-token", recipient.ID, "glad to")
+		_, err = service.AcceptInvitation(t.Context(), testScope,
+			issued.ID, "the-token", recipient.ID, "glad to")
 		must.ErrorIs(t, err, errHookRefused)
 
-		read, err := store.GetInvitation(t.Context(), env.reader(), testScope, invitation.ID)
+		read, err := store.GetInvitation(t.Context(), env.reader(), testScope, issued.ID)
 		must.NoError(t, err)
 		test.EqOp(t, InvitationPending, read.Status)
 
@@ -645,22 +660,22 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 
 		sender := registerAda(t, service, "ada")
 
-		invitation := newInvitation(sender.User, sender.Account.ID,
-			"grace@example.com", "the-token", futureExpiry())
-		must.NoError(t, service.Invite(t.Context(), testScope, invitation))
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User, sender.Account.ID,
+			"grace@example.com", "the-token", futureExpiry()))
+		must.NoError(t, err)
 
 		// The ID alone answers the store's status write, and must not answer
 		// this one: a rejection comes from whoever followed the link.
-		_, err := service.RejectInvitation(t.Context(), testScope, invitation.ID, "guessed", "no thanks")
+		_, err = service.RejectInvitation(t.Context(), testScope, issued.ID, "guessed", "no thanks")
 		must.ErrorIs(t, err, ErrInvitationNotFound)
 		test.EqOp(t, 0, hooks.ran("reject"))
 
-		still, err := store.GetInvitation(t.Context(), env.reader(), testScope, invitation.ID)
+		still, err := store.GetInvitation(t.Context(), env.reader(), testScope, issued.ID)
 		must.NoError(t, err)
 		test.EqOp(t, InvitationPending, still.Status)
 
 		rejected, err := service.RejectInvitation(t.Context(), testScope,
-			invitation.ID, "the-token", "no thanks")
+			issued.ID, "the-token", "no thanks")
 		must.NoError(t, err)
 		test.EqOp(t, InvitationRejected, rejected.Status)
 		test.EqOp(t, "no thanks", rejected.StatusNote)
@@ -677,18 +692,18 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 
 		sender := registerAda(t, service, "ada")
 
-		invitation := newInvitation(sender.User, sender.Account.ID,
-			"grace@example.com", "the-token", futureExpiry())
-		must.NoError(t, service.Invite(t.Context(), testScope, invitation))
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User, sender.Account.ID,
+			"grace@example.com", "the-token", futureExpiry()))
+		must.NoError(t, err)
 
-		cancelled, err := service.CancelInvitation(t.Context(), testScope, invitation.ID, "hired somebody")
+		cancelled, err := service.CancelInvitation(t.Context(), testScope, issued.ID, "hired somebody")
 		must.NoError(t, err)
 		test.EqOp(t, InvitationCancelled, cancelled.Status)
 		test.EqOp(t, "hired somebody", cancelled.StatusNote)
 		test.EqOp(t, "", cancelled.Token)
 		test.EqOp(t, 1, hooks.ran("cancel"))
 
-		_, err = service.CancelInvitation(t.Context(), testScope, invitation.ID, "again")
+		_, err = service.CancelInvitation(t.Context(), testScope, issued.ID, "again")
 		must.ErrorIs(t, err, ErrInvitationNotFound)
 		test.EqOp(t, 1, hooks.ran("cancel"))
 	})

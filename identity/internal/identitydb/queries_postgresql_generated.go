@@ -305,11 +305,6 @@ WHERE {{prefix}}identity_invitations.archived_at IS NULL
 	AND {{prefix}}identity_invitations.id = $1
 	AND {{prefix}}identity_invitations.scope = $2`
 
-const getInvitationCreatedAtPostgreSQL = `SELECT
-	{{prefix}}identity_invitations.created_at
-FROM {{prefix}}identity_invitations
-WHERE {{prefix}}identity_invitations.id = $1`
-
 const getMembershipByUserAndAccountPostgreSQL = `SELECT
 	{{prefix}}identity_memberships.id,
 	{{prefix}}identity_memberships.scope,
@@ -1741,7 +1736,6 @@ type postgresqlQueries struct {
 	getArchivedAccount                       string
 	getArchivedUser                          string
 	getInvitation                            string
-	getInvitationCreatedAt                   string
 	getMembershipByUserAndAccount            string
 	getMembershipFallbackAccountID           string
 	getMembershipIdbyUserAndAccount          string
@@ -1827,7 +1821,6 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		getArchivedAccount:                       strings.ReplaceAll(getArchivedAccountPostgreSQL, prefixMarker, prefix),
 		getArchivedUser:                          strings.ReplaceAll(getArchivedUserPostgreSQL, prefixMarker, prefix),
 		getInvitation:                            strings.ReplaceAll(getInvitationPostgreSQL, prefixMarker, prefix),
-		getInvitationCreatedAt:                   strings.ReplaceAll(getInvitationCreatedAtPostgreSQL, prefixMarker, prefix),
 		getMembershipByUserAndAccount:            strings.ReplaceAll(getMembershipByUserAndAccountPostgreSQL, prefixMarker, prefix),
 		getMembershipFallbackAccountID:           strings.ReplaceAll(getMembershipFallbackAccountIDPostgreSQL, prefixMarker, prefix),
 		getMembershipIdbyUserAndAccount:          strings.ReplaceAll(getMembershipIdbyUserAndAccountPostgreSQL, prefixMarker, prefix),
@@ -2302,21 +2295,6 @@ func (q *postgresqlQueries) GetInvitation(ctx context.Context, db DBTX, arg GetI
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
-	)
-
-	return i, err
-}
-
-// GetInvitationCreatedAt runs the :one query against postgresql.
-func (q *postgresqlQueries) GetInvitationCreatedAt(ctx context.Context, db DBTX, arg GetInvitationCreatedAtParams) (GetInvitationCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getInvitationCreatedAt,
-		arg.ID,
-	)
-
-	var i GetInvitationCreatedAtRow
-
-	err := row.Scan(
-		&i.CreatedAt,
 	)
 
 	return i, err
@@ -4343,12 +4321,6 @@ var (
 		LastUpdatedAt    *time.Time
 		ArchivedAt       *time.Time
 	}(GetInvitationRow{})
-	_ = struct {
-		ID string
-	}(GetInvitationCreatedAtParams{})
-	_ = struct {
-		CreatedAt time.Time
-	}(GetInvitationCreatedAtRow{})
 	_ = struct {
 		Scope            tenancy.Scope
 		BelongsToUser    string

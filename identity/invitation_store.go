@@ -54,84 +54,97 @@ func answerInvitationParams(
 	}
 }
 
-// CreateInvitation writes an invitation and the roles it promises.
+// CreateInvitation writes an invitation and the roles it promises through the
+// caller's transaction, and answers with the row it wrote, leaving the
+// Invitation it was handed alone — see CreateUser.
+//
+// It is the one read-back here that carries a secret. The token is a column
+// like any other, so the row that comes back holds the token the caller minted
+// — which is what an invitation exists to mail, and what nothing else in this
+// package would let a hook read off a value it did not assemble itself.
 func (s *SQLStore) CreateInvitation(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
 	invitation *Invitation,
-) error {
+) (*Invitation, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if err := requireExecutor(tx); err != nil {
-		return op.Error(err, "creating identity invitation")
+		return nil, op.Error(err, "creating identity invitation")
 	}
 
 	if invitation == nil {
-		return op.Error(ErrNilInvitation, "creating identity invitation")
+		return nil, op.Error(ErrNilInvitation, "creating identity invitation")
 	}
+
+	// The caller's value is read and not written to, so the scope, the
+	// defaults and the minted id land on a copy — see CreateUser.
+	written := *invitation
 
 	if err := scope.Validate(); err != nil {
-		return op.Error(err, "creating identity invitation")
+		return nil, op.Error(err, "creating identity invitation")
 	}
 
-	if err := adoptScope(scope, &invitation.Scope, "invitation"); err != nil {
-		return op.Error(err, "creating identity invitation")
+	if err := adoptScope(scope, &written.Scope, "invitation"); err != nil {
+		return nil, op.Error(err, "creating identity invitation")
 	}
 
-	invitation.EnsureDefaults()
+	written.EnsureDefaults()
 
-	if err := invitation.ValidateWithContext(ctx); err != nil {
-		return op.Error(err, "creating identity invitation")
+	if err := written.ValidateWithContext(ctx); err != nil {
+		return nil, op.Error(err, "creating identity invitation")
 	}
 
-	if invitation.Status != InvitationPending {
+	if written.Status != InvitationPending {
 		// An invitation created already answered has no flow that could have
 		// answered it, and would sit in a terminal state nobody sent.
-		return op.Error(
-			platformerrors.Wrapf(ErrInvalidInvitationStatus, "status %q at creation", invitation.Status),
+		return nil, op.Error(
+			platformerrors.Wrapf(ErrInvalidInvitationStatus, "status %q at creation", written.Status),
 			"creating identity invitation",
 		)
 	}
 
-	if invitation.StatusNote != "" {
+	if written.StatusNote != "" {
 		// The same objection as the one above, about the column the answer
 		// writes beside the status: nobody has answered a freshly created
 		// invitation, so there is no answer to explain. Refusing here is what
 		// makes "written by exactly the two status writes" true of status_note
 		// rather than merely usual.
-		return op.Error(
+		return nil, op.Error(
 			platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "invitation carries a status note at creation"),
 			"creating identity invitation",
 		)
 	}
 
-	invitation.ID = newID(invitation.ID)
+	written.ID = newID(written.ID)
 
-	op.Set(invitationIDKey, invitation.ID).Set(accountIDKey, invitation.BelongsToAccount)
+	op.Set(invitationIDKey, written.ID).Set(accountIDKey, written.BelongsToAccount)
 
 	// The invitation and its roles are the caller's one transaction: an
 	// invitation promising no roles produces a membership that may do nothing,
 	// which is discovered only once somebody has accepted it.
-	if err := s.q.CreateInvitation(ctx, tx, createInvitationParams(invitation)); err != nil {
-		return op.Error(platformerrors.Wrap(err, "writing identity invitation"), "creating identity invitation")
+	if err := s.q.CreateInvitation(ctx, tx, createInvitationParams(&written)); err != nil {
+		return nil, op.Error(platformerrors.Wrap(err, "writing identity invitation"), "creating identity invitation")
 	}
 
-	// Read back for the reason CreateUser and CreateAccount read theirs back —
-	// see stampCreatedAt.
-	created, readErr := s.q.GetInvitationCreatedAt(ctx, tx, identitydb.GetInvitationCreatedAtParams{
-		ID: invitation.ID,
-	})
-	if err := stampCreatedAt(&invitation.CreatedAt, created.CreatedAt, readErr); err != nil {
-		return op.Error(err, "creating identity invitation")
+	if err := s.replaceRoles(ctx, tx, s.invitationRoleWrites(), written.ID, written.Roles); err != nil {
+		return nil, op.Error(err, "creating identity invitation")
 	}
 
-	if err := s.replaceRoles(ctx, tx, s.invitationRoleWrites(), invitation.ID, invitation.Roles); err != nil {
-		return op.Error(err, "creating identity invitation")
+	// Read back through the ordinary keyed read, for the reason CreateUser's is
+	// — a row this transaction just inserted is not archived, so GetInvitation
+	// reaches it on the transaction that wrote it, and the whole row costs what
+	// reading created_at alone used to cost plus the roles. It runs after the
+	// role writes, so the roles it attaches are the ones this transaction just
+	// wrote.
+	created, err := s.readInvitation(ctx, tx, scope, written.ID)
+	if err != nil {
+		return nil, op.Error(err, "creating identity invitation")
 	}
 
-	return nil
+	return created, nil
 }
 
 // GetInvitation reads one of the scope's invitations by ID.

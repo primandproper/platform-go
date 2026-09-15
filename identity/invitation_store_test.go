@@ -8,6 +8,7 @@ import (
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -31,9 +32,14 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		account := seedAccountFor(t, env, store, owner, "Acme")
 
 		invitation := newInvitation(owner, account.ID, "brian@example.com", "tok-secret", baseTime.Add(72*time.Hour))
-		must.NoError(t, env.createInvitation(t, store, invitation.Scope, invitation))
 
-		return store, clk, owner, account, invitation
+		// The write's own answer, rather than the value handed to it: the
+		// create leaves that alone, so the id and the creation time are only
+		// on the row that comes back.
+		created, err := env.createInvitation(t, store, invitation.Scope, invitation)
+		must.NoError(t, err)
+
+		return store, clk, owner, account, created
 	}
 
 	t.Run("creates and reads back", func(t *testing.T) {
@@ -56,6 +62,49 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, "", read.StatusNote)
 	})
 
+	t.Run("the create answers with the row and leaves the argument alone", func(t *testing.T) {
+		t.Parallel()
+
+		// The fourth create, settled the way the other three are: the id it
+		// minted, the status the defaults supplied, the creation time the
+		// database stamped and the roles the same transaction wrote a statement
+		// earlier all come back on the row, and none of them lands on the value
+		// the caller assembled.
+		store, _, owner, account, _ := newInvitedStore(t)
+
+		invitation := newInvitation(owner, account.ID, "carol@example.com", "tok-7", baseTime.Add(time.Hour))
+		invitation.ID = ""
+		invitation.Status = ""
+		invitation.Scope = tenancy.Scope{}
+
+		created, err := env.createInvitation(t, store, testScope, invitation)
+		must.NoError(t, err)
+
+		test.NotEq(t, "", created.ID)
+		test.False(t, created.CreatedAt.IsZero())
+		test.EqOp(t, InvitationPending, created.Status)
+		test.EqOp(t, testScope, created.Scope)
+		test.Eq(t, []string{"account_member"}, created.Roles)
+
+		// The one read-back in this package that is a secret. The column holds
+		// the token the caller minted, so the row carries what the invitation
+		// exists to mail.
+		test.EqOp(t, "tok-7", created.Token)
+
+		// And none of it landed on the caller's value.
+		test.EqOp(t, "", invitation.ID)
+		test.EqOp(t, InvitationStatus(""), invitation.Status)
+		test.EqOp(t, tenancy.Scope{}, invitation.Scope)
+		test.True(t, invitation.CreatedAt.IsZero())
+
+		// The row is the one a later read returns.
+		read, err := store.GetInvitation(t.Context(), env.reader(), testScope, created.ID)
+		must.NoError(t, err)
+		test.EqOp(t, created.CreatedAt, read.CreatedAt)
+		test.EqOp(t, created.Token, read.Token)
+		test.Eq(t, created.Roles, read.Roles)
+	})
+
 	t.Run("refuses an invitation created carrying a status note", func(t *testing.T) {
 		t.Parallel()
 
@@ -69,7 +118,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		answered.StatusNote = "declined before it was sent"
 
 		must.ErrorIs(t,
-			env.createInvitation(t, store, answered.Scope, answered),
+			env.createInvitationErr(t, store, answered.Scope, answered),
 			platformerrors.ErrUnrecognizedInputValue,
 		)
 	})
@@ -82,7 +131,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		answered := newInvitation(owner, account.ID, "carol@example.com", "tok-2", baseTime.Add(time.Hour))
 		answered.Status = InvitationAccepted
 
-		must.ErrorIs(t, env.createInvitation(t, store, answered.Scope, answered), ErrInvalidInvitationStatus)
+		must.ErrorIs(t, env.createInvitationErr(t, store, answered.Scope, answered), ErrInvalidInvitationStatus)
 	})
 
 	t.Run("refuses an invitation with no expiry", func(t *testing.T) {
@@ -94,7 +143,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		// lost control of two years ago.
 		forever := newInvitation(owner, account.ID, "carol@example.com", "tok-3", time.Time{})
 
-		must.Error(t, env.createInvitation(t, store, forever.Scope, forever))
+		must.Error(t, env.createInvitationErr(t, store, forever.Scope, forever))
 	})
 
 	t.Run("refuses a nil invitation", func(t *testing.T) {
@@ -102,7 +151,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 
 		store, _, _, _, _ := newInvitedStore(t)
 
-		must.ErrorIs(t, env.createInvitation(t, store, testScope, nil), ErrNilInvitation)
+		must.ErrorIs(t, env.createInvitationErr(t, store, testScope, nil), ErrNilInvitation)
 	})
 
 	t.Run("reads by token and refuses a wrong one", func(t *testing.T) {
@@ -297,8 +346,9 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 			ErrInvitationNotFound,
 		)
 
-		second := newInvitation(owner, account.ID, "carol@example.com", "tok-4", baseTime.Add(time.Hour))
-		must.NoError(t, env.createInvitation(t, store, second.Scope, second))
+		second, err := env.createInvitation(t, store, testScope,
+			newInvitation(owner, account.ID, "carol@example.com", "tok-4", baseTime.Add(time.Hour)))
+		must.NoError(t, err)
 		must.NoError(t, env.setInvitationStatus(t, store, testScope, second.ID, InvitationCancelled, "withdrawn"))
 	})
 
@@ -307,8 +357,9 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 
 		store, _, owner, account, invitation := newInvitedStore(t)
 
-		answered := newInvitation(owner, account.ID, "carol@example.com", "tok-5", baseTime.Add(time.Hour))
-		must.NoError(t, env.createInvitation(t, store, answered.Scope, answered))
+		answered, err := env.createInvitation(t, store, testScope,
+			newInvitation(owner, account.ID, "carol@example.com", "tok-5", baseTime.Add(time.Hour)))
+		must.NoError(t, err)
 		must.NoError(t, env.setInvitationStatus(t, store, testScope, answered.ID, InvitationRejected, ""))
 
 		sent, err := store.ListInvitationsFromUser(t.Context(), env.reader(), testScope, owner.ID, InvitationPending, nil)
@@ -347,8 +398,9 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		// on the recipient's is the same wrong order in a different response.
 		store, _, owner, account, first := newInvitedStore(t)
 
-		second := newInvitation(owner, account.ID, "brian@example.com", "tok-6", baseTime.Add(time.Hour))
-		must.NoError(t, env.createInvitation(t, store, second.Scope, second))
+		second, err := env.createInvitation(t, store, testScope,
+			newInvitation(owner, account.ID, "brian@example.com", "tok-6", baseTime.Add(time.Hour)))
+		must.NoError(t, err)
 
 		newestFirst := &filtering.QueryFilter{SortBy: filtering.SortDescending}
 
@@ -440,7 +492,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		}, account.ID)
 
 		sent := newInvitation(brian, account.ID, "carol@example.com", "tok-carol", baseTime.Add(time.Hour))
-		must.NoError(t, env.createInvitation(t, store, sent.Scope, sent))
+		must.NoError(t, env.createInvitationErr(t, store, sent.Scope, sent))
 
 		erasure, err := env.eraseInvitationsForSubject(t, store, testScope, brian.ID)
 		must.NoError(t, err)
@@ -488,7 +540,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		})
 
 		elsewhere := newInvitation(owner, account.ID, "b.other@example.com", "tok-other", baseTime.Add(time.Hour))
-		must.NoError(t, env.createInvitation(t, store, elsewhere.Scope, elsewhere))
+		must.NoError(t, env.createInvitationErr(t, store, elsewhere.Scope, elsewhere))
 
 		_, err := env.acceptInvitation(t, store, testScope, elsewhere.ID, "tok-other", brian.ID, "joined")
 		must.NoError(t, err)

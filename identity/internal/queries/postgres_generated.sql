@@ -825,12 +825,6 @@ WHERE identity_invitations.created_at > COALESCE(sqlc.narg(created_after), (SELE
 ORDER BY identity_invitations.id DESC
 LIMIT COALESCE(sqlc.narg(result_limit), 50);
 
--- name: GetInvitationCreatedAt :one
-SELECT
-	identity_invitations.created_at
-FROM identity_invitations
-WHERE identity_invitations.id = sqlc.arg(id);
-
 -- name: GetArchivedUser :one
 SELECT
 	identity_users.id,

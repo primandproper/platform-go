@@ -133,8 +133,6 @@ type Querier interface {
 	GetArchivedUser(ctx context.Context, db DBTX, arg GetArchivedUserParams) (GetArchivedUserRow, error)
 	// GetInvitation runs the :one query.
 	GetInvitation(ctx context.Context, db DBTX, arg GetInvitationParams) (GetInvitationRow, error)
-	// GetInvitationCreatedAt runs the :one query.
-	GetInvitationCreatedAt(ctx context.Context, db DBTX, arg GetInvitationCreatedAtParams) (GetInvitationCreatedAtRow, error)
 	// GetMembershipByUserAndAccount runs the :one query.
 	GetMembershipByUserAndAccount(ctx context.Context, db DBTX, arg GetMembershipByUserAndAccountParams) (GetMembershipByUserAndAccountRow, error)
 	// GetMembershipFallbackAccountID runs the :one query.

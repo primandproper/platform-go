@@ -305,11 +305,6 @@ WHERE {{prefix}}identity_invitations.archived_at IS NULL
 	AND {{prefix}}identity_invitations.id = ?
 	AND {{prefix}}identity_invitations.scope = ?`
 
-const getInvitationCreatedAtMySQL = `SELECT
-	{{prefix}}identity_invitations.created_at
-FROM {{prefix}}identity_invitations
-WHERE {{prefix}}identity_invitations.id = ?`
-
 const getMembershipByUserAndAccountMySQL = `SELECT
 	{{prefix}}identity_memberships.id,
 	{{prefix}}identity_memberships.scope,
@@ -1741,7 +1736,6 @@ type mysqlQueries struct {
 	getArchivedAccount                       string
 	getArchivedUser                          string
 	getInvitation                            string
-	getInvitationCreatedAt                   string
 	getMembershipByUserAndAccount            string
 	getMembershipFallbackAccountID           string
 	getMembershipIdbyUserAndAccount          string
@@ -1827,7 +1821,6 @@ func newMySQL(prefix string) *mysqlQueries {
 		getArchivedAccount:                       strings.ReplaceAll(getArchivedAccountMySQL, prefixMarker, prefix),
 		getArchivedUser:                          strings.ReplaceAll(getArchivedUserMySQL, prefixMarker, prefix),
 		getInvitation:                            strings.ReplaceAll(getInvitationMySQL, prefixMarker, prefix),
-		getInvitationCreatedAt:                   strings.ReplaceAll(getInvitationCreatedAtMySQL, prefixMarker, prefix),
 		getMembershipByUserAndAccount:            strings.ReplaceAll(getMembershipByUserAndAccountMySQL, prefixMarker, prefix),
 		getMembershipFallbackAccountID:           strings.ReplaceAll(getMembershipFallbackAccountIDMySQL, prefixMarker, prefix),
 		getMembershipIdbyUserAndAccount:          strings.ReplaceAll(getMembershipIdbyUserAndAccountMySQL, prefixMarker, prefix),
@@ -2304,21 +2297,6 @@ func (q *mysqlQueries) GetInvitation(ctx context.Context, db DBTX, arg GetInvita
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
-	)
-
-	return i, err
-}
-
-// GetInvitationCreatedAt runs the :one query against mysql.
-func (q *mysqlQueries) GetInvitationCreatedAt(ctx context.Context, db DBTX, arg GetInvitationCreatedAtParams) (GetInvitationCreatedAtRow, error) {
-	row := db.QueryRowContext(ctx, q.getInvitationCreatedAt,
-		arg.ID,
-	)
-
-	var i GetInvitationCreatedAtRow
-
-	err := row.Scan(
-		&i.CreatedAt,
 	)
 
 	return i, err
@@ -4522,12 +4500,6 @@ var (
 		LastUpdatedAt    *time.Time
 		ArchivedAt       *time.Time
 	}(GetInvitationRow{})
-	_ = struct {
-		ID string
-	}(GetInvitationCreatedAtParams{})
-	_ = struct {
-		CreatedAt time.Time
-	}(GetInvitationCreatedAtRow{})
 	_ = struct {
 		Scope            tenancy.Scope
 		BelongsToUser    string

@@ -888,8 +888,14 @@ type BillingWriter interface {
 // invitation rather than from a parameter: what somebody was invited to is what
 // they get.
 type InvitationStore interface {
-	// CreateInvitation writes an invitation. The ID is generated if it carries
-	// none, and CreatedAt is read back from the row — see Registrar.CreateUser.
+	// CreateInvitation writes an invitation and answers with the row it wrote,
+	// leaving the Invitation it was handed alone — see Registrar.CreateUser.
+	// The ID is generated if the argument carries none, and CreatedAt is the
+	// database's.
+	//
+	// The row that comes back carries the token, since the column does: it is
+	// the value the invitation exists to mail, and the only read-back in this
+	// Store that is a secret.
 	//
 	// Note is the sender's message and is written here; StatusNote is the
 	// answer's and is not. An invitation carrying one at creation is refused
@@ -900,7 +906,7 @@ type InvitationStore interface {
 		tx database.Tx,
 		scope tenancy.Scope,
 		invitation *Invitation,
-	) error
+	) (*Invitation, error)
 
 	// GetInvitation reads one of the scope's live invitations by ID, for the
 	// sender looking at what they have sent. An archived one is not returned —
@@ -1119,9 +1125,9 @@ type InvitationStore interface {
 // with no transaction of its own ignores the executor, and the seam stays one
 // signature rather than one per backing.
 //
-// # Ten writes answer with what they wrote
+// # Eleven writes answer with what they wrote
 //
-// The three creates, the two whole-entity updates, the two archivals and the
+// The four creates, the two whole-entity updates, the two archivals and the
 // three stamps hand back a row, read on the caller's transaction after the
 // write. None of them touches the value it was handed: mutating the argument
 // and returning deliver the same guarantee, and returning is the one spelling

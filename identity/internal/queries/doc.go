@@ -77,17 +77,16 @@ generated.
 
 A table's standard queries are not all of what a store runs against it, and the
 difference used to be the hand-written half. A read keyed on a reference, a read
-of one database-owned column, a read keyed on a natural key the table carries an
-id alongside — each of those was written out by hand, so sqlc proved statements
-the store did not run while the store ran statements sqlc never saw.
+that must see the archived rows every other statement here hides, a read keyed
+on a natural key the table carries an id alongside — each of those was written
+out by hand, so sqlc proved statements the store did not run while the store ran
+statements sqlc never saw.
 
 So they are rendered here too, through querygen's keyed Query forms, which are
 the standard statements with more predicates rather than a second rendering of
 them:
 
   - the two paged invitation reads, keyed on the sender or the addressee
-  - the read-back of created_at, for the one create that still wants a stamp
-    rather than the row it wrote — see [Stamped]
   - the two archival read-backs, each keyed on the id and the scope and carrying
     the archived predicate's complement, because the row an archival stamps is
     the one row every other single-row statement here is written not to return
