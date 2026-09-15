@@ -1,6 +1,7 @@
 package mediaregistry_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/mediaregistry"
@@ -36,6 +37,12 @@ func TestMappers(T *testing.T) {
 			err:      mediaregistry.ErrObjectKeyTaken,
 			httpCode: httperrors.ErrResourceConflict,
 			httpMsg:  "that object key is already registered",
+			grpcCode: codes.AlreadyExists,
+		},
+		"a key the bucket already holds": {
+			err:      mediaregistry.ErrObjectKeyOccupied,
+			httpCode: httperrors.ErrResourceConflict,
+			httpMsg:  "that object key is already in use",
 			grpcCode: codes.AlreadyExists,
 		},
 		"half a belongs-to subject": {
@@ -115,11 +122,44 @@ func TestTheAbsenceIsWhatTheServeRouteAnswers(T *testing.T) {
 func TestTheCollisionSaysNothingAboutWhoHoldsIt(T *testing.T) {
 	T.Parallel()
 
-	_, msg, ok := mediaregistry.HTTPMapper.Map(mediaregistry.ErrObjectKeyTaken)
-	must.True(T, ok)
+	// Both of them, and the bucket's one is the case that would say the most:
+	// on a bucket shared between tenants an occupied key is somebody else's
+	// object, and a message naming them would answer a question this tenant
+	// cannot otherwise ask.
+	for _, err := range []error{mediaregistry.ErrObjectKeyTaken, mediaregistry.ErrObjectKeyOccupied} {
+		_, msg, ok := mediaregistry.HTTPMapper.Map(err)
+		must.True(T, ok)
 
-	test.StrNotContains(T, msg, "scope")
-	test.StrNotContains(T, msg, "tenant")
+		test.StrNotContains(T, msg, "scope")
+		test.StrNotContains(T, msg, "tenant")
+	}
+}
+
+// TestTheTwoCollisionsAreTellableApart is why ErrObjectKeyOccupied is its own
+// sentinel rather than a second way to reach ErrObjectKeyTaken.
+//
+// They share a status, because what the caller does about either is the same:
+// mint another key. What they do not share is what a deployment learns from
+// them — one is a row in the scope and the other is bytes in a bucket, which on
+// a shared bucket arrive with no row to explain them — so a client's report has
+// to be able to say which happened.
+func TestTheTwoCollisionsAreTellableApart(T *testing.T) {
+	T.Parallel()
+
+	test.False(T, errors.Is(mediaregistry.ErrObjectKeyOccupied, mediaregistry.ErrObjectKeyTaken))
+	test.False(T, errors.Is(mediaregistry.ErrObjectKeyTaken, mediaregistry.ErrObjectKeyOccupied))
+
+	takenMsg, occupiedMsg := mapperMessage(T, mediaregistry.ErrObjectKeyTaken), mapperMessage(T, mediaregistry.ErrObjectKeyOccupied)
+	test.NotEqOp(T, takenMsg, occupiedMsg)
+}
+
+func mapperMessage(t *testing.T, err error) string {
+	t.Helper()
+
+	_, msg, ok := mediaregistry.HTTPMapper.Map(err)
+	must.True(t, ok)
+
+	return msg
 }
 
 // TestTheTwoMappersCoverTheSameSentinels is why a service exposing both
@@ -185,6 +225,7 @@ func everySentinel() []error {
 	return []error{
 		mediaregistry.ErrObjectNotFound,
 		mediaregistry.ErrObjectKeyTaken,
+		mediaregistry.ErrObjectKeyOccupied,
 		mediaregistry.ErrPartialSubject,
 		mediaregistry.ErrUnattachedSubject,
 		mediaregistry.ErrTooManyObjectIDs,

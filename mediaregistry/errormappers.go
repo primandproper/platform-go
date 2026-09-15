@@ -26,7 +26,7 @@ import (
 //
 // Not mediaregistry/http, which is the guarded serve and answers its own 404
 // before any encoding happens — that package's documentation says so and still
-// does. The endpoint these five are for is the consumer's own upload handler,
+// does. The endpoint these six are for is the consumer's own upload handler,
 // over the consumer's own form, because the key, the owner and the subject an
 // object hangs off are all theirs; StoreAndRecord is the line at the end of it,
 // and every one of these is a thing that line can tell them. Without a pair here
@@ -80,6 +80,16 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrObjectKeyTaken):
 		return httperrors.ErrResourceConflict, "that object key is already registered", true
 
+	// A key the bucket already holds, which is the same conflict from the
+	// caller's side — mint another key — and a different fact underneath. It
+	// gets its own wording because a deployment reading a client's report needs
+	// to know which store refused, and because on a shared bucket this is the
+	// one that arrives with no row to explain it. The message says nothing about
+	// who put the bytes there, for the same reason the one above says nothing
+	// about who registered the key.
+	case errors.Is(err, ErrObjectKeyOccupied):
+		return httperrors.ErrResourceConflict, "that object key is already in use", true
+
 	// The two ways a belongs-to subject fails to name anything, kept apart
 	// because the fixes differ: one caller sent half a subject and needs the
 	// other half, and the other sent none and is asking a question this read
@@ -112,7 +122,8 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 
 	// AlreadyExists rather than FailedPrecondition, because the collision is on
 	// a unique key and that is the code gRPC reserves for exactly that.
-	case errors.Is(err, ErrObjectKeyTaken):
+	case errors.Is(err, ErrObjectKeyTaken),
+		errors.Is(err, ErrObjectKeyOccupied):
 		return codes.AlreadyExists, true
 
 	// InvalidArgument for the three shape refusals: each is an argument that is

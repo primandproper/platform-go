@@ -2,6 +2,7 @@ package mediaregistry_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 	"github.com/primandproper/primitives-go/v2/uploads"
 	uploadsmock "github.com/primandproper/primitives-go/v2/uploads/mock"
+	"github.com/primandproper/primitives-go/v2/uploads/objectstorage"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -21,11 +23,13 @@ import (
 
 // drainingManager is the UploadManager the happy paths run against: it reads
 // the reader to the end, which is what a real provider does and what makes the
-// byte count mean anything.
+// byte count mean anything. Its bucket holds nothing, so the collision check
+// clears and the upload happens.
 func drainingManager(t *testing.T, stored *[]byte, opts *uploads.SaveOptions) *uploadsmock.UploadManagerMock {
 	t.Helper()
 
 	return &uploadsmock.UploadManagerMock{
+		ExistsFunc: func(context.Context, string) (bool, error) { return false, nil },
 		SaveFunc: func(_ context.Context, _ string, r io.Reader, saveOpts ...uploads.SaveOption) error {
 			read, err := io.ReadAll(r)
 			if err != nil {
@@ -156,7 +160,8 @@ func TestStoreAndRecord(T *testing.T) {
 		saveErr := platformerrors.New("bucket unreachable")
 
 		manager := &uploadsmock.UploadManagerMock{
-			SaveFunc: func(context.Context, string, io.Reader, ...uploads.SaveOption) error { return saveErr },
+			ExistsFunc: func(context.Context, string) (bool, error) { return false, nil },
+			SaveFunc:   func(context.Context, string, io.Reader, ...uploads.SaveOption) error { return saveErr },
 		}
 
 		// RecordObjectFunc is left nil on purpose: the generated mock panics if
@@ -189,6 +194,50 @@ func TestStoreAndRecord(T *testing.T) {
 		// sweep is later written to find.
 		recorded, err := mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, newInput(), strings.NewReader("x"))
 		must.ErrorIs(t, err, mediaregistry.ErrObjectKeyTaken)
+		test.Nil(t, recorded)
+	})
+
+	T.Run("refuses a key the bucket already holds, before the bytes go", func(t *testing.T) {
+		t.Parallel()
+
+		// SaveFunc and RecordObjectFunc are both left nil on purpose: the
+		// generated mocks panic if either is called, which is the assertion. A
+		// provider's writer at an occupied path replaces what is there, so an
+		// upload that ran here would have spent somebody else's object to learn
+		// what this read already said.
+		manager := &uploadsmock.UploadManagerMock{
+			ExistsFunc: func(_ context.Context, path string) (bool, error) {
+				test.EqOp(t, "avatars/grace/original.png", path)
+
+				return true, nil
+			},
+		}
+		store := &mediaregistrymock.StoreMock{}
+
+		recorded, err := mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, newInput(), strings.NewReader("x"))
+		must.ErrorIs(t, err, mediaregistry.ErrObjectKeyOccupied)
+		test.Nil(t, recorded)
+
+		// The bucket's answer, not the registry's. Nothing was registered here,
+		// and on a bucket shared between tenants nothing would have been.
+		test.False(t, errors.Is(err, mediaregistry.ErrObjectKeyTaken))
+	})
+
+	T.Run("does not upload when the bucket could not be asked", func(t *testing.T) {
+		t.Parallel()
+
+		existsErr := platformerrors.New("bucket unreachable")
+
+		manager := &uploadsmock.UploadManagerMock{
+			ExistsFunc: func(context.Context, string) (bool, error) { return false, existsErr },
+		}
+		store := &mediaregistrymock.StoreMock{}
+
+		// A bucket that would not answer is not a bucket that said the key was
+		// free. Uploading anyway would be the overwrite this check exists to
+		// refuse, made without even the excuse of a wrong answer.
+		recorded, err := mediaregistry.StoreAndRecord(t.Context(), tx, scope, manager, store, newInput(), strings.NewReader("x"))
+		must.ErrorIs(t, err, existsErr)
 		test.Nil(t, recorded)
 	})
 
@@ -248,4 +297,61 @@ func TestStoreAndRecord(T *testing.T) {
 		must.ErrorIs(t, err, tenancy.ErrNoScope)
 		test.Nil(t, recorded)
 	})
+}
+
+// TestStoreAndRecordLeavesTheOccupiedKeyAlone is the property the collision
+// check exists for, asserted against a bucket rather than against a mock of one.
+//
+// The mocked cases above pin that nothing is uploaded; this one pins what that
+// buys, which is only visible where there are real bytes to lose. A provider's
+// writer at an occupied path replaces what is there, so without the check the
+// colliding caller's bytes would be what the victim's row now points at — and
+// the registration refusing afterwards would not put the displaced bytes back.
+//
+// It runs against the memory provider, which is the same gocloud blob.Bucket
+// every other provider is, with the network taken out.
+func TestStoreAndRecordLeavesTheOccupiedKeyAlone(t *testing.T) {
+	t.Parallel()
+
+	const key = "invoices/2026-01/receipt.pdf"
+
+	ctx := t.Context()
+
+	manager, err := objectstorage.NewUploadManager(ctx,
+		&objectstorage.Config{Provider: objectstorage.MemoryProvider, BucketName: "collisions"})
+	must.NoError(t, err)
+
+	t.Cleanup(func() { must.NoError(t, manager.Close()) })
+
+	// The victim: bytes in the bucket, whoever put them there. In a shared
+	// bucket this is another tenant's object, which the registry's own unique
+	// index on (scope, object_key) would have cleared.
+	must.NoError(t, uploads.SaveFile(ctx, manager, key, []byte("the original receipt")))
+
+	// The registration is the one the report described: it refuses, because the
+	// key is spoken for. Reaching it at all means the bytes were already spent,
+	// which is what the survivors below would then disagree with — so the flag
+	// is the same assertion said twice, once about the call and once about the
+	// bucket.
+	var registered bool
+
+	store := &mediaregistrymock.StoreMock{
+		RecordObjectFunc: func(context.Context, database.Tx, tenancy.Scope, mediaregistry.ObjectInput) (*mediaregistry.Object, error) {
+			registered = true
+
+			return nil, mediaregistry.ErrObjectKeyTaken
+		},
+	}
+
+	recorded, err := mediaregistry.StoreAndRecord(t.Context(), database.NewTxForTesting(nil), tenancy.Of("tenant_2"),
+		manager, store, mediaregistry.ObjectInput{Key: key, ContentType: "application/pdf", OwnerID: "user_2"},
+		strings.NewReader("a different receipt entirely"))
+	must.ErrorIs(t, err, mediaregistry.ErrObjectKeyOccupied)
+	test.Nil(t, recorded)
+	test.False(t, registered)
+
+	survived, err := uploads.ReadFile(ctx, manager, key)
+	must.NoError(t, err)
+
+	test.EqOp(t, "the original receipt", string(survived))
 }
