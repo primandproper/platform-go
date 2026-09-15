@@ -159,6 +159,21 @@ func shreddingdbDialect(d dialect.Dialect) (shreddingdb.Dialect, error) {
 	}
 }
 
+// Load reads a subject's record from the write database.
+//
+// The read handle is deliberate. Every other statement in this store runs on
+// Writer(), and each of the three callers of this one is deciding what to do
+// about a write it just made: shredOnce reads the row its update and its
+// tombstone insert both declined to touch, KeyManager.mint reads the winner's
+// row after losing an insert race, and cipherFor reads on a cache miss to
+// decide whether a key still exists. A replica that has not caught up answers
+// all three with the state before the write — an idempotent re-shred would burn
+// its attempts and fail with ErrShredContended, and a cache miss would re-cache
+// a destroyed key and restart the TTL this package sells as the erasure bound.
+//
+// There is no read on this store that wants a replica, so there is no variant
+// that takes one. Reader() and Writer() are the same pool on a deployment with
+// no read DSN configured, which is why the distinction only bites where one is.
 func (s *SQLStore) Load(ctx context.Context, subject Subject) (*Record, error) {
 	ctx, op := s.o11y.Begin(ctx,
 		observability.WithValue(subjectIDKey, subject.ID),
@@ -170,7 +185,7 @@ func (s *SQLStore) Load(ctx context.Context, subject Subject) (*Record, error) {
 		return nil, op.Error(err, "loading shredding key")
 	}
 
-	row, err := s.q.GetSubjectKey(ctx, s.client.Reader(), shreddingdb.GetSubjectKeyParams{
+	row, err := s.q.GetSubjectKey(ctx, s.client.Writer(), shreddingdb.GetSubjectKeyParams{
 		SubjectType: subject.Type,
 		SubjectID:   subject.ID,
 	})

@@ -306,3 +306,77 @@ func TestShreddingDBDialect(T *testing.T) {
 		test.ErrorIs(t, err, dialect.ErrUnsupported)
 	})
 }
+
+// TestSQLStore_ReadsThePrimary pins the handle Load answers from.
+//
+// Every caller of Load is deciding what to do about a write that has just
+// happened — a mint that lost its race, a shred that touched nothing, a cache
+// miss — so a read replica standing behind the primary does not hand them a
+// slightly old answer. It hands them the answer to a different question, and
+// each of these is a failure this package's documentation says cannot happen.
+func TestSQLStore_ReadsThePrimary(T *testing.T) {
+	T.Parallel()
+
+	T.Run("finds a row the read side has never seen", func(t *testing.T) {
+		t.Parallel()
+
+		env := newLaggingEnv(t)
+
+		inserted, err := env.store.Insert(t.Context(), &Record{
+			Subject: testSubject, Wrapped: []byte("wrapped"), CreatedAt: baseTime,
+		})
+		must.NoError(t, err)
+		must.True(t, inserted)
+
+		record, err := env.store.Load(t.Context(), testSubject)
+		must.NoError(t, err)
+		test.EqOp(t, testSubject, record.Subject)
+		test.Eq(t, []byte("wrapped"), record.Wrapped)
+	})
+
+	// The one the issue was filed for. A retried erasure re-runs the shred, and
+	// its two writes match nothing because the destruction already happened; the
+	// Load that follows is the only thing that can tell "already shredded" from
+	// "somebody minted underneath me". Answered from a replica still holding the
+	// live row it says the latter, three times, and the retry fails with an
+	// error whose own documentation calls it unreachable.
+	T.Run("stays idempotent against a read side holding the pre-shred row", func(t *testing.T) {
+		t.Parallel()
+
+		env := newLaggingEnv(t)
+
+		inserted, err := env.store.Insert(t.Context(), &Record{
+			Subject: testSubject, Wrapped: []byte("wrapped"), CreatedAt: baseTime,
+		})
+		must.NoError(t, err)
+		must.True(t, inserted)
+
+		// The replica catches up here, and nowhere afterwards: it holds the
+		// live key row, which is exactly the state it is in while it lags
+		// behind a shred.
+		env.catchUp(t, testSubject)
+
+		first, err := env.store.Shred(t.Context(), testSubject, baseTime)
+		must.NoError(t, err)
+		must.True(t, first.Destroyed)
+
+		second, err := env.store.Shred(t.Context(), testSubject, baseTime.Add(time.Hour))
+		must.NoError(t, err)
+		test.False(t, second.Destroyed)
+		test.EqOp(t, baseTime, second.ShreddedAt)
+	})
+
+	T.Run("reports the tombstone the read side does not have", func(t *testing.T) {
+		t.Parallel()
+
+		env := newLaggingEnv(t)
+
+		_, err := env.store.Shred(t.Context(), testSubject, baseTime)
+		must.NoError(t, err)
+
+		record, err := env.store.Load(t.Context(), testSubject)
+		must.NoError(t, err)
+		must.True(t, record.Shredded())
+		test.EqOp(t, baseTime, *record.ShreddedAt)
+	})
+}

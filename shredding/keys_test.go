@@ -279,6 +279,40 @@ func TestKeys_Cache(T *testing.T) {
 		test.EqOp(t, 0, *unwraps)
 	})
 
+	// The cache is only a bound on erasure if what refills it is the truth. A
+	// miss served by a read replica that still holds the pre-shred row re-caches
+	// a key the shred destroyed and starts the TTL again, which turns the
+	// package's stated five-minute bound into a bound that never elapses while
+	// the subject keeps being read.
+	T.Run("does not refill itself with a key a lagging read side still holds", func(t *testing.T) {
+		t.Parallel()
+
+		env := newLaggingEnv(t)
+		c := newStubClock()
+
+		keys, err := NewKeys(env.store, newTestWrapper(t), WithClock(c), WithKeyTTL(time.Minute))
+		must.NoError(t, err)
+
+		sealed, err := keys.Encrypt(t.Context(), testSubject, []byte("home address"), nil)
+		must.NoError(t, err)
+
+		// The read side catches up to the mint and no further, so it holds the
+		// live row for the whole of the rest of this test.
+		env.catchUp(t, testSubject)
+
+		_, err = keys.Shred(t.Context(), testSubject)
+		must.NoError(t, err)
+
+		// Past the TTL, so the answer has to come from the store: the shred
+		// dropped this process's copy, and a read now is the cache miss the
+		// replica would answer wrongly.
+		c.advance(time.Minute + time.Second)
+
+		opened, err := keys.Decrypt(t.Context(), testSubject, sealed, nil)
+		test.Nil(t, opened)
+		test.ErrorIs(t, err, ErrSubjectShredded)
+	})
+
 	T.Run("expires a cached key at the TTL", func(t *testing.T) {
 		t.Parallel()
 

@@ -112,12 +112,34 @@ type storeEnv struct {
 func newSQLiteEnv(t *testing.T) *storeEnv {
 	t.Helper()
 
+	return &storeEnv{client: newSQLiteClient(t), dialect: dialect.SQLite}
+}
+
+// newSQLiteClient opens one SQLite database, in a directory of its own so that
+// two of them are two databases rather than two handles on one.
+func newSQLiteClient(t *testing.T) database.Client {
+	t.Helper()
+
 	client, err := sqlite.NewDatabaseClient(t.Context(),
 		&testClientConfig{connectionString: filepath.Join(t.TempDir(), "shredding.db")})
 	must.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 
-	return &storeEnv{client: client, dialect: dialect.SQLite}
+	return client
+}
+
+// migrateKeysTable renders the keys table under prefix and applies it.
+func migrateKeysTable(t *testing.T, client database.Client, d dialect.Dialect, prefix string) {
+	t.Helper()
+
+	stmts, err := migrations.Statements(d, prefix)
+	must.NoError(t, err)
+	must.SliceNotEmpty(t, stmts)
+
+	for _, stmt := range stmts {
+		_, execErr := client.Writer().ExecContext(t.Context(), stmt)
+		must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
+	}
 }
 
 // newStore migrates a uniquely prefixed key table and returns a Store over it.
@@ -135,21 +157,96 @@ func (e *storeEnv) newStore(t *testing.T) Store {
 func (e *storeEnv) newPrefixedStore(t *testing.T) (store Store, prefix string) {
 	t.Helper()
 
-	prefix = fmt.Sprintf("sh_%d", prefixCounter.Add(1))
+	prefix = newTablePrefix()
 
-	stmts, err := migrations.Statements(e.dialect, prefix)
-	must.NoError(t, err)
-	must.SliceNotEmpty(t, stmts)
+	migrateKeysTable(t, e.client, e.dialect, prefix)
 
-	for _, stmt := range stmts {
-		_, execErr := e.client.Writer().ExecContext(t.Context(), stmt)
-		must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
-	}
-
-	store, err = NewSQLStore(e.client, WithTablePrefix(prefix))
+	store, err := NewSQLStore(e.client, WithTablePrefix(prefix))
 	must.NoError(t, err)
 
 	return store, prefix
+}
+
+// newTablePrefix names a table no other subtest is using.
+func newTablePrefix() string {
+	return fmt.Sprintf("sh_%d", prefixCounter.Add(1))
+}
+
+// laggingClient is a database.Client whose reads answer from a second database.
+//
+// A read replica standing behind its primary is not reproducible on one
+// connection — every reader of a SQLite file sees every committed write — so
+// the replica here is its own database, and it only ever holds what a test put
+// there. That makes the lag total rather than timed, which is the only version
+// of it a test can assert on.
+type laggingClient struct {
+	database.Client
+
+	replica database.Client
+}
+
+var _ database.Client = (*laggingClient)(nil)
+
+func (c *laggingClient) Reader() database.SQLQueryExecutor { return c.replica.Reader() }
+
+// laggingEnv is the store under test and a way to see each of its two
+// databases on its own.
+type laggingEnv struct {
+	// store is the subject of these tests: it writes to the primary and reads
+	// through the replica.
+	store *SQLStore
+	// primary reads and writes the write database directly, which is how a test
+	// establishes what is actually true without going through the seam it is
+	// testing.
+	primary *SQLStore
+	// replica writes the read database directly, which is how a test says how
+	// far behind the read side is.
+	replica *SQLStore
+}
+
+// newLaggingEnv builds a store whose writes land on a primary and whose
+// Reader() answers from a replica that only holds what a test put there.
+//
+// Both databases carry the same table under the same prefix, because a replica
+// with a different schema would fail for a reason that is not the one under
+// test.
+func newLaggingEnv(t *testing.T) *laggingEnv {
+	t.Helper()
+
+	prefix := newTablePrefix()
+
+	primary, replica := newSQLiteClient(t), newSQLiteClient(t)
+
+	migrateKeysTable(t, primary, dialect.SQLite, prefix)
+	migrateKeysTable(t, replica, dialect.SQLite, prefix)
+
+	env := &laggingEnv{}
+
+	var err error
+
+	env.store, err = NewSQLStore(&laggingClient{Client: primary, replica: replica}, WithTablePrefix(prefix))
+	must.NoError(t, err)
+
+	env.primary, err = NewSQLStore(primary, WithTablePrefix(prefix))
+	must.NoError(t, err)
+
+	env.replica, err = NewSQLStore(replica, WithTablePrefix(prefix))
+	must.NoError(t, err)
+
+	return env
+}
+
+// catchUp copies the subject's row from the primary to the replica, leaving the
+// read side holding exactly what is true now and nothing that happens after.
+func (e *laggingEnv) catchUp(t *testing.T, subject Subject) {
+	t.Helper()
+
+	record, err := e.primary.Load(t.Context(), subject)
+	must.NoError(t, err)
+
+	inserted, err := e.replica.Insert(t.Context(), record)
+	must.NoError(t, err)
+	must.True(t, inserted)
 }
 
 // keysTable renders the table name a prefixed store writes to, for the reads
