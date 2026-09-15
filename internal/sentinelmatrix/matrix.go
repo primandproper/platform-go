@@ -875,11 +875,16 @@ var Matrix = map[string]map[string]Decision{
 	},
 
 	mediaRegistryPkg: {
-		// The five a consumer's own upload handler can be told, which is the
+		// The six a consumer's own upload handler can be told, which is the
 		// endpoint these are for — mediaregistry/http is the guarded serve and
-		// answers its own 404 before any encoding happens.
+		// answers its own 404 before any encoding happens. The two key
+		// collisions are both here and both AlreadyExists: one is a row in the
+		// scope, the other is bytes in the bucket, and a caller told only the
+		// first would be told nothing at all about the overwrite the second
+		// refuses.
 		"ErrObjectNotFound":    {Err: mediaregistry.ErrObjectNotFound, Is: Mapped},
 		"ErrObjectKeyTaken":    {Err: mediaregistry.ErrObjectKeyTaken, Is: Mapped},
+		"ErrObjectKeyOccupied": {Err: mediaregistry.ErrObjectKeyOccupied, Is: Mapped},
 		"ErrPartialSubject":    {Err: mediaregistry.ErrPartialSubject, Is: Mapped},
 		"ErrUnattachedSubject": {Err: mediaregistry.ErrUnattachedSubject, Is: Mapped},
 		"ErrTooManyObjectIDs":  {Err: mediaregistry.ErrTooManyObjectIDs, Is: Mapped},

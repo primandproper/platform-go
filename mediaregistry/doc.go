@@ -24,7 +24,11 @@ registering are separately callable on purpose — bytes that arrived through a
 signed URL were written by the client, and a consumer adopting this against an
 existing bucket registers objects nothing here ever wrote. [StoreAndRecord] is
 the convenience that does both, in the order that fails safe, and it is a free
-function over the two seams rather than a method on either.
+function over the two seams rather than a method on either. It asks the bucket
+whether the key is free before it writes — a provider's writer at an occupied
+path replaces what is there, and the one failure the ordering cannot make safe is
+one inside its own first step. See [ErrObjectKeyOccupied], which is the bucket's
+answer where [ErrObjectKeyTaken] is the registry's.
 
 Archival follows from the same split. [Store.ArchiveObject] is metadata-only: the
 row is hidden and the object stays in the bucket, because whether a receipt is
