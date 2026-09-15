@@ -33,14 +33,25 @@ const (
 	InvitationCancelled InvitationStatus = "cancelled"
 )
 
+// InvitationStatuses is the four, pending first and then the three an
+// invitation can be answered into.
+//
+// It is the list [InvitationStatus.Valid] checks against rather than a second
+// copy of the set, because there is a caller that has to walk every status —
+// identity/privacy exports what a subject was sent as well as what they are
+// still being offered, one paged read per status, since the read is keyed on
+// one. A walk with its own list of four is a walk that silently stops covering
+// a fifth.
+var InvitationStatuses = []InvitationStatus{
+	InvitationPending,
+	InvitationAccepted,
+	InvitationRejected,
+	InvitationCancelled,
+}
+
 // Valid reports whether s is one of the four statuses.
 func (s InvitationStatus) Valid() bool {
-	switch s {
-	case InvitationPending, InvitationAccepted, InvitationRejected, InvitationCancelled:
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(InvitationStatuses, s)
 }
 
 // String renders the status as it is stored.
@@ -128,6 +139,25 @@ type Invitation struct {
 	// invitation time rather than at acceptance so that what somebody is being
 	// invited to is what they get, and so the email can say so.
 	Roles []string `json:"roles"`
+}
+
+// InvitationErasure is what erasing a subject did to the invitations table: the
+// rows that went, and the rows that stayed with the subject taken off them.
+//
+// Two numbers rather than one, because the two are two different answers to a
+// regulator. A deleted row is data destroyed; an anonymized one is a row still
+// in the table, which somebody is entitled to be told about. It is deliberately
+// not a dataprivacy.ErasureOutcome: identity does not import dataprivacy — see
+// identity/privacy for why the seam goes the other way — and this is the pair
+// that package assembles one from.
+type InvitationErasure struct {
+	// Deleted is how many invitations addressed to the subject were destroyed.
+	Deleted int64
+
+	// Anonymized is how many invitations the subject sent survived without
+	// them: the sender and the sender's message blanked, the recipient's row
+	// otherwise untouched.
+	Anonymized int64
 }
 
 // Expired reports whether the invitation's window has closed as of now.

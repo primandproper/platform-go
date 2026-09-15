@@ -3,7 +3,7 @@ package service
 import (
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
-	webauthncredentialscfg "github.com/primandproper/platform-go/v14/authentication/webauthncredentials/config"
+	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
@@ -444,7 +444,7 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	if cfg.WebAuthn != nil {
 		do.ProvideValue(i, cfg.WebAuthn)
 		do.ProvideValue(i, &cfg.WebAuthn.Config)
-		webauthncredentialscfg.RegisterSessionStore(i)
+		webauthnsessionscfg.RegisterSessionStore(i)
 		webauthncfg.RegisterRelyingParty(i)
 	}
 }

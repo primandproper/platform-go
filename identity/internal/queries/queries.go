@@ -169,6 +169,7 @@ const (
 	ownerUserIDColumn              = "owner_user_id"
 	invitationStatusNoteColumn     = "status_note"
 	invitationToUserColumn         = "to_user"
+	invitationNoteColumn           = "note"
 
 	// The two agreement stamps, one per statement. A document is accepted on
 	// its own — a registration that accepts both runs both statements — so the
@@ -197,6 +198,18 @@ const (
 // It is the one argument in this schema whose absence is meaningful rather than
 // a caller forgetting to bind it — see uniquenessChecks.
 const exceptUserIDArg = "except_user_id"
+
+// erasedFromUserArg is the argument the sender anonymization matches the
+// subject through, because the SET list assigns the column the WHERE clause
+// names.
+//
+// It is the collision every guard in this schema has and the "current_" prefix
+// answers, arriving from the other direction: there the guard reads a column a
+// statement then assigns, here the erasure blanks a column it selected rows by.
+// One argument name would make the statement set from_user to the value it had
+// just required from_user to equal, which is a write that matches nothing after
+// it runs and everything before it.
+const erasedFromUserArg = "erased_" + InvitationFromUserColumn
 
 // exceptAccountIDArg is the argument the default-flag clear spares a membership
 // through: the account whose membership keeps the flag, absent when none does.
@@ -423,6 +436,7 @@ func Render(d dialect.Dialect) string {
 
 	rendered = append(rendered, keyedInvitationLists(g)...)
 	rendered = append(rendered, archivedReads(g)...)
+	rendered = append(rendered, subjectReads(g)...)
 	rendered = append(rendered, keyedUserReads(g)...)
 	rendered = append(rendered, uniquenessChecks(g)...)
 	rendered = append(rendered, keyedAccountReads(g)...)
@@ -432,6 +446,7 @@ func Render(d dialect.Dialect) string {
 	rendered = append(rendered, usernamePrefixSearch(g)...)
 	rendered = append(rendered, fieldWrites(g)...)
 	rendered = append(rendered, userErasure(g))
+	rendered = append(rendered, subjectErasure(g)...)
 	rendered = append(rendered, roleWrites(g)...)
 	rendered = append(rendered, membershipUpsert(g))
 	rendered = append(rendered, membershipWrites(g)...)
@@ -440,8 +455,9 @@ func Render(d dialect.Dialect) string {
 }
 
 // keyedInvitationLists is the two paged invitation reads the store actually
-// runs — pending invitations from one user, and pending invitations addressed
-// to one email — each in both directions, since a paged list is two statements. They are list variants rather than standard queries — a keyed
+// runs — the invitations from one user in one status, and the ones addressed to
+// one email in one status — each in both directions, since a paged list is two
+// statements. They are list variants rather than standard queries — a keyed
 // column and a status predicate on top of the standard list — and before they
 // were rendered here, the canonical .sql carried only the unkeyed list while
 // the store executed these, which is exactly the checked-versus-executed gap
@@ -449,7 +465,15 @@ func Render(d dialect.Dialect) string {
 //
 // The status is a bound argument rather than the literal 'pending', for the
 // same reason the store binds it: a quoted literal in SQL text is one more
-// place a status spelling lives.
+// place a status spelling lives. That it is bound is also what lets the store
+// take it from its caller, which is what makes an answered invitation reachable
+// at all — a sender's declined invitations, and a subject access request's.
+//
+// It stays a required equality rather than becoming an optional narrowing, and
+// the index is why: identity_invitations indexes both of these columns
+// partially, on pending rows, so a predicate a caller could switch off would be
+// a table scan wearing a filter's clothes. A caller who wants two statuses runs
+// the statement twice.
 func keyedInvitationLists(g *querygen.Generator) []*querygen.Query {
 	scope := querygen.Match{Column: ScopeColumn}
 	status := querygen.Match{Column: InvitationStatusColumn}
@@ -508,6 +532,63 @@ func membershipUpsert(g *querygen.Generator) *querygen.Query {
 // belonged to.
 func userErasure(g *querygen.Generator) *querygen.Query {
 	return g.DeleteQuery("EraseUser", UsersTable, Users.Columns, querygen.Match{Column: ScopeColumn})
+}
+
+// subjectErasure is what an erasure does to the invitations table, which the
+// user's own DELETE reaches none of: identity_invitations carries no REFERENCES
+// to either user it names, so nothing cascades to it and a subject erased from
+// the directory is left in it under their own name and address.
+//
+// It names a person three ways, and each way is its own statement because
+// querygen joins matches with AND and these are alternatives. Two of them are
+// the invitation addressed to the subject — by the address it was sent to, and
+// by the user who accepted it, which is not always the same person's row as the
+// address suggests, since accepting an invitation requires a live user and not
+// a matching mailbox. The third is the invitation the subject sent.
+//
+// The two halves are treated differently because the rows are different rows. An
+// invitation addressed to the subject is the subject's: the address, the name and
+// the link are all theirs, and what would be left after blanking them is a
+// pending offer nobody can be shown, still redeemable by whoever holds the token
+// in a mailbox the subject may no longer control. So it goes. An invitation the
+// subject sent is somebody else's — the address and the name on it belong to the
+// recipient, who has asked for nothing — so it stays, with the sender and the
+// sender's message taken off it. That is an anonymization rather than a deletion
+// and the store reports it as one.
+//
+// The message goes with the sender for the reason comments erases a comment
+// rather than anonymizing one: nothing can promise a sentence somebody typed
+// names nobody, and a row that kept the note while losing the sender would be a
+// row that still says who wrote it.
+//
+// Neither delete carries an archived predicate, because querygen's delete never
+// renders one, and the update is rendered from a column list without archived_at
+// so that it does not either. An invitation is never archived by this package,
+// and an erasure that depended on that staying true would be an erasure a later
+// migration could silently narrow.
+//
+// None of the three is served by an index. identity_invitations indexes the
+// sender and the addressee partially, on pending rows, and indexes to_user not
+// at all — so each of these is a scan. That is the right trade for a statement
+// one person runs once in their life against indexes every invitation ever sent
+// pays to maintain.
+func subjectErasure(g *querygen.Generator) []*querygen.Query {
+	scope := querygen.Match{Column: ScopeColumn}
+
+	return []*querygen.Query{
+		g.DeleteQuery("EraseInvitationsToEmailAddress", InvitationsTable, nil,
+			scope, querygen.Match{Column: InvitationToEmailColumn}),
+
+		g.DeleteQuery("EraseInvitationsToUser", InvitationsTable, nil,
+			scope, querygen.Match{Column: invitationToUserColumn}),
+
+		g.UpdateQuery("AnonymizeInvitationsFromUser", InvitationsTable,
+			Invitations.ColumnsExcept(querygen.IDColumn, querygen.ArchivedAtColumn),
+			[]string{InvitationFromUserColumn, invitationNoteColumn},
+			Invitations.Nullable,
+			scope,
+			querygen.Match{Column: InvitationFromUserColumn, Arg: erasedFromUserArg}),
+	}
 }
 
 // roleWrites is the pair of statements each of the three role tables needs: the
@@ -816,6 +897,38 @@ func archivedReads(g *querygen.Generator) []*querygen.Query {
 		g.ReadQuery("GetArchivedAccount", AccountsTable, nil,
 			querygen.Read{Projection: Accounts.Columns},
 			querygen.Match{Column: querygen.IDColumn}, scope, archived),
+	}
+}
+
+// subjectReads is the one read in this schema that is indifferent to whether a
+// user is archived: the read a privacy request makes.
+//
+// Every other single-user read here excludes archived rows, which is what makes
+// an archived user absent from GetUser and from every Principal built out of
+// one. That is right for every caller but this one. A person exercising a right
+// of access or erasure has almost always been deactivated first — the request
+// is what follows the deactivation rather than what precedes it — so a subject
+// access request routed through GetUser would export nothing, and an erasure
+// routed through it would destroy nothing, and both would report success. There
+// is no failure here for anybody to notice: the artifact is well-formed, the
+// section is present, and the person is still in the table.
+//
+// GetArchivedUser is not that read either. It is the archival's own read-back
+// and carries the complement — archived_at IS NOT NULL — so it answers for a
+// subject who was deactivated and not for one who was not, which is the same
+// half-answer with the halves swapped.
+//
+// It is rendered from no column list at all, which is the trick archivedReads
+// and uniquenessChecks both play: querygen derives the archived predicate from
+// the columns it is handed, so a read that must see archived rows and live ones
+// alike is one keyed entirely on its matches, with the projection stated beside
+// them.
+func subjectReads(g *querygen.Generator) []*querygen.Query {
+	return []*querygen.Query{
+		g.ReadQuery("GetUserIncludingArchived", UsersTable, nil,
+			querygen.Read{Projection: Users.Columns},
+			querygen.Match{Column: querygen.IDColumn},
+			querygen.Match{Column: ScopeColumn}),
 	}
 }
 

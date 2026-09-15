@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
@@ -361,7 +362,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		must.NoError(t, env.setInvitationStatus(t, store, testScope, answered.ID, InvitationRejected, ""))
 
-		sent, err := store.ListInvitationsFromUser(t.Context(), env.reader(), testScope, owner.ID, nil)
+		sent, err := store.ListInvitationsFromUser(t.Context(), env.reader(), testScope, owner.ID, InvitationPending, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, sent.Data)
 		test.EqOp(t, invitation.ID, sent.Data[0].ID)
@@ -378,13 +379,13 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, senderNote, sent.Data[0].Note)
 		test.EqOp(t, "", sent.Data[0].StatusNote)
 
-		received, err := store.ListInvitationsForEmailAddress(t.Context(), env.reader(), testScope, "brian@example.com", nil)
+		received, err := store.ListInvitationsForEmailAddress(t.Context(), env.reader(), testScope, "brian@example.com", InvitationPending, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, received.Data)
 		test.EqOp(t, "", received.Data[0].Token)
 		test.EqOp(t, senderNote, received.Data[0].Note)
 
-		none, err := store.ListInvitationsForEmailAddress(t.Context(), env.reader(), otherScope, "brian@example.com", nil)
+		none, err := store.ListInvitationsForEmailAddress(t.Context(), env.reader(), otherScope, "brian@example.com", InvitationPending, nil)
 		must.NoError(t, err)
 		test.SliceEmpty(t, none.Data)
 	})
@@ -403,7 +404,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 
 		newestFirst := &filtering.QueryFilter{SortBy: filtering.SortDescending}
 
-		sent, err := store.ListInvitationsFromUser(t.Context(), env.reader(), testScope, owner.ID, newestFirst)
+		sent, err := store.ListInvitationsFromUser(t.Context(), env.reader(), testScope, owner.ID, InvitationPending, newestFirst)
 		must.NoError(t, err)
 		must.SliceLen(t, 2, sent.Data)
 		test.EqOp(t, second.ID, sent.Data[0].ID)
@@ -417,7 +418,7 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 			test.EqOp(t, "", invitation.Token)
 		}
 
-		received, err := store.ListInvitationsForEmailAddress(t.Context(), env.reader(), testScope, "brian@example.com", newestFirst)
+		received, err := store.ListInvitationsForEmailAddress(t.Context(), env.reader(), testScope, "brian@example.com", InvitationPending, newestFirst)
 		must.NoError(t, err)
 		must.SliceLen(t, 2, received.Data)
 		test.EqOp(t, second.ID, received.Data[0].ID)
@@ -426,10 +427,216 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		// And the ascending read of the same two is the same pair the other way
 		// round, which is what says the direction did the reversing rather than
 		// the insertion order.
-		ascending, err := store.ListInvitationsForEmailAddress(t.Context(), env.reader(), testScope, "brian@example.com", nil)
+		ascending, err := store.ListInvitationsForEmailAddress(t.Context(), env.reader(), testScope, "brian@example.com", InvitationPending, nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 2, ascending.Data)
 		test.EqOp(t, first.ID, ascending.Data[0].ID)
 		test.EqOp(t, second.ID, ascending.Data[1].ID)
+	})
+
+	t.Run("pages an answered status", func(t *testing.T) {
+		t.Parallel()
+
+		// The status is the caller's, which is what makes an answered
+		// invitation reachable at all: while it was pending, a sender could not
+		// see what had been declined and an export could not carry it.
+		store, _, owner, _, invitation := newInvitedStore(t)
+
+		must.NoError(t, env.setInvitationStatus(t, store, testScope, invitation.ID, InvitationRejected, "no thanks"))
+
+		pending, err := store.ListInvitationsFromUser(t.Context(), env.reader(), testScope, owner.ID, InvitationPending, nil)
+		must.NoError(t, err)
+		test.SliceEmpty(t, pending.Data)
+
+		rejected, err := store.ListInvitationsFromUser(t.Context(), env.reader(), testScope, owner.ID, InvitationRejected, nil)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, rejected.Data)
+		test.EqOp(t, invitation.ID, rejected.Data[0].ID)
+		test.EqOp(t, "no thanks", rejected.Data[0].StatusNote)
+
+		received, err := store.ListInvitationsForEmailAddress(
+			t.Context(), env.reader(), testScope, "brian@example.com", InvitationRejected, nil)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, received.Data)
+		test.EqOp(t, invitation.ID, received.Data[0].ID)
+	})
+
+	t.Run("refuses a page in an unrecognized status", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, owner, _, _ := newInvitedStore(t)
+
+		_, err := store.ListInvitationsFromUser(t.Context(), env.reader(), testScope, owner.ID, "nonsense", nil)
+		test.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
+
+		_, err = store.ListInvitationsForEmailAddress(
+			t.Context(), env.reader(), testScope, "brian@example.com", "nonsense", nil)
+		test.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
+	})
+
+	t.Run("erases the invitations a subject received and anonymizes the ones they sent", func(t *testing.T) {
+		t.Parallel()
+
+		// Brian is the subject: he has been invited by Ada, and he has invited
+		// somebody else. The first row is his; the second is Carol's, and
+		// Carol has asked for nothing.
+		store, _, owner, account, received := newInvitedStore(t)
+
+		brian := seedUserInto(t, env, store, &User{
+			ID:             identifiers.New(),
+			Scope:          testScope,
+			Username:       "brian",
+			EmailAddress:   "brian@example.com",
+			HashedPassword: "argon2$brian",
+			AccountStatus:  StatusGood,
+		}, account.ID)
+
+		sent := newInvitation(brian, account.ID, "carol@example.com", "tok-carol", baseTime.Add(time.Hour))
+		must.NoError(t, env.createInvitationErr(t, store, sent.Scope, sent))
+
+		erasure, err := env.eraseInvitationsForSubject(t, store, testScope, brian.ID)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), erasure.Deleted)
+		test.EqOp(t, int64(1), erasure.Anonymized)
+
+		// The row addressed to him is gone rather than blanked: a pending offer
+		// with no addressee is still redeemable by whoever holds the link.
+		_, err = store.GetInvitation(t.Context(), env.reader(), testScope, received.ID)
+		test.ErrorIs(t, err, ErrInvitationNotFound)
+
+		// Carol's row survives with the sender and the sender's message off it,
+		// and with everything of Carol's untouched.
+		survivor, err := store.GetInvitation(t.Context(), env.reader(), testScope, sent.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "", survivor.FromUser)
+		test.EqOp(t, "", survivor.Note)
+		test.EqOp(t, "carol@example.com", survivor.ToEmail)
+		test.EqOp(t, InvitationPending, survivor.Status)
+
+		// And the sender's own row is untouched by somebody else's erasure.
+		adas, err := store.ListInvitationsFromUser(t.Context(), env.reader(), testScope, owner.ID, InvitationPending, nil)
+		must.NoError(t, err)
+		test.SliceEmpty(t, adas.Data)
+	})
+
+	t.Run("erases an invitation the subject accepted under another address", func(t *testing.T) {
+		t.Parallel()
+
+		// to_user and to_email name the same person by two different keys, and
+		// accepting requires a live user rather than a matching mailbox — so a
+		// row keyed only on the acceptance has to go too.
+		store, _, owner, account, _ := newInvitedStore(t)
+
+		// His directory address is deliberately not the address the invitation
+		// was sent to, so the only key that can reach this row is the
+		// acceptance.
+		brian := seedUser(t, env, store, &User{
+			ID:             identifiers.New(),
+			Scope:          testScope,
+			Username:       "brian",
+			EmailAddress:   "b.directory@example.com",
+			HashedPassword: "argon2$brian",
+			AccountStatus:  StatusGood,
+		})
+
+		elsewhere := newInvitation(owner, account.ID, "b.other@example.com", "tok-other", baseTime.Add(time.Hour))
+		must.NoError(t, env.createInvitationErr(t, store, elsewhere.Scope, elsewhere))
+
+		_, err := env.acceptInvitation(t, store, testScope, elsewhere.ID, "tok-other", brian.ID, "joined")
+		must.NoError(t, err)
+
+		erasure, err := env.eraseInvitationsForSubject(t, store, testScope, brian.ID)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), erasure.Deleted)
+		test.EqOp(t, int64(0), erasure.Anonymized)
+
+		_, err = store.GetInvitation(t.Context(), env.reader(), testScope, elsewhere.ID)
+		test.ErrorIs(t, err, ErrInvitationNotFound)
+	})
+
+	t.Run("erases the invitations of a subject the directory has archived", func(t *testing.T) {
+		t.Parallel()
+
+		// The ordinary case: a deletion request follows a deactivation, so the
+		// address the erasure keys on is on a row every other read here is
+		// written not to see.
+		store, _, _, account, received := newInvitedStore(t)
+
+		brian := seedUserInto(t, env, store, &User{
+			ID:             identifiers.New(),
+			Scope:          testScope,
+			Username:       "brian",
+			EmailAddress:   "brian@example.com",
+			HashedPassword: "argon2$brian",
+			AccountStatus:  StatusGood,
+		}, account.ID)
+
+		_, err := env.archiveUser(t, store, testScope, brian.ID)
+		must.NoError(t, err)
+
+		erasure, err := env.eraseInvitationsForSubject(t, store, testScope, brian.ID)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), erasure.Deleted)
+
+		_, err = store.GetInvitation(t.Context(), env.reader(), testScope, received.ID)
+		test.ErrorIs(t, err, ErrInvitationNotFound)
+	})
+
+	t.Run("refuses an erasure run after the user is gone", func(t *testing.T) {
+		t.Parallel()
+
+		// The address comes off the user row, so the order is load-bearing.
+		// Reporting zero here would be an erasure that left the subject's
+		// address in the table and said it had not.
+		store, _, _, account, _ := newInvitedStore(t)
+
+		brian := seedUserInto(t, env, store, &User{
+			ID:             identifiers.New(),
+			Scope:          testScope,
+			Username:       "brian",
+			EmailAddress:   "brian@example.com",
+			HashedPassword: "argon2$brian",
+			AccountStatus:  StatusGood,
+		}, account.ID)
+
+		erased, err := env.eraseUser(t, store, testScope, brian.ID)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), erased)
+
+		_, err = env.eraseInvitationsForSubject(t, store, testScope, brian.ID)
+		test.ErrorIs(t, err, ErrUserNotFound)
+	})
+
+	t.Run("refuses an erasure naming no subject", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, _, _, _ := newInvitedStore(t)
+
+		_, err := env.eraseInvitationsForSubject(t, store, testScope, "")
+		test.ErrorIs(t, err, platformerrors.ErrEmptyInputParameter)
+	})
+
+	t.Run("leaves another directory's invitations alone", func(t *testing.T) {
+		t.Parallel()
+
+		// Every statement the erasure runs is keyed on the scope, and the
+		// failure mode of getting that wrong is somebody else's rows.
+		store, _, _, account, received := newInvitedStore(t)
+
+		brian := seedUserInto(t, env, store, &User{
+			ID:             identifiers.New(),
+			Scope:          testScope,
+			Username:       "brian",
+			EmailAddress:   "brian@example.com",
+			HashedPassword: "argon2$brian",
+			AccountStatus:  StatusGood,
+		}, account.ID)
+
+		_, err := env.eraseInvitationsForSubject(t, store, otherScope, brian.ID)
+		test.ErrorIs(t, err, ErrUserNotFound)
+
+		still, err := store.GetInvitation(t.Context(), env.reader(), testScope, received.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "brian@example.com", still.ToEmail)
 	})
 }

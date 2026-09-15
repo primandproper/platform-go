@@ -61,15 +61,15 @@ Store. The engines remain engines — this package never hashes, never compares,
 never generates a TOTP secret. It stores what they produce, and
 [User.Redacted] is how a user reaches a response body without them.
 
-What is deliberately not here, and why it is not an omission: WebAuthn
-credentials, password reset tokens, and sessions. Each is a set per user rather
-than a column on one, each has a lifecycle of its own (a credential is
-registered and revoked, a reset token is issued and burned, a session expires),
-and each is consumed by exactly one engine. Their home is beside that engine —
-the same rule that put the password hash here, applied to a fact that is not a
-column. Sessions live in [github.com/primandproper/platform-go/v14/sessions],
-WebAuthn credentials and ceremonies in
-[github.com/primandproper/platform-go/v14/authentication/webauthncredentials], and
+What is deliberately not here, and why it is not an omission: WebAuthn ceremony
+state, password reset tokens, and sessions. Each is a set per user rather than a
+column on one, each has a lifecycle of its own (a ceremony is begun and
+answered, a reset token is issued and burned, a session expires), and each is
+consumed by exactly one engine. Their home is beside that engine — the same rule
+that put the password hash here, applied to a fact that is not a column.
+Sessions live in [github.com/primandproper/platform-go/v14/sessions], WebAuthn
+ceremony state in
+[github.com/primandproper/platform-go/v14/authentication/webauthnsessions], and
 password reset tokens in
 [github.com/primandproper/platform-go/v14/authentication/passwordreset], which
 also owns the two properties a consumer writing that table by hand gets wrong:
@@ -157,6 +157,24 @@ That package also answers which tables exist, at your prefix, through its Tables
 function — the list is complete and read from the DDL, so a between-tests
 TRUNCATE, a backup policy or a privacy inventory names every one of them without
 anybody copying seven names out of the schema.
+
+# What the directory owes a subject
+
+This package holds the names, the addresses and the credentials, so it meets the
+dataprivacy seam like any other store of personal data.
+[github.com/primandproper/platform-go/v14/identity/privacy] ships the two halves:
+a dataprivacy.Collector that returns who somebody is to the directory, and a
+dataprivacy.Eraser that destroys them. It is a package of its own rather than two
+methods here, so that a service with a login form and no privacy pipeline does
+not compile the operations queue and the scheduler behind it.
+
+Two things about the erasure are worth knowing before you wire one up. It is two
+writes rather than one — [InvitationStore.EraseInvitationsForSubject] and then
+[AdminWriter.EraseUser] — because identity_invitations references neither user it
+names and so cascades from nothing, and the first reads the subject's address off
+the row the second destroys. And neither of them can resolve an account the
+subject owned: EraseUser is not refusable, so an owned account survives naming an
+owner who no longer exists. Transfer or archive those before the request runs.
 
 # The operations, and what a consumer still writes
 

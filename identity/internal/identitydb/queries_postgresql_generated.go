@@ -13,6 +13,13 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+const anonymizeInvitationsFromUserPostgreSQL = `UPDATE {{prefix}}identity_invitations SET
+	from_user = $1,
+	note = $2,
+	last_updated_at = CURRENT_TIMESTAMP
+WHERE scope = $3
+	AND from_user = $4`
+
 const answerInvitationPostgreSQL = `UPDATE {{prefix}}identity_invitations SET
 	status = $1,
 	status_note = $2,
@@ -188,6 +195,14 @@ WHERE membership_id = $1`
 
 const deleteUserRolesPostgreSQL = `DELETE FROM {{prefix}}identity_user_roles
 WHERE user_id = $1`
+
+const eraseInvitationsToEmailAddressPostgreSQL = `DELETE FROM {{prefix}}identity_invitations
+WHERE scope = $1
+	AND to_email = $2`
+
+const eraseInvitationsToUserPostgreSQL = `DELETE FROM {{prefix}}identity_invitations
+WHERE scope = $1
+	AND to_user = $2`
 
 const eraseUserPostgreSQL = `DELETE FROM {{prefix}}identity_users
 WHERE id = $1
@@ -458,6 +473,31 @@ FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.username = $1
 	AND {{prefix}}identity_users.scope = $2
 	AND {{prefix}}identity_users.id <> COALESCE($3, '')`
+
+const getUserIncludingArchivedPostgreSQL = `SELECT
+	{{prefix}}identity_users.id,
+	{{prefix}}identity_users.scope,
+	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.email_address,
+	{{prefix}}identity_users.first_name,
+	{{prefix}}identity_users.last_name,
+	{{prefix}}identity_users.hashed_password,
+	{{prefix}}identity_users.requires_password_change,
+	{{prefix}}identity_users.password_last_changed_at,
+	{{prefix}}identity_users.two_factor_secret,
+	{{prefix}}identity_users.two_factor_secret_verified_at,
+	{{prefix}}identity_users.email_address_verified_at,
+	{{prefix}}identity_users.email_address_verification_token,
+	{{prefix}}identity_users.account_status,
+	{{prefix}}identity_users.account_status_explanation,
+	{{prefix}}identity_users.last_accepted_terms_of_service,
+	{{prefix}}identity_users.last_accepted_privacy_policy,
+	{{prefix}}identity_users.created_at,
+	{{prefix}}identity_users.last_updated_at,
+	{{prefix}}identity_users.archived_at
+FROM {{prefix}}identity_users
+WHERE {{prefix}}identity_users.id = $1
+	AND {{prefix}}identity_users.scope = $2`
 
 const insertInvitationRolePostgreSQL = `INSERT INTO {{prefix}}identity_invitation_roles (
 	invitation_id,
@@ -1673,6 +1713,7 @@ ON CONFLICT (belongs_to_user, belongs_to_account) DO UPDATE SET
 
 // postgresqlQueries answers every query in Querier against postgresql.
 type postgresqlQueries struct {
+	anonymizeInvitationsFromUser             string
 	answerInvitation                         string
 	archiveAccount                           string
 	archiveMembership                        string
@@ -1688,6 +1729,8 @@ type postgresqlQueries struct {
 	deleteInvitationRoles                    string
 	deleteMembershipRoles                    string
 	deleteUserRoles                          string
+	eraseInvitationsToEmailAddress           string
+	eraseInvitationsToUser                   string
 	eraseUser                                string
 	getAccount                               string
 	getArchivedAccount                       string
@@ -1704,6 +1747,7 @@ type postgresqlQueries struct {
 	getUserByUsername                        string
 	getUserIdbyEmailAddress                  string
 	getUserIdbyUsername                      string
+	getUserIncludingArchived                 string
 	insertInvitationRole                     string
 	insertMembershipRole                     string
 	insertUserRole                           string
@@ -1754,6 +1798,7 @@ type postgresqlQueries struct {
 // table name the analyzer identified.
 func newPostgreSQL(prefix string) *postgresqlQueries {
 	return &postgresqlQueries{
+		anonymizeInvitationsFromUser:             strings.ReplaceAll(anonymizeInvitationsFromUserPostgreSQL, prefixMarker, prefix),
 		answerInvitation:                         strings.ReplaceAll(answerInvitationPostgreSQL, prefixMarker, prefix),
 		archiveAccount:                           strings.ReplaceAll(archiveAccountPostgreSQL, prefixMarker, prefix),
 		archiveMembership:                        strings.ReplaceAll(archiveMembershipPostgreSQL, prefixMarker, prefix),
@@ -1769,6 +1814,8 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		deleteInvitationRoles:                    strings.ReplaceAll(deleteInvitationRolesPostgreSQL, prefixMarker, prefix),
 		deleteMembershipRoles:                    strings.ReplaceAll(deleteMembershipRolesPostgreSQL, prefixMarker, prefix),
 		deleteUserRoles:                          strings.ReplaceAll(deleteUserRolesPostgreSQL, prefixMarker, prefix),
+		eraseInvitationsToEmailAddress:           strings.ReplaceAll(eraseInvitationsToEmailAddressPostgreSQL, prefixMarker, prefix),
+		eraseInvitationsToUser:                   strings.ReplaceAll(eraseInvitationsToUserPostgreSQL, prefixMarker, prefix),
 		eraseUser:                                strings.ReplaceAll(eraseUserPostgreSQL, prefixMarker, prefix),
 		getAccount:                               strings.ReplaceAll(getAccountPostgreSQL, prefixMarker, prefix),
 		getArchivedAccount:                       strings.ReplaceAll(getArchivedAccountPostgreSQL, prefixMarker, prefix),
@@ -1785,6 +1832,7 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		getUserByUsername:                        strings.ReplaceAll(getUserByUsernamePostgreSQL, prefixMarker, prefix),
 		getUserIdbyEmailAddress:                  strings.ReplaceAll(getUserIdbyEmailAddressPostgreSQL, prefixMarker, prefix),
 		getUserIdbyUsername:                      strings.ReplaceAll(getUserIdbyUsernamePostgreSQL, prefixMarker, prefix),
+		getUserIncludingArchived:                 strings.ReplaceAll(getUserIncludingArchivedPostgreSQL, prefixMarker, prefix),
 		insertInvitationRole:                     strings.ReplaceAll(insertInvitationRolePostgreSQL, prefixMarker, prefix),
 		insertMembershipRole:                     strings.ReplaceAll(insertMembershipRolePostgreSQL, prefixMarker, prefix),
 		insertUserRole:                           strings.ReplaceAll(insertUserRolePostgreSQL, prefixMarker, prefix),
@@ -1830,6 +1878,21 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		updateUserTwoFactorSecret:                strings.ReplaceAll(updateUserTwoFactorSecretPostgreSQL, prefixMarker, prefix),
 		upsertMembership:                         strings.ReplaceAll(upsertMembershipPostgreSQL, prefixMarker, prefix),
 	}
+}
+
+// AnonymizeInvitationsFromUser runs the :execrows query against postgresql.
+func (q *postgresqlQueries) AnonymizeInvitationsFromUser(ctx context.Context, db DBTX, arg AnonymizeInvitationsFromUserParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.anonymizeInvitationsFromUser,
+		arg.FromUser,
+		arg.Note,
+		arg.Scope,
+		arg.ErasedFromUser,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
 }
 
 // AnswerInvitation runs the :execrows query against postgresql.
@@ -2057,6 +2120,32 @@ func (q *postgresqlQueries) DeleteMembershipRoles(ctx context.Context, db DBTX, 
 func (q *postgresqlQueries) DeleteUserRoles(ctx context.Context, db DBTX, arg DeleteUserRolesParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.deleteUserRoles,
 		arg.UserID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// EraseInvitationsToEmailAddress runs the :execrows query against postgresql.
+func (q *postgresqlQueries) EraseInvitationsToEmailAddress(ctx context.Context, db DBTX, arg EraseInvitationsToEmailAddressParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.eraseInvitationsToEmailAddress,
+		arg.Scope,
+		arg.ToEmail,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// EraseInvitationsToUser runs the :execrows query against postgresql.
+func (q *postgresqlQueries) EraseInvitationsToUser(ctx context.Context, db DBTX, arg EraseInvitationsToUserParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.eraseInvitationsToUser,
+		arg.Scope,
+		arg.ToUser,
 	)
 	if err != nil {
 		return 0, err
@@ -2470,6 +2559,41 @@ func (q *postgresqlQueries) GetUserIDByUsername(ctx context.Context, db DBTX, ar
 
 	err := row.Scan(
 		&i.ID,
+	)
+
+	return i, err
+}
+
+// GetUserIncludingArchived runs the :one query against postgresql.
+func (q *postgresqlQueries) GetUserIncludingArchived(ctx context.Context, db DBTX, arg GetUserIncludingArchivedParams) (GetUserIncludingArchivedRow, error) {
+	row := db.QueryRowContext(ctx, q.getUserIncludingArchived,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetUserIncludingArchivedRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Username,
+		&i.EmailAddress,
+		&i.FirstName,
+		&i.LastName,
+		&i.HashedPassword,
+		&i.RequiresPasswordChange,
+		&i.PasswordLastChangedAt,
+		&i.TwoFactorSecret,
+		&i.TwoFactorSecretVerifiedAt,
+		&i.EmailAddressVerifiedAt,
+		&i.EmailAddressVerificationToken,
+		&i.AccountStatus,
+		&i.AccountStatusExplanation,
+		&i.LastAcceptedTermsOfService,
+		&i.LastAcceptedPrivacyPolicy,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
 	)
 
 	return i, err
@@ -3976,6 +4100,12 @@ func (q *postgresqlQueries) UpsertMembership(ctx context.Context, db DBTX, arg U
 // transposition at run time.
 var (
 	_ = struct {
+		FromUser       string
+		Note           string
+		Scope          tenancy.Scope
+		ErasedFromUser string
+	}(AnonymizeInvitationsFromUserParams{})
+	_ = struct {
 		Status        string
 		StatusNote    string
 		ToUser        *string
@@ -4082,6 +4212,14 @@ var (
 	_ = struct {
 		UserID string
 	}(DeleteUserRolesParams{})
+	_ = struct {
+		Scope   tenancy.Scope
+		ToEmail string
+	}(EraseInvitationsToEmailAddressParams{})
+	_ = struct {
+		Scope  tenancy.Scope
+		ToUser *string
+	}(EraseInvitationsToUserParams{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope
@@ -4348,6 +4486,32 @@ var (
 	_ = struct {
 		ID string
 	}(GetUserIDByUsernameRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetUserIncludingArchivedParams{})
+	_ = struct {
+		ID                            string
+		Scope                         tenancy.Scope
+		Username                      string
+		EmailAddress                  string
+		FirstName                     string
+		LastName                      string
+		HashedPassword                string
+		RequiresPasswordChange        bool
+		PasswordLastChangedAt         *time.Time
+		TwoFactorSecret               string
+		TwoFactorSecretVerifiedAt     *time.Time
+		EmailAddressVerifiedAt        *time.Time
+		EmailAddressVerificationToken string
+		AccountStatus                 string
+		AccountStatusExplanation      string
+		LastAcceptedTermsOfService    *time.Time
+		LastAcceptedPrivacyPolicy     *time.Time
+		CreatedAt                     time.Time
+		LastUpdatedAt                 *time.Time
+		ArchivedAt                    *time.Time
+	}(GetUserIncludingArchivedRow{})
 	_ = struct {
 		InvitationID string
 		Role         string

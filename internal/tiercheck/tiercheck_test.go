@@ -80,11 +80,11 @@ var roster = map[string]entry{
 	// domain packages, so the name says something a reader wants, which is why
 	// it survived the flattening the other six parents did not. The README's
 	// "Primitives and Domains" section says why each one splits where it does.
-	"authentication/oauth2clients":       {tier: domain, why: "the administered client registry's table, under a protocol implementation that is a primitive"},
-	"authentication/oauth2serverstore":   {tier: domain, why: "the client and token tables, under a protocol implementation that is a primitive"},
-	"authentication/passwordreset":       {tier: domain, why: "a table of reset tokens, under engines that hash and issue"},
-	"authentication/signin":              {tier: domain, why: "the order the engines and the directory are used in, owning no table of its own"},
-	"authentication/webauthncredentials": {tier: domain, why: "the ceremony table, under a protocol engine that is a primitive"},
+	"authentication/oauth2clients":     {tier: domain, why: "the administered client registry's table, under a protocol implementation that is a primitive"},
+	"authentication/oauth2serverstore": {tier: domain, why: "the client and token tables, under a protocol implementation that is a primitive"},
+	"authentication/passwordreset":     {tier: domain, why: "a table of reset tokens, under engines that hash and issue"},
+	"authentication/signin":            {tier: domain, why: "the order the engines and the directory are used in, owning no table of its own"},
+	"authentication/webauthnsessions":  {tier: domain, why: "the ceremony table, under a protocol engine that is a primitive"},
 
 	// The composition root.
 	"errormappers": {tier: root},

@@ -13,6 +13,13 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+const anonymizeInvitationsFromUserMySQL = `UPDATE {{prefix}}identity_invitations SET
+	from_user = ?,
+	note = ?,
+	last_updated_at = CURRENT_TIMESTAMP(6)
+WHERE scope = ?
+	AND from_user = ?`
+
 const answerInvitationMySQL = `UPDATE {{prefix}}identity_invitations SET
 	status = ?,
 	status_note = ?,
@@ -188,6 +195,14 @@ WHERE membership_id = ?`
 
 const deleteUserRolesMySQL = `DELETE FROM {{prefix}}identity_user_roles
 WHERE user_id = ?`
+
+const eraseInvitationsToEmailAddressMySQL = `DELETE FROM {{prefix}}identity_invitations
+WHERE scope = ?
+	AND to_email = ?`
+
+const eraseInvitationsToUserMySQL = `DELETE FROM {{prefix}}identity_invitations
+WHERE scope = ?
+	AND to_user = ?`
 
 const eraseUserMySQL = `DELETE FROM {{prefix}}identity_users
 WHERE id = ?
@@ -458,6 +473,31 @@ FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.username = ?
 	AND {{prefix}}identity_users.scope = ?
 	AND {{prefix}}identity_users.id <> COALESCE(?, '')`
+
+const getUserIncludingArchivedMySQL = `SELECT
+	{{prefix}}identity_users.id,
+	{{prefix}}identity_users.scope,
+	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.email_address,
+	{{prefix}}identity_users.first_name,
+	{{prefix}}identity_users.last_name,
+	{{prefix}}identity_users.hashed_password,
+	{{prefix}}identity_users.requires_password_change,
+	{{prefix}}identity_users.password_last_changed_at,
+	{{prefix}}identity_users.two_factor_secret,
+	{{prefix}}identity_users.two_factor_secret_verified_at,
+	{{prefix}}identity_users.email_address_verified_at,
+	{{prefix}}identity_users.email_address_verification_token,
+	{{prefix}}identity_users.account_status,
+	{{prefix}}identity_users.account_status_explanation,
+	{{prefix}}identity_users.last_accepted_terms_of_service,
+	{{prefix}}identity_users.last_accepted_privacy_policy,
+	{{prefix}}identity_users.created_at,
+	{{prefix}}identity_users.last_updated_at,
+	{{prefix}}identity_users.archived_at
+FROM {{prefix}}identity_users
+WHERE {{prefix}}identity_users.id = ?
+	AND {{prefix}}identity_users.scope = ?`
 
 const insertInvitationRoleMySQL = `INSERT INTO {{prefix}}identity_invitation_roles (
 	invitation_id,
@@ -1673,6 +1713,7 @@ ON DUPLICATE KEY UPDATE
 
 // mysqlQueries answers every query in Querier against mysql.
 type mysqlQueries struct {
+	anonymizeInvitationsFromUser             string
 	answerInvitation                         string
 	archiveAccount                           string
 	archiveMembership                        string
@@ -1688,6 +1729,8 @@ type mysqlQueries struct {
 	deleteInvitationRoles                    string
 	deleteMembershipRoles                    string
 	deleteUserRoles                          string
+	eraseInvitationsToEmailAddress           string
+	eraseInvitationsToUser                   string
 	eraseUser                                string
 	getAccount                               string
 	getArchivedAccount                       string
@@ -1704,6 +1747,7 @@ type mysqlQueries struct {
 	getUserByUsername                        string
 	getUserIdbyEmailAddress                  string
 	getUserIdbyUsername                      string
+	getUserIncludingArchived                 string
 	insertInvitationRole                     string
 	insertMembershipRole                     string
 	insertUserRole                           string
@@ -1754,6 +1798,7 @@ type mysqlQueries struct {
 // table name the analyzer identified.
 func newMySQL(prefix string) *mysqlQueries {
 	return &mysqlQueries{
+		anonymizeInvitationsFromUser:             strings.ReplaceAll(anonymizeInvitationsFromUserMySQL, prefixMarker, prefix),
 		answerInvitation:                         strings.ReplaceAll(answerInvitationMySQL, prefixMarker, prefix),
 		archiveAccount:                           strings.ReplaceAll(archiveAccountMySQL, prefixMarker, prefix),
 		archiveMembership:                        strings.ReplaceAll(archiveMembershipMySQL, prefixMarker, prefix),
@@ -1769,6 +1814,8 @@ func newMySQL(prefix string) *mysqlQueries {
 		deleteInvitationRoles:                    strings.ReplaceAll(deleteInvitationRolesMySQL, prefixMarker, prefix),
 		deleteMembershipRoles:                    strings.ReplaceAll(deleteMembershipRolesMySQL, prefixMarker, prefix),
 		deleteUserRoles:                          strings.ReplaceAll(deleteUserRolesMySQL, prefixMarker, prefix),
+		eraseInvitationsToEmailAddress:           strings.ReplaceAll(eraseInvitationsToEmailAddressMySQL, prefixMarker, prefix),
+		eraseInvitationsToUser:                   strings.ReplaceAll(eraseInvitationsToUserMySQL, prefixMarker, prefix),
 		eraseUser:                                strings.ReplaceAll(eraseUserMySQL, prefixMarker, prefix),
 		getAccount:                               strings.ReplaceAll(getAccountMySQL, prefixMarker, prefix),
 		getArchivedAccount:                       strings.ReplaceAll(getArchivedAccountMySQL, prefixMarker, prefix),
@@ -1785,6 +1832,7 @@ func newMySQL(prefix string) *mysqlQueries {
 		getUserByUsername:                        strings.ReplaceAll(getUserByUsernameMySQL, prefixMarker, prefix),
 		getUserIdbyEmailAddress:                  strings.ReplaceAll(getUserIdbyEmailAddressMySQL, prefixMarker, prefix),
 		getUserIdbyUsername:                      strings.ReplaceAll(getUserIdbyUsernameMySQL, prefixMarker, prefix),
+		getUserIncludingArchived:                 strings.ReplaceAll(getUserIncludingArchivedMySQL, prefixMarker, prefix),
 		insertInvitationRole:                     strings.ReplaceAll(insertInvitationRoleMySQL, prefixMarker, prefix),
 		insertMembershipRole:                     strings.ReplaceAll(insertMembershipRoleMySQL, prefixMarker, prefix),
 		insertUserRole:                           strings.ReplaceAll(insertUserRoleMySQL, prefixMarker, prefix),
@@ -1830,6 +1878,21 @@ func newMySQL(prefix string) *mysqlQueries {
 		updateUserTwoFactorSecret:                strings.ReplaceAll(updateUserTwoFactorSecretMySQL, prefixMarker, prefix),
 		upsertMembership:                         strings.ReplaceAll(upsertMembershipMySQL, prefixMarker, prefix),
 	}
+}
+
+// AnonymizeInvitationsFromUser runs the :execrows query against mysql.
+func (q *mysqlQueries) AnonymizeInvitationsFromUser(ctx context.Context, db DBTX, arg AnonymizeInvitationsFromUserParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.anonymizeInvitationsFromUser,
+		arg.FromUser,
+		arg.Note,
+		arg.Scope,
+		arg.ErasedFromUser,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
 }
 
 // AnswerInvitation runs the :execrows query against mysql.
@@ -2059,6 +2122,32 @@ func (q *mysqlQueries) DeleteMembershipRoles(ctx context.Context, db DBTX, arg D
 func (q *mysqlQueries) DeleteUserRoles(ctx context.Context, db DBTX, arg DeleteUserRolesParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.deleteUserRoles,
 		arg.UserID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// EraseInvitationsToEmailAddress runs the :execrows query against mysql.
+func (q *mysqlQueries) EraseInvitationsToEmailAddress(ctx context.Context, db DBTX, arg EraseInvitationsToEmailAddressParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.eraseInvitationsToEmailAddress,
+		arg.Scope,
+		arg.ToEmail,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// EraseInvitationsToUser runs the :execrows query against mysql.
+func (q *mysqlQueries) EraseInvitationsToUser(ctx context.Context, db DBTX, arg EraseInvitationsToUserParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.eraseInvitationsToUser,
+		arg.Scope,
+		arg.ToUser,
 	)
 	if err != nil {
 		return 0, err
@@ -2472,6 +2561,41 @@ func (q *mysqlQueries) GetUserIDByUsername(ctx context.Context, db DBTX, arg Get
 
 	err := row.Scan(
 		&i.ID,
+	)
+
+	return i, err
+}
+
+// GetUserIncludingArchived runs the :one query against mysql.
+func (q *mysqlQueries) GetUserIncludingArchived(ctx context.Context, db DBTX, arg GetUserIncludingArchivedParams) (GetUserIncludingArchivedRow, error) {
+	row := db.QueryRowContext(ctx, q.getUserIncludingArchived,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetUserIncludingArchivedRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Username,
+		&i.EmailAddress,
+		&i.FirstName,
+		&i.LastName,
+		&i.HashedPassword,
+		&i.RequiresPasswordChange,
+		&i.PasswordLastChangedAt,
+		&i.TwoFactorSecret,
+		&i.TwoFactorSecretVerifiedAt,
+		&i.EmailAddressVerifiedAt,
+		&i.EmailAddressVerificationToken,
+		&i.AccountStatus,
+		&i.AccountStatusExplanation,
+		&i.LastAcceptedTermsOfService,
+		&i.LastAcceptedPrivacyPolicy,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
 	)
 
 	return i, err
@@ -4155,6 +4279,12 @@ func (q *mysqlQueries) UpsertMembership(ctx context.Context, db DBTX, arg Upsert
 // transposition at run time.
 var (
 	_ = struct {
+		FromUser       string
+		Note           string
+		Scope          tenancy.Scope
+		ErasedFromUser string
+	}(AnonymizeInvitationsFromUserParams{})
+	_ = struct {
 		Status        string
 		StatusNote    string
 		ToUser        *string
@@ -4261,6 +4391,14 @@ var (
 	_ = struct {
 		UserID string
 	}(DeleteUserRolesParams{})
+	_ = struct {
+		Scope   tenancy.Scope
+		ToEmail string
+	}(EraseInvitationsToEmailAddressParams{})
+	_ = struct {
+		Scope  tenancy.Scope
+		ToUser *string
+	}(EraseInvitationsToUserParams{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope
@@ -4527,6 +4665,32 @@ var (
 	_ = struct {
 		ID string
 	}(GetUserIDByUsernameRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetUserIncludingArchivedParams{})
+	_ = struct {
+		ID                            string
+		Scope                         tenancy.Scope
+		Username                      string
+		EmailAddress                  string
+		FirstName                     string
+		LastName                      string
+		HashedPassword                string
+		RequiresPasswordChange        bool
+		PasswordLastChangedAt         *time.Time
+		TwoFactorSecret               string
+		TwoFactorSecretVerifiedAt     *time.Time
+		EmailAddressVerifiedAt        *time.Time
+		EmailAddressVerificationToken string
+		AccountStatus                 string
+		AccountStatusExplanation      string
+		LastAcceptedTermsOfService    *time.Time
+		LastAcceptedPrivacyPolicy     *time.Time
+		CreatedAt                     time.Time
+		LastUpdatedAt                 *time.Time
+		ArchivedAt                    *time.Time
+	}(GetUserIncludingArchivedRow{})
 	_ = struct {
 		InvitationID string
 		Role         string

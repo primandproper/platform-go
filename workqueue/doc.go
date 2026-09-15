@@ -153,6 +153,15 @@ Stats.OldestReadyAge is the number that tells you the fleet has stopped draining
 depth alone cannot distinguish a queue that is deep and moving from one that is
 deep and stuck.
 
+Requeue is the operator's write. Under Config.MaxAttempts an item that keeps
+failing eventually stalls: it is excluded from every claim and left in the table,
+counted by Stats.Stalled, so that somebody can see what it died of. Requeue is
+how it comes back once the cause is fixed — it zeroes the attempt counter on the
+keys you name and makes them claimable now, keeping the priority, the original
+enqueue time and the last error, and reports how many it actually revived.
+Enqueue will not do it: a re-enqueue of an outstanding item merges with what is
+there rather than restarting it, which is what keeps the ceiling a ceiling.
+
 # Keys
 
 K is comparable, which is most of what makes an encoding safe: maps and slices
@@ -180,8 +189,9 @@ A batch reaches those statements as one bound array per column rather than as a
 tuple or a placeholder run, so the text of a statement does not depend on how
 many items are in the call. Enqueue splits its merged batch into three parallel
 arrays — key, priority, delay — Complete and Release bind two, the key and the
-claim holding it, and Remove binds one. All of them are in primary-key order,
-which is where the lock-ordering discipline above is applied.
+claim holding it, and Remove and Requeue bind one. All of them are in
+primary-key order, which is where the lock-ordering discipline above is
+applied.
 
 # Creating the table
 

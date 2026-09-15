@@ -42,6 +42,11 @@ import (
 // membership rather than its negation, and let the caller decide what an empty
 // set means before it calls.
 type Querier interface {
+	// AnonymizeInvitationsFromUser runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	AnonymizeInvitationsFromUser(ctx context.Context, db DBTX, arg AnonymizeInvitationsFromUserParams) (int64, error)
 	// AnswerInvitation runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note
@@ -105,6 +110,16 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	DeleteUserRoles(ctx context.Context, db DBTX, arg DeleteUserRolesParams) (int64, error)
+	// EraseInvitationsToEmailAddress runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	EraseInvitationsToEmailAddress(ctx context.Context, db DBTX, arg EraseInvitationsToEmailAddressParams) (int64, error)
+	// EraseInvitationsToUser runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	EraseInvitationsToUser(ctx context.Context, db DBTX, arg EraseInvitationsToUserParams) (int64, error)
 	// EraseUser runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note
@@ -140,6 +155,8 @@ type Querier interface {
 	GetUserIDByEmailAddress(ctx context.Context, db DBTX, arg GetUserIDByEmailAddressParams) (GetUserIDByEmailAddressRow, error)
 	// GetUserIDByUsername runs the :one query.
 	GetUserIDByUsername(ctx context.Context, db DBTX, arg GetUserIDByUsernameParams) (GetUserIDByUsernameRow, error)
+	// GetUserIncludingArchived runs the :one query.
+	GetUserIncludingArchived(ctx context.Context, db DBTX, arg GetUserIncludingArchivedParams) (GetUserIncludingArchivedRow, error)
 	// InsertInvitationRole runs the :exec query.
 	InsertInvitationRole(ctx context.Context, db DBTX, arg InsertInvitationRoleParams) error
 	// InsertMembershipRole runs the :exec query.

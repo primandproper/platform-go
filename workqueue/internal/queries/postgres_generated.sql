@@ -126,6 +126,23 @@ USING target
 WHERE work_queue_items.queue_name = target.queue_name
 	AND work_queue_items.item_key = target.item_key;
 
+-- name: RequeueItems :execrows
+WITH target AS (
+	SELECT work_queue_items.queue_name, work_queue_items.item_key
+	FROM work_queue_items
+	WHERE work_queue_items.queue_name = sqlc.arg(queue_name)
+		AND work_queue_items.completed_at IS NULL
+		AND work_queue_items.item_key = ANY(sqlc.arg(item_keys)::text[])
+	ORDER BY work_queue_items.queue_name, work_queue_items.item_key
+	FOR UPDATE
+)
+UPDATE work_queue_items SET
+	attempts = 0,
+	available_at = CURRENT_TIMESTAMP
+FROM target
+WHERE work_queue_items.queue_name = target.queue_name
+	AND work_queue_items.item_key = target.item_key;
+
 -- name: ReapCompletedItems :execrows
 WITH doomed AS (
 	SELECT work_queue_items.queue_name, work_queue_items.item_key

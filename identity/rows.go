@@ -223,6 +223,19 @@ func userFromArchivedRow(r *identitydb.GetArchivedUserRow) *User {
 	return userFromRow(&row)
 }
 
+// userFromAnyRow converts the read a privacy request makes: the user whether or
+// not they have been archived.
+//
+// It casts for the reason userFromArchivedRow casts: GetUserIncludingArchived
+// projects the list GetUser projects and differs from it only in which rows it
+// will look at — here, in looking at all of them — so the conversion is the
+// assertion that the two projections still agree.
+func userFromAnyRow(r *identitydb.GetUserIncludingArchivedRow) *User {
+	row := identitydb.GetUserRow(*r)
+
+	return userFromRow(&row)
+}
+
 // The three single-user reads keyed on something other than the id each have a
 // row type of their own, because sqlc's row types are nominal per statement:
 // two statements projecting the same twenty columns still produce two structs

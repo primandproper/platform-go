@@ -208,7 +208,7 @@ func TestListInvitationRows_RefusesAnUnkeyedColumn(t *testing.T) {
 	s := &SQLStore{}
 
 	_, err := s.listInvitationRows(
-		t.Context(), nil, "belongs_to_account", tenancy.Of("dir"), "a1", pageFilter(nil))
+		t.Context(), nil, "belongs_to_account", tenancy.Of("dir"), "a1", InvitationPending, pageFilter(nil))
 	must.Error(t, err)
 	test.StrContains(t, err.Error(), "belongs_to_account")
 }

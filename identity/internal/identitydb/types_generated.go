@@ -11,6 +11,14 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+// AnonymizeInvitationsFromUserParams are the arguments to AnonymizeInvitationsFromUser.
+type AnonymizeInvitationsFromUserParams struct {
+	FromUser       string
+	Note           string
+	Scope          tenancy.Scope
+	ErasedFromUser string
+}
+
 // AnswerInvitationParams are the arguments to AnswerInvitation.
 type AnswerInvitationParams struct {
 	Status        string
@@ -148,6 +156,18 @@ type DeleteMembershipRolesParams struct {
 // DeleteUserRolesParams are the arguments to DeleteUserRoles.
 type DeleteUserRolesParams struct {
 	UserID string
+}
+
+// EraseInvitationsToEmailAddressParams are the arguments to EraseInvitationsToEmailAddress.
+type EraseInvitationsToEmailAddressParams struct {
+	Scope   tenancy.Scope
+	ToEmail string
+}
+
+// EraseInvitationsToUserParams are the arguments to EraseInvitationsToUser.
+type EraseInvitationsToUserParams struct {
+	Scope  tenancy.Scope
+	ToUser *string
 }
 
 // EraseUserParams are the arguments to EraseUser.
@@ -476,6 +496,36 @@ type GetUserIDByUsernameParams struct {
 // GetUserIDByUsernameRow is one row of GetUserIDByUsername's result.
 type GetUserIDByUsernameRow struct {
 	ID string
+}
+
+// GetUserIncludingArchivedParams are the arguments to GetUserIncludingArchived.
+type GetUserIncludingArchivedParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetUserIncludingArchivedRow is one row of GetUserIncludingArchived's result.
+type GetUserIncludingArchivedRow struct {
+	ID                            string
+	Scope                         tenancy.Scope
+	Username                      string
+	EmailAddress                  string
+	FirstName                     string
+	LastName                      string
+	HashedPassword                string
+	RequiresPasswordChange        bool
+	PasswordLastChangedAt         *time.Time
+	TwoFactorSecret               string
+	TwoFactorSecretVerifiedAt     *time.Time
+	EmailAddressVerifiedAt        *time.Time
+	EmailAddressVerificationToken string
+	AccountStatus                 string
+	AccountStatusExplanation      string
+	LastAcceptedTermsOfService    *time.Time
+	LastAcceptedPrivacyPolicy     *time.Time
+	CreatedAt                     time.Time
+	LastUpdatedAt                 *time.Time
+	ArchivedAt                    *time.Time
 }
 
 // InsertInvitationRoleParams are the arguments to InsertInvitationRole.

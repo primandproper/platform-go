@@ -772,6 +772,26 @@ func (e *storeEnv) acceptInvitation(
 	return membership, err
 }
 
+func (e *storeEnv) eraseInvitationsForSubject(
+	t *testing.T,
+	store *SQLStore,
+	scope tenancy.Scope,
+	userID string,
+) (InvitationErasure, error) {
+	t.Helper()
+
+	var erasure InvitationErasure
+
+	err := e.inTx(t, func(tx database.Tx) error {
+		var txErr error
+		erasure, txErr = store.EraseInvitationsForSubject(t.Context(), tx, scope, userID)
+
+		return txErr
+	})
+
+	return erasure, err
+}
+
 func (e *storeEnv) setInvitationStatus(
 	t *testing.T,
 	store *SQLStore,

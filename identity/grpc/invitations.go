@@ -237,7 +237,16 @@ func (s *Server) GetInvitation(
 	return &identitypb.GetInvitationResponse{Invitation: InvitationToProto(invitation.Redacted())}, nil
 }
 
-// ListInvitationsFromUser pages what the calling user has sent.
+// ListInvitationsFromUser pages what the calling user has sent and is still
+// waiting on.
+//
+// The status is this server's rather than the request's, and pending is the one
+// it names. The store takes a status now — an answered invitation was not
+// reachable through it at all before — and the wire deliberately did not follow:
+// a roster of outstanding invitations is what this RPC is, and a client that
+// could name the status would be asking a different question through a message
+// that has no field for it. A surface over the answered ones is a new RPC and a
+// new permission when somebody wants one.
 func (s *Server) ListInvitationsFromUser(
 	ctx context.Context,
 	request *identitypb.ListInvitationsFromUserRequest,
@@ -256,7 +265,7 @@ func (s *Server) ListInvitationsFromUser(
 	}
 
 	page, err := s.store.ListInvitationsFromUser(
-		ctx, s.client.Reader(), scopeOf(principal), principal.UserID(), filter)
+		ctx, s.client.Reader(), scopeOf(principal), principal.UserID(), identity.InvitationPending, filter)
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "listing sent invitations")
 	}
@@ -267,7 +276,9 @@ func (s *Server) ListInvitationsFromUser(
 	}, nil
 }
 
-// ListInvitationsForEmailAddress pages what the calling user has been sent.
+// ListInvitationsForEmailAddress pages the invitations the calling user has been
+// sent and has not answered. The status is this server's, for the reason
+// ListInvitationsFromUser gives.
 //
 // The address is read off the caller's own user row rather than taken from the
 // request. An address a client could name would answer "has this person been
@@ -315,7 +326,7 @@ func (s *Server) ListInvitationsForEmailAddress(
 	}
 
 	page, err := s.store.ListInvitationsForEmailAddress(
-		ctx, s.client.Reader(), scope, caller.EmailAddress, filter)
+		ctx, s.client.Reader(), scope, caller.EmailAddress, identity.InvitationPending, filter)
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "listing received invitations")
 	}

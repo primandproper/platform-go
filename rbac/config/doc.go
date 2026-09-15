@@ -24,7 +24,7 @@
 // now lives beside it. authorizationcfg's own doc.go records the same rule from
 // the other side, along with the two exits that were refused.
 //
-// The same cut is made in webauthncredentialscfg and oauth2serverstorecfg, and
+// The same cut is made in webauthnsessionscfg and oauth2serverstorecfg, and
 // in each of the three the primitive half is left with exactly one
 // implementation to build, which is nothing to select between.
 //

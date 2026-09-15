@@ -54,7 +54,7 @@ import (
 
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
-	webauthncredentialscfg "github.com/primandproper/platform-go/v14/authentication/webauthncredentials/config"
+	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
@@ -146,57 +146,57 @@ import (
 type Config struct {
 	_ struct{} `json:"-" yaml:"-"`
 
-	Analytics            *analyticscfg.Config           `env:",init" envPrefix:"ANALYTICS_"              json:"analytics,omitempty"            yaml:"analytics,omitempty"`
-	AsyncNotifications   *asyncnotifcfg.Config          `env:",init" envPrefix:"ASYNC_NOTIFICATIONS_"    json:"asyncNotifications,omitempty"   yaml:"asyncNotifications,omitempty"`
-	Audit                *auditcfg.Config               `env:",init" envPrefix:"AUDIT_"                  json:"audit,omitempty"                yaml:"audit,omitempty"`
-	Authorization        *rbaccfg.Config                `env:",init" envPrefix:"AUTHORIZATION_"          json:"authorization,omitempty"        yaml:"authorization,omitempty"`
-	Billing              *billingcfg.Config             `env:",init" envPrefix:"BILLING_"                json:"billing,omitempty"              yaml:"billing,omitempty"`
-	Capitalism           *capitalismcfg.Config          `env:",init" envPrefix:"CAPITALISM_"             json:"capitalism,omitempty"           yaml:"capitalism,omitempty"`
-	CircuitBreaking      *circuitbreakingcfg.Config     `env:",init" envPrefix:"CIRCUIT_BREAKING_"       json:"circuitBreaking,omitempty"      yaml:"circuitBreaking,omitempty"`
-	Comments             *commentscfg.Config            `env:",init" envPrefix:"COMMENTS_"               json:"comments,omitempty"             yaml:"comments,omitempty"`
-	Cookies              *cookies.Config                `env:",init" envPrefix:"COOKIES_"                json:"cookies,omitempty"              yaml:"cookies,omitempty"`
-	DataPrivacy          *dataprivacycfg.Config         `env:",init" envPrefix:"DATA_PRIVACY_"           json:"dataPrivacy,omitempty"          yaml:"dataPrivacy,omitempty"`
-	Database             *databasecfg.Config            `env:",init" envPrefix:"DATABASE_"               json:"database,omitempty"             yaml:"database,omitempty"`
-	DistributedLock      *distributedlockcfg.Config     `env:",init" envPrefix:"DISTRIBUTED_LOCK_"       json:"distributedLock,omitempty"      yaml:"distributedLock,omitempty"`
-	Email                *emailcfg.Config               `env:",init" envPrefix:"EMAIL_"                  json:"email,omitempty"                yaml:"email,omitempty"`
-	Embeddings           *embeddingscfg.Config          `env:",init" envPrefix:"EMBEDDINGS_"             json:"embeddings,omitempty"           yaml:"embeddings,omitempty"`
-	Encoding             *encoding.Config               `env:",init" envPrefix:"ENCODING_"               json:"encoding,omitempty"             yaml:"encoding,omitempty"`
-	Encryption           *encryptioncfg.Config          `env:",init" envPrefix:"ENCRYPTION_"             json:"encryption,omitempty"           yaml:"encryption,omitempty"`
-	Entitlements         *entitlementscfg.Config        `env:",init" envPrefix:"ENTITLEMENTS_"           json:"entitlements,omitempty"         yaml:"entitlements,omitempty"`
-	Shredding            *shreddingcfg.Config           `env:",init" envPrefix:"SHREDDING_"              json:"shredding,omitempty"            yaml:"shredding,omitempty"`
-	EventStream          *eventstreamcfg.Config         `env:",init" envPrefix:"EVENT_STREAM_"           json:"eventStream,omitempty"          yaml:"eventStream,omitempty"`
-	FeatureFlags         *featureflagscfg.Config        `env:",init" envPrefix:"FEATURE_FLAGS_"          json:"featureFlags,omitempty"         yaml:"featureFlags,omitempty"`
-	GRPCServer           *grpcserver.Config             `env:",init" envPrefix:"GRPC_SERVER_"            json:"grpcServer,omitempty"           yaml:"grpcServer,omitempty"`
-	HTTPClient           *httpclient.Config             `env:",init" envPrefix:"HTTP_CLIENT_"            json:"httpClient,omitempty"           yaml:"httpClient,omitempty"`
-	HTTPServer           *httpserver.Config             `env:",init" envPrefix:"HTTP_SERVER_"            json:"httpServer,omitempty"           yaml:"httpServer,omitempty"`
-	Identity             *identitycfg.Config            `env:",init" envPrefix:"IDENTITY_"               json:"identity,omitempty"             yaml:"identity,omitempty"`
-	InboundWebhooks      *inboundcfg.Config             `env:",init" envPrefix:"INBOUND_WEBHOOKS_"       json:"inboundWebhooks,omitempty"      yaml:"inboundWebhooks,omitempty"`
-	IssueReports         *issuereportscfg.Config        `env:",init" envPrefix:"ISSUE_REPORTS_"          json:"issueReports,omitempty"         yaml:"issueReports,omitempty"`
-	JobsPool             *jobscfg.PoolConfig            `env:",init" envPrefix:"JOBS_POOL_"              json:"jobsPool,omitempty"             yaml:"jobsPool,omitempty"`
-	JobsScheduler        *jobscfg.SchedulerConfig       `env:",init" envPrefix:"JOBS_SCHEDULER_"         json:"jobsScheduler,omitempty"        yaml:"jobsScheduler,omitempty"`
-	KeyedCircuitBreaking *partitionedcfg.Config         `env:",init" envPrefix:"KEYED_CIRCUIT_BREAKING_" json:"keyedCircuitBreaking,omitempty" yaml:"keyedCircuitBreaking,omitempty"`
-	Links                *linkscfg.Config               `env:",init" envPrefix:"LINKS_"                  json:"links,omitempty"                yaml:"links,omitempty"`
-	LLM                  *llmcfg.Config                 `env:",init" envPrefix:"LLM_"                    json:"llm,omitempty"                  yaml:"llm,omitempty"`
-	MediaRegistry        *mediaregistrycfg.Config       `env:",init" envPrefix:"MEDIA_REGISTRY_"         json:"mediaRegistry,omitempty"        yaml:"mediaRegistry,omitempty"`
-	MessageQueue         *messagequeuecfg.Config        `env:",init" envPrefix:"MESSAGE_QUEUE_"          json:"messageQueue,omitempty"         yaml:"messageQueue,omitempty"`
-	Metering             *meteringcfg.Config            `env:",init" envPrefix:"METERING_"               json:"metering,omitempty"             yaml:"metering,omitempty"`
-	MobileNotifications  *mobilenotifcfg.Config         `env:",init" envPrefix:"MOBILE_NOTIFICATIONS_"   json:"mobileNotifications,omitempty"  yaml:"mobileNotifications,omitempty"`
-	Notifications        *notificationscfg.Config       `env:",init" envPrefix:"NOTIFICATIONS_"          json:"notifications,omitempty"        yaml:"notifications,omitempty"`
-	OAuth2Server         *oauth2serverstorecfg.Config   `env:",init" envPrefix:"OAUTH2_SERVER_"          json:"oauth2Server,omitempty"         yaml:"oauth2Server,omitempty"`
-	Operations           *operationscfg.Config          `env:",init" envPrefix:"OPERATIONS_"             json:"operations,omitempty"           yaml:"operations,omitempty"`
-	Outbox               *outboxcfg.Config              `env:",init" envPrefix:"OUTBOX_"                 json:"outbox,omitempty"               yaml:"outbox,omitempty"`
-	RateLimiting         *ratelimitingcfg.Config        `env:",init" envPrefix:"RATE_LIMITING_"          json:"rateLimiting,omitempty"         yaml:"rateLimiting,omitempty"`
-	Retention            *retentioncfg.Config           `env:",init" envPrefix:"RETENTION_"              json:"retention,omitempty"            yaml:"retention,omitempty"`
-	Retry                *retrycfg.Config               `env:",init" envPrefix:"RETRY_"                  json:"retry,omitempty"                yaml:"retry,omitempty"`
-	Routing              *routingcfg.Config             `env:",init" envPrefix:"ROUTING_"                json:"routing,omitempty"              yaml:"routing,omitempty"`
-	Saga                 *sagacfg.Config                `env:",init" envPrefix:"SAGA_"                   json:"saga,omitempty"                 yaml:"saga,omitempty"`
-	Secrets              *secretscfg.Config             `env:",init" envPrefix:"SECRETS_"                json:"secrets,omitempty"              yaml:"secrets,omitempty"`
-	Settings             *settingscfg.Config            `env:",init" envPrefix:"SETTINGS_"               json:"settings,omitempty"             yaml:"settings,omitempty"`
-	Tokens               *tokenscfg.Config              `env:",init" envPrefix:"TOKENS_"                 json:"tokens,omitempty"               yaml:"tokens,omitempty"`
-	Uploads              *uploadscfg.Config             `env:",init" envPrefix:"UPLOADS_"                json:"uploads,omitempty"              yaml:"uploads,omitempty"`
-	Waitlists            *waitlistscfg.Config           `env:",init" envPrefix:"WAITLISTS_"              json:"waitlists,omitempty"            yaml:"waitlists,omitempty"`
-	WebAuthn             *webauthncredentialscfg.Config `env:",init" envPrefix:"WEBAUTHN_"               json:"webAuthn,omitempty"             yaml:"webAuthn,omitempty"`
-	Webhooks             *webhookscfg.Config            `env:",init" envPrefix:"WEBHOOKS_"               json:"webhooks,omitempty"             yaml:"webhooks,omitempty"`
+	Analytics            *analyticscfg.Config         `env:",init" envPrefix:"ANALYTICS_"              json:"analytics,omitempty"            yaml:"analytics,omitempty"`
+	AsyncNotifications   *asyncnotifcfg.Config        `env:",init" envPrefix:"ASYNC_NOTIFICATIONS_"    json:"asyncNotifications,omitempty"   yaml:"asyncNotifications,omitempty"`
+	Audit                *auditcfg.Config             `env:",init" envPrefix:"AUDIT_"                  json:"audit,omitempty"                yaml:"audit,omitempty"`
+	Authorization        *rbaccfg.Config              `env:",init" envPrefix:"AUTHORIZATION_"          json:"authorization,omitempty"        yaml:"authorization,omitempty"`
+	Billing              *billingcfg.Config           `env:",init" envPrefix:"BILLING_"                json:"billing,omitempty"              yaml:"billing,omitempty"`
+	Capitalism           *capitalismcfg.Config        `env:",init" envPrefix:"CAPITALISM_"             json:"capitalism,omitempty"           yaml:"capitalism,omitempty"`
+	CircuitBreaking      *circuitbreakingcfg.Config   `env:",init" envPrefix:"CIRCUIT_BREAKING_"       json:"circuitBreaking,omitempty"      yaml:"circuitBreaking,omitempty"`
+	Comments             *commentscfg.Config          `env:",init" envPrefix:"COMMENTS_"               json:"comments,omitempty"             yaml:"comments,omitempty"`
+	Cookies              *cookies.Config              `env:",init" envPrefix:"COOKIES_"                json:"cookies,omitempty"              yaml:"cookies,omitempty"`
+	DataPrivacy          *dataprivacycfg.Config       `env:",init" envPrefix:"DATA_PRIVACY_"           json:"dataPrivacy,omitempty"          yaml:"dataPrivacy,omitempty"`
+	Database             *databasecfg.Config          `env:",init" envPrefix:"DATABASE_"               json:"database,omitempty"             yaml:"database,omitempty"`
+	DistributedLock      *distributedlockcfg.Config   `env:",init" envPrefix:"DISTRIBUTED_LOCK_"       json:"distributedLock,omitempty"      yaml:"distributedLock,omitempty"`
+	Email                *emailcfg.Config             `env:",init" envPrefix:"EMAIL_"                  json:"email,omitempty"                yaml:"email,omitempty"`
+	Embeddings           *embeddingscfg.Config        `env:",init" envPrefix:"EMBEDDINGS_"             json:"embeddings,omitempty"           yaml:"embeddings,omitempty"`
+	Encoding             *encoding.Config             `env:",init" envPrefix:"ENCODING_"               json:"encoding,omitempty"             yaml:"encoding,omitempty"`
+	Encryption           *encryptioncfg.Config        `env:",init" envPrefix:"ENCRYPTION_"             json:"encryption,omitempty"           yaml:"encryption,omitempty"`
+	Entitlements         *entitlementscfg.Config      `env:",init" envPrefix:"ENTITLEMENTS_"           json:"entitlements,omitempty"         yaml:"entitlements,omitempty"`
+	Shredding            *shreddingcfg.Config         `env:",init" envPrefix:"SHREDDING_"              json:"shredding,omitempty"            yaml:"shredding,omitempty"`
+	EventStream          *eventstreamcfg.Config       `env:",init" envPrefix:"EVENT_STREAM_"           json:"eventStream,omitempty"          yaml:"eventStream,omitempty"`
+	FeatureFlags         *featureflagscfg.Config      `env:",init" envPrefix:"FEATURE_FLAGS_"          json:"featureFlags,omitempty"         yaml:"featureFlags,omitempty"`
+	GRPCServer           *grpcserver.Config           `env:",init" envPrefix:"GRPC_SERVER_"            json:"grpcServer,omitempty"           yaml:"grpcServer,omitempty"`
+	HTTPClient           *httpclient.Config           `env:",init" envPrefix:"HTTP_CLIENT_"            json:"httpClient,omitempty"           yaml:"httpClient,omitempty"`
+	HTTPServer           *httpserver.Config           `env:",init" envPrefix:"HTTP_SERVER_"            json:"httpServer,omitempty"           yaml:"httpServer,omitempty"`
+	Identity             *identitycfg.Config          `env:",init" envPrefix:"IDENTITY_"               json:"identity,omitempty"             yaml:"identity,omitempty"`
+	InboundWebhooks      *inboundcfg.Config           `env:",init" envPrefix:"INBOUND_WEBHOOKS_"       json:"inboundWebhooks,omitempty"      yaml:"inboundWebhooks,omitempty"`
+	IssueReports         *issuereportscfg.Config      `env:",init" envPrefix:"ISSUE_REPORTS_"          json:"issueReports,omitempty"         yaml:"issueReports,omitempty"`
+	JobsPool             *jobscfg.PoolConfig          `env:",init" envPrefix:"JOBS_POOL_"              json:"jobsPool,omitempty"             yaml:"jobsPool,omitempty"`
+	JobsScheduler        *jobscfg.SchedulerConfig     `env:",init" envPrefix:"JOBS_SCHEDULER_"         json:"jobsScheduler,omitempty"        yaml:"jobsScheduler,omitempty"`
+	KeyedCircuitBreaking *partitionedcfg.Config       `env:",init" envPrefix:"KEYED_CIRCUIT_BREAKING_" json:"keyedCircuitBreaking,omitempty" yaml:"keyedCircuitBreaking,omitempty"`
+	Links                *linkscfg.Config             `env:",init" envPrefix:"LINKS_"                  json:"links,omitempty"                yaml:"links,omitempty"`
+	LLM                  *llmcfg.Config               `env:",init" envPrefix:"LLM_"                    json:"llm,omitempty"                  yaml:"llm,omitempty"`
+	MediaRegistry        *mediaregistrycfg.Config     `env:",init" envPrefix:"MEDIA_REGISTRY_"         json:"mediaRegistry,omitempty"        yaml:"mediaRegistry,omitempty"`
+	MessageQueue         *messagequeuecfg.Config      `env:",init" envPrefix:"MESSAGE_QUEUE_"          json:"messageQueue,omitempty"         yaml:"messageQueue,omitempty"`
+	Metering             *meteringcfg.Config          `env:",init" envPrefix:"METERING_"               json:"metering,omitempty"             yaml:"metering,omitempty"`
+	MobileNotifications  *mobilenotifcfg.Config       `env:",init" envPrefix:"MOBILE_NOTIFICATIONS_"   json:"mobileNotifications,omitempty"  yaml:"mobileNotifications,omitempty"`
+	Notifications        *notificationscfg.Config     `env:",init" envPrefix:"NOTIFICATIONS_"          json:"notifications,omitempty"        yaml:"notifications,omitempty"`
+	OAuth2Server         *oauth2serverstorecfg.Config `env:",init" envPrefix:"OAUTH2_SERVER_"          json:"oauth2Server,omitempty"         yaml:"oauth2Server,omitempty"`
+	Operations           *operationscfg.Config        `env:",init" envPrefix:"OPERATIONS_"             json:"operations,omitempty"           yaml:"operations,omitempty"`
+	Outbox               *outboxcfg.Config            `env:",init" envPrefix:"OUTBOX_"                 json:"outbox,omitempty"               yaml:"outbox,omitempty"`
+	RateLimiting         *ratelimitingcfg.Config      `env:",init" envPrefix:"RATE_LIMITING_"          json:"rateLimiting,omitempty"         yaml:"rateLimiting,omitempty"`
+	Retention            *retentioncfg.Config         `env:",init" envPrefix:"RETENTION_"              json:"retention,omitempty"            yaml:"retention,omitempty"`
+	Retry                *retrycfg.Config             `env:",init" envPrefix:"RETRY_"                  json:"retry,omitempty"                yaml:"retry,omitempty"`
+	Routing              *routingcfg.Config           `env:",init" envPrefix:"ROUTING_"                json:"routing,omitempty"              yaml:"routing,omitempty"`
+	Saga                 *sagacfg.Config              `env:",init" envPrefix:"SAGA_"                   json:"saga,omitempty"                 yaml:"saga,omitempty"`
+	Secrets              *secretscfg.Config           `env:",init" envPrefix:"SECRETS_"                json:"secrets,omitempty"              yaml:"secrets,omitempty"`
+	Settings             *settingscfg.Config          `env:",init" envPrefix:"SETTINGS_"               json:"settings,omitempty"             yaml:"settings,omitempty"`
+	Tokens               *tokenscfg.Config            `env:",init" envPrefix:"TOKENS_"                 json:"tokens,omitempty"               yaml:"tokens,omitempty"`
+	Uploads              *uploadscfg.Config           `env:",init" envPrefix:"UPLOADS_"                json:"uploads,omitempty"              yaml:"uploads,omitempty"`
+	Waitlists            *waitlistscfg.Config         `env:",init" envPrefix:"WAITLISTS_"              json:"waitlists,omitempty"            yaml:"waitlists,omitempty"`
+	WebAuthn             *webauthnsessionscfg.Config  `env:",init" envPrefix:"WEBAUTHN_"               json:"webAuthn,omitempty"             yaml:"webAuthn,omitempty"`
+	Webhooks             *webhookscfg.Config          `env:",init" envPrefix:"WEBHOOKS_"               json:"webhooks,omitempty"             yaml:"webhooks,omitempty"`
 
 	// Name identifies the service. It is the name the HTTP server reports and
 	// the default ServiceName for each observability pillar.

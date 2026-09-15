@@ -282,41 +282,44 @@ func (s *SQLStore) checkInvitationToken(invitation *Invitation, token string) er
 	return nil
 }
 
-// ListInvitationsFromUser pages the pending invitations a user has sent, in the
-// direction the filter names.
+// ListInvitationsFromUser pages the invitations a user has sent in one status,
+// in the direction the filter names.
 func (s *SQLStore) ListInvitationsFromUser(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
 	userID string,
+	status InvitationStatus,
 	filter *filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[Invitation], error) {
-	return s.pageInvitations(ctx, q, invitationFromUserColumn, scope, userID, filter,
+	return s.pageInvitations(ctx, q, invitationFromUserColumn, scope, userID, status, filter,
 		"listing identity invitations from user")
 }
 
-// ListInvitationsForEmailAddress pages the pending invitations addressed to an
-// email address, in the direction the filter names.
+// ListInvitationsForEmailAddress pages the invitations addressed to an email
+// address in one status, in the direction the filter names.
 func (s *SQLStore) ListInvitationsForEmailAddress(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
 	emailAddress string,
+	status InvitationStatus,
 	filter *filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[Invitation], error) {
-	return s.pageInvitations(ctx, q, invitationToEmailColumn, scope, emailAddress, filter,
+	return s.pageInvitations(ctx, q, invitationToEmailColumn, scope, emailAddress, status, filter,
 		"listing identity invitations for email address")
 }
 
 // pageInvitations is the one implementation behind both paged invitation reads.
 // They differ in one column, and the parts that must not differ — the scope
-// predicate, the pending clause, and the redaction — are written once here.
+// predicate, the status predicate, and the redaction — are written once here.
 func (s *SQLStore) pageInvitations(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	column string,
 	scope tenancy.Scope,
 	value string,
+	status InvitationStatus,
 	filter *filtering.QueryFilter,
 	description string,
 ) (*filtering.QueryFilteredResult[Invitation], error) {
@@ -331,9 +334,16 @@ func (s *SQLStore) pageInvitations(
 		return nil, op.Error(err, "%s", description)
 	}
 
+	if !status.Valid() {
+		return nil, op.Error(
+			platformerrors.Wrapf(platformerrors.ErrUnrecognizedInputValue, "invitation status %q", status),
+			"%s", description,
+		)
+	}
+
 	filter = pageFilter(filter)
 
-	rows, err := s.listInvitationRows(ctx, q, column, scope, value, filter)
+	rows, err := s.listInvitationRows(ctx, q, column, scope, value, status, filter)
 	if err != nil {
 		return nil, op.Error(err, "%s", description)
 	}
@@ -366,15 +376,15 @@ func (s *SQLStore) pageInvitations(
 		func(i *Invitation) string { return i.ID }, filter), nil
 }
 
-// listInvitationRows runs the generated list variant the column names, pending
-// invitations only.
+// listInvitationRows runs the generated list variant the column names, in the
+// status the caller asked for.
 //
 // The switch is closed on purpose: its two arms are the two canonical reads,
 // and a third column is not a wider query — it is a statement that was never
 // rendered or checked, which is exactly what the old map of rendered statements
 // refused too. The status is bound rather than baked in, and both arms bind the
-// same one, so "paged reads return only pending" stays a fact with one
-// spelling.
+// caller's, so one spelling of the predicate serves the roster that wants what
+// is outstanding and the export that wants what was answered.
 //
 // Each arm is two statements rather than one, because the sort direction the
 // filter carries is answered by choosing a statement — see sortedRows. The
@@ -386,6 +396,7 @@ func (s *SQLStore) listInvitationRows(
 	column string,
 	scope tenancy.Scope,
 	value string,
+	status InvitationStatus,
 	filter *filtering.QueryFilter,
 ) ([]pageRow[Invitation], error) {
 	w := windowFrom(filter)
@@ -400,7 +411,7 @@ func (s *SQLStore) listInvitationRows(
 			IncludeArchived: w.includeArchived,
 			Scope:           scope,
 			FromUser:        value,
-			Status:          InvitationPending.String(),
+			Status:          status.String(),
 			PageCursor:      w.pageCursor,
 			ResultLimit:     w.resultLimit,
 		}
@@ -436,7 +447,7 @@ func (s *SQLStore) listInvitationRows(
 			IncludeArchived: w.includeArchived,
 			Scope:           scope,
 			ToEmail:         value,
-			Status:          InvitationPending.String(),
+			Status:          status.String(),
 			PageCursor:      w.pageCursor,
 			ResultLimit:     w.resultLimit,
 		}
@@ -597,4 +608,116 @@ func (s *SQLStore) SetInvitationStatus(
 	}
 
 	return nil
+}
+
+// EraseInvitationsForSubject destroys every invitation addressed to a subject
+// and takes the subject off every invitation they sent, through the caller's
+// transaction.
+//
+// It exists because EraseUser reaches none of this. identity_invitations
+// carries no REFERENCES to either user it names — see identity/migrations for
+// why — so nothing cascades to it, and a subject destroyed from the directory is
+// left in it under their own name and address, on a row no read here can even
+// reach once the directory row is gone.
+//
+// # What it does to which rows
+//
+// An invitation addressed to the subject is deleted, whatever its status and
+// whichever of the two ways it names them: the address it was sent to, or the
+// user who accepted it, which is not always the same person the address suggests
+// — accepting requires a live user, not a matching mailbox. Deleting rather than
+// blanking is deliberate. What blanking would leave is a pending offer nobody can
+// be shown, still redeemable by whoever holds the link in a mailbox the subject
+// may no longer control, which is a membership their erasure would have granted.
+// The roles the invitation promised go with it, through ON DELETE CASCADE.
+//
+// An invitation the subject sent is somebody else's row — the address and the
+// name on it are the recipient's, and the recipient has asked for nothing — so it
+// survives with the sender and the sender's message taken off it. The message
+// goes with the sender for the reason comments erases a comment rather than
+// anonymizing one: nothing can promise a sentence somebody typed names nobody,
+// and a row that kept the note while losing the sender would be a row that still
+// says who wrote it. What is left is an invitation with no sender, which is what
+// "somebody invited this person and has since been erased" looks like in a table
+// that cannot record a person who is not there.
+//
+// # It runs before EraseUser, and says so rather than assuming it
+//
+// The address is not an argument, because a scope and an id are what every other
+// method here is keyed on and an address a caller assembled somewhere else is
+// exactly the derivation the module's column rule exists to rule out. So this
+// reads it, on the caller's transaction, through GetUserIncludingArchived — the
+// one read here that sees a user the directory has already hidden, which the
+// subject of an erasure almost always is.
+//
+// That read is why the order matters, and why getting it wrong is an error
+// rather than a silence: called after EraseUser, this finds no user and returns
+// an error wrapping ErrUserNotFound instead of erasing nothing and reporting
+// success. The counts it answers with are how many rows went and how many were
+// stripped, which is what a dataprivacy.ErasureOutcome is assembled from.
+//
+// Zero of either is not an error. A subject who never sent or received an
+// invitation has nothing here, and reporting that as a failure would fail an
+// erasure that succeeded.
+func (s *SQLStore) EraseInvitationsForSubject(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID string,
+) (InvitationErasure, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+	)
+	defer op.End()
+
+	var erasure InvitationErasure
+
+	if err := requireExecutor(tx); err != nil {
+		return erasure, op.Error(err, "erasing identity invitations for subject")
+	}
+
+	if err := scope.Validate(); err != nil {
+		return erasure, op.Error(err, "erasing identity invitations for subject")
+	}
+
+	if userID == "" {
+		return erasure, op.Error(
+			platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "no subject named"),
+			"erasing identity invitations for subject",
+		)
+	}
+
+	subject, err := s.readAnyUser(ctx, tx, scope, userID)
+	if err != nil {
+		return erasure, op.Error(err, "erasing identity invitations for subject")
+	}
+
+	addressed, err := s.q.EraseInvitationsToEmailAddress(ctx, tx,
+		identitydb.EraseInvitationsToEmailAddressParams{Scope: scope, ToEmail: subject.EmailAddress})
+	if err != nil {
+		return erasure, op.Error(err, "erasing identity invitations for subject")
+	}
+
+	// Keyed on the acceptance rather than the address, so an invitation sent to
+	// an address the subject holds and the directory does not goes with the rest
+	// of theirs. The delete above has already taken whichever rows both name.
+	accepted, err := s.q.EraseInvitationsToUser(ctx, tx,
+		identitydb.EraseInvitationsToUserParams{Scope: scope, ToUser: &userID})
+	if err != nil {
+		return erasure, op.Error(err, "erasing identity invitations for subject")
+	}
+
+	sent, err := s.q.AnonymizeInvitationsFromUser(ctx, tx,
+		identitydb.AnonymizeInvitationsFromUserParams{Scope: scope, ErasedFromUser: userID})
+	if err != nil {
+		return erasure, op.Error(err, "erasing identity invitations for subject")
+	}
+
+	erasure = InvitationErasure{Deleted: addressed + accepted, Anonymized: sent}
+
+	op.Set(erasedCountKey, erasure.Deleted)
+	op.Set(anonymizedCountKey, erasure.Anonymized)
+
+	return erasure, nil
 }

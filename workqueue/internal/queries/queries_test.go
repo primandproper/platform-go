@@ -154,6 +154,7 @@ func TestRender_EmitsTheStatementsTheQueueExecutes(T *testing.T) {
 		"CompleteItems",
 		"ReleaseItems",
 		"RemoveItems",
+		"RequeueItems",
 		"ReapCompletedItems",
 		"ReadQueueStats",
 	}
@@ -292,7 +293,7 @@ func TestRender_TheKeyedWritesLockInPrimaryKeyOrder(T *testing.T) {
 	ordered := "ORDER BY " + querygen.Qualify(ItemsTable, QueueColumn) +
 		", " + querygen.Qualify(ItemsTable, KeyColumn) + "\n\tFOR UPDATE\n"
 
-	for _, name := range []string{"CompleteItems", "ReleaseItems", "RemoveItems"} {
+	for _, name := range []string{"CompleteItems", "ReleaseItems", "RemoveItems", "RequeueItems"} {
 		test.StrContains(T, rendered[name], ordered, test.Sprintf("statement %q", name))
 
 		// SKIP LOCKED belongs to the reaper alone: these three are recording a
@@ -417,6 +418,65 @@ func TestRender_RemoveDeletesWhateverTheItemsState(T *testing.T) {
 	test.StrNotContains(T, before, CompletedAtColumn)
 }
 
+// TestRender_RequeueIsTheOnlyWriteThatLowersTheAttemptCount, which is what
+// makes it the way out of the ceiling. The claim raises the count and nothing
+// else touches it — a re-enqueue of an outstanding item preserves it on purpose
+// — so a stalled item stays stalled until this statement runs.
+func TestRender_RequeueIsTheOnlyWriteThatLowersTheAttemptCount(T *testing.T) {
+	T.Parallel()
+
+	reset := AttemptsColumn + " = 0"
+
+	for name, body := range corpus(T) {
+		if name == "RequeueItems" {
+			test.StrContains(T, body, reset)
+
+			continue
+		}
+
+		test.StrNotContains(T, body, reset, test.Sprintf("statement %q", name))
+	}
+}
+
+// TestRender_RequeueKeepsWhatTheStalledRowWasKeptFor. enqueued_at still says
+// when the work was first asked for, priority still says how urgent it was, and
+// last_error still says what it died of — the three facts a Remove followed by
+// an Enqueue throws away, which is the whole reason this statement exists rather
+// than that pair.
+func TestRender_RequeueKeepsWhatTheStalledRowWasKeptFor(T *testing.T) {
+	T.Parallel()
+
+	requeue := statement(T, "RequeueItems")
+
+	assignments, _, found := strings.Cut(requeue, "FROM target")
+	must.True(T, found)
+
+	_, assignments, found = strings.Cut(assignments, "SET")
+	must.True(T, found)
+
+	for _, column := range []string{EnqueuedAtColumn, PriorityColumn, LastErrorColumn} {
+		test.StrNotContains(T, assignments, column+" =", test.Sprintf("column %q", column))
+	}
+
+	// Availability moves to now(), because a stalled item is usually stalled
+	// behind a backoff its last release wrote and an operator reviving work is
+	// asking for it now.
+	test.StrContains(T, requeue, AvailableAtColumn+" = "+querygen.NowExpression)
+
+	// Reviving an item somebody is working on right now must not revoke their
+	// lease: an item can be leased and stalled at once, when the claim that
+	// reached the ceiling is still running.
+	test.StrNotContains(T, assignments, LeaseColumn)
+	test.StrNotContains(T, assignments, HolderColumn)
+
+	// Completed items are excluded, and the guard sits inside the CTE so a row
+	// it excludes is never locked at all. Restarting finished work is the
+	// enqueue's job and it takes a schedule; reviving is for work never done.
+	before, _, found := strings.Cut(requeue, "FOR UPDATE")
+	must.True(T, found)
+	test.StrContains(T, before, outstanding())
+}
+
 // TestRender_ReapOrdersBeforeItLocks. With one total order, contention between
 // a reap and a concurrent write degrades into a queue; without it they deadlock
 // the moment they meet.
@@ -497,6 +557,7 @@ func TestRender_EveryBatchBindsAnArrayRatherThanAPlaceholderPerElement(T *testin
 		"CompleteItems": {KeysArg, HoldersArg},
 		"ReleaseItems":  {KeysArg, HoldersArg},
 		"RemoveItems":   {KeysArg},
+		"RequeueItems":  {KeysArg},
 	} {
 		for _, argument := range arrays {
 			test.StrContains(T, rendered[name], "sqlc.arg("+argument+")::",
@@ -512,13 +573,16 @@ func TestRender_EveryBatchBindsAnArrayRatherThanAPlaceholderPerElement(T *testin
 		test.StrContains(T, rendered[name], "USING ("+ordinal+")", test.Sprintf("statement %q", name))
 	}
 
-	// The removal is the one batch a single column wide, and that is the
-	// difference between the two kinds of caller rather than an inconsistency:
-	// an operator dropping work names rows, and holds no claim to present.
-	test.StrContains(T, rendered["RemoveItems"], querygen.Qualify(ItemsTable, KeyColumn)+
-		" = ANY(sqlc.arg("+KeysArg+")::text[])")
-	test.StrNotContains(T, rendered["RemoveItems"], "WITH ORDINALITY")
-	test.StrNotContains(T, rendered["RemoveItems"], HoldersArg)
+	// The two operator writes are the batches a single column wide, and that is
+	// the difference between the two kinds of caller rather than an
+	// inconsistency: an operator dropping work from the queue, or handing
+	// stalled work back to it, names rows and holds no claim to present.
+	for _, name := range []string{"RemoveItems", "RequeueItems"} {
+		test.StrContains(T, rendered[name], querygen.Qualify(ItemsTable, KeyColumn)+
+			" = ANY(sqlc.arg("+KeysArg+")::text[])", test.Sprintf("statement %q", name))
+		test.StrNotContains(T, rendered[name], "WITH ORDINALITY", test.Sprintf("statement %q", name))
+		test.StrNotContains(T, rendered[name], HoldersArg, test.Sprintf("statement %q", name))
+	}
 }
 
 // TestRender_NoStatementNamesAnUnprefixableTable. Every statement carries the

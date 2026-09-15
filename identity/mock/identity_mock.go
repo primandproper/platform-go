@@ -45,6 +45,9 @@ var _ identity.Store = &StoreMock{}
 //			CreateUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) (*identity.User, error) {
 //				panic("mock out the CreateUser method")
 //			},
+//			EraseInvitationsForSubjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (identity.InvitationErasure, error) {
+//				panic("mock out the EraseInvitationsForSubject method")
+//			},
 //			EraseUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error) {
 //				panic("mock out the EraseUser method")
 //			},
@@ -75,6 +78,9 @@ var _ identity.Store = &StoreMock{}
 //			GetUserByUsernameFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, username string) (*identity.User, error) {
 //				panic("mock out the GetUserByUsername method")
 //			},
+//			GetUserIncludingArchivedFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) (*identity.User, error) {
+//				panic("mock out the GetUserIncludingArchived method")
+//			},
 //			ListAccountMembersFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, accountID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.MembershipWithUser], error) {
 //				panic("mock out the ListAccountMembers method")
 //			},
@@ -84,10 +90,10 @@ var _ identity.Store = &StoreMock{}
 //			ListAccountsForUserFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Account], error) {
 //				panic("mock out the ListAccountsForUser method")
 //			},
-//			ListInvitationsForEmailAddressFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, emailAddress string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error) {
+//			ListInvitationsForEmailAddressFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, emailAddress string, status identity.InvitationStatus, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error) {
 //				panic("mock out the ListInvitationsForEmailAddress method")
 //			},
-//			ListInvitationsFromUserFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error) {
+//			ListInvitationsFromUserFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string, status identity.InvitationStatus, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error) {
 //				panic("mock out the ListInvitationsFromUser method")
 //			},
 //			ListMembershipsForUserFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*identity.Membership, error) {
@@ -196,6 +202,9 @@ type StoreMock struct {
 	// CreateUserFunc mocks the CreateUser method.
 	CreateUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) (*identity.User, error)
 
+	// EraseInvitationsForSubjectFunc mocks the EraseInvitationsForSubject method.
+	EraseInvitationsForSubjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (identity.InvitationErasure, error)
+
 	// EraseUserFunc mocks the EraseUser method.
 	EraseUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
 
@@ -226,6 +235,9 @@ type StoreMock struct {
 	// GetUserByUsernameFunc mocks the GetUserByUsername method.
 	GetUserByUsernameFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, username string) (*identity.User, error)
 
+	// GetUserIncludingArchivedFunc mocks the GetUserIncludingArchived method.
+	GetUserIncludingArchivedFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) (*identity.User, error)
+
 	// ListAccountMembersFunc mocks the ListAccountMembers method.
 	ListAccountMembersFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, accountID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.MembershipWithUser], error)
 
@@ -236,10 +248,10 @@ type StoreMock struct {
 	ListAccountsForUserFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Account], error)
 
 	// ListInvitationsForEmailAddressFunc mocks the ListInvitationsForEmailAddress method.
-	ListInvitationsForEmailAddressFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, emailAddress string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error)
+	ListInvitationsForEmailAddressFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, emailAddress string, status identity.InvitationStatus, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error)
 
 	// ListInvitationsFromUserFunc mocks the ListInvitationsFromUser method.
-	ListInvitationsFromUserFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error)
+	ListInvitationsFromUserFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string, status identity.InvitationStatus, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error)
 
 	// ListMembershipsForUserFunc mocks the ListMembershipsForUser method.
 	ListMembershipsForUserFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*identity.Membership, error)
@@ -404,6 +416,17 @@ type StoreMock struct {
 			// User is the user argument value.
 			User *identity.User
 		}
+		// EraseInvitationsForSubject holds details about calls to the EraseInvitationsForSubject method.
+		EraseInvitationsForSubject []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// UserID is the userID argument value.
+			UserID string
+		}
 		// EraseUser holds details about calls to the EraseUser method.
 		EraseUser []struct {
 			// Ctx is the ctx argument value.
@@ -520,6 +543,17 @@ type StoreMock struct {
 			// Username is the username argument value.
 			Username string
 		}
+		// GetUserIncludingArchived holds details about calls to the GetUserIncludingArchived method.
+		GetUserIncludingArchived []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// UserID is the userID argument value.
+			UserID string
+		}
 		// ListAccountMembers holds details about calls to the ListAccountMembers method.
 		ListAccountMembers []struct {
 			// Ctx is the ctx argument value.
@@ -567,6 +601,8 @@ type StoreMock struct {
 			Scope tenancy.Scope
 			// EmailAddress is the emailAddress argument value.
 			EmailAddress string
+			// Status is the status argument value.
+			Status identity.InvitationStatus
 			// Filter is the filter argument value.
 			Filter *filtering.QueryFilter
 		}
@@ -580,6 +616,8 @@ type StoreMock struct {
 			Scope tenancy.Scope
 			// UserID is the userID argument value.
 			UserID string
+			// Status is the status argument value.
+			Status identity.InvitationStatus
 			// Filter is the filter argument value.
 			Filter *filtering.QueryFilter
 		}
@@ -921,6 +959,7 @@ type StoreMock struct {
 	lockCreateInvitation                     sync.RWMutex
 	lockCreateMembership                     sync.RWMutex
 	lockCreateUser                           sync.RWMutex
+	lockEraseInvitationsForSubject           sync.RWMutex
 	lockEraseUser                            sync.RWMutex
 	lockGetAccount                           sync.RWMutex
 	lockGetInvitation                        sync.RWMutex
@@ -931,6 +970,7 @@ type StoreMock struct {
 	lockGetUserByEmailAddress                sync.RWMutex
 	lockGetUserByEmailVerificationToken      sync.RWMutex
 	lockGetUserByUsername                    sync.RWMutex
+	lockGetUserIncludingArchived             sync.RWMutex
 	lockListAccountMembers                   sync.RWMutex
 	lockListAccounts                         sync.RWMutex
 	lockListAccountsForUser                  sync.RWMutex
@@ -1281,6 +1321,50 @@ func (mock *StoreMock) CreateUserCalls() []struct {
 	mock.lockCreateUser.RLock()
 	calls = mock.calls.CreateUser
 	mock.lockCreateUser.RUnlock()
+	return calls
+}
+
+// EraseInvitationsForSubject calls EraseInvitationsForSubjectFunc.
+func (mock *StoreMock) EraseInvitationsForSubject(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (identity.InvitationErasure, error) {
+	if mock.EraseInvitationsForSubjectFunc == nil {
+		panic("StoreMock.EraseInvitationsForSubjectFunc: method is nil but Store.EraseInvitationsForSubject was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		UserID string
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		UserID: userID,
+	}
+	mock.lockEraseInvitationsForSubject.Lock()
+	mock.calls.EraseInvitationsForSubject = append(mock.calls.EraseInvitationsForSubject, callInfo)
+	mock.lockEraseInvitationsForSubject.Unlock()
+	return mock.EraseInvitationsForSubjectFunc(ctx, tx, scope, userID)
+}
+
+// EraseInvitationsForSubjectCalls gets all the calls that were made to EraseInvitationsForSubject.
+// Check the length with:
+//
+//	len(mockedStore.EraseInvitationsForSubjectCalls())
+func (mock *StoreMock) EraseInvitationsForSubjectCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	UserID string
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		UserID string
+	}
+	mock.lockEraseInvitationsForSubject.RLock()
+	calls = mock.calls.EraseInvitationsForSubject
+	mock.lockEraseInvitationsForSubject.RUnlock()
 	return calls
 }
 
@@ -1736,6 +1820,50 @@ func (mock *StoreMock) GetUserByUsernameCalls() []struct {
 	return calls
 }
 
+// GetUserIncludingArchived calls GetUserIncludingArchivedFunc.
+func (mock *StoreMock) GetUserIncludingArchived(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) (*identity.User, error) {
+	if mock.GetUserIncludingArchivedFunc == nil {
+		panic("StoreMock.GetUserIncludingArchivedFunc: method is nil but Store.GetUserIncludingArchived was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Scope  tenancy.Scope
+		UserID string
+	}{
+		Ctx:    ctx,
+		Q:      q,
+		Scope:  scope,
+		UserID: userID,
+	}
+	mock.lockGetUserIncludingArchived.Lock()
+	mock.calls.GetUserIncludingArchived = append(mock.calls.GetUserIncludingArchived, callInfo)
+	mock.lockGetUserIncludingArchived.Unlock()
+	return mock.GetUserIncludingArchivedFunc(ctx, q, scope, userID)
+}
+
+// GetUserIncludingArchivedCalls gets all the calls that were made to GetUserIncludingArchived.
+// Check the length with:
+//
+//	len(mockedStore.GetUserIncludingArchivedCalls())
+func (mock *StoreMock) GetUserIncludingArchivedCalls() []struct {
+	Ctx    context.Context
+	Q      database.SQLQueryExecutor
+	Scope  tenancy.Scope
+	UserID string
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Scope  tenancy.Scope
+		UserID string
+	}
+	mock.lockGetUserIncludingArchived.RLock()
+	calls = mock.calls.GetUserIncludingArchived
+	mock.lockGetUserIncludingArchived.RUnlock()
+	return calls
+}
+
 // ListAccountMembers calls ListAccountMembersFunc.
 func (mock *StoreMock) ListAccountMembers(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, accountID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.MembershipWithUser], error) {
 	if mock.ListAccountMembersFunc == nil {
@@ -1877,7 +2005,7 @@ func (mock *StoreMock) ListAccountsForUserCalls() []struct {
 }
 
 // ListInvitationsForEmailAddress calls ListInvitationsForEmailAddressFunc.
-func (mock *StoreMock) ListInvitationsForEmailAddress(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, emailAddress string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error) {
+func (mock *StoreMock) ListInvitationsForEmailAddress(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, emailAddress string, status identity.InvitationStatus, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error) {
 	if mock.ListInvitationsForEmailAddressFunc == nil {
 		panic("StoreMock.ListInvitationsForEmailAddressFunc: method is nil but Store.ListInvitationsForEmailAddress was just called")
 	}
@@ -1886,18 +2014,20 @@ func (mock *StoreMock) ListInvitationsForEmailAddress(ctx context.Context, q dat
 		Q            database.SQLQueryExecutor
 		Scope        tenancy.Scope
 		EmailAddress string
+		Status       identity.InvitationStatus
 		Filter       *filtering.QueryFilter
 	}{
 		Ctx:          ctx,
 		Q:            q,
 		Scope:        scope,
 		EmailAddress: emailAddress,
+		Status:       status,
 		Filter:       filter,
 	}
 	mock.lockListInvitationsForEmailAddress.Lock()
 	mock.calls.ListInvitationsForEmailAddress = append(mock.calls.ListInvitationsForEmailAddress, callInfo)
 	mock.lockListInvitationsForEmailAddress.Unlock()
-	return mock.ListInvitationsForEmailAddressFunc(ctx, q, scope, emailAddress, filter)
+	return mock.ListInvitationsForEmailAddressFunc(ctx, q, scope, emailAddress, status, filter)
 }
 
 // ListInvitationsForEmailAddressCalls gets all the calls that were made to ListInvitationsForEmailAddress.
@@ -1909,6 +2039,7 @@ func (mock *StoreMock) ListInvitationsForEmailAddressCalls() []struct {
 	Q            database.SQLQueryExecutor
 	Scope        tenancy.Scope
 	EmailAddress string
+	Status       identity.InvitationStatus
 	Filter       *filtering.QueryFilter
 } {
 	var calls []struct {
@@ -1916,6 +2047,7 @@ func (mock *StoreMock) ListInvitationsForEmailAddressCalls() []struct {
 		Q            database.SQLQueryExecutor
 		Scope        tenancy.Scope
 		EmailAddress string
+		Status       identity.InvitationStatus
 		Filter       *filtering.QueryFilter
 	}
 	mock.lockListInvitationsForEmailAddress.RLock()
@@ -1925,7 +2057,7 @@ func (mock *StoreMock) ListInvitationsForEmailAddressCalls() []struct {
 }
 
 // ListInvitationsFromUser calls ListInvitationsFromUserFunc.
-func (mock *StoreMock) ListInvitationsFromUser(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error) {
+func (mock *StoreMock) ListInvitationsFromUser(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string, status identity.InvitationStatus, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[identity.Invitation], error) {
 	if mock.ListInvitationsFromUserFunc == nil {
 		panic("StoreMock.ListInvitationsFromUserFunc: method is nil but Store.ListInvitationsFromUser was just called")
 	}
@@ -1934,18 +2066,20 @@ func (mock *StoreMock) ListInvitationsFromUser(ctx context.Context, q database.S
 		Q      database.SQLQueryExecutor
 		Scope  tenancy.Scope
 		UserID string
+		Status identity.InvitationStatus
 		Filter *filtering.QueryFilter
 	}{
 		Ctx:    ctx,
 		Q:      q,
 		Scope:  scope,
 		UserID: userID,
+		Status: status,
 		Filter: filter,
 	}
 	mock.lockListInvitationsFromUser.Lock()
 	mock.calls.ListInvitationsFromUser = append(mock.calls.ListInvitationsFromUser, callInfo)
 	mock.lockListInvitationsFromUser.Unlock()
-	return mock.ListInvitationsFromUserFunc(ctx, q, scope, userID, filter)
+	return mock.ListInvitationsFromUserFunc(ctx, q, scope, userID, status, filter)
 }
 
 // ListInvitationsFromUserCalls gets all the calls that were made to ListInvitationsFromUser.
@@ -1957,6 +2091,7 @@ func (mock *StoreMock) ListInvitationsFromUserCalls() []struct {
 	Q      database.SQLQueryExecutor
 	Scope  tenancy.Scope
 	UserID string
+	Status identity.InvitationStatus
 	Filter *filtering.QueryFilter
 } {
 	var calls []struct {
@@ -1964,6 +2099,7 @@ func (mock *StoreMock) ListInvitationsFromUserCalls() []struct {
 		Q      database.SQLQueryExecutor
 		Scope  tenancy.Scope
 		UserID string
+		Status identity.InvitationStatus
 		Filter *filtering.QueryFilter
 	}
 	mock.lockListInvitationsFromUser.RLock()

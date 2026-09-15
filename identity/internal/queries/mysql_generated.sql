@@ -878,6 +878,32 @@ WHERE identity_accounts.id = sqlc.arg(id)
 	AND identity_accounts.scope = sqlc.arg(scope)
 	AND identity_accounts.archived_at IS NOT NULL;
 
+-- name: GetUserIncludingArchived :one
+SELECT
+	identity_users.id,
+	identity_users.scope,
+	identity_users.username,
+	identity_users.email_address,
+	identity_users.first_name,
+	identity_users.last_name,
+	identity_users.hashed_password,
+	identity_users.requires_password_change,
+	identity_users.password_last_changed_at,
+	identity_users.two_factor_secret,
+	identity_users.two_factor_secret_verified_at,
+	identity_users.email_address_verified_at,
+	identity_users.email_address_verification_token,
+	identity_users.account_status,
+	identity_users.account_status_explanation,
+	identity_users.last_accepted_terms_of_service,
+	identity_users.last_accepted_privacy_policy,
+	identity_users.created_at,
+	identity_users.last_updated_at,
+	identity_users.archived_at
+FROM identity_users
+WHERE identity_users.id = sqlc.arg(id)
+	AND identity_users.scope = sqlc.arg(scope);
+
 -- name: GetUserByUsername :one
 SELECT
 	identity_users.id,
@@ -1623,6 +1649,24 @@ WHERE archived_at IS NULL
 DELETE FROM identity_users
 WHERE id = sqlc.arg(id)
 	AND scope = sqlc.arg(scope);
+
+-- name: EraseInvitationsToEmailAddress :execrows
+DELETE FROM identity_invitations
+WHERE scope = sqlc.arg(scope)
+	AND to_email = sqlc.arg(to_email);
+
+-- name: EraseInvitationsToUser :execrows
+DELETE FROM identity_invitations
+WHERE scope = sqlc.arg(scope)
+	AND to_user = sqlc.arg(to_user);
+
+-- name: AnonymizeInvitationsFromUser :execrows
+UPDATE identity_invitations SET
+	from_user = sqlc.arg(from_user),
+	note = sqlc.arg(note),
+	last_updated_at = CURRENT_TIMESTAMP(6)
+WHERE scope = sqlc.arg(scope)
+	AND from_user = sqlc.arg(erased_from_user);
 
 -- name: DeleteUserRoles :execrows
 DELETE FROM identity_user_roles

@@ -26,7 +26,7 @@
 // because a second implementation exists, so it belongs with the implementation
 // that created the choice. oauth2servercfg's own doc.go records the same rule
 // from the other side, along with the two exits that were refused. The same cut
-// is made in rbaccfg and webauthncredentialscfg.
+// is made in rbaccfg and webauthnsessionscfg.
 //
 // SweepInterval stayed behind, because both stores sweep. A field's home is
 // decided by which packages read it, not by which provider is the default.

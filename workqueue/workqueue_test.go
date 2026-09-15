@@ -204,6 +204,14 @@ func TestQueue_EmptyBatchesTouchNothing(T *testing.T) {
 
 		test.NoError(t, q.Remove(t.Context()))
 	})
+
+	T.Run("requeue", func(t *testing.T) {
+		t.Parallel()
+
+		revived, requeueErr := q.Requeue(t.Context())
+		test.NoError(t, requeueErr)
+		test.EqOp(t, int64(0), revived)
+	})
 }
 
 func TestQueue_Claim_RejectsAnUnusableLease(T *testing.T) {

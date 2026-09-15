@@ -22,6 +22,13 @@ const (
 	invitationIDKey = serviceName + ".invitation_id"
 	countKey        = serviceName + ".count"
 
+	// The two halves of an invitation erasure's answer. They are two keys rather
+	// than one labeled count because a row destroyed and a row stripped of its
+	// sender are two outcomes, and a span that added them together would report a
+	// number no caller can act on.
+	erasedCountKey     = serviceName + ".erased_count"
+	anonymizedCountKey = serviceName + ".anonymized_count"
+
 	// operationKey labels an instrument with the operation it was recorded in:
 	// the store's unmatched-write counter with the write that matched no row,
 	// the service's request, error and latency instruments with the operation

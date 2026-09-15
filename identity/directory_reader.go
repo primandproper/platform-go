@@ -45,6 +45,75 @@ func (s *SQLStore) GetUser(
 	return user, nil
 }
 
+// GetUserIncludingArchived reads one of the scope's users whether or not they
+// have been archived.
+//
+// It is the read a privacy request makes, and the only read here indifferent to
+// the archived stamp. See identity/internal/queries' subjectReads for why a
+// subject access request routed through GetUser would export nothing and report
+// success: a person exercising a right has usually been deactivated first, and
+// every other single-user read is written not to see them.
+//
+// It is not a wider GetUser and should not be reached for as one. A sign-in, a
+// roster, a Principal and a support console all want the live directory, and a
+// caller that reads through this one instead is a caller whose deactivations
+// have stopped meaning anything.
+func (s *SQLStore) GetUserIncludingArchived(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	userID string,
+) (*User, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+	)
+	defer op.End()
+
+	if err := requireExecutor(q); err != nil {
+		return nil, op.Error(err, "reading identity user %q including archived", userID)
+	}
+
+	if err := scope.Validate(); err != nil {
+		return nil, op.Error(err, "reading identity user %q including archived", userID)
+	}
+
+	user, err := s.readAnyUser(ctx, q, scope, userID)
+	if err != nil {
+		return nil, op.Error(err, "reading identity user %q including archived", userID)
+	}
+
+	return user, nil
+}
+
+// readAnyUser is GetUserIncludingArchived's read, shared with the invitation
+// erasure, which needs the subject's address off a row the directory may
+// already have hidden.
+//
+// The service roles come with it for the reason readArchivedUser attaches
+// them: a role grant is not archived with its owner, so a User handed back with
+// an empty ServiceRoles it never lost would be a stamp read as a revocation.
+func (s *SQLStore) readAnyUser(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	userID string,
+) (*User, error) {
+	row, err := s.q.GetUserIncludingArchived(ctx, q,
+		identitydb.GetUserIncludingArchivedParams{ID: userID, Scope: scope})
+	if err != nil {
+		return nil, notFound(err, ErrUserNotFound)
+	}
+
+	user := userFromAnyRow(&row)
+
+	if err = s.attachServiceRoles(ctx, q, []*User{user}); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
 // readUser is the read by id, through whatever executor the caller is holding.
 //
 // It excludes archived users, which the statement it used to run did not. That

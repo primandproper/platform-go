@@ -522,13 +522,119 @@ func runQueueSuite(t *testing.T, client database.Client) {
 		test.EqOp(t, int64(0), stats.Ready)
 
 		// Re-enqueueing does not clear the ceiling on its own — the item is
-		// outstanding, so its attempts are preserved. Removing and re-adding is
-		// how an operator restarts one, and it is deliberately not automatic.
+		// outstanding, so its attempts are preserved. That is what keeps the
+		// ceiling a ceiling: one any read path's enqueue could lift would not be
+		// one. Requeue is the way back, and it is deliberately not automatic.
 		must.NoError(t, q.EnqueueKeys(t.Context(), "poison"))
 
 		items, err = q.Claim(t.Context(), 10, time.Hour)
 		must.NoError(t, err)
 		test.SliceEmpty(t, items)
+	})
+
+	// The way out of the ceiling, and the only one. Without it a stalled item
+	// can only be revived by Remove-then-Enqueue, which loses the enqueue time,
+	// the priority and the last error the row was kept around for.
+	t.Run("requeue revives a stalled item and keeps what it was kept for", func(t *testing.T) {
+		t.Parallel()
+
+		q := newQueue(t, client, func(cfg *Config) { cfg.MaxAttempts = 2 })
+		must.NoError(t, q.Enqueue(t.Context(), Entry[string]{Key: "poison", Priority: 7}))
+
+		for attempt := 1; attempt <= 2; attempt++ {
+			items, claimErr := q.Claim(t.Context(), 10, time.Hour)
+			must.NoError(t, claimErr)
+			must.SliceLen(t, 1, items, must.Sprintf("attempt %d", attempt))
+
+			// The last hand-back backs the item off by an hour, so the revival
+			// has to move availability as well as the counter — a stalled item
+			// is normally stalled behind the delay its final release wrote.
+			backoff := time.Duration(0)
+			if attempt == 2 {
+				backoff = time.Hour
+			}
+
+			must.NoError(t, q.Release(t.Context(), backoff, platformerrors.New("still broken"), items...))
+		}
+
+		stats, err := q.Stats(t.Context())
+		must.NoError(t, err)
+		must.EqOp(t, int64(1), stats.Stalled)
+
+		revived, err := q.Requeue(t.Context(), "poison")
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), revived)
+
+		stats, err = q.Stats(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), stats.Stalled)
+		test.EqOp(t, int64(1), stats.Ready)
+
+		items, err := q.Claim(t.Context(), 10, time.Hour)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, items)
+		test.EqOp(t, "poison", items[0].Key)
+
+		// The counter really went back to zero rather than merely below the
+		// ceiling, and the priority survived — which a Remove and a fresh
+		// Enqueue would not have done.
+		test.EqOp(t, 1, items[0].Attempts)
+		test.EqOp(t, 7, items[0].Priority)
+	})
+
+	t.Run("requeue counts only the items it revived", func(t *testing.T) {
+		t.Parallel()
+
+		q := newQueue(t, client, nil)
+		must.NoError(t, q.EnqueueKeys(t.Context(), "outstanding", "finished"))
+
+		claimed, err := q.Claim(t.Context(), 1, time.Hour)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
+		must.NoError(t, q.Complete(t.Context(), claimed...))
+
+		// Three keys named, one revived: a completed item is restarted by an
+		// Enqueue that carries a schedule rather than revived, and a key the
+		// queue never held is nothing at all.
+		revived, err := q.Requeue(t.Context(), "outstanding", claimed[0].Key, "never-enqueued")
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), revived)
+
+		// The completion stands: reviving must not resurrect finished work.
+		stats, err := q.Stats(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), stats.Completed)
+	})
+
+	// An item can be leased and stalled at once, when the claim that pushed the
+	// count to the ceiling is still running. Reviving it must not revoke that
+	// lease — the worker's outcome is still its own to report.
+	t.Run("requeue leaves a live lease alone", func(t *testing.T) {
+		t.Parallel()
+
+		q := newQueue(t, client, func(cfg *Config) { cfg.MaxAttempts = 1 })
+		must.NoError(t, q.EnqueueKeys(t.Context(), "held"))
+
+		claimed, err := q.Claim(t.Context(), 10, time.Hour)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
+
+		revived, err := q.Requeue(t.Context(), "held")
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), revived)
+
+		// Nobody else can take it, because the lease still stands.
+		items, err := q.Claim(t.Context(), 10, time.Hour)
+		must.NoError(t, err)
+		test.SliceEmpty(t, items)
+
+		// And the holder's completion still lands, which is the fence saying
+		// the claim it was stamped with survived.
+		must.NoError(t, q.Complete(t.Context(), claimed...))
+
+		stats, err := q.Stats(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), stats.Completed)
 	})
 
 	// The property the whole package exists for: any number of workers draining
