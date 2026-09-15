@@ -723,12 +723,32 @@ func (e *storeEnv) createInvitation(
 	store *SQLStore,
 	scope tenancy.Scope,
 	invitation *Invitation,
+) (*Invitation, error) {
+	t.Helper()
+
+	var created *Invitation
+
+	err := e.inTx(t, func(tx database.Tx) error {
+		var txErr error
+		created, txErr = store.CreateInvitation(t.Context(), tx, scope, invitation)
+
+		return txErr
+	})
+
+	return created, err
+}
+
+func (e *storeEnv) createInvitationErr(
+	t *testing.T,
+	store *SQLStore,
+	scope tenancy.Scope,
+	invitation *Invitation,
 ) error {
 	t.Helper()
 
-	return e.inTx(t, func(tx database.Tx) error {
-		return store.CreateInvitation(t.Context(), tx, scope, invitation)
-	})
+	_, err := e.createInvitation(t, store, scope, invitation)
+
+	return err
 }
 
 func (e *storeEnv) acceptInvitation(

@@ -38,11 +38,12 @@ func runRegistrarSuite(t *testing.T, env *storeEnv) {
 	t.Run("each create answers with the row and leaves the argument alone", func(t *testing.T) {
 		t.Parallel()
 
-		// The whole of what #572 settled for this package, on the three writes
-		// that used to deliver it by writing onto the caller's value. What comes
-		// back is the row: the defaults the columns supplied, the creation time
-		// the database stamped, and — for the user — the service roles the same
-		// transaction wrote a statement earlier.
+		// The three registration writes, each answering with the row rather
+		// than writing onto the caller's value: the defaults the columns
+		// supplied, the creation time the database stamped, and — for the user
+		// — the service roles the same transaction wrote a statement earlier.
+		// The invitation's create is the fourth, and says the same thing in the
+		// invitation suite.
 		store := env.newStore(t)
 
 		user := newUser("ada")

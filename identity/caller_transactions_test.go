@@ -424,8 +424,10 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return err
 			}},
 			{name: "CreateInvitation", run: func() error {
-				return store.CreateInvitation(t.Context(), nil, testScope, newInvitation(
+				_, err := store.CreateInvitation(t.Context(), nil, testScope, newInvitation(
 					newUser("ada"), "a", "grace@example.com", identifiers.New(), time.Now().Add(time.Hour)))
+
+				return err
 			}},
 			{name: "GetInvitation", run: func() error {
 				_, err := store.GetInvitation(t.Context(), nil, testScope, "i")
@@ -528,6 +530,6 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			created, account.ID, "grace@example.com", identifiers.New(), time.Now().Add(time.Hour))
 		strayInvitation.Scope = otherScope
 
-		must.ErrorIs(t, env.createInvitation(t, store, testScope, strayInvitation), ErrScopeMismatch)
+		must.ErrorIs(t, env.createInvitationErr(t, store, testScope, strayInvitation), ErrScopeMismatch)
 	})
 }

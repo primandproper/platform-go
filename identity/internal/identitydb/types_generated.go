@@ -269,16 +269,6 @@ type GetInvitationRow struct {
 	ArchivedAt       *time.Time
 }
 
-// GetInvitationCreatedAtParams are the arguments to GetInvitationCreatedAt.
-type GetInvitationCreatedAtParams struct {
-	ID string
-}
-
-// GetInvitationCreatedAtRow is one row of GetInvitationCreatedAt's result.
-type GetInvitationCreatedAtRow struct {
-	CreatedAt time.Time
-}
-
 // GetMembershipByUserAndAccountParams are the arguments to GetMembershipByUserAndAccount.
 type GetMembershipByUserAndAccountParams struct {
 	Scope            tenancy.Scope

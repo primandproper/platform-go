@@ -860,30 +860,3 @@ func (s *SQLStore) guardCount(ctx context.Context, count int64, err, missing err
 
 	return nil
 }
-
-// stampCreatedAt writes the creation time the database assigned onto the value
-// the caller handed over.
-//
-// The column is the database's — see identity/internal/queries — so the create
-// does not carry it, and the alternative to this read is a caller whose struct
-// says 0001-01-01 for a row that was written a moment ago. That is the worse
-// answer by some distance: CreatedAt is exported and a service serializes the
-// value it just created straight into a response, where a zero time renders as
-// a date rather than reading as an absence. So the create reads it back, and
-// the field means what it says on both sides of the call.
-//
-// It costs one round trip inside a transaction the write already needed, and it
-// reads its own uncommitted row on all three servers.
-//
-// It takes the read's result rather than performing it, because the statement is
-// one per emitted table — a query name is a Go method name, so the table cannot
-// be a parameter — and each create calls the one for its own.
-func stampCreatedAt(at *time.Time, created time.Time, err error) error {
-	if err != nil {
-		return platformerrors.Wrap(err, "reading back the assigned creation time")
-	}
-
-	*at = created.UTC()
-
-	return nil
-}

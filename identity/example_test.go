@@ -316,22 +316,33 @@ func Example_invitation() {
 	scope := tenancy.Global()
 	owner, account := exampleRegister(ctx, client, store, "ada", "Acme")
 
-	invitation := &identity.Invitation{
-		Scope:            scope,
-		BelongsToAccount: account.ID,
-		FromUser:         owner.ID,
-		ToEmail:          "grace@example.com",
-		ToName:           "Grace",
-		Token:            identifiers.New(),
-		// Required. An invitation link is a bearer credential for joining
-		// somebody else's account, and one that never expires is still valid in
-		// a mailbox somebody lost control of two years ago.
-		ExpiresAt: time.Now().Add(72 * time.Hour),
-		Roles:     []string{"account_member"},
-	}
+	var invitation *identity.Invitation
 
+	// The write answers with the row, so the id and the creation time the
+	// database settled come off what it returned rather than off the value
+	// handed to it. The token comes back with it: the column holds what was
+	// minted here, which is what the mail this invitation exists to send needs.
 	if err := client.WithTransaction(ctx, func(tx database.Tx) error {
-		return store.CreateInvitation(ctx, tx, scope, invitation)
+		created, createErr := store.CreateInvitation(ctx, tx, scope, &identity.Invitation{
+			Scope:            scope,
+			BelongsToAccount: account.ID,
+			FromUser:         owner.ID,
+			ToEmail:          "grace@example.com",
+			ToName:           "Grace",
+			Token:            identifiers.New(),
+			// Required. An invitation link is a bearer credential for joining
+			// somebody else's account, and one that never expires is still
+			// valid in a mailbox somebody lost control of two years ago.
+			ExpiresAt: time.Now().Add(72 * time.Hour),
+			Roles:     []string{"account_member"},
+		})
+		if createErr != nil {
+			return createErr
+		}
+
+		invitation = created
+
+		return nil
 	}); err != nil {
 		fmt.Println(err)
 

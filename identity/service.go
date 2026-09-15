@@ -135,16 +135,19 @@ type Acceptance struct {
 //
 // # What comes back
 //
-// Every entity the Service read back for itself is redacted before it is
-// returned or handed to a hook: users lose their credentials, invitations lose
-// their tokens. Entities the caller supplied are the caller's own values,
-// mutated in place by the store and otherwise untouched — so a registration
-// hands back the User it was given, hashed password and all, and Invite hands
-// back the Invitation whose token the caller minted and still needs.
+// Nothing here writes to the value it was handed. Every operation answers with
+// the row its write wrote, read back on the operation's own transaction, so
+// what a caller and a hook see is what committed rather than what a second
+// connection would have seen a moment later — and rather than the struct the
+// caller assembled with a timestamp copied onto it.
 //
-// The reads that produce those values run on the operation's own transaction,
-// so what a hook and a caller see is what committed rather than what a second
-// connection would have seen a moment later.
+// Where such a row carries a secret the answer has no use for, it is redacted
+// first: the credential operations answer with a redacted user, and the
+// invitations the accept, reject and cancel hooks receive have lost their
+// tokens. The two that are not redacted are the two whose secret the caller
+// supplied — a registration hands back the user as the database holds them,
+// hashed password and all, and Invite hands back the invitation carrying the
+// token the caller minted and still needs.
 type Service struct {
 	client database.Client
 	store  Store
@@ -357,28 +360,38 @@ func (s *Service) Register(
 //
 // The invitation is the caller's — its expiry, its token, its roles, its note.
 // Nothing here decides how long a link lives or what it may grant.
-func (s *Service) Invite(ctx context.Context, scope tenancy.Scope, invitation *Invitation) error {
+//
+// What comes back is the row the write wrote rather than the value it was
+// handed, which the store leaves alone. It carries the token, unredacted: the
+// caller minted it and the column holds it, and the mail this invitation exists
+// to send is the one thing that cannot be composed without it.
+func (s *Service) Invite(ctx context.Context, scope tenancy.Scope, invitation *Invitation) (*Invitation, error) {
 	ctx, op := s.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if invitation == nil {
-		return op.Error(ErrNilInvitation, "issuing identity invitation")
+		return nil, op.Error(ErrNilInvitation, "issuing identity invitation")
 	}
 
+	var issued *Invitation
+
 	err := s.run(ctx, op, opInvite, func(tx database.Tx) error {
-		if err := s.store.CreateInvitation(ctx, tx, scope, invitation); err != nil {
+		created, err := s.store.CreateInvitation(ctx, tx, scope, invitation)
+		if err != nil {
 			return err
 		}
 
-		op.Set(invitationIDKey, invitation.ID).Set(accountIDKey, invitation.BelongsToAccount)
+		issued = created
 
-		return s.hooks.AfterInvite(ctx, tx, scope, invitation)
+		op.Set(invitationIDKey, created.ID).Set(accountIDKey, created.BelongsToAccount)
+
+		return s.hooks.AfterInvite(ctx, tx, scope, created)
 	})
 	if err != nil {
-		return op.Error(err, "issuing identity invitation")
+		return nil, op.Error(err, "issuing identity invitation")
 	}
 
-	return nil
+	return issued, nil
 }
 
 // AcceptInvitation answers an invitation and mints the membership it promised,

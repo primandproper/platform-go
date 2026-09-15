@@ -113,7 +113,6 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"CreateInvitation", "GetInvitation", "ListInvitations", "ListInvitationsDescending",
 		"ListInvitationsByFromUser", "ListInvitationsByFromUserDescending",
 		"ListInvitationsByToEmail", "ListInvitationsByToEmailDescending",
-		"GetInvitationCreatedAt",
 		"GetArchivedUser", "GetArchivedAccount",
 		"GetUserByUsername", "GetUserByEmailAddress", "GetUserByEmailVerificationToken",
 		"GetUserIDByUsername", "GetUserIDByEmailAddress",
@@ -282,22 +281,18 @@ func TestRender_TheArchivalReadBacksSeeOnlyArchivedRows(T *testing.T) {
 func TestTables_ScopeIsInEveryStatement(T *testing.T) {
 	T.Parallel()
 
-	// The exceptions, in two groups, and neither is a read a caller reaches.
+	// The exceptions are the role tables' nine statements, and they are not
+	// reads a caller reaches. There used to be a tenth — the read-back of the
+	// creation time a create's own INSERT had just caused, keyed on the id that
+	// create minted — and it is gone with the last create that wanted one column
+	// of a row it was about to be handed in full. All three creates read the
+	// whole row back through their ordinary keyed read now, which is scoped like
+	// everything else.
 	//
-	// The first is the read-back of the creation time a create's own INSERT just
-	// caused, by the id that create minted, inside that create's transaction. It
-	// is the component's own machinery servicing itself — the row is not visible
-	// to anything else until the transaction commits — so it keys on the id
-	// alone. It used to be three, one per emitted table; the user's create and
-	// the account's read the whole row back through their ordinary keyed read
-	// now, which is scoped like everything else, and the invitation's is what is
-	// left.
-	//
-	// The second is the role tables' nine statements, and their exception is
-	// the schema's rather than the statements': a role table has no scope
-	// column to name. A role row carries the id of the user, membership or
-	// invitation it hangs off and nothing else, and that parent is the scoped
-	// row. The six writes bind an owner id that came back from a scoped
+	// The role tables' exception is the schema's rather than the statements': a
+	// role table has no scope column to name. A role row carries the id of the
+	// user, membership or invitation it hangs off and nothing else, and that
+	// parent is the scoped row. The six writes bind an owner id that came back from a scoped
 	// statement, and the three batched reads key on the parent column with ids
 	// read the same way — so a scope predicate here would be a join to say what
 	// the key already says. What keeps that safe is that no statement here
@@ -309,7 +304,6 @@ func TestTables_ScopeIsInEveryStatement(T *testing.T) {
 	//
 	// Everything else, without exception, names the scope.
 	unscoped := []string{
-		"GetInvitationCreatedAt",
 		"DeleteUserRoles", "InsertUserRole",
 		"DeleteMembershipRoles", "InsertMembershipRole",
 		"DeleteInvitationRoles", "InsertInvitationRole",
