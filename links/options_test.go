@@ -33,7 +33,7 @@ func TestOptions(T *testing.T) {
 
 		m := newTestMinter(t, WithAction(testAction, ActionPolicy{
 			URL: "https://other.example.com/{token}",
-			TTL: time.Hour,
+			TTL: Duration(time.Hour),
 		}))
 
 		link, err := m.Mint(t.Context(), testAction, testSubject)
@@ -46,7 +46,7 @@ func TestOptions(T *testing.T) {
 
 		m, err := NewMinter(newMemoryStore(), WithActions(map[Action]ActionPolicy{
 			testAction:     testPolicy(),
-			"verify_email": {URL: "https://app.example.com/verify/{token}", TTL: time.Hour},
+			"verify_email": {URL: "https://app.example.com/verify/{token}", TTL: Duration(time.Hour)},
 			"":             testPolicy(),
 		}))
 		must.NoError(t, err)
@@ -69,7 +69,7 @@ func TestOptions(T *testing.T) {
 		m, err := NewMinter(newMemoryStore(), WithActions(actions))
 		must.NoError(t, err)
 
-		actions["injected"] = ActionPolicy{URL: "http://evil.example.com/{token}", TTL: time.Hour}
+		actions["injected"] = ActionPolicy{URL: "http://evil.example.com/{token}", TTL: Duration(time.Hour)}
 
 		_, err = m.Mint(t.Context(), "injected", testSubject)
 		test.ErrorIs(t, err, ErrUnknownAction)
@@ -113,7 +113,7 @@ func TestOptions(T *testing.T) {
 	T.Run("WithInsecureURLs admits a cleartext action URL", func(t *testing.T) {
 		t.Parallel()
 
-		policy := ActionPolicy{URL: "http://staging.example.com/auth/{token}", TTL: time.Hour}
+		policy := ActionPolicy{URL: "http://staging.example.com/auth/{token}", TTL: Duration(time.Hour)}
 
 		_, err := NewMinter(newMemoryStore(), WithAction(testAction, policy))
 		test.ErrorIs(t, err, ErrInsecureActionURL)
