@@ -81,6 +81,14 @@ type Store interface {
 	// It takes no executor: this store may not be on the caller's database, so
 	// there is no transaction of theirs it could read inside, and it answers
 	// from wherever the keys actually live.
+	//
+	// It reads the primary, and an implementation that splits reads from writes
+	// owes that. Every caller of this method is asking about a write somebody
+	// just made — a mint that lost its race, a shred deciding whether the row it
+	// did not touch is already a tombstone, a cache miss deciding whether the
+	// key still exists — so a replica that has not caught up does not answer a
+	// stale question, it answers the wrong one. Shred's idempotency and the key
+	// TTL are both properties of reading the row as it is, not as it was.
 	Load(ctx context.Context, subject Subject) (*Record, error)
 
 	// Insert stores a newly minted record, and reports whether the insert won.
