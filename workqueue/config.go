@@ -100,8 +100,15 @@ type Config struct {
 	// forever, and because it sorts to the front on every pass it takes the
 	// whole queue's throughput with it. Stalled items are counted by
 	// Stats.Stalled and excluded from every claim; they are not deleted, so the
-	// keys remain available for inspection and a Release resets nothing on its
-	// own — an operator re-enqueues them once the cause is fixed.
+	// keys remain available for inspection, and a Release resets nothing on its
+	// own.
+	//
+	// Requeue is the way back, and the only one: it zeroes the attempt counter
+	// on the items an operator names and makes them claimable again, keeping the
+	// enqueued_at, the priority and the last error the row was kept around for.
+	// Enqueue will not do it — a re-enqueue of an outstanding item merges rather
+	// than restarts, so a ceiling any read path's enqueue could lift would not be
+	// a ceiling.
 	MaxAttempts int `env:"MAX_ATTEMPTS" json:"maxAttempts,omitempty" yaml:"maxAttempts,omitempty"`
 
 	// MaxClaimBatch caps how many items one Claim may lease. A larger limit is

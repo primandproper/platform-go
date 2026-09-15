@@ -212,6 +212,8 @@ func Render(d dialect.Dialect) string {
 			Content: releaseItems},
 		{Annotation: querygen.QueryAnnotation{Name: "RemoveItems", Type: querygen.ExecRowsType},
 			Content: removeItems},
+		{Annotation: querygen.QueryAnnotation{Name: "RequeueItems", Type: querygen.ExecRowsType},
+			Content: requeueItems},
 		{Annotation: querygen.QueryAnnotation{Name: "ReapCompletedItems", Type: querygen.ExecRowsType},
 			Content: reapCompletedItems},
 		{Annotation: querygen.QueryAnnotation{Name: "ReadQueueStats", Type: querygen.OneType},
@@ -304,9 +306,9 @@ func enqueuedBatch() string {
 	}, "\n")
 }
 
-// keyedItems is the membership test a removal addresses its rows with: the keys
-// and nothing else, because an operator dropping work from the queue holds no
-// claim on it.
+// keyedItems is the membership test the two operator writes address their rows
+// with: the keys and nothing else, because an operator dropping work from the
+// queue — or handing stalled work back to it — holds no claim on it.
 func keyedItems() string {
 	return querygen.Qualify(ItemsTable, KeyColumn) + " = ANY(sqlc.arg(" + KeysArg + ")::text[])"
 }
@@ -505,6 +507,49 @@ WHERE %[9]s`,
 var removeItems = lockedTargets("", keyedItems()) + fmt.Sprintf(`DELETE FROM %[1]s
 USING target
 WHERE %[2]s`, ItemsTable, targetJoin())
+
+// requeueItems hands stalled items back to the queue: the attempt counter goes
+// to zero and the item becomes claimable now.
+//
+// It is the one write that lowers the attempt count, and it exists because
+// nothing else could. [enqueueItems] preserves the count on an outstanding item
+// by design — a re-enqueue is a claim on attention rather than an amnesty, and a
+// ceiling that the same call every read path already makes could lift would not
+// be a ceiling — so an exhausted item stays exhausted until somebody says
+// otherwise. Saying otherwise is this.
+//
+// Two columns are assigned and the rest of the row is the point: enqueued_at
+// still says when the work was first asked for, priority still says how urgent
+// it was, and last_error still says what it died of. Those are the facts a
+// stalled item was kept for, and the delete and re-insert this replaces loses
+// every one of them.
+//
+// Availability moves to now() rather than being left alone because a stalled
+// item is usually stalled behind a backoff its last release wrote, and an
+// operator reviving work after fixing the cause is asking for it now. It is the
+// same thing a zero-delay re-enqueue already does through LEAST; this write does
+// it outright, because there is no delay to take the lesser of.
+//
+// The lease and the claim holding it are deliberately absent, for the reason
+// they are absent from the conflict clause: reviving an item somebody is working
+// on right now must not revoke their lease. An item can be both leased and
+// stalled — the claim that pushed the count to the ceiling is still running —
+// and that worker's outcome is still its own to report.
+//
+// Completed items are excluded by the guard inside the CTE, so a row it excludes
+// is never locked at all. Restarting finished work is [enqueueItems]' job and it
+// takes a schedule; reviving is for work that never got done.
+var requeueItems = lockedTargets(outstanding(), keyedItems()) + fmt.Sprintf(`UPDATE %[1]s SET
+	%[2]s = 0,
+	%[3]s = %[4]s
+FROM target
+WHERE %[5]s`,
+	ItemsTable,
+	AttemptsColumn,
+	AvailableAtColumn,
+	querygen.NowExpression,
+	targetJoin(),
+)
 
 // reapCompletedItems removes completed items past the retention window,
 // bounded so a long-neglected queue is drained over several passes rather than
