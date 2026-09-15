@@ -4,7 +4,6 @@ import (
 	"net"
 	"net/url"
 	"strings"
-	"time"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
@@ -39,7 +38,12 @@ type ActionPolicy struct {
 	// because no single one of those is wrong in a harmless direction: a
 	// package-chosen fifteen minutes silently breaks unsubscribe links, and a
 	// package-chosen year silently leaves login links live in mailboxes.
-	TTL time.Duration `json:"ttl,omitempty" yaml:"ttl,omitempty"`
+	//
+	// It is a Duration rather than a time.Duration so that a policy file can
+	// say "15m" — the difference between a lifetime a reviewer can check and
+	// one written as 900000000000. Code assembling a policy converts:
+	// links.Duration(15 * time.Minute).
+	TTL Duration `json:"ttl,omitempty" yaml:"ttl,omitempty"`
 }
 
 // validate reports whether a policy is usable, wrapping the sentinel with the

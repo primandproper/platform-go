@@ -210,7 +210,7 @@ func (m *Minter) Mint(
 
 	o := newMintOptions(opts)
 
-	ttl := policy.TTL
+	ttl := time.Duration(policy.TTL)
 	if o.ttl != nil {
 		ttl = *o.ttl
 	}

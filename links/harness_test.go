@@ -24,7 +24,7 @@ const (
 func testPolicy() ActionPolicy {
 	return ActionPolicy{
 		URL: "https://app.example.com/auth/magic/{token}",
-		TTL: testActionTTL,
+		TTL: Duration(testActionTTL),
 	}
 }
 
