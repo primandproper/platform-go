@@ -132,13 +132,14 @@ and a 404 for one that does not tells whoever is enumerating IDs which of their
 guesses are real, which is the same reasoning mediaregistry's own
 ErrObjectNotFound is written under.
 
-That mapping is made here rather than through a registered error mapper.
-mediaregistry ships no HTTPMapper, and this package does not add one: the only
-sentinel that would reach a client through this route is ErrObjectNotFound, the
-route answers it before any encoding happens, and a mapper installed for one
-status would put the module's one metadata sentinel on a wire that carries no
-metadata. Everything else is a 500, through errors/http, which is the honest
-answer to a bucket that would not open.
+That mapping is made here rather than read out of a registry. mediaregistry does
+ship an HTTPMapper and a GRPCMapper — a consumer's own upload handler needs them,
+since StoreAndRecord can tell it a key is taken or a subject is half-named — and
+this route still answers its own 404 regardless, because the only sentinel that
+reaches a client through here is ErrObjectNotFound and what it resolves to must
+not depend on whether a binary called errormappers.Register. The two agree on the
+answer; this route does not ask. Everything else is a 500, through errors/http,
+which is the honest answer to a bucket that would not open.
 
 # What is not here
 

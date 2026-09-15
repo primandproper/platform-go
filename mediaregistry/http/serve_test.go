@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	nethttp "net/http"
 	"path"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	httpx "github.com/primandproper/primitives-go/v2/errors/http"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
@@ -400,5 +402,37 @@ func TestOwnerOnly(T *testing.T) {
 		entitled, err := OwnerOnly(t.Context(), ownedCaller(), object)
 		must.NoError(t, err)
 		test.False(t, entitled)
+	})
+}
+
+func TestHandler_refusalAgreesWithTheMapper(T *testing.T) {
+	T.Parallel()
+
+	// The serve route decides its own 404 rather than reading one out of a
+	// registry a binary may not have populated, and mediaregistry ships a
+	// mapper that answers the same refusal. Two answers to one question is two
+	// places to change it, so this reads both and compares them: the route's
+	// envelope against what the mapper says, rather than against a copy of the
+	// route's wording that agrees with whatever it held when it was typed.
+	//
+	// It lives here because this is the side that has to be driven. The mapper
+	// is a value anybody can call; the route is only reachable through a
+	// request, so the comparison has to happen where the handler is mounted.
+	T.Run("the route's refusal is the mapper's", func(t *testing.T) {
+		t.Parallel()
+
+		code, message, ok := mediaregistry.HTTPMapper.Map(mediaregistry.ErrObjectNotFound)
+		must.True(t, ok)
+
+		res := get(t, mount(t, storeReturning(testObject()), newRangingObjects(), ownedCaller()), "nope", nil)
+
+		test.EqOp(t, httpx.HTTPStatusForCode(code), res.Code)
+
+		var envelope httpx.APIResponse[any]
+		must.NoError(t, json.Unmarshal(res.Body.Bytes(), &envelope))
+		must.NotNil(t, envelope.Error)
+
+		test.EqOp(t, code, envelope.Error.Code)
+		test.EqOp(t, message, envelope.Error.Message)
 	})
 }
