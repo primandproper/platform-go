@@ -26,6 +26,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 	t.Helper()
 
 	runDefinitionSuite(t, env)
+	runDeclarationSuite(t, env)
 	runValueSuite(t, env)
 	runResolutionSuite(t, env)
 	runTransactionSuite(t, env)

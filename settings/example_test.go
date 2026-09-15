@@ -218,6 +218,88 @@ func ExampleStore_SetValue() {
 	// audited: daily
 }
 
+// ExampleDeclareDefinitions shows the call a composition root makes on every
+// boot: the same catalog, declared again, against a scope that may already
+// define some of it.
+//
+// The second boot writes nothing — the settings already agree with what the
+// binary declares — and the third reconciles the one that changed onto the row
+// it already had, so the answer the subject gave the first time still resolves.
+func ExampleDeclareDefinitions() {
+	ctx := context.Background()
+	client, store := exampleWiring(ctx)
+	scope := tenancy.Global()
+
+	// The catalog the binary holds. A package-level value in a real service,
+	// passed to the same call on every start.
+	catalog := []settings.Declaration{
+		{
+			Name:        "notifications.digest",
+			Description: "how often a digest email is sent",
+			Kind:        settings.KindString,
+			Default:     pointer.To("weekly"),
+			Enumeration: []string{"daily", "never", "weekly"},
+		},
+		{
+			Name:    "layout.compact",
+			Kind:    settings.KindBool,
+			Default: pointer.To("false"),
+		},
+	}
+
+	boot := func(catalog []settings.Declaration) {
+		if err := client.WithTransaction(ctx, func(tx database.Tx) error {
+			declared, txErr := settings.DeclareDefinitions(ctx, store, tx, scope, catalog)
+			if txErr != nil {
+				return txErr
+			}
+
+			for _, one := range declared {
+				fmt.Println(one.Definition.Name, one.Outcome)
+			}
+
+			return nil
+		}); err != nil {
+			panic(err)
+		}
+	}
+
+	boot(catalog)
+	boot(catalog)
+
+	ada := settings.Subject{Type: settings.SubjectUser, ID: "user-ada"}
+
+	if err := client.WithTransaction(ctx, func(tx database.Tx) error {
+		_, txErr := store.SetValue(ctx, tx, scope, ada, "notifications.digest", "daily")
+
+		return txErr
+	}); err != nil {
+		panic(err)
+	}
+
+	// The next release adds an option. Widening the enumeration strands nothing,
+	// so the edit lands; narrowing it under Ada's answer would be
+	// settings.ErrStrandedValues and a boot that stopped.
+	catalog[0].Enumeration = []string{"daily", "hourly", "never", "weekly"}
+	boot(catalog)
+
+	resolved, err := store.Resolve(ctx, client.Reader(), scope, ada, "notifications.digest")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("ada:", resolved.Raw)
+
+	// Output:
+	// notifications.digest created
+	// layout.compact created
+	// notifications.digest unchanged
+	// layout.compact unchanged
+	// notifications.digest updated
+	// layout.compact unchanged
+	// ada: daily
+}
+
 // exampleWiring builds a throwaway SQLite-backed store and hands back the client
 // beside it, because every write takes a transaction the caller opens. A real
 // application hands migrations.SQL to its own migration run and builds the store

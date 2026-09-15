@@ -226,6 +226,32 @@ func (e *storeEnv) clear(
 	return cleared, err
 }
 
+// declare reconciles a catalog in a transaction of its own and reports what the
+// call returned.
+//
+// The transaction is the one a composition root opens: DeclareDefinitions takes
+// the caller's like every write it is built from, and a boot with nothing to
+// join opens exactly this.
+func (e *storeEnv) declare(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	declarations []Declaration,
+) ([]*Declared, error) {
+	tb.Helper()
+
+	var declared []*Declared
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		declared, txErr = DeclareDefinitions(tb.Context(), store, tx, scope, declarations)
+
+		return txErr
+	})
+
+	return declared, err
+}
+
 // erase runs DeleteValuesForSubject in a transaction of its own and returns the
 // count, since every caller of it here wants exactly that.
 func (e *storeEnv) erase(tb testing.TB, store *SQLStore, scope tenancy.Scope, subject Subject) int64 {
@@ -263,6 +289,30 @@ func boolDefinition(name string) *Definition {
 
 func intDefinition(name string) *Definition {
 	return &Definition{Name: name, Kind: KindInt}
+}
+
+// digestDeclaration is the catalog entry a composition root holds for the
+// definition stringDefinition writes, so a suite can declare what another
+// subtest created and get "unchanged".
+func digestDeclaration(name string) Declaration {
+	return Declaration{
+		Name:        name,
+		Description: "how often a digest is sent",
+		Kind:        KindString,
+		Default:     pointer.To("weekly"),
+		Enumeration: []string{"weekly", "daily", "never"},
+	}
+}
+
+// mustDeclare reconciles a catalog and fails the test if any of it is refused.
+func mustDeclare(tb testing.TB, e *storeEnv, store *SQLStore, scope tenancy.Scope, declarations []Declaration) []*Declared {
+	tb.Helper()
+
+	declared, err := e.declare(tb, store, scope, declarations)
+	must.NoError(tb, err)
+	must.SliceLen(tb, len(declarations), declared)
+
+	return declared
 }
 
 // mustCreate writes a definition and fails the test if it will not go in.
