@@ -61,15 +61,15 @@ Store. The engines remain engines — this package never hashes, never compares,
 never generates a TOTP secret. It stores what they produce, and
 [User.Redacted] is how a user reaches a response body without them.
 
-What is deliberately not here, and why it is not an omission: WebAuthn
-credentials, password reset tokens, and sessions. Each is a set per user rather
-than a column on one, each has a lifecycle of its own (a credential is
-registered and revoked, a reset token is issued and burned, a session expires),
-and each is consumed by exactly one engine. Their home is beside that engine —
-the same rule that put the password hash here, applied to a fact that is not a
-column. Sessions live in [github.com/primandproper/platform-go/v14/sessions],
-WebAuthn credentials and ceremonies in
-[github.com/primandproper/platform-go/v14/authentication/webauthncredentials], and
+What is deliberately not here, and why it is not an omission: WebAuthn ceremony
+state, password reset tokens, and sessions. Each is a set per user rather than a
+column on one, each has a lifecycle of its own (a ceremony is begun and
+answered, a reset token is issued and burned, a session expires), and each is
+consumed by exactly one engine. Their home is beside that engine — the same rule
+that put the password hash here, applied to a fact that is not a column.
+Sessions live in [github.com/primandproper/platform-go/v14/sessions], WebAuthn
+ceremony state in
+[github.com/primandproper/platform-go/v14/authentication/webauthnsessions], and
 password reset tokens in
 [github.com/primandproper/platform-go/v14/authentication/passwordreset], which
 also owns the two properties a consumer writing that table by hand gets wrong:
