@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
-	webauthncredentialscfg "github.com/primandproper/platform-go/v14/authentication/webauthncredentials/config"
+	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	entitlementscfg "github.com/primandproper/platform-go/v14/entitlements/config"
 	linkscfg "github.com/primandproper/platform-go/v14/links/config"
 	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
@@ -33,7 +33,7 @@ const platformModule = "github.com/primandproper/platform-go/v14/"
 // from being a walk of only half the module.
 var unreachableRoots = []any{
 	oauth2serverstorecfg.Config{},
-	webauthncredentialscfg.Config{},
+	webauthnsessionscfg.Config{},
 	entitlementscfg.Config{},
 	linkscfg.Config{},
 	mediaregistrycfg.Config{},

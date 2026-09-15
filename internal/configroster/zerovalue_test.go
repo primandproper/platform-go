@@ -6,7 +6,7 @@ import (
 
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
-	webauthncredentialscfg "github.com/primandproper/platform-go/v14/authentication/webauthncredentials/config"
+	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
 	dataprivacycfg "github.com/primandproper/platform-go/v14/dataprivacy/config"
@@ -113,7 +113,7 @@ func zeroValueCases() []zeroValueCase {
 		// because the issuer is the embedded primitive config's field and a
 		// deployment wiring only the store has none to name.
 		{name: "authentication/oauth2serverstore", cfg: &oauth2serverstorecfg.Config{}, why: "the provider defaults to database, and the store under it reads its tables from a prefix that defaults too"},
-		{name: "authentication/webauthncredentials", cfg: &webauthncredentialscfg.Config{}, needs: "rpID"},
+		{name: "authentication/webauthnsessions", cfg: &webauthnsessionscfg.Config{}, needs: "rpID"},
 		{name: "rbac", cfg: &rbaccfg.Config{}, why: "the static resolver needs no infrastructure and grants nothing"},
 		{name: "billing", cfg: &billingcfg.Config{}, why: "the table prefix is the only field, and what a deployment sells is rows rather than environment"},
 		{name: "cache", cfg: &cachecfg.Config{}, needs: "provider"},

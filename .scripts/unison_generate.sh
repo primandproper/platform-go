@@ -58,7 +58,7 @@ COMPONENTS=(
   "authentication/oauth2serverstore postgres mysql sqlite"
   "authentication/oauth2clients postgres mysql sqlite"
   "authentication/passwordreset postgres mysql sqlite"
-  "authentication/webauthncredentials postgres mysql sqlite"
+  "authentication/webauthnsessions postgres mysql sqlite"
   "rbac postgres mysql sqlite"
   "billing postgres mysql sqlite"
   "comments postgres mysql sqlite"

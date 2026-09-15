@@ -9,7 +9,7 @@ import (
 	"time"
 
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
-	webauthncredentialscfg "github.com/primandproper/platform-go/v14/authentication/webauthncredentials/config"
+	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	"github.com/primandproper/platform-go/v14/outbox"
@@ -222,8 +222,8 @@ func TestRegister(T *testing.T) {
 		ceremonyTimeout := time.Minute
 		cfg := &Config{
 			Name: "example",
-			WebAuthn: &webauthncredentialscfg.Config{
-				Provider: webauthncredentialscfg.ProviderCache,
+			WebAuthn: &webauthnsessionscfg.Config{
+				Provider: webauthnsessionscfg.ProviderCache,
 				RelyingParty: webauthn.Config{
 					RPID:            "localhost",
 					RPDisplayName:   "Example",

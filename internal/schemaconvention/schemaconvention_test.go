@@ -15,7 +15,7 @@ import (
 	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
 	oauth2serverstoremigrations "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
-	webauthnmigrations "github.com/primandproper/platform-go/v14/authentication/webauthncredentials/migrations"
+	webauthnmigrations "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/migrations"
 	billingmigrations "github.com/primandproper/platform-go/v14/billing/migrations"
 	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
 	dataprivacymigrations "github.com/primandproper/platform-go/v14/dataprivacy/migrations"
@@ -65,31 +65,31 @@ type renderer func(dialect.Dialect, string) ([]string, error)
 // long enough that action_links, password_reset_tokens and the four billing
 // tables were classified by nobody at all.
 var renderers = map[string]renderer{
-	"audit":                              auditmigrations.Statements,
-	"authentication/oauth2clients":       oauth2clientsmigrations.Statements,
-	"authentication/oauth2serverstore":   oauth2serverstoremigrations.Statements,
-	"authentication/passwordreset":       passwordresetmigrations.Statements,
-	"authentication/webauthncredentials": webauthnmigrations.Statements,
-	"billing":                            billingmigrations.Statements,
-	"comments":                           commentsmigrations.Statements,
-	"dataprivacy":                        dataprivacymigrations.Statements,
-	"identity":                           identitymigrations.Statements,
-	"issuereports":                       issuereportsmigrations.Statements,
-	"links/database":                     linksmigrations.Statements,
-	"mediaregistry":                      mediaregistrymigrations.Statements,
-	"metering":                           meteringmigrations.Statements,
-	"notifications":                      notificationsmigrations.Statements,
-	"operations":                         operationsmigrations.Statements,
-	"outbox":                             outboxmigrations.Statements,
-	"rbac":                               rbacmigrations.Statements,
-	"saga":                               sagamigrations.Statements,
-	"sessions/database":                  sessionsmigrations.Statements,
-	"settings":                           settingsmigrations.Statements,
-	"shredding":                          shreddingmigrations.Statements,
-	"timers":                             timersmigrations.Statements,
-	"waitlists":                          waitlistsmigrations.Statements,
-	"webhooks":                           webhooksmigrations.Statements,
-	"workqueue":                          workqueuemigrations.Statements,
+	"audit":                            auditmigrations.Statements,
+	"authentication/oauth2clients":     oauth2clientsmigrations.Statements,
+	"authentication/oauth2serverstore": oauth2serverstoremigrations.Statements,
+	"authentication/passwordreset":     passwordresetmigrations.Statements,
+	"authentication/webauthnsessions":  webauthnmigrations.Statements,
+	"billing":                          billingmigrations.Statements,
+	"comments":                         commentsmigrations.Statements,
+	"dataprivacy":                      dataprivacymigrations.Statements,
+	"identity":                         identitymigrations.Statements,
+	"issuereports":                     issuereportsmigrations.Statements,
+	"links/database":                   linksmigrations.Statements,
+	"mediaregistry":                    mediaregistrymigrations.Statements,
+	"metering":                         meteringmigrations.Statements,
+	"notifications":                    notificationsmigrations.Statements,
+	"operations":                       operationsmigrations.Statements,
+	"outbox":                           outboxmigrations.Statements,
+	"rbac":                             rbacmigrations.Statements,
+	"saga":                             sagamigrations.Statements,
+	"sessions/database":                sessionsmigrations.Statements,
+	"settings":                         settingsmigrations.Statements,
+	"shredding":                        shreddingmigrations.Statements,
+	"timers":                           timersmigrations.Statements,
+	"waitlists":                        waitlistsmigrations.Statements,
+	"webhooks":                         webhooksmigrations.Statements,
+	"workqueue":                        workqueuemigrations.Statements,
 }
 
 // conventional is every table in the module that stores consumer rows.
