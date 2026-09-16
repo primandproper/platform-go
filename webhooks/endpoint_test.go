@@ -92,6 +92,8 @@ func TestCheckEndpointURL(T *testing.T) {
 			"carrier-grade nat":       "https://100.64.0.1/hooks",
 			"benchmarking":            "https://198.18.0.1/hooks",
 			"protocol assignments":    "https://192.0.0.171/hooks",
+			"nat64 over private":      "https://[64:ff9b::c0a8:101]/hooks",
+			"6to4 over private":       "https://[2002:c0a8:101::1]/hooks",
 		} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
@@ -724,5 +726,105 @@ func TestReservedPrefix(T *testing.T) {
 
 		test.False(t, ok)
 		test.EqOp(t, netip.Prefix{}, prefix)
+	})
+}
+
+// An IPv6 address that names an IPv4 one is that address to any gateway in
+// front of it, so the answer for it is the answer for what it carries — which
+// is the whole of checkIP rather than a copy of the interesting half.
+//
+// The public cases are the point as much as the refusals. Refusing the ranges
+// outright would refuse NAT64 itself, which is how a v6-only deployment reaches
+// anything at all.
+func TestCheckIP_embeddedIPv4(T *testing.T) {
+	T.Parallel()
+
+	cases := map[string]struct {
+		ip       string
+		rejected bool
+	}{
+		// RFC 6052 well-known NAT64 prefix: the address is the low 32 bits.
+		"nat64 over rfc1918":    {ip: "64:ff9b::c0a8:101", rejected: true},  // 192.168.1.1
+		"nat64 over loopback":   {ip: "64:ff9b::7f00:1", rejected: true},    // 127.0.0.1
+		"nat64 over link local": {ip: "64:ff9b::a9fe:a9fe", rejected: true}, // 169.254.169.254
+		"nat64 over cgnat":      {ip: "64:ff9b::6440:1", rejected: true},    // 100.64.0.1
+		"nat64 over public":     {ip: "64:ff9b::5db8:d822"},                 // 93.184.216.34
+
+		// RFC 3056 6to4: the address is the 32 bits after the 2002 prefix.
+		"6to4 over rfc1918": {ip: "2002:c0a8:101::1", rejected: true}, // 192.168.1.1
+		"6to4 over cgnat":   {ip: "2002:6440:1::1", rejected: true},   // 100.64.0.1
+		"6to4 over public":  {ip: "2002:5db8:d822::1"},                // 93.184.216.34
+
+		// RFC 4291 IPv4-compatible, deprecated and still routable at somebody.
+		"v4 compatible over loopback": {ip: "::7f00:1", rejected: true}, // 127.0.0.1
+		"v4 compatible over rfc1918":  {ip: "::c0a8:101", rejected: true},
+
+		// A v6 address carrying nothing is judged as itself, either way.
+		"ordinary public v6": {ip: "2606:4700:4700::1111"},
+		"unique local v6":    {ip: "fd00::1", rejected: true},
+	}
+
+	for name, tc := range cases {
+		T.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ip := net.ParseIP(tc.ip)
+			must.NotNil(t, ip)
+
+			if tc.rejected {
+				test.ErrorIs(t, checkIP(ip, "host"), ErrDisallowedEndpointHost)
+
+				return
+			}
+
+			test.NoError(t, checkIP(ip, "host"))
+		})
+	}
+}
+
+func TestEmbeddedIPv4(T *testing.T) {
+	T.Parallel()
+
+	T.Run("reports the address each range carries", func(t *testing.T) {
+		t.Parallel()
+
+		for name, tc := range map[string]struct{ in, want string }{
+			"nat64":         {in: "64:ff9b::c0a8:101", want: "192.168.1.1"},
+			"6to4":          {in: "2002:c0a8:101::1", want: "192.168.1.1"},
+			"v4 compatible": {in: "::c0a8:101", want: "192.168.1.1"},
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				carried, ok := embeddedIPv4(net.ParseIP(tc.in))
+
+				must.True(t, ok)
+				test.True(t, carried.Equal(net.ParseIP(tc.want)))
+			})
+		}
+	})
+
+	// A dotted quad reaches this as a 4-in-6 address. It is an IPv4 address
+	// written the way net.ParseIP writes them, not a v6 address carrying one,
+	// and reading it as the latter would answer a question twice.
+	T.Run("reports nothing for the addresses that carry nothing", func(t *testing.T) {
+		t.Parallel()
+
+		for name, in := range map[string]net.IP{
+			"a dotted quad":        net.ParseIP("192.168.1.1"),
+			"a four-byte address":  net.IPv4(192, 168, 1, 1).To4(),
+			"an ordinary v6":       net.ParseIP("2606:4700:4700::1111"),
+			"unique local":         net.ParseIP("fd00::1"),
+			"no recognized length": {1, 2, 3},
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				carried, ok := embeddedIPv4(in)
+
+				test.False(t, ok)
+				test.Nil(t, carried)
+			})
+		}
 	})
 }

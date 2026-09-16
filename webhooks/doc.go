@@ -255,6 +255,12 @@ Tailscale network), 198.18.0.0/15 and 192.0.0.0/24 are checked as explicit
 prefixes, because each of them is an internal network that otherwise looks like
 ordinary global unicast. CheckEndpointURL's documentation is the list.
 
+An IPv6 address that carries an IPv4 one — across NAT64, across 6to4, or in the
+form RFC 4291 deprecated — is answered by what it carries rather than by the
+range it sits in, so 64:ff9b::c0a8:101 is refused as 192.168.1.1 while a public
+address reached the same way is not. A network using an RFC 8215 prefix of its
+own is the case this cannot see, and the case URLChecker is replaceable for.
+
 Redirects are refused rather than followed. Following one would deliver a signed
 payload to a host that was never registered and never checked, turning an open
 redirect on any subscriber's domain into a way to point the worker anywhere.
