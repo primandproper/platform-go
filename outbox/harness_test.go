@@ -72,9 +72,9 @@ func newStubClock() *stubClock {
 		NowFunc:   c.read,
 		SinceFunc: func(t time.Time) time.Duration { return c.read().Sub(t) },
 
-		// Reached only by Run, whose test sets both intervals to an hour so
-		// that the drain on Close does the publishing. A real ticker is
-		// therefore constructed and stopped without ever firing.
+		// Reached only by Run, whose lifecycle test sets both intervals to an
+		// hour so that no tick can fire. A real ticker is therefore constructed
+		// and stopped without ever firing.
 		NewTickerFunc: clock.NewClock().NewTicker,
 
 		// SleepFunc is deliberately left nil. Nothing in the relay sleeps, and

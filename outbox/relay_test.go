@@ -756,14 +756,14 @@ func TestRelay_reap(T *testing.T) {
 func TestRelay_lifecycle(T *testing.T) {
 	T.Parallel()
 
-	T.Run("Run drains on Close", func(t *testing.T) {
+	T.Run("Close claims no batch on the way out", func(t *testing.T) {
 		t.Parallel()
 
 		c := newStubClock()
 		client := newTestClient(t)
 		relay, rec := newTestRelay(t, client, c, func(cfg *RelayConfig) {
-			// Long enough that the drain cycle on Close, not a tick, is what
-			// publishes the message.
+			// Long enough that no tick fires: anything published here was
+			// published by a cycle Close started, and Close starts none.
 			cfg.PollInterval = time.Hour
 			cfg.ReapInterval = time.Hour
 		})
@@ -773,7 +773,11 @@ func TestRelay_lifecycle(T *testing.T) {
 		go relay.Run()
 
 		must.NoError(t, relay.Close(t.Context()))
-		test.Eq(t, []string{`{"id":"a"}`}, rec.payloads())
+
+		// The message is left where it was committed, unleased and unpublished,
+		// for whichever relay is still running to take on its next cycle.
+		test.SliceEmpty(t, rec.payloads())
+		test.EqOp(t, 1, countRows(t, client, "published_at IS NULL AND claimed_by IS NULL"))
 
 		// Close is idempotent.
 		must.NoError(t, relay.Close(t.Context()))

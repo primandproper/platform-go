@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -239,19 +240,80 @@ func TestNewRelay_instrumentFailures(T *testing.T) {
 func TestRelay_Close(T *testing.T) {
 	T.Parallel()
 
-	T.Run("a canceled context ends the wait for the loop to drain", func(t *testing.T) {
+	T.Run("a relay that was never started returns without waiting", func(t *testing.T) {
 		t.Parallel()
 
-		// The relay is never started, so done never closes: Close has nothing to
-		// wait for but the context, which is exactly the deadline path.
+		// Nothing ever closes done here, so a Close that waits for it hangs
+		// until this test times out — which is the failure a process that
+		// builds a relay, fails a later wiring step and closes what it has
+		// would take as a shutdown that would not finish. The context is
+		// deliberately not one that would end the wait on its own.
 		relay, _ := newTestRelay(t, newTestClient(t), newStubClock())
+
+		must.NoError(t, relay.Close(t.Context()))
+
+		// And still, on the second call, with the publishers already released.
+		must.NoError(t, relay.Close(t.Context()))
+	})
+
+	T.Run("a canceled context ends the wait for a cycle still in flight", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+
+		var (
+			entered = make(chan struct{})
+			release = make(chan struct{})
+			once    sync.Once
+		)
+
+		// A publish that does not return is the one thing that keeps the loop
+		// from answering the stop, and it is what a slow broker looks like.
+		publisher := &messagequeuemock.PublisherMock{
+			PublishFunc: func(context.Context, any, ...messagequeue.PublishOption) error {
+				once.Do(func() { close(entered) })
+				<-release
+
+				return nil
+			},
+			StopFunc: func() {},
+		}
+
+		provider := &messagequeuemock.PublisherProviderMock{
+			NewPublisherFunc: func(context.Context, string) (messagequeue.Publisher, error) {
+				return publisher, nil
+			},
+			CloseFunc: func() {},
+		}
+
+		relay, err := NewRelay(
+			t.Context(),
+			&RelayConfig{ClaimMode: ClaimLease, PollInterval: time.Millisecond},
+			client,
+			provider,
+			WithRelayClock(c),
+		)
+		must.NoError(t, err)
+
+		enqueue(t, client, newTestWriter(t, c), Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+
+		go relay.Run()
+
+		<-entered
 
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		err := relay.Close(ctx)
+		err = relay.Close(ctx)
 		must.Error(t, err)
 		test.ErrorIs(t, err, context.Canceled)
+
+		close(release)
+
+		// With the publish unstuck the loop returns, and the second Close ends
+		// on done rather than on a context.
+		must.NoError(t, relay.Close(t.Context()))
 	})
 }
 
@@ -452,7 +514,8 @@ func TestRelay_Run_ticks(T *testing.T) {
 
 		go relay.Run()
 
-		// Wait for a tick — not the drain on Close — to publish the message.
+		// Wait for a tick to publish the message. Close starts no cycle of its
+		// own, so a tick is the only thing that can.
 		deadline := time.Now().Add(10 * time.Second)
 		for len(rec.payloads()) == 0 && time.Now().Before(deadline) {
 			time.Sleep(time.Millisecond)

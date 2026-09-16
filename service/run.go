@@ -91,10 +91,14 @@ func (s *Service) Run(ctx context.Context) error {
 //     moving target until it happens, and the servers go down together rather
 //     than in turn because they are independent and share one budget — draining
 //     HTTP for the whole of it would leave gRPC nothing but a hard stop.
-//  2. The background loops, in reverse start order, so each one's final cycle
-//     runs after everything that feeds it has stopped. This is what the outbox
-//     relay's Run-takes-no-context comment is about: its last cycle sees every
-//     row the last requests committed.
+//  2. The background loops, in reverse start order, so each one goes on cycling
+//     while everything that feeds it is shutting down and stops only once
+//     nothing above it can hand it more work. This is what the outbox relay's
+//     Run-takes-no-context comment is about: it is still polling while the last
+//     requests commit their rows. No loop starts a cycle on its way out — see
+//     saga.Worker.Close — so what a loop gets through is what it claimed while
+//     it was running, and whatever is committed after that is the next
+//     process's.
 //  3. The single-shot drains, which need the clients below them and the
 //     producers above them to be finished.
 //  4. The clients, in reverse build order, so the database client — which

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/outbox/internal/outboxdb"
@@ -119,6 +120,16 @@ type Relay struct {
 
 	publishersMu sync.Mutex
 	stopOnce     sync.Once
+
+	// started records that Run was entered, so Close can tell a loop it must
+	// wait for from one that was never started. Without it a process that
+	// builds a relay, fails a later wiring step and closes what it has in
+	// cleanup waits out its whole shutdown budget on a done channel nothing
+	// will ever close.
+	//
+	// The narrow race it leaves is not one: Close closes stop before it reads
+	// this, so a Run entered afterwards returns on its first pass.
+	started atomic.Bool
 }
 
 // NewRelay builds a Relay. It does not start it; call Run.
@@ -228,6 +239,8 @@ func NewRelay(ctx context.Context, cfg *RelayConfig, client database.Client, pro
 func (r *Relay) Run() {
 	defer close(r.done)
 
+	r.started.Store(true)
+
 	ctx := context.Background()
 
 	pollTicker := r.clock.NewTicker(r.cfg.PollInterval)
@@ -265,10 +278,6 @@ func (r *Relay) Run() {
 	for {
 		select {
 		case <-r.stop:
-			// One last cycle, so rows committed just before shutdown are not
-			// left sitting until the next process starts.
-			r.cycle(ctx)
-
 			return
 		case <-pollTicker.Chan():
 			cycle()
@@ -302,17 +311,28 @@ func (r *Relay) Run() {
 }
 
 // Close stops the relay, waits for the in-flight cycle to finish, and releases
-// the publishers. Safe to call more than once.
+// the publishers. Safe to call more than once, and on a relay that was never
+// started — there is no goroutine to wait for, so it returns as soon as it has
+// released the publishers.
+//
+// There is no final cycle on the way out, for the reason saga.Worker.Close
+// gives: a cycle claims a fresh batch of up to BatchSize messages and publishes
+// them one round trip at a time, which is work the process has just been told
+// it has no time left for, and every row it takes is leased away from the
+// replica still running. Rows committed just before shutdown stay committed and
+// the next cycle anywhere picks them up.
 func (r *Relay) Close(ctx context.Context) error {
 	_, op := r.o11y.Begin(ctx)
 	defer op.End()
 
 	r.stopOnce.Do(func() { close(r.stop) })
 
-	select {
-	case <-r.done:
-	case <-ctx.Done():
-		return op.Error(ctx.Err(), "waiting for outbox relay to drain")
+	if r.started.Load() {
+		select {
+		case <-r.done:
+		case <-ctx.Done():
+			return op.Error(ctx.Err(), "waiting for outbox relay to drain")
+		}
 	}
 
 	r.publishersMu.Lock()

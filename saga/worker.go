@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/primandproper/primitives-go/v2/clock"
@@ -86,6 +87,16 @@ type Worker struct {
 	cfg WorkerConfig
 
 	stopOnce sync.Once
+
+	// started records that Run was entered, so Close can tell a loop it must
+	// wait for from one that was never started. Without it a process that
+	// builds a worker, fails a later wiring step and closes what it has in
+	// cleanup waits out its whole shutdown budget on a done channel nothing
+	// will ever close.
+	//
+	// The narrow race it leaves is not one: Close closes stop before it reads
+	// this, so a Run entered afterwards returns on its first pass.
+	started atomic.Bool
 }
 
 // NewWorker builds a Worker. It does not start it; call Run.
@@ -221,6 +232,8 @@ func (w *Worker) buildInstruments() error {
 func (w *Worker) Run() {
 	defer close(w.done)
 
+	w.started.Store(true)
+
 	ctx := context.Background()
 
 	ticker := w.clock.NewTicker(w.cfg.PollInterval)
@@ -237,7 +250,8 @@ func (w *Worker) Run() {
 }
 
 // Close stops the worker and waits for the in-flight cycle to finish. Safe to
-// call more than once.
+// call more than once, and on a worker that was never started — there is no
+// goroutine to wait for, so it returns immediately.
 //
 // There is no final cycle on the way out. A pass can run for minutes and holds
 // a lease that outlives the process, so the right thing at shutdown is to stop
@@ -249,10 +263,12 @@ func (w *Worker) Close(ctx context.Context) error {
 
 	w.stopOnce.Do(func() { close(w.stop) })
 
-	select {
-	case <-w.done:
-	case <-ctx.Done():
-		return op.Error(ctx.Err(), "waiting for saga worker to drain")
+	if w.started.Load() {
+		select {
+		case <-w.done:
+		case <-ctx.Done():
+			return op.Error(ctx.Err(), "waiting for saga worker to drain")
+		}
 	}
 
 	return nil

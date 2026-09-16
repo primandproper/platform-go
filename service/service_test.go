@@ -89,7 +89,7 @@ func TestNew(T *testing.T) {
 		t.Parallel()
 
 		// Start order is what shutdown reverses, so this is the assertion the
-		// outbox relay's final cycle depends on: the relay comes up first and
+		// outbox relay's last cycle depends on: the relay comes up first and
 		// therefore closes last, after the pool and the scheduler that write
 		// into the database it drains.
 		cfg := &Config{

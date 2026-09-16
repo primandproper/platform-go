@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -871,6 +872,24 @@ func TestWorker_Locking(T *testing.T) {
 	})
 }
 
+// blockingClaimStore holds a cycle open inside Claim, which is the only way to
+// observe a Close that runs out of context: every other seam the loop touches
+// returns.
+type blockingClaimStore struct {
+	Store
+
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (s *blockingClaimStore) Claim(context.Context, time.Time, int, time.Time) ([]*Record, error) {
+	s.once.Do(func() { close(s.entered) })
+	<-s.release
+
+	return nil, nil
+}
+
 func TestWorker_Lifecycle(T *testing.T) {
 	T.Parallel()
 
@@ -890,7 +909,7 @@ func TestWorker_Lifecycle(T *testing.T) {
 		must.NoError(t, worker.Close(t.Context()))
 	})
 
-	T.Run("Close reports a context that expired first", func(t *testing.T) {
+	T.Run("Close on a worker that was never started returns without waiting", func(t *testing.T) {
 		t.Parallel()
 
 		env := newSQLiteEnv(t)
@@ -899,11 +918,46 @@ func TestWorker_Lifecycle(T *testing.T) {
 		registry := registryWith(t, "orders", noopStep("one"))
 		worker := env.newWorker(t, store, registry, newStubClock())
 
+		// Nothing ever closes done here, so a Close that waits for it hangs
+		// until this test times out — which is what a process that builds a
+		// worker, fails a later wiring step and closes what it has would see as
+		// a shutdown that would not finish. The context is deliberately not one
+		// that would end the wait on its own.
+		must.NoError(t, worker.Close(t.Context()))
+
+		// Idempotent.
+		must.NoError(t, worker.Close(t.Context()))
+	})
+
+	T.Run("Close reports a context that expired before the cycle returned", func(t *testing.T) {
+		t.Parallel()
+
+		env := newSQLiteEnv(t)
+
+		store := &blockingClaimStore{
+			Store:   env.newStore(t),
+			entered: make(chan struct{}),
+			release: make(chan struct{}),
+		}
+		registry := registryWith(t, "orders", noopStep("one"))
+		worker := env.newWorker(t, store, registry, newStubClock())
+
+		go worker.Run()
+
+		<-store.entered
+
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
-		// Run was never started, so done never closes.
+		// The loop is inside a claim that will not return, so the only thing
+		// left to end the wait is the context.
 		test.Error(t, worker.Close(ctx))
+
+		close(store.release)
+
+		// With the claim unstuck the loop returns, and this Close ends on done
+		// rather than on a context.
+		must.NoError(t, worker.Close(context.Background()))
 	})
 
 	T.Run("Run advances what it claims", func(t *testing.T) {
