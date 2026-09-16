@@ -8,6 +8,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/metering"
 	"github.com/primandproper/platform-go/v14/operations"
+	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/saga"
 	"github.com/primandproper/platform-go/v14/webhooks"
@@ -265,10 +266,15 @@ func (s *Service) resolveRunners(r *resolver) {
 // resolveFlushes collects the drains that have no loop of their own and have to
 // happen once, on the way out, after every producer has stopped.
 //
-// There is only one, because the other buffered thing in this module —
-// eventcapture.Recorder — drains and closes its sink inside its own Close and
-// therefore rides along as a Runner. An application's single-shot drain belongs
-// in a Runner's Close for the same reason.
+// There are two, and neither is a loop for the same reason: a Runner's Close is
+// where a single-shot drain belongs when there is a loop to hang it on, which is
+// why eventcapture.Recorder — the third buffered thing in this module — is not
+// here. It drains and closes its sink inside its own Close and rides along as a
+// Runner. An application's single-shot drain belongs there for the same reason.
+//
+// They are independent of each other, so the order between them is stable
+// rather than meaningful. What is meaningful is the slot: flushes run after the
+// runners close, which is what "after every producer has stopped" buys.
 func (s *Service) resolveFlushes(r *resolver) {
 	resolve(r, func(f *metering.Flusher) {
 		s.addFlush("metering flusher", func(ctx context.Context) error {
@@ -281,6 +287,39 @@ func (s *Service) resolveFlushes(r *resolver) {
 			return err
 		})
 	})
+
+	s.resolveOperationsQueue(r)
+}
+
+// resolveOperationsQueue joins the operations work queue's final flush.
+//
+// The queue is the one component this module registers under a name rather than
+// a type — see operationscfg.QueueKey — so it cannot travel through resolve,
+// which resolves what do.NameOf says. This is that function's body against the
+// named key, and it draws the same distinction, in the two calls the named form
+// takes to draw it: nobody registered one is an absence, and one that failed to
+// build is an error.
+//
+// It is a flush rather than a closer because what Close does here is drain: the
+// queue's enqueue batcher holds whatever is still accumulating, and closing it
+// writes that out so an Enqueue caught by shutdown gets an answer instead of
+// waiting on its own deadline. Running it in the flush slot puts it after both
+// operations loops have stopped, which is the only placement that is right
+// regardless of whether the worker enqueues anything itself — and Close only
+// ends Enqueue, so a drain still finishing underneath it is unaffected.
+func (s *Service) resolveOperationsQueue(r *resolver) {
+	if r.err != nil || !operationscfg.QueueRegistered(r.i) {
+		return
+	}
+
+	queue, err := operationscfg.InvokeQueue(r.i)
+	if err != nil {
+		r.err = platformerrors.Wrapf(err, "invoking %s", operationscfg.QueueKey)
+
+		return
+	}
+
+	s.addFlush("operations queue", queue.Close)
 }
 
 // resolveServers collects ingress last, so that by the time anything can accept

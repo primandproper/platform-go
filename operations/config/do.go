@@ -2,6 +2,7 @@ package operationscfg
 
 import (
 	"context"
+	"slices"
 
 	"github.com/primandproper/platform-go/v14/operations"
 	"github.com/primandproper/platform-go/v14/workqueue"
@@ -62,6 +63,12 @@ const QueueKey = "operations.queue"
 // spell that Close. Resolve it with InvokeQueue and close it from the same place
 // you shut the rest of them down — after ingress is gone, so a request still in
 // flight can finish enqueueing.
+//
+// A service built from a service.Config is already covered: Service.Shutdown
+// closes it as a final flush, after the loops it shares a table with have
+// stopped. A container assembled by hand owes the call itself, and a
+// composition root that may or may not have configured operations asks
+// QueueRegistered first.
 func RegisterQueue(i do.Injector) {
 	do.ProvideNamed(i, QueueKey, func(i do.Injector) (*workqueue.Queue[string], error) {
 		pillars, err := observability.InvokePillars(i)
@@ -87,6 +94,26 @@ func RegisterQueue(i do.Injector) {
 // at the one moment a process is trying to shut down.
 func InvokeQueue(i do.Injector) (*workqueue.Queue[string], error) {
 	return do.InvokeNamed[*workqueue.Queue[string]](i, QueueKey)
+}
+
+// QueueRegistered reports whether a queue is registered under QueueKey.
+//
+// It is the half of injection.InvokeOptional that a named registration cannot
+// get from that function, which resolves strictly by do.NameOf, and it is asked
+// for the reason that function gives: a composition root shutting a whole
+// service down has to tell "nobody configured operations" from "the queue
+// somebody configured failed to build", and the error alone cannot say which.
+// do reports a provider that itself invoked something unregistered with
+// do.ErrServiceNotFound too, so the sentinel says only that something along the
+// way was missing. Registration presence can say the rest.
+//
+// Pair it with InvokeQueue: a queue that is registered and still fails to build
+// is an error, not an absence, because a component somebody configured wrongly
+// should not be silently swapped for one nobody asked for.
+func QueueRegistered(i do.Injector) bool {
+	return slices.ContainsFunc(i.ListProvidedServices(), func(d do.ServiceDescription) bool {
+		return d.Service == QueueKey
+	})
 }
 
 // RegisterService registers an operations.Service over the registered store,

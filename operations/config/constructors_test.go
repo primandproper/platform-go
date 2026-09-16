@@ -503,6 +503,63 @@ func TestRegisterQueue(T *testing.T) {
 	})
 }
 
+// TestQueueRegistered covers the distinction the presence test exists to draw,
+// which is the one a composition root shutting a whole service down needs: a
+// queue nobody registered is an absence, and a queue somebody registered
+// wrongly is an error from InvokeQueue rather than a silent stand-in for one.
+func TestQueueRegistered(T *testing.T) {
+	T.Parallel()
+
+	T.Run("sees the registered queue", func(t *testing.T) {
+		t.Parallel()
+
+		i := container(t, postgresClient())
+		RegisterQueue(i)
+
+		must.True(t, QueueRegistered(i))
+
+		queue, err := InvokeQueue(i)
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = queue.Close(t.Context()) })
+
+		test.EqOp(t, operations.DefaultQueueName, queue.Name())
+	})
+
+	T.Run("sees nothing when nobody registered one", func(t *testing.T) {
+		t.Parallel()
+
+		test.False(t, QueueRegistered(container(t, postgresClient())))
+	})
+
+	// A consumer's own string-keyed queue is the registration that would answer
+	// if this looked anywhere but the named key, so it is the one absence worth
+	// asserting twice.
+	T.Run("a consumer's own queue is not an operations queue", func(t *testing.T) {
+		t.Parallel()
+
+		i := container(t, postgresClient())
+		do.ProvideValue(i, &workqueue.Config{Name: "consumer_work"})
+		workqueuecfg.RegisterQueue[string](i)
+
+		test.False(t, QueueRegistered(i))
+	})
+
+	// Registered and unbuildable, which is the case the presence test is there
+	// to keep out of the absent bucket: it is present, and the failure belongs
+	// to whoever configured it.
+	T.Run("sees a registered queue that cannot be built", func(t *testing.T) {
+		t.Parallel()
+
+		i := container(t, clientFor(dialect.SQLite))
+		RegisterQueue(i)
+
+		must.True(t, QueueRegistered(i))
+
+		_, err := InvokeQueue(i)
+		test.ErrorIs(t, err, dialect.ErrUnsupported)
+	})
+}
+
 func TestRegisterService(T *testing.T) {
 	T.Parallel()
 

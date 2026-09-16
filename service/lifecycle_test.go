@@ -6,9 +6,11 @@ import (
 
 	"github.com/primandproper/platform-go/v14/metering"
 	"github.com/primandproper/platform-go/v14/operations"
+	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/saga"
 	"github.com/primandproper/platform-go/v14/webhooks"
+	"github.com/primandproper/platform-go/v14/workqueue"
 
 	"github.com/primandproper/primitives-go/v2/analytics"
 	analyticsmock "github.com/primandproper/primitives-go/v2/analytics/mock"
@@ -86,6 +88,11 @@ func TestNew_ordering(T *testing.T) {
 
 		do.ProvideValue(i, &metering.Flusher{})
 
+		// Under its own key rather than its type, which is the registration
+		// operationscfg.RegisterQueue makes and the reason this one cannot be
+		// a do.ProvideValue like everything above it.
+		do.ProvideNamedValue(i, operationscfg.QueueKey, &workqueue.Queue[string]{})
+
 		do.ProvideValue[httpserver.Server](i, newFakeServer(&journal{}, "http"))
 		do.ProvideValue(i, &grpcserver.Server{})
 
@@ -118,7 +125,10 @@ func TestNew_ordering(T *testing.T) {
 			"operations watcher",
 		}, names(svc.runners))
 
-		test.Eq(t, []string{"metering flusher"}, names(svc.flushes))
+		// Both drains with no loop of their own. The operations queue is here
+		// because nothing else closes it: the injector does not, since do
+		// recognizes a Shutdown method and a Queue spells that Close.
+		test.Eq(t, []string{"metering flusher", "operations queue"}, names(svc.flushes))
 
 		// Ingress last, so nothing can be asked for before it exists.
 		test.Eq(t, []string{"HTTP server", "gRPC server"}, names(svc.servers))
