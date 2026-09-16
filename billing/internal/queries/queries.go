@@ -357,12 +357,13 @@ func guardedCreates(g *querygen.Generator) []*querygen.Query {
 // a statement says it must see archived rows, and they project the id alone
 // because the question is presence rather than content.
 //
-// They are read on a losing insert rather than before a winning one. Every
-// RecordTransaction would otherwise pay for them, and the answer only matters
-// when the insert already wrote nothing: on MySQL, where IGNORE downgrades the
-// foreign key to a warning and a zero count, this is what tells a ledger row
-// naming a subscription nobody has from the redelivery the zero count usually
-// means. Postgres and SQLite raise that case at the insert and never reach here.
+// They are read before the insert rather than on the losing path, which is what
+// makes a bad reference the same answer on all three dialects. MySQL's IGNORE
+// downgrades a foreign key it could not satisfy to a warning and a zero count —
+// the count a redelivery produces — while Postgres and SQLite raise it as a
+// driver error, and on Postgres a raised error aborts the transaction the caller
+// is writing its audit entry and its outbox event in. Asking costs a read per
+// reference on every ledger write, which is what the agreement is bought with.
 func referentChecks(g *querygen.Generator) []*querygen.Query {
 	scope := querygen.Match{Column: ScopeColumn}
 

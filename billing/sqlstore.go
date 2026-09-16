@@ -218,23 +218,18 @@ func guardCount(count int64, err, missing error, operation string) error {
 // provider identifier on the row, or one nobody else holds — is the id, which
 // only a caller that supplied its own can collide on.
 //
-// residual is what a table asks after the provider's identifier has come back
-// clean and before the id is blamed. Only the ledger has one — its row points at
-// two others, and MySQL's IGNORE reports a foreign key it could not satisfy with
-// the same zero count as a collision. Every other table passes nil.
-func refuseCreate(externalID, id string, lookup func() error, notFound, exists error, residual func() error) error {
+// Two candidates and no more, on every table here. A row that points at another
+// has its references asked about before the insert rather than attributed after
+// it — see requireProduct and requireReferents — because a foreign key MySQL
+// silently downgrades to this same zero count is a refusal the other two dialects
+// raise instead, and the dialects have to agree on what a caller's bad id is.
+func refuseCreate(externalID, id string, lookup func() error, notFound, exists error) error {
 	if externalID != "" {
 		switch err := lookup(); {
 		case err == nil:
 			return platformerrors.Wrapf(exists, "external id %q", externalID)
 		case !errors.Is(err, notFound):
 			return platformerrors.Wrap(err, "attributing a skipped insert")
-		}
-	}
-
-	if residual != nil {
-		if err := residual(); err != nil {
-			return err
 		}
 	}
 

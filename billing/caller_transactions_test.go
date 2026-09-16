@@ -17,12 +17,13 @@ import (
 // transaction the caller owns, which is the only way it can be driven.
 //
 // What is under test is the commit boundary — that a write lands with the
-// caller's own rows, and that a caller's failure takes it back — and the three
+// caller's own rows, and that a caller's failure takes it back — and the four
 // reads a write makes on that same executor: the product check the two creates
-// are gated on, the attribution an insert-ignore makes when it loses, and the
-// read that tells a guarded write's replay from a row nobody has. The reads are
-// here too, because widening them to database.SQLQueryExecutor is what lets a
-// caller see what its own transaction has written and not yet committed.
+// are gated on, the presence checks the ledger write is gated on, the
+// attribution an insert-ignore makes when it loses, and the read that tells a
+// guarded write's replay from a row nobody has. The reads are here too, because
+// widening them to database.SQLQueryExecutor is what lets a caller see what its
+// own transaction has written and not yet committed.
 func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 	t.Helper()
 
@@ -91,7 +92,10 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			}
 
 			// And the ledger row points at the sale this same transaction made,
-			// which is the shape a checkout path writes in.
+			// which is the shape a checkout path writes in. The presence check
+			// gating that row runs on tx for the same reason the product check
+			// does: a read through the store's own reader would find no such
+			// purchase and refuse a charge for something just sold.
 			ledgerRow := pendingTransaction(otherAccount)
 			ledgerRow.PurchaseID = sold.ID
 
@@ -637,6 +641,13 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 		// package makes, or a read that finds nothing. Every one of them is
 		// refused inside the caller's transaction, which is the only place a
 		// write can be refused now.
+		//
+		// The two ledger rows naming referents nobody has are the reason the
+		// checks behind them are asked ahead of the insert. Left to the foreign
+		// keys, Postgres would raise one and abort this transaction, taking
+		// every write after it — the audit entry and the outbox event a real
+		// caller writes next — with it. What proves that here is that the
+		// statements below them still run and the transaction still commits.
 		var (
 			nilProduct, unscopedProduct, unnamedProduct           error
 			unidentifiedProductEdit, absentProductEdit            error
@@ -648,6 +659,7 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			nilPurchase, unstockedPurchase, absentCompletion      error
 			absentPurchaseArchive                                 error
 			nilLedgerRow, ambiguousLedgerRow, unpricedLedgerRow   error
+			unsubscribedLedgerRow, unsoldLedgerRow                error
 			absentLedgerStatus, invalidLedgerStatus, absentLedger error
 		)
 
@@ -737,6 +749,14 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			unpriced.Currency = ""
 			_, unpricedLedgerRow = store.RecordTransaction(t.Context(), tx, testScope, unpriced)
 
+			unsubscribed := pendingTransaction(testAccount)
+			unsubscribed.SubscriptionID = "sub_never_written"
+			_, unsubscribedLedgerRow = store.RecordTransaction(t.Context(), tx, testScope, unsubscribed)
+
+			unsold := pendingTransaction(testAccount)
+			unsold.PurchaseID = "pur_never_written"
+			_, unsoldLedgerRow = store.RecordTransaction(t.Context(), tx, testScope, unsold)
+
 			invalidLedgerStatus = store.SetTransactionStatus(t.Context(), tx, testScope, "txn_never_written",
 				TransactionStatus("whatever"))
 			absentLedgerStatus = store.SetTransactionStatus(t.Context(), tx, testScope, "txn_never_written",
@@ -773,6 +793,8 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 		test.ErrorIs(t, nilLedgerRow, ErrNilTransaction)
 		test.ErrorIs(t, ambiguousLedgerRow, ErrAmbiguousTransaction)
 		test.ErrorIs(t, unpricedLedgerRow, ErrInvalidCurrency)
+		test.ErrorIs(t, unsubscribedLedgerRow, ErrSubscriptionNotFound)
+		test.ErrorIs(t, unsoldLedgerRow, ErrPurchaseNotFound)
 		test.ErrorIs(t, invalidLedgerStatus, ErrInvalidStatus)
 		test.ErrorIs(t, absentLedgerStatus, ErrTransactionNotFound)
 		test.ErrorIs(t, absentLedger, ErrTransactionNotFound)

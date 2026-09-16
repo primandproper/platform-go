@@ -229,18 +229,44 @@ func runCreateGuardSuite(t *testing.T, env *storeEnv) {
 		attempt.SubscriptionID = "no-such-subscription"
 
 		_, err := env.recordTransaction(t, store, testScope, attempt)
-		must.Error(t, err)
 
-		// All three engines refuse the row and they differ in which error says
-		// so. Postgres and SQLite raise the foreign key at the insert; MySQL's
-		// IGNORE downgrades it to a warning and a zero affected count, which is
-		// the count a collision produces — so there the store reads to tell the
-		// two apart, and names the missing subscription. Asserting the sentinel
-		// on the engines that never reach that read would assert somebody else's
-		// error message.
-		if env.dialect == dialect.MySQL {
-			test.ErrorIs(t, err, ErrSubscriptionNotFound)
-		}
+		// The presence check runs ahead of the insert, so every engine answers
+		// with the sentinel that names what is missing. Left to the foreign
+		// keys this would be the store's sentinel on MySQL, whose IGNORE
+		// downgrades the key to the zero count a collision produces, and a raw
+		// driver error on the two that raise it.
+		test.ErrorIs(t, err, ErrSubscriptionNotFound)
+	})
+
+	t.Run("refuses a ledger row naming a purchase nobody has", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		attempt := pendingTransaction(testAccount)
+		attempt.PurchaseID = "no-such-purchase"
+
+		_, err := env.recordTransaction(t, store, testScope, attempt)
+		test.ErrorIs(t, err, ErrPurchaseNotFound)
+	})
+
+	t.Run("refuses a ledger row naming a subscription in another scope", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		// Both presence checks are scoped, for the reason the product check is:
+		// the foreign key spans ids and knows nothing about tenancy, so a
+		// subscription that exists is still not one this scope may bill against.
+		product := mustCreateProduct(t, env, store, otherScope, recurringProduct("pro"))
+		subscription := mustCreateSubscription(t, env, store, otherScope,
+			currentSubscription(product.ID, testAccount))
+
+		attempt := pendingTransaction(testAccount)
+		attempt.SubscriptionID = subscription.ID
+
+		_, err := env.recordTransaction(t, store, testScope, attempt)
+		test.ErrorIs(t, err, ErrSubscriptionNotFound)
 	})
 
 	t.Run("refuses a create whose id another row already carries", func(t *testing.T) {

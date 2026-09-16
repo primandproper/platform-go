@@ -457,5 +457,5 @@ func (s *SQLStore) refusePurchaseCreate(
 		_, err := s.readPurchaseByExternalID(ctx, q, scope, created.ExternalTransactionID)
 
 		return err
-	}, ErrPurchaseNotFound, ErrPurchaseExists, nil)
+	}, ErrPurchaseNotFound, ErrPurchaseExists)
 }
