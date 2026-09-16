@@ -126,21 +126,20 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		test.EqOp(t, int64(1), winners.Load())
 	})
 
-	// The comparison the sweeper turns on, which is between a bound deadline
-	// and the server's own clock. On SQLite both sides are text the generated
-	// querier renders in one shape; here they are real temporal types, and a
-	// server run is the only place a deadline this application wrote is
-	// compared against a clock it does not own.
+	// The comparison the sweeper turns on, which is between a stamped deadline
+	// and a horizon bound from the same clock. On SQLite both are text the
+	// generated querier renders in one shape; here they are real temporal
+	// types, and a server run is the only place the driver's own rendering of a
+	// bound time is what the column is compared against.
 	//
-	// So what makes a row expired is the deadline it was stamped with rather
-	// than where the store's clock has since got to: sweep-short is written by
-	// a clock two hours behind the server, sweep-long at the server's own time.
+	// Both sides move with the store's clock, so what makes a row expired is
+	// that clock reaching past its deadline — and the server's own hour, which
+	// a container keeps and nothing here sets, decides nothing either way.
 	t.Run("sweeps only what is past its deadline", func(t *testing.T) {
-		c.advance(-2 * time.Hour)
 		must.NoError(t, store.Save(ctx, testSession("sweep-short"), time.Minute))
+		must.NoError(t, store.Save(ctx, testSession("sweep-long"), 48*time.Hour))
 
 		c.advance(2 * time.Hour)
-		must.NoError(t, store.Save(ctx, testSession("sweep-long"), 48*time.Hour))
 
 		swept, sweepErr := store.Sweep(ctx)
 		must.NoError(t, sweepErr)

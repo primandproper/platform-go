@@ -233,23 +233,19 @@ func TestSessionStore_Consume(T *testing.T) {
 func TestSessionStore_Sweep(T *testing.T) {
 	T.Parallel()
 
-	// What decides a row's fate is the deadline it was stamped with, since the
-	// sweep compares against the server's clock rather than the store's. So the
-	// expired row is one written by a clock two hours behind the server, and
-	// the live one is written at the server's own time — moving the store's
-	// clock afterwards, as an expiry test would once have done, now changes
-	// nothing.
+	// What decides a row's fate is the store's clock against the deadline that
+	// same clock stamped, so a row is made expired by moving the clock past its
+	// deadline rather than by writing it from a clock behind the server's.
 	T.Run("removes what has expired and reports how much", func(t *testing.T) {
 		t.Parallel()
 
 		store, c := newTestStore(t)
 		ctx := t.Context()
 
-		c.advance(-2 * time.Hour)
 		must.NoError(t, store.Save(ctx, testSession("short"), time.Minute))
+		must.NoError(t, store.Save(ctx, testSession("long"), 3*time.Hour))
 
 		c.advance(2 * time.Hour)
-		must.NoError(t, store.Save(ctx, testSession("long"), time.Hour))
 
 		swept, err := store.Sweep(ctx)
 		must.NoError(t, err)
@@ -273,6 +269,31 @@ func TestSessionStore_Sweep(T *testing.T) {
 		swept, err := store.Sweep(t.Context())
 		must.NoError(t, err)
 		test.EqOp(t, int64(0), swept)
+	})
+
+	// The skew this store's horizon exists for. The database is the wall clock
+	// here and the store's is two hours behind it, so this row's deadline is
+	// long past by the server's reading while Consume still considers it live —
+	// which is exactly the row a CURRENT_TIMESTAMP comparison would reclaim out
+	// from under a ceremony somebody is halfway through.
+	T.Run("leaves a live row alone under a database-ahead skew", func(t *testing.T) {
+		t.Parallel()
+
+		store, c := newTestStore(t)
+		ctx := t.Context()
+
+		c.advance(-2 * time.Hour)
+		must.NoError(t, store.Save(ctx, testSession("skewed"), time.Minute))
+
+		swept, err := store.Sweep(ctx)
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), swept)
+		test.EqOp(t, 1, rowCount(t, store))
+
+		// Still answerable, which is the half the count does not say.
+		session, err := store.Consume(ctx, "skewed")
+		must.NoError(t, err)
+		test.EqOp(t, "skewed", session.Challenge)
 	})
 
 	T.Run("reports a failure rather than a count of zero", func(t *testing.T) {

@@ -38,7 +38,7 @@ type Querier interface {
 	//
 	// The count means different things on different engines; see the note
 	// on Querier.
-	SweepExpiredSessions(ctx context.Context, db DBTX) (int64, error)
+	SweepExpiredSessions(ctx context.Context, db DBTX, arg SweepExpiredSessionsParams) (int64, error)
 	// UpsertSession runs the :exec query.
 	UpsertSession(ctx context.Context, db DBTX, arg UpsertSessionParams) error
 }

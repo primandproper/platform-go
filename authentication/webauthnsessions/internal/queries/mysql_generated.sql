@@ -27,4 +27,4 @@ WHERE challenge = sqlc.arg(challenge);
 
 -- name: SweepExpiredSessions :execrows
 DELETE FROM webauthn_sessions
-WHERE expires_at <= CURRENT_TIMESTAMP(6);
+WHERE expires_at <= sqlc.arg(expires_before);

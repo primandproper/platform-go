@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/authentication/webauthnsessions/internal/webauthnsessionsdb"
+
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 )
@@ -25,12 +27,13 @@ const backgroundSweepFailure = "background sweep of expired webauthn ceremony se
 // is stop the table growing by a row for every ceremony ever begun, including
 // the ones the user walked away from, which are the ones nothing else deletes.
 //
-// The deadline it compares against is the server's clock rather than the
-// store's, and the difference only matters here: Consume decides expiry against
-// the injected clock and does so before this ever reaches the row, so a clock
-// skew between the application and its database changes when a dead row is
-// reclaimed and never whether a live ceremony is answerable. What it buys is a
-// comparison the three dialects spell one way — see internal/queries.
+// The horizon it compares against is this store's own clock rather than the
+// server's, because that is the clock that stamped the column: a deadline
+// written as now-plus-a-TTL from an injected clock and compared against
+// CURRENT_TIMESTAMP would be two clocks deciding one row. A database running
+// ahead of the application would reclaim rows Consume still considers live, and
+// the ceremony a user is halfway through would become a challenge nothing can
+// answer — see internal/queries.
 //
 // One statement, no batching. Ceremony rows are small and the index on
 // expires_at makes the delete proportional to what is actually dead rather than
@@ -39,7 +42,9 @@ func (s *SessionStore) Sweep(ctx context.Context) (int64, error) {
 	ctx, op := s.o11y.Begin(ctx)
 	defer op.End()
 
-	swept, err := s.q.SweepExpiredSessions(ctx, s.db.Writer())
+	swept, err := s.q.SweepExpiredSessions(ctx, s.db.Writer(), webauthnsessionsdb.SweepExpiredSessionsParams{
+		ExpiresBefore: s.clock.Now().UTC(),
+	})
 	if err != nil {
 		s.sweepErrorsCounter.Add(ctx, 1)
 

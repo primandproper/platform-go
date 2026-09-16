@@ -59,16 +59,15 @@ func (c *testClientConfig) GetConnMaxLifetime() time.Duration { return time.Minu
 // fakeClock is a Clock whose reading only moves when a test moves it, ticking
 // on whatever the ambient time package provides.
 //
-// It starts at the wall clock's current second rather than at a fixed date, and
-// that is load-bearing rather than incidental. The sweep compares against the
-// *server's* clock, so a deadline stamped from a fixed date in the past would
-// be expired the moment it was written and a test could not tell a working
-// sweep from one that deletes everything. Anchoring here means a test says how
-// far a row's deadline is from now by moving this clock before the write.
+// It starts at the wall clock's current second rather than at a fixed date,
+// which keeps a stamped deadline legible against the hour a container's own
+// clock is keeping — nothing in the store compares the two any more, but a
+// server run's rows are readable by a person when they do not claim to be from
+// the year 2000.
 //
-// The truncation to a whole second is the SQLite half of the same agreement:
-// that engine stores a bound time as the text CURRENT_TIMESTAMP writes, which
-// is second-granular, so a fractional anchor would make the deadline read back
+// The truncation to a whole second is the SQLite half of the same reading: that
+// engine stores a bound time as the text CURRENT_TIMESTAMP writes, which is
+// second-granular, so a fractional anchor would make the deadline read back
 // differ from the one stamped.
 type fakeClock struct {
 	now time.Time
