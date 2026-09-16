@@ -248,6 +248,13 @@ loopback, link-local, private, or non-global space — at registration, where th
 rejection can be reported to whoever submitted it, and again at delivery,
 because DNS is mutable.
 
+Private there is wider than net.IP.IsPrivate, which is RFC 1918 and unique-local
+IPv6 and nothing else. 100.64.0.0/10 (carrier-grade NAT, and so the default pod
+and service CIDR of several managed Kubernetes offerings as well as every
+Tailscale network), 198.18.0.0/15 and 192.0.0.0/24 are checked as explicit
+prefixes, because each of them is an internal network that otherwise looks like
+ordinary global unicast. CheckEndpointURL's documentation is the list.
+
 Redirects are refused rather than followed. Following one would deliver a signed
 payload to a host that was never registered and never checked, turning an open
 redirect on any subscriber's domain into a way to point the worker anywhere.

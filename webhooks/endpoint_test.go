@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"net/netip"
 	"reflect"
 	"testing"
 	"time"
@@ -88,6 +89,9 @@ func TestCheckEndpointURL(T *testing.T) {
 			"unique local v6":         "https://[fd00::1]/hooks",
 			"unspecified":             "https://0.0.0.0/hooks",
 			"multicast":               "https://224.0.0.1/hooks",
+			"carrier-grade nat":       "https://100.64.0.1/hooks",
+			"benchmarking":            "https://198.18.0.1/hooks",
+			"protocol assignments":    "https://192.0.0.171/hooks",
 		} {
 			t.Run(name, func(t *testing.T) {
 				t.Parallel()
@@ -622,5 +626,103 @@ func TestCheckIP(T *testing.T) {
 				test.ErrorIs(t, checkIP(net.ParseIP(ip), "host"), ErrDisallowedEndpointHost)
 			})
 		}
+	})
+}
+
+// The ranges net.IP has no predicate for, checked at both edges of each prefix
+// and at the addresses either side of it. The edges are what a wrong mask gets
+// wrong: 100.64.0.0/10 written as a /16 still refuses 100.64.0.1 and lets the
+// rest of a Tailscale network through, and only 100.127.255.255 says so.
+func TestCheckIP_reservedRanges(T *testing.T) {
+	T.Parallel()
+
+	cases := map[string]struct {
+		ip       string
+		rejected bool
+	}{
+		// RFC 6598 carrier-grade NAT: 100.64.0.0 – 100.127.255.255.
+		"cgnat first":     {ip: "100.64.0.0", rejected: true},
+		"cgnat tailscale": {ip: "100.100.100.100", rejected: true},
+		"cgnat last":      {ip: "100.127.255.255", rejected: true},
+		"cgnat below":     {ip: "100.63.255.255"},
+		"cgnat above":     {ip: "100.128.0.0"},
+
+		// RFC 2544 benchmarking: 198.18.0.0 – 198.19.255.255.
+		"benchmarking first": {ip: "198.18.0.0", rejected: true},
+		"benchmarking last":  {ip: "198.19.255.255", rejected: true},
+		"benchmarking below": {ip: "198.17.255.255"},
+		"benchmarking above": {ip: "198.20.0.0"},
+
+		// RFC 6890 IETF protocol assignments: 192.0.0.0 – 192.0.0.255, which is
+		// where DS-Lite and the NAT64 discovery addresses live.
+		"assignments first":   {ip: "192.0.0.0", rejected: true},
+		"assignments ds-lite": {ip: "192.0.0.1", rejected: true},
+		"assignments nat64":   {ip: "192.0.0.170", rejected: true},
+		"assignments last":    {ip: "192.0.0.255", rejected: true},
+		"assignments below":   {ip: "191.255.255.255"},
+		"assignments above":   {ip: "192.0.1.0"},
+	}
+
+	for name, tc := range cases {
+		T.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ip := net.ParseIP(tc.ip)
+			must.NotNil(t, ip)
+
+			if tc.rejected {
+				test.ErrorIs(t, checkIP(ip, "host"), ErrDisallowedEndpointHost)
+
+				return
+			}
+
+			test.NoError(t, checkIP(ip, "host"))
+		})
+	}
+}
+
+func TestReservedPrefix(T *testing.T) {
+	T.Parallel()
+
+	// The dotted-quad form parses to a 4-in-6 address, so the answer here is
+	// what the unmap buys: without it every IPv4 prefix would contain nothing.
+	T.Run("reports the range an address falls in", func(t *testing.T) {
+		t.Parallel()
+
+		prefix, ok := reservedPrefix(net.ParseIP("100.100.100.100"))
+
+		must.True(t, ok)
+		test.EqOp(t, netip.MustParsePrefix("100.64.0.0/10"), prefix)
+	})
+
+	// A four-byte net.IP reaches netip.AddrFromSlice as IPv4 and must answer the
+	// same way the sixteen-byte one did.
+	T.Run("reports the range for a four-byte address", func(t *testing.T) {
+		t.Parallel()
+
+		prefix, ok := reservedPrefix(net.IPv4(198, 18, 0, 1).To4())
+
+		must.True(t, ok)
+		test.EqOp(t, netip.MustParsePrefix("198.18.0.0/15"), prefix)
+	})
+
+	T.Run("reports nothing for a public address", func(t *testing.T) {
+		t.Parallel()
+
+		prefix, ok := reservedPrefix(net.ParseIP("93.184.216.34"))
+
+		test.False(t, ok)
+		test.EqOp(t, netip.Prefix{}, prefix)
+	})
+
+	// An address of no recognizable length is not in a range; it is refused by
+	// checkIP's global-unicast arm before it ever gets here.
+	T.Run("reports nothing for an unparseable address", func(t *testing.T) {
+		t.Parallel()
+
+		prefix, ok := reservedPrefix(net.IP{1, 2, 3})
+
+		test.False(t, ok)
+		test.EqOp(t, netip.Prefix{}, prefix)
 	})
 }

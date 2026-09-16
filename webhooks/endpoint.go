@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
@@ -22,8 +23,9 @@ var (
 	ErrInvalidEndpointURL = platformerrors.New("invalid webhook endpoint URL")
 
 	// ErrDisallowedEndpointHost indicates a URL whose host resolves somewhere a
-	// webhook must not reach — loopback, link-local, or private address space.
-	// See CheckEndpointURL for why this is enforced at registration.
+	// webhook must not reach — loopback, link-local, private, or otherwise
+	// reserved address space. See CheckEndpointURL for why this is enforced at
+	// registration.
 	ErrDisallowedEndpointHost = platformerrors.New("webhook endpoint host is not publicly routable")
 
 	// ErrReservedHeader indicates an Endpoint whose static headers would
@@ -75,6 +77,21 @@ var reservedHeaders = []string{
 //
 // So: https only, and no host that resolves into loopback, link-local, private,
 // or otherwise non-global address space.
+//
+// "Private" here is wider than net.IP.IsPrivate, which knows the RFC 1918
+// ranges and unique-local IPv6 and nothing else. Three IPv4 ranges are
+// internal in practice, carry no predicate in net, and are therefore checked
+// as explicit prefixes:
+//
+//   - 100.64.0.0/10, RFC 6598 carrier-grade NAT — the default pod and service
+//     CIDR of several managed Kubernetes offerings, and the whole of a
+//     Tailscale network.
+//   - 198.18.0.0/15, RFC 2544 benchmarking.
+//   - 192.0.0.0/24, RFC 6890 IETF protocol assignments, which includes the
+//     DS-Lite range and the NAT64 discovery addresses.
+//
+// Each of those would otherwise pass every arm of the check as ordinary global
+// unicast, which is the one thing they are not.
 //
 // The check runs at registration, where a rejection can be reported to whoever
 // submitted the URL, and again at delivery, because registration alone is not
@@ -146,11 +163,47 @@ func CheckEndpointURL(ctx context.Context, rawURL string) error {
 	return nil
 }
 
+// reservedPrefixes are the ranges a delivery must not reach that net has no
+// predicate for. IsPrivate is RFC 1918 and unique-local IPv6 only, so an
+// address in any of these reaches checkIP's last arm looking like ordinary
+// global unicast — which is exactly what an internal service addressed out of
+// one of them is not.
+//
+// See CheckEndpointURL for what each range is and why it is here.
+var reservedPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("100.64.0.0/10"), // RFC 6598 carrier-grade NAT.
+	netip.MustParsePrefix("198.18.0.0/15"), // RFC 2544 benchmarking.
+	netip.MustParsePrefix("192.0.0.0/24"),  // RFC 6890 IETF protocol assignments.
+}
+
+// reservedPrefix reports the reserved range ip falls in, if it falls in one.
+func reservedPrefix(ip net.IP) (netip.Prefix, bool) {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return netip.Prefix{}, false
+	}
+
+	// net.ParseIP hands back a 4-in-6 address for a dotted quad, and a prefix
+	// only contains an address of its own family, so the unmap is what makes
+	// these IPv4 prefixes match at all.
+	addr = addr.Unmap()
+
+	for i := range reservedPrefixes {
+		if reservedPrefixes[i].Contains(addr) {
+			return reservedPrefixes[i], true
+		}
+	}
+
+	return netip.Prefix{}, false
+}
+
 // checkIP rejects an address that is not globally routable.
 //
 // IsGlobalUnicast is necessary but not sufficient: it admits the RFC 1918
 // private ranges and unique-local IPv6, which are precisely the internal
-// networks this is meant to keep deliveries out of.
+// networks this is meant to keep deliveries out of. It admits reservedPrefixes
+// too, and those carry no predicate at all, so they are checked by hand after
+// the switch.
 func checkIP(ip net.IP, host string) error {
 	switch {
 	case ip.IsLoopback():
@@ -166,9 +219,13 @@ func checkIP(ip net.IP, host string) error {
 		return platformerrors.Wrapf(ErrDisallowedEndpointHost, "%q resolves to multicast address %s", host, ip)
 	case !ip.IsGlobalUnicast():
 		return platformerrors.Wrapf(ErrDisallowedEndpointHost, "%q resolves to non-global address %s", host, ip)
-	default:
-		return nil
 	}
+
+	if prefix, ok := reservedPrefix(ip); ok {
+		return platformerrors.Wrapf(ErrDisallowedEndpointHost, "%q resolves to address %s in reserved range %s", host, ip, prefix)
+	}
+
+	return nil
 }
 
 // URLChecker vets a delivery target. CheckEndpointURL is the implementation
