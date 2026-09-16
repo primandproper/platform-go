@@ -51,6 +51,21 @@ var (
 	// question anybody meant to ask.
 	ErrPrincipalRequired = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty session principal")
 
+	// ErrAlreadyHeld indicates RenewFor was pointed at a session that already
+	// names a principal.
+	//
+	// RenewFor is the anonymous session's one transition: it takes a session
+	// held by nobody and hands it to somebody, carrying the payload across. A
+	// session that already has a holder has already made that transition, and
+	// the two ways of reaching this error want opposite answers. A step-up
+	// authentication by the principal who already holds it wants Renew, which
+	// rotates the identifier and leaves the attribution and the metadata where
+	// they were stamped. A sign-in as somebody else wants Delete and NewFor,
+	// because the payload RenewFor would carry across is the previous holder's
+	// — and handing it over silently is the one outcome neither caller asked
+	// for.
+	ErrAlreadyHeld = platformerrors.New("session already has a holder")
+
 	// ErrNoPrincipalIndex indicates a store whose backend cannot answer which
 	// sessions a principal holds.
 	//

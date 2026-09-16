@@ -366,6 +366,129 @@ func TestManager_Renew(T *testing.T) {
 	})
 }
 
+func TestManager_RenewFor(T *testing.T) {
+	T.Parallel()
+
+	// The sign-in that carries something across it: the visitor's payload
+	// survives, the identifier they arrived with does not, and the session that
+	// comes out is the signer's rather than nobody's.
+	T.Run("rotates the identifier and hands the session to the holder", func(t *testing.T) {
+		t.Parallel()
+
+		manager, _ := newTestManager(t)
+		visitor, req := issue(t, manager, &principal{UserID: "", Admin: false})
+
+		holder := sessions.Holder{Scope: tenancy.Of("acct_1"), Principal: "u_1"}
+		metadata := sessions.Metadata{DeviceName: "laptop", LoginMethod: "passkey"}
+
+		res := httptest.NewRecorder()
+
+		renewed, err := manager.RenewFor(t.Context(), res, req, holder, metadata)
+		must.NoError(t, err)
+		test.NotEqOp(t, visitor.ID, renewed.ID)
+		test.EqOp(t, holder, renewed.Holder)
+		test.EqOp(t, metadata, renewed.Metadata)
+
+		// And the holder is still there on the next request, which is the read
+		// every middleware makes.
+		loaded, err := manager.Load(t.Context(), requestWithCookies(t, res))
+		must.NoError(t, err)
+		test.EqOp(t, renewed.ID, loaded.ID)
+		test.EqOp(t, holder, loaded.Holder)
+	})
+
+	// The state a visitor accumulated before signing in is the reason this call
+	// exists rather than Delete and IssueFor.
+	T.Run("carries the payload across the sign-in", func(t *testing.T) {
+		t.Parallel()
+
+		manager, _ := newTestManager(t)
+		_, req := issue(t, manager, &principal{UserID: "", Admin: true})
+
+		renewed, err := manager.RenewFor(t.Context(),
+			httptest.NewRecorder(),
+			req,
+			sessions.Holder{Scope: tenancy.Of("acct_1"), Principal: "u_1"},
+			sessions.Metadata{},
+		)
+		must.NoError(t, err)
+		test.True(t, renewed.Data.Admin)
+	})
+
+	T.Run("the old cookie stops working", func(t *testing.T) {
+		t.Parallel()
+
+		manager, _ := newTestManager(t)
+		_, req := issue(t, manager, &principal{UserID: "u_1"})
+
+		_, err := manager.RenewFor(t.Context(),
+			httptest.NewRecorder(),
+			req,
+			sessions.Holder{Scope: tenancy.Of("acct_1"), Principal: "u_1"},
+			sessions.Metadata{},
+		)
+		must.NoError(t, err)
+
+		_, err = manager.Load(t.Context(), req)
+		test.ErrorIs(t, err, sessions.ErrNotFound)
+	})
+
+	// The old cookie is still the one the client holds, so a refusal must leave
+	// it working — the caller refuses the sign-in and the visitor carries on.
+	T.Run("refuses a holder that names nobody and leaves the session alone", func(t *testing.T) {
+		t.Parallel()
+
+		manager, _ := newTestManager(t)
+		visitor, req := issue(t, manager, &principal{UserID: "u_1"})
+
+		res := httptest.NewRecorder()
+
+		_, err := manager.RenewFor(t.Context(), res, req,
+			sessions.Holder{Scope: tenancy.Of("acct_1")}, sessions.Metadata{})
+		test.ErrorIs(t, err, sessions.ErrPrincipalRequired)
+		test.Nil(t, sessionCookie(t, res))
+
+		loaded, err := manager.Load(t.Context(), req)
+		must.NoError(t, err)
+		test.EqOp(t, visitor.ID, loaded.ID)
+	})
+
+	// Signing in as somebody else ends the session and establishes another,
+	// rather than handing one principal's payload to the next.
+	T.Run("refuses a session that already has a holder", func(t *testing.T) {
+		t.Parallel()
+
+		manager, _ := newTestManager(t)
+		res := httptest.NewRecorder()
+
+		holder := sessions.Holder{Scope: tenancy.Of("acct_1"), Principal: "u_1"}
+
+		_, err := manager.IssueFor(t.Context(), res, holder, sessions.Metadata{}, &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		req := requestWithCookies(t, res)
+
+		_, err = manager.RenewFor(t.Context(), httptest.NewRecorder(), req,
+			sessions.Holder{Scope: tenancy.Of("acct_2"), Principal: "u_2"}, sessions.Metadata{})
+		test.ErrorIs(t, err, sessions.ErrAlreadyHeld)
+
+		loaded, err := manager.Load(t.Context(), req)
+		must.NoError(t, err)
+		test.EqOp(t, holder, loaded.Holder)
+	})
+
+	T.Run("refuses a request with no session", func(t *testing.T) {
+		t.Parallel()
+
+		manager, _ := newTestManager(t)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+
+		_, err := manager.RenewFor(t.Context(), httptest.NewRecorder(), req,
+			sessions.Holder{Scope: tenancy.Of("acct_1"), Principal: "u_1"}, sessions.Metadata{})
+		test.ErrorIs(t, err, sessions.ErrNotFound)
+	})
+}
+
 func TestManager_End(T *testing.T) {
 	T.Parallel()
 

@@ -158,11 +158,19 @@ type (
 		Data *T
 		// Metadata is what the session was established from. Like Holder it
 		// survives Renew, and unlike the two anchors above it is never
-		// reassigned: it describes an establishment rather than a state.
+		// reassigned: it describes an establishment rather than a state. The
+		// one write that sets it after the record exists is RenewFor, and that
+		// one is an establishment too — the session had no holder to describe a
+		// client to until it ran.
 		Metadata Metadata
 		// Holder is whose session this is. It survives Renew, so rotating an
 		// identifier does not hand the session to somebody else — and it is
 		// what makes a principal's sessions enumerable at all.
+		//
+		// RenewFor assigns it, once, to a session that had none. A record that
+		// already names a principal is refused rather than reattributed, so a
+		// session never changes hands while carrying the payload the previous
+		// holder put in it.
 		Holder Holder
 		// Version is the record shape this was written with.
 		Version int
@@ -234,7 +242,8 @@ type (
 		// tenancy.ErrNoScope and ErrPrincipalRequired.
 		//
 		// The holder and the metadata are stamped once. Renew carries both
-		// across, and no other write moves either.
+		// across, and no other write moves either — RenewFor stamps them on a
+		// session that had neither, which is the same stamping by another door.
 		NewFor(ctx context.Context, holder Holder, metadata Metadata, data *T) (*Session[T], error)
 		// Get reads a session, refreshing its idle deadline when the Policy's
 		// touch interval has elapsed.
@@ -257,7 +266,32 @@ type (
 		// The old identifier stops working the moment this returns nil. If it
 		// returns an error, assume it still works and refuse the privilege
 		// change.
+		//
+		// The holder and the metadata carry across untouched, so this is the
+		// renewal for a session that already belongs to somebody. A session
+		// acquiring its holder — which is what a sign-in does — calls RenewFor.
 		Renew(ctx context.Context, oldID string) (newID string, err error)
+		// RenewFor rotates a session's identifier and hands the session to
+		// holder in the same step, returning the new identifier.
+		//
+		// This is the sign-in that has state to carry across. A visitor's
+		// session is established by New — a cart, a form half filled in, a
+		// chosen language — and it is held by nobody, so rotating it with Renew
+		// alone produces a signed-in session with an empty principal: reachable
+		// by its identifier, absent from its holder's List, and unreachable by
+		// the RevokeAll they would use to end it. Renewing and attributing are
+		// therefore one call rather than two, because there is no useful
+		// instant between them.
+		//
+		// The metadata is stamped here, as it is by NewFor: this is the
+		// establishment a security page renders, since the anonymous session
+		// this grew out of recorded nothing about the client.
+		//
+		// A holder naming no scope or no principal is refused — see
+		// tenancy.ErrNoScope and ErrPrincipalRequired — and so is a session
+		// that already names a principal, which is ErrAlreadyHeld. Like Renew,
+		// this reports either a new identifier or an error and never both.
+		RenewFor(ctx context.Context, oldID string, holder Holder, metadata Metadata) (newID string, err error)
 		// Delete ends a session. An identifier that was already gone is not an
 		// error: sign-out is not the place to surface a race.
 		Delete(ctx context.Context, id string) error

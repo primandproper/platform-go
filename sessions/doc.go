@@ -112,19 +112,38 @@ backend, and finds that out from an error rather than from an empty list.
 
 # Renewal is not optional
 
-Renew rotates a session's identifier and carries the payload across. Call it on
-every privilege change, sign-in first among them. Without it, an identifier an
-attacker planted in a victim's browser before sign-in is still valid after it,
-and the attacker is now signed in as the victim — session fixation, which is a
-defect in the application rather than in the cookie.
+Renewal rotates a session's identifier and carries the payload across — Renew,
+or RenewFor at a sign-in, for the reason below. Do it on every privilege change,
+sign-in first among them. Without it, an identifier an attacker planted in a
+victim's browser before sign-in is still valid after it, and the attacker is now
+signed in as the victim — session fixation, which is a defect in the application
+rather than in the cookie.
 
 CreatedAt survives renewal, deliberately. If it did not, an application that
 correctly renewed on every privilege change would thereby give its sessions an
 unbounded life, and the absolute timeout would quietly stop meaning anything.
 
-Renew reports either a new identifier or an error, never both. A caller that
+Either renewal reports a new identifier or an error, never both. A caller that
 sees an error must assume the old identifier still resolves and refuse the
 privilege change that prompted the renewal.
+
+Renew carries the holder across, which is right for every privilege change but
+one. A sign-in is where the session acquires its holder, and a session rotated
+by Renew there is signed in and held by nobody — reachable by its identifier,
+absent from the List above, and unreachable by the RevokeAll its owner would end
+it from. RenewFor is that sign-in: it rotates and attributes in one call,
+stamping the metadata as NewFor does.
+
+	newID, _ := store.RenewFor(ctx, visitorID, holder, sessions.Metadata{
+		LoginMethod: "passkey",
+	})
+
+The two calls therefore split by whether the session already names somebody.
+RenewFor refuses one that does, with ErrAlreadyHeld, because the payload it
+carries across belongs to the holder it would be taken from: a re-authentication
+by that same holder wants Renew, and a sign-in as somebody else wants Delete and
+NewFor. A session established by New has no holder to take it from, which is the
+case RenewFor is for.
 
 # Identifiers
 

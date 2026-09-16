@@ -45,6 +45,9 @@ var _ sessions.Store[any] = &StoreMock[any]{}
 //			RenewFunc: func(ctx context.Context, oldID string) (string, error) {
 //				panic("mock out the Renew method")
 //			},
+//			RenewForFunc: func(ctx context.Context, oldID string, holder sessions.Holder, metadata sessions.Metadata) (string, error) {
+//				panic("mock out the RenewFor method")
+//			},
 //			RevokeFunc: func(ctx context.Context, holder sessions.Holder, id string) error {
 //				panic("mock out the Revoke method")
 //			},
@@ -87,6 +90,9 @@ type StoreMock[T any] struct {
 
 	// RenewFunc mocks the Renew method.
 	RenewFunc func(ctx context.Context, oldID string) (string, error)
+
+	// RenewForFunc mocks the RenewFor method.
+	RenewForFunc func(ctx context.Context, oldID string, holder sessions.Holder, metadata sessions.Metadata) (string, error)
 
 	// RevokeFunc mocks the Revoke method.
 	RevokeFunc func(ctx context.Context, holder sessions.Holder, id string) error
@@ -156,6 +162,17 @@ type StoreMock[T any] struct {
 			// OldID is the oldID argument value.
 			OldID string
 		}
+		// RenewFor holds details about calls to the RenewFor method.
+		RenewFor []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// OldID is the oldID argument value.
+			OldID string
+			// Holder is the holder argument value.
+			Holder sessions.Holder
+			// Metadata is the metadata argument value.
+			Metadata sessions.Metadata
+		}
 		// Revoke holds details about calls to the Revoke method.
 		Revoke []struct {
 			// Ctx is the ctx argument value.
@@ -199,6 +216,7 @@ type StoreMock[T any] struct {
 	lockNewFor          sync.RWMutex
 	lockPolicy          sync.RWMutex
 	lockRenew           sync.RWMutex
+	lockRenewFor        sync.RWMutex
 	lockRevoke          sync.RWMutex
 	lockRevokeAll       sync.RWMutex
 	lockRevokeAllExcept sync.RWMutex
@@ -484,6 +502,50 @@ func (mock *StoreMock[T]) RenewCalls() []struct {
 	mock.lockRenew.RLock()
 	calls = mock.calls.Renew
 	mock.lockRenew.RUnlock()
+	return calls
+}
+
+// RenewFor calls RenewForFunc.
+func (mock *StoreMock[T]) RenewFor(ctx context.Context, oldID string, holder sessions.Holder, metadata sessions.Metadata) (string, error) {
+	if mock.RenewForFunc == nil {
+		panic("StoreMock.RenewForFunc: method is nil but Store.RenewFor was just called")
+	}
+	callInfo := struct {
+		Ctx      context.Context
+		OldID    string
+		Holder   sessions.Holder
+		Metadata sessions.Metadata
+	}{
+		Ctx:      ctx,
+		OldID:    oldID,
+		Holder:   holder,
+		Metadata: metadata,
+	}
+	mock.lockRenewFor.Lock()
+	mock.calls.RenewFor = append(mock.calls.RenewFor, callInfo)
+	mock.lockRenewFor.Unlock()
+	return mock.RenewForFunc(ctx, oldID, holder, metadata)
+}
+
+// RenewForCalls gets all the calls that were made to RenewFor.
+// Check the length with:
+//
+//	len(mockedStore.RenewForCalls())
+func (mock *StoreMock[T]) RenewForCalls() []struct {
+	Ctx      context.Context
+	OldID    string
+	Holder   sessions.Holder
+	Metadata sessions.Metadata
+} {
+	var calls []struct {
+		Ctx      context.Context
+		OldID    string
+		Holder   sessions.Holder
+		Metadata sessions.Metadata
+	}
+	mock.lockRenewFor.RLock()
+	calls = mock.calls.RenewFor
+	mock.lockRenewFor.RUnlock()
 	return calls
 }
 

@@ -10,6 +10,7 @@ import (
 	sessionscache "github.com/primandproper/platform-go/v14/sessions/cache"
 
 	"github.com/primandproper/primitives-go/v2/cache/memory"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
 // Principal is what a session carries: whatever the application needs to know
@@ -109,6 +110,60 @@ func ExampleStore_Renew() {
 	// old identifier still works: false
 	// admin: true
 	// session start preserved: true
+}
+
+// RenewFor is the sign-in that has state to carry across it. It rotates the
+// identifier, so the one the visitor arrived with is worthless, and attributes
+// the session in the same step — a session renewed without a holder is signed
+// in and reachable by nothing but its identifier.
+func ExampleStore_RenewFor() {
+	ctx := context.Background()
+	store := newStore()
+
+	// The visitor, before they have proved anything: a cart, a language, a
+	// half-filled form. Held by nobody.
+	visitor, err := store.New(ctx, &Principal{})
+	if err != nil {
+		panic(err)
+	}
+
+	// They sign in. The cart comes with them, and the session becomes theirs.
+	newID, err := store.RenewFor(ctx,
+		visitor.ID,
+		sessions.Holder{Scope: tenancy.Of("acct_1"), Principal: "u_123"},
+		sessions.Metadata{DeviceName: "laptop", LoginMethod: "passkey"},
+	)
+	if err != nil {
+		// Assume the old identifier still works, and refuse the sign-in rather
+		// than completing it.
+		panic(err)
+	}
+
+	read, err := store.Get(ctx, newID)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("held by:", read.Holder.Principal)
+	fmt.Println("session start preserved:", read.CreatedAt.Equal(visitor.CreatedAt))
+
+	_, err = store.Get(ctx, visitor.ID)
+	fmt.Println("identifier they arrived with still works:", err == nil)
+
+	// A session that already names somebody is refused: re-authenticating as
+	// that same holder is Renew, and signing in as another is Delete and
+	// NewFor, which leaves the previous holder's payload behind.
+	_, err = store.RenewFor(ctx, newID,
+		sessions.Holder{Scope: tenancy.Of("acct_1"), Principal: "u_456"},
+		sessions.Metadata{},
+	)
+	fmt.Println("re-attributed:", !stderrors.Is(err, sessions.ErrAlreadyHeld))
+
+	// Output:
+	// held by: u_123
+	// session start preserved: true
+	// identifier they arrived with still works: false
+	// re-attributed: false
 }
 
 // The two timeouts answer different questions, and a caller can tell which one
