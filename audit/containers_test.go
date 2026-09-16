@@ -464,6 +464,34 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		test.StrContains(t, err.Error(), "append-only")
 	})
 
+	t.Run("reinstalls the append-only trigger on a second application", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		prefix := env.newPrefix(t)
+
+		// Neither server has a conditional CREATE TRIGGER this package can
+		// use — Postgres has CREATE OR REPLACE and MySQL has nothing — so the
+		// drop is what a consumer replaying their migrations relies on, and
+		// only a real server says whether it names the right object.
+		applyAppendOnly(t, env.client, env.dialect, prefix)
+		applyAppendOnly(t, env.client, env.dialect, prefix)
+
+		recorder := env.recorder(t, c, prefix)
+		entry := entryFor(tenancy.Of("acct_1"), "r1")
+
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return recorder.Record(t.Context(), q, entry)
+		}))
+
+		_, err := env.client.Writer().ExecContext(t.Context(),
+			fmt.Sprintf("UPDATE %s_audit_log_entries SET actor_id = 'somebody_else' WHERE id = %s",
+				prefix, env.dialect.Placeholder(1)),
+			entry.ID)
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), "append-only")
+	})
+
 	t.Run("pages and filters", func(t *testing.T) {
 		t.Parallel()
 

@@ -20,25 +20,20 @@ CREATE TABLE IF NOT EXISTS identity_users (
     last_updated_at                         DATETIME(6),
     archived_at                             DATETIME(6),
     UNIQUE KEY identity_users_username_uniq (scope, username),
-    UNIQUE KEY identity_users_email_uniq (scope, email_address)
+    UNIQUE KEY identity_users_email_uniq (scope, email_address),
+    KEY identity_users_scope_idx (scope, archived_at, username, id),
+    KEY identity_users_email_token_digest_idx
+        (scope, email_address_verification_token_digest)
 );
-
-CREATE INDEX identity_users_scope_idx
-    ON identity_users (scope, archived_at, username, id);
-
-CREATE INDEX identity_users_email_token_digest_idx
-    ON identity_users (scope, email_address_verification_token_digest);
 
 CREATE TABLE IF NOT EXISTS identity_user_roles (
     user_id VARCHAR(64) NOT NULL,
     role    VARCHAR(255) NOT NULL,
     PRIMARY KEY (user_id, role),
+    KEY identity_user_roles_role_idx (role, user_id),
     CONSTRAINT identity_user_roles_fk
         FOREIGN KEY (user_id) REFERENCES identity_users (id) ON DELETE CASCADE
 );
-
-CREATE INDEX identity_user_roles_role_idx
-    ON identity_user_roles (role, user_id);
 
 CREATE TABLE IF NOT EXISTS identity_accounts (
     id                              VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -59,14 +54,11 @@ CREATE TABLE IF NOT EXISTS identity_accounts (
     time_zone                       VARCHAR(64) NOT NULL DEFAULT '',
     created_at                      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at                 DATETIME(6),
-    archived_at                     DATETIME(6)
+    archived_at                     DATETIME(6),
+    KEY identity_accounts_scope_idx (scope, archived_at, id),
+    KEY identity_accounts_billing_idx
+        (scope, archived_at, billing_status, last_payment_provider_synced_at)
 );
-
-CREATE INDEX identity_accounts_scope_idx
-    ON identity_accounts (scope, archived_at, id);
-
-CREATE INDEX identity_accounts_billing_idx
-    ON identity_accounts (scope, archived_at, billing_status, last_payment_provider_synced_at);
 
 CREATE TABLE IF NOT EXISTS identity_memberships (
     id                 VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -78,28 +70,23 @@ CREATE TABLE IF NOT EXISTS identity_memberships (
     last_updated_at    DATETIME(6),
     archived_at        DATETIME(6),
     UNIQUE KEY identity_memberships_pair_uniq (belongs_to_user, belongs_to_account),
+    KEY identity_memberships_user_idx
+        (belongs_to_user, archived_at, default_account DESC, belongs_to_account),
+    KEY identity_memberships_account_idx (belongs_to_account, archived_at, id),
     CONSTRAINT identity_memberships_user_fk
         FOREIGN KEY (belongs_to_user) REFERENCES identity_users (id) ON DELETE CASCADE,
     CONSTRAINT identity_memberships_account_fk
         FOREIGN KEY (belongs_to_account) REFERENCES identity_accounts (id) ON DELETE CASCADE
 );
 
-CREATE INDEX identity_memberships_user_idx
-    ON identity_memberships (belongs_to_user, archived_at, default_account DESC, belongs_to_account);
-
-CREATE INDEX identity_memberships_account_idx
-    ON identity_memberships (belongs_to_account, archived_at, id);
-
 CREATE TABLE IF NOT EXISTS identity_membership_roles (
     membership_id VARCHAR(64) NOT NULL,
     role          VARCHAR(255) NOT NULL,
     PRIMARY KEY (membership_id, role),
+    KEY identity_membership_roles_role_idx (role, membership_id),
     CONSTRAINT identity_membership_roles_fk
         FOREIGN KEY (membership_id) REFERENCES identity_memberships (id) ON DELETE CASCADE
 );
-
-CREATE INDEX identity_membership_roles_role_idx
-    ON identity_membership_roles (role, membership_id);
 
 CREATE TABLE IF NOT EXISTS identity_invitations (
     id                 VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -117,18 +104,12 @@ CREATE TABLE IF NOT EXISTS identity_invitations (
     created_at         DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at    DATETIME(6),
     archived_at        DATETIME(6),
+    KEY identity_invitations_email_idx (scope, to_email, status, archived_at, id),
+    KEY identity_invitations_from_idx (scope, from_user, status, archived_at, id),
+    KEY identity_invitations_account_idx (belongs_to_account, id),
     CONSTRAINT identity_invitations_account_fk
         FOREIGN KEY (belongs_to_account) REFERENCES identity_accounts (id) ON DELETE CASCADE
 );
-
-CREATE INDEX identity_invitations_email_idx
-    ON identity_invitations (scope, to_email, status, archived_at, id);
-
-CREATE INDEX identity_invitations_from_idx
-    ON identity_invitations (scope, from_user, status, archived_at, id);
-
-CREATE INDEX identity_invitations_account_idx
-    ON identity_invitations (belongs_to_account, id);
 
 CREATE TABLE IF NOT EXISTS identity_invitation_roles (
     invitation_id VARCHAR(64) NOT NULL,

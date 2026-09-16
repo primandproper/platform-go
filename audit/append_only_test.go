@@ -66,6 +66,31 @@ func TestAppendOnlyTriggers(T *testing.T) {
 		test.EqOp(t, 2, countRows(t, client, "audit_log_entries", "1=1"))
 	})
 
+	T.Run("survive a second application", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+
+		// The statements are what a consumer's migration runs, and a migration
+		// gets re-run — replayed from zero against a live database, or applied
+		// twice because a previous attempt failed partway. Each statement drops
+		// the trigger it is about to create, so the second pass reinstalls
+		// rather than reporting a duplicate object.
+		applyAppendOnly(t, client, dialect.SQLite, DefaultTablePrefix)
+		applyAppendOnly(t, client, dialect.SQLite, DefaultTablePrefix)
+
+		recorder := newTestRecorder(t, newStubClock())
+		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		record(t, client, recorder, entry)
+
+		// Re-applying must leave the guard installed, not merely leave the
+		// migration exit zero.
+		_, err := client.Writer().ExecContext(t.Context(),
+			"UPDATE audit_log_entries SET actor_id = 'somebody_else' WHERE id = ?", entry.ID)
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), "append-only")
+	})
+
 	T.Run("leave deletion to retention", func(t *testing.T) {
 		t.Parallel()
 

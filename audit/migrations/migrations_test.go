@@ -128,19 +128,64 @@ func TestAppendOnlyStatements(T *testing.T) {
 		}
 	})
 
+	T.Run("drops each trigger before creating it, in every dialect", func(t *testing.T) {
+		t.Parallel()
+
+		// This is what makes a second application a no-op rather than a
+		// duplicate-object error. Only SQLite spells CREATE TRIGGER IF NOT
+		// EXISTS and only Postgres spells CREATE OR REPLACE TRIGGER, so a
+		// conditional create is a guarantee this package can offer on one
+		// dialect at a time; dropping first is the spelling all three share.
+		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
+			t.Run(string(d), func(t *testing.T) {
+				t.Parallel()
+
+				stmts, err := AppendOnlyStatements(d, "")
+				must.NoError(t, err)
+
+				dropped, created := -1, -1
+				for i, stmt := range stmts {
+					switch {
+					case strings.HasPrefix(stmt, "DROP TRIGGER IF EXISTS "):
+						dropped = i
+					case strings.HasPrefix(stmt, "CREATE TRIGGER "):
+						created = i
+					}
+				}
+
+				must.True(t, dropped >= 0, must.Sprintf("no drop in %v", stmts))
+				must.True(t, created >= 0, must.Sprintf("no create in %v", stmts))
+
+				// Order is the whole point: a drop that ran after the create
+				// would leave the table unguarded rather than re-guarded.
+				test.Less(t, created, dropped)
+
+				// A conditional create alongside the drop would keep an earlier
+				// version's trigger body in place on the dialects that have
+				// one, which is the silent half of the bug the drop fixes.
+				test.StrNotContains(t, stmts[created], "IF NOT EXISTS")
+				test.StrNotContains(t, stmts[created], "OR REPLACE")
+			})
+		}
+	})
+
 	T.Run("keeps a plpgsql body whole", func(t *testing.T) {
 		t.Parallel()
 
 		stmts, err := AppendOnlyStatements(dialect.Postgres, "")
 		must.NoError(t, err)
-		must.SliceLen(t, 2, stmts)
+		must.SliceLen(t, 3, stmts)
 
 		// The function's body contains semicolons, which is exactly why these
 		// are returned pre-split and never joined for a tool that would split
 		// them again.
 		test.StrContains(t, stmts[0], "RAISE EXCEPTION")
 		test.StrContains(t, stmts[0], "LANGUAGE plpgsql")
-		test.StrContains(t, stmts[1], "CREATE TRIGGER")
+
+		// A Postgres trigger name is scoped to its table, so the drop has to
+		// name both or it names nothing the server can find.
+		test.StrContains(t, stmts[1], "DROP TRIGGER IF EXISTS audit_log_entries_no_update ON audit_log_entries")
+		test.StrContains(t, stmts[2], "CREATE TRIGGER")
 	})
 
 	T.Run("rejects an unsupported dialect", func(t *testing.T) {

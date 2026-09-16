@@ -38,6 +38,14 @@ They are not offered through SQL, only as pre-split statements, and that is
 deliberate: the Postgres and SQLite triggers contain semicolons inside their
 bodies, so joining them into one string hands the next tool that splits on
 semicolons — goose included — two halves of a trigger and no way to notice.
+
+Like the schema above, they are re-runnable in every dialect. Each one drops the
+trigger it is about to create first, because only SQLite spells CREATE TRIGGER
+IF NOT EXISTS and only Postgres spells CREATE OR REPLACE TRIGGER — a consumer
+applying both sets twice would otherwise succeed on one dialect and fail on the
+other two. Dropping also settles what a re-run means: the trigger afterwards is
+always the one this version renders, rather than whichever one an earlier
+version left behind.
 */
 package migrations
 
@@ -144,6 +152,21 @@ const appendOnlyMessage = "audit log entries are append-only"
 // Statements are returned pre-split and must be executed whole. Two of the
 // three contain semicolons inside a trigger body, so re-joining them for a tool
 // that splits on semicolons produces fragments, not statements.
+//
+// Applying them twice is a no-op in every dialect, which is what the leading
+// DROP TRIGGER IF EXISTS is for. Only SQLite has CREATE TRIGGER IF NOT EXISTS
+// and only Postgres has CREATE OR REPLACE TRIGGER, so dropping first is the one
+// spelling all three share — and it is the stronger one anyway, because it
+// makes the installed trigger the one this version renders rather than whatever
+// an earlier version left in place.
+//
+// The drop and the create are two statements, so between them the table is
+// briefly unguarded. Run them inside a transaction and that window does not
+// exist: Postgres and SQLite both roll DDL back. MySQL commits each statement
+// as it runs and cannot offer that, so a re-application there is a moment when
+// an UPDATE would be accepted — which is a reason to apply these during a
+// migration rather than under load, not a reason to leave the second run
+// failing.
 func AppendOnlyStatements(d dialect.Dialect, prefix string) ([]string, error) {
 	// Only the prefix is checked here; the switch below is the dialect check,
 	// so an unsupported one is rejected in one place rather than two.
@@ -164,6 +187,9 @@ func AppendOnlyStatements(d dialect.Dialect, prefix string) ([]string, error) {
 					"$$ LANGUAGE plpgsql",
 				table, appendOnlyMessage,
 			),
+			// A Postgres trigger name is scoped to its table, so the drop names
+			// both.
+			fmt.Sprintf("DROP TRIGGER IF EXISTS %[1]s_no_update ON %[1]s", table),
 			fmt.Sprintf(
 				"CREATE TRIGGER %[1]s_no_update BEFORE UPDATE ON %[1]s "+
 					"FOR EACH ROW EXECUTE FUNCTION %[1]s_reject_update()",
@@ -172,6 +198,7 @@ func AppendOnlyStatements(d dialect.Dialect, prefix string) ([]string, error) {
 		}, nil
 	case dialect.MySQL:
 		return []string{
+			fmt.Sprintf("DROP TRIGGER IF EXISTS %s_no_update", table),
 			fmt.Sprintf(
 				"CREATE TRIGGER %[1]s_no_update BEFORE UPDATE ON %[1]s "+
 					"FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '%[2]s'",
@@ -180,8 +207,9 @@ func AppendOnlyStatements(d dialect.Dialect, prefix string) ([]string, error) {
 		}, nil
 	case dialect.SQLite:
 		return []string{
+			fmt.Sprintf("DROP TRIGGER IF EXISTS %s_no_update", table),
 			fmt.Sprintf(
-				"CREATE TRIGGER IF NOT EXISTS %[1]s_no_update BEFORE UPDATE ON %[1]s "+
+				"CREATE TRIGGER %[1]s_no_update BEFORE UPDATE ON %[1]s "+
 					"BEGIN SELECT RAISE(ABORT, '%[2]s'); END",
 				table, appendOnlyMessage,
 			),

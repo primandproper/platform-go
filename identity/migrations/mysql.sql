@@ -1,3 +1,17 @@
+-- Every key here is declared inline under its CREATE TABLE IF NOT EXISTS rather
+-- than as a CREATE INDEX statement of its own, and that is what makes this body
+-- re-runnable. MySQL has no CREATE INDEX IF NOT EXISTS, so a standalone index
+-- statement is the one thing in the file a second run cannot skip: it reports a
+-- duplicate key name and takes the rest of the migration down with it. An index
+-- declared inline is part of the table, and is skipped exactly when the table
+-- is.
+--
+-- The names are the ones the other two dialects give the same indexes. MySQL
+-- scopes an index name to its table and would accept shorter ones, but the
+-- prefix vetting in database/ddl measures the longest identifier a prefix
+-- renders across all three bodies, and a name only two of them spell is a name
+-- that check stops measuring here.
+
 -- scope is whose directory this row belongs to: a reseller, a region, a
 -- product, or — as the empty string — nobody. Every read of every table here
 -- filters on it. It is deliberately NOT the account: accounts are rows in this
@@ -41,23 +55,21 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_users (
     created_at                              DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at                         DATETIME(6),
     archived_at                             DATETIME(6),
+
+    -- The uniqueness covers archived rows as well as live ones in every
+    -- dialect, which is a decision rather than a MySQL concession — see the
+    -- Postgres schema for why a soft delete does not free a username.
     UNIQUE KEY {{PREFIX}}identity_users_username_uniq (scope, username),
-    UNIQUE KEY {{PREFIX}}identity_users_email_uniq (scope, email_address)
+    UNIQUE KEY {{PREFIX}}identity_users_email_uniq (scope, email_address),
+
+    -- MySQL has no partial indexes, so unlike the Postgres schema these cover
+    -- the whole table and the predicate column leads. The directory page and
+    -- the username prefix search both filter on archived_at, so putting it in
+    -- front keeps the index as selective as the partial clause is elsewhere.
+    KEY {{PREFIX}}identity_users_scope_idx (scope, archived_at, username, id),
+    KEY {{PREFIX}}identity_users_email_token_digest_idx
+        (scope, email_address_verification_token_digest)
 );
-
--- MySQL has no partial indexes, so unlike the Postgres schema these cover the
--- whole table and the predicate column leads. The directory page and the
--- username prefix search both filter on archived_at, so putting it in front
--- keeps the index as selective as the partial clause is elsewhere.
---
--- The uniqueness above covers archived rows as well as live ones in every
--- dialect, which is a decision rather than a MySQL concession — see the
--- Postgres schema for why a soft delete does not free a username.
-CREATE INDEX {{PREFIX}}identity_users_scope_idx
-    ON {{PREFIX}}identity_users (scope, archived_at, username, id);
-
-CREATE INDEX {{PREFIX}}identity_users_email_token_digest_idx
-    ON {{PREFIX}}identity_users (scope, email_address_verification_token_digest);
 
 -- The roles a user holds outside any account: operator, support, service
 -- administrator — what a consumer would otherwise keep in a user_roles table of
@@ -78,12 +90,11 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_user_roles (
     user_id VARCHAR(64) NOT NULL,
     role    VARCHAR(255) NOT NULL,
     PRIMARY KEY (user_id, role),
+
+    KEY {{PREFIX}}identity_user_roles_role_idx (role, user_id),
     CONSTRAINT {{PREFIX}}identity_user_roles_fk
         FOREIGN KEY (user_id) REFERENCES {{PREFIX}}identity_users (id) ON DELETE CASCADE
 );
-
-CREATE INDEX {{PREFIX}}identity_user_roles_role_idx
-    ON {{PREFIX}}identity_user_roles (role, user_id);
 
 -- An account is an organization: what users belong to and what invoices are
 -- addressed to. Its name is deliberately not unique — two unrelated
@@ -119,14 +130,12 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_accounts (
     time_zone                       VARCHAR(64) NOT NULL DEFAULT '',
     created_at                      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at                 DATETIME(6),
-    archived_at                     DATETIME(6)
+    archived_at                     DATETIME(6),
+
+    KEY {{PREFIX}}identity_accounts_scope_idx (scope, archived_at, id),
+    KEY {{PREFIX}}identity_accounts_billing_idx
+        (scope, archived_at, billing_status, last_payment_provider_synced_at)
 );
-
-CREATE INDEX {{PREFIX}}identity_accounts_scope_idx
-    ON {{PREFIX}}identity_accounts (scope, archived_at, id);
-
-CREATE INDEX {{PREFIX}}identity_accounts_billing_idx
-    ON {{PREFIX}}identity_accounts (scope, archived_at, billing_status, last_payment_provider_synced_at);
 
 -- A membership is a many-to-many with facts of its own, so it is a row rather
 -- than an array column on either side.
@@ -145,18 +154,16 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_memberships (
     created_at         DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at    DATETIME(6),
     archived_at        DATETIME(6),
+
     UNIQUE KEY {{PREFIX}}identity_memberships_pair_uniq (belongs_to_user, belongs_to_account),
+    KEY {{PREFIX}}identity_memberships_user_idx
+        (belongs_to_user, archived_at, default_account DESC, belongs_to_account),
+    KEY {{PREFIX}}identity_memberships_account_idx (belongs_to_account, archived_at, id),
     CONSTRAINT {{PREFIX}}identity_memberships_user_fk
         FOREIGN KEY (belongs_to_user) REFERENCES {{PREFIX}}identity_users (id) ON DELETE CASCADE,
     CONSTRAINT {{PREFIX}}identity_memberships_account_fk
         FOREIGN KEY (belongs_to_account) REFERENCES {{PREFIX}}identity_accounts (id) ON DELETE CASCADE
 );
-
-CREATE INDEX {{PREFIX}}identity_memberships_user_idx
-    ON {{PREFIX}}identity_memberships (belongs_to_user, archived_at, default_account DESC, belongs_to_account);
-
-CREATE INDEX {{PREFIX}}identity_memberships_account_idx
-    ON {{PREFIX}}identity_memberships (belongs_to_account, archived_at, id);
 
 -- Roles are a join table rather than a list in a column, for the reason
 -- webhook subscriptions are: "who holds this role" is then an index lookup
@@ -174,12 +181,11 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_membership_roles (
     membership_id VARCHAR(64) NOT NULL,
     role          VARCHAR(255) NOT NULL,
     PRIMARY KEY (membership_id, role),
+
+    KEY {{PREFIX}}identity_membership_roles_role_idx (role, membership_id),
     CONSTRAINT {{PREFIX}}identity_membership_roles_fk
         FOREIGN KEY (membership_id) REFERENCES {{PREFIX}}identity_memberships (id) ON DELETE CASCADE
 );
-
-CREATE INDEX {{PREFIX}}identity_membership_roles_role_idx
-    ON {{PREFIX}}identity_membership_roles (role, membership_id);
 
 -- An invitation is addressed to an email address rather than to a user,
 -- because the common case is inviting somebody who has not registered yet.
@@ -210,18 +216,13 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_invitations (
     created_at         DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at    DATETIME(6),
     archived_at        DATETIME(6),
+
+    KEY {{PREFIX}}identity_invitations_email_idx (scope, to_email, status, archived_at, id),
+    KEY {{PREFIX}}identity_invitations_from_idx (scope, from_user, status, archived_at, id),
+    KEY {{PREFIX}}identity_invitations_account_idx (belongs_to_account, id),
     CONSTRAINT {{PREFIX}}identity_invitations_account_fk
         FOREIGN KEY (belongs_to_account) REFERENCES {{PREFIX}}identity_accounts (id) ON DELETE CASCADE
 );
-
-CREATE INDEX {{PREFIX}}identity_invitations_email_idx
-    ON {{PREFIX}}identity_invitations (scope, to_email, status, archived_at, id);
-
-CREATE INDEX {{PREFIX}}identity_invitations_from_idx
-    ON {{PREFIX}}identity_invitations (scope, from_user, status, archived_at, id);
-
-CREATE INDEX {{PREFIX}}identity_invitations_account_idx
-    ON {{PREFIX}}identity_invitations (belongs_to_account, id);
 
 -- The roles an invitation promises, fixed at invitation time so that what
 -- somebody was invited to is what they get. Same shape, and the same reason, as
