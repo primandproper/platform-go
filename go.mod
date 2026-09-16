@@ -4,15 +4,12 @@ go 1.27
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/ably/ably-go v1.3.0
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/go-webauthn/webauthn v0.17.4
-	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pquerna/otp v1.5.0
 	github.com/primandproper/primitives-go/v2 v2.0.0
-	github.com/pusher/pusher-http-go/v5 v5.1.1
 	github.com/samber/do/v2 v2.0.0
 	github.com/shoenig/test v1.12.2
 	github.com/swaggest/openapi-go v0.2.61
@@ -53,6 +50,7 @@ require (
 	github.com/MicahParks/keyfunc v1.9.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/XSAM/otelsql v0.41.0 // indirect
+	github.com/ably/ably-go v1.3.0 // indirect
 	github.com/ably/vcdiff-go v0.0.2 // indirect
 	github.com/alexedwards/argon2id v1.0.0 // indirect
 	github.com/alfatraining/structtag v1.0.0 // indirect
@@ -154,6 +152,7 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.17 // indirect
 	github.com/googleapis/gax-go/v2 v2.23.0 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
+	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/grafana/pyroscope-go v1.2.7 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.9 // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79 // indirect
@@ -226,6 +225,7 @@ require (
 	github.com/posthog/posthog-go v1.11.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/pressly/goose/v3 v3.27.3 // indirect
+	github.com/pusher/pusher-http-go/v5 v5.1.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/quic-go/quic-go v0.59.0 // indirect
 	github.com/redis/go-redis/v9 v9.18.0 // indirect
