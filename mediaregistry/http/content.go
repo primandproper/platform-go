@@ -2,7 +2,9 @@ package http
 
 import (
 	"context"
+	"errors"
 	"io"
+	nethttp "net/http"
 	"slices"
 	"strings"
 
@@ -101,6 +103,13 @@ type rangedObject struct {
 	reader uploads.RangeReader
 	open   io.ReadCloser
 
+	// err is the last thing storage said that nobody else is going to repeat.
+	// net/http drains this through io.Copy and throws away what the copy tells
+	// it, so a failure that arrives once the response is committed to leaves no
+	// trace anywhere but here. Handler.write reads it back once ServeContent
+	// has returned, and answers with a refusal instead where it still can.
+	err error
+
 	key string
 
 	// size is the row's, which is what the response claims. See serve.
@@ -139,7 +148,7 @@ func (o *rangedObject) Seek(offset int64, whence int) (int64, error) {
 	// it goes. The next Read opens one at the new offset, and a seek nobody
 	// reads from opens nothing at all.
 	if err := o.Close(); err != nil {
-		return 0, err
+		return 0, o.record(err)
 	}
 
 	o.offset = next
@@ -159,7 +168,7 @@ func (o *rangedObject) Read(p []byte) (int, error) {
 	if o.open == nil {
 		opened, err := o.reader.OpenRange(o.ctx, o.key, o.offset, o.size-o.offset)
 		if err != nil {
-			return 0, err
+			return 0, o.record(err)
 		}
 
 		o.open = opened
@@ -168,7 +177,21 @@ func (o *rangedObject) Read(p []byte) (int, error) {
 	read, err := o.open.Read(p)
 	o.offset += int64(read)
 
+	// The end of the object is not a failure. Anything else is, and is kept
+	// because the caller net/http puts in front of this one will not keep it.
+	if err != nil && !errors.Is(err, io.EOF) {
+		return read, o.record(err)
+	}
+
 	return read, err
+}
+
+// record keeps a storage failure where Handler.write can read it back, and
+// hands it on so the caller reporting it writes one line rather than two.
+func (o *rangedObject) record(err error) error {
+	o.err = err
+
+	return err
 }
 
 // Close releases whatever reader is open. It is idempotent, and a rangedObject
@@ -182,4 +205,67 @@ func (o *rangedObject) Close() error {
 	o.open = nil
 
 	return open.Close()
+}
+
+// heldResponse withholds the status its writer would have sent, until there is
+// a byte of body to send it with.
+//
+// It is here because net/http's ServeContent commits to a status before it
+// reads anything: it writes the header, copies, and throws the copy's error
+// away. A reader that fails on its first Read — which is what a bucket that
+// will not open looks like from in there — therefore produces a 200 carrying a
+// Content-Length and no bytes, with nothing left to say otherwise. Holding the
+// status back leaves the response uncommitted for exactly as long as it takes
+// to find out, so Handler.write can still answer with a refusal.
+//
+// Only the status is held. The header map is the real one, so everything
+// ServeContent decides about the entity is decided on the response that will
+// carry it, and a response that ends with no body — a 304, a 416, a HEAD —
+// sends its held status from Handler.write. Nothing else is intercepted, and
+// nothing outside this package ever sees one: it is handed to ServeContent and
+// dropped.
+type heldResponse struct {
+	nethttp.ResponseWriter
+
+	status int
+	sent   bool
+}
+
+var _ nethttp.ResponseWriter = (*heldResponse)(nil)
+
+// WriteHeader records the status rather than sending it. As with the real
+// thing, the first call is the one that counts and a later one is ignored —
+// including one that arrives after the status has gone, since sending it is
+// what sets it.
+func (h *heldResponse) WriteHeader(status int) {
+	if h.status != 0 {
+		return
+	}
+
+	h.status = status
+}
+
+// Write sends the held status and then the bytes, which is the moment the
+// response is committed to and the last moment a refusal was possible.
+func (h *heldResponse) Write(p []byte) (int, error) {
+	h.send()
+
+	return h.ResponseWriter.Write(p)
+}
+
+// send commits to the held status, or to 200 where nothing named one — which is
+// what net/http does with a Write that arrives before any WriteHeader. It is
+// idempotent.
+func (h *heldResponse) send() {
+	if h.sent {
+		return
+	}
+
+	h.sent = true
+
+	if h.status == 0 {
+		h.status = nethttp.StatusOK
+	}
+
+	h.ResponseWriter.WriteHeader(h.status)
 }

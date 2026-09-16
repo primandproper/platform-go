@@ -17,6 +17,7 @@ import (
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/routing"
 	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -111,8 +112,19 @@ func (m *memoryObjects) Close() error { return nil }
 // assert the handler releases what it opens.
 type rangingObjects struct {
 	*memoryObjects
-	closed atomic.Int64
+
+	// readErr is what a reader it handed out fails with once breakAfter bytes
+	// have been read through it, which is how a test reaches the one failure
+	// this package cannot turn back into a refusal.
+	readErr    error
+	breakAfter int64
+	closed     atomic.Int64
 }
+
+// failingReader is the tail of a reader that stops working.
+type failingReader struct{ err error }
+
+func (r *failingReader) Read([]byte) (int, error) { return 0, r.err }
 
 var (
 	_ uploads.UploadManager = (*rangingObjects)(nil)
@@ -145,7 +157,15 @@ func (m *rangingObjects) OpenRange(_ context.Context, key string, offset, length
 		object = object[:length]
 	}
 
-	return &countingCloser{Reader: bytes.NewReader(object), closed: &m.closed}, nil
+	var body io.Reader = bytes.NewReader(object)
+
+	// A reader that opens and then stops working partway, which is the failure
+	// that arrives after the response has been committed to.
+	if m.breakAfter > 0 {
+		body = io.MultiReader(io.LimitReader(body, m.breakAfter), &failingReader{err: m.readErr})
+	}
+
+	return &countingCloser{Reader: body, closed: &m.closed}, nil
 }
 
 // countingCloser records that it was closed.
@@ -203,6 +223,39 @@ func readerOnlyClient() *databasemock.ClientMock {
 	return client
 }
 
+// newHandler builds the handler over the two doubles, with the resolver these
+// tests wire in. It is separate from mount so a test that wants to reach the
+// handler itself — to read its observations back, say — still gets one built
+// the same way every other test's is.
+func newHandler(
+	t *testing.T,
+	store mediaregistry.Store,
+	manager uploads.UploadManager,
+	opts ...Option,
+) *Handler {
+	t.Helper()
+
+	handler, err := New(store, readerOnlyClient(), manager,
+		append([]Option{WithCallerResolver(resolverFromContext)}, opts...)...)
+	must.NoError(t, err)
+
+	return handler
+}
+
+// mountHandler puts a built handler on a router, under a caller.
+func mountHandler(t *testing.T, handler *Handler, caller Caller) nethttp.Handler {
+	t.Helper()
+
+	backend := chi.NewBackend(&chi.Config{ServiceName: "uploads-registry-test"})
+	router := routing.New(backend, encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON))
+
+	handler.Mount(router)
+
+	must.NoError(t, router.Err())
+
+	return asCaller(caller, router.Handler())
+}
+
 // mount builds a router with the handler on it, under a caller.
 func mount(
 	t *testing.T,
@@ -213,18 +266,17 @@ func mount(
 ) nethttp.Handler {
 	t.Helper()
 
-	backend := chi.NewBackend(&chi.Config{ServiceName: "uploads-registry-test"})
-	router := routing.New(backend, encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON))
+	return mountHandler(t, newHandler(t, store, manager, opts...), caller)
+}
 
-	handler, err := New(store, readerOnlyClient(), manager,
-		append([]Option{WithCallerResolver(resolverFromContext)}, opts...)...)
-	must.NoError(t, err)
+// recording swaps the handler's Observer for one that keeps what it is told, so
+// a test can assert on what reached the span rather than only on what reached
+// the client — which for a failure after the status is the only place it goes.
+func recording(handler *Handler) *observability.RecordingObserver {
+	recorder := observability.NewRecordingObserver()
+	handler.o11y = recorder
 
-	handler.Mount(router)
-
-	must.NoError(t, router.Err())
-
-	return asCaller(caller, router.Handler())
+	return recorder
 }
 
 // get issues a request for an object, with whatever headers the test adds.

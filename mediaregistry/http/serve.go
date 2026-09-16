@@ -61,6 +61,13 @@ const (
 	// Saying "none" rather than saying nothing is the difference between a
 	// client that asks once and a client that keeps asking.
 	acceptRangesNone = "none"
+
+	// The three headers this package never sets and sometimes has to unset.
+	// ServeContent writes them about the entity it was about to send, and a
+	// refusal that happens after it has decided is not that entity; see refuse.
+	contentLengthHeader = "Content-Length"
+	contentRangeHeader  = "Content-Range"
+	lastModifiedHeader  = "Last-Modified"
 )
 
 // unknownContentType is what a row that does not say what its object is gets on
@@ -322,6 +329,14 @@ func (h *Handler) write(
 		}
 	}()
 
+	// ServeContent is given a response whose status is held back until there is
+	// a byte to send under it. It commits to one before it reads anything and
+	// discards what the read then tells it, so a bucket that will not open is a
+	// 200 with a Content-Length and an empty body — on every request it serves,
+	// not only a ranged one, since the open is deferred to the first Read
+	// either way. Held, the same failure is still a refusal. See heldResponse.
+	held := &heldResponse{ResponseWriter: res}
+
 	// The name is only reached if the Content-Type header is unset, which it
 	// never is by the time we are here. It is passed anyway so that the
 	// fallback, if that ever stops being true, is the key's own extension
@@ -332,7 +347,27 @@ func (h *Handler) write(
 	// anything StoreAndRecord wrote the two are the same moment; for an object
 	// registered against an existing bucket the row's time is when it was
 	// registered, which is the only time this module knows.
-	nethttp.ServeContent(res, req, path.Base(object.Key), modTimeOf(object), content)
+	nethttp.ServeContent(held, req, path.Base(object.Key), modTimeOf(object), content)
+
+	switch {
+	case content.err != nil && !held.sent:
+		// Storage failed before anything reached the client, so the status
+		// ServeContent chose was never sent and this is an ordinary refusal —
+		// the same 500 the non-ranging path answers with, arrived at the same
+		// way.
+		h.refuse(ctx, res, span, span.Error(content.err, "reading the object"))
+	case content.err != nil:
+		// Bytes have gone, so there is no refusal left to write: the client
+		// sees a body that stopped. Worth a line, not worth an error — a client
+		// that navigated away cancels the read this was waiting on and arrives
+		// here too.
+		span.Acknowledge(content.err, "reading the object")
+	default:
+		// Nothing failed, so whatever ServeContent decided goes out. The ones
+		// still held at this point are the answers with no body under them: a
+		// 304, a 416, and a HEAD.
+		held.send()
+	}
 }
 
 // writeWhole serves the entire object, for a manager that cannot open a range.
@@ -413,8 +448,17 @@ func (h *Handler) refuse(ctx context.Context, res nethttp.ResponseWriter, span o
 	// The headers the object would have carried are cleared. A refusal is not
 	// the object, and a Content-Disposition of "inline" left over from a row
 	// this caller may not read would describe a body they are not getting.
+	//
+	// The last three are ServeContent's rather than this package's, and are
+	// deleted for a stronger reason than tidiness: write can refuse after
+	// ServeContent has decided what the entity was, and a Content-Length of the
+	// object's size left in front of an error envelope is a response the client
+	// reads the wrong number of bytes out of.
 	header.Del(contentDispositionHeader)
 	header.Del(acceptRangesHeader)
+	header.Del(contentLengthHeader)
+	header.Del(contentRangeHeader)
+	header.Del(lastModifiedHeader)
 	header.Set(contentTypeHeader, h.codec.ContentType())
 	header.Set(contentTypeOptionsHeader, contentTypeOptionsValue)
 	header.Set(cacheControlHeader, cacheControlValue)
