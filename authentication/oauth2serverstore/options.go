@@ -15,6 +15,12 @@ import (
 // wraps errors.ErrNilInputParameter, so a caller may check either.
 var ErrNilClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil oauth2 database client")
 
+// ErrNilTransaction indicates Store.RevokeSubject was called without one. It is
+// the only method here that takes a transaction — see its documentation for why
+// — and so the only one that can be called without the thing it needs. It wraps
+// errors.ErrNilInputParameter, so a caller may check either.
+var ErrNilTransaction = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil oauth2 server transaction")
+
 type (
 	// Option configures a Store at construction.
 	Option func(*options)

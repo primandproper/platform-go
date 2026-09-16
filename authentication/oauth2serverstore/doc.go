@@ -44,6 +44,16 @@ It reaches no authorization code, and that boundary is stated on the method: a
 code has no revoked_at to stamp, so one issued before the revocation and
 redeemed after it mints tokens the revocation never saw.
 
+RevokeSubject is also the one method here that takes a database.Tx, and the
+asymmetry is the tier boundary rather than an inconsistency. Everything else is
+oauth2server.Store's, so primitives-go fixes the signature and a protocol
+endpoint answering one request is what calls it. RevokeSubject is this module's
+own, so it has this module's shape for a store write: the erasure that ends a
+person's credentials also destroys what was held for them and records that it
+happened, and a revocation that committed on its own would commit those three
+facts one at a time. An operator with nothing to join wraps it in
+database.Client.WithTransaction.
+
 # Four tables
 
 	<prefix>oauth2_clients               registrations, with an optional expiry

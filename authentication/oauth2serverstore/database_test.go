@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server/oauth2servertest"
 	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
@@ -412,7 +413,7 @@ func TestStore_RevokeSubject(T *testing.T) {
 		second := seedTokens(t, store, "person_1", "family_2")
 		other := seedTokens(t, store, "person_2", "family_3")
 
-		revoked, err := store.RevokeSubject(ctx, "person_1")
+		revoked, err := revokeSubject(t, store, "person_1")
 		must.NoError(t, err)
 		test.EqOp(t, int64(4), revoked)
 
@@ -440,15 +441,15 @@ func TestStore_RevokeSubject(T *testing.T) {
 	T.Run("counts what it revoked, and a second call revokes nothing", func(t *testing.T) {
 		t.Parallel()
 
-		ctx, store := t.Context(), newTestStore(t)
+		store := newTestStore(t)
 
 		seedTokens(t, store, "person", "family")
 
-		revoked, err := store.RevokeSubject(ctx, "person")
+		revoked, err := revokeSubject(t, store, "person")
 		must.NoError(t, err)
 		test.EqOp(t, int64(2), revoked)
 
-		revoked, err = store.RevokeSubject(ctx, "person")
+		revoked, err = revokeSubject(t, store, "person")
 		must.NoError(t, err)
 		test.EqOp(t, int64(0), revoked)
 	})
@@ -459,7 +460,6 @@ func TestStore_RevokeSubject(T *testing.T) {
 	T.Run("leaves a revocation already recorded where it was", func(t *testing.T) {
 		t.Parallel()
 
-		ctx := t.Context()
 		client := newTestClient(t)
 
 		at := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
@@ -469,7 +469,7 @@ func TestStore_RevokeSubject(T *testing.T) {
 
 		pair := seedTokens(t, first, "person", "family")
 
-		_, err = first.RevokeSubject(ctx, "person")
+		_, err = revokeSubject(t, first, "person")
 		must.NoError(t, err)
 
 		stamped := revokedAt(t, first, "oauth2_access_tokens", pair.access)
@@ -479,7 +479,7 @@ func TestStore_RevokeSubject(T *testing.T) {
 		later, err := NewStore(&Config{}, client, WithClock(stoppedAt(at.Add(time.Hour))))
 		must.NoError(t, err)
 
-		revoked, err := later.RevokeSubject(ctx, "person")
+		revoked, err := revokeSubject(t, later, "person")
 		must.NoError(t, err)
 		test.EqOp(t, int64(0), revoked)
 		test.EqOp(t, stamped, revokedAt(t, later, "oauth2_access_tokens", pair.access))
@@ -506,7 +506,7 @@ func TestStore_RevokeSubject(T *testing.T) {
 
 		seedTokens(t, store, "person", "family")
 
-		revoked, err := store.RevokeSubject(ctx, "person")
+		revoked, err := revokeSubject(t, store, "person")
 		must.NoError(t, err)
 		test.EqOp(t, int64(2), revoked)
 
@@ -522,13 +522,78 @@ func TestStore_RevokeSubject(T *testing.T) {
 		test.EqOp(t, "client", registration.ID)
 	})
 
+	// What taking the caller's transaction buys, and the reason this method has
+	// a shape the rest of the store does not: the revocation is undone with
+	// whatever ordered it. An erasure that fails after this ran leaves the
+	// person signed in, rather than signed out of an account nothing in the
+	// audit trail says anybody touched.
+	T.Run("is undone when the caller's transaction is", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, store := t.Context(), newTestStore(t)
+
+		pair := seedTokens(t, store, "person", "family")
+
+		erasureFailed := platformerrors.New("the erasure this revocation was part of")
+
+		err := store.db.WithTransaction(ctx, func(tx database.Tx) error {
+			revoked, revokeErr := store.RevokeSubject(ctx, tx, "person")
+			must.NoError(t, revokeErr)
+			test.EqOp(t, int64(2), revoked)
+
+			return erasureFailed
+		})
+		test.ErrorIs(t, err, erasureFailed)
+
+		// Both tokens still work, because the transaction they were revoked in
+		// never committed.
+		access, err := store.GetAccessToken(ctx, pair.access)
+		must.NoError(t, err)
+		test.True(t, access.RevokedAt.IsZero())
+
+		refresh, err := store.GetRefreshToken(ctx, pair.refresh)
+		must.NoError(t, err)
+		test.True(t, refresh.RevokedAt.IsZero())
+	})
+
 	T.Run("refuses an empty subject", func(t *testing.T) {
 		t.Parallel()
 
-		revoked, err := newTestStore(t).RevokeSubject(t.Context(), "")
+		revoked, err := revokeSubject(t, newTestStore(t), "")
 		test.ErrorIs(t, err, oauth2server.ErrEmptyIdentifier)
 		test.EqOp(t, int64(0), revoked)
 	})
+
+	// The one guard the rest of this store cannot need, because this is the one
+	// method with something to be handed.
+	T.Run("refuses a nil transaction", func(t *testing.T) {
+		t.Parallel()
+
+		revoked, err := newTestStore(t).RevokeSubject(t.Context(), nil, "person")
+		test.ErrorIs(t, err, ErrNilTransaction)
+		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
+		test.EqOp(t, int64(0), revoked)
+	})
+}
+
+// revokeSubject runs the subject revocation in a transaction of its own, which
+// is what an operator with nothing to join does. Every other revocation in this
+// store opens one internally; this one is handed the caller's, so the wrapping
+// is the test's to do — see Store.RevokeSubject.
+func revokeSubject(t *testing.T, store *Store, subjectID string) (int64, error) {
+	t.Helper()
+
+	var revoked int64
+
+	err := store.db.WithTransaction(t.Context(), func(tx database.Tx) error {
+		var revokeErr error
+
+		revoked, revokeErr = store.RevokeSubject(t.Context(), tx, subjectID)
+
+		return revokeErr
+	})
+
+	return revoked, err
 }
 
 // tokenPair is the two digests one seeded login is addressed by.

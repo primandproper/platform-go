@@ -590,14 +590,26 @@ func (s *Store) RevokeFamily(ctx context.Context, familyID string) (int64, error
 // token tables carry a subject_id index so it stays one index scan rather than
 // a walk of every token this server has ever issued.
 //
-// Both statements run in one transaction, for the reason RevokeFamily's do:
-// revoking only the access tokens leaves a refresh token that mints a fresh one
-// a second later, which is the same partial answer to a stronger request.
-//
 // It is deliberately not on [oauth2server.Store]. Nothing in the protocol
 // reaches it — no endpoint in RFC 6749, 7009 or 7591 revokes by subject — so it
 // is an operator's and an erasure's entry point rather than the server's, and a
 // consumer calls it on the concrete store this package returns.
+//
+// Which is why it takes the caller's transaction, and why it is the only method
+// here that does. Every other one is [oauth2server.Store]'s: primitives-go
+// fixes those signatures, and what calls them is a protocol endpoint answering
+// one request. This one's callers are the module's own, so it has the module's
+// own shape for a store write. An erasure ends a person's credentials, destroys
+// what it was holding for them and records that it happened, and those are one
+// fact — a revocation that opened a transaction of its own would commit while
+// the erasure that ordered it could still fail, leaving somebody signed out of
+// an account nothing in the audit trail says anybody touched. An operator with
+// nothing to join writes database.Client.WithTransaction around it and pays a
+// transaction it would have paid anyway.
+//
+// Both statements run in that transaction, for the reason RevokeFamily's do:
+// revoking only the access tokens leaves a refresh token that mints a fresh one
+// a second later, which is the same partial answer to a stronger request.
 //
 // What it does not reach is an authorization code. A code has no revoked_at to
 // stamp, so a code issued before this call and redeemed after it mints tokens
@@ -609,43 +621,40 @@ func (s *Store) RevokeFamily(ctx context.Context, familyID string) (int64, error
 // all expired legitimately revokes nothing, and a subject who never had one is
 // indistinguishable from that here on purpose — the count is for the caller's
 // metric, not its control flow.
-func (s *Store) RevokeSubject(ctx context.Context, subjectID string) (int64, error) {
+func (s *Store) RevokeSubject(ctx context.Context, tx database.Tx, subjectID string) (int64, error) {
 	ctx, op := s.o11y.Begin(ctx)
 	defer op.End()
+
+	if tx == nil {
+		return 0, ErrNilTransaction
+	}
 
 	if subjectID == "" {
 		return 0, oauth2server.ErrEmptyIdentifier
 	}
 
-	var revoked int64
+	// One read of the clock for both statements, so the two tables record the
+	// same moment — which is the moment this person stopped being signed in,
+	// rather than two moments a reader has to decide between.
+	now := stamp(s.now())
 
-	if err := s.db.WithTransaction(ctx, func(q database.Tx) error {
-		now := stamp(s.now())
-
-		access, execErr := s.q.RevokeAccessTokenSubject(ctx, q, oauth2serverdb.RevokeAccessTokenSubjectParams{
-			RevokedAt: now,
-			SubjectID: subjectID,
-		})
-		if execErr != nil {
-			return platformerrors.Wrap(execErr, "revoking a subject's access tokens")
-		}
-
-		refresh, execErr := s.q.RevokeRefreshTokenSubject(ctx, q, oauth2serverdb.RevokeRefreshTokenSubjectParams{
-			RevokedAt: now,
-			SubjectID: subjectID,
-		})
-		if execErr != nil {
-			return platformerrors.Wrap(execErr, "revoking a subject's refresh tokens")
-		}
-
-		revoked = access + refresh
-
-		return nil
-	}); err != nil {
-		return 0, op.Error(err, "revoking a subject's tokens")
+	access, err := s.q.RevokeAccessTokenSubject(ctx, tx, oauth2serverdb.RevokeAccessTokenSubjectParams{
+		RevokedAt: now,
+		SubjectID: subjectID,
+	})
+	if err != nil {
+		return 0, op.Error(err, "revoking a subject's access tokens")
 	}
 
-	return revoked, nil
+	refresh, err := s.q.RevokeRefreshTokenSubject(ctx, tx, oauth2serverdb.RevokeRefreshTokenSubjectParams{
+		RevokedAt: now,
+		SubjectID: subjectID,
+	})
+	if err != nil {
+		return 0, op.Error(err, "revoking a subject's refresh tokens")
+	}
+
+	return access + refresh, nil
 }
 
 // Sweep removes every row past its deadline.

@@ -178,8 +178,17 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 			}))
 		}
 
-		revoked, revokeErr := store.RevokeSubject(ctx, subject)
-		must.NoError(t, revokeErr)
+		// The transaction is the caller's, which is what this method takes and
+		// what the two UPDATEs commit inside of.
+		var revoked int64
+
+		must.NoError(t, client.WithTransaction(ctx, func(tx database.Tx) error {
+			var revokeErr error
+
+			revoked, revokeErr = store.RevokeSubject(ctx, tx, subject)
+
+			return revokeErr
+		}))
 		test.EqOp(t, int64(4), revoked)
 
 		for _, family := range []string{"family_a_" + string(d), "family_b_" + string(d)} {
@@ -192,8 +201,13 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 
 		// And the guard holds on every engine: a second call matches nothing
 		// rather than restamping what the first one ended.
-		revoked, revokeErr = store.RevokeSubject(ctx, subject)
-		must.NoError(t, revokeErr)
+		must.NoError(t, client.WithTransaction(ctx, func(tx database.Tx) error {
+			var revokeErr error
+
+			revoked, revokeErr = store.RevokeSubject(ctx, tx, subject)
+
+			return revokeErr
+		}))
 		test.EqOp(t, int64(0), revoked)
 	})
 
