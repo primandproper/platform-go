@@ -109,7 +109,7 @@ var _ audit.Reader = &ReaderMock{}
 //			ListFunc: func(ctx context.Context, q *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
 //				panic("mock out the List method")
 //			},
-//			VerifyFunc: func(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time) (*audit.VerificationResult, error) {
+//			VerifyFunc: func(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time, afterSeq int64) (*audit.VerificationResult, error) {
 //				panic("mock out the Verify method")
 //			},
 //		}
@@ -126,7 +126,7 @@ type ReaderMock struct {
 	ListFunc func(ctx context.Context, q *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error)
 
 	// VerifyFunc mocks the Verify method.
-	VerifyFunc func(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time) (*audit.VerificationResult, error)
+	VerifyFunc func(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time, afterSeq int64) (*audit.VerificationResult, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -156,6 +156,8 @@ type ReaderMock struct {
 			From time.Time
 			// To is the to argument value.
 			To time.Time
+			// AfterSeq is the afterSeq argument value.
+			AfterSeq int64
 		}
 	}
 	lockGet    sync.RWMutex
@@ -240,25 +242,27 @@ func (mock *ReaderMock) ListCalls() []struct {
 }
 
 // Verify calls VerifyFunc.
-func (mock *ReaderMock) Verify(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time) (*audit.VerificationResult, error) {
+func (mock *ReaderMock) Verify(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time, afterSeq int64) (*audit.VerificationResult, error) {
 	if mock.VerifyFunc == nil {
 		panic("ReaderMock.VerifyFunc: method is nil but Reader.Verify was just called")
 	}
 	callInfo := struct {
-		Ctx   context.Context
-		Scope tenancy.Scope
-		From  time.Time
-		To    time.Time
+		Ctx      context.Context
+		Scope    tenancy.Scope
+		From     time.Time
+		To       time.Time
+		AfterSeq int64
 	}{
-		Ctx:   ctx,
-		Scope: scope,
-		From:  from,
-		To:    to,
+		Ctx:      ctx,
+		Scope:    scope,
+		From:     from,
+		To:       to,
+		AfterSeq: afterSeq,
 	}
 	mock.lockVerify.Lock()
 	mock.calls.Verify = append(mock.calls.Verify, callInfo)
 	mock.lockVerify.Unlock()
-	return mock.VerifyFunc(ctx, scope, from, to)
+	return mock.VerifyFunc(ctx, scope, from, to, afterSeq)
 }
 
 // VerifyCalls gets all the calls that were made to Verify.
@@ -266,16 +270,18 @@ func (mock *ReaderMock) Verify(ctx context.Context, scope tenancy.Scope, from ti
 //
 //	len(mockedReader.VerifyCalls())
 func (mock *ReaderMock) VerifyCalls() []struct {
-	Ctx   context.Context
-	Scope tenancy.Scope
-	From  time.Time
-	To    time.Time
+	Ctx      context.Context
+	Scope    tenancy.Scope
+	From     time.Time
+	To       time.Time
+	AfterSeq int64
 } {
 	var calls []struct {
-		Ctx   context.Context
-		Scope tenancy.Scope
-		From  time.Time
-		To    time.Time
+		Ctx      context.Context
+		Scope    tenancy.Scope
+		From     time.Time
+		To       time.Time
+		AfterSeq int64
 	}
 	mock.lockVerify.RLock()
 	calls = mock.calls.Verify

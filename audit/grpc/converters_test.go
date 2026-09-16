@@ -137,13 +137,27 @@ func TestVerificationResultRoundTrip(T *testing.T) {
 
 	intact := auditgrpc.VerificationResultFromProto(
 		auditgrpc.VerificationResultToProto(&audit.VerificationResult{
-			From: from, To: to, Checked: 12,
+			From: from, To: to, Checked: 12, LastSeq: 11, Complete: true,
 		}))
 	must.NotNil(T, intact)
 	test.EqOp(T, from, intact.From.UTC())
 	test.EqOp(T, to, intact.To.UTC())
 	test.EqOp(T, 12, intact.Checked)
+	test.EqOp(T, int64(11), intact.LastSeq)
+	test.True(T, intact.Complete)
 	test.True(T, intact.Intact())
+
+	// The pair Intact cannot express, and the reason complete is on the message
+	// where an intact bool is not: a chain that held together as far as one
+	// call looked, with entries behind it nobody has checked.
+	stopped := auditgrpc.VerificationResultFromProto(
+		auditgrpc.VerificationResultToProto(&audit.VerificationResult{
+			Checked: 100, LastSeq: 99,
+		}))
+	must.NotNil(T, stopped)
+	test.True(T, stopped.Intact())
+	test.False(T, stopped.Complete)
+	test.EqOp(T, int64(99), stopped.LastSeq)
 
 	broken := auditgrpc.VerificationResultFromProto(
 		auditgrpc.VerificationResultToProto(&audit.VerificationResult{

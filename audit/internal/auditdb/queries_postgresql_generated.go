@@ -157,7 +157,9 @@ FROM {{prefix}}audit_log_entries
 WHERE {{prefix}}audit_log_entries.scope = $1
 	AND {{prefix}}audit_log_entries.recorded_at > COALESCE($2, (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
 	AND {{prefix}}audit_log_entries.recorded_at < COALESCE($3, (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
-ORDER BY {{prefix}}audit_log_entries.seq`
+	AND {{prefix}}audit_log_entries.seq > $4
+ORDER BY {{prefix}}audit_log_entries.seq
+LIMIT COALESCE($5, 50)`
 
 const listAuditLogEntriesPostgreSQL = `SELECT
 	{{prefix}}audit_log_entries.id,
@@ -564,6 +566,8 @@ func (q *postgresqlQueries) ListAuditChainEntries(ctx context.Context, db DBTX, 
 		arg.Scope,
 		arg.RecordedAfter,
 		arg.RecordedBefore,
+		arg.AfterSeq,
+		arg.ResultLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -948,6 +952,8 @@ var (
 		Scope          tenancy.Scope
 		RecordedAfter  *time.Time
 		RecordedBefore *time.Time
+		AfterSeq       int64
+		ResultLimit    int64
 	}(ListAuditChainEntriesParams{})
 	_ = struct {
 		ID           string

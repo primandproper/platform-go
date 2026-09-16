@@ -171,7 +171,7 @@ func TestEraser(T *testing.T) {
 		env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
 
 		result, err := env.reader.Verify(t.Context(), tenancy.Of("account-9"),
-			time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
+			time.Now().Add(-time.Hour), time.Now().Add(time.Hour), audit.ChainStart)
 		must.NoError(t, err)
 
 		// This is the whole design. An eraser that deleted or anonymized that

@@ -46,6 +46,40 @@ func WithReaderMetricsProvider(metricsProvider metrics.Provider) ReaderOption {
 	}
 }
 
+// WithVerificationPageSize sets how many entries one read of a verification
+// walk materializes, overriding DefaultVerificationPageSize. Zero leaves the
+// default in place.
+//
+// It is a page rather than a cap: a walk reads as many pages as the range and
+// the ceiling allow, and the size decides how much of the chain is in memory at
+// once, not how much of it is checked. Lower it where a consumer's entries
+// carry large change-sets.
+func WithVerificationPageSize(entries uint16) ReaderOption {
+	return func(r *SQLReader) {
+		if entries > 0 {
+			r.verificationPageSize = int64(entries)
+		}
+	}
+}
+
+// WithVerificationCeiling sets the most entries one Verify call walks before it
+// stops and reports where, overriding DefaultVerificationCeiling. Zero lifts
+// the ceiling, and a negative value is ignored.
+//
+// Lifting it is the deliberate choice it looks like. A reader with no ceiling
+// answers one call by walking a scope's entire history, which is bounded by the
+// retention window and by nothing else, and VerificationResult.Complete can
+// then never be false for an intact chain — so an operator batch job that wants
+// one answer may want that, and the gRPC surface, where both ends of the window
+// are optional and the caller is remote, should not.
+func WithVerificationCeiling(entries int64) ReaderOption {
+	return func(r *SQLReader) {
+		if entries >= 0 {
+			r.verificationCeiling = entries
+		}
+	}
+}
+
 // RecorderOption configures a Recorder.
 type RecorderOption func(*ChainRecorder)
 

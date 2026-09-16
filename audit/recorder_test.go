@@ -236,7 +236,7 @@ func TestRecorder_Record(T *testing.T) {
 		must.NoError(t, err)
 		test.EqOp(t, entry.RecordedAt, got.RecordedAt)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	})
@@ -278,7 +278,7 @@ func TestRecorder_Record(T *testing.T) {
 		test.EqOp(t, count, countRows(t, client, "audit_log_entries", "1=1"))
 		test.EqOp(t, int64(count-1), entries[count-1].Seq)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, count, result.Checked)

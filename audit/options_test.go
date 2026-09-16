@@ -109,6 +109,72 @@ func TestRecorderOptions(T *testing.T) {
 		test.EqOp(t, clock.Clock(c), r.clock)
 	})
 
+	T.Run("set the verification bounds", func(t *testing.T) {
+		t.Parallel()
+
+		r := &SQLReader{}
+		WithVerificationPageSize(25)(r)
+		WithVerificationCeiling(400)(r)
+
+		test.EqOp(t, int64(25), r.verificationPageSize)
+		test.EqOp(t, int64(400), r.verificationCeiling)
+	})
+
+	T.Run("ignore a zero page size and a negative ceiling", func(t *testing.T) {
+		t.Parallel()
+
+		r := &SQLReader{
+			verificationPageSize: DefaultVerificationPageSize,
+			verificationCeiling:  DefaultVerificationCeiling,
+		}
+
+		WithVerificationPageSize(0)(r)
+		WithVerificationCeiling(-1)(r)
+
+		test.EqOp(t, int64(DefaultVerificationPageSize), r.verificationPageSize)
+		test.EqOp(t, int64(DefaultVerificationCeiling), r.verificationCeiling)
+	})
+
+	T.Run("take a zero ceiling as no ceiling", func(t *testing.T) {
+		t.Parallel()
+
+		// Zero is a value here rather than an absence: it is how a caller asks
+		// for a walk bounded only by the range, which is what an operator's
+		// one-shot verification wants and what the remote surface should not.
+		r := &SQLReader{
+			verificationPageSize: DefaultVerificationPageSize,
+			verificationCeiling:  DefaultVerificationCeiling,
+		}
+		WithVerificationCeiling(0)(r)
+
+		test.EqOp(t, int64(0), r.verificationCeiling)
+		test.EqOp(t, int64(DefaultVerificationPageSize), r.verificationPage(0))
+	})
+
+	T.Run("narrow the page to what is left of the ceiling", func(t *testing.T) {
+		t.Parallel()
+
+		// The ceiling has to bound what is read and not only what is reported:
+		// a walk that took a full page and threw the surplus away would have
+		// read every row the ceiling exists to leave unread.
+		r := &SQLReader{verificationPageSize: 100, verificationCeiling: 250}
+
+		test.EqOp(t, int64(100), r.verificationPage(0))
+		test.EqOp(t, int64(50), r.verificationPage(200))
+		test.EqOp(t, int64(0), r.verificationPage(250))
+		test.EqOp(t, int64(0), r.verificationPage(300))
+	})
+
+	T.Run("build a reader at the documented defaults", func(t *testing.T) {
+		t.Parallel()
+
+		r, err := NewReader(newTestClient(t))
+		must.NoError(t, err)
+
+		test.EqOp(t, int64(DefaultVerificationPageSize), r.verificationPageSize)
+		test.EqOp(t, int64(DefaultVerificationCeiling), r.verificationCeiling)
+	})
+
 	T.Run("reports an instrument that cannot be built", func(t *testing.T) {
 		t.Parallel()
 

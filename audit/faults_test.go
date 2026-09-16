@@ -201,7 +201,7 @@ func TestReader_PropagatesFailures(T *testing.T) {
 	T.Run("Verify", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newFailingReader(t).Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		_, err := newFailingReader(t).Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		test.ErrorIs(t, err, errDatabase)
 	})
 
@@ -217,7 +217,7 @@ func TestReader_PropagatesFailures(T *testing.T) {
 		// assumed.
 		exec(t, client, "DROP TABLE "+"audit_log_chains")
 
-		_, err := newTestReader(t, client).Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		_, err := newTestReader(t, client).Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		test.Error(t, err)
 	})
 
@@ -247,7 +247,7 @@ func TestReader_PropagatesFailures(T *testing.T) {
 		reader, err := NewReader(&rowFailingClient{Client: client, remaining: &remaining})
 		must.NoError(t, err)
 
-		_, err = reader.Verify(t.Context(), tenancy.Of("acct_1"), second.RecordedAt.Add(-time.Second), time.Time{})
+		_, err = reader.Verify(t.Context(), tenancy.Of("acct_1"), second.RecordedAt.Add(-time.Second), time.Time{}, ChainStart)
 		test.Error(t, err)
 	})
 }

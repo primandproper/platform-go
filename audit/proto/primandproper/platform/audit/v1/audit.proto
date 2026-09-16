@@ -252,8 +252,32 @@ message VerificationResult {
   // tampered with.
   Break first_break = 3;
 
-  // checked is how many entries were walked.
+  // checked is how many entries were walked. A walk that stopped at a break
+  // counts the entries it examined, the breaking one included, and not the rows
+  // behind it that it never reached.
   int64 checked = 4;
+
+  // last_seq is the position of the last entry this call verified, and what a
+  // request continuing this one sends as after_seq.
+  //
+  // A call that verified nothing -- an empty scope, an empty window, a break on
+  // the first entry it read -- reports the position it started past, so
+  // resuming from it asks the same question again rather than starting over.
+  int64 last_seq = 5;
+
+  // complete reports whether the walk reached the end of the window.
+  //
+  // It is false where the walk stopped early: at the server's verification
+  // ceiling, or at a break. Resume where it is false and first_break is absent,
+  // by sending the same window again with after_seq set to last_seq.
+  //
+  // It is not the "intact" boolean this message refuses, which is why both can
+  // be here. That one would restate first_break and could contradict it; this
+  // one says something first_break cannot -- that a chain is intact as far as
+  // one call looked and holds entries nobody has checked. A scheduled
+  // verification that could not tell that from a clean bill would report a log
+  // as evidence on the strength of its first page or two.
+  bool complete = 6;
 
   reserved "scope";
 }
@@ -290,6 +314,21 @@ message VerifyChainRequest {
   google.protobuf.Timestamp from = 1;
 
   google.protobuf.Timestamp to = 2;
+
+  // after_seq is the chain position the walk starts past: absent to walk from
+  // the beginning of the range, or a previous response's last_seq to continue
+  // where it stopped.
+  //
+  // It is optional rather than defaulted, because 0 is a real position -- the
+  // one a scope's first entry takes -- and an absent field that read as 0 would
+  // quietly skip the genesis entry of every chain, which is the one link a
+  // forged log has to reproduce.
+  //
+  // The link across the seam is checked like any other: the server re-reads the
+  // entry at this position to learn what the next one must link to, rather than
+  // trusting the first row it reads. A resumed verification that trusted it
+  // would have a hole at exactly the position a client could choose.
+  optional int64 after_seq = 3;
 
   reserved "scope";
 }

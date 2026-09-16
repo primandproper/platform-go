@@ -156,7 +156,9 @@ FROM {{prefix}}audit_log_entries
 WHERE {{prefix}}audit_log_entries.scope = ?1
 	AND {{prefix}}audit_log_entries.recorded_at > COALESCE(?2, (SELECT datetime(CURRENT_TIMESTAMP, '-999 years')))
 	AND {{prefix}}audit_log_entries.recorded_at < COALESCE(?3, (SELECT datetime(CURRENT_TIMESTAMP, '+999 years')))
-ORDER BY {{prefix}}audit_log_entries.seq`
+	AND {{prefix}}audit_log_entries.seq > ?4
+ORDER BY {{prefix}}audit_log_entries.seq
+LIMIT COALESCE(?5, 50)`
 
 const listAuditLogEntriesSQLite = `SELECT
 	{{prefix}}audit_log_entries.id,
@@ -607,6 +609,8 @@ func (q *sqliteQueries) ListAuditChainEntries(ctx context.Context, db DBTX, arg 
 		arg.Scope,
 		timeTextPtr(arg.RecordedAfter),
 		timeTextPtr(arg.RecordedBefore),
+		arg.AfterSeq,
+		arg.ResultLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -991,6 +995,8 @@ var (
 		Scope          tenancy.Scope
 		RecordedAfter  *time.Time
 		RecordedBefore *time.Time
+		AfterSeq       int64
+		ResultLimit    int64
 	}(ListAuditChainEntriesParams{})
 	_ = struct {
 		ID           string
