@@ -207,8 +207,8 @@ func TestService_Shutdown(T *testing.T) {
 		t.Parallel()
 
 		// The whole point of the type. Ingress stops before anything drains,
-		// the loops close in reverse of the order they started so each one's
-		// last cycle runs after everything feeding it has stopped, the
+		// the loops close in reverse of the order they started so each one goes
+		// on cycling until everything feeding it has stopped, the
 		// single-shot flushes run once the producers are quiet, and the clients
 		// they all needed are released only after that.
 		j := &journal{}

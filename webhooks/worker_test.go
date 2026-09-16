@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
+	"github.com/shoenig/test/wait"
 )
 
 // allowAnyURL relaxes the SSRF policy so tests can deliver to an httptest
@@ -733,7 +735,7 @@ func TestWorker_cycle(T *testing.T) {
 func TestWorker_RunAndClose(T *testing.T) {
 	T.Parallel()
 
-	T.Run("Close drains the loop", func(t *testing.T) {
+	T.Run("Close stops the loop", func(t *testing.T) {
 		t.Parallel()
 
 		w := newTestWorker(t, &fakeStore{})
@@ -744,6 +746,95 @@ func TestWorker_RunAndClose(T *testing.T) {
 
 		// Close is idempotent: the owner may call it from more than one place.
 		test.NoError(t, w.Close(t.Context()))
+	})
+
+	T.Run("Close on a worker that was never started returns without waiting", func(t *testing.T) {
+		t.Parallel()
+
+		w := newTestWorker(t, &fakeStore{})
+
+		// Nothing ever closes done here, so a Close that waits for it hangs
+		// until this test times out — which is what a process that builds a
+		// worker, fails a later wiring step and closes what it has would see as
+		// a shutdown that would not finish. The context is deliberately not one
+		// that would end the wait on its own.
+		must.NoError(t, w.Close(t.Context()))
+
+		// Idempotent.
+		must.NoError(t, w.Close(t.Context()))
+	})
+
+	T.Run("Close claims no batch on the way out", func(t *testing.T) {
+		t.Parallel()
+
+		var claims atomic.Int64
+
+		w := newTestWorker(t, &fakeStore{
+			claim: func(context.Context, time.Time, int, time.Time) ([]ClaimedDispatch, error) {
+				claims.Add(1)
+
+				return nil, nil
+			},
+		})
+
+		go w.Run()
+
+		// Waited for, so that the Close below waits for the loop to return
+		// rather than finding nothing to wait for: the assertion is about what
+		// the loop did on its way out, which needs the loop to have been in it.
+		must.Wait(t, wait.InitialSuccess(
+			wait.BoolFunc(w.started.Load),
+			wait.Timeout(10*time.Second),
+			wait.Gap(time.Millisecond),
+		))
+
+		must.NoError(t, w.Close(t.Context()))
+
+		// The poll interval is the package default, so no tick fired inside
+		// this test and a fresh batch on the way out is the only claim there
+		// could have been.
+		test.EqOp(t, int64(0), claims.Load())
+	})
+
+	T.Run("Close reports a context that expired before the cycle returned", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			entered = make(chan struct{})
+			release = make(chan struct{})
+			once    sync.Once
+		)
+
+		// A claim that does not return is the one thing that keeps the loop
+		// from answering the stop.
+		w := newTestWorker(t, &fakeStore{
+			claim: func(context.Context, time.Time, int, time.Time) ([]ClaimedDispatch, error) {
+				once.Do(func() { close(entered) })
+				<-release
+
+				return nil, nil
+			},
+		})
+
+		// Set after construction: the config is already valid, and this test is
+		// about the loop rather than the bounds. A one-second poll would
+		// otherwise dominate its runtime.
+		w.cfg.PollInterval = time.Millisecond
+
+		go w.Run()
+
+		<-entered
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		test.Error(t, w.Close(ctx))
+
+		close(release)
+
+		// With the claim unstuck the loop returns, and this Close ends on done
+		// rather than on a context.
+		must.NoError(t, w.Close(context.Background()))
 	})
 }
 

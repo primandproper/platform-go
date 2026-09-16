@@ -386,7 +386,7 @@ func TestRelay_wakeup(T *testing.T) {
 
 		must.NoError(t, r.Close(t.Context()))
 
-		// Close still drains once, which is the behavior it always had.
-		test.EqOp(t, int64(1), cycles.Load())
+		// And Close adds none of its own.
+		test.EqOp(t, int64(0), cycles.Load())
 	})
 }

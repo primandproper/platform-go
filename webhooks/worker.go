@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/primandproper/primitives-go/v2/circuitbreaking"
 	cbnoop "github.com/primandproper/primitives-go/v2/circuitbreaking/noop"
@@ -94,6 +95,16 @@ type Worker struct {
 
 	breakersMu sync.Mutex
 	stopOnce   sync.Once
+
+	// started records that Run was entered, so Close can tell a loop it must
+	// wait for from one that was never started. Without it a process that
+	// builds a worker, fails a later wiring step and closes what it has in
+	// cleanup waits out its whole shutdown budget on a done channel nothing
+	// will ever close.
+	//
+	// The narrow race it leaves is not one: Close closes stop before it reads
+	// this, so a Run entered afterwards returns on its first pass.
+	started atomic.Bool
 }
 
 // NewWorker builds a Worker. It does not start it; call Run.
@@ -212,6 +223,8 @@ func refuseRedirects(*http.Request, []*http.Request) error {
 func (w *Worker) Run() {
 	defer close(w.done)
 
+	w.started.Store(true)
+
 	ctx := context.Background()
 
 	pollTicker := w.clock.NewTicker(w.cfg.PollInterval)
@@ -223,10 +236,6 @@ func (w *Worker) Run() {
 	for {
 		select {
 		case <-w.stop:
-			// One last cycle, so dispatches committed just before shutdown are
-			// not left sitting until the next process starts.
-			w.cycle(ctx)
-
 			return
 		case <-pollTicker.Chan():
 			w.cycle(ctx)
@@ -241,17 +250,29 @@ func (w *Worker) Run() {
 }
 
 // Close stops the worker and waits for the in-flight cycle to finish. Safe to
-// call more than once.
+// call more than once, and on a worker that was never started — there is no
+// goroutine to wait for, so it returns as soon as it has released the idle
+// connections.
+//
+// There is no final cycle on the way out, for the reason saga.Worker.Close
+// gives: a cycle claims a fresh batch of up to BatchSize dispatches and
+// delivers them, each over a network to somebody else's server with this
+// worker's own timeout and retries around it, which is minutes of work the
+// process has just been told it has no time left for. Every dispatch it takes
+// is also leased away from the replica still running. Dispatches committed just
+// before shutdown stay committed and the next cycle anywhere picks them up.
 func (w *Worker) Close(ctx context.Context) error {
 	_, op := w.o11y.Begin(ctx)
 	defer op.End()
 
 	w.stopOnce.Do(func() { close(w.stop) })
 
-	select {
-	case <-w.done:
-	case <-ctx.Done():
-		return op.Error(ctx.Err(), "waiting for webhooks worker to drain")
+	if w.started.Load() {
+		select {
+		case <-w.done:
+		case <-ctx.Done():
+			return op.Error(ctx.Err(), "waiting for webhooks worker to drain")
+		}
 	}
 
 	w.client.CloseIdleConnections()

@@ -234,9 +234,9 @@ func (s *Service) resolveHealth(r *resolver, checks []healthcheck.Checker) {
 // what makes each loop's last cycle mean something:
 //
 //   - The outbox relay is first up and therefore last down. It is the drain
-//     every other loop writes into, and its final cycle has to run after the
-//     last writer has stopped — which is exactly what its Run taking no context
-//     was for.
+//     every other loop writes into, so it has to go on polling while they stop
+//     and write their last rows — which is exactly what its Run taking no
+//     context was for.
 //   - The jobs pool is up before the scheduler that enqueues into it, so the
 //     scheduler stops producing before the pool stops consuming.
 //   - The saga worker writes outbox rows, so it stops while the relay is still
