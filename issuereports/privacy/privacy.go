@@ -191,7 +191,9 @@ func NewCollector(
 // It pages each scope's reports to the end through dataprivacy.CollectAll,
 // because a collector that read one page and stopped would return a truncated
 // subject access request — well-formed, present, and missing everything past the
-// first page.
+// first page. It asks for archived reports too: the body is free text somebody
+// wrote and the controller still holds it, so an export that skipped what a
+// moderator archived would omit exactly the rows Eraser destroys.
 func (c *Collector) Collect(
 	ctx context.Context,
 	requestScope tenancy.Scope,
@@ -207,7 +209,10 @@ func (c *Collector) Collect(
 	for _, scope := range scopes {
 		page, collectErr := dataprivacy.CollectAll(ctx,
 			func(ctx context.Context, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[issuereports.Report], error) {
-				return c.store.ListReportsByReporter(ctx, c.reader, scope, subject.ID, filter)
+				everything := *filter
+				everything.IncludeArchived = new(true)
+
+				return c.store.ListReportsByReporter(ctx, c.reader, scope, subject.ID, &everything)
 			})
 		if collectErr != nil {
 			return nil, platformerrors.Wrapf(collectErr, "collecting issue reports in scope %q", scope)
