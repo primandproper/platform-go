@@ -205,6 +205,11 @@ const revokeAccessTokenFamilySQLite = `UPDATE {{prefix}}oauth2_access_tokens SET
 WHERE family_id = ?2
 	AND revoked_at IS NULL`
 
+const revokeAccessTokenSubjectSQLite = `UPDATE {{prefix}}oauth2_access_tokens SET
+	revoked_at = ?1
+WHERE subject_id = ?2
+	AND revoked_at IS NULL`
+
 const revokeRefreshTokenSQLite = `UPDATE {{prefix}}oauth2_refresh_tokens SET
 	revoked_at = ?1
 WHERE hash = ?2
@@ -213,6 +218,11 @@ WHERE hash = ?2
 const revokeRefreshTokenFamilySQLite = `UPDATE {{prefix}}oauth2_refresh_tokens SET
 	revoked_at = ?1
 WHERE family_id = ?2
+	AND revoked_at IS NULL`
+
+const revokeRefreshTokenSubjectSQLite = `UPDATE {{prefix}}oauth2_refresh_tokens SET
+	revoked_at = ?1
+WHERE subject_id = ?2
 	AND revoked_at IS NULL`
 
 const sweepAccessTokensSQLite = `DELETE FROM {{prefix}}oauth2_access_tokens
@@ -230,50 +240,54 @@ WHERE expires_at <= ?1`
 
 // sqliteQueries answers every query in Querier against sqlite.
 type sqliteQueries struct {
-	consumeAuthorizationCode string
-	consumeRefreshToken      string
-	createAccessToken        string
-	createAuthorizationCode  string
-	createClient             string
-	createRefreshToken       string
-	deleteClient             string
-	getAccessToken           string
-	getAuthorizationCode     string
-	getClient                string
-	getRefreshToken          string
-	revokeAccessToken        string
-	revokeAccessTokenFamily  string
-	revokeRefreshToken       string
-	revokeRefreshTokenFamily string
-	sweepAccessTokens        string
-	sweepAuthorizationCodes  string
-	sweepClients             string
-	sweepRefreshTokens       string
+	consumeAuthorizationCode  string
+	consumeRefreshToken       string
+	createAccessToken         string
+	createAuthorizationCode   string
+	createClient              string
+	createRefreshToken        string
+	deleteClient              string
+	getAccessToken            string
+	getAuthorizationCode      string
+	getClient                 string
+	getRefreshToken           string
+	revokeAccessToken         string
+	revokeAccessTokenFamily   string
+	revokeAccessTokenSubject  string
+	revokeRefreshToken        string
+	revokeRefreshTokenFamily  string
+	revokeRefreshTokenSubject string
+	sweepAccessTokens         string
+	sweepAuthorizationCodes   string
+	sweepClients              string
+	sweepRefreshTokens        string
 }
 
 // newSQLite returns the sqlite querier with prefix substituted into every
 // table name the analyzer identified.
 func newSQLite(prefix string) *sqliteQueries {
 	return &sqliteQueries{
-		consumeAuthorizationCode: strings.ReplaceAll(consumeAuthorizationCodeSQLite, prefixMarker, prefix),
-		consumeRefreshToken:      strings.ReplaceAll(consumeRefreshTokenSQLite, prefixMarker, prefix),
-		createAccessToken:        strings.ReplaceAll(createAccessTokenSQLite, prefixMarker, prefix),
-		createAuthorizationCode:  strings.ReplaceAll(createAuthorizationCodeSQLite, prefixMarker, prefix),
-		createClient:             strings.ReplaceAll(createClientSQLite, prefixMarker, prefix),
-		createRefreshToken:       strings.ReplaceAll(createRefreshTokenSQLite, prefixMarker, prefix),
-		deleteClient:             strings.ReplaceAll(deleteClientSQLite, prefixMarker, prefix),
-		getAccessToken:           strings.ReplaceAll(getAccessTokenSQLite, prefixMarker, prefix),
-		getAuthorizationCode:     strings.ReplaceAll(getAuthorizationCodeSQLite, prefixMarker, prefix),
-		getClient:                strings.ReplaceAll(getClientSQLite, prefixMarker, prefix),
-		getRefreshToken:          strings.ReplaceAll(getRefreshTokenSQLite, prefixMarker, prefix),
-		revokeAccessToken:        strings.ReplaceAll(revokeAccessTokenSQLite, prefixMarker, prefix),
-		revokeAccessTokenFamily:  strings.ReplaceAll(revokeAccessTokenFamilySQLite, prefixMarker, prefix),
-		revokeRefreshToken:       strings.ReplaceAll(revokeRefreshTokenSQLite, prefixMarker, prefix),
-		revokeRefreshTokenFamily: strings.ReplaceAll(revokeRefreshTokenFamilySQLite, prefixMarker, prefix),
-		sweepAccessTokens:        strings.ReplaceAll(sweepAccessTokensSQLite, prefixMarker, prefix),
-		sweepAuthorizationCodes:  strings.ReplaceAll(sweepAuthorizationCodesSQLite, prefixMarker, prefix),
-		sweepClients:             strings.ReplaceAll(sweepClientsSQLite, prefixMarker, prefix),
-		sweepRefreshTokens:       strings.ReplaceAll(sweepRefreshTokensSQLite, prefixMarker, prefix),
+		consumeAuthorizationCode:  strings.ReplaceAll(consumeAuthorizationCodeSQLite, prefixMarker, prefix),
+		consumeRefreshToken:       strings.ReplaceAll(consumeRefreshTokenSQLite, prefixMarker, prefix),
+		createAccessToken:         strings.ReplaceAll(createAccessTokenSQLite, prefixMarker, prefix),
+		createAuthorizationCode:   strings.ReplaceAll(createAuthorizationCodeSQLite, prefixMarker, prefix),
+		createClient:              strings.ReplaceAll(createClientSQLite, prefixMarker, prefix),
+		createRefreshToken:        strings.ReplaceAll(createRefreshTokenSQLite, prefixMarker, prefix),
+		deleteClient:              strings.ReplaceAll(deleteClientSQLite, prefixMarker, prefix),
+		getAccessToken:            strings.ReplaceAll(getAccessTokenSQLite, prefixMarker, prefix),
+		getAuthorizationCode:      strings.ReplaceAll(getAuthorizationCodeSQLite, prefixMarker, prefix),
+		getClient:                 strings.ReplaceAll(getClientSQLite, prefixMarker, prefix),
+		getRefreshToken:           strings.ReplaceAll(getRefreshTokenSQLite, prefixMarker, prefix),
+		revokeAccessToken:         strings.ReplaceAll(revokeAccessTokenSQLite, prefixMarker, prefix),
+		revokeAccessTokenFamily:   strings.ReplaceAll(revokeAccessTokenFamilySQLite, prefixMarker, prefix),
+		revokeAccessTokenSubject:  strings.ReplaceAll(revokeAccessTokenSubjectSQLite, prefixMarker, prefix),
+		revokeRefreshToken:        strings.ReplaceAll(revokeRefreshTokenSQLite, prefixMarker, prefix),
+		revokeRefreshTokenFamily:  strings.ReplaceAll(revokeRefreshTokenFamilySQLite, prefixMarker, prefix),
+		revokeRefreshTokenSubject: strings.ReplaceAll(revokeRefreshTokenSubjectSQLite, prefixMarker, prefix),
+		sweepAccessTokens:         strings.ReplaceAll(sweepAccessTokensSQLite, prefixMarker, prefix),
+		sweepAuthorizationCodes:   strings.ReplaceAll(sweepAuthorizationCodesSQLite, prefixMarker, prefix),
+		sweepClients:              strings.ReplaceAll(sweepClientsSQLite, prefixMarker, prefix),
+		sweepRefreshTokens:        strings.ReplaceAll(sweepRefreshTokensSQLite, prefixMarker, prefix),
 	}
 }
 
@@ -563,6 +577,19 @@ func (q *sqliteQueries) RevokeAccessTokenFamily(ctx context.Context, db DBTX, ar
 	return result.RowsAffected()
 }
 
+// RevokeAccessTokenSubject runs the :execrows query against sqlite.
+func (q *sqliteQueries) RevokeAccessTokenSubject(ctx context.Context, db DBTX, arg RevokeAccessTokenSubjectParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.revokeAccessTokenSubject,
+		timeTextPtr(arg.RevokedAt),
+		arg.SubjectID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // RevokeRefreshToken runs the :execrows query against sqlite.
 func (q *sqliteQueries) RevokeRefreshToken(ctx context.Context, db DBTX, arg RevokeRefreshTokenParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.revokeRefreshToken,
@@ -581,6 +608,19 @@ func (q *sqliteQueries) RevokeRefreshTokenFamily(ctx context.Context, db DBTX, a
 	result, err := db.ExecContext(ctx, q.revokeRefreshTokenFamily,
 		timeTextPtr(arg.RevokedAt),
 		arg.FamilyID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// RevokeRefreshTokenSubject runs the :execrows query against sqlite.
+func (q *sqliteQueries) RevokeRefreshTokenSubject(ctx context.Context, db DBTX, arg RevokeRefreshTokenSubjectParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.revokeRefreshTokenSubject,
+		timeTextPtr(arg.RevokedAt),
+		arg.SubjectID,
 	)
 	if err != nil {
 		return 0, err
@@ -785,12 +825,20 @@ var (
 	}(RevokeAccessTokenFamilyParams{})
 	_ = struct {
 		RevokedAt *time.Time
+		SubjectID string
+	}(RevokeAccessTokenSubjectParams{})
+	_ = struct {
+		RevokedAt *time.Time
 		Hash      string
 	}(RevokeRefreshTokenParams{})
 	_ = struct {
 		RevokedAt *time.Time
 		FamilyID  string
 	}(RevokeRefreshTokenFamilyParams{})
+	_ = struct {
+		RevokedAt *time.Time
+		SubjectID string
+	}(RevokeRefreshTokenSubjectParams{})
 	_ = struct {
 		Now time.Time
 	}(SweepAccessTokensParams{})

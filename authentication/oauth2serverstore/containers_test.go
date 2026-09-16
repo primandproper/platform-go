@@ -149,6 +149,68 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		test.True(t, got.ExpiresAt.IsZero())
 	})
 
+	// The subject revocation, against the engine its index was written for.
+	// Three things only a real server decides: that each dialect accepts the
+	// subject_id index the DDL declares — MySQL's is an inline KEY, which is a
+	// different statement rather than a different spelling — that the two
+	// UPDATEs commit together, and that the count means the same thing here as
+	// it does on SQLite. MySQL reports rows *changed* rather than matched, so a
+	// revocation that stamped an already-revoked row would report a different
+	// number there and nowhere else.
+	t.Run("ends every token a subject holds, in one transaction", func(t *testing.T) {
+		subject := "subject_" + string(d)
+		now := time.Now().UTC().Truncate(time.Microsecond)
+
+		// Two families, because the whole reason this is not a family
+		// revocation is that a person has as many as they have logged in.
+		for _, family := range []string{"family_a_" + string(d), "family_b_" + string(d)} {
+			must.NoError(t, store.CreateAccessToken(ctx, &oauth2server.AccessToken{
+				IssuedAt: now, ExpiresAt: now.Add(time.Hour),
+				Hash:     oauth2server.Hash("access_" + family),
+				ClientID: "x", FamilyID: family,
+				Subject: oauth2server.Subject{ID: subject},
+			}))
+			must.NoError(t, store.CreateRefreshToken(ctx, &oauth2server.RefreshToken{
+				IssuedAt: now, ExpiresAt: now.Add(24 * time.Hour),
+				Hash:     oauth2server.Hash("refresh_" + family),
+				ClientID: "x", FamilyID: family,
+				Subject: oauth2server.Subject{ID: subject},
+			}))
+		}
+
+		// The transaction is the caller's, which is what this method takes and
+		// what the two UPDATEs commit inside of.
+		var revoked int64
+
+		must.NoError(t, client.WithTransaction(ctx, func(tx database.Tx) error {
+			var revokeErr error
+
+			revoked, revokeErr = store.RevokeSubject(ctx, tx, subject)
+
+			return revokeErr
+		}))
+		test.EqOp(t, int64(4), revoked)
+
+		for _, family := range []string{"family_a_" + string(d), "family_b_" + string(d)} {
+			_, accessErr := store.GetAccessToken(ctx, oauth2server.Hash("access_"+family))
+			test.ErrorIs(t, accessErr, oauth2server.ErrExpired)
+
+			_, refreshErr := store.GetRefreshToken(ctx, oauth2server.Hash("refresh_"+family))
+			test.ErrorIs(t, refreshErr, oauth2server.ErrExpired)
+		}
+
+		// And the guard holds on every engine: a second call matches nothing
+		// rather than restamping what the first one ended.
+		must.NoError(t, client.WithTransaction(ctx, func(tx database.Tx) error {
+			var revokeErr error
+
+			revoked, revokeErr = store.RevokeSubject(ctx, tx, subject)
+
+			return revokeErr
+		}))
+		test.EqOp(t, int64(0), revoked)
+	})
+
 	// A prefix is not decoration: it renders four more tables, and both the DDL
 	// and every statement have to agree about which set they mean.
 	t.Run("serves a namespaced schema alongside the plain one", func(t *testing.T) {

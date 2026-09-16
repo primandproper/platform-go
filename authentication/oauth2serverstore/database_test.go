@@ -8,6 +8,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server/oauth2servertest"
 	"github.com/primandproper/primitives-go/v2/clock"
+	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
@@ -392,4 +393,266 @@ func codeCount(t *testing.T, store *Store) int {
 		QueryRowContext(t.Context(), "SELECT COUNT(*) FROM oauth2_authorization_codes").Scan(&count))
 
 	return count
+}
+
+// RevokeSubject is the store's own method rather than the interface's, so the
+// conformance suite says nothing about it and everything it owes is here: which
+// rows it reaches, which it leaves, and what a second call does.
+func TestStore_RevokeSubject(T *testing.T) {
+	T.Parallel()
+
+	T.Run("ends every token the subject holds, across every family", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, store := t.Context(), newTestStore(t)
+
+		// Two logins by one person, and a third person's login beside them.
+		// Nothing in the schema relates the two families, which is the whole
+		// reason this cannot be assembled out of RevokeFamily.
+		first := seedTokens(t, store, "person_1", "family_1")
+		second := seedTokens(t, store, "person_1", "family_2")
+		other := seedTokens(t, store, "person_2", "family_3")
+
+		revoked, err := revokeSubject(t, store, "person_1")
+		must.NoError(t, err)
+		test.EqOp(t, int64(4), revoked)
+
+		for _, pair := range []tokenPair{first, second} {
+			_, accessErr := store.GetAccessToken(ctx, pair.access)
+			test.ErrorIs(t, accessErr, oauth2server.ErrExpired)
+
+			_, refreshErr := store.GetRefreshToken(ctx, pair.refresh)
+			test.ErrorIs(t, refreshErr, oauth2server.ErrExpired)
+		}
+
+		// And the other person is still signed in, which is what says the
+		// predicate is the subject rather than the table.
+		access, err := store.GetAccessToken(ctx, other.access)
+		must.NoError(t, err)
+		test.True(t, access.RevokedAt.IsZero())
+
+		refresh, err := store.GetRefreshToken(ctx, other.refresh)
+		must.NoError(t, err)
+		test.True(t, refresh.RevokedAt.IsZero())
+	})
+
+	// The count is for a metric, and the guard that makes it accurate is the
+	// same one the family revocation carries: `revoked_at IS NULL`.
+	T.Run("counts what it revoked, and a second call revokes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		store := newTestStore(t)
+
+		seedTokens(t, store, "person", "family")
+
+		revoked, err := revokeSubject(t, store, "person")
+		must.NoError(t, err)
+		test.EqOp(t, int64(2), revoked)
+
+		revoked, err = revokeSubject(t, store, "person")
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), revoked)
+	})
+
+	// Zero rows the second time is not only a count: the record still has to say
+	// when the token actually stopped working, which a revocation that moved the
+	// stamp would lose.
+	T.Run("leaves a revocation already recorded where it was", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+
+		at := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+
+		first, err := NewStore(&Config{}, client, WithClock(stoppedAt(at)))
+		must.NoError(t, err)
+
+		pair := seedTokens(t, first, "person", "family")
+
+		_, err = revokeSubject(t, first, "person")
+		must.NoError(t, err)
+
+		stamped := revokedAt(t, first, "oauth2_access_tokens", pair.access)
+		test.StrNotEqFold(t, "", stamped)
+
+		// An hour later, and the stamp is still the first one's.
+		later, err := NewStore(&Config{}, client, WithClock(stoppedAt(at.Add(time.Hour))))
+		must.NoError(t, err)
+
+		revoked, err := revokeSubject(t, later, "person")
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), revoked)
+		test.EqOp(t, stamped, revokedAt(t, later, "oauth2_access_tokens", pair.access))
+	})
+
+	// A subject revocation reaches the two token tables and nothing else. The
+	// codes table carries a subject_id as well, and a code has no revoked_at to
+	// stamp — the method's documentation says what that costs.
+	T.Run("leaves the codes and the registrations alone", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, store := t.Context(), newTestStore(t)
+		now := time.Now().UTC().Truncate(time.Microsecond)
+
+		must.NoError(t, store.CreateAuthorizationCode(ctx, &oauth2server.AuthorizationCode{
+			IssuedAt:  now,
+			ExpiresAt: now.Add(time.Hour),
+			Hash:      oauth2server.Hash("outstanding"),
+			ClientID:  "client",
+			FamilyID:  "family",
+			Subject:   oauth2server.Subject{ID: "person"},
+		}))
+		must.NoError(t, store.CreateClient(ctx, &oauth2server.Client{CreatedAt: now, ID: "client"}))
+
+		seedTokens(t, store, "person", "family")
+
+		revoked, err := revokeSubject(t, store, "person")
+		must.NoError(t, err)
+		test.EqOp(t, int64(2), revoked)
+
+		// The code is still redeemable, and the registration still resolves.
+		test.EqOp(t, 1, codeCount(t, store))
+
+		code, err := store.ConsumeAuthorizationCode(ctx, oauth2server.Hash("outstanding"))
+		must.NoError(t, err)
+		must.NotNil(t, code)
+
+		registration, err := store.GetClient(ctx, "client")
+		must.NoError(t, err)
+		test.EqOp(t, "client", registration.ID)
+	})
+
+	// What taking the caller's transaction buys, and the reason this method has
+	// a shape the rest of the store does not: the revocation is undone with
+	// whatever ordered it. An erasure that fails after this ran leaves the
+	// person signed in, rather than signed out of an account nothing in the
+	// audit trail says anybody touched.
+	T.Run("is undone when the caller's transaction is", func(t *testing.T) {
+		t.Parallel()
+
+		ctx, store := t.Context(), newTestStore(t)
+
+		pair := seedTokens(t, store, "person", "family")
+
+		erasureFailed := platformerrors.New("the erasure this revocation was part of")
+
+		err := store.db.WithTransaction(ctx, func(tx database.Tx) error {
+			revoked, revokeErr := store.RevokeSubject(ctx, tx, "person")
+			must.NoError(t, revokeErr)
+			test.EqOp(t, int64(2), revoked)
+
+			return erasureFailed
+		})
+		test.ErrorIs(t, err, erasureFailed)
+
+		// Both tokens still work, because the transaction they were revoked in
+		// never committed.
+		access, err := store.GetAccessToken(ctx, pair.access)
+		must.NoError(t, err)
+		test.True(t, access.RevokedAt.IsZero())
+
+		refresh, err := store.GetRefreshToken(ctx, pair.refresh)
+		must.NoError(t, err)
+		test.True(t, refresh.RevokedAt.IsZero())
+	})
+
+	T.Run("refuses an empty subject", func(t *testing.T) {
+		t.Parallel()
+
+		revoked, err := revokeSubject(t, newTestStore(t), "")
+		test.ErrorIs(t, err, oauth2server.ErrEmptyIdentifier)
+		test.EqOp(t, int64(0), revoked)
+	})
+
+	// The one guard the rest of this store cannot need, because this is the one
+	// method with something to be handed.
+	T.Run("refuses a nil transaction", func(t *testing.T) {
+		t.Parallel()
+
+		revoked, err := newTestStore(t).RevokeSubject(t.Context(), nil, "person")
+		test.ErrorIs(t, err, ErrNilTransaction)
+		test.ErrorIs(t, err, platformerrors.ErrNilInputParameter)
+		test.EqOp(t, int64(0), revoked)
+	})
+}
+
+// revokeSubject runs the subject revocation in a transaction of its own, which
+// is what an operator with nothing to join does. Every other revocation in this
+// store opens one internally; this one is handed the caller's, so the wrapping
+// is the test's to do — see Store.RevokeSubject.
+func revokeSubject(t *testing.T, store *Store, subjectID string) (int64, error) {
+	t.Helper()
+
+	var revoked int64
+
+	err := store.db.WithTransaction(t.Context(), func(tx database.Tx) error {
+		var revokeErr error
+
+		revoked, revokeErr = store.RevokeSubject(t.Context(), tx, subjectID)
+
+		return revokeErr
+	})
+
+	return revoked, err
+}
+
+// tokenPair is the two digests one seeded login is addressed by.
+type tokenPair struct {
+	access  string
+	refresh string
+}
+
+// seedTokens writes one live access token and one live refresh token for a
+// subject, under the named family.
+func seedTokens(t *testing.T, store *Store, subject, family string) tokenPair {
+	t.Helper()
+
+	ctx := t.Context()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	pair := tokenPair{
+		access:  oauth2server.Hash("access_" + subject + "_" + family),
+		refresh: oauth2server.Hash("refresh_" + subject + "_" + family),
+	}
+
+	must.NoError(t, store.CreateAccessToken(ctx, &oauth2server.AccessToken{
+		IssuedAt:  now,
+		ExpiresAt: now.Add(time.Hour),
+		Hash:      pair.access,
+		ClientID:  "client",
+		FamilyID:  family,
+		Subject:   oauth2server.Subject{ID: subject},
+	}))
+
+	must.NoError(t, store.CreateRefreshToken(ctx, &oauth2server.RefreshToken{
+		IssuedAt:  now,
+		ExpiresAt: now.Add(24 * time.Hour),
+		Hash:      pair.refresh,
+		ClientID:  "client",
+		FamilyID:  family,
+		Subject:   oauth2server.Subject{ID: subject},
+	}))
+
+	return pair
+}
+
+// revokedAt reads a token's revocation stamp as the column actually holds it.
+//
+// Read through the client rather than through the store, because every read
+// this store exposes refuses a revoked token — which is the behavior that makes
+// the stamp itself unreachable from above, and the reason a test about when a
+// revocation was recorded has to go to the row.
+func revokedAt(t *testing.T, store *Store, table, hash string) string {
+	t.Helper()
+
+	var stamped *string
+	must.NoError(t, store.db.Writer().
+		QueryRowContext(t.Context(), "SELECT revoked_at FROM "+table+" WHERE hash = ?", hash).
+		Scan(&stamped))
+
+	if stamped == nil {
+		return ""
+	}
+
+	return *stamped
 }

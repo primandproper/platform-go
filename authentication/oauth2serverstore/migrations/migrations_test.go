@@ -128,6 +128,7 @@ func TestStatements(T *testing.T) {
 
 		joined := strings.Join(stmts, "\n")
 		test.StrContains(t, joined, "KEY oauth2_access_tokens_family_id_idx")
+		test.StrContains(t, joined, "KEY oauth2_refresh_tokens_subject_id_idx")
 	})
 
 	// The family index is what a detected token reuse depends on: without it,
@@ -144,6 +145,32 @@ func TestStatements(T *testing.T) {
 
 			test.StrContains(t, joined, "oauth2_access_tokens_family_id_idx", test.Sprintf("dialect %q", d))
 			test.StrContains(t, joined, "oauth2_refresh_tokens_family_id_idx", test.Sprintf("dialect %q", d))
+		}
+	})
+
+	// The subject index is what "disable this account", "sign out everywhere"
+	// and an erasure depend on. Without it each of those walks every token this
+	// server has ever issued, on the request that is least able to wait — and
+	// unlike the family revocation, there is no narrower statement to fall back
+	// to, because a subject's families cannot be enumerated from here.
+	T.Run("every dialect indexes subject_id on both token tables", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range allDialects() {
+			stmts, err := Statements(d, "")
+			must.NoError(t, err)
+
+			joined := strings.Join(stmts, "\n")
+
+			test.StrContains(t, joined, "oauth2_access_tokens_subject_id_idx", test.Sprintf("dialect %q", d))
+			test.StrContains(t, joined, "oauth2_refresh_tokens_subject_id_idx", test.Sprintf("dialect %q", d))
+
+			// And the codes table does not get one. It carries a subject_id,
+			// but nothing selects codes by subject: a code has no revoked_at to
+			// stamp, so an index there would be a write amplification on every
+			// login for a statement that does not exist.
+			test.StrNotContains(t, joined, "oauth2_authorization_codes_subject_id_idx",
+				test.Sprintf("dialect %q", d))
 		}
 	})
 

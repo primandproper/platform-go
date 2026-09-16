@@ -182,6 +182,12 @@ type RevokeAccessTokenFamilyParams struct {
 	FamilyID  string
 }
 
+// RevokeAccessTokenSubjectParams are the arguments to RevokeAccessTokenSubject.
+type RevokeAccessTokenSubjectParams struct {
+	RevokedAt *time.Time
+	SubjectID string
+}
+
 // RevokeRefreshTokenParams are the arguments to RevokeRefreshToken.
 type RevokeRefreshTokenParams struct {
 	RevokedAt *time.Time
@@ -192,6 +198,12 @@ type RevokeRefreshTokenParams struct {
 type RevokeRefreshTokenFamilyParams struct {
 	RevokedAt *time.Time
 	FamilyID  string
+}
+
+// RevokeRefreshTokenSubjectParams are the arguments to RevokeRefreshTokenSubject.
+type RevokeRefreshTokenSubjectParams struct {
+	RevokedAt *time.Time
+	SubjectID string
 }
 
 // SweepAccessTokensParams are the arguments to SweepAccessTokens.

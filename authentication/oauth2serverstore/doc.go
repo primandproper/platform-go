@@ -30,6 +30,30 @@ A revocation is enforceable. Access tokens here are opaque and checked against
 this store on every resource-server request, so a sign-out ends a session now
 rather than at the end of the token's lifetime.
 
+Three things can be revoked, and which one a caller reaches for is the whole of
+what it means. RevokeAccessToken and RevokeRefreshToken end one credential,
+which is what /revoke does. RevokeFamily ends one login, which is what a
+detected token reuse does. RevokeSubject ends every credential a person holds —
+"disable this account", "sign out everywhere", and the erasure a dataprivacy run
+performs — and it is the one a family revocation cannot be assembled into: a
+caller holding a subject identifier cannot enumerate that person's families, and
+looping over them would leave live whatever was issued while the loop ran. Both
+token tables index subject_id so it stays one index scan per table.
+
+It reaches no authorization code, and that boundary is stated on the method: a
+code has no revoked_at to stamp, so one issued before the revocation and
+redeemed after it mints tokens the revocation never saw.
+
+RevokeSubject is also the one method here that takes a database.Tx, and the
+asymmetry is the tier boundary rather than an inconsistency. Everything else is
+oauth2server.Store's, so primitives-go fixes the signature and a protocol
+endpoint answering one request is what calls it. RevokeSubject is this module's
+own, so it has this module's shape for a store write: the erasure that ends a
+person's credentials also destroys what was held for them and records that it
+happened, and a revocation that committed on its own would commit those three
+facts one at a time. An operator with nothing to join wraps it in
+database.Client.WithTransaction.
+
 # Four tables
 
 	<prefix>oauth2_clients               registrations, with an optional expiry
@@ -118,11 +142,12 @@ run time, and the pairing between what a SELECT projects and what a Scan reads
 is generated rather than maintained by eye. What this package writes by hand is
 which statements it wants; it writes no SQL.
 
-Nineteen statements for what used to be fifteen builders, and the difference is
-the point rather than an inflation. A builder took the table as an argument, so
-one revocation served the access and refresh tables and one sweep served three —
-which is a statement checked against whichever table the argument happened to
-name. Enumerated, each is checked against the table it actually runs on.
+Twenty-one statements for what used to be fifteen builders, and the difference
+is the point rather than an inflation. A builder took the table as an argument,
+so one revocation served the access and refresh tables and one sweep served
+three — which is a statement checked against whichever table the argument
+happened to name. Enumerated, each is checked against the table it actually runs
+on.
 
 # Timestamps on SQLite
 

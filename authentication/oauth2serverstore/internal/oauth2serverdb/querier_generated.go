@@ -80,6 +80,11 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	RevokeAccessTokenFamily(ctx context.Context, db DBTX, arg RevokeAccessTokenFamilyParams) (int64, error)
+	// RevokeAccessTokenSubject runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	RevokeAccessTokenSubject(ctx context.Context, db DBTX, arg RevokeAccessTokenSubjectParams) (int64, error)
 	// RevokeRefreshToken runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note
@@ -90,6 +95,11 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	RevokeRefreshTokenFamily(ctx context.Context, db DBTX, arg RevokeRefreshTokenFamilyParams) (int64, error)
+	// RevokeRefreshTokenSubject runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	RevokeRefreshTokenSubject(ctx context.Context, db DBTX, arg RevokeRefreshTokenSubjectParams) (int64, error)
 	// SweepAccessTokens runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note

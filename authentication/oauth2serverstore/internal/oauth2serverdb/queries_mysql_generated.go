@@ -205,6 +205,11 @@ const revokeAccessTokenFamilyMySQL = `UPDATE {{prefix}}oauth2_access_tokens SET
 WHERE family_id = ?
 	AND revoked_at IS NULL`
 
+const revokeAccessTokenSubjectMySQL = `UPDATE {{prefix}}oauth2_access_tokens SET
+	revoked_at = ?
+WHERE subject_id = ?
+	AND revoked_at IS NULL`
+
 const revokeRefreshTokenMySQL = `UPDATE {{prefix}}oauth2_refresh_tokens SET
 	revoked_at = ?
 WHERE hash = ?
@@ -213,6 +218,11 @@ WHERE hash = ?
 const revokeRefreshTokenFamilyMySQL = `UPDATE {{prefix}}oauth2_refresh_tokens SET
 	revoked_at = ?
 WHERE family_id = ?
+	AND revoked_at IS NULL`
+
+const revokeRefreshTokenSubjectMySQL = `UPDATE {{prefix}}oauth2_refresh_tokens SET
+	revoked_at = ?
+WHERE subject_id = ?
 	AND revoked_at IS NULL`
 
 const sweepAccessTokensMySQL = `DELETE FROM {{prefix}}oauth2_access_tokens
@@ -230,50 +240,54 @@ WHERE expires_at <= ?`
 
 // mysqlQueries answers every query in Querier against mysql.
 type mysqlQueries struct {
-	consumeAuthorizationCode string
-	consumeRefreshToken      string
-	createAccessToken        string
-	createAuthorizationCode  string
-	createClient             string
-	createRefreshToken       string
-	deleteClient             string
-	getAccessToken           string
-	getAuthorizationCode     string
-	getClient                string
-	getRefreshToken          string
-	revokeAccessToken        string
-	revokeAccessTokenFamily  string
-	revokeRefreshToken       string
-	revokeRefreshTokenFamily string
-	sweepAccessTokens        string
-	sweepAuthorizationCodes  string
-	sweepClients             string
-	sweepRefreshTokens       string
+	consumeAuthorizationCode  string
+	consumeRefreshToken       string
+	createAccessToken         string
+	createAuthorizationCode   string
+	createClient              string
+	createRefreshToken        string
+	deleteClient              string
+	getAccessToken            string
+	getAuthorizationCode      string
+	getClient                 string
+	getRefreshToken           string
+	revokeAccessToken         string
+	revokeAccessTokenFamily   string
+	revokeAccessTokenSubject  string
+	revokeRefreshToken        string
+	revokeRefreshTokenFamily  string
+	revokeRefreshTokenSubject string
+	sweepAccessTokens         string
+	sweepAuthorizationCodes   string
+	sweepClients              string
+	sweepRefreshTokens        string
 }
 
 // newMySQL returns the mysql querier with prefix substituted into every
 // table name the analyzer identified.
 func newMySQL(prefix string) *mysqlQueries {
 	return &mysqlQueries{
-		consumeAuthorizationCode: strings.ReplaceAll(consumeAuthorizationCodeMySQL, prefixMarker, prefix),
-		consumeRefreshToken:      strings.ReplaceAll(consumeRefreshTokenMySQL, prefixMarker, prefix),
-		createAccessToken:        strings.ReplaceAll(createAccessTokenMySQL, prefixMarker, prefix),
-		createAuthorizationCode:  strings.ReplaceAll(createAuthorizationCodeMySQL, prefixMarker, prefix),
-		createClient:             strings.ReplaceAll(createClientMySQL, prefixMarker, prefix),
-		createRefreshToken:       strings.ReplaceAll(createRefreshTokenMySQL, prefixMarker, prefix),
-		deleteClient:             strings.ReplaceAll(deleteClientMySQL, prefixMarker, prefix),
-		getAccessToken:           strings.ReplaceAll(getAccessTokenMySQL, prefixMarker, prefix),
-		getAuthorizationCode:     strings.ReplaceAll(getAuthorizationCodeMySQL, prefixMarker, prefix),
-		getClient:                strings.ReplaceAll(getClientMySQL, prefixMarker, prefix),
-		getRefreshToken:          strings.ReplaceAll(getRefreshTokenMySQL, prefixMarker, prefix),
-		revokeAccessToken:        strings.ReplaceAll(revokeAccessTokenMySQL, prefixMarker, prefix),
-		revokeAccessTokenFamily:  strings.ReplaceAll(revokeAccessTokenFamilyMySQL, prefixMarker, prefix),
-		revokeRefreshToken:       strings.ReplaceAll(revokeRefreshTokenMySQL, prefixMarker, prefix),
-		revokeRefreshTokenFamily: strings.ReplaceAll(revokeRefreshTokenFamilyMySQL, prefixMarker, prefix),
-		sweepAccessTokens:        strings.ReplaceAll(sweepAccessTokensMySQL, prefixMarker, prefix),
-		sweepAuthorizationCodes:  strings.ReplaceAll(sweepAuthorizationCodesMySQL, prefixMarker, prefix),
-		sweepClients:             strings.ReplaceAll(sweepClientsMySQL, prefixMarker, prefix),
-		sweepRefreshTokens:       strings.ReplaceAll(sweepRefreshTokensMySQL, prefixMarker, prefix),
+		consumeAuthorizationCode:  strings.ReplaceAll(consumeAuthorizationCodeMySQL, prefixMarker, prefix),
+		consumeRefreshToken:       strings.ReplaceAll(consumeRefreshTokenMySQL, prefixMarker, prefix),
+		createAccessToken:         strings.ReplaceAll(createAccessTokenMySQL, prefixMarker, prefix),
+		createAuthorizationCode:   strings.ReplaceAll(createAuthorizationCodeMySQL, prefixMarker, prefix),
+		createClient:              strings.ReplaceAll(createClientMySQL, prefixMarker, prefix),
+		createRefreshToken:        strings.ReplaceAll(createRefreshTokenMySQL, prefixMarker, prefix),
+		deleteClient:              strings.ReplaceAll(deleteClientMySQL, prefixMarker, prefix),
+		getAccessToken:            strings.ReplaceAll(getAccessTokenMySQL, prefixMarker, prefix),
+		getAuthorizationCode:      strings.ReplaceAll(getAuthorizationCodeMySQL, prefixMarker, prefix),
+		getClient:                 strings.ReplaceAll(getClientMySQL, prefixMarker, prefix),
+		getRefreshToken:           strings.ReplaceAll(getRefreshTokenMySQL, prefixMarker, prefix),
+		revokeAccessToken:         strings.ReplaceAll(revokeAccessTokenMySQL, prefixMarker, prefix),
+		revokeAccessTokenFamily:   strings.ReplaceAll(revokeAccessTokenFamilyMySQL, prefixMarker, prefix),
+		revokeAccessTokenSubject:  strings.ReplaceAll(revokeAccessTokenSubjectMySQL, prefixMarker, prefix),
+		revokeRefreshToken:        strings.ReplaceAll(revokeRefreshTokenMySQL, prefixMarker, prefix),
+		revokeRefreshTokenFamily:  strings.ReplaceAll(revokeRefreshTokenFamilyMySQL, prefixMarker, prefix),
+		revokeRefreshTokenSubject: strings.ReplaceAll(revokeRefreshTokenSubjectMySQL, prefixMarker, prefix),
+		sweepAccessTokens:         strings.ReplaceAll(sweepAccessTokensMySQL, prefixMarker, prefix),
+		sweepAuthorizationCodes:   strings.ReplaceAll(sweepAuthorizationCodesMySQL, prefixMarker, prefix),
+		sweepClients:              strings.ReplaceAll(sweepClientsMySQL, prefixMarker, prefix),
+		sweepRefreshTokens:        strings.ReplaceAll(sweepRefreshTokensMySQL, prefixMarker, prefix),
 	}
 }
 
@@ -533,6 +547,19 @@ func (q *mysqlQueries) RevokeAccessTokenFamily(ctx context.Context, db DBTX, arg
 	return result.RowsAffected()
 }
 
+// RevokeAccessTokenSubject runs the :execrows query against mysql.
+func (q *mysqlQueries) RevokeAccessTokenSubject(ctx context.Context, db DBTX, arg RevokeAccessTokenSubjectParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.revokeAccessTokenSubject,
+		arg.RevokedAt,
+		arg.SubjectID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // RevokeRefreshToken runs the :execrows query against mysql.
 func (q *mysqlQueries) RevokeRefreshToken(ctx context.Context, db DBTX, arg RevokeRefreshTokenParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.revokeRefreshToken,
@@ -551,6 +578,19 @@ func (q *mysqlQueries) RevokeRefreshTokenFamily(ctx context.Context, db DBTX, ar
 	result, err := db.ExecContext(ctx, q.revokeRefreshTokenFamily,
 		arg.RevokedAt,
 		arg.FamilyID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// RevokeRefreshTokenSubject runs the :execrows query against mysql.
+func (q *mysqlQueries) RevokeRefreshTokenSubject(ctx context.Context, db DBTX, arg RevokeRefreshTokenSubjectParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.revokeRefreshTokenSubject,
+		arg.RevokedAt,
+		arg.SubjectID,
 	)
 	if err != nil {
 		return 0, err
@@ -755,12 +795,20 @@ var (
 	}(RevokeAccessTokenFamilyParams{})
 	_ = struct {
 		RevokedAt *time.Time
+		SubjectID string
+	}(RevokeAccessTokenSubjectParams{})
+	_ = struct {
+		RevokedAt *time.Time
 		Hash      string
 	}(RevokeRefreshTokenParams{})
 	_ = struct {
 		RevokedAt *time.Time
 		FamilyID  string
 	}(RevokeRefreshTokenFamilyParams{})
+	_ = struct {
+		RevokedAt *time.Time
+		SubjectID string
+	}(RevokeRefreshTokenSubjectParams{})
 	_ = struct {
 		Now time.Time
 	}(SweepAccessTokensParams{})
