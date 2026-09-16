@@ -50,6 +50,14 @@ most worth making remotely and on a schedule, which is why
 content, so a monitor that pages somebody when a chain breaks need not also be a
 reader of what everybody did.
 
+Because it is the scheduled call, it is also the one whose cost the server
+bounds. Both ends of a VerifyChainRequest's window are optional, so a request
+naming neither asks for a scope's whole history; the reader walks it in pages
+and stops at its configured verification ceiling, reporting last_seq and
+complete. A client that wants the rest sends the same window again with
+after_seq set to that last_seq, and the server checks the link across the seam
+like any other — see audit.SQLReader.Verify.
+
 # Errors
 
 A method here hands the reader's error back with a default code and does not

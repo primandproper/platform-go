@@ -67,7 +67,7 @@ func Example() {
 		panic(err)
 	}
 
-	result, err := reader.Verify(ctx, tenancy.Of(after.OwnerID), time.Time{}, time.Time{})
+	result, err := reader.Verify(ctx, tenancy.Of(after.OwnerID), time.Time{}, time.Time{}, audit.ChainStart)
 	if err != nil {
 		panic(err)
 	}

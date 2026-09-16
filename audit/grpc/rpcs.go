@@ -113,6 +113,13 @@ func (s *Server) ListEntries(
 // A break is an ordinary response rather than an error status. It is a finding
 // about the data and not a failure to answer the question — audit.ErrChainBroken
 // exists for a caller escalating one, and is deliberately not what this returns.
+//
+// One call walks as much of the chain as the reader's verification ceiling
+// allows and says where it stopped, which is what makes the scheduled use safe
+// to expose: both ends of the window are optional here, so a request naming
+// neither asks for a scope's whole history. A client that wants all of it sends
+// the same window again with after_seq set to the previous response's last_seq,
+// and the server checks the link across that seam like any other.
 func (s *Server) VerifyChain(
 	ctx context.Context,
 	request *auditpb.VerifyChainRequest,
@@ -124,7 +131,16 @@ func (s *Server) VerifyChain(
 
 	defer func() { done(err) }()
 
-	result, err := s.reader.Verify(ctx, req.scope, timeFromProto(request.GetFrom()), timeFromProto(request.GetTo()))
+	// An absent after_seq is audit.ChainStart rather than the zero GetAfterSeq
+	// would hand back, because 0 is a position a chain actually holds — its
+	// first — and reading an unset field as it would skip the genesis entry of
+	// every chain this surface ever verified.
+	afterSeq := audit.ChainStart
+	if request.AfterSeq != nil {
+		afterSeq = request.GetAfterSeq()
+	}
+
+	result, err := s.reader.Verify(ctx, req.scope, timeFromProto(request.GetFrom()), timeFromProto(request.GetTo()), afterSeq)
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "verifying an audit chain")
 	}

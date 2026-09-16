@@ -632,8 +632,30 @@ type VerificationResult struct {
 	// breaks after the first says how long the chain is, not how much of it was
 	// tampered with.
 	FirstBreak *Break `protobuf:"bytes,3,opt,name=first_break,json=firstBreak,proto3" json:"first_break,omitempty"`
-	// checked is how many entries were walked.
-	Checked       int64 `protobuf:"varint,4,opt,name=checked,proto3" json:"checked,omitempty"`
+	// checked is how many entries were walked. A walk that stopped at a break
+	// counts the entries it examined, the breaking one included, and not the rows
+	// behind it that it never reached.
+	Checked int64 `protobuf:"varint,4,opt,name=checked,proto3" json:"checked,omitempty"`
+	// last_seq is the position of the last entry this call verified, and what a
+	// request continuing this one sends as after_seq.
+	//
+	// A call that verified nothing -- an empty scope, an empty window, a break on
+	// the first entry it read -- reports the position it started past, so
+	// resuming from it asks the same question again rather than starting over.
+	LastSeq int64 `protobuf:"varint,5,opt,name=last_seq,json=lastSeq,proto3" json:"last_seq,omitempty"`
+	// complete reports whether the walk reached the end of the window.
+	//
+	// It is false where the walk stopped early: at the server's verification
+	// ceiling, or at a break. Resume where it is false and first_break is absent,
+	// by sending the same window again with after_seq set to last_seq.
+	//
+	// It is not the "intact" boolean this message refuses, which is why both can
+	// be here. That one would restate first_break and could contradict it; this
+	// one says something first_break cannot -- that a chain is intact as far as
+	// one call looked and holds entries nobody has checked. A scheduled
+	// verification that could not tell that from a clean bill would report a log
+	// as evidence on the strength of its first page or two.
+	Complete      bool `protobuf:"varint,6,opt,name=complete,proto3" json:"complete,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -694,6 +716,20 @@ func (x *VerificationResult) GetChecked() int64 {
 		return x.Checked
 	}
 	return 0
+}
+
+func (x *VerificationResult) GetLastSeq() int64 {
+	if x != nil {
+		return x.LastSeq
+	}
+	return 0
+}
+
+func (x *VerificationResult) GetComplete() bool {
+	if x != nil {
+		return x.Complete
+	}
+	return false
 }
 
 type GetEntryRequest struct {
@@ -894,8 +930,22 @@ type VerifyChainRequest struct {
 	// unbounded, and a bound one is exclusive at both ends -- the same reading
 	// the window on a ListEntries filter has, since the two ask the same question
 	// of the same column.
-	From          *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
-	To            *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
+	From *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=from,proto3" json:"from,omitempty"`
+	To   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=to,proto3" json:"to,omitempty"`
+	// after_seq is the chain position the walk starts past: absent to walk from
+	// the beginning of the range, or a previous response's last_seq to continue
+	// where it stopped.
+	//
+	// It is optional rather than defaulted, because 0 is a real position -- the
+	// one a scope's first entry takes -- and an absent field that read as 0 would
+	// quietly skip the genesis entry of every chain, which is the one link a
+	// forged log has to reproduce.
+	//
+	// The link across the seam is checked like any other: the server re-reads the
+	// entry at this position to learn what the next one must link to, rather than
+	// trusting the first row it reads. A resumed verification that trusted it
+	// would have a hole at exactly the position a client could choose.
+	AfterSeq      *int64 `protobuf:"varint,3,opt,name=after_seq,json=afterSeq,proto3,oneof" json:"after_seq,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -942,6 +992,13 @@ func (x *VerifyChainRequest) GetTo() *timestamppb.Timestamp {
 		return x.To
 	}
 	return nil
+}
+
+func (x *VerifyChainRequest) GetAfterSeq() int64 {
+	if x != nil && x.AfterSeq != nil {
+		return *x.AfterSeq
+	}
+	return 0
 }
 
 type VerifyChainResponse struct {
@@ -1037,13 +1094,15 @@ const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
 	"\x06reason\x18\x02 \x01(\x0e2,.primandproper.platform.audit.v1.BreakReasonR\x06reason\x12\x1a\n" +
 	"\bexpected\x18\x03 \x01(\tR\bexpected\x12\x16\n" +
 	"\x06actual\x18\x04 \x01(\tR\x06actual\x12\x10\n" +
-	"\x03seq\x18\x05 \x01(\x03R\x03seq\"\xda\x01\n" +
+	"\x03seq\x18\x05 \x01(\x03R\x03seq\"\x91\x02\n" +
 	"\x12VerificationResult\x12.\n" +
 	"\x04from\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x12*\n" +
 	"\x02to\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02to\x12G\n" +
 	"\vfirst_break\x18\x03 \x01(\v2&.primandproper.platform.audit.v1.BreakR\n" +
 	"firstBreak\x12\x18\n" +
-	"\achecked\x18\x04 \x01(\x03R\acheckedR\x05scope\"3\n" +
+	"\achecked\x18\x04 \x01(\x03R\achecked\x12\x19\n" +
+	"\blast_seq\x18\x05 \x01(\x03R\alastSeq\x12\x1a\n" +
+	"\bcomplete\x18\x06 \x01(\bR\bcompleteR\x05scope\"3\n" +
 	"\x0fGetEntryRequest\x12\x19\n" +
 	"\bentry_id\x18\x01 \x01(\tR\aentryIDR\x05scope\"P\n" +
 	"\x10GetEntryResponse\x12<\n" +
@@ -1055,10 +1114,13 @@ const file_primandproper_platform_audit_v1_audit_proto_rawDesc = "" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12@\n" +
-	"\aresults\x18\x02 \x03(\v2&.primandproper.platform.audit.v1.EntryR\aresults\"w\n" +
+	"\aresults\x18\x02 \x03(\v2&.primandproper.platform.audit.v1.EntryR\aresults\"\xa7\x01\n" +
 	"\x12VerifyChainRequest\x12.\n" +
 	"\x04from\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x12*\n" +
-	"\x02to\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02toR\x05scope\"b\n" +
+	"\x02to\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x02to\x12 \n" +
+	"\tafter_seq\x18\x03 \x01(\x03H\x00R\bafterSeq\x88\x01\x01B\f\n" +
+	"\n" +
+	"_after_seqR\x05scope\"b\n" +
 	"\x13VerifyChainResponse\x12K\n" +
 	"\x06result\x18\x01 \x01(\v23.primandproper.platform.audit.v1.VerificationResultR\x06result*\x8d\x01\n" +
 	"\vBreakReason\x12\x1c\n" +
@@ -1144,6 +1206,7 @@ func file_primandproper_platform_audit_v1_audit_proto_init() {
 	if File_primandproper_platform_audit_v1_audit_proto != nil {
 		return
 	}
+	file_primandproper_platform_audit_v1_audit_proto_msgTypes[10].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

@@ -277,6 +277,41 @@ func TestServer_VerifyChain(T *testing.T) {
 		test.Nil(t, theirsResponse.GetResult().GetFirstBreak())
 	})
 
+	// The pair that pins why after_seq is optional rather than defaulted. An
+	// absent field walks from the start; a present zero starts past position
+	// zero, which is a position every chain has — its first. Read the absent
+	// field as the zero it decodes to and every chain this surface verifies
+	// would have its genesis entry checked by nobody.
+	T.Run("walks from the start when no position is named", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		response, err := h.client.VerifyChain(h.asOurs(), &auditpb.VerifyChainRequest{})
+		must.NoError(t, err)
+
+		result := response.GetResult()
+		test.EqOp(t, int64(1), result.GetChecked())
+		test.EqOp(t, int64(0), result.GetLastSeq())
+		test.True(t, result.GetComplete())
+	})
+
+	T.Run("resumes past the position it is given", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		response, err := h.client.VerifyChain(h.asOurs(), &auditpb.VerifyChainRequest{
+			AfterSeq: pointer.To(int64(0)),
+		})
+		must.NoError(t, err)
+
+		result := response.GetResult()
+		test.EqOp(t, int64(0), result.GetChecked())
+		test.EqOp(t, int64(0), result.GetLastSeq())
+		test.True(t, result.GetComplete())
+	})
+
 	T.Run("carries the window back as it was given", func(t *testing.T) {
 		t.Parallel()
 

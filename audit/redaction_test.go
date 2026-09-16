@@ -231,7 +231,7 @@ func TestRedaction(T *testing.T) {
 			},
 		})
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	})

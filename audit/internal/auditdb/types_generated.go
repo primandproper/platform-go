@@ -161,6 +161,8 @@ type ListAuditChainEntriesParams struct {
 	Scope          tenancy.Scope
 	RecordedAfter  *time.Time
 	RecordedBefore *time.Time
+	AfterSeq       int64
+	ResultLimit    int64
 }
 
 // ListAuditChainEntriesRow is one row of ListAuditChainEntries's result.

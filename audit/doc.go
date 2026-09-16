@@ -68,6 +68,26 @@ self-contained can. The answer to that is to publish head hashes somewhere the
 database's owner does not control; Record writes each entry's Hash back into the
 value you passed, which is what you would publish.
 
+# Verification is paged, and one call is bounded
+
+A verification reads every entry in its range in full — change-set and metadata
+blobs included, because the hash is taken over the bytes as stored — so the
+range a caller is entitled to ask for is a cost this package has to bound rather
+than assume. It walks in pages over the (scope, seq) index, carrying the
+predecessor's hash and the expected position across each page boundary, so the
+seam between two pages is checked like every other link and the process holds
+one page at a time however long the chain is.
+
+One call is bounded twice over. WithVerificationPageSize is how much is in
+memory at once; WithVerificationCeiling is how much one call walks before it
+stops and says where. A result carries LastSeq and Complete for that: a caller
+walking a chain longer than the ceiling loops while the result is intact and
+incomplete, passing LastSeq back as the next call's afterSeq, and ChainStart is
+what the first call passes. Complete is the field that keeps "this chain is
+intact" and "this chain is intact as far as I looked" apart, which matters most
+on the wire, where audit/grpc exposes the walk with both ends of the window
+optional.
+
 # The scope is one thing, read two ways
 
 An entry's scope is the chain's partition and it is a tenancy.Scope, and those

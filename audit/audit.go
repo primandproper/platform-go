@@ -41,6 +41,9 @@ const (
 	actorTypeKey    = "audit.actor_type"
 	checkedKey      = "audit.checked"
 	intactKey       = "audit.intact"
+	completeKey     = "audit.complete"
+	afterSeqKey     = "audit.after_seq"
+	lastSeqKey      = "audit.last_seq"
 	breakReasonKey  = "audit.break_reason"
 )
 

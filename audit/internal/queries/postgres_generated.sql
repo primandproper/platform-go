@@ -133,7 +133,9 @@ FROM audit_log_entries
 WHERE audit_log_entries.scope = sqlc.arg(scope)
 	AND audit_log_entries.recorded_at > COALESCE(sqlc.narg(recorded_after), (SELECT CURRENT_TIMESTAMP - '999 years'::INTERVAL))
 	AND audit_log_entries.recorded_at < COALESCE(sqlc.narg(recorded_before), (SELECT CURRENT_TIMESTAMP + '999 years'::INTERVAL))
-ORDER BY audit_log_entries.seq;
+	AND audit_log_entries.seq > sqlc.arg(after_seq)
+ORDER BY audit_log_entries.seq
+LIMIT COALESCE(sqlc.narg(result_limit), 50);
 
 -- name: ListAuditLogEntries :many
 SELECT

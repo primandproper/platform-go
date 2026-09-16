@@ -64,10 +64,10 @@ func (e *dialectEnv) recorder(t *testing.T, c *stubClock, prefix string, opts ..
 }
 
 // reader builds a Reader bound to the supplied prefix.
-func (e *dialectEnv) reader(t *testing.T, prefix string) Reader {
+func (e *dialectEnv) reader(t *testing.T, prefix string, opts ...ReaderOption) Reader {
 	t.Helper()
 
-	r, err := NewReader(e.client, WithReaderTablePrefix(prefix))
+	r, err := NewReader(e.client, append([]ReaderOption{WithReaderTablePrefix(prefix)}, opts...)...)
 	must.NoError(t, err)
 
 	return r
@@ -126,10 +126,50 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			return recorder.Record(t.Context(), q, first, second)
 		}))
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 2, result.Checked)
+	})
+
+	// The page size is the one argument whose spelling a dialect changes:
+	// Postgres and SQLite take an expression in LIMIT, MySQL takes a bare
+	// marker and nothing else, so on MySQL it is positional and the statement
+	// has to place it last. A walk that paged wrongly there would bind the page
+	// size against a predicate — which is a wrong answer rather than an error,
+	// and the reason this is executed against a real server rather than
+	// rendered and read.
+	t.Run("verifies a chain longer than one page", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		prefix := env.newPrefix(t)
+		recorder := env.recorder(t, c, prefix)
+		reader := env.reader(t, prefix, WithVerificationPageSize(2))
+
+		entries := make([]*Entry, 0, 5)
+		for i := range 5 {
+			entries = append(entries, entryFor(tenancy.Of("acct_1"), fmt.Sprintf("r%d", i)))
+		}
+
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return recorder.Record(t.Context(), q, entries...)
+		}))
+
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		must.NoError(t, err)
+		test.True(t, result.Intact())
+		test.True(t, result.Complete)
+		test.EqOp(t, 5, result.Checked)
+		test.EqOp(t, int64(4), result.LastSeq)
+
+		// And the same chain walked from the middle, which is what a caller
+		// resuming an incomplete verification sends.
+		resumed, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, 2)
+		must.NoError(t, err)
+		test.True(t, resumed.Intact())
+		test.True(t, resumed.Complete)
+		test.EqOp(t, 2, resumed.Checked)
 	})
 
 	t.Run("round-trips the timestamp the digest is taken over", func(t *testing.T) {
@@ -154,7 +194,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		must.NoError(t, err)
 		test.EqOp(t, entry.RecordedAt, read.RecordedAt)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	})
@@ -200,7 +240,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			"somebody_else", second.ID)
 		must.NoError(t, err)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		must.False(t, result.Intact())
 		test.EqOp(t, BreakContentAltered, result.FirstBreak.Reason)
@@ -257,7 +297,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		// between dialects.
 		test.EqOp(t, int64(1), env.prune(t, c, prefix, time.Hour))
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 1, result.Checked)
@@ -323,7 +363,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		test.EqOp(t, 3, countRows(t, env.client, prefix+"_audit_log_entries", "scope = 'acct_9'"))
 		test.EqOp(t, 1, countRows(t, env.client, prefix+"_audit_log_chains", "scope = 'acct_9'"))
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_9"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_9"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact(), test.Sprintf("break: %+v", result.FirstBreak))
 		test.EqOp(t, 3, result.Checked)
@@ -336,7 +376,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("user_1"), "r5"))
 		}))
 
-		result, err = reader.Verify(t.Context(), tenancy.Of("user_1"), time.Time{}, time.Time{})
+		result, err = reader.Verify(t.Context(), tenancy.Of("user_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact(), test.Sprintf("break: %+v", result.FirstBreak))
 		test.EqOp(t, 1, result.Checked)
@@ -368,7 +408,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			must.NoError(t, <-errs)
 		}
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, writers, result.Checked)
@@ -532,7 +572,7 @@ func TestAudit_MigratorIntegration_Containers(T *testing.T) {
 			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "r1"))
 		}))
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	}

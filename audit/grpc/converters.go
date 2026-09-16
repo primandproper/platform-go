@@ -306,6 +306,11 @@ func BreakFromProto(in *auditpb.Break) *audit.Break {
 // Intact is not carried. It is a method on the Go type rather than a field so
 // that it cannot disagree with FirstBreak, and a bool on the message would be
 // exactly the field that can — a report calling a broken log clean.
+//
+// Complete is carried, and is the other bool. It says what FirstBreak cannot:
+// that the walk stopped before the end of the window with the chain still
+// intact, which is the state a server's verification ceiling leaves behind.
+// LastSeq is where it stopped, and what a client sends back as after_seq.
 func VerificationResultToProto(in *audit.VerificationResult) *auditpb.VerificationResult {
 	if in == nil {
 		return nil
@@ -316,6 +321,8 @@ func VerificationResultToProto(in *audit.VerificationResult) *auditpb.Verificati
 		To:         timeToProto(in.To),
 		FirstBreak: BreakToProto(in.FirstBreak),
 		Checked:    in.Checked,
+		LastSeq:    in.LastSeq,
+		Complete:   in.Complete,
 	}
 }
 
@@ -335,5 +342,7 @@ func VerificationResultFromProto(in *auditpb.VerificationResult) *audit.Verifica
 		To:         timeFromProto(in.GetTo()),
 		FirstBreak: BreakFromProto(in.GetFirstBreak()),
 		Checked:    in.GetChecked(),
+		LastSeq:    in.GetLastSeq(),
+		Complete:   in.GetComplete(),
 	}
 }

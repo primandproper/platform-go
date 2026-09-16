@@ -156,7 +156,9 @@ FROM {{prefix}}audit_log_entries
 WHERE {{prefix}}audit_log_entries.scope = ?
 	AND {{prefix}}audit_log_entries.recorded_at > COALESCE(?, (SELECT CURRENT_TIMESTAMP - INTERVAL 999 YEAR))
 	AND {{prefix}}audit_log_entries.recorded_at < COALESCE(?, (SELECT CURRENT_TIMESTAMP + INTERVAL 999 YEAR))
-ORDER BY {{prefix}}audit_log_entries.seq`
+	AND {{prefix}}audit_log_entries.seq > ?
+ORDER BY {{prefix}}audit_log_entries.seq
+LIMIT ?`
 
 const listAuditLogEntriesMySQL = `SELECT
 	{{prefix}}audit_log_entries.id,
@@ -575,6 +577,8 @@ func (q *mysqlQueries) ListAuditChainEntries(ctx context.Context, db DBTX, arg L
 		arg.Scope,
 		arg.RecordedAfter,
 		arg.RecordedBefore,
+		arg.AfterSeq,
+		arg.ResultLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -1024,6 +1028,8 @@ var (
 		Scope          tenancy.Scope
 		RecordedAfter  *time.Time
 		RecordedBefore *time.Time
+		AfterSeq       int64
+		ResultLimit    int64
 	}(ListAuditChainEntriesParams{})
 	_ = struct {
 		ID           string

@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -343,7 +344,7 @@ func TestReader_Verify(T *testing.T) {
 			entryFor(tenancy.Of("acct_1"), "recipe_3"),
 		)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 3, result.Checked)
@@ -355,7 +356,7 @@ func TestReader_Verify(T *testing.T) {
 
 		reader := newTestReader(t, newTestClient(t))
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_nobody"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_nobody"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 0, result.Checked)
@@ -376,7 +377,7 @@ func TestReader_Verify(T *testing.T) {
 		exec(t, client,
 			"UPDATE audit_log_entries SET actor_id = 'somebody_else' WHERE id = ?", second.ID)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		must.False(t, result.Intact())
 		test.EqOp(t, BreakContentAltered, result.FirstBreak.Reason)
@@ -397,7 +398,7 @@ func TestReader_Verify(T *testing.T) {
 		exec(t, client,
 			"UPDATE audit_log_entries SET prev_hash = '00' WHERE id = ?", second.ID)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		must.False(t, result.Intact())
 		test.EqOp(t, BreakLinkMismatch, result.FirstBreak.Reason)
@@ -417,7 +418,7 @@ func TestReader_Verify(T *testing.T) {
 
 		exec(t, client, "DELETE FROM audit_log_entries WHERE id = ?", second.ID)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		must.False(t, result.Intact())
 		test.EqOp(t, BreakMissingEntry, result.FirstBreak.Reason)
@@ -438,7 +439,7 @@ func TestReader_Verify(T *testing.T) {
 		// explain the gap — which is what distinguishes this from retention.
 		exec(t, client, "DELETE FROM audit_log_entries WHERE id = ?", first.ID)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		must.False(t, result.Intact())
 		test.EqOp(t, BreakMissingEntry, result.FirstBreak.Reason)
@@ -466,7 +467,7 @@ func TestReader_Verify(T *testing.T) {
 		// anchor the second — and still verifies cleanly. The lower bound is
 		// exclusive, like the filter window a List takes, so it is set just
 		// short of the entry it means to admit.
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), middle.RecordedAt.Add(-time.Second), time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), middle.RecordedAt.Add(-time.Second), time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 2, result.Checked)
@@ -487,7 +488,7 @@ func TestReader_Verify(T *testing.T) {
 		// table.
 		exec(t, client, "DELETE FROM audit_log_chains WHERE scope = 'acct_1'")
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	})
@@ -505,7 +506,7 @@ func TestReader_Verify(T *testing.T) {
 		// rather than resolved to the global chain — which is what the string
 		// this parameter used to be would have done, silently, and reported a
 		// clean result for a log nobody had checked.
-		result, err := reader.Verify(t.Context(), tenancy.Scope{}, time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Scope{}, time.Time{}, time.Time{}, ChainStart)
 		test.ErrorIs(t, err, tenancy.ErrNoScope)
 		test.Nil(t, result)
 	})
@@ -522,7 +523,7 @@ func TestReader_Verify(T *testing.T) {
 		// matches only itself, so the tenant's entry below is not in it.
 		record(t, client, recorder, entryFor(tenancy.Global(), "platform_1"), entryFor(tenancy.Of("acct_1"), "recipe_1"))
 
-		result, err := reader.Verify(t.Context(), tenancy.Global(), time.Time{}, time.Time{})
+		result, err := reader.Verify(t.Context(), tenancy.Global(), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 1, result.Checked)
@@ -542,13 +543,225 @@ func TestReader_Verify(T *testing.T) {
 		exec(t, client,
 			"UPDATE audit_log_entries SET resource_id = 'tampered' WHERE id = ?", theirs.ID)
 
-		mineResult, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{})
+		mineResult, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, mineResult.Intact())
 
-		theirsResult, err := reader.Verify(t.Context(), tenancy.Of("acct_2"), time.Time{}, time.Time{})
+		theirsResult, err := reader.Verify(t.Context(), tenancy.Of("acct_2"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.False(t, theirsResult.Intact())
+	})
+}
+
+// chainOf records n entries into one scope and returns them in the order they
+// took their positions, so a test can name the entry sitting at a position a
+// page boundary falls on.
+func chainOf(t *testing.T, client database.Client, r Recorder, scope tenancy.Scope, n int) []*Entry {
+	t.Helper()
+
+	entries := make([]*Entry, 0, n)
+	for i := range n {
+		entries = append(entries, entryFor(scope, fmt.Sprintf("r%d", i)))
+	}
+
+	record(t, client, r, entries...)
+
+	return entries
+}
+
+func TestReader_Verify_paging(T *testing.T) {
+	T.Parallel()
+
+	T.Run("walks a chain longer than one page", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client, WithVerificationPageSize(2))
+
+		chainOf(t, client, recorder, tenancy.Of("acct_1"), 5)
+
+		// Three reads rather than one, and the answer is the answer the
+		// single-statement walk gave: every entry checked, the chain intact
+		// through both page boundaries, and the last position reported.
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		must.NoError(t, err)
+		test.True(t, result.Intact())
+		test.True(t, result.Complete)
+		test.EqOp(t, 5, result.Checked)
+		test.EqOp(t, int64(4), result.LastSeq)
+	})
+
+	T.Run("carries the expected position across a page boundary", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client, WithVerificationPageSize(2))
+
+		entries := chainOf(t, client, recorder, tenancy.Of("acct_1"), 5)
+
+		// Position 2 is the first entry of the second page. A walk that read
+		// each page's expectations off that page's first row would find a
+		// perfectly consistent run starting at position 3 and call it clean —
+		// which is a deletion at a position an attacker gets to choose.
+		exec(t, client, "DELETE FROM audit_log_entries WHERE id = ?", entries[2].ID)
+
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		must.NoError(t, err)
+		must.False(t, result.Intact())
+		test.EqOp(t, BreakMissingEntry, result.FirstBreak.Reason)
+		test.EqOp(t, int64(2), result.FirstBreak.Seq)
+		test.False(t, result.Complete)
+	})
+
+	T.Run("carries the expected hash across a page boundary", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client, WithVerificationPageSize(2))
+
+		entries := chainOf(t, client, recorder, tenancy.Of("acct_1"), 4)
+
+		exec(t, client, "UPDATE audit_log_entries SET prev_hash = '00' WHERE id = ?", entries[2].ID)
+
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		must.NoError(t, err)
+		must.False(t, result.Intact())
+		test.EqOp(t, BreakLinkMismatch, result.FirstBreak.Reason)
+		test.EqOp(t, entries[1].Hash, result.FirstBreak.Expected)
+		test.EqOp(t, "00", result.FirstBreak.Actual)
+	})
+
+	T.Run("stops at the ceiling and says where", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client, WithVerificationPageSize(2), WithVerificationCeiling(3))
+
+		chainOf(t, client, recorder, tenancy.Of("acct_1"), 7)
+
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		must.NoError(t, err)
+
+		// Intact and incomplete, which is the pair the ceiling exists to make
+		// spellable: the chain held together as far as this call looked, and
+		// four entries behind it have been checked by nobody.
+		test.True(t, result.Intact())
+		test.False(t, result.Complete)
+		test.EqOp(t, 3, result.Checked)
+		test.EqOp(t, int64(2), result.LastSeq)
+	})
+
+	T.Run("resumes from the position it stopped at", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client, WithVerificationPageSize(2), WithVerificationCeiling(3))
+
+		chainOf(t, client, recorder, tenancy.Of("acct_1"), 7)
+
+		var (
+			checked int64
+			result  *VerificationResult
+			err     error
+		)
+
+		// The loop a scheduled verification runs: walk, and while the chain is
+		// intact and there is more of it, walk again from where the last call
+		// stopped. Bounded at three calls so a walk that failed to advance
+		// fails the test rather than hanging it.
+		after := ChainStart
+		for range 4 {
+			result, err = reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, after)
+			must.NoError(t, err)
+			must.True(t, result.Intact())
+
+			checked += result.Checked
+			after = result.LastSeq
+
+			if result.Complete {
+				break
+			}
+		}
+
+		test.True(t, result.Complete)
+		test.EqOp(t, 7, checked)
+		test.EqOp(t, int64(6), result.LastSeq)
+	})
+
+	T.Run("checks the link at the position it resumes from", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client)
+
+		entries := chainOf(t, client, recorder, tenancy.Of("acct_1"), 4)
+
+		// The entry a resumed walk reads first. Trusting it because it is the
+		// first row of the call would leave a hole at exactly the position the
+		// caller resumed from, which is the position a client chooses.
+		exec(t, client, "UPDATE audit_log_entries SET prev_hash = '00' WHERE id = ?", entries[2].ID)
+
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, 1)
+		must.NoError(t, err)
+		must.False(t, result.Intact())
+		test.EqOp(t, BreakLinkMismatch, result.FirstBreak.Reason)
+		test.EqOp(t, int64(2), result.FirstBreak.Seq)
+		test.EqOp(t, entries[1].Hash, result.FirstBreak.Expected)
+	})
+
+	T.Run("resuming past the head reports a complete walk of nothing", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client)
+
+		chainOf(t, client, recorder, tenancy.Of("acct_1"), 3)
+
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, 2)
+		must.NoError(t, err)
+		test.True(t, result.Intact())
+		test.True(t, result.Complete)
+		test.EqOp(t, 0, result.Checked)
+
+		// The position it was told to start past, so a caller that resumes from
+		// it again asks the same question rather than starting the walk over.
+		test.EqOp(t, int64(2), result.LastSeq)
+	})
+
+	T.Run("a lifted ceiling walks the whole chain in one call", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		recorder := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client, WithVerificationPageSize(2), WithVerificationCeiling(0))
+
+		chainOf(t, client, recorder, tenancy.Of("acct_1"), 9)
+
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		must.NoError(t, err)
+		test.True(t, result.Intact())
+		test.True(t, result.Complete)
+		test.EqOp(t, 9, result.Checked)
+	})
+
+	T.Run("an empty scope completes at the position it started past", func(t *testing.T) {
+		t.Parallel()
+
+		reader := newTestReader(t, newTestClient(t))
+
+		result, err := reader.Verify(t.Context(), tenancy.Of("acct_nobody"), time.Time{}, time.Time{}, ChainStart)
+		must.NoError(t, err)
+		test.True(t, result.Intact())
+		test.True(t, result.Complete)
+		test.EqOp(t, 0, result.Checked)
+		test.EqOp(t, ChainStart, result.LastSeq)
 	})
 }
 

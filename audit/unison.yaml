@@ -42,6 +42,10 @@ options:
     - {column: "*.pruned_through_seq", go_type: int64}
     - {column: "*.boundary", go_type: int64}
     - {column: "*.through_seq", go_type: int64}
+    # The verification page's cursor: the position the page starts past. Named
+    # apart from the column it is compared against, because two of the three
+    # engines resolve no type for it on their own.
+    - {column: "*.after_seq", go_type: int64}
     # The two aggregates the prune bounds project. Each is NULL for a scope
     # holding nothing that answers it — a scope with no entries at all, or one
     # whose entries are all past the horizon — and that is the reading the

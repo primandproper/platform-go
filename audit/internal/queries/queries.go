@@ -237,6 +237,19 @@ const (
 	// created_after would be naming a field the caller never filled in.
 	RecordedAfterArg  = "recorded_after"
 	RecordedBeforeArg = "recorded_before"
+	// AfterSeqArg is the chain position a verification's page starts past. It is
+	// a position rather than a time because the walk is ordered by position: the
+	// clock a caller stamps an entry with is not monotonic and two entries can
+	// share it, so a page resumed from a timestamp would sometimes skip an entry
+	// or hand the walk a pair in the wrong order.
+	//
+	// It is bound rather than optional, and -1 is what a walk starting at the
+	// beginning passes. That is not a sentinel a caller had to be told: the
+	// chains table defaults head_seq and pruned_through_seq to -1 for exactly
+	// this reading — a chain that has issued nothing — and the first entry a
+	// scope records takes position 0. See audit.ChainStart, which is the name
+	// the value carries outside this package.
+	AfterSeqArg = "after_seq"
 )
 
 // The aliases the aggregate read projects. They are spelled here because the
@@ -515,8 +528,8 @@ func selectors() []querygen.Match {
 	return matches
 }
 
-// chainRangeQuery renders a verification's walk: one scope's entries within a
-// time window, in chain order.
+// chainRangeQuery renders one page of a verification's walk: one scope's
+// entries within a time window, in chain order, from a position onwards.
 //
 // Ordered by seq rather than recorded_at, and the two are not interchangeable.
 // The chain is defined by position, and two entries can share a timestamp — the
@@ -524,23 +537,47 @@ func selectors() []querygen.Match {
 // at once — so ordering by time would sometimes hand the walk a pair in the
 // wrong order and report an intact chain as broken.
 //
-// It takes no page size, which is the one read here that does not. A
-// verification that stopped at a page boundary would report the chain intact as
-// far as it looked, which is the answer nobody asked for; the range is the
-// caller's bound, and the window is how they set it.
+// It is a page rather than the whole range, and that is the one thing about
+// this statement worth arguing. A verification materializes every row it reads,
+// change-set and metadata blobs included, and re-hashes it; the range a caller
+// is entitled to ask for is a scope's whole history, which the default
+// retention window puts at seven years. The read that answered it in one
+// statement was a read whose memory was a consumer's row count, and the RPC in
+// audit/grpc exposes it remotely with both ends of the window optional.
+//
+// What makes the page safe is the keyset it advances on. The cursor is the
+// position of the last entry the previous page verified, compared against the
+// same (scope, seq) index the ordering is served by, so a page cannot skip an
+// entry or repeat one however many rows were appended while the walk ran. And
+// the walk carries the predecessor's hash across the boundary, so the chain is
+// checked through the seam rather than restarted at it — which is what a paged
+// verification has to get right to mean anything.
+//
+// The LIMIT is last, because MySQL takes a bare marker there and a bare marker
+// is positional.
 func chainRangeQuery(g *querygen.Generator) *querygen.Query {
 	predicates := slices.Concat(
 		g.MatchConditions(EntriesTable, scopeMatch()),
 		entryWindow(g, RecordedAfterArg, RecordedBeforeArg),
+		g.MatchConditions(EntriesTable, querygen.Match{
+			Column: SeqColumn,
+			// "Strictly above the cursor", which is AtMostArgument complemented
+			// — the same spelling the retention sweep's scope cursor uses, over
+			// a position instead of a scope.
+			Against: querygen.AtMostArgument,
+			Arg:     AfterSeqArg,
+			Exclude: true,
+		}),
 	)
 
 	return &querygen.Query{
 		Annotation: querygen.QueryAnnotation{Name: ListChainEntriesQuery, Type: querygen.ManyType},
-		Content: fmt.Sprintf("SELECT\n\t%s\nFROM %s\nWHERE %s\nORDER BY %s;",
+		Content: fmt.Sprintf("SELECT\n\t%s\nFROM %s\nWHERE %s\nORDER BY %s\n%s;",
 			strings.Join(querygen.QualifyAll(EntriesTable, EntryColumns), ",\n\t"),
 			EntriesTable,
 			strings.Join(predicates, "\n\tAND "),
 			querygen.Qualify(EntriesTable, SeqColumn),
+			g.LimitClause(),
 		),
 	}
 }

@@ -144,6 +144,49 @@ func scopeFilter(scope *tenancy.Scope) *string {
 	return &owner
 }
 
+// ChainStart is the position a verification walks from when it is not
+// continuing an earlier one: the position before a chain's first entry.
+//
+// It is -1 rather than 0 because 0 is a real position — the one a scope's first
+// entry takes — and a walk starting past it would skip the genesis entry, which
+// is the one link a forged chain has to reproduce. The value is the schema's
+// own reading rather than a number invented for this argument:
+// audit_log_chains defaults head_seq and pruned_through_seq to -1, meaning a
+// chain that has issued nothing and lost nothing.
+//
+// Pass VerificationResult.LastSeq in its place to continue a verification that
+// did not complete.
+const ChainStart int64 = -1
+
+const (
+	// DefaultVerificationPageSize is how many entries one read of a
+	// verification walk materializes.
+	//
+	// It is smaller than the paged list's default because the rows are not the
+	// same size: a verification projects every column, change-set and metadata
+	// blobs included, and re-hashes each row over the bytes as stored. Five
+	// hundred of those is a page a process can hold without knowing how large a
+	// consumer's entries are, which is the thing this package cannot know.
+	DefaultVerificationPageSize = 500
+
+	// DefaultVerificationCeiling is the most entries one Verify call walks
+	// before it stops and reports where.
+	//
+	// A ceiling rather than no ceiling, because the surface that most wants
+	// verification is the remote one, and there both ends of the window are
+	// optional: a request naming neither asks for a scope's whole history, and
+	// the default retention window puts that at seven years. Paging bounds what
+	// such a call holds; the ceiling bounds how long it runs, and
+	// VerificationResult.Complete is what keeps the difference between "this
+	// chain is intact" and "this chain is intact as far as I looked" spellable
+	// rather than silent.
+	//
+	// It is not a cap on what can be verified. A caller walks a longer chain by
+	// calling again from VerificationResult.LastSeq, which is the same chain
+	// checked through the seam — see chainWalk.
+	DefaultVerificationCeiling = 100_000
+)
+
 // BreakReason says how a chain failed to verify.
 type BreakReason string
 
@@ -188,8 +231,31 @@ type VerificationResult struct {
 	FirstBreak *Break
 	// Scope is the chain that was walked.
 	Scope tenancy.Scope
-	// Checked is how many entries were walked.
+	// Checked is how many entries were walked. A walk that stopped at a break
+	// counts the entries it examined, the breaking one included, and not the
+	// rows behind it that it never reached.
 	Checked int64
+	// LastSeq is the position of the last entry this call verified, and what a
+	// call continuing this one passes as its afterSeq.
+	//
+	// A call that verified nothing — an empty scope, an empty window, a break
+	// on the first entry it read — reports the position it started past, so
+	// resuming from it asks the same question again rather than starting over.
+	LastSeq int64
+	// Complete reports whether the walk reached the end of the window.
+	//
+	// It is false where the walk stopped early: at the reader's verification
+	// ceiling, or at a break. Resume where it is false and Intact is true, by
+	// calling Verify again over the same window with LastSeq as its afterSeq.
+	// Where Intact is false there is nothing to resume — every link past a
+	// break is evaluated against a predecessor already known to be wrong.
+	//
+	// It is not a second spelling of Intact, which is why both exist. A chain
+	// can be intact as far as one call looked and still hold entries nobody has
+	// checked; that is the state a ceiling leaves behind, and a scheduled
+	// verification that could not tell it from a clean bill would report a log
+	// as evidence on the strength of its first hundred thousand entries.
+	Complete bool
 }
 
 // Intact reports whether the verified range held together. It is a method
@@ -210,13 +276,15 @@ type Reader interface {
 	Get(ctx context.Context, id string) (*Entry, error)
 	// List pages through the entries matching q.
 	List(ctx context.Context, q *Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Entry], error)
-	// Verify walks one scope's hash chain over a time range and reports the
-	// first break, or that there was none.
+	// Verify walks one scope's hash chain over a time range, from afterSeq
+	// onwards, and reports the first break or that there was none.
 	//
 	// The scope is a tenancy.Scope rather than the string it names, so a call
 	// that lost its scope fails to compile rather than walking the global
-	// chain. See the method on SQLReader for what an unset one does.
-	Verify(ctx context.Context, scope tenancy.Scope, from, to time.Time) (*VerificationResult, error)
+	// chain. Pass ChainStart as afterSeq to walk from the beginning of the
+	// range, or a previous result's LastSeq to continue it. See the method on
+	// SQLReader for what an unset scope does and for what bounds one call.
+	Verify(ctx context.Context, scope tenancy.Scope, from, to time.Time, afterSeq int64) (*VerificationResult, error)
 }
 
 var _ Reader = (*SQLReader)(nil)
@@ -242,6 +310,13 @@ type SQLReader struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 	prefix          string
+
+	// How much of a chain one Verify call reads at a time and how much of one
+	// it reads in total. See DefaultVerificationPageSize and
+	// DefaultVerificationCeiling for what each bounds and why they are two
+	// numbers rather than one.
+	verificationPageSize int64
+	verificationCeiling  int64
 }
 
 // NewReader builds a Reader over the database holding the audit tables. The
@@ -257,8 +332,10 @@ func NewReader(client database.Client, opts ...ReaderOption) (*SQLReader, error)
 	}
 
 	r := &SQLReader{
-		client: client,
-		prefix: DefaultTablePrefix,
+		client:               client,
+		prefix:               DefaultTablePrefix,
+		verificationPageSize: DefaultVerificationPageSize,
+		verificationCeiling:  DefaultVerificationCeiling,
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -421,7 +498,8 @@ func pageFilter(filter *filtering.QueryFilter) *filtering.QueryFilter {
 	return &bounded
 }
 
-// Verify walks a scope's chain over a time range.
+// Verify walks a scope's chain over a time range, in pages, from afterSeq
+// onwards.
 //
 // What a clean result proves, stated precisely because it is easy to overstate:
 // every entry in the range hashes to what it claims, and each links to the one
@@ -437,6 +515,27 @@ func pageFilter(filter *filtering.QueryFilter) *filtering.QueryFilter {
 // two ask the same question of the same column and an entry that a Verify
 // covered but a List over the same window did not would be a hole nobody could
 // account for.
+//
+// # Where one call starts, and where it stops
+//
+// afterSeq is the position the walk starts past: ChainStart for the beginning
+// of the range, or an earlier result's LastSeq to continue where it left off.
+// The link across that seam is checked like any other — the walk reads the
+// entry at afterSeq to learn what its successor must record, rather than
+// trusting the first row that comes back — so a resumed verification has no
+// hole at the position its caller chose. Within one call the same property
+// holds across every page boundary, and holds it more cheaply: the walk carries
+// the predecessor's hash forward rather than re-anchoring per page. See
+// chainWalk.
+//
+// It stops at the end of the range, at the first break, or at the reader's
+// verification ceiling, and the result says which: Complete is true only for
+// the first. So a caller walking a long chain loops while the result is intact
+// and incomplete, passing LastSeq back in, and a caller walking a short one
+// never notices the ceiling exists. Neither holds more than one page of entries
+// at a time, which is what this method is for: an entry carries its change-set
+// and metadata blobs, a scope's history is as long as the retention window
+// allows, and the range is optional at both ends on the wire.
 //
 // # The scope, and why it is not a string
 //
@@ -454,49 +553,80 @@ func pageFilter(filter *filtering.QueryFilter) *filtering.QueryFilter {
 // driver's too, and validating first only decides which of the two says so.
 // tenancy.Global is a scope like any other here and walks the platform chain,
 // which is what an entry recorded for no tenant records into.
-func (r *SQLReader) Verify(ctx context.Context, scope tenancy.Scope, from, to time.Time) (*VerificationResult, error) {
-	ctx, op := r.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
+func (r *SQLReader) Verify(
+	ctx context.Context,
+	scope tenancy.Scope,
+	from, to time.Time,
+	afterSeq int64,
+) (*VerificationResult, error) {
+	ctx, op := r.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(afterSeqKey, afterSeq))
 	defer op.End()
 
 	if err := scope.Validate(); err != nil {
 		return nil, op.Error(err, "verifying an audit chain")
 	}
 
-	rows, err := r.q.ListAuditChainEntries(ctx, r.client.Reader(), auditdb.ListAuditChainEntriesParams{
-		Scope:          scope,
-		RecordedAfter:  boundOrNil(from),
-		RecordedBefore: boundOrNil(to),
-	})
-	if err != nil {
-		return nil, op.Error(err, "reading audit chain for scope %s", scope)
-	}
+	result := &VerificationResult{Scope: scope, From: from, To: to, LastSeq: afterSeq}
+	walk := chainWalk{lastSeq: afterSeq}
 
-	stored, err := convertRows(rows, func(row *auditdb.ListAuditChainEntriesRow) (storedEntry, error) {
-		converted, convErr := entryFromChainRow(row)
-		if convErr != nil {
-			return storedEntry{}, convErr
+	for {
+		// Zero means the ceiling is reached. The loop leaves Complete false and
+		// LastSeq where it is, which together are the resumption point.
+		size := r.verificationPage(result.Checked)
+		if size == 0 {
+			break
 		}
 
-		return *converted, nil
-	})
-	if err != nil {
-		return nil, op.Error(err, "reading audit chain for scope %s", scope)
-	}
-
-	result := &VerificationResult{Scope: scope, From: from, To: to, Checked: int64(len(stored))}
-
-	if len(stored) > 0 {
-		var anchor *anchorState
-		if anchor, err = r.anchorFor(ctx, scope, stored[0].entry.Seq); err != nil {
-			return nil, op.Error(err, "anchoring audit chain for scope %s", scope)
+		stored, err := r.chainPage(ctx, scope, from, to, walk.lastSeq, size)
+		if err != nil {
+			return nil, op.Error(err, "reading audit chain for scope %s", scope)
 		}
 
-		result.FirstBreak = walkChain(stored, anchor)
+		if len(stored) == 0 {
+			result.Complete = true
+
+			break
+		}
+
+		// Anchored once, on the first page that returned anything: what the
+		// range's first entry links to is a question about the entry before the
+		// range, and every page after the first is anchored by the page before
+		// it.
+		if !walk.anchored {
+			anchor, anchorErr := r.anchorFor(ctx, scope, stored[0].entry.Seq)
+			if anchorErr != nil {
+				return nil, op.Error(anchorErr, "anchoring audit chain for scope %s", scope)
+			}
+
+			walk.anchorAt(anchor, stored[0].entry.Seq)
+		}
+
+		result.FirstBreak = walk.page(stored)
+		result.Checked, result.LastSeq = walk.checked, walk.lastSeq
+
+		if result.FirstBreak != nil {
+			break
+		}
+
+		// A short page is the end of the range. A full one may or may not be,
+		// and the next read is what settles it — cheaper than a count, and a
+		// count taken before the walk would be a count of rows a concurrent
+		// append could add to.
+		if int64(len(stored)) < size {
+			result.Complete = true
+
+			break
+		}
 	}
 
 	r.verificationsCounter.Add(ctx, 1)
 
-	op.Set(checkedKey, result.Checked).Set(intactKey, result.Intact())
+	op.Set(checkedKey, result.Checked).
+		Set(lastSeqKey, result.LastSeq).
+		Set(completeKey, result.Complete).
+		Set(intactKey, result.Intact())
 
 	if !result.Intact() {
 		r.breaksCounter.Add(ctx, 1)
@@ -516,6 +646,50 @@ func (r *SQLReader) Verify(ctx context.Context, scope tenancy.Scope, from, to ti
 	}
 
 	return result, nil
+}
+
+// verificationPage is how many entries the next read may take: the configured
+// page, narrowed by whatever is left of the ceiling, and zero once nothing is.
+//
+// The narrowing matters rather than being tidiness. A ceiling enforced by
+// discarding rows after they arrive is a ceiling on what the walk reports and
+// not on what it reads, and what it reads is the cost this method exists to
+// bound.
+func (r *SQLReader) verificationPage(checked int64) int64 {
+	if r.verificationCeiling <= 0 {
+		return r.verificationPageSize
+	}
+
+	return min(r.verificationPageSize, max(r.verificationCeiling-checked, 0))
+}
+
+// chainPage reads one page of a scope's chain in position order, decoded into
+// the form the walk hashes over.
+func (r *SQLReader) chainPage(
+	ctx context.Context,
+	scope tenancy.Scope,
+	from, to time.Time,
+	afterSeq, size int64,
+) ([]storedEntry, error) {
+	rows, err := r.q.ListAuditChainEntries(ctx, r.client.Reader(), auditdb.ListAuditChainEntriesParams{
+		Scope:          scope,
+		RecordedAfter:  boundOrNil(from),
+		RecordedBefore: boundOrNil(to),
+		AfterSeq:       afterSeq,
+		ResultLimit:    size,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return convertRows(rows, func(row *auditdb.ListAuditChainEntriesRow) (storedEntry, error) {
+		converted, convErr := entryFromChainRow(row)
+		if convErr != nil {
+			return storedEntry{}, convErr
+		}
+
+		return *converted, nil
+	})
 }
 
 // anchorState is what the first entry of a verified range should link to.
@@ -596,32 +770,69 @@ func boundOrNil(t time.Time) *time.Time {
 	return &utc
 }
 
-// walkChain checks each entry against its own content and against the entry
-// before it, returning the first break or nil.
-func walkChain(stored []storedEntry, anchor *anchorState) *Break {
-	if !anchor.known {
+// chainWalk is a verification's position in a chain: what the next entry must
+// link to, where it must sit, and how much has been checked getting there.
+//
+// It is a value carried from one page to the next rather than two locals inside
+// one loop, and that is the whole of what makes a paged verification mean what
+// an unpaged one meant. The link between the last entry of one page and the
+// first of the next is checked like every other link, because the walk never
+// forgets what it was expecting; a walk that re-anchored per page would accept
+// any hash at every page boundary, which is to say it would verify a chain with
+// a hole in it every few hundred entries, at positions an attacker can compute.
+type chainWalk struct {
+	// expectedPrev is the hash the next entry must record as its predecessor.
+	expectedPrev string
+	// expectedSeq is the position the next entry must sit at.
+	expectedSeq int64
+	// lastSeq is the position of the last entry that verified, which is both
+	// the cursor the next page reads past and what the result reports. It
+	// starts at the position the walk was told to start past, so a walk that
+	// verifies nothing resumes from where it began.
+	lastSeq int64
+	// checked counts the entries examined, the breaking one included.
+	checked int64
+	// anchored says whether the first page has fixed what the walk expects.
+	anchored bool
+	// known is false when the position before the walk's first entry exists but
+	// its row does not, which is a deletion rather than an anchor.
+	known bool
+}
+
+// anchorAt fixes what the walk's first entry must link to, from what anchorFor
+// resolved for that position.
+func (w *chainWalk) anchorAt(anchor *anchorState, firstSeq int64) {
+	w.expectedPrev = anchor.prevHash
+	w.expectedSeq = firstSeq
+	w.known = anchor.known
+	w.anchored = true
+}
+
+// page checks each entry of one page against its own content and against the
+// entry before it, advancing the walk and returning the first break or nil.
+func (w *chainWalk) page(stored []storedEntry) *Break {
+	if !w.known {
 		return &Break{Reason: BreakMissingEntry, Seq: stored[0].entry.Seq - 1}
 	}
-
-	expectedPrev := anchor.prevHash
-	expectedSeq := stored[0].entry.Seq
 
 	for i := range stored {
 		entry := &stored[i].entry
 
+		w.checked++
+
 		// Checked before the content, because a gap explains a link mismatch
 		// and reporting the mismatch instead would name the wrong entry as the
 		// problem.
-		if entry.Seq != expectedSeq {
-			return &Break{Reason: BreakMissingEntry, Seq: expectedSeq}
+		if entry.Seq != w.expectedSeq {
+			return &Break{Reason: BreakMissingEntry, Seq: w.expectedSeq}
 		}
 
-		if entry.PrevHash != expectedPrev {
+		if entry.PrevHash != w.expectedPrev {
 			return &Break{
 				Reason:   BreakLinkMismatch,
 				EntryID:  entry.ID,
 				Seq:      entry.Seq,
-				Expected: expectedPrev,
+				Expected: w.expectedPrev,
 				Actual:   entry.PrevHash,
 			}
 		}
@@ -640,8 +851,9 @@ func walkChain(stored []storedEntry, anchor *anchorState) *Break {
 			}
 		}
 
-		expectedPrev = entry.Hash
-		expectedSeq = entry.Seq + 1
+		w.expectedPrev = entry.Hash
+		w.expectedSeq = entry.Seq + 1
+		w.lastSeq = entry.Seq
 	}
 
 	return nil
