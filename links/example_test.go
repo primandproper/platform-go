@@ -56,11 +56,11 @@ func newExampleMinter() (*links.Minter, error) {
 	return links.NewMinter(store,
 		links.WithAction("magic_login", links.ActionPolicy{
 			URL: "https://app.example.com/auth/magic/{token}",
-			TTL: 15 * time.Minute,
+			TTL: links.Duration(15 * time.Minute),
 		}),
 		links.WithAction("unsubscribe", links.ActionPolicy{
 			URL: "https://app.example.com/unsubscribe?t={token}",
-			TTL: 365 * 24 * time.Hour,
+			TTL: links.Duration(365 * 24 * time.Hour),
 		}),
 	)
 }

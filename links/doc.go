@@ -11,7 +11,7 @@ loose.
 	minter, err := links.NewMinter(store,
 		links.WithAction("magic_login", links.ActionPolicy{
 			URL: "https://app.example.com/auth/magic/{token}",
-			TTL: 15 * time.Minute,
+			TTL: links.Duration(15 * time.Minute),
 		}),
 	)
 

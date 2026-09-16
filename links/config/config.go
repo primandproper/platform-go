@@ -49,6 +49,19 @@ type Config struct {
 	// not one that should be adjustable by whoever can edit a deployment
 	// variable.
 	//
+	// The file it comes from is JSON or YAML, and in both a lifetime is
+	// written the way a person says one:
+	//
+	//	{"actions": {"magic_login": {
+	//		"url": "https://app.example.com/auth/magic/{token}",
+	//		"ttl": "15m"
+	//	}}}
+	//
+	// That is what links.Duration is for — see ActionPolicy.TTL. A reviewer
+	// asked to approve a magic-login lifetime can check "15m"; nobody can
+	// check 900000000000, which is the only thing JSON has to say about a
+	// bare time.Duration.
+	//
 	// A caller assembling actions in code should use WithMinterOptions and
 	// links.WithAction instead; the two compose, and the explicit options win.
 	Actions map[links.Action]links.ActionPolicy `json:"actions,omitempty" yaml:"actions,omitempty"`

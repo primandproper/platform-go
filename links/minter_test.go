@@ -55,7 +55,7 @@ func TestNewMinter(T *testing.T) {
 
 		m := newTestMinter(t, WithAction("verify_email", ActionPolicy{
 			URL: "https://app.example.com/verify?t={token}",
-			TTL: time.Hour,
+			TTL: Duration(time.Hour),
 		}))
 
 		test.SliceLen(t, 2, m.Actions())
@@ -204,7 +204,7 @@ func TestMinter_Mint(T *testing.T) {
 
 		m := newTestMinter(t, WithAction("unsubscribe", ActionPolicy{
 			URL: "https://app.example.com/unsubscribe?t={token}",
-			TTL: 365 * 24 * time.Hour,
+			TTL: Duration(365 * 24 * time.Hour),
 		}))
 
 		link, err := m.Mint(t.Context(), "unsubscribe", testSubject)
@@ -577,7 +577,7 @@ const secondAction Action = "verify_email"
 func secondPolicy() ActionPolicy {
 	return ActionPolicy{
 		URL: "https://app.example.com/auth/verify/{token}",
-		TTL: testActionTTL,
+		TTL: Duration(testActionTTL),
 	}
 }
 

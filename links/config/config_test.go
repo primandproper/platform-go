@@ -1,11 +1,13 @@
 package linkscfg
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/links"
 
+	"github.com/primandproper/primitives-go/v2/encoding"
 	"github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/pointer"
 
@@ -19,7 +21,7 @@ import (
 func testConfig() *Config {
 	return &Config{
 		Actions: map[links.Action]links.ActionPolicy{
-			"magic_login": {URL: "https://app.example.com/auth/magic/{token}", TTL: 15 * time.Minute},
+			"magic_login": {URL: "https://app.example.com/auth/magic/{token}", TTL: links.Duration(15 * time.Minute)},
 		},
 		SweepInterval: pointer.To(time.Duration(0)),
 	}
@@ -66,7 +68,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		cfg := &Config{Actions: map[links.Action]links.ActionPolicy{"magic_login": {}}}
 		cfg.EnsureDefaults()
 
-		test.EqOp(t, time.Duration(0), cfg.Actions["magic_login"].TTL)
+		test.EqOp(t, links.Duration(0), cfg.Actions["magic_login"].TTL)
 	})
 
 	T.Run("leaves set fields alone", func(t *testing.T) {
@@ -84,6 +86,71 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		test.EqOp(t, 64, cfg.TokenBytes)
 		test.EqOp(t, 128, cfg.MaxTokenLength)
 		test.EqOp(t, time.Minute, *cfg.SweepInterval)
+	})
+}
+
+func TestConfig_ActionsFile(T *testing.T) {
+	T.Parallel()
+
+	// The file the Actions field documents, written the way it documents it.
+	// A lifetime is "15m" and "8760h" rather than 900000000000 and
+	// 31536000000000000, which is the difference between a policy somebody can
+	// review and a pair of numbers nobody can.
+	const actionsJSON = `{
+		"actions": {
+			"magic_login": {"url": "https://app.example.com/auth/magic/{token}", "ttl": "15m"},
+			"unsubscribe": {"url": "https://app.example.com/unsubscribe?t={token}", "ttl": "8760h"}
+		}
+	}`
+
+	const actionsYAML = `actions:
+  magic_login:
+    url: https://app.example.com/auth/magic/{token}
+    ttl: 15m
+  unsubscribe:
+    url: https://app.example.com/unsubscribe?t={token}
+    ttl: 8760h
+`
+
+	T.Run("loads from JSON", func(t *testing.T) {
+		t.Parallel()
+
+		var cfg Config
+		must.NoError(t, json.Unmarshal([]byte(actionsJSON), &cfg))
+
+		test.EqOp(t, links.Duration(15*time.Minute), cfg.Actions["magic_login"].TTL)
+		test.EqOp(t, links.Duration(365*24*time.Hour), cfg.Actions["unsubscribe"].TTL)
+
+		// No sweeper: this test wants a Minter, not a goroutine ticking behind
+		// one.
+		cfg.SweepInterval = pointer.To(time.Duration(0))
+
+		minter, err := NewMinter(t.Context(), &cfg, newLinksDB(t))
+		must.NoError(t, err)
+		test.SliceLen(t, 2, minter.Actions())
+	})
+
+	T.Run("loads from YAML", func(t *testing.T) {
+		t.Parallel()
+
+		var cfg Config
+		must.NoError(t, encoding.NewClientEncoder(encoding.ContentTypeYAML).
+			Unmarshal(t.Context(), []byte(actionsYAML), &cfg))
+
+		test.EqOp(t, links.Duration(15*time.Minute), cfg.Actions["magic_login"].TTL)
+		test.EqOp(t, links.Duration(365*24*time.Hour), cfg.Actions["unsubscribe"].TTL)
+	})
+
+	T.Run("reports a lifetime it cannot read", func(t *testing.T) {
+		t.Parallel()
+
+		// A misspelled lifetime is refused where it is still visible as one,
+		// rather than surfacing later as an action whose links are already
+		// expired.
+		var cfg Config
+		test.ErrorIs(t,
+			json.Unmarshal([]byte(`{"actions":{"magic_login":{"ttl":"quarter hour"}}}`), &cfg),
+			links.ErrInvalidTTL)
 	})
 }
 
@@ -193,7 +260,7 @@ func TestNewMinter(T *testing.T) {
 		cfg := testConfig()
 		cfg.Actions["magic_login"] = links.ActionPolicy{
 			URL: "http://staging.example.com/auth/magic/{token}",
-			TTL: time.Minute,
+			TTL: links.Duration(time.Minute),
 		}
 
 		_, err := NewMinter(t.Context(), cfg, db)
@@ -224,7 +291,7 @@ func TestNewMinter(T *testing.T) {
 		minter, err := NewMinter(t.Context(), testConfig(), newLinksDB(t),
 			WithMinterOptions(links.WithAction("magic_login", links.ActionPolicy{
 				URL: "https://tenant.example.com/auth/magic/{token}",
-				TTL: time.Minute,
+				TTL: links.Duration(time.Minute),
 			})))
 		must.NoError(t, err)
 
@@ -239,7 +306,7 @@ func TestNewMinter(T *testing.T) {
 		minter, err := NewMinter(t.Context(), testConfig(), newLinksDB(t),
 			WithMinterOptions(links.WithAction("unsubscribe", links.ActionPolicy{
 				URL: "https://app.example.com/unsubscribe?t={token}",
-				TTL: 24 * time.Hour,
+				TTL: links.Duration(24 * time.Hour),
 			})))
 		must.NoError(t, err)
 

@@ -98,7 +98,7 @@ func TestRegisterStores(T *testing.T) {
 				// magic-login link points and how long it lives is a policy
 				// written in a file somebody reviews.
 				Actions: map[links.Action]links.ActionPolicy{
-					"magic_login": {URL: "https://example.com/auth/magic/{token}", TTL: 15 * time.Minute},
+					"magic_login": {URL: "https://example.com/auth/magic/{token}", TTL: links.Duration(15 * time.Minute)},
 				},
 			},
 		}
