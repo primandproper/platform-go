@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strings"
@@ -22,8 +23,9 @@ var (
 	ErrInvalidEndpointURL = platformerrors.New("invalid webhook endpoint URL")
 
 	// ErrDisallowedEndpointHost indicates a URL whose host resolves somewhere a
-	// webhook must not reach — loopback, link-local, or private address space.
-	// See CheckEndpointURL for why this is enforced at registration.
+	// webhook must not reach — loopback, link-local, private, or otherwise
+	// reserved address space. See CheckEndpointURL for why this is enforced at
+	// registration.
 	ErrDisallowedEndpointHost = platformerrors.New("webhook endpoint host is not publicly routable")
 
 	// ErrReservedHeader indicates an Endpoint whose static headers would
@@ -75,6 +77,29 @@ var reservedHeaders = []string{
 //
 // So: https only, and no host that resolves into loopback, link-local, private,
 // or otherwise non-global address space.
+//
+// "Private" here is wider than net.IP.IsPrivate, which knows the RFC 1918
+// ranges and unique-local IPv6 and nothing else. Three IPv4 ranges are
+// internal in practice, carry no predicate in net, and are therefore checked
+// as explicit prefixes:
+//
+//   - 100.64.0.0/10, RFC 6598 carrier-grade NAT — the default pod and service
+//     CIDR of several managed Kubernetes offerings, and the whole of a
+//     Tailscale network.
+//   - 198.18.0.0/15, RFC 2544 benchmarking.
+//   - 192.0.0.0/24, RFC 6890 IETF protocol assignments, which includes the
+//     DS-Lite range and the NAT64 discovery addresses.
+//
+// Each of those would otherwise pass every arm of the check as ordinary global
+// unicast, which is the one thing they are not.
+//
+// An IPv6 address can also name an IPv4 one, and a gateway will deliver there:
+// 64:ff9b::c0a8:101 is 192.168.1.1 across NAT64, and 2002:c0a8:101::1 is the
+// same address across 6to4. Those are checked by what they carry rather than
+// by the range they are in, because the range itself is not the problem —
+// reaching a public address through NAT64 is what a v6-only deployment does for
+// every delivery it makes. The IPv4-compatible form RFC 4291 deprecated is read
+// the same way.
 //
 // The check runs at registration, where a rejection can be reported to whoever
 // submitted the URL, and again at delivery, because registration alone is not
@@ -146,11 +171,101 @@ func CheckEndpointURL(ctx context.Context, rawURL string) error {
 	return nil
 }
 
+// reservedPrefixes are the ranges a delivery must not reach that net has no
+// predicate for. IsPrivate is RFC 1918 and unique-local IPv6 only, so an
+// address in any of these reaches checkIP's last arm looking like ordinary
+// global unicast — which is exactly what an internal service addressed out of
+// one of them is not.
+//
+// See CheckEndpointURL for what each range is and why it is here.
+var reservedPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("100.64.0.0/10"), // RFC 6598 carrier-grade NAT.
+	netip.MustParsePrefix("198.18.0.0/15"), // RFC 2544 benchmarking.
+	netip.MustParsePrefix("192.0.0.0/24"),  // RFC 6890 IETF protocol assignments.
+}
+
+// reservedPrefix reports the reserved range ip falls in, if it falls in one.
+func reservedPrefix(ip net.IP) (netip.Prefix, bool) {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return netip.Prefix{}, false
+	}
+
+	// net.ParseIP hands back a 4-in-6 address for a dotted quad, and a prefix
+	// only contains an address of its own family, so the unmap is what makes
+	// these IPv4 prefixes match at all.
+	addr = addr.Unmap()
+
+	for i := range reservedPrefixes {
+		if reservedPrefixes[i].Contains(addr) {
+			return reservedPrefixes[i], true
+		}
+	}
+
+	return netip.Prefix{}, false
+}
+
+// embeddedPrefixes are the IPv6 ranges that carry an IPv4 address in fixed
+// positions, with the byte that address starts at. An address in one of these
+// is a way of writing a v4 address in v6: 64:ff9b::c0a8:101 is 192.168.1.1 to
+// anything with a NAT64 gateway in front of it, and every arm of checkIP reads
+// it as ordinary global unicast because that is exactly what it is.
+//
+// Refusing the ranges outright would be wrong rather than merely blunt.
+// Reaching a public address through NAT64 is what NAT64 is for, and a v6-only
+// deployment does it for every delivery it makes — so what is refused is the
+// address carried, on the same terms as an address that arrived on its own.
+//
+// The RFC 8215 prefixes a network may pick for its own NAT64 are deliberately
+// absent. Where the v4 address sits inside one depends on a prefix length the
+// operator chose, so there is nothing to look for without being told; a
+// deployment doing that replaces URLChecker, which is what URLChecker is for.
+var embeddedPrefixes = []struct {
+	prefix netip.Prefix
+	at     int
+}{
+	{netip.MustParsePrefix("64:ff9b::/96"), 12}, // RFC 6052 well-known NAT64 prefix.
+	{netip.MustParsePrefix("2002::/16"), 2},     // RFC 3056 6to4.
+	{netip.MustParsePrefix("::/96"), 12},        // RFC 4291 IPv4-compatible, deprecated.
+}
+
+// embeddedIPv4 reports the IPv4 address an IPv6 address carries, if it carries
+// one somewhere an RFC fixed.
+func embeddedIPv4(ip net.IP) (net.IP, bool) {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return nil, false
+	}
+
+	// An IPv4 address carries nothing, and net.ParseIP hands back the 4-in-6
+	// form for every dotted quad. The question is asked before any unmapping
+	// because ::ffff:192.168.1.1 is that dotted quad rather than a v6 address
+	// wrapping one — checkIP's own arms already answer it.
+	if addr.Is4() || addr.Is4In6() {
+		return nil, false
+	}
+
+	octets := addr.As16()
+
+	for i := range embeddedPrefixes {
+		if embeddedPrefixes[i].prefix.Contains(addr) {
+			at := embeddedPrefixes[i].at
+
+			return net.IP(octets[at : at+4]), true
+		}
+	}
+
+	return nil, false
+}
+
 // checkIP rejects an address that is not globally routable.
 //
 // IsGlobalUnicast is necessary but not sufficient: it admits the RFC 1918
 // private ranges and unique-local IPv6, which are precisely the internal
-// networks this is meant to keep deliveries out of.
+// networks this is meant to keep deliveries out of. It admits reservedPrefixes
+// too, and those carry no predicate at all, so they are checked by hand after
+// the switch — as is the IPv4 address an IPv6 one may be carrying, which is
+// every one of these questions over again about a different address.
 func checkIP(ip net.IP, host string) error {
 	switch {
 	case ip.IsLoopback():
@@ -166,9 +281,23 @@ func checkIP(ip net.IP, host string) error {
 		return platformerrors.Wrapf(ErrDisallowedEndpointHost, "%q resolves to multicast address %s", host, ip)
 	case !ip.IsGlobalUnicast():
 		return platformerrors.Wrapf(ErrDisallowedEndpointHost, "%q resolves to non-global address %s", host, ip)
-	default:
-		return nil
 	}
+
+	if prefix, ok := reservedPrefix(ip); ok {
+		return platformerrors.Wrapf(ErrDisallowedEndpointHost, "%q resolves to address %s in reserved range %s", host, ip, prefix)
+	}
+
+	// An IPv6 address that carries an IPv4 one is a way of naming that address,
+	// and a gateway will deliver there. So the answer for it is the answer for
+	// what it carries — every arm above included, which is why the question
+	// goes back through this function rather than repeating a subset of it.
+	if embedded, ok := embeddedIPv4(ip); ok {
+		if err := checkIP(embedded, host); err != nil {
+			return platformerrors.Wrapf(err, "%s carries %s", ip, embedded)
+		}
+	}
+
+	return nil
 }
 
 // URLChecker vets a delivery target. CheckEndpointURL is the implementation
