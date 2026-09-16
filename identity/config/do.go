@@ -84,9 +84,8 @@ func RegisterService(i do.Injector) {
 // RegisterServer registers an *identitygrpc.Server with the injector.
 //
 // Prerequisites: *Config, database.Client, identity.Store (see RegisterStore),
-// *identity.Service (see RegisterService) and an
-// callers.PrincipalExtractor must be registered before the Server is
-// invoked.
+// *identity.Service (see RegisterService) and a callers.PrincipalExtractor must
+// be registered before the Server is invoked.
 //
 // The extractor is a MustInvoke where Hooks above is not, and the asymmetry is
 // the point: a server with no hooks writes nothing extra, and a server with no

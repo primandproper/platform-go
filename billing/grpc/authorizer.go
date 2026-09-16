@@ -52,9 +52,10 @@ import (
 // [ErrNilAccountAuthorizer] is what a server built without one is.
 //
 // A consumer already running identity/grpc passes its MembershipAuthorizer
-// straight in — the method set matches, [callers.Principal] is the same alias,
-// and [callers.ErrTargetNotPermitted] is the same value — so the common case is
-// one argument rather than an implementation.
+// straight in — the method set matches, [callers.Principal] is the one type
+// both surfaces name rather than two of the same shape, and
+// [callers.ErrTargetNotPermitted] is the one value both match on — so the
+// common case is one argument rather than an implementation.
 //
 // # What implementations owe
 //
