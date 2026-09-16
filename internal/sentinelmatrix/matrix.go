@@ -371,8 +371,12 @@ var Matrix = map[string]map[string]Decision{
 		"ErrPrincipalRequired": {Err: sessions.ErrPrincipalRequired, Is: Platform},
 
 		// A backend handed an identifier it did not mint, a backend that keeps no
-		// principal index, and the three Policy validation failures. None is
-		// something a client sent.
+		// principal index, the three Policy validation failures, and a RenewFor
+		// pointed at a session that already has a holder. None is something a
+		// client sent: the last one is a sign-in flow that should have called
+		// Renew or Delete-and-NewFor, which is the application's decision rather
+		// than the request's.
+		"ErrAlreadyHeld":             {Err: sessions.ErrAlreadyHeld, Is: Unhandled},
 		"ErrIDConflict":              {Err: sessions.ErrIDConflict, Is: Unhandled},
 		"ErrNegativeTouchInterval":   {Err: sessions.ErrNegativeTouchInterval, Is: Unhandled},
 		"ErrNoPrincipalIndex":        {Err: sessions.ErrNoPrincipalIndex, Is: Unhandled},

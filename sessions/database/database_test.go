@@ -532,6 +532,45 @@ func TestBackend_UnderAStore(T *testing.T) {
 		must.NoError(t, store.Delete(t.Context(), renewed))
 	})
 
+	// The acquisition a sign-in makes, over the one backend that has the
+	// principal index. What makes it worth proving here rather than only over
+	// the fake is that the holder RenewFor assigns has to land in the column
+	// the enumeration reads — a record whose holder moved only in the encoded
+	// payload would read back correctly by identifier and appear in no list.
+	T.Run("renews a visitor's session into one its holder can list and revoke", func(t *testing.T) {
+		t.Parallel()
+
+		backend, c := newTestBackend(t)
+
+		store, err := sessions.NewStore(backend, sessions.WithClock(c))
+		must.NoError(t, err)
+
+		visitor, err := store.New(t.Context(), &principal{UserID: "", Admin: true})
+		must.NoError(t, err)
+
+		holder := heldHolder()
+		metadata := sessions.Metadata{DeviceName: "laptop", LoginMethod: "passkey"}
+
+		signedIn, err := store.RenewFor(t.Context(), visitor.ID, holder, metadata)
+		must.NoError(t, err)
+
+		read, err := store.Get(t.Context(), signedIn)
+		must.NoError(t, err)
+		test.EqOp(t, holder, read.Holder)
+		test.EqOp(t, metadata, read.Metadata)
+		test.True(t, read.Data.Admin)
+
+		listed, err := store.List(t.Context(), holder, signedIn)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, listed)
+		test.EqOp(t, signedIn, listed[0].ID)
+
+		must.NoError(t, store.Revoke(t.Context(), holder, signedIn))
+
+		_, err = store.Get(t.Context(), signedIn)
+		test.ErrorIs(t, err, sessions.ErrNotFound)
+	})
+
 	// The store's clock decides expiry, not the row's expires_at, so a
 	// controlled clock produces a deterministic timeout.
 	T.Run("expires on the store's clock", func(t *testing.T) {

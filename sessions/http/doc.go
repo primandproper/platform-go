@@ -12,14 +12,21 @@ the session leaves the server.
 	// in a handler
 	session, ok := sessionshttp.SessionFromContext[Principal](req.Context())
 
-# The four calls that matter
+# The five calls that matter
 
 Issue, after authenticating — never before, since a session issued to an
 unauthenticated visitor is the thing a fixation attack plants.
 
-Renew, immediately after any privilege change. It rotates the identifier and
-carries the payload across; an error from it means the old identifier may still
-work, so the privilege change should be refused rather than completed.
+RenewFor, at a sign-in that has state to carry across it. It rotates the
+identifier and hands the session to whoever signed in, in one call: rotating
+alone would leave the signed-in session held by nobody, which is a session no
+security page lists and no "sign out everywhere" reaches.
+
+Renew, immediately after any other privilege change — a step-up authentication
+on a session that already has a holder. It rotates the identifier and carries
+the payload, the holder and the metadata across; an error from either renewal
+means the old identifier may still work, so the privilege change should be
+refused rather than completed.
 
 Save, to write a payload back.
 

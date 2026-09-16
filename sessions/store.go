@@ -40,6 +40,14 @@ type BackendStore[T any] struct {
 	policy Policy
 }
 
+// claim is whose a renewal makes a session, and what it records about the
+// client that claimed it. A renewal with no claim is Renew: the record's own
+// holder and metadata carry across untouched.
+type claim struct {
+	metadata Metadata
+	holder   Holder
+}
+
 // NewStore builds a Store over a Backend.
 //
 // The Backend is required and has no default. An implicit in-memory one would
@@ -282,9 +290,65 @@ func (s *BackendStore[T]) Renew(ctx context.Context, oldID string) (string, erro
 	defer op.End()
 	defer s.observe(ctx, operationRenew, s.clock.Now())
 
+	return s.renew(ctx, op, oldID, nil)
+}
+
+// RenewFor rotates a session's identifier and hands the session to holder.
+//
+// The two halves are one call because the gap between them is the defect. A
+// rotation followed by an attribution leaves a window in which the signed-in
+// session is held by nobody, and a rotation with no attribution at all leaves
+// that state permanently — a session List omits and RevokeAll cannot reach,
+// which is what the documented "renew at sign-in" path used to produce.
+func (s *BackendStore[T]) RenewFor(
+	ctx context.Context,
+	oldID string,
+	holder Holder,
+	metadata Metadata,
+) (string, error) {
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
+	defer s.observe(ctx, operationRenew, s.clock.Now())
+
+	return s.renew(ctx, op, oldID, &claim{holder: holder, metadata: metadata})
+}
+
+// renew is the rotation both doors run, with or without an attribution.
+//
+// It is one function rather than two because what a renewal must not get wrong
+// is the same either way: that CreatedAt survives, that the old identifier is
+// gone exactly when a new one is reported, and that an error reports no
+// identifier at all. What a claim adds is the attribution, and nothing else.
+func (s *BackendStore[T]) renew(
+	ctx context.Context,
+	op observability.Operation,
+	oldID string,
+	attribution *claim,
+) (string, error) {
+	if attribution != nil {
+		op.Set(scopeKey, attribution.holder.Scope.String()).
+			Set(principalKey, attribution.holder.Principal)
+
+		// Before the record is read, for the same reason NewFor validates
+		// before it writes: a session attributed to an unset scope or an empty
+		// principal stores fine and reads fine, and is missing only from the
+		// list its holder would end it from.
+		if err := attribution.holder.validate(); err != nil {
+			return "", op.Error(err, "renewing session identifier")
+		}
+	}
+
 	record, now, err := s.live(ctx, op, oldID)
 	if err != nil {
 		return "", err
+	}
+
+	if attribution != nil && record.Holder.Principal != "" {
+		// Refused rather than reattributed. The payload this renewal carries
+		// across is the current holder's, and moving it is the one thing
+		// neither caller of RenewFor wants — see ErrAlreadyHeld for which call
+		// each of them wanted instead.
+		return "", op.Error(ErrAlreadyHeld, "renewing session identifier")
 	}
 
 	newID, err := NewID(ctx)
@@ -294,6 +358,11 @@ func (s *BackendStore[T]) Renew(ctx context.Context, oldID string) (string, erro
 
 	renewed := *record
 	renewed.LastSeenAt = now
+
+	if attribution != nil {
+		renewed.Holder = attribution.holder
+		renewed.Metadata = attribution.metadata
+	}
 
 	if err = s.backend.Rename(ctx, oldID, newID, &renewed, s.policy.RetentionTTL(renewed.CreatedAt, now)); err != nil {
 		s.backendErrorsCounter.Add(ctx, 1)

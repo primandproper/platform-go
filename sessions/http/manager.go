@@ -65,7 +65,9 @@ func NewManager[T any](store sessions.Store[T], cookieManager cookies.Manager, o
 //
 // Call it after authenticating, and only then. Issuing a session before the
 // user has proved anything is what gives a fixation attack something to plant —
-// if there is state to carry across the sign-in, Renew is the way to carry it.
+// if a visitor's session holds state that should survive the sign-in, RenewFor
+// is the way to carry it, since it rotates the identifier and attributes the
+// session to whoever signed in within one call.
 func (m *Manager[T]) Issue(
 	ctx context.Context,
 	res http.ResponseWriter,
@@ -172,10 +174,11 @@ func (m *Manager[T]) Save(ctx context.Context, req *http.Request, data *T) error
 // Renew rotates the identifier of the session named by req's cookie and writes
 // the new one to res.
 //
-// This is the call that belongs immediately after a sign-in, a step-up
-// authentication, or any other privilege change — see sessions.Store.Renew for
-// what it defends against. It returns the renewed session so the caller can go
-// on using it within the same request.
+// This is the call that belongs immediately after a step-up authentication or
+// any other privilege change to a session that already has a holder — see
+// sessions.Store.Renew for what it defends against. A sign-in, where the
+// session is acquiring its holder, calls RenewFor instead. It returns the
+// renewed session so the caller can go on using it within the same request.
 //
 // An error here means the old identifier may still resolve, and the privilege
 // change should be refused rather than completed.
@@ -187,12 +190,65 @@ func (m *Manager[T]) Renew(
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()
 
+	return m.renew(ctx, op, res, req, func(ctx context.Context, oldID string) (string, error) {
+		return m.store.Renew(ctx, oldID)
+	})
+}
+
+// RenewFor rotates the identifier of the session named by req's cookie, hands
+// the session to holder, and writes the new identifier to res.
+//
+// This is the sign-in that has something to carry across it. The visitor
+// arrived with a session established by Issue — a cart, a partly filled form —
+// and rotating it with Renew alone would leave that state in a session held by
+// nobody, which no security page lists and no "sign out everywhere" reaches.
+// The returned session is the holder's, and appears in sessions.Store.List
+// immediately.
+//
+// The metadata is the caller's to assemble, for the same reason IssueFor's is:
+// whether the address to record is the socket's or a forwarded-for header's
+// depends on what sits in front of the application.
+//
+// A session that already has a holder is sessions.ErrAlreadyHeld — signing in
+// as somebody else ends the session and establishes another, rather than
+// handing one principal's payload to the next. As with Renew, an error means
+// the old identifier may still resolve and the sign-in should be refused.
+func (m *Manager[T]) RenewFor(
+	ctx context.Context,
+	res http.ResponseWriter,
+	req *http.Request,
+	holder sessions.Holder,
+	metadata sessions.Metadata,
+) (*sessions.Session[T], error) {
+	ctx, op := m.o11y.Begin(ctx)
+	defer op.End()
+
+	return m.renew(ctx, op, res, req, func(ctx context.Context, oldID string) (string, error) {
+		return m.store.RenewFor(ctx, oldID, holder, metadata)
+	})
+}
+
+// renew reads the cookie, rotates through whichever store call rotate is, and
+// writes the result back.
+//
+// The rotation is a closure because it is the only thing the two renewals
+// differ in: everything around it — that the identifier comes from a verified
+// cookie, that the renewed session is read back before the cookie is written,
+// and above all what happens when that write fails — is what must not come to
+// differ between them.
+func (m *Manager[T]) renew(
+	ctx context.Context,
+	op observability.Operation,
+	res http.ResponseWriter,
+	req *http.Request,
+	rotate func(ctx context.Context, oldID string) (string, error),
+) (*sessions.Session[T], error) {
 	oldID, err := m.identifier(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	newID, err := m.store.Renew(ctx, oldID)
+	newID, err := rotate(ctx, oldID)
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "renewing session")
 	}

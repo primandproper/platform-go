@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -491,6 +492,219 @@ func TestStore_Renew(T *testing.T) {
 		backend.fail("Rename", errors.New("store is down"))
 
 		newID, err := store.Renew(t.Context(), session.ID)
+		must.Error(t, err)
+		test.EqOp(t, "", newID)
+	})
+}
+
+func TestStore_RenewFor(T *testing.T) {
+	T.Parallel()
+
+	// The whole point of the call: the state a visitor accumulated before
+	// signing in survives, and the session it survives in is the signer's.
+	T.Run("rotates the identifier, carries the payload, and attributes the session", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, _ := newTestStore(t)
+
+		metadata := Metadata{DeviceName: "Jeffrey's laptop", LoginMethod: "passkey"}
+
+		visitor, err := store.New(t.Context(), &principal{UserID: "u_1", Admin: true})
+		must.NoError(t, err)
+
+		newID, err := store.RenewFor(t.Context(), visitor.ID, testHolder(), metadata)
+		must.NoError(t, err)
+		test.NotEqOp(t, visitor.ID, newID)
+
+		read, err := store.Get(t.Context(), newID)
+		must.NoError(t, err)
+		test.EqOp(t, "u_1", read.Data.UserID)
+		test.True(t, read.Data.Admin)
+		test.EqOp(t, testHolder(), read.Holder)
+		test.EqOp(t, metadata, read.Metadata)
+	})
+
+	// The defect this call exists for. A session renewed at sign-in without
+	// acquiring a holder is signed in and reachable only by its identifier:
+	// missing from the security page, and untouched by "sign out everywhere".
+	T.Run("the renewed session is listable and revocable", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, _ := newTestStore(t)
+
+		visitor, err := store.New(t.Context(), &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		newID, err := store.RenewFor(t.Context(), visitor.ID, testHolder(), Metadata{})
+		must.NoError(t, err)
+
+		listed, err := store.List(t.Context(), testHolder(), newID)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, listed)
+		test.EqOp(t, newID, listed[0].ID)
+		test.True(t, listed[0].IsCurrent)
+
+		revoked, err := store.RevokeAll(t.Context(), testHolder())
+		must.NoError(t, err)
+		test.EqOp(t, 1, revoked)
+
+		_, err = store.Get(t.Context(), newID)
+		test.ErrorIs(t, err, ErrNotFound)
+	})
+
+	T.Run("the old identifier stops resolving", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, _ := newTestStore(t)
+
+		visitor, err := store.New(t.Context(), &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		_, err = store.RenewFor(t.Context(), visitor.ID, testHolder(), Metadata{})
+		must.NoError(t, err)
+
+		_, err = store.Get(t.Context(), visitor.ID)
+		test.ErrorIs(t, err, ErrNotFound)
+	})
+
+	// Sign-in is a privilege change like any other, and a session that reset
+	// its start there would outlive the absolute timeout by a whole window.
+	T.Run("does not extend the absolute deadline", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, c := newTestStore(t, WithAbsoluteTimeout(time.Hour), WithIdleTimeout(55*time.Minute))
+
+		visitor, err := store.New(t.Context(), &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		c.advance(30 * time.Minute)
+
+		newID, err := store.RenewFor(t.Context(), visitor.ID, testHolder(), Metadata{})
+		must.NoError(t, err)
+
+		read, err := store.Get(t.Context(), newID)
+		must.NoError(t, err)
+		test.EqOp(t, visitor.CreatedAt, read.CreatedAt)
+
+		c.advance(31 * time.Minute)
+
+		_, err = store.Get(t.Context(), newID)
+		test.ErrorIs(t, err, ErrAbsoluteTimeout)
+	})
+
+	// Refused before the record is touched, for the same reason NewFor
+	// validates before it writes: the session would store and read fine, and
+	// be missing only from the list its holder would end it from.
+	T.Run("refuses a scopeless holder without rotating", func(t *testing.T) {
+		t.Parallel()
+
+		store, backend, _ := newTestStore(t)
+
+		visitor, err := store.New(t.Context(), &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		_, err = store.RenewFor(t.Context(), visitor.ID, Holder{Principal: "u_1"}, Metadata{})
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+		test.EqOp(t, 0, backend.callCount("Rename"))
+
+		_, err = store.Get(t.Context(), visitor.ID)
+		test.NoError(t, err)
+	})
+
+	T.Run("refuses an empty principal without rotating", func(t *testing.T) {
+		t.Parallel()
+
+		store, backend, _ := newTestStore(t)
+
+		visitor, err := store.New(t.Context(), &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		_, err = store.RenewFor(t.Context(), visitor.ID, Holder{Scope: tenancy.Global()}, Metadata{})
+		test.ErrorIs(t, err, ErrPrincipalRequired)
+		test.EqOp(t, 0, backend.callCount("Rename"))
+	})
+
+	// The payload this would carry across is the current holder's. A re-auth by
+	// that same holder wants Renew; a sign-in as somebody else wants Delete and
+	// NewFor, which does not take the previous holder's data with it.
+	T.Run("refuses a session that already has a holder", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, _ := newTestStore(t)
+
+		held, err := store.NewFor(t.Context(), testHolder(), Metadata{}, &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		_, err = store.RenewFor(t.Context(),
+			held.ID,
+			Holder{Scope: tenancy.Of("acct_2"), Principal: "u_2"},
+			Metadata{},
+		)
+		test.ErrorIs(t, err, ErrAlreadyHeld)
+
+		// Refused rather than half-applied: the session is still the original
+		// holder's, and still answers to the identifier it did.
+		read, err := store.Get(t.Context(), held.ID)
+		must.NoError(t, err)
+		test.EqOp(t, testHolder(), read.Holder)
+	})
+
+	T.Run("refuses the holder it already has, rather than renewing in place", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, _ := newTestStore(t)
+
+		held, err := store.NewFor(t.Context(), testHolder(), Metadata{DeviceName: "laptop"}, nil)
+		must.NoError(t, err)
+
+		_, err = store.RenewFor(t.Context(), held.ID, testHolder(), Metadata{DeviceName: "phone"})
+		test.ErrorIs(t, err, ErrAlreadyHeld)
+
+		// And the metadata it was established with is where it was stamped. A
+		// session whose recorded device moved under its owner is worse than one
+		// that recorded nothing.
+		read, err := store.Get(t.Context(), held.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "laptop", read.Metadata.DeviceName)
+	})
+
+	T.Run("refuses an expired session", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, c := newTestStore(t, WithIdleTimeout(time.Minute))
+
+		visitor, err := store.New(t.Context(), &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		c.advance(time.Minute)
+
+		_, err = store.RenewFor(t.Context(), visitor.ID, testHolder(), Metadata{})
+		test.ErrorIs(t, err, ErrExpired)
+	})
+
+	T.Run("refuses an empty identifier", func(t *testing.T) {
+		t.Parallel()
+
+		store, _, _ := newTestStore(t)
+
+		_, err := store.RenewFor(t.Context(), "", testHolder(), Metadata{})
+		test.ErrorIs(t, err, ErrIDRequired)
+	})
+
+	// Same contract as Renew: a caller that sees an error must assume the old
+	// identifier still resolves and refuse the sign-in, which is only
+	// actionable if no new identifier came back with it.
+	T.Run("returns no identifier when the rename fails", func(t *testing.T) {
+		t.Parallel()
+
+		store, backend, _ := newTestStore(t)
+
+		visitor, err := store.New(t.Context(), &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		backend.fail("Rename", stderrors.New("store is down"))
+
+		newID, err := store.RenewFor(t.Context(), visitor.ID, testHolder(), Metadata{})
 		must.Error(t, err)
 		test.EqOp(t, "", newID)
 	})
