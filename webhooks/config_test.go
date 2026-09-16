@@ -1,6 +1,7 @@
 package webhooks
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -57,6 +58,65 @@ func TestWorkerConfig_EnsureDefaults(T *testing.T) {
 
 		test.NoError(t, cfg.ValidateWithContext(t.Context()))
 	})
+
+	// Spelled out rather than left to the rule above, because the arithmetic is
+	// what the defaults got wrong: a lease of a minute cleared one ten-second
+	// request and not the seven waves a batch of a hundred takes sixteen at a
+	// time. Whoever next moves one of the four constants is moving this.
+	T.Run("the default lease clears the batch the other defaults describe", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &WorkerConfig{}
+		cfg.EnsureDefaults()
+
+		test.EqOp(t, 70*time.Second, cfg.batchBound())
+		test.True(t, DefaultLeaseDuration > cfg.batchBound())
+	})
+}
+
+func TestWorkerConfig_batchBound(T *testing.T) {
+	T.Parallel()
+
+	T.Run("rounds a partial wave up", func(t *testing.T) {
+		t.Parallel()
+
+		// Seventeen sixteen at a time is two waves, not one and a sixteenth.
+		cfg := &WorkerConfig{BatchSize: 17, Concurrency: 16, RequestTimeout: 10 * time.Second}
+
+		test.EqOp(t, 20*time.Second, cfg.batchBound())
+	})
+
+	T.Run("a batch that fits in one wave is one request", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &WorkerConfig{BatchSize: 4, Concurrency: 8, RequestTimeout: 10 * time.Second}
+
+		test.EqOp(t, 10*time.Second, cfg.batchBound())
+	})
+
+	// Zero says "somebody else's rule reports this", so the lease is not named
+	// for a batch size or a concurrency that is out of range.
+	T.Run("reports zero for a knob out of range", func(t *testing.T) {
+		t.Parallel()
+
+		for _, cfg := range []*WorkerConfig{
+			{BatchSize: 0, Concurrency: 16, RequestTimeout: time.Second},
+			{BatchSize: 100, Concurrency: 0, RequestTimeout: time.Second},
+			{BatchSize: 100, Concurrency: 16, RequestTimeout: 0},
+		} {
+			test.EqOp(t, 0, cfg.batchBound())
+		}
+	})
+
+	// A batch nothing could cover reports a bound nothing can clear, rather than
+	// wrapping to a negative one every lease clears.
+	T.Run("saturates instead of overflowing", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &WorkerConfig{BatchSize: math.MaxInt32, Concurrency: 1, RequestTimeout: time.Hour}
+
+		test.EqOp(t, time.Duration(math.MaxInt64), cfg.batchBound())
+	})
 }
 
 func TestWorkerConfig_ValidateWithContext(T *testing.T) {
@@ -77,16 +137,84 @@ func TestWorkerConfig_ValidateWithContext(T *testing.T) {
 		test.StrContains(t, err.Error(), ErrLeaseTooShort.Error())
 	})
 
-	T.Run("accepts a lease longer than a request", func(t *testing.T) {
+	// The shape this package shipped: a lease that outlasts any one request and
+	// expires partway through the batch holding it.
+	T.Run("rejects a lease that clears a request but not the batch", func(t *testing.T) {
 		t.Parallel()
 
 		cfg := &WorkerConfig{
+			BatchSize:      100,
+			Concurrency:    16,
+			RequestTimeout: 10 * time.Second,
+			LeaseDuration:  60 * time.Second,
+		}
+		cfg.EnsureDefaults()
+
+		err := cfg.ValidateWithContext(t.Context())
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), ErrLeaseTooShort.Error())
+	})
+
+	// The bound itself is not enough: a lease that expires exactly as the last
+	// wave's timeout does is a lease the reclaim races.
+	T.Run("rejects a lease equal to the batch bound", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &WorkerConfig{
+			BatchSize:      100,
+			Concurrency:    16,
+			RequestTimeout: 10 * time.Second,
+			LeaseDuration:  70 * time.Second,
+		}
+		cfg.EnsureDefaults()
+
+		err := cfg.ValidateWithContext(t.Context())
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), ErrLeaseTooShort.Error())
+	})
+
+	T.Run("accepts a lease longer than the batch", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &WorkerConfig{
+			BatchSize:      100,
+			Concurrency:    16,
+			RequestTimeout: 10 * time.Second,
+			LeaseDuration:  71 * time.Second,
+		}
+		cfg.EnsureDefaults()
+
+		test.NoError(t, cfg.ValidateWithContext(t.Context()))
+	})
+
+	// A batch of one is the case where the batch bound and the request timeout
+	// are the same number, and the old rule and the new one agree.
+	T.Run("accepts a lease longer than a request when the batch is one wave", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &WorkerConfig{
+			BatchSize:      8,
+			Concurrency:    16,
 			RequestTimeout: 10 * time.Second,
 			LeaseDuration:  11 * time.Second,
 		}
 		cfg.EnsureDefaults()
 
 		test.NoError(t, cfg.ValidateWithContext(t.Context()))
+	})
+
+	// The lease is not named for somebody else's knob being out of range.
+	T.Run("leaves an out-of-range concurrency to its own rule", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &WorkerConfig{}
+		cfg.EnsureDefaults()
+		cfg.Concurrency = 0
+
+		err := cfg.ValidateWithContext(t.Context())
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), "concurrency")
+		test.StrNotContains(t, err.Error(), ErrLeaseTooShort.Error())
 	})
 
 	T.Run("rejects a zero config", func(t *testing.T) {

@@ -150,6 +150,17 @@ func WithWorkerMetricsProvider(metricsProvider metrics.Provider) WorkerOption {
 // would deliver a signed payload to a host the operator never registered and
 // never had checked, which turns an open redirect on a subscriber's domain into
 // an SSRF. Its transport is left alone.
+//
+// So is its Timeout, and that one is load-bearing. The lease bound
+// WorkerConfig validates is ceil(BatchSize/Concurrency) waves of
+// RequestTimeout, and every term of it rests on one delivery not outlasting
+// RequestTimeout — a client this package builds is given that timeout, and a
+// client supplied here is whatever the caller built. Supply one with no
+// timeout of its own and the bound is arithmetic rather than a property: a
+// batch runs past the lease it was claimed under, another worker reclaims the
+// tail of it, and the subscriber is delivered to twice by two workers at once.
+// A client supplied here owes a timeout, and one no longer than
+// WorkerConfig.RequestTimeout.
 func WithHTTPClient(client *http.Client) WorkerOption {
 	return func(w *Worker) {
 		if client != nil {
