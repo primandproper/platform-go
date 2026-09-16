@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS oauth2_access_tokens (
     expires_at      DATETIME(6)  NOT NULL,
     revoked_at      DATETIME(6)  NULL,
     KEY oauth2_access_tokens_expires_at_idx (expires_at),
-    KEY oauth2_access_tokens_family_id_idx (family_id)
+    KEY oauth2_access_tokens_family_id_idx (family_id),
+    KEY oauth2_access_tokens_subject_id_idx (subject_id)
 );
 
 CREATE TABLE IF NOT EXISTS oauth2_refresh_tokens (
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS oauth2_refresh_tokens (
     redeemed_at     DATETIME(6)  NULL,
     revoked_at      DATETIME(6)  NULL,
     KEY oauth2_refresh_tokens_expires_at_idx (expires_at),
-    KEY oauth2_refresh_tokens_family_id_idx (family_id)
+    KEY oauth2_refresh_tokens_family_id_idx (family_id),
+    KEY oauth2_refresh_tokens_subject_id_idx (subject_id)
 );
 

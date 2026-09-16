@@ -577,6 +577,77 @@ func (s *Store) RevokeFamily(ctx context.Context, familyID string) (int64, error
 	return revoked, nil
 }
 
+// RevokeSubject revokes every access and refresh token issued for a subject and
+// reports how many records it touched.
+//
+// This is what "disable this account", "sign out everywhere" and a dataprivacy
+// erasure each need, and RevokeFamily cannot express any of them. A family is
+// one login; a person has as many families as they have logged in, and a caller
+// holding only a subject identifier cannot enumerate them — there is no
+// statement here that lists a subject's families, and one added for the purpose
+// would still leave live whatever was issued between the enumeration and the
+// last revocation. Keying on the subject is one statement per table, and both
+// token tables carry a subject_id index so it stays one index scan rather than
+// a walk of every token this server has ever issued.
+//
+// Both statements run in one transaction, for the reason RevokeFamily's do:
+// revoking only the access tokens leaves a refresh token that mints a fresh one
+// a second later, which is the same partial answer to a stronger request.
+//
+// It is deliberately not on [oauth2server.Store]. Nothing in the protocol
+// reaches it — no endpoint in RFC 6749, 7009 or 7591 revokes by subject — so it
+// is an operator's and an erasure's entry point rather than the server's, and a
+// consumer calls it on the concrete store this package returns.
+//
+// What it does not reach is an authorization code. A code has no revoked_at to
+// stamp, so a code issued before this call and redeemed after it mints tokens
+// this revocation did not see. The window is that code's remaining lifetime —
+// minutes — and closing it is the caller's: whatever decided this person's
+// credentials should end is also what has to stop answering their /authorize.
+//
+// Zero is not an error, and not an absence either. A subject whose tokens have
+// all expired legitimately revokes nothing, and a subject who never had one is
+// indistinguishable from that here on purpose — the count is for the caller's
+// metric, not its control flow.
+func (s *Store) RevokeSubject(ctx context.Context, subjectID string) (int64, error) {
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
+
+	if subjectID == "" {
+		return 0, oauth2server.ErrEmptyIdentifier
+	}
+
+	var revoked int64
+
+	if err := s.db.WithTransaction(ctx, func(q database.Tx) error {
+		now := stamp(s.now())
+
+		access, execErr := s.q.RevokeAccessTokenSubject(ctx, q, oauth2serverdb.RevokeAccessTokenSubjectParams{
+			RevokedAt: now,
+			SubjectID: subjectID,
+		})
+		if execErr != nil {
+			return platformerrors.Wrap(execErr, "revoking a subject's access tokens")
+		}
+
+		refresh, execErr := s.q.RevokeRefreshTokenSubject(ctx, q, oauth2serverdb.RevokeRefreshTokenSubjectParams{
+			RevokedAt: now,
+			SubjectID: subjectID,
+		})
+		if execErr != nil {
+			return platformerrors.Wrap(execErr, "revoking a subject's refresh tokens")
+		}
+
+		revoked = access + refresh
+
+		return nil
+	}); err != nil {
+		return 0, op.Error(err, "revoking a subject's tokens")
+	}
+
+	return revoked, nil
+}
+
 // Sweep removes every row past its deadline.
 //
 // One statement per table, in one transaction, no batching. The rows are small

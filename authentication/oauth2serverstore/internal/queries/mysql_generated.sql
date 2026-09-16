@@ -161,6 +161,12 @@ UPDATE oauth2_access_tokens SET
 WHERE family_id = sqlc.arg(family_id)
 	AND revoked_at IS NULL;
 
+-- name: RevokeAccessTokenSubject :execrows
+UPDATE oauth2_access_tokens SET
+	revoked_at = sqlc.arg(revoked_at)
+WHERE subject_id = sqlc.arg(subject_id)
+	AND revoked_at IS NULL;
+
 -- name: SweepAccessTokens :execrows
 DELETE FROM oauth2_access_tokens
 WHERE expires_at <= sqlc.arg(now);
@@ -229,6 +235,12 @@ WHERE hash = sqlc.arg(hash)
 UPDATE oauth2_refresh_tokens SET
 	revoked_at = sqlc.arg(revoked_at)
 WHERE family_id = sqlc.arg(family_id)
+	AND revoked_at IS NULL;
+
+-- name: RevokeRefreshTokenSubject :execrows
+UPDATE oauth2_refresh_tokens SET
+	revoked_at = sqlc.arg(revoked_at)
+WHERE subject_id = sqlc.arg(subject_id)
 	AND revoked_at IS NULL;
 
 -- name: SweepRefreshTokens :execrows

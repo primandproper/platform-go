@@ -59,6 +59,9 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_access_tokens_expires_at_idx
 CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_access_tokens_family_id_idx
     ON {{PREFIX}}oauth2_access_tokens (family_id);
 
+CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_access_tokens_subject_id_idx
+    ON {{PREFIX}}oauth2_access_tokens (subject_id);
+
 CREATE TABLE IF NOT EXISTS {{PREFIX}}oauth2_refresh_tokens (
     hash            TEXT PRIMARY KEY,
     client_id       TEXT NOT NULL,
@@ -79,3 +82,6 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_refresh_tokens_expires_at_idx
 
 CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_refresh_tokens_family_id_idx
     ON {{PREFIX}}oauth2_refresh_tokens (family_id);
+
+CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_refresh_tokens_subject_id_idx
+    ON {{PREFIX}}oauth2_refresh_tokens (subject_id);

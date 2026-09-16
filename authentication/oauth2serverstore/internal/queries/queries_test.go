@@ -204,6 +204,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		GetAccessTokenQuery,
 		RevokeAccessTokenQuery,
 		RevokeAccessTokenFamilyQuery,
+		RevokeAccessTokenSubjectQuery,
 		SweepAccessTokensQuery,
 
 		CreateRefreshTokenQuery,
@@ -211,6 +212,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		ConsumeRefreshTokenQuery,
 		RevokeRefreshTokenQuery,
 		RevokeRefreshTokenFamilyQuery,
+		RevokeRefreshTokenSubjectQuery,
 		SweepRefreshTokensQuery,
 	}
 
@@ -307,8 +309,8 @@ func TestRender_RevocationsAreIdempotentByPredicate(T *testing.T) {
 			t.Parallel()
 
 			for _, name := range []string{
-				RevokeAccessTokenQuery, RevokeAccessTokenFamilyQuery,
-				RevokeRefreshTokenQuery, RevokeRefreshTokenFamilyQuery,
+				RevokeAccessTokenQuery, RevokeAccessTokenFamilyQuery, RevokeAccessTokenSubjectQuery,
+				RevokeRefreshTokenQuery, RevokeRefreshTokenFamilyQuery, RevokeRefreshTokenSubjectQuery,
 			} {
 				test.StrContains(t, statement(t, Render(d), name), RevokedAtColumn+" IS NULL",
 					test.Sprintf("%s is not guarded", name))
@@ -321,6 +323,29 @@ func TestRender_RevocationsAreIdempotentByPredicate(T *testing.T) {
 				test.StrContains(t, statement(t, Render(d), name),
 					FamilyIDColumn+" = sqlc.arg("+FamilyIDColumn+")")
 			}
+
+			// And the subject revocations key on the subject and nothing else,
+			// which is what makes them the statement a family revocation cannot
+			// be assembled into. Either one narrowed by a family or a client
+			// would leave part of what the caller asked to end still live.
+			for _, name := range []string{RevokeAccessTokenSubjectQuery, RevokeRefreshTokenSubjectQuery} {
+				revocation := statement(t, Render(d), name)
+
+				test.StrContains(t, revocation, SubjectIDColumn+" = sqlc.arg("+SubjectIDColumn+")")
+				test.StrNotContains(t, revocation, FamilyIDColumn+" = ")
+				test.StrNotContains(t, revocation, ClientIDColumn+" = ")
+				test.StrNotContains(t, revocation, HashColumn+" = ")
+			}
+
+			// One per token table, and exactly two in the corpus. The codes
+			// table carries a subject_id too and gets no statement over it: a
+			// code has no revoked_at to stamp, so a third one would be a
+			// revocation that could only be spelled as something else.
+			test.StrContains(t, statement(t, Render(d), RevokeAccessTokenSubjectQuery),
+				"UPDATE "+AccessTokensTable+" SET")
+			test.StrContains(t, statement(t, Render(d), RevokeRefreshTokenSubjectQuery),
+				"UPDATE "+RefreshTokensTable+" SET")
+			test.EqOp(t, 2, strings.Count(Render(d), SubjectIDColumn+" = sqlc.arg("+SubjectIDColumn+")"))
 		})
 	}
 }

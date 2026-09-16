@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}oauth2_authorization_codes (
     redirect_uri    TEXT NOT NULL,
     code_challenge  TEXT NOT NULL,
     nonce           TEXT NOT NULL,
+    -- Who this code will mint for. Deliberately not indexed, unlike the
+    -- subject_id on the two token tables: a code has no revoked_at to stamp,
+    -- so nothing selects codes by subject. What that costs is stated on
+    -- Store.RevokeSubject — a code issued before a revocation and redeemed
+    -- after it mints tokens the revocation did not reach.
     subject_id      TEXT NOT NULL,
     subject_claims  TEXT NOT NULL,
     scopes          TEXT NOT NULL,
@@ -71,6 +76,14 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_access_tokens_expires_at_idx
 CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_access_tokens_family_id_idx
     ON {{PREFIX}}oauth2_access_tokens (family_id);
 
+-- Serves the subject revocation that ends every access token a person holds:
+-- "disable this account", "sign out everywhere", and the erasure a dataprivacy
+-- run performs. A family is one login, so revoking family by family would need
+-- an enumeration this schema has no statement for — and would leave live
+-- whatever was issued while it ran.
+CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_access_tokens_subject_id_idx
+    ON {{PREFIX}}oauth2_access_tokens (subject_id);
+
 CREATE TABLE IF NOT EXISTS {{PREFIX}}oauth2_refresh_tokens (
     hash            TEXT PRIMARY KEY,
     client_id       TEXT NOT NULL,
@@ -91,3 +104,6 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_refresh_tokens_expires_at_idx
 
 CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_refresh_tokens_family_id_idx
     ON {{PREFIX}}oauth2_refresh_tokens (family_id);
+
+CREATE INDEX IF NOT EXISTS {{PREFIX}}oauth2_refresh_tokens_subject_id_idx
+    ON {{PREFIX}}oauth2_refresh_tokens (subject_id);

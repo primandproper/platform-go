@@ -209,6 +209,11 @@ const revokeAccessTokenFamilyPostgreSQL = `UPDATE {{prefix}}oauth2_access_tokens
 WHERE family_id = $2
 	AND revoked_at IS NULL`
 
+const revokeAccessTokenSubjectPostgreSQL = `UPDATE {{prefix}}oauth2_access_tokens SET
+	revoked_at = $1
+WHERE subject_id = $2
+	AND revoked_at IS NULL`
+
 const revokeRefreshTokenPostgreSQL = `UPDATE {{prefix}}oauth2_refresh_tokens SET
 	revoked_at = $1
 WHERE hash = $2
@@ -217,6 +222,11 @@ WHERE hash = $2
 const revokeRefreshTokenFamilyPostgreSQL = `UPDATE {{prefix}}oauth2_refresh_tokens SET
 	revoked_at = $1
 WHERE family_id = $2
+	AND revoked_at IS NULL`
+
+const revokeRefreshTokenSubjectPostgreSQL = `UPDATE {{prefix}}oauth2_refresh_tokens SET
+	revoked_at = $1
+WHERE subject_id = $2
 	AND revoked_at IS NULL`
 
 const sweepAccessTokensPostgreSQL = `DELETE FROM {{prefix}}oauth2_access_tokens
@@ -234,50 +244,54 @@ WHERE expires_at <= $1`
 
 // postgresqlQueries answers every query in Querier against postgresql.
 type postgresqlQueries struct {
-	consumeAuthorizationCode string
-	consumeRefreshToken      string
-	createAccessToken        string
-	createAuthorizationCode  string
-	createClient             string
-	createRefreshToken       string
-	deleteClient             string
-	getAccessToken           string
-	getAuthorizationCode     string
-	getClient                string
-	getRefreshToken          string
-	revokeAccessToken        string
-	revokeAccessTokenFamily  string
-	revokeRefreshToken       string
-	revokeRefreshTokenFamily string
-	sweepAccessTokens        string
-	sweepAuthorizationCodes  string
-	sweepClients             string
-	sweepRefreshTokens       string
+	consumeAuthorizationCode  string
+	consumeRefreshToken       string
+	createAccessToken         string
+	createAuthorizationCode   string
+	createClient              string
+	createRefreshToken        string
+	deleteClient              string
+	getAccessToken            string
+	getAuthorizationCode      string
+	getClient                 string
+	getRefreshToken           string
+	revokeAccessToken         string
+	revokeAccessTokenFamily   string
+	revokeAccessTokenSubject  string
+	revokeRefreshToken        string
+	revokeRefreshTokenFamily  string
+	revokeRefreshTokenSubject string
+	sweepAccessTokens         string
+	sweepAuthorizationCodes   string
+	sweepClients              string
+	sweepRefreshTokens        string
 }
 
 // newPostgreSQL returns the postgresql querier with prefix substituted into every
 // table name the analyzer identified.
 func newPostgreSQL(prefix string) *postgresqlQueries {
 	return &postgresqlQueries{
-		consumeAuthorizationCode: strings.ReplaceAll(consumeAuthorizationCodePostgreSQL, prefixMarker, prefix),
-		consumeRefreshToken:      strings.ReplaceAll(consumeRefreshTokenPostgreSQL, prefixMarker, prefix),
-		createAccessToken:        strings.ReplaceAll(createAccessTokenPostgreSQL, prefixMarker, prefix),
-		createAuthorizationCode:  strings.ReplaceAll(createAuthorizationCodePostgreSQL, prefixMarker, prefix),
-		createClient:             strings.ReplaceAll(createClientPostgreSQL, prefixMarker, prefix),
-		createRefreshToken:       strings.ReplaceAll(createRefreshTokenPostgreSQL, prefixMarker, prefix),
-		deleteClient:             strings.ReplaceAll(deleteClientPostgreSQL, prefixMarker, prefix),
-		getAccessToken:           strings.ReplaceAll(getAccessTokenPostgreSQL, prefixMarker, prefix),
-		getAuthorizationCode:     strings.ReplaceAll(getAuthorizationCodePostgreSQL, prefixMarker, prefix),
-		getClient:                strings.ReplaceAll(getClientPostgreSQL, prefixMarker, prefix),
-		getRefreshToken:          strings.ReplaceAll(getRefreshTokenPostgreSQL, prefixMarker, prefix),
-		revokeAccessToken:        strings.ReplaceAll(revokeAccessTokenPostgreSQL, prefixMarker, prefix),
-		revokeAccessTokenFamily:  strings.ReplaceAll(revokeAccessTokenFamilyPostgreSQL, prefixMarker, prefix),
-		revokeRefreshToken:       strings.ReplaceAll(revokeRefreshTokenPostgreSQL, prefixMarker, prefix),
-		revokeRefreshTokenFamily: strings.ReplaceAll(revokeRefreshTokenFamilyPostgreSQL, prefixMarker, prefix),
-		sweepAccessTokens:        strings.ReplaceAll(sweepAccessTokensPostgreSQL, prefixMarker, prefix),
-		sweepAuthorizationCodes:  strings.ReplaceAll(sweepAuthorizationCodesPostgreSQL, prefixMarker, prefix),
-		sweepClients:             strings.ReplaceAll(sweepClientsPostgreSQL, prefixMarker, prefix),
-		sweepRefreshTokens:       strings.ReplaceAll(sweepRefreshTokensPostgreSQL, prefixMarker, prefix),
+		consumeAuthorizationCode:  strings.ReplaceAll(consumeAuthorizationCodePostgreSQL, prefixMarker, prefix),
+		consumeRefreshToken:       strings.ReplaceAll(consumeRefreshTokenPostgreSQL, prefixMarker, prefix),
+		createAccessToken:         strings.ReplaceAll(createAccessTokenPostgreSQL, prefixMarker, prefix),
+		createAuthorizationCode:   strings.ReplaceAll(createAuthorizationCodePostgreSQL, prefixMarker, prefix),
+		createClient:              strings.ReplaceAll(createClientPostgreSQL, prefixMarker, prefix),
+		createRefreshToken:        strings.ReplaceAll(createRefreshTokenPostgreSQL, prefixMarker, prefix),
+		deleteClient:              strings.ReplaceAll(deleteClientPostgreSQL, prefixMarker, prefix),
+		getAccessToken:            strings.ReplaceAll(getAccessTokenPostgreSQL, prefixMarker, prefix),
+		getAuthorizationCode:      strings.ReplaceAll(getAuthorizationCodePostgreSQL, prefixMarker, prefix),
+		getClient:                 strings.ReplaceAll(getClientPostgreSQL, prefixMarker, prefix),
+		getRefreshToken:           strings.ReplaceAll(getRefreshTokenPostgreSQL, prefixMarker, prefix),
+		revokeAccessToken:         strings.ReplaceAll(revokeAccessTokenPostgreSQL, prefixMarker, prefix),
+		revokeAccessTokenFamily:   strings.ReplaceAll(revokeAccessTokenFamilyPostgreSQL, prefixMarker, prefix),
+		revokeAccessTokenSubject:  strings.ReplaceAll(revokeAccessTokenSubjectPostgreSQL, prefixMarker, prefix),
+		revokeRefreshToken:        strings.ReplaceAll(revokeRefreshTokenPostgreSQL, prefixMarker, prefix),
+		revokeRefreshTokenFamily:  strings.ReplaceAll(revokeRefreshTokenFamilyPostgreSQL, prefixMarker, prefix),
+		revokeRefreshTokenSubject: strings.ReplaceAll(revokeRefreshTokenSubjectPostgreSQL, prefixMarker, prefix),
+		sweepAccessTokens:         strings.ReplaceAll(sweepAccessTokensPostgreSQL, prefixMarker, prefix),
+		sweepAuthorizationCodes:   strings.ReplaceAll(sweepAuthorizationCodesPostgreSQL, prefixMarker, prefix),
+		sweepClients:              strings.ReplaceAll(sweepClientsPostgreSQL, prefixMarker, prefix),
+		sweepRefreshTokens:        strings.ReplaceAll(sweepRefreshTokensPostgreSQL, prefixMarker, prefix),
 	}
 }
 
@@ -537,6 +551,19 @@ func (q *postgresqlQueries) RevokeAccessTokenFamily(ctx context.Context, db DBTX
 	return result.RowsAffected()
 }
 
+// RevokeAccessTokenSubject runs the :execrows query against postgresql.
+func (q *postgresqlQueries) RevokeAccessTokenSubject(ctx context.Context, db DBTX, arg RevokeAccessTokenSubjectParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.revokeAccessTokenSubject,
+		arg.RevokedAt,
+		arg.SubjectID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // RevokeRefreshToken runs the :execrows query against postgresql.
 func (q *postgresqlQueries) RevokeRefreshToken(ctx context.Context, db DBTX, arg RevokeRefreshTokenParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.revokeRefreshToken,
@@ -555,6 +582,19 @@ func (q *postgresqlQueries) RevokeRefreshTokenFamily(ctx context.Context, db DBT
 	result, err := db.ExecContext(ctx, q.revokeRefreshTokenFamily,
 		arg.RevokedAt,
 		arg.FamilyID,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// RevokeRefreshTokenSubject runs the :execrows query against postgresql.
+func (q *postgresqlQueries) RevokeRefreshTokenSubject(ctx context.Context, db DBTX, arg RevokeRefreshTokenSubjectParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.revokeRefreshTokenSubject,
+		arg.RevokedAt,
+		arg.SubjectID,
 	)
 	if err != nil {
 		return 0, err
@@ -759,12 +799,20 @@ var (
 	}(RevokeAccessTokenFamilyParams{})
 	_ = struct {
 		RevokedAt *time.Time
+		SubjectID string
+	}(RevokeAccessTokenSubjectParams{})
+	_ = struct {
+		RevokedAt *time.Time
 		Hash      string
 	}(RevokeRefreshTokenParams{})
 	_ = struct {
 		RevokedAt *time.Time
 		FamilyID  string
 	}(RevokeRefreshTokenFamilyParams{})
+	_ = struct {
+		RevokedAt *time.Time
+		SubjectID string
+	}(RevokeRefreshTokenSubjectParams{})
 	_ = struct {
 		Now time.Time
 	}(SweepAccessTokensParams{})

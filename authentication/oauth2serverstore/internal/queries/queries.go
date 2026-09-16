@@ -89,7 +89,10 @@ const (
 	CodeChallengeColumn = "code_challenge"
 	// NonceColumn is the OIDC nonce carried through to the id token.
 	NonceColumn = "nonce"
-	// SubjectIDColumn is who the credential was issued for.
+	// SubjectIDColumn is who the credential was issued for. It is indexed on
+	// the two token tables, which is what makes ending every credential a
+	// person holds one statement per table rather than a scan of everything
+	// this server has ever issued.
 	SubjectIDColumn = "subject_id"
 	// SubjectClaimsColumn holds the application-shaped half of the subject, as
 	// JSON. This store does not interpret it and must not lose it.
@@ -130,18 +133,20 @@ const (
 	ConsumeAuthorizationCodeQuery = "ConsumeAuthorizationCode"
 	SweepAuthorizationCodesQuery  = "SweepAuthorizationCodes"
 
-	CreateAccessTokenQuery       = "CreateAccessToken"
-	GetAccessTokenQuery          = "GetAccessToken"
-	RevokeAccessTokenQuery       = "RevokeAccessToken"
-	RevokeAccessTokenFamilyQuery = "RevokeAccessTokenFamily"
-	SweepAccessTokensQuery       = "SweepAccessTokens"
+	CreateAccessTokenQuery        = "CreateAccessToken"
+	GetAccessTokenQuery           = "GetAccessToken"
+	RevokeAccessTokenQuery        = "RevokeAccessToken"
+	RevokeAccessTokenFamilyQuery  = "RevokeAccessTokenFamily"
+	RevokeAccessTokenSubjectQuery = "RevokeAccessTokenSubject"
+	SweepAccessTokensQuery        = "SweepAccessTokens"
 
-	CreateRefreshTokenQuery       = "CreateRefreshToken"
-	GetRefreshTokenQuery          = "GetRefreshToken"
-	ConsumeRefreshTokenQuery      = "ConsumeRefreshToken"
-	RevokeRefreshTokenQuery       = "RevokeRefreshToken"
-	RevokeRefreshTokenFamilyQuery = "RevokeRefreshTokenFamily"
-	SweepRefreshTokensQuery       = "SweepRefreshTokens"
+	CreateRefreshTokenQuery        = "CreateRefreshToken"
+	GetRefreshTokenQuery           = "GetRefreshToken"
+	ConsumeRefreshTokenQuery       = "ConsumeRefreshToken"
+	RevokeRefreshTokenQuery        = "RevokeRefreshToken"
+	RevokeRefreshTokenFamilyQuery  = "RevokeRefreshTokenFamily"
+	RevokeRefreshTokenSubjectQuery = "RevokeRefreshTokenSubject"
+	SweepRefreshTokensQuery        = "SweepRefreshTokens"
 )
 
 // ClientColumns is the registration table's shape, in the order every read
@@ -244,7 +249,7 @@ func clientInsertColumns() []string {
 	return slices.Clone(ClientColumns)
 }
 
-// Render returns the canonical sqlc input for d: the nineteen statements this
+// Render returns the canonical sqlc input for d: the twenty-one statements this
 // store executes, in one file's worth of text.
 //
 // It is what authentication/oauth2serverstore/internal/queriesgen writes to
@@ -353,6 +358,18 @@ func accessTokenQueries(g *querygen.Generator) []*querygen.Query {
 			querygen.Match{Column: FamilyIDColumn},
 			unrevoked(),
 		),
+		// The family revocation's statement keyed one column over. A family is
+		// one login; a subject is every login a person has, which is what
+		// "disable this account", "sign out everywhere" and an erasure each
+		// need to end. Neither is expressible as the other: a caller holding
+		// only a subject cannot enumerate its families without a read this
+		// corpus does not have, and revoking family by family would leave the
+		// ones issued between the enumeration and the last revocation live.
+		g.UpdateQuery(RevokeAccessTokenSubjectQuery, AccessTokensTable, AccessTokenColumns,
+			[]string{RevokedAtColumn}, nil,
+			querygen.Match{Column: SubjectIDColumn},
+			unrevoked(),
+		),
 		g.DeleteQuery(SweepAccessTokensQuery, AccessTokensTable, sweepShape, elapsed()),
 	}
 }
@@ -387,6 +404,14 @@ func refreshTokenQueries(g *querygen.Generator) []*querygen.Query {
 		g.UpdateQuery(RevokeRefreshTokenFamilyQuery, RefreshTokensTable, RefreshTokenColumns,
 			[]string{RevokedAtColumn}, nil,
 			querygen.Match{Column: FamilyIDColumn},
+			unrevoked(),
+		),
+		// The access token table's subject revocation over this one. The two
+		// run together or a person signed out everywhere holds a refresh token
+		// that mints a fresh access token a second later.
+		g.UpdateQuery(RevokeRefreshTokenSubjectQuery, RefreshTokensTable, RefreshTokenColumns,
+			[]string{RevokedAtColumn}, nil,
+			querygen.Match{Column: SubjectIDColumn},
 			unrevoked(),
 		),
 		g.DeleteQuery(SweepRefreshTokensQuery, RefreshTokensTable, sweepShape, elapsed()),
