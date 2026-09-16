@@ -9,27 +9,31 @@
 -- global scope to whoever forgot the column — the mistake tenancy.Scope exists
 -- to make unspellable in Go. NOT NULL with nothing to fall back on makes that
 -- write fail instead. See the tenancy package.
+--
+-- email_address_verification_token_digest holds the digest of the token a
+-- verification link carries, never the token itself. See postgres.sql for why,
+-- and identity.SQLStore for where the hashing happens.
 CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_users (
-    id                               TEXT PRIMARY KEY,
-    scope                            TEXT NOT NULL,
-    username                         TEXT NOT NULL,
-    email_address                    TEXT NOT NULL,
-    first_name                       TEXT NOT NULL DEFAULT '',
-    last_name                        TEXT NOT NULL DEFAULT '',
-    hashed_password                  TEXT NOT NULL,
-    requires_password_change         BOOLEAN NOT NULL DEFAULT FALSE,
-    password_last_changed_at         DATETIME,
-    two_factor_secret                TEXT NOT NULL DEFAULT '',
-    two_factor_secret_verified_at    DATETIME,
-    email_address_verified_at        DATETIME,
-    email_address_verification_token TEXT NOT NULL DEFAULT '',
-    account_status                   TEXT NOT NULL,
-    account_status_explanation       TEXT NOT NULL DEFAULT '',
-    last_accepted_terms_of_service   DATETIME,
-    last_accepted_privacy_policy     DATETIME,
-    created_at                       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_updated_at                  DATETIME,
-    archived_at                      DATETIME
+    id                                      TEXT PRIMARY KEY,
+    scope                                   TEXT NOT NULL,
+    username                                TEXT NOT NULL,
+    email_address                           TEXT NOT NULL,
+    first_name                              TEXT NOT NULL DEFAULT '',
+    last_name                               TEXT NOT NULL DEFAULT '',
+    hashed_password                         TEXT NOT NULL,
+    requires_password_change                BOOLEAN NOT NULL DEFAULT FALSE,
+    password_last_changed_at                DATETIME,
+    two_factor_secret                       TEXT NOT NULL DEFAULT '',
+    two_factor_secret_verified_at           DATETIME,
+    email_address_verified_at               DATETIME,
+    email_address_verification_token_digest TEXT NOT NULL DEFAULT '',
+    account_status                          TEXT NOT NULL,
+    account_status_explanation              TEXT NOT NULL DEFAULT '',
+    last_accepted_terms_of_service          DATETIME,
+    last_accepted_privacy_policy            DATETIME,
+    created_at                              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_updated_at                         DATETIME,
+    archived_at                             DATETIME
 );
 
 -- Usernames and email addresses are unique per directory, and the uniqueness
@@ -55,12 +59,13 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}identity_users_scope_idx
     ON {{PREFIX}}identity_users (scope, username, id)
     WHERE archived_at IS NULL;
 
--- Serves the verification-link read. Partial on the token being present, so the
--- index holds only the users with an outstanding link rather than one row per
--- user in the directory — verification tokens are cleared when they are used.
-CREATE INDEX IF NOT EXISTS {{PREFIX}}identity_users_email_token_idx
-    ON {{PREFIX}}identity_users (scope, email_address_verification_token)
-    WHERE email_address_verification_token <> '';
+-- Serves the verification-link read, which looks the digest up rather than the
+-- token a recipient presented. Partial on the digest being present, so the index
+-- holds only the users with an outstanding link rather than one row per user in
+-- the directory — the column is cleared when a link is used.
+CREATE INDEX IF NOT EXISTS {{PREFIX}}identity_users_email_token_digest_idx
+    ON {{PREFIX}}identity_users (scope, email_address_verification_token_digest)
+    WHERE email_address_verification_token_digest <> '';
 
 -- The roles a user holds outside any account: operator, support, service
 -- administrator — what a consumer would otherwise keep in a user_roles table of
@@ -195,6 +200,9 @@ CREATE INDEX IF NOT EXISTS {{PREFIX}}identity_membership_roles_role_idx
 -- into the invite email; status_note is why the answer went the way it did,
 -- written by whoever answered. One column would mean the reply erasing the
 -- message it was replying to.
+--
+-- token_digest holds the digest of the invitation's token, never the token
+-- itself. See postgres.sql.
 CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_invitations (
     id                 TEXT PRIMARY KEY,
     scope              TEXT NOT NULL,
@@ -203,7 +211,7 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_invitations (
     to_email           TEXT NOT NULL,
     to_name            TEXT NOT NULL DEFAULT '',
     to_user            TEXT,
-    token              TEXT NOT NULL,
+    token_digest       TEXT NOT NULL,
     status             TEXT NOT NULL,
     note               TEXT NOT NULL DEFAULT '',
     status_note        TEXT NOT NULL DEFAULT '',

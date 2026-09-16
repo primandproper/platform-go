@@ -18,6 +18,11 @@ import (
 var _ CredentialStore = (*SQLStore)(nil)
 
 // GetUserByEmailVerificationToken reads the live user a verification link names.
+//
+// The token is the secret the link carried; what the read keys on is its
+// digest, which is what the column holds — see tokenDigest. A caller therefore
+// hands over what it was given rather than hashing anything itself, and the
+// value that reaches the index is not a secret.
 func (s *SQLStore) GetUserByEmailVerificationToken(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
@@ -28,22 +33,25 @@ func (s *SQLStore) GetUserByEmailVerificationToken(
 		// An empty token is what the column holds for every user with no
 		// outstanding link, so the query would match an arbitrary one of them.
 		// Refusing here rather than running it is the difference between a
-		// rejected verification and a verified stranger.
+		// rejected verification and a verified stranger. It has to be refused
+		// before the digest is taken, because the digest of the empty string is
+		// a perfectly good sixty-four characters that no row holds — an answer
+		// of "no such user" rather than the argument's name.
 		return nil, platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty email verification token")
 	}
 
 	return s.liveUser(ctx, q, scope, "reading identity user by email verification token",
 		func(ctx context.Context) (*User, error) {
-			row, err := s.q.GetUserByEmailVerificationToken(ctx, q,
-				identitydb.GetUserByEmailVerificationTokenParams{
-					EmailAddressVerificationToken: token,
-					Scope:                         scope,
+			row, err := s.q.GetUserByEmailVerificationTokenDigest(ctx, q,
+				identitydb.GetUserByEmailVerificationTokenDigestParams{
+					EmailAddressVerificationTokenDigest: tokenDigest(token),
+					Scope:                               scope,
 				})
 			if err != nil {
 				return nil, err
 			}
 
-			return userFromEmailVerificationTokenRow(&row), nil
+			return userFromEmailVerificationTokenDigestRow(&row), nil
 		})
 }
 
@@ -230,9 +238,13 @@ func (s *SQLStore) MarkUserTwoFactorSecretVerified(
 	return verified, nil
 }
 
-// SetUserEmailAddressVerificationToken stores the token a verification link will
-// carry, replacing any outstanding one and dropping any proof the address
-// already had.
+// SetUserEmailAddressVerificationToken stores the digest of the token a
+// verification link will carry, replacing any outstanding one and dropping any
+// proof the address already had.
+//
+// The secret is the argument and the digest is the column, so the token this
+// method is handed is never written anywhere — see tokenDigest. A caller mails
+// the value it passed in; nothing can read it back out of the row.
 func (s *SQLStore) SetUserEmailAddressVerificationToken(
 	ctx context.Context,
 	tx database.Tx,
@@ -255,7 +267,9 @@ func (s *SQLStore) SetUserEmailAddressVerificationToken(
 
 	if token == "" {
 		// The empty string is how "no outstanding link" is stored, so writing it
-		// here would be a clear dressed as an issue.
+		// here would be a clear dressed as an issue. It is also the one input
+		// tokenDigest passes through rather than hashing, which is what makes
+		// that sentence still true of the column.
 		return op.Error(
 			platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty email verification token"),
 			"setting identity email verification token",
@@ -273,10 +287,10 @@ func (s *SQLStore) SetUserEmailAddressVerificationToken(
 	// column that says otherwise which has to go.
 	count, err := s.q.SetUserEmailAddressVerificationToken(ctx, tx,
 		identitydb.SetUserEmailAddressVerificationTokenParams{
-			ID:                            userID,
-			Scope:                         scope,
-			EmailAddressVerificationToken: token,
-			EmailAddressVerifiedAt:        nil,
+			ID:                                  userID,
+			Scope:                               scope,
+			EmailAddressVerificationTokenDigest: tokenDigest(token),
+			EmailAddressVerifiedAt:              nil,
 		})
 	if err = s.guardCount(ctx, count, err, ErrUserNotFound, "setting identity email verification token"); err != nil {
 		return op.Error(err, "setting identity email verification token")
@@ -286,6 +300,9 @@ func (s *SQLStore) SetUserEmailAddressVerificationToken(
 }
 
 // MarkUserEmailAddressVerified stamps the address as proven and burns the token.
+//
+// The token is the secret a recipient presented; what the predicate compares
+// and what the write clears is its digest.
 func (s *SQLStore) MarkUserEmailAddressVerified(
 	ctx context.Context,
 	tx database.Tx,
@@ -313,17 +330,22 @@ func (s *SQLStore) MarkUserEmailAddressVerified(
 		)
 	}
 
-	// The token is in the predicate as well as being cleared by the write, which
+	// The digest is in the predicate as well as being cleared by the write, which
 	// is what makes two concurrent clicks on the same link write once: the
 	// second finds it already cleared and matches nothing. Comparing it here
 	// rather than trusting an earlier read is the whole of that guarantee.
+	//
+	// The comparison is the database's and is not constant-time, which is what
+	// digesting the column buys beyond a backup that gives nothing away: what a
+	// timing signal here could leak is a prefix of a digest, and a prefix of a
+	// digest is not a prefix of the token somebody would have to present.
 	count, err := s.q.MarkUserEmailAddressVerified(ctx, tx,
 		identitydb.MarkUserEmailAddressVerifiedParams{
-			ID:                                   userID,
-			Scope:                                scope,
-			EmailAddressVerifiedAt:               pointer.To(s.now()),
-			EmailAddressVerificationToken:        "",
-			CurrentEmailAddressVerificationToken: token,
+			ID:                                  userID,
+			Scope:                               scope,
+			EmailAddressVerifiedAt:              pointer.To(s.now()),
+			EmailAddressVerificationTokenDigest: "",
+			CurrentEmailAddressVerificationTokenDigest: tokenDigest(token),
 		})
 	if err = s.guardCount(ctx, count, err, ErrUserNotFound, "marking identity email address verified"); err != nil {
 		return op.Error(err, "marking identity email address verified")

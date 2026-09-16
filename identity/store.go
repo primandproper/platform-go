@@ -206,17 +206,24 @@ type Registrar interface {
 
 // CredentialStore is where the authentication engines put what they produce.
 //
-// This package never hashes, never compares, and never generates a TOTP secret;
-// argon2, totp and webauthn do that and store nothing. These are the methods
-// that persist their results, and they are separate from ProfileWriter for a
-// reason that is a security property rather than tidiness: a credential must
-// never be written by a read-modify-write over a whole User, because a caller
-// writing back a value it read before a password rotation would restore the old
-// hash. Every method here writes exactly one fact.
+// This package never hashes a password, never compares one, and never generates
+// a TOTP secret; argon2, totp and webauthn do that and store nothing. These are
+// the methods that persist their results, and they are separate from
+// ProfileWriter for a reason that is a security property rather than tidiness: a
+// credential must never be written by a read-modify-write over a whole User,
+// because a caller writing back a value it read before a password rotation would
+// restore the old hash. Every method here writes exactly one fact.
+//
+// The verification token is the exception to the first sentence, and it is a
+// property of the column rather than a credential decision this package took
+// away from an engine: the token a link carries is stored as a digest, so the
+// three methods that name one take the secret and hash it themselves. Nothing
+// reads a token back out of a row — see User.EmailAddressVerificationTokenDigest.
 type CredentialStore interface {
-	// GetUserByEmailVerificationToken reads the user a verification link names.
-	// A token that has already been used matches nobody, because verifying
-	// clears it.
+	// GetUserByEmailVerificationToken reads the user a verification link names,
+	// by the digest of the token it was given rather than by the token. A token
+	// that has already been used matches nobody, because verifying clears the
+	// column.
 	GetUserByEmailVerificationToken(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, token string) (*User, error)
 
 	// UpdateUserPassword replaces the stored hash, stamps PasswordLastChangedAt,
@@ -270,11 +277,14 @@ type CredentialStore interface {
 		userID string,
 	) (*User, error)
 
-	// SetUserEmailAddressVerificationToken stores the token a verification link
-	// will carry, replacing any outstanding one — so re-sending a verification
-	// email invalidates the previous link rather than leaving two live — and
-	// dropping any proof the address already had, so the row never says both
-	// "proven" and "a link is outstanding".
+	// SetUserEmailAddressVerificationToken stores the digest of the token a
+	// verification link will carry, replacing any outstanding one — so
+	// re-sending a verification email invalidates the previous link rather than
+	// leaving two live — and dropping any proof the address already had, so the
+	// row never says both "proven" and "a link is outstanding".
+	//
+	// The token itself is never stored. A caller mails the value it passed in,
+	// and no read of this Store can hand it back.
 	//
 	// A flow that changes an address and then verifies it mints the link in that
 	// order. UpdateUser burns the outstanding token along with the stamp,
@@ -289,11 +299,11 @@ type CredentialStore interface {
 	) error
 
 	// MarkUserEmailAddressVerified stamps the address as proven and clears the
-	// token, so the link cannot be replayed.
+	// stored digest, so the link cannot be replayed.
 	//
-	// The token is a parameter and is compared in the statement's predicate: the
-	// caller has already read the user by token, and re-checking it here is what
-	// makes a verification that raced another one write once.
+	// The token is a parameter and its digest is compared in the statement's
+	// predicate: the caller has already read the user by token, and re-checking
+	// it here is what makes a verification that raced another one write once.
 	MarkUserEmailAddressVerified(
 		ctx context.Context,
 		tx database.Tx,
@@ -893,9 +903,11 @@ type InvitationStore interface {
 	// The ID is generated if the argument carries none, and CreatedAt is the
 	// database's.
 	//
-	// The row that comes back carries the token, since the column does: it is
-	// the value the invitation exists to mail, and the only read-back in this
-	// Store that is a secret.
+	// The row that comes back carries the token, which the column does not: it
+	// holds a digest, and the secret the caller minted is put back onto the
+	// answer. It is the value the invitation exists to mail, and the only
+	// read-back in this Store that is a secret — every other read of an
+	// invitation carries Invitation.TokenDigest and nothing more.
 	//
 	// Note is the sender's message and is written here; StatusNote is the
 	// answer's and is not. An invitation carrying one at creation is refused
@@ -911,6 +923,10 @@ type InvitationStore interface {
 	// GetInvitation reads one of the scope's live invitations by ID, for the
 	// sender looking at what they have sent. An archived one is not returned —
 	// see DirectoryReader.GetUser.
+	//
+	// It carries Invitation.TokenDigest and not Invitation.Token: a sender
+	// looking at an outstanding invitation is not being handed the link again,
+	// and there is nothing in the row to hand them.
 	GetInvitation(
 		ctx context.Context,
 		q database.SQLQueryExecutor,
@@ -923,9 +939,12 @@ type InvitationStore interface {
 	//
 	// The ID and the token are both required, and the ID is what the row is
 	// found by. Looking up by token alone would make the token an index key —
-	// which is a secret in an index and a timing signal on every miss — where
-	// naming the row first means one constant-time-ish comparison against one
-	// value.
+	// which is a timing signal on every miss, and was a secret in an index
+	// before the column became a digest — where naming the row first means one
+	// constant-time comparison against one value.
+	//
+	// What is compared is the digest of the presented token against the digest
+	// the column holds, so neither side of the comparison is the secret.
 	//
 	// An expired invitation returns an error wrapping ErrInvitationExpired
 	// rather than ErrInvitationNotFound, so the recipient can be told to ask for

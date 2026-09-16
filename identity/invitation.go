@@ -111,10 +111,25 @@ type Invitation struct {
 	// ToName is what to call the recipient in the email. Optional.
 	ToName string `json:"toName"`
 
-	// Token is the secret half of the link. It is excluded from this type's JSON
-	// rendering and, like the credential fields on User, that tag binds
-	// encoding/json alone — see Redacted.
+	// Token is the secret half of the link, and it travels one way: the sender
+	// mints it and hands it to InvitationStore.CreateInvitation, which stores
+	// its digest and answers with the invitation carrying the secret back so
+	// that it can be mailed. No other read fills it in — what a read invitation
+	// carries is TokenDigest.
+	//
+	// It is excluded from this type's JSON rendering and, like the credential
+	// fields on User, that tag binds encoding/json alone — see Redacted.
 	Token string `json:"-"`
+
+	// TokenDigest is what the column holds: the digest of Token. It is filled
+	// in by every read and ignored by every write, so an invitation assembled
+	// by a caller need not carry one and one carrying a value is not believed.
+	//
+	// The store compares a presented token against it rather than looking a row
+	// up by it — see InvitationStore.GetInvitationByToken — and Redacted clears
+	// it beside the secret, because a verifier for guesses at a bearer
+	// credential is not a field a response body or a cache entry wants.
+	TokenDigest string `json:"-"`
 
 	// Status is where the invitation stands.
 	Status InvitationStatus `json:"status"`
@@ -165,9 +180,9 @@ func (i *Invitation) Expired(now time.Time) bool {
 	return i != nil && !now.Before(i.ExpiresAt)
 }
 
-// Redacted returns a copy of the invitation with the token cleared, for the
-// same reason User.Redacted exists: the struct tag binds one codec, and an
-// invitation is a value applications routinely render and cache.
+// Redacted returns a copy of the invitation with the token and its digest
+// cleared, for the same reason User.Redacted exists: the struct tag binds one
+// codec, and an invitation is a value applications routinely render and cache.
 func (i *Invitation) Redacted() *Invitation {
 	if i == nil {
 		return nil
@@ -175,6 +190,7 @@ func (i *Invitation) Redacted() *Invitation {
 
 	clone := *i
 	clone.Token = ""
+	clone.TokenDigest = ""
 
 	return &clone
 }

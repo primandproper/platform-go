@@ -57,9 +57,21 @@ on them.
 What that means concretely: HashedPassword, RequiresPasswordChange,
 PasswordLastChangedAt, TwoFactorSecret, TwoFactorSecretVerifiedAt, and the
 email-address verification token are User fields, written and read through this
-Store. The engines remain engines — this package never hashes, never compares,
-never generates a TOTP secret. It stores what they produce, and
+Store. The engines remain engines — this package never hashes a password, never
+compares one, never generates a TOTP secret. It stores what they produce, and
 [User.Redacted] is how a user reaches a response body without them.
+
+The two link tokens this schema holds are the exception, and they are stored as
+digests: the email-address verification token and the invitation token. Each is
+a bearer credential — one proves an address, the other joins an account — so a
+backup, a replica or a support engineer's query would hand out every outstanding
+one of them if the column held the raw value, and the verification column is
+indexed besides. The store hashes on the way in and on every lookup, so the
+secret is an argument and never a column, and no read hands one back: what a
+read carries is [User.EmailAddressVerificationTokenDigest] and
+[Invitation.TokenDigest]. The one exception is
+[InvitationStore.CreateInvitation], which answers with the token its caller
+minted so that it can be mailed.
 
 What is deliberately not here, and why it is not an omission: WebAuthn ceremony
 state, password reset tokens, and sessions. Each is a set per user rather than a

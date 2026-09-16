@@ -289,6 +289,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		// issuing the link is the statement that the address wants proving.
 		must.Nil(t, updated.EmailAddressVerifiedAt)
 		test.EqOp(t, "", updated.EmailAddressVerificationToken)
+		test.EqOp(t, "", updated.EmailAddressVerificationTokenDigest)
 
 		test.EqOp(t, 1, hooks.ran("email_token"))
 		test.EqOp(t, updated, hooks.user)
@@ -298,7 +299,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 
 		stored, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
-		test.EqOp(t, "second-link", stored.EmailAddressVerificationToken)
+		test.EqOp(t, tokenDigest("second-link"), stored.EmailAddressVerificationTokenDigest)
 	})
 
 	t.Run("a link for an address nobody proved reports no previous proof", func(t *testing.T) {
@@ -351,6 +352,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		// the hook is handed says which address it was.
 		test.EqOp(t, user.EmailAddress, verified.EmailAddress)
 		test.EqOp(t, "", verified.EmailAddressVerificationToken)
+		test.EqOp(t, "", verified.EmailAddressVerificationTokenDigest)
 
 		test.EqOp(t, 1, hooks.ran("email_verified"))
 		test.EqOp(t, verified, hooks.user)
@@ -381,7 +383,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		stored, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
 		test.False(t, stored.EmailAddressVerified())
-		test.EqOp(t, "verify-me", stored.EmailAddressVerificationToken)
+		test.EqOp(t, tokenDigest("verify-me"), stored.EmailAddressVerificationTokenDigest)
 	})
 
 	t.Run("withdraws a proof and leaves an outstanding link alone", func(t *testing.T) {
@@ -408,6 +410,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		test.False(t, unverified.EmailAddressVerified())
 		test.EqOp(t, user.EmailAddress, unverified.EmailAddress)
 		test.EqOp(t, "", unverified.EmailAddressVerificationToken)
+		test.EqOp(t, "", unverified.EmailAddressVerificationTokenDigest)
 
 		test.EqOp(t, 1, hooks.ran("email_unverified"))
 		test.EqOp(t, unverified, hooks.user)
@@ -415,7 +418,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		stored, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
 		test.False(t, stored.EmailAddressVerified())
-		test.EqOp(t, "third-link", stored.EmailAddressVerificationToken)
+		test.EqOp(t, tokenDigest("third-link"), stored.EmailAddressVerificationTokenDigest)
 	})
 
 	t.Run("every credential operation refuses a user in another directory", func(t *testing.T) {

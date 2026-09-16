@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -169,7 +170,48 @@ type harness struct {
 	// same server to be asserting anything.
 	listener *bufconn.Listener
 	svc      *identity.Service
-	scope    tenancy.Scope
+
+	// invites is what the service's hooks recorded, and the only place in this
+	// suite an invitation's token is observable: the column holds a digest, so
+	// the read-back AfterInvite is handed is the one value in the module
+	// carrying the secret the transport minted.
+	invites *inviteRecorder
+	scope   tenancy.Scope
+}
+
+// inviteRecorder is a consumer's Hooks, remembering the token each invitation
+// was mailed with. It embeds NoopHooks so that the operations it does not care
+// about stay no-ops — which is what the interface documents an embedder for.
+type inviteRecorder struct {
+	identity.NoopHooks
+
+	tokens sync.Map
+}
+
+func (r *inviteRecorder) AfterInvite(
+	_ context.Context,
+	_ database.Tx,
+	_ tenancy.Scope,
+	invitation *identity.Invitation,
+) error {
+	r.tokens.Store(invitation.ID, invitation.Token)
+
+	return nil
+}
+
+// token answers with the secret an invitation was issued with, failing the test
+// when no hook saw it — an invitation nothing could mail is the failure this
+// exists to catch rather than an empty string to assert against.
+func (r *inviteRecorder) token(t *testing.T, invitationID string) string {
+	t.Helper()
+
+	value, ok := r.tokens.Load(invitationID)
+	must.True(t, ok, must.Sprintf("no hook saw invitation %q issued", invitationID))
+
+	token, ok := value.(string)
+	must.True(t, ok, must.Sprintf("invitation %q recorded a %T", invitationID, value))
+
+	return token
 }
 
 // newHarness stands the whole stack up.
@@ -196,7 +238,9 @@ func newHarnessAs(t *testing.T, principal identitygrpc.Principal, opts ...identi
 	store, err := identity.NewSQLStore(db, identity.WithTablePrefix(prefix))
 	must.NoError(t, err)
 
-	svc, err := identity.NewService(db, store)
+	invites := &inviteRecorder{}
+
+	svc, err := identity.NewService(db, store, identity.WithHooks(invites))
 	must.NoError(t, err)
 
 	srv, err := identitygrpc.NewServer(svc, store, db, extractPrincipal, opts...)
@@ -229,6 +273,7 @@ func newHarnessAs(t *testing.T, principal identitygrpc.Principal, opts ...identi
 	t.Cleanup(func() { _ = conn.Close() })
 
 	return &harness{
+		invites:   invites,
 		client:    identityclient.Wrap(conn),
 		conn:      conn,
 		listener:  listener,

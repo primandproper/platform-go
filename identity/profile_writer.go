@@ -110,7 +110,7 @@ func (s *SQLStore) UpdateUser(
 // than computing them — so the comparison moves here, into the caller's
 // transaction, which is the same one the update runs in.
 //
-// The outstanding token clears with the stamp, in the same statement, because a
+// The outstanding link clears with the stamp, in the same statement, because a
 // token is proof of nothing on its own: the column records that a link was
 // mailed, not which address it was mailed to. Leaving it live across an address
 // change is the front door onto the hole the stamp's clearing closes — the link
@@ -137,12 +137,12 @@ func (s *SQLStore) profileUpdateParams(
 		return identitydb.UpdateUserParams{}, err
 	}
 
-	verifiedAt, token := stored.EmailAddressVerifiedAt, stored.EmailAddressVerificationToken
+	verifiedAt, digest := stored.EmailAddressVerifiedAt, stored.EmailAddressVerificationTokenDigest
 	if stored.EmailAddress != user.EmailAddress {
-		verifiedAt, token = nil, ""
+		verifiedAt, digest = nil, ""
 	}
 
-	return updateUserParams(user, verifiedAt, token), nil
+	return updateUserParams(user, verifiedAt, digest), nil
 }
 
 // UpdateAccount writes the account's name and billing address, and answers with

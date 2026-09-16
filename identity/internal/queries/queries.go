@@ -57,9 +57,9 @@ const (
 // the invitation columns above are: the store spells them too, and two
 // spellings of one column is the drift this package exists to prevent.
 const (
-	UserUsernameColumn               = "username"
-	UserEmailAddressColumn           = "email_address"
-	UserEmailVerificationTokenColumn = "email_address_verification_token"
+	UserUsernameColumn                     = "username"
+	UserEmailAddressColumn                 = "email_address"
+	UserEmailVerificationTokenDigestColumn = "email_address_verification_token_digest"
 )
 
 // The role tables' columns. Each of the three is a child set of one parent row
@@ -187,9 +187,9 @@ const (
 	paymentProcessorCustomerIDColumn = "payment_processor_customer_id"
 	billingSyncedAtColumn            = "last_payment_provider_synced_at"
 
-	currentEmailVerificationTokenArg = "current_" + UserEmailVerificationTokenColumn
-	currentOwnerUserIDArg            = "current_" + ownerUserIDColumn
-	currentInvitationStatusArg       = "current_" + InvitationStatusColumn
+	currentEmailVerificationTokenDigestArg = "current_" + UserEmailVerificationTokenDigestColumn
+	currentOwnerUserIDArg                  = "current_" + ownerUserIDColumn
+	currentInvitationStatusArg             = "current_" + InvitationStatusColumn
 )
 
 // exceptUserIDArg is the argument the collision checks exclude a row through:
@@ -232,9 +232,9 @@ const EmailAddressVerifiedAtColumn = "email_address_verified_at"
 // Everything after last_name is either a credential, a proof, or a status, and
 // each is written by the method that owns it — which is why the standard update
 // assigns four profile columns and two derived ones. email_address_verified_at
-// and email_address_verification_token are updatable on purpose, and as a pair:
-// moving an address has to clear the proof that went with it, or a user could
-// take an address they have never proven and stay verified — and it has to
+// and email_address_verification_token_digest are updatable on purpose, and as a
+// pair: moving an address has to clear the proof that went with it, or a user
+// could take an address they have never proven and stay verified — and it has to
 // clear the outstanding token in the same statement, or the link minted for the
 // address being left behind proves the one being moved to.
 var Users = Table{
@@ -254,7 +254,7 @@ var Users = Table{
 		"two_factor_secret",
 		"two_factor_secret_verified_at",
 		EmailAddressVerifiedAtColumn,
-		UserEmailVerificationTokenColumn,
+		UserEmailVerificationTokenDigestColumn,
 		accountStatusColumn,
 		accountStatusExplanationColumn,
 		termsOfServiceColumn,
@@ -276,7 +276,7 @@ var Users = Table{
 		"first_name",
 		"last_name",
 		EmailAddressVerifiedAtColumn,
-		UserEmailVerificationTokenColumn,
+		UserEmailVerificationTokenDigestColumn,
 	},
 	Omitted: []querygen.StandardQuery{querygen.ExistsQuery},
 }
@@ -351,7 +351,7 @@ var Invitations = Table{
 		"to_email",
 		"to_name",
 		"to_user",
-		"token",
+		"token_digest",
 		"status",
 		"note",
 		invitationStatusNoteColumn,
@@ -642,9 +642,9 @@ func roleWrites(g *querygen.Generator) []*querygen.Query {
 // Three of them are guarded, and the guard is the mechanism rather than a
 // belt-and-braces check:
 //
-//	MarkUserEmailAddressVerified  names the token in the predicate, so two
-//	                              clicks on one verification link write once —
-//	                              the second finds it already cleared
+//	MarkUserEmailAddressVerified  names the token digest in the predicate, so
+//	                              two clicks on one verification link write
+//	                              once — the second finds it already cleared
 //	TransferAccountOwnership      names the owner being moved away from, so two
 //	                              concurrent transfers cannot both succeed and
 //	                              leave the account owned by whichever committed
@@ -695,12 +695,12 @@ func fieldWrites(g *querygen.Generator) []*querygen.Query {
 		// link at the same time. Which of the two a reader believes is then a
 		// question about which column it happened to look at.
 		g.UpdateQuery("SetUserEmailAddressVerificationToken", UsersTable, Users.Columns,
-			[]string{UserEmailVerificationTokenColumn, EmailAddressVerifiedAtColumn}, Users.Nullable, scope),
+			[]string{UserEmailVerificationTokenDigestColumn, EmailAddressVerifiedAtColumn}, Users.Nullable, scope),
 
 		g.UpdateQuery("MarkUserEmailAddressVerified", UsersTable, Users.Columns,
-			[]string{EmailAddressVerifiedAtColumn, UserEmailVerificationTokenColumn}, Users.Nullable,
+			[]string{EmailAddressVerifiedAtColumn, UserEmailVerificationTokenDigestColumn}, Users.Nullable,
 			scope,
-			querygen.Match{Column: UserEmailVerificationTokenColumn, Arg: currentEmailVerificationTokenArg}),
+			querygen.Match{Column: UserEmailVerificationTokenDigestColumn, Arg: currentEmailVerificationTokenDigestArg}),
 
 		// The other direction, and the one nothing else can express: the proof
 		// comes off an address the user keeps. Unguarded on purpose — it is the
@@ -950,7 +950,7 @@ func keyedUserReads(g *querygen.Generator) []*querygen.Query {
 	named := [][2]string{
 		{"GetUserByUsername", UserUsernameColumn},
 		{"GetUserByEmailAddress", UserEmailAddressColumn},
-		{"GetUserByEmailVerificationToken", UserEmailVerificationTokenColumn},
+		{"GetUserByEmailVerificationTokenDigest", UserEmailVerificationTokenDigestColumn},
 	}
 
 	rendered := make([]*querygen.Query, 0, len(named))
