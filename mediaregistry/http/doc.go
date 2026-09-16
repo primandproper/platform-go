@@ -141,6 +141,18 @@ not depend on whether a binary called errormappers.Register. The two agree on th
 answer; this route does not ask. Everything else is a 500, through errors/http,
 which is the honest answer to a bucket that would not open.
 
+That 500 is the answer on the ranging path too, and getting it there took work
+net/http does not do. ServeContent picks a status before it reads a byte and
+throws away what the read then reports, so an object opened lazily — which is
+how a range is served for one read rather than two — failed to open inside a
+response that had already promised a 200 and a Content-Length. The status is
+therefore held back until there is a byte of the object to send it with, and a
+bucket that never answers is refused rather than described. See heldResponse.
+
+What that cannot recover is a read that fails partway: those bytes are gone, the
+client sees a body that stopped, and all that is left to do is record it on the
+span, which is also what a client that navigated away looks like from here.
+
 # What is not here
 
 No write, no delete, no archive. mediaregistry.Store.ArchiveObject is metadata-only

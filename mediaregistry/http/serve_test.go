@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	nethttp "net/http"
 	"path"
 	"testing"
@@ -12,8 +13,10 @@ import (
 	mediaregistrymock "github.com/primandproper/platform-go/v14/mediaregistry/mock"
 
 	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	httpx "github.com/primandproper/primitives-go/v2/errors/http"
+	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
@@ -317,6 +320,123 @@ func TestHandler_serveRefusals(T *testing.T) {
 		res := get(t, mount(t, storeReturning(testObject()), manager, ownedCaller()), testObjectID, nil)
 
 		test.EqOp(t, nethttp.StatusInternalServerError, res.Code)
+	})
+}
+
+// The shipped provider is the one that ranges, and it reaches storage from
+// inside net/http rather than before it. These are that path.
+func TestHandler_serveRangingRefusals(T *testing.T) {
+	T.Parallel()
+
+	// failing builds the ranging manager that will not open, the handler over
+	// it, and the recorder its span reports to.
+	failing := func(t *testing.T) (*rangingObjects, nethttp.Handler, *observability.RecordingObserver) {
+		t.Helper()
+
+		manager := newRangingObjects()
+		manager.err = platformerrors.New("the bucket is unreachable")
+
+		handler := newHandler(t, storeReturning(testObject()), manager)
+
+		return manager, mountHandler(t, handler, ownedCaller()), recording(handler)
+	}
+
+	T.Run("500s a bucket that will not open", func(t *testing.T) {
+		t.Parallel()
+
+		manager, handler, recorder := failing(t)
+
+		res := get(t, handler, testObjectID, nil)
+
+		// Not a 200 with a Content-Length and no bytes, which is what
+		// ServeContent commits to before it finds out.
+		test.EqOp(t, nethttp.StatusInternalServerError, res.Code)
+		test.EqOp(t, int64(1), manager.opens.Load())
+
+		// The refusal's own envelope, under the refusal's own headers.
+		test.EqOp(t, "", res.Header().Get(contentLengthHeader))
+		test.EqOp(t, "", res.Header().Get(lastModifiedHeader))
+		test.EqOp(t, "", res.Header().Get(acceptRangesHeader))
+		test.EqOp(t, "", res.Header().Get(contentDispositionHeader))
+		test.EqOp(t, encoding.ContentTypeJSON.String(), res.Header().Get(contentTypeHeader))
+
+		var envelope httpx.APIResponse[any]
+
+		must.NoError(t, json.Unmarshal(res.Body.Bytes(), &envelope))
+		must.NotNil(t, envelope.Error)
+
+		// And it reached the span rather than only the client.
+		must.SliceNotEmpty(t, recorder.Operations)
+		must.ErrorIs(t, errors.Join(recorder.Operations[0].Errors...), manager.err)
+	})
+
+	T.Run("500s a bucket that will not open the range it was asked for", func(t *testing.T) {
+		t.Parallel()
+
+		manager, handler, recorder := failing(t)
+
+		res := get(t, handler, testObjectID, map[string]string{"Range": "bytes=6-10"})
+
+		// The 206 ServeContent chose is never sent: no byte of the range was
+		// ever produced, so there is still a refusal to write.
+		test.EqOp(t, nethttp.StatusInternalServerError, res.Code)
+		test.EqOp(t, "", res.Header().Get(contentRangeHeader))
+		must.SliceNotEmpty(t, recorder.Operations)
+		must.ErrorIs(t, errors.Join(recorder.Operations[0].Errors...), manager.err)
+	})
+
+	T.Run("records a read that fails once the response has gone", func(t *testing.T) {
+		t.Parallel()
+
+		manager := newRangingObjects()
+		manager.breakAfter = 4
+		manager.readErr = platformerrors.New("the bucket stopped answering")
+
+		handler := newHandler(t, storeReturning(testObject()), manager)
+		recorder := recording(handler)
+
+		res := get(t, mountHandler(t, handler, ownedCaller()), testObjectID, nil)
+
+		// The status went out with the first bytes, so all that is left is a
+		// body that stopped — and the line on the span saying why.
+		test.EqOp(t, nethttp.StatusOK, res.Code)
+		test.EqOp(t, testBody[:4], res.Body.String())
+		must.SliceNotEmpty(t, recorder.Operations)
+		must.ErrorIs(t, errors.Join(recorder.Operations[0].Errors...), manager.readErr)
+	})
+
+	T.Run("an answer with no body still sends its status", func(t *testing.T) {
+		t.Parallel()
+
+		manager := newRangingObjects()
+
+		res := get(t, mount(t, storeReturning(testObject()), manager, ownedCaller()), testObjectID,
+			map[string]string{"Range": "bytes=500-600"})
+
+		// Held and then sent by write, since nothing was ever written under it.
+		test.EqOp(t, nethttp.StatusRequestedRangeNotSatisfiable, res.Code)
+
+		// And decided without asking storage for anything.
+		test.EqOp(t, int64(0), manager.opens.Load())
+	})
+
+	T.Run("a conditional request costs no read of storage", func(t *testing.T) {
+		t.Parallel()
+
+		object := testObject()
+		object.CreatedAt = time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+
+		manager := newRangingObjects()
+
+		res := get(t, mount(t, storeReturning(object), manager, ownedCaller()), testObjectID, map[string]string{
+			"If-Modified-Since": object.CreatedAt.Format(nethttp.TimeFormat),
+		})
+
+		test.EqOp(t, nethttp.StatusNotModified, res.Code)
+
+		// The bucket is reached from the first Read and a 304 never makes one,
+		// which is the property a pre-emptive open would have cost.
+		test.EqOp(t, int64(0), manager.opens.Load())
 	})
 }
 
