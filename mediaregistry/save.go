@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 	"github.com/primandproper/primitives-go/v2/uploads"
 )
@@ -48,6 +49,24 @@ import (
 // caller later rolls back has the same outcome as a failed registration, for the
 // same reason: the bytes are already spent.
 //
+// That argument holds for everything after the upload and says nothing about the
+// upload itself, which is why the bucket is asked first. A provider's writer at
+// an occupied path replaces what is there, so an upload that runs before the
+// collision is known has already overwritten somebody's object — and the
+// registration that then refuses it leaves the victim's row, unchanged and still
+// theirs, serving the colliding caller's bytes through whatever guarded route
+// serves them. Rolling the transaction back does not bring the bytes it
+// displaced back either. [ErrObjectKeyOccupied] is that refusal, and it is the
+// bucket's answer rather than the registry's: a key another tenant holds is free
+// as far as every row here is concerned, so the registry's own check would clear
+// exactly the overwrite that costs somebody the most.
+//
+// Like the registry's collision check, asking narrows the window rather than
+// closing it — two callers racing for one key can both be told it is free, and
+// the providers expose no conditional write to settle it. What settles that race
+// is the unique index, one step later, and the loser has by then written bytes
+// nothing points at: the orphan this order has always been willing to leave.
+//
 // What the transaction costs here is worth stating, because this function is the
 // one place it is paid without the caller writing the upload themselves. The
 // transaction is open across the upload, so a large object holds a connection
@@ -84,6 +103,20 @@ func StoreAndRecord(
 		return nil, err
 	}
 
+	// The bucket is asked before the bytes go, because an upload at an occupied
+	// path replaces what is there and no ordering after that point can undo it.
+	// A bucket that would not answer is not a bucket that said the key was free,
+	// so the error refuses the upload too — and it is wrapped, where the upload's
+	// own error below is passed through, because the caller asked for an upload
+	// and did not ask for this read.
+	occupied, err := manager.Exists(ctx, in.Key)
+	switch {
+	case err != nil:
+		return nil, platformerrors.Wrap(err, "checking whether the object key is free")
+	case occupied:
+		return nil, ErrObjectKeyOccupied
+	}
+
 	// The content type is stated to the provider as well as recorded, so the
 	// stored object and its row agree. An empty one is left alone: the providers
 	// sniff it from the content, and naming it explicitly as "" would replace a
@@ -94,7 +127,7 @@ func StoreAndRecord(
 
 	counted := &countingReader{r: r}
 
-	if err := manager.Save(ctx, in.Key, counted, opts...); err != nil {
+	if err = manager.Save(ctx, in.Key, counted, opts...); err != nil {
 		return nil, err
 	}
 

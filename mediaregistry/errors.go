@@ -44,6 +44,24 @@ var (
 	// somebody.
 	ErrObjectKeyTaken = platformerrors.New("object key is already registered")
 
+	// ErrObjectKeyOccupied indicates a key the bucket already holds an object
+	// at, found by [StoreAndRecord] before it wrote anything.
+	//
+	// It is kept apart from ErrObjectKeyTaken because the two are different
+	// facts about different stores, and only one of them is answerable from a
+	// row. A registered key is a collision within the scope; an occupied key is
+	// bytes at that path in the bucket, whoever put them there. On a bucket
+	// shared between tenants the second happens without the first: the unique
+	// index is (scope, object_key), so another tenant's object leaves the key
+	// free as far as every row here is concerned.
+	//
+	// A caller who sees it mints another key, same as for ErrObjectKeyTaken.
+	// What the distinction buys is the deployment reading its logs: an occupied
+	// key that no row in the scope explains is either another tenant's object or
+	// an orphan left by a registration that failed after its upload, and both
+	// are things to go and look at rather than things the caller did wrong.
+	ErrObjectKeyOccupied = platformerrors.New("an object is already stored at that key")
+
 	// ErrPartialSubject indicates a Subject with a type and no id, or an id and
 	// no type. Either alone names nothing that can be looked up — see Subject.
 	ErrPartialSubject = platformerrors.New("belongs-to subject has a type or an id but not both")
