@@ -27,6 +27,12 @@ import (
 // and whether past_due is still entitled, are the rules this package stores the
 // answer to rather than derives. BillingSuspended has no counterpart at all — it
 // is an operator action no processor reports.
+//
+// That the step is the application's does not mean it has to be written by
+// hand. [github.com/primandproper/platform-go/v14/billing/standing] is where the
+// judgement is declared once — a seam, plus the reading most deployments take —
+// and it lives there rather than here so that storing a user does not drag a
+// payments dependency in front of every consumer of this package.
 type BillingStatus string
 
 const (
