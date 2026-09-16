@@ -11,18 +11,11 @@ CREATE TABLE IF NOT EXISTS issue_reports (
     closed_at       DATETIME(6),
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),
-    archived_at     DATETIME(6)
+    archived_at     DATETIME(6),
+    KEY issue_reports_scope_idx (scope, archived_at, id),
+    KEY issue_reports_status_idx (scope, archived_at, status, id),
+    KEY issue_reports_reporter_idx (scope, archived_at, reporter, id),
+    KEY issue_reports_subject_idx
+        (scope, archived_at, subject_type, subject_id, id)
 );
-
-CREATE INDEX issue_reports_scope_idx
-    ON issue_reports (scope, archived_at, id);
-
-CREATE INDEX issue_reports_status_idx
-    ON issue_reports (scope, archived_at, status, id);
-
-CREATE INDEX issue_reports_reporter_idx
-    ON issue_reports (scope, archived_at, reporter, id);
-
-CREATE INDEX issue_reports_subject_idx
-    ON issue_reports (scope, archived_at, subject_type, subject_id, id);
 

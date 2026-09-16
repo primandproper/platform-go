@@ -11,12 +11,9 @@ CREATE TABLE IF NOT EXISTS oauth2_registered_clients (
     created_at      DATETIME(6)   NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6)   NULL,
     archived_at     DATETIME(6)   NULL,
-    UNIQUE KEY oauth2_registered_clients_client_id_uniq (client_id)
+    UNIQUE KEY oauth2_registered_clients_client_id_uniq (client_id),
+    KEY oauth2_registered_clients_scope_idx (scope, archived_at, id),
+    KEY oauth2_registered_clients_owner_idx
+        (scope, archived_at, belongs_to_user, id)
 );
-
-CREATE INDEX oauth2_registered_clients_scope_idx
-    ON oauth2_registered_clients (scope, archived_at, id);
-
-CREATE INDEX oauth2_registered_clients_owner_idx
-    ON oauth2_registered_clients (scope, archived_at, belongs_to_user, id);
 

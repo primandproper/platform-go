@@ -22,17 +22,15 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}saga_instances (
     last_updated_at DATETIME(6),
     archived_at     DATETIME(6),
     next_attempt    DATETIME(6) NOT NULL,
-    claimed_until   DATETIME(6)
+    claimed_until   DATETIME(6),
+
+    -- MySQL has no partial indexes, so unlike the Postgres schema these cover
+    -- the whole table and the status column leads. Both queries these serve
+    -- filter on status first, so putting it in front keeps the index selective
+    -- for the same reads the partial clauses serve elsewhere.
+    KEY {{PREFIX}}saga_instances_claim_idx (status, next_attempt, created_at, id),
+
+    -- Serves the operator read: "which sagas are stuck", and "what has this
+    -- definition been doing".
+    KEY {{PREFIX}}saga_instances_status_idx (status, definition, id)
 );
-
--- MySQL has no partial indexes, so unlike the Postgres schema these cover the
--- whole table and the status column leads. Both queries these serve filter on
--- status first, so putting it in front keeps the index selective for the same
--- reads the partial clauses serve elsewhere.
-CREATE INDEX {{PREFIX}}saga_instances_claim_idx
-    ON {{PREFIX}}saga_instances (status, next_attempt, created_at, id);
-
--- Serves the operator read: "which sagas are stuck", and "what has this
--- definition been doing".
-CREATE INDEX {{PREFIX}}saga_instances_status_idx
-    ON {{PREFIX}}saga_instances (status, definition, id);

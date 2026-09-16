@@ -64,14 +64,23 @@ lexicographic order agrees with. A caller-bound time.Time reaches that column as
 Go's own String() rendering instead, which sorts correctly by accident of its
 prefix rather than by design.
 
-# The scope column has no default
+# Running it twice adds nothing, in every dialect
 
-The DDL here only ever creates: every CREATE TABLE is IF NOT EXISTS, so running
-it against tables that already exist adds nothing. The MySQL index statements
-are the exception and are not conditional, because MySQL has no CREATE INDEX IF
-NOT EXISTS; a re-run there reports a duplicate key name rather than silently
-succeeding, which is the same behavior every other schema-shipping package in
-this module has.
+The DDL here only ever creates. Every CREATE TABLE is IF NOT EXISTS, the
+Postgres and SQLite indexes are CREATE INDEX IF NOT EXISTS, and the MySQL keys
+are declared inline in the CREATE TABLE they belong to, because MySQL is the one
+dialect with no CREATE INDEX IF NOT EXISTS.
+
+That is the module's rule rather than this package's, and it is asserted for
+every schema-shipping package at once in internal/schemaconvention, which is
+also where the reasoning is written down. What is worth saying here is the one
+identity-specific consequence: the three bodies spell the same eleven index
+names. MySQL scopes an index name to its table and would accept shorter ones,
+but ValidatePrefix measures the longest identifier a prefix renders across all
+three bodies at once, so a name only two of them spelled would be a name that
+check stopped measuring here.
+
+# The scope column has no default
 
 scope is NOT NULL with no DEFAULT, which is the one place this schema departs
 from the module's habit of defaulting a text column to the empty string. The

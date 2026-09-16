@@ -569,3 +569,59 @@ func tablesIn(dir string) ([]string, error) {
 
 	return tables, nil
 }
+
+// indexStatement matches a statement that creates an index as a statement of its
+// own, rather than as a key inside the table it belongs to. The UNIQUE is
+// optional because CREATE UNIQUE INDEX is the same problem wearing a different
+// word.
+var indexStatement = regexp.MustCompile(`(?is)^\s*CREATE\s+(?:UNIQUE\s+)?INDEX\b`)
+
+// conditional matches the guard that makes a create re-runnable.
+var conditional = regexp.MustCompile(`(?i)\bIF\s+NOT\s+EXISTS\b`)
+
+// TestSchemaIsRerunnable is the second convention this package asserts, and it is
+// here rather than in twenty-five packages for the reason the triple is: the
+// failure cannot be seen from inside one schema.
+//
+// Rendering a package's DDL twice proves nothing — the statements are identical
+// both times, and what is in question is what a server does with the second set.
+// So the check is on the shape of the statements, which is where the answer
+// actually lives, and the per-package container suites are what confirm the
+// reading against a real server.
+//
+// Fourteen of the module's schemas failed this at once, each of them looking
+// locally correct, which is what a convention nobody checks looks like from
+// inside any one package.
+func TestSchemaIsRerunnable(T *testing.T) {
+	T.Parallel()
+
+	for pkg, render := range renderers {
+		T.Run(pkg, func(t *testing.T) {
+			t.Parallel()
+
+			for _, d := range dialectsOf(t, render) {
+				stmts, err := render(d, "")
+				must.NoError(t, err)
+				must.SliceNotEmpty(t, stmts)
+
+				for _, stmt := range stmts {
+					switch {
+					case d == dialect.MySQL && indexStatement.MatchString(stmt):
+						// MySQL has no CREATE INDEX IF NOT EXISTS, so there is
+						// no conditional to add: the key belongs inside the
+						// CREATE TABLE IF NOT EXISTS, where it is skipped
+						// exactly when the table is. Anything else aborts on
+						// the duplicate key name and takes the statements after
+						// it down too.
+						t.Errorf("%s renders a standalone index on %q, which a second run cannot skip:\n\t%s\n\t"+
+							"declare it inline as a KEY under the CREATE TABLE it belongs to", pkg, d, stmt)
+					case createdTable(stmt) != "" || indexStatement.MatchString(stmt):
+						test.RegexMatch(t, conditional, stmt, test.Sprintf(
+							"%s renders an unconditional create on %q, which fails on a second run:\n\t%s",
+							pkg, d, stmt))
+					}
+				}
+			}
+		})
+	}
+}

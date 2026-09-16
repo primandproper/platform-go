@@ -44,29 +44,27 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}dataprivacy_requests (
     failures        BLOB,
     retained        BLOB,
     last_error      TEXT,
-    key_shredded_at DATETIME(6)
+    key_shredded_at DATETIME(6),
+
+    -- MySQL has no partial indexes, so unlike the Postgres schema the ones
+    -- below cover the whole table and the predicate columns lead. Every query
+    -- they serve filters on status first, so putting it in front keeps the
+    -- index selective for the same queries the partial clauses serve elsewhere.
+    --
+    -- "What has been asked in this person's name." Leading with the subject
+    -- rather than the time is what makes List a range scan instead of a filter
+    -- over every request the system has ever served.
+    KEY {{PREFIX}}dataprivacy_requests_subject_idx
+        (subject_id, subject_scope, created_at, id),
+
+    -- Serves both the artifact expiry sweep and the confirmation-window lapse
+    -- sweep; they differ only in the status they filter on, which leads the
+    -- index.
+    KEY {{PREFIX}}dataprivacy_requests_expiry_idx (status, expires_at),
+
+    -- Serves the overdue gauge.
+    KEY {{PREFIX}}dataprivacy_requests_status_due_idx (status, due_at),
+
+    -- Serves the retention reap.
+    KEY {{PREFIX}}dataprivacy_requests_reap_idx (completed_at, id)
 );
-
--- MySQL has no partial indexes, so unlike the Postgres schema the ones below
--- cover the whole table and the predicate columns lead. Every query they serve
--- filters on status first, so putting it in front keeps the index selective for
--- the same queries the partial clauses serve elsewhere.
-
--- "What has been asked in this person's name." Leading with the subject rather
--- than the time is what makes List a range scan instead of a filter over every
--- request the system has ever served.
-CREATE INDEX {{PREFIX}}dataprivacy_requests_subject_idx
-    ON {{PREFIX}}dataprivacy_requests (subject_id, subject_scope, created_at, id);
-
--- Serves both the artifact expiry sweep and the confirmation-window lapse
--- sweep; they differ only in the status they filter on, which leads the index.
-CREATE INDEX {{PREFIX}}dataprivacy_requests_expiry_idx
-    ON {{PREFIX}}dataprivacy_requests (status, expires_at);
-
--- Serves the overdue gauge.
-CREATE INDEX {{PREFIX}}dataprivacy_requests_status_due_idx
-    ON {{PREFIX}}dataprivacy_requests (status, due_at);
-
--- Serves the retention reap.
-CREATE INDEX {{PREFIX}}dataprivacy_requests_reap_idx
-    ON {{PREFIX}}dataprivacy_requests (completed_at, id);

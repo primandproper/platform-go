@@ -19,18 +19,14 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}comments (
     body            TEXT NOT NULL,
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),
-    archived_at     DATETIME(6)
+    archived_at     DATETIME(6),
+
+    -- MySQL has no partial indexes, so unlike the Postgres schema these cover
+    -- the whole table and archived_at leads the discriminating columns. Every
+    -- read filters on it, so putting it in front keeps these as selective as
+    -- the partial clause is elsewhere.
+    KEY {{PREFIX}}comments_target_idx
+        (scope, archived_at, target_type, target_id, parent_id, id),
+    KEY {{PREFIX}}comments_target_type_idx (scope, archived_at, target_type, id),
+    KEY {{PREFIX}}comments_author_idx (scope, archived_at, author, id)
 );
-
--- MySQL has no partial indexes, so unlike the Postgres schema these cover the
--- whole table and archived_at leads the discriminating columns. Every read
--- filters on it, so putting it in front keeps these as selective as the partial
--- clause is elsewhere.
-CREATE INDEX {{PREFIX}}comments_target_idx
-    ON {{PREFIX}}comments (scope, archived_at, target_type, target_id, parent_id, id);
-
-CREATE INDEX {{PREFIX}}comments_target_type_idx
-    ON {{PREFIX}}comments (scope, archived_at, target_type, id);
-
-CREATE INDEX {{PREFIX}}comments_author_idx
-    ON {{PREFIX}}comments (scope, archived_at, author, id);

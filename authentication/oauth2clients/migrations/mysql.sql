@@ -27,19 +27,16 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}oauth2_registered_clients (
     last_updated_at DATETIME(6)   NULL,
     archived_at     DATETIME(6)   NULL,
 
-    UNIQUE KEY {{PREFIX}}oauth2_registered_clients_client_id_uniq (client_id)
+    -- The client_id lookup needs no index of its own: this UNIQUE KEY is one,
+    -- and it is not partial in either schema for the reason the Postgres file
+    -- gives.
+    UNIQUE KEY {{PREFIX}}oauth2_registered_clients_client_id_uniq (client_id),
+
+    -- MySQL has no partial indexes, so unlike the Postgres schema these two
+    -- cover the whole table and archived_at leads the discriminating columns.
+    -- Both reads filter on it, so putting it in front keeps these as selective
+    -- as the partial clause is elsewhere.
+    KEY {{PREFIX}}oauth2_registered_clients_scope_idx (scope, archived_at, id),
+    KEY {{PREFIX}}oauth2_registered_clients_owner_idx
+        (scope, archived_at, belongs_to_user, id)
 );
-
--- MySQL has no partial indexes, so unlike the Postgres schema these two cover
--- the whole table and archived_at leads the discriminating columns. Both reads
--- filter on it, so putting it in front keeps these as selective as the partial
--- clause is elsewhere.
---
--- The client_id lookup needs no index of its own: the UNIQUE KEY declared
--- inline above is one, and it is not partial in either schema for the reason
--- the Postgres file gives.
-CREATE INDEX {{PREFIX}}oauth2_registered_clients_scope_idx
-    ON {{PREFIX}}oauth2_registered_clients (scope, archived_at, id);
-
-CREATE INDEX {{PREFIX}}oauth2_registered_clients_owner_idx
-    ON {{PREFIX}}oauth2_registered_clients (scope, archived_at, belongs_to_user, id);

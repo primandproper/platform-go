@@ -11,14 +11,10 @@ CREATE TABLE IF NOT EXISTS webhooks_endpoints (
     disabled        BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),
-    archived_at     DATETIME(6)
+    archived_at     DATETIME(6),
+    KEY webhooks_endpoints_live_idx (archived_at, created_at, id),
+    KEY webhooks_endpoints_scope_idx (scope, archived_at, id)
 );
-
-CREATE INDEX webhooks_endpoints_live_idx
-    ON webhooks_endpoints (archived_at, created_at, id);
-
-CREATE INDEX webhooks_endpoints_scope_idx
-    ON webhooks_endpoints (scope, archived_at, id);
 
 CREATE TABLE IF NOT EXISTS webhooks_subscriptions (
     id              VARCHAR(64) NOT NULL,
@@ -29,15 +25,11 @@ CREATE TABLE IF NOT EXISTS webhooks_subscriptions (
     archived_at     DATETIME(6),
     PRIMARY KEY (endpoint_id, event_type),
     UNIQUE KEY webhooks_subscriptions_id_idx (id),
+    KEY webhooks_subscriptions_event_idx (event_type, endpoint_id),
+    KEY webhooks_subscriptions_endpoint_idx (endpoint_id, archived_at, id),
     CONSTRAINT webhooks_subscriptions_endpoint_fk
         FOREIGN KEY (endpoint_id) REFERENCES webhooks_endpoints (id) ON DELETE CASCADE
 );
-
-CREATE INDEX webhooks_subscriptions_event_idx
-    ON webhooks_subscriptions (event_type, endpoint_id);
-
-CREATE INDEX webhooks_subscriptions_endpoint_idx
-    ON webhooks_subscriptions (endpoint_id, archived_at, id);
 
 CREATE TABLE IF NOT EXISTS webhooks_deliveries (
     id              VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -66,18 +58,14 @@ CREATE TABLE IF NOT EXISTS webhooks_dispatches (
     last_error      TEXT,
     dead            BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE KEY webhooks_dispatches_pair_uniq (delivery_id, endpoint_id),
+    KEY webhooks_dispatches_claim_idx
+        (delivered_at, dead, next_attempt, created_at, id),
+    KEY webhooks_dispatches_ordering_idx
+        (endpoint_id, ordering_key, delivered_at, dead, created_at, id),
+    KEY webhooks_dispatches_reap_idx (delivered_at, id),
     CONSTRAINT webhooks_dispatches_delivery_fk
         FOREIGN KEY (delivery_id) REFERENCES webhooks_deliveries (id) ON DELETE CASCADE
 );
-
-CREATE INDEX webhooks_dispatches_claim_idx
-    ON webhooks_dispatches (delivered_at, dead, next_attempt, created_at, id);
-
-CREATE INDEX webhooks_dispatches_ordering_idx
-    ON webhooks_dispatches (endpoint_id, ordering_key, delivered_at, dead, created_at, id);
-
-CREATE INDEX webhooks_dispatches_reap_idx
-    ON webhooks_dispatches (delivered_at, id);
 
 CREATE TABLE IF NOT EXISTS webhooks_attempts (
     id              VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -89,12 +77,8 @@ CREATE TABLE IF NOT EXISTS webhooks_attempts (
     duration_ms     BIGINT NOT NULL DEFAULT 0,
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),
-    archived_at     DATETIME(6)
+    archived_at     DATETIME(6),
+    KEY webhooks_attempts_delivery_idx (delivery_id, created_at, id),
+    KEY webhooks_attempts_endpoint_idx (endpoint_id, created_at, id)
 );
-
-CREATE INDEX webhooks_attempts_delivery_idx
-    ON webhooks_attempts (delivery_id, created_at, id);
-
-CREATE INDEX webhooks_attempts_endpoint_idx
-    ON webhooks_attempts (endpoint_id, created_at, id);
 

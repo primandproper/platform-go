@@ -9,11 +9,9 @@ CREATE TABLE IF NOT EXISTS settings_definitions (
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),
     archived_at     DATETIME(6),
-    UNIQUE KEY settings_definitions_name_uniq (scope, name)
+    UNIQUE KEY settings_definitions_name_uniq (scope, name),
+    KEY settings_definitions_scope_idx (scope, archived_at, id)
 );
-
-CREATE INDEX settings_definitions_scope_idx
-    ON settings_definitions (scope, archived_at, id);
 
 CREATE TABLE IF NOT EXISTS settings_definition_options (
     definition_id VARCHAR(64) NOT NULL,
@@ -34,10 +32,8 @@ CREATE TABLE IF NOT EXISTS settings_values (
     last_updated_at DATETIME(6),
     archived_at     DATETIME(6),
     UNIQUE KEY settings_values_subject_uniq (scope, subject_type, subject_id, definition_id),
+    KEY settings_values_definition_idx (scope, definition_id, archived_at, id),
     CONSTRAINT settings_values_fk
         FOREIGN KEY (definition_id) REFERENCES settings_definitions (id) ON DELETE CASCADE
 );
-
-CREATE INDEX settings_values_definition_idx
-    ON settings_values (scope, definition_id, archived_at, id);
 

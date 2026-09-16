@@ -179,6 +179,53 @@ func TestTables(T *testing.T) {
 	})
 }
 
+// indexNames is every index this schema creates, unprefixed. Postgres and
+// SQLite spell them as CREATE INDEX statements and MySQL as inline keys, and
+// the point of the list is that the three still agree: a MySQL-only name would
+// be a name ValidatePrefix stopped measuring on the other two.
+var indexNames = []string{
+	"identity_users_scope_idx",
+	"identity_users_email_token_digest_idx",
+	"identity_user_roles_role_idx",
+	"identity_accounts_scope_idx",
+	"identity_accounts_billing_idx",
+	"identity_memberships_user_idx",
+	"identity_memberships_account_idx",
+	"identity_membership_roles_role_idx",
+	"identity_invitations_email_idx",
+	"identity_invitations_from_idx",
+	"identity_invitations_account_idx",
+}
+
+// TestSchema_IndexNamesAgreeAcrossDialects is what is left of this package's
+// share of the re-runnability rule once internal/schemaconvention owns the rule
+// itself.
+//
+// That MySQL declares every key inline, and that Postgres and SQLite guard every
+// standalone index with IF NOT EXISTS, is asserted there for all twenty-five
+// schema-shipping packages at once — the failure is invisible from inside any
+// one of them, which is how fourteen of them carried it simultaneously.
+//
+// What stays here is the consequence that is identity's alone. MySQL scopes an
+// index name to its table and would accept shorter ones than the other two
+// dialects need, but ValidatePrefix measures the longest identifier a prefix
+// renders across all three bodies at once, so a name only two of them spelled
+// would be a name that check stopped measuring here.
+func TestSchema_IndexNamesAgreeAcrossDialects(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range allDialects {
+		stmts, err := Statements(d, "")
+		must.NoError(T, err)
+
+		joined := strings.Join(stmts, "\n")
+		for _, name := range indexNames {
+			test.StrContains(T, joined, name,
+				test.Sprintf("%s is missing %s", d, name))
+		}
+	}
+}
+
 func TestSchema_ScopeColumnHasNoDefault(T *testing.T) {
 	T.Parallel()
 

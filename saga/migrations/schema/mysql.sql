@@ -12,12 +12,8 @@ CREATE TABLE IF NOT EXISTS saga_instances (
     last_updated_at DATETIME(6),
     archived_at     DATETIME(6),
     next_attempt    DATETIME(6) NOT NULL,
-    claimed_until   DATETIME(6)
+    claimed_until   DATETIME(6),
+    KEY saga_instances_claim_idx (status, next_attempt, created_at, id),
+    KEY saga_instances_status_idx (status, definition, id)
 );
-
-CREATE INDEX saga_instances_claim_idx
-    ON saga_instances (status, next_attempt, created_at, id);
-
-CREATE INDEX saga_instances_status_idx
-    ON saga_instances (status, definition, id);
 

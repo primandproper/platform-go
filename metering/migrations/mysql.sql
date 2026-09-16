@@ -63,16 +63,14 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}metering_events (
     period_start    DATETIME(6) NOT NULL,
     dimensions      BLOB,
 
-    PRIMARY KEY (scope, meter, idempotency_key)
+    PRIMARY KEY (scope, meter, idempotency_key),
+
+    -- Serves the retention reap, which asks one question about time and nothing
+    -- else, and the per-period event listing behind a usage breakdown.
+    KEY {{PREFIX}}metering_events_period_idx
+        (scope, subject, meter, period_start, occurred_at),
+    KEY {{PREFIX}}metering_events_reap_idx (recorded_at)
 );
-
--- Serves the retention reap, which asks one question about time and nothing
--- else, and the per-period event listing behind a usage breakdown.
-CREATE INDEX {{PREFIX}}metering_events_period_idx
-    ON {{PREFIX}}metering_events (scope, subject, meter, period_start, occurred_at);
-
-CREATE INDEX {{PREFIX}}metering_events_reap_idx
-    ON {{PREFIX}}metering_events (recorded_at);
 
 CREATE TABLE IF NOT EXISTS {{PREFIX}}metering_totals (
     scope            VARCHAR(255) NOT NULL,
@@ -104,16 +102,14 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}metering_totals (
     created_at       DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at  DATETIME(6),
     archived_at      DATETIME(6),
-    PRIMARY KEY (scope, subject, meter, period_start)
+    PRIMARY KEY (scope, subject, meter, period_start),
+
+    -- MySQL has no partial indexes, so unlike the Postgres schema this covers
+    -- the whole table. next_flush leads because it is the only column of the
+    -- claim predicate that is selective — the quantity > flushed_quantity
+    -- comparison is between two columns and no index can serve it anywhere.
+    KEY {{PREFIX}}metering_totals_flush_idx (next_flush, scope, subject, meter),
+
+    -- Serves "what has this subject used lately", across meters.
+    KEY {{PREFIX}}metering_totals_subject_idx (scope, subject, period_start, meter)
 );
-
--- MySQL has no partial indexes, so unlike the Postgres schema this covers the
--- whole table. next_flush leads because it is the only column of the claim
--- predicate that is selective — the quantity > flushed_quantity comparison is
--- between two columns and no index can serve it anywhere.
-CREATE INDEX {{PREFIX}}metering_totals_flush_idx
-    ON {{PREFIX}}metering_totals (next_flush, scope, subject, meter);
-
--- Serves "what has this subject used lately", across meters.
-CREATE INDEX {{PREFIX}}metering_totals_subject_idx
-    ON {{PREFIX}}metering_totals (scope, subject, period_start, meter);
