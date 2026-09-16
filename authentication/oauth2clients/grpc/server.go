@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
+	"github.com/primandproper/platform-go/v14/callers"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -77,7 +78,7 @@ type Server struct {
 	svc        *oauth2clients.Service
 	store      oauth2clients.Store
 	client     database.Client
-	principals PrincipalExtractor
+	principals callers.PrincipalExtractor
 	o11y       observability.Observer
 
 	instruments *metrics.OperationSet
@@ -103,7 +104,7 @@ func NewServer(
 	svc *oauth2clients.Service,
 	store oauth2clients.Store,
 	client database.Client,
-	principals PrincipalExtractor,
+	principals callers.PrincipalExtractor,
 	opts ...Option,
 ) (*Server, error) {
 	if svc == nil {

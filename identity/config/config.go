@@ -27,6 +27,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
@@ -224,7 +225,7 @@ func NewServer(
 	svc *identity.Service,
 	store identity.Store,
 	client database.Client,
-	principals identitygrpc.PrincipalExtractor,
+	principals callers.PrincipalExtractor,
 	opts ...Option,
 ) (*identitygrpc.Server, error) {
 	if cfg == nil {

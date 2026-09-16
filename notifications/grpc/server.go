@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 
@@ -107,7 +108,7 @@ type Server struct {
 	inbox      notifications.Inbox
 	registry   notifications.Registry
 	client     database.Client
-	principals PrincipalExtractor
+	principals callers.PrincipalExtractor
 	o11y       observability.Observer
 
 	instruments *metrics.OperationSet
@@ -136,7 +137,7 @@ func NewServer(
 	inbox notifications.Inbox,
 	registry notifications.Registry,
 	client database.Client,
-	principals PrincipalExtractor,
+	principals callers.PrincipalExtractor,
 	opts ...Option,
 ) (*Server, error) {
 	if inbox == nil {

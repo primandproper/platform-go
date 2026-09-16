@@ -4,27 +4,12 @@ import (
 	"context"
 	"errors"
 
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 
 	"google.golang.org/grpc/codes"
 )
-
-// ErrTargetNotPermitted indicates a caller who may make this call and may not
-// make it about the person this request named or this row was written by.
-//
-// It is identity/grpc's sentinel rather than a second one of this package's
-// own, and deliberately the same value: a consumer has one rule about whose
-// rows a caller has standing in, and an authorizer written for the directory
-// refuses a comment with the answer it already returns. An errors.Is against
-// either name matches.
-//
-// It is never registered as a client-safe sentinel. Its text says the caller
-// was refused, and two of the three places this surface asks the question
-// answer as though the row were absent — see the two refusal shapes at the
-// bottom of this file.
-var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 
 // AuthorAuthorizer decides whether the caller may act on a comment somebody
 // else wrote.
@@ -46,9 +31,9 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 // a comment is a column — so the question is asked from inside the handler,
 // where the store already is.
 //
-// It is not tenancy. The scope comes off the [Principal] and every store read
-// and write binds it, so nothing here crosses a deployment; this is the check
-// inside one.
+// It is not tenancy. The scope comes off the [callers.Principal] and every
+// store read and write binds it, so nothing here crosses a deployment; this is
+// the check inside one.
 //
 // # It is only ever asked about somebody else
 //
@@ -74,26 +59,26 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 //
 // # What implementations owe
 //
-// A nil error means permitted. [ErrTargetNotPermitted] means refused. Any other
-// error is a failure to decide — a database that would not answer — and reaches
-// the client as codes.Internal, which is what keeps an unavailable store from
-// reading as a refusal. The three are distinguished by errors.Is, so an
-// implementation may wrap the sentinel with context of its own and still be
+// A nil error means permitted. [callers.ErrTargetNotPermitted] means refused.
+// Any other error is a failure to decide — a database that would not answer —
+// and reaches the client as codes.Internal, which is what keeps an unavailable
+// store from reading as a refusal. The three are distinguished by errors.Is, so
+// an implementation may wrap the sentinel with context of its own and still be
 // refusing.
 type AuthorAuthorizer interface {
 	// AuthorizeAuthor is asked before an RPC reads or writes comments written by
 	// author, and only where author is somebody other than the caller.
-	AuthorizeAuthor(ctx context.Context, caller Principal, author string) error
+	AuthorizeAuthor(ctx context.Context, caller callers.Principal, author string) error
 }
 
 // AuthorAuthorizerFunc adapts a function to [AuthorAuthorizer], for a consumer
 // whose rule is one closure over something they already hold.
-type AuthorAuthorizerFunc func(ctx context.Context, caller Principal, author string) error
+type AuthorAuthorizerFunc func(ctx context.Context, caller callers.Principal, author string) error
 
 var _ AuthorAuthorizer = AuthorAuthorizerFunc(nil)
 
 // AuthorizeAuthor calls f.
-func (f AuthorAuthorizerFunc) AuthorizeAuthor(ctx context.Context, caller Principal, author string) error {
+func (f AuthorAuthorizerFunc) AuthorizeAuthor(ctx context.Context, caller callers.Principal, author string) error {
 	return f(ctx, caller, author)
 }
 
@@ -115,13 +100,13 @@ type OwnCommentsOnly struct{}
 var _ AuthorAuthorizer = OwnCommentsOnly{}
 
 // AuthorizeAuthor permits the caller's own comments and refuses everybody
-// else's with [ErrTargetNotPermitted].
-func (OwnCommentsOnly) AuthorizeAuthor(_ context.Context, caller Principal, author string) error {
+// else's with [callers.ErrTargetNotPermitted].
+func (OwnCommentsOnly) AuthorizeAuthor(_ context.Context, caller callers.Principal, author string) error {
 	if caller != nil && author != "" && caller.UserID() == author {
 		return nil
 	}
 
-	return ErrTargetNotPermitted
+	return callers.ErrTargetNotPermitted
 }
 
 // The two ways this surface asks the question, and the one thing that differs
@@ -161,8 +146,8 @@ func (s *Server) authorizeNamedAuthor(
 //
 // The chain returned is still the refusal, which is what the log and the span
 // record. Only the status the client reads is the absence, and
-// [ErrTargetNotPermitted] is not client-safe, so its wording does not travel
-// with it.
+// [callers.ErrTargetNotPermitted] is not client-safe, so its wording does not
+// travel with it.
 func (s *Server) authorizeRowAuthor(
 	ctx context.Context,
 	req *request,
@@ -203,7 +188,7 @@ func (s *Server) authorize(
 	}
 
 	code := codes.Internal
-	if errors.Is(err, ErrTargetNotPermitted) {
+	if errors.Is(err, callers.ErrTargetNotPermitted) {
 		code = refused
 	}
 

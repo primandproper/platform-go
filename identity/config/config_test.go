@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
@@ -238,7 +239,7 @@ func TestNewService(T *testing.T) {
 func TestNewServer(T *testing.T) {
 	T.Parallel()
 
-	principal := func(context.Context) (identitygrpc.Principal, bool) { return nil, false }
+	principal := func(context.Context) (callers.Principal, bool) { return nil, false }
 
 	build := func(t *testing.T, cfg *Config, opts ...Option) (*identitygrpc.Server, error) {
 		t.Helper()

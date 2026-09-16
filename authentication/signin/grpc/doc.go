@@ -21,10 +21,12 @@ a single-tenant deployment wants and is a directory with no users in it for a
 multi-tenant one that forgot — a sign-in that refuses everybody rather than one
 that signs them into somebody else's tenant.
 
-The four authenticated RPCs read the caller off a [PrincipalExtractor], which is
-identity/grpc's, aliased rather than redefined. A consumer writes one extractor
-and both services use it; two would be two chances to disagree about who is
-calling.
+The four authenticated RPCs read the caller off a
+[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor], which
+resolves a [github.com/primandproper/platform-go/v14/callers.Principal]. Those
+are one package for the whole module rather than an interface per surface: a
+consumer writes one extractor and every service here uses it, where two would be
+two chances to disagree about who is calling.
 
 # Errors
 

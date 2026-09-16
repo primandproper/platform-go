@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
@@ -27,15 +28,15 @@ type permitEverything struct{}
 
 var _ identitygrpc.TargetAuthorizer = permitEverything{}
 
-func (permitEverything) AuthorizeAccount(context.Context, identitygrpc.Principal, string) error {
+func (permitEverything) AuthorizeAccount(context.Context, callers.Principal, string) error {
 	return nil
 }
 
-func (permitEverything) AuthorizeUser(context.Context, identitygrpc.Principal, string) error {
+func (permitEverything) AuthorizeUser(context.Context, callers.Principal, string) error {
 	return nil
 }
 
-func (permitEverything) AuthorizeInvitation(context.Context, identitygrpc.Principal, string) error {
+func (permitEverything) AuthorizeInvitation(context.Context, callers.Principal, string) error {
 	return nil
 }
 
@@ -45,16 +46,16 @@ type refuseEverything struct{}
 
 var _ identitygrpc.TargetAuthorizer = refuseEverything{}
 
-func (refuseEverything) AuthorizeAccount(context.Context, identitygrpc.Principal, string) error {
-	return identitygrpc.ErrTargetNotPermitted
+func (refuseEverything) AuthorizeAccount(context.Context, callers.Principal, string) error {
+	return callers.ErrTargetNotPermitted
 }
 
-func (refuseEverything) AuthorizeUser(context.Context, identitygrpc.Principal, string) error {
-	return identitygrpc.ErrTargetNotPermitted
+func (refuseEverything) AuthorizeUser(context.Context, callers.Principal, string) error {
+	return callers.ErrTargetNotPermitted
 }
 
-func (refuseEverything) AuthorizeInvitation(context.Context, identitygrpc.Principal, string) error {
-	return identitygrpc.ErrTargetNotPermitted
+func (refuseEverything) AuthorizeInvitation(context.Context, callers.Principal, string) error {
+	return callers.ErrTargetNotPermitted
 }
 
 // neighborhood is one directory with two unrelated accounts in it, and it is the
@@ -345,7 +346,7 @@ func TestARequestNamedTargetIsCheckedAgainstTheCaller(T *testing.T) {
 			err := tc.theirs(n)
 			must.Error(t, err, must.Sprint("the call against another account in the same scope was answered"))
 			test.EqOp(t, codes.PermissionDenied, status.Code(err))
-			test.True(t, errors.Is(err, identitygrpc.ErrTargetNotPermitted),
+			test.True(t, errors.Is(err, callers.ErrTargetNotPermitted),
 				test.Sprint("the refusal was not the row check's"))
 
 			// And the same call in the caller's own account is not refused by
@@ -353,7 +354,7 @@ func TestARequestNamedTargetIsCheckedAgainstTheCaller(T *testing.T) {
 			// removing an account's last owner, most of all — so the assertion
 			// is about which refusal, not about none.
 			mineErr := tc.mine(n)
-			test.False(t, errors.Is(mineErr, identitygrpc.ErrTargetNotPermitted),
+			test.False(t, errors.Is(mineErr, callers.ErrTargetNotPermitted),
 				test.Sprintf("the caller was refused their own account: %v", mineErr))
 		})
 	}
@@ -379,7 +380,7 @@ func TestTheRowCheckIsTheSeamAndNotAnInlineRule(T *testing.T) {
 		&identitypb.GetAccountRequest{AccountId: account.Account.ID})
 	must.Error(T, err)
 	test.EqOp(T, codes.PermissionDenied, status.Code(err))
-	test.True(T, errors.Is(err, identitygrpc.ErrTargetNotPermitted))
+	test.True(T, errors.Is(err, callers.ErrTargetNotPermitted))
 
 	// And the other direction: a permissive one restores the pre-seam behavior
 	// exactly, which is what a consumer with an operator console replaces it for.
@@ -393,8 +394,9 @@ func TestTheRowCheckIsTheSeamAndNotAnInlineRule(T *testing.T) {
 
 // TestTheDefaultRowCheckPermitsAnyAccountTheCallerIsIn is the other half of the
 // default's rule, and the reason it is memberships rather than
-// Principal.ActiveAccountID: a caller acting on their second account has not
-// switched into it, and a check against a field the client sends is not a check.
+// callers.Principal.ActiveAccountID: a caller acting on their second account
+// has not switched into it, and a check against a field the client sends is not
+// a check.
 func TestTheDefaultRowCheckPermitsAnyAccountTheCallerIsIn(T *testing.T) {
 	T.Parallel()
 
@@ -493,7 +495,7 @@ func TestARowCheckThatCannotDecideIsNotARefusal(T *testing.T) {
 		&identitypb.GetAccountRequest{AccountId: account.Account.ID})
 	must.Error(T, err)
 	test.NotEqOp(T, codes.PermissionDenied, status.Code(err))
-	test.False(T, errors.Is(err, identitygrpc.ErrTargetNotPermitted))
+	test.False(T, errors.Is(err, callers.ErrTargetNotPermitted))
 	test.True(T, errors.Is(err, errUndecidable))
 }
 
@@ -504,15 +506,15 @@ type undecidableTargets struct{}
 
 var _ identitygrpc.TargetAuthorizer = undecidableTargets{}
 
-func (undecidableTargets) AuthorizeAccount(context.Context, identitygrpc.Principal, string) error {
+func (undecidableTargets) AuthorizeAccount(context.Context, callers.Principal, string) error {
 	return errUndecidable
 }
 
-func (undecidableTargets) AuthorizeUser(context.Context, identitygrpc.Principal, string) error {
+func (undecidableTargets) AuthorizeUser(context.Context, callers.Principal, string) error {
 	return errUndecidable
 }
 
-func (undecidableTargets) AuthorizeInvitation(context.Context, identitygrpc.Principal, string) error {
+func (undecidableTargets) AuthorizeInvitation(context.Context, callers.Principal, string) error {
 	return errUndecidable
 }
 
@@ -552,7 +554,7 @@ type consoleAuthorizer struct {
 var _ identitygrpc.TargetAuthorizer = consoleAuthorizer{}
 
 // AuthorizeUser widens one of the three and delegates the rest of that one.
-func (a consoleAuthorizer) AuthorizeUser(ctx context.Context, caller identitygrpc.Principal, userID string) error {
+func (a consoleAuthorizer) AuthorizeUser(ctx context.Context, caller callers.Principal, userID string) error {
 	if caller != nil && caller.UserID() == a.operator {
 		return nil
 	}
@@ -563,7 +565,7 @@ func (a consoleAuthorizer) AuthorizeUser(ctx context.Context, caller identitygrp
 // TestTheDefaultIsEmbeddableAndEmbeddingStaysAdditive pins the authorizer half
 // of the two seams' opposite rulings.
 //
-// [identitygrpc.Principal]'s method set is final because a consumer has nothing
+// [callers.Principal]'s method set is final because a consumer has nothing
 // to inherit from; this one's need not be, and the reason is exactly what runs
 // here — an implementation that embeds [identitygrpc.MembershipAuthorizer]
 // answers the questions it did not write, so a fourth authorization question
@@ -590,7 +592,7 @@ func TestTheDefaultIsEmbeddableAndEmbeddingStaysAdditive(T *testing.T) {
 		// A user the operator shares no account with, which the default refuses.
 		test.NoError(t, rule.AuthorizeUser(t.Context(), caller, stranger.ID))
 		test.ErrorIs(t, base.AuthorizeUser(t.Context(), caller, stranger.ID),
-			identitygrpc.ErrTargetNotPermitted)
+			callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("the questions it did not write are inherited", func(t *testing.T) {
@@ -600,8 +602,8 @@ func TestTheDefaultIsEmbeddableAndEmbeddingStaysAdditive(T *testing.T) {
 		// default's answer — which is what a method added to the interface
 		// later would also be.
 		test.ErrorIs(t, rule.AuthorizeAccount(t.Context(), caller, "an-account-nobody-is-in"),
-			identitygrpc.ErrTargetNotPermitted)
+			callers.ErrTargetNotPermitted)
 		test.ErrorIs(t, rule.AuthorizeInvitation(t.Context(), caller, "an-invitation-nobody-sent"),
-			identitygrpc.ErrTargetNotPermitted)
+			callers.ErrTargetNotPermitted)
 	})
 }

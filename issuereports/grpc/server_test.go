@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
 
@@ -125,7 +125,7 @@ func TestAnExtractorThatAnswersWithNobodyIsAnAnonymousRequest(t *testing.T) {
 
 	h := newHarness(t)
 
-	present := func(context.Context) (identitygrpc.Principal, bool) { return nil, true }
+	present := func(context.Context) (callers.Principal, bool) { return nil, true }
 
 	srv, err := issuereportsgrpc.NewServer(h.store, h.db, present, triageAuthorizer{})
 	must.NoError(t, err)

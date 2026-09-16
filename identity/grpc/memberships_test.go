@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
@@ -200,7 +201,7 @@ func TestListMembershipsForUserIsScopedToTheCallersDirectory(T *testing.T) {
 		&identitypb.ListMembershipsForUserRequest{UserId: theirs.User.ID})
 	must.Error(T, err)
 	test.EqOp(T, codes.PermissionDenied, status.Code(err))
-	test.True(T, errors.Is(err, identitygrpc.ErrTargetNotPermitted))
+	test.True(T, errors.Is(err, callers.ErrTargetNotPermitted))
 
 	open := newHarness(T, identitygrpc.WithTargetAuthorizer(permitEverything{}))
 

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/waitlists"
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
@@ -19,15 +19,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TestTheSentinelIsTheDirectorysOne is the reason this package mints no second
-// name for "the caller may not act on that row": a consumer has one rule about
-// standing, and an authorizer written for the directory refuses a withdrawal
-// with the answer it already returns.
-func TestTheSentinelIsTheDirectorysOne(T *testing.T) {
-	T.Parallel()
-
-	test.EqOp(T, identitygrpc.ErrTargetNotPermitted, waitlistsgrpc.ErrTargetNotPermitted)
-}
+// There used to be a test here asserting that this package's
+// ErrTargetNotPermitted and identity/grpc's were the same value. Both were
+// aliases of one sentinel and both are gone: the refusal is
+// callers.ErrTargetNotPermitted, spelled once for every surface, so what that
+// test pinned is now the type checker's and the assertion had become a
+// tautology.
 
 // TestWithdrawAsksTheAuthorizerBeforeItWrites is the ordering the seam depends
 // on: a refused withdrawal has to leave the row where it was, not roll one back.
@@ -35,8 +32,8 @@ func TestWithdrawAsksTheAuthorizerBeforeItWrites(T *testing.T) {
 	T.Parallel()
 
 	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(context.Context, waitlistsgrpc.Principal, tenancy.Scope, string, string) error {
-			return waitlistsgrpc.ErrTargetNotPermitted
+		func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
+			return callers.ErrTargetNotPermitted
 		}))
 
 	list := h.seedOpenList(T, testScope)
@@ -70,8 +67,8 @@ func TestARefusedWithdrawalReadsAsAnAbsence(T *testing.T) {
 	T.Parallel()
 
 	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(context.Context, waitlistsgrpc.Principal, tenancy.Scope, string, string) error {
-			return waitlistsgrpc.ErrTargetNotPermitted
+		func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
+			return callers.ErrTargetNotPermitted
 		}))
 
 	list := h.seedOpenList(T, testScope)
@@ -107,7 +104,7 @@ func TestAnUndecidedAuthorizerIsAServerFault(T *testing.T) {
 	unavailable := errors.New("the link store would not answer")
 
 	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(context.Context, waitlistsgrpc.Principal, tenancy.Scope, string, string) error {
+		func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
 			return unavailable
 		}))
 
@@ -131,8 +128,8 @@ func TestAWrappedSentinelStillRefuses(T *testing.T) {
 	T.Parallel()
 
 	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(_ context.Context, _ waitlistsgrpc.Principal, _ tenancy.Scope, _, signupID string) error {
-			return platformerrors.Wrapf(waitlistsgrpc.ErrTargetNotPermitted,
+		func(_ context.Context, _ callers.Principal, _ tenancy.Scope, _, signupID string) error {
+			return platformerrors.Wrapf(callers.ErrTargetNotPermitted,
 				"the link named a different signup than %q", signupID)
 		}))
 
@@ -156,7 +153,7 @@ func TestTheAuthorizerIsHandedWhatItNeedsToDecide(T *testing.T) {
 	T.Parallel()
 
 	var (
-		seenCaller     waitlistsgrpc.Principal
+		seenCaller     callers.Principal
 		seenScope      tenancy.Scope
 		seenList       string
 		seenSignup     string
@@ -164,7 +161,7 @@ func TestTheAuthorizerIsHandedWhatItNeedsToDecide(T *testing.T) {
 	)
 
 	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(_ context.Context, caller waitlistsgrpc.Principal, scope tenancy.Scope, listID, signupID string) error {
+		func(_ context.Context, caller callers.Principal, scope tenancy.Scope, listID, signupID string) error {
 			seenCaller, seenScope, seenList, seenSignup = caller, scope, listID, signupID
 			timesConsulted++
 
@@ -195,7 +192,7 @@ func TestASignedInCallerReachesTheAuthorizer(T *testing.T) {
 	var seen string
 
 	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(_ context.Context, caller waitlistsgrpc.Principal, _ tenancy.Scope, _, _ string) error {
+		func(_ context.Context, caller callers.Principal, _ tenancy.Scope, _, _ string) error {
 			if caller != nil {
 				seen = caller.UserID()
 			}
@@ -224,7 +221,7 @@ func TestNoOtherRPCConsultsTheAuthorizer(T *testing.T) {
 	var consulted int
 
 	h := newHarnessWithAuthorizer(T, waitlistsgrpc.SignupAuthorizerFunc(
-		func(context.Context, waitlistsgrpc.Principal, tenancy.Scope, string, string) error {
+		func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
 			consulted++
 
 			return nil
@@ -262,6 +259,6 @@ func TestTheSentinelIsNeverClientSafe(T *testing.T) {
 	T.Parallel()
 
 	for _, safe := range waitlists.ClientSafeSentinels {
-		test.NotEqOp(T, waitlistsgrpc.ErrTargetNotPermitted, safe)
+		test.NotEqOp(T, callers.ErrTargetNotPermitted, safe)
 	}
 }

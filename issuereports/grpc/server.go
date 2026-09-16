@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
 
@@ -95,7 +96,7 @@ type Server struct {
 
 	store      issuereports.Store
 	client     database.Client
-	principals PrincipalExtractor
+	principals callers.PrincipalExtractor
 	targets    ReportAuthorizer
 	o11y       observability.Observer
 
@@ -121,7 +122,7 @@ type Server struct {
 func NewServer(
 	store issuereports.Store,
 	client database.Client,
-	principals PrincipalExtractor,
+	principals callers.PrincipalExtractor,
 	targets ReportAuthorizer,
 	opts ...Option,
 ) (*Server, error) {
@@ -183,7 +184,7 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 // and narrowing it to a user id here would decide in advance what it may read.
 type request struct {
 	op        observability.Operation
-	principal Principal
+	principal callers.Principal
 	scope     tenancy.Scope
 }
 

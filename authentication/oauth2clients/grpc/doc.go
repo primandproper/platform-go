@@ -10,6 +10,22 @@ composes into their own.
 	srv, _ := oauth2clientsgrpc.NewServer(svc, store, db, extractPrincipal)
 	// []grpcserver.RegistrationFunc{srv.RegisterOn}
 
+# Who is calling
+
+Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+which a consumer's own authentication interceptor puts on the context and
+[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+back. Those are one package for the whole module rather than an interface per
+surface, because a deployment has one authentication interceptor and one notion
+of a caller, and that package's documentation is where the ruling that keeps the
+method set at three lives.
+
+What this surface needs off one is the user identifier and the registry the
+request is against. An empty user identifier is not a refusal here, unlike on
+the inbox next door: a machine caller acting on the registry's administered rows
+is an ordinary caller, and every row it reaches is bounded by the scope rather
+than by whose it is.
+
 # Four RPCs, all of them permissioned
 
 Create, get, list and archive, each acting on any registration in the caller's

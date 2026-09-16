@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 
@@ -214,7 +215,7 @@ func listFromProto(in *waitlistspb.WaitlistInput) *waitlists.List {
 //
 // Nothing else is read. The status and every timestamp are the store's, the
 // notes are the operator's column, and the list is an argument to the write.
-func signupFromJoin(in *waitlistspb.JoinRequest, caller Principal) *waitlists.Signup {
+func signupFromJoin(in *waitlistspb.JoinRequest, caller callers.Principal) *waitlists.Signup {
 	if in == nil {
 		return nil
 	}

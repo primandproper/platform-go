@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 
@@ -37,7 +37,7 @@ func TestReporterAuthorizer(T *testing.T) {
 		t.Parallel()
 
 		err := rule.AuthorizeReport(t.Context(), caller, &issuereports.Report{Reporter: otherReporter})
-		test.ErrorIs(t, err, issuereportsgrpc.ErrTargetNotPermitted)
+		test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("the caller's own name is permitted and any other is refused", func(t *testing.T) {
@@ -45,7 +45,7 @@ func TestReporterAuthorizer(T *testing.T) {
 
 		test.NoError(t, rule.AuthorizeReporter(t.Context(), caller, testReporter))
 		test.ErrorIs(t, rule.AuthorizeReporter(t.Context(), caller, otherReporter),
-			issuereportsgrpc.ErrTargetNotPermitted)
+			callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("nothing matches nothing", func(t *testing.T) {
@@ -58,16 +58,16 @@ func TestReporterAuthorizer(T *testing.T) {
 		anonymous := &testPrincipal{scope: testScope}
 
 		test.ErrorIs(t, rule.AuthorizeReport(t.Context(), anonymous, &issuereports.Report{}),
-			issuereportsgrpc.ErrTargetNotPermitted)
+			callers.ErrTargetNotPermitted)
 		test.ErrorIs(t, rule.AuthorizeReporter(t.Context(), anonymous, ""),
-			issuereportsgrpc.ErrTargetNotPermitted)
+			callers.ErrTargetNotPermitted)
 
 		// And a caller who is nobody at all, which is what a consumer's own
 		// composition can hand this rule when their grant check runs first.
 		test.ErrorIs(t, rule.AuthorizeReport(t.Context(), nil, &issuereports.Report{Reporter: testReporter}),
-			issuereportsgrpc.ErrTargetNotPermitted)
+			callers.ErrTargetNotPermitted)
 		test.ErrorIs(t, rule.AuthorizeReporter(t.Context(), nil, testReporter),
-			issuereportsgrpc.ErrTargetNotPermitted)
+			callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("a nil report is refused rather than panicking", func(t *testing.T) {
@@ -76,7 +76,7 @@ func TestReporterAuthorizer(T *testing.T) {
 		// Unreachable from this surface, where the row has already been read.
 		// A consumer's own handler is a different matter.
 		test.ErrorIs(t, rule.AuthorizeReport(t.Context(), caller, nil),
-			issuereportsgrpc.ErrTargetNotPermitted)
+			callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("the rule is about the person and not the tenant", func(t *testing.T) {
@@ -92,17 +92,12 @@ func TestReporterAuthorizer(T *testing.T) {
 	})
 }
 
-// TestErrTargetNotPermittedIsTheDirectorysSentinel is what lets a consumer hand
-// one rule to two surfaces.
-//
-// A second sentinel of this package's own would mean an authorizer written for
-// identity/grpc refusing this one with an error nothing here recognizes — which
-// reaches a client as codes.Internal rather than as the refusal it is.
-func TestErrTargetNotPermittedIsTheDirectorysSentinel(T *testing.T) {
-	T.Parallel()
-
-	test.EqOp(T, identitygrpc.ErrTargetNotPermitted, issuereportsgrpc.ErrTargetNotPermitted)
-}
+// There used to be a test here asserting that this package's
+// ErrTargetNotPermitted and identity/grpc's were the same value. Both were
+// aliases of one sentinel and both are gone: the refusal is
+// callers.ErrTargetNotPermitted, spelled once for every surface, so what that
+// test pinned is now the type checker's and the assertion had become a
+// tautology.
 
 // consoleAuthorizer is the composition [issuereportsgrpc.ReportAuthorizer]'s
 // documentation asks a deployment with a triage console to write: the narrow
@@ -123,7 +118,7 @@ var _ issuereportsgrpc.ReportAuthorizer = consoleAuthorizer{}
 // AuthorizeReport widens one of the two and delegates the rest of that one.
 func (a consoleAuthorizer) AuthorizeReport(
 	ctx context.Context,
-	caller issuereportsgrpc.Principal,
+	caller callers.Principal,
 	report *issuereports.Report,
 ) error {
 	if caller != nil && caller.UserID() == a.triager {
@@ -136,7 +131,7 @@ func (a consoleAuthorizer) AuthorizeReport(
 // TestTheNarrowHalfIsEmbeddableAndEmbeddingStaysAdditive pins the authorizer
 // half of the two seams' opposite rulings.
 //
-// [issuereportsgrpc.Principal]'s method set is final because a consumer has
+// [callers.Principal]'s method set is final because a consumer has
 // nothing to inherit from. This one's need not be, and the reason is exactly
 // what runs here: an implementation that embeds
 // [issuereportsgrpc.ReporterAuthorizer] answers the questions it did not write,
@@ -160,7 +155,7 @@ func TestTheNarrowHalfIsEmbeddableAndEmbeddingStaysAdditive(T *testing.T) {
 
 		test.NoError(t, rule.AuthorizeReport(t.Context(), caller, somebodyElses))
 		test.ErrorIs(t, narrow.AuthorizeReport(t.Context(), caller, somebodyElses),
-			issuereportsgrpc.ErrTargetNotPermitted)
+			callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("the question it did not write is inherited", func(t *testing.T) {
@@ -171,6 +166,6 @@ func TestTheNarrowHalfIsEmbeddableAndEmbeddingStaysAdditive(T *testing.T) {
 		// later would also be.
 		test.NoError(t, rule.AuthorizeReporter(t.Context(), caller, testReporter))
 		test.ErrorIs(t, rule.AuthorizeReporter(t.Context(), caller, otherReporter),
-			issuereportsgrpc.ErrTargetNotPermitted)
+			callers.ErrTargetNotPermitted)
 	})
 }

@@ -28,6 +28,21 @@ registry would answer three of its nine methods differently depending on wiring
 nobody can see from the client side, and silently is the one way this surface
 must not fail.
 
+# Who is calling
+
+Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+which a consumer's own authentication interceptor puts on the context and
+[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+back. Those are one package for the whole module rather than an interface per
+surface, because a deployment has one authentication interceptor and one notion
+of a caller, and that package's documentation is where the ruling that keeps the
+method set at three lives.
+
+Both of the facts this surface reads off one are load-bearing, and the second
+more than anywhere else in the module. The scope decides which directory; the
+user identifier decides whose inbox, and it is the whole of the row-level
+authorization here — see the next section.
+
 # Row-level permission, and why there is no TargetAuthorizer
 
 identity/grpc grew [github.com/primandproper/platform-go/v14/identity/grpc.TargetAuthorizer]

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
@@ -210,8 +211,8 @@ func TestRegisterServer(T *testing.T) {
 		t.Parallel()
 
 		i := container(t)
-		do.ProvideValue[identitygrpc.PrincipalExtractor](i,
-			func(context.Context) (identitygrpc.Principal, bool) { return nil, false })
+		do.ProvideValue[callers.PrincipalExtractor](i,
+			func(context.Context) (callers.Principal, bool) { return nil, false })
 
 		srv, err := do.Invoke[*identitygrpc.Server](i)
 		must.NoError(t, err)
@@ -249,8 +250,8 @@ func TestAPillarsProviderThatFailsToBuildFailsEveryRegistration(T *testing.T) {
 		do.ProvideValue[database.Client](i, testDBClient(t))
 		do.ProvideValue(i, &Config{})
 		do.Provide(i, func(do.Injector) (*observability.Pillars, error) { return nil, boom })
-		do.ProvideValue[identitygrpc.PrincipalExtractor](i,
-			func(context.Context) (identitygrpc.Principal, bool) { return nil, false })
+		do.ProvideValue[callers.PrincipalExtractor](i,
+			func(context.Context) (callers.Principal, bool) { return nil, false })
 
 		RegisterStore(i)
 		RegisterService(i)

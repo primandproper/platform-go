@@ -1,4 +1,4 @@
-package grpc_test
+package callers_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
@@ -14,17 +14,31 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// This file is where [identitygrpc.Principal]'s method set being final stops
-// being a sentence in its documentation. Nine sibling packages alias the type
-// verbatim, so a method added to it is a method every consumer of every gRPC
-// surface in this module has to grow at once, on a session type this module
-// never sees — a break with no deprecation available, because an interface
-// carries no default.
+// This file is where [callers.Principal]'s method set being final stops being a
+// sentence in its documentation. Ten gRPC surfaces name the type, so a method
+// added to it is a method every consumer of every gRPC surface in this module
+// has to grow at once, on a session type this module never sees — a break with
+// no deprecation available, because an interface carries no default.
 //
 // So the roster below is the ruling rather than a description of it, in the
 // mechanism the transport surfaces already use for which store methods cross
 // onto the wire: the list is the argument, and a fourth method fails here rather
 // than in somebody else's repository.
+
+// testPrincipal is the consumer's half of the seam, as small as the interface
+// allows. It stands in for whatever a deployment's authentication interceptor
+// resolved: a session, a bearer token's claims, a service account.
+type testPrincipal struct {
+	userID          string
+	activeAccountID string
+	scope           tenancy.Scope
+}
+
+var _ callers.Principal = (*testPrincipal)(nil)
+
+func (p *testPrincipal) UserID() string          { return p.userID }
+func (p *testPrincipal) Scope() tenancy.Scope    { return p.scope }
+func (p *testPrincipal) ActiveAccountID() string { return p.activeAccountID }
 
 // principalMethods is the whole of the interface, and the whole of what a
 // consumer's session type owes.
@@ -39,7 +53,7 @@ var principalMethods = []string{"ActiveAccountID", "Scope", "UserID"}
 func TestPrincipalMethodSetIsFinal(T *testing.T) {
 	T.Parallel()
 
-	principal := reflect.TypeFor[identitygrpc.Principal]()
+	principal := reflect.TypeFor[callers.Principal]()
 
 	got := make([]string, 0, principal.NumMethod())
 	for method := range principal.Methods() {
@@ -53,8 +67,8 @@ func TestPrincipalMethodSetIsFinal(T *testing.T) {
 }
 
 // sessionIdentified is the documented extension shape, declared where it is
-// needed rather than on [identitygrpc.Principal]: a surface that wants more of
-// its caller than the three asks for it here and type-asserts.
+// needed rather than on [callers.Principal]: a surface that wants more of its
+// caller than the three asks for it here and type-asserts.
 type sessionIdentified interface {
 	SessionID() string
 }
@@ -71,15 +85,15 @@ func (p *sessionPrincipal) SessionID() string { return p.sessionID }
 // documentation shows, executed.
 //
 // What it pins is the property the ruling turns on: a consumer whose type does
-// not answer the optional question is a [identitygrpc.Principal] all the same,
-// where a fourth method on the interface would have left them uncompilable.
+// not answer the optional question is a [callers.Principal] all the same, where
+// a fourth method on the interface would have left them uncompilable.
 func TestPrincipalExtendsByOptionalInterface(T *testing.T) {
 	T.Parallel()
 
 	T.Run("a caller whose type answers it is asked", func(t *testing.T) {
 		t.Parallel()
 
-		var caller identitygrpc.Principal = &sessionPrincipal{
+		var caller callers.Principal = &sessionPrincipal{
 			userID: "caller", scope: tenancy.Global(),
 			sessionID: "session-1",
 		}
@@ -92,7 +106,7 @@ func TestPrincipalExtendsByOptionalInterface(T *testing.T) {
 	T.Run("a caller whose type does not is still a principal", func(t *testing.T) {
 		t.Parallel()
 
-		var caller identitygrpc.Principal = &testPrincipal{userID: "caller", scope: tenancy.Global()}
+		var caller callers.Principal = &testPrincipal{userID: "caller", scope: tenancy.Global()}
 
 		_, ok := caller.(sessionIdentified)
 		test.False(t, ok, test.Sprint("the base interface should not have grown the optional method"))
@@ -106,7 +120,7 @@ func TestPrincipalExtendsByOptionalInterface(T *testing.T) {
 func TestPrincipalExtractorReportsAbsence(T *testing.T) {
 	T.Parallel()
 
-	var extract identitygrpc.PrincipalExtractor = func(context.Context) (identitygrpc.Principal, bool) {
+	var extract callers.PrincipalExtractor = func(context.Context) (callers.Principal, bool) {
 		return nil, false
 	}
 

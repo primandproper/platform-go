@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -28,19 +29,16 @@ import (
 // authorizer which could not decide is not read as one that refused, or an
 // outage tells a consumer to widen their policy.
 
-// TestErrTargetNotPermittedIsTheDirectorysSentinel pins the aliasing rather than
-// assuming it. It is what lets a consumer pass identity/grpc's
-// MembershipAuthorizer in unchanged: the method set matches, the Principal is
-// the same alias, and a refusal it returns is a refusal this package recognizes.
-func TestErrTargetNotPermittedIsTheDirectorysSentinel(T *testing.T) {
-	T.Parallel()
-
-	test.ErrorIs(T, billinggrpc.ErrTargetNotPermitted, identitygrpc.ErrTargetNotPermitted)
-	test.ErrorIs(T, identitygrpc.ErrTargetNotPermitted, billinggrpc.ErrTargetNotPermitted)
-}
-
 // TestAMembershipAuthorizerSatisfiesTheSeam is the claim the documentation makes
-// about the common case, made at compile time.
+// about the common case, made at compile time: a consumer already running
+// identity/grpc passes its MembershipAuthorizer straight in.
+//
+// There used to be a second test beside this one, asserting that this package's
+// ErrTargetNotPermitted and identity/grpc's were the same value. Both were
+// aliases of one sentinel and both are gone: the refusal is
+// callers.ErrTargetNotPermitted, spelled once, so the property that test pinned
+// is now the type checker's. What is still worth pinning is this one — that the
+// directory's authorizer satisfies a seam declared over a different noun.
 func TestAMembershipAuthorizerSatisfiesTheSeam(T *testing.T) {
 	T.Parallel()
 
@@ -123,7 +121,7 @@ func TestAWrappedRefusalIsStillARefusal(T *testing.T) {
 	T.Parallel()
 
 	h := newHarnessWithAuthorizer(T,
-		brokenAuthorizer(platformerrors.Wrap(billinggrpc.ErrTargetNotPermitted, "no membership in that account")))
+		brokenAuthorizer(platformerrors.Wrap(callers.ErrTargetNotPermitted, "no membership in that account")))
 
 	_, err := h.server.ListTransactionsForAccount(h.ctx(T, testUser, testAccount),
 		&billingpb.ListTransactionsForAccountRequest{AccountId: testAccount})
@@ -186,8 +184,8 @@ func TestARowOwnerRefusalIsNotFound(T *testing.T) {
 	})
 }
 
-// TestARefusalDoesNotCarryTheRefusalsWording is why ErrTargetNotPermitted is
-// registered as client-safe nowhere.
+// TestARefusalDoesNotCarryTheRefusalsWording is why
+// callers.ErrTargetNotPermitted is registered as client-safe nowhere.
 //
 // Half of what this package does with it is answer as though the row were
 // absent, and a status whose message said "the caller may not act on the named
@@ -203,7 +201,7 @@ func TestARefusalDoesNotCarryTheRefusalsWording(T *testing.T) {
 	must.Error(T, err)
 
 	message := status.Convert(err).Message()
-	test.StrNotContains(T, message, billinggrpc.ErrTargetNotPermitted.Error())
+	test.StrNotContains(T, message, callers.ErrTargetNotPermitted.Error())
 	test.StrContains(T, message, transaction.ID)
 }
 
@@ -262,7 +260,7 @@ func TestAMalformedRequestIsAnsweredBeforeItIsGated(T *testing.T) {
 func TestTheOperatorReadsAskNoAuthorizer(T *testing.T) {
 	T.Parallel()
 
-	h := newHarnessWithAuthorizer(T, brokenAuthorizer(billinggrpc.ErrTargetNotPermitted))
+	h := newHarnessWithAuthorizer(T, brokenAuthorizer(callers.ErrTargetNotPermitted))
 	ctx := h.ctx(T, testUser, testAccount)
 
 	h.seedSubscription(T, testScope, otherAccount)

@@ -3,6 +3,7 @@ package grpc_test
 import (
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
@@ -259,7 +260,7 @@ func TestServer_ListCommentsByAuthor(T *testing.T) {
 			&commentspb.ListCommentsByAuthorRequest{Author: otherUser})
 
 		mustBeCode(t, err, codes.PermissionDenied)
-		test.ErrorIs(t, err, commentsgrpc.ErrTargetNotPermitted)
+		test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("refuses an author nobody has heard of the same way", func(t *testing.T) {

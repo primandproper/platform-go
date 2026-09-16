@@ -3,30 +3,12 @@ package grpc
 import (
 	"context"
 
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
-
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
-
-// Principal is who is calling, as the consumer's authentication interceptor put
-// it on the request context.
-//
-// It is identity/grpc's, aliased rather than redefined, so a consumer writes one
-// extractor and both services read the same answer. Defining a second interface
-// with the same three methods would be two chances to disagree about who is
-// calling, in the two packages where that disagreement costs the most.
-type Principal = identitygrpc.Principal
-
-// PrincipalExtractor resolves a Principal off a request context, reporting
-// whether there was one. It is identity/grpc's — see [Principal].
-//
-// Four of this service's RPCs need one and refuse without it. The other three
-// are sign-in and do not ask.
-type PrincipalExtractor = identitygrpc.PrincipalExtractor
 
 // ScopeResolver says whose directory a request is against.
 //

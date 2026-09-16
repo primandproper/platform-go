@@ -20,12 +20,13 @@ import (
 // carries it is the consumer's — a host, a piece of metadata, a client
 // certificate, a resolver of their own.
 //
-// It is asked only where there is no principal. A request carrying one takes its
-// tenant from [Principal.Scope], which is a fact the consumer's authentication
-// interceptor proved, and this is the answer for a request where nothing was
-// proved because nothing had to be. So each call has exactly one source and the
-// two never race; what a consumer resolving both owes is that they agree — see
-// [WithScopeResolver].
+// It is asked only where there is no principal. A request carrying one takes
+// its tenant from
+// [github.com/primandproper/platform-go/v14/callers.Principal.Scope], which is
+// a fact the consumer's authentication interceptor proved, and this is the
+// answer for a request where nothing was proved because nothing had to be. So
+// each call has exactly one source and the two never race; what a consumer
+// resolving both owes is that they agree — see [WithScopeResolver].
 //
 // Returning an error refuses the request with codes.InvalidArgument, which is
 // the honest answer for a request that arrived somewhere it cannot be placed.

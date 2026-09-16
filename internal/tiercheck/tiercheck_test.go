@@ -74,6 +74,14 @@ var roster = map[string]entry{
 	"webhooks":      {tier: domain},
 	"workqueue":     {tier: domain},
 
+	// A domain that owns no table: the three names every gRPC surface here
+	// reads its caller through, in a package of their own so that a consumer
+	// wiring one surface does not link the directory to compile them. It is a
+	// domain because a principal is a user, a directory and an account — the
+	// README's "Primitives and Domains" section carries the reasoning, which is
+	// where a top-level package's tier is explained.
+	"callers": {tier: domain},
+
 	// The straddles: a domain package under a path whose parent is a
 	// primitives-go package. There is one such parent left, and it is the one
 	// that groups rather than indirects — authentication/ holds five related

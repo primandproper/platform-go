@@ -17,6 +17,28 @@ vocabulary stays an opaque string, and a write whose caller is already inside
 the process's own transaction is not an RPC. What is below is where settings
 lands on each and where it diverges.
 
+# Who is calling
+
+Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+which a consumer's own authentication interceptor puts on the context and
+[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+back. Those are one package for the whole module rather than an interface per
+surface, because a deployment has one authentication interceptor and one notion
+of a caller, and that package's documentation is where the ruling that keeps the
+method set at three lives.
+
+A principal is handed whole to the [SubjectAuthorizer], rather than reduced to
+the one field this package would have picked. Whose settings a caller may reach
+is the consumer's rule, and a rule that needs the active account — an
+administrator editing the settings of the account they are signed into — must
+not have had that fact discarded on the way.
+
+[github.com/primandproper/platform-go/v14/callers.ErrTargetNotPermitted] is what
+that authorizer returns to refuse, and it is never registered as a client-safe
+sentinel: every RPC here answers it with codes.PermissionDenied at the call
+site, so it needs no mapper, and its text is about the caller rather than about
+anything they can correct.
+
 # Thirteen RPCs, two audiences, and one absence
 
 The catalog half is an operator's: CreateDefinition, GetDefinition,

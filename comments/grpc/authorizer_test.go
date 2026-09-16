@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
@@ -23,7 +23,7 @@ type permitAll struct{}
 
 var _ commentsgrpc.AuthorAuthorizer = permitAll{}
 
-func (permitAll) AuthorizeAuthor(context.Context, commentsgrpc.Principal, string) error { return nil }
+func (permitAll) AuthorizeAuthor(context.Context, callers.Principal, string) error { return nil }
 
 // brokenAuthorizer is the third answer the seam distinguishes: not permitted,
 // not refused, could not decide.
@@ -31,7 +31,7 @@ type brokenAuthorizer struct{}
 
 var _ commentsgrpc.AuthorAuthorizer = brokenAuthorizer{}
 
-func (brokenAuthorizer) AuthorizeAuthor(context.Context, commentsgrpc.Principal, string) error {
+func (brokenAuthorizer) AuthorizeAuthor(context.Context, callers.Principal, string) error {
 	return errAuthorizerUnavailable
 }
 
@@ -53,7 +53,7 @@ func TestOwnCommentsOnly(T *testing.T) {
 
 		err := commentsgrpc.OwnCommentsOnly{}.AuthorizeAuthor(t.Context(), caller, otherUser)
 
-		test.ErrorIs(t, err, commentsgrpc.ErrTargetNotPermitted)
+		test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
 	})
 
 	// The refusal is identity/grpc's value, so a consumer running both writes
@@ -63,7 +63,7 @@ func TestOwnCommentsOnly(T *testing.T) {
 
 		err := commentsgrpc.OwnCommentsOnly{}.AuthorizeAuthor(t.Context(), caller, otherUser)
 
-		test.ErrorIs(t, err, identitygrpc.ErrTargetNotPermitted)
+		test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
 	})
 
 	// An empty author is nobody rather than everybody: the server resolves an
@@ -77,7 +77,7 @@ func TestOwnCommentsOnly(T *testing.T) {
 
 		err := commentsgrpc.OwnCommentsOnly{}.AuthorizeAuthor(t.Context(), anonymous, "")
 
-		test.ErrorIs(t, err, commentsgrpc.ErrTargetNotPermitted)
+		test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("refuses a caller who is nobody at all", func(t *testing.T) {
@@ -85,7 +85,7 @@ func TestOwnCommentsOnly(T *testing.T) {
 
 		err := commentsgrpc.OwnCommentsOnly{}.AuthorizeAuthor(t.Context(), nil, testUser)
 
-		test.ErrorIs(t, err, commentsgrpc.ErrTargetNotPermitted)
+		test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
 	})
 }
 
@@ -96,7 +96,7 @@ func TestAuthorAuthorizerFunc(T *testing.T) {
 
 	var asked string
 
-	rule := commentsgrpc.AuthorAuthorizerFunc(func(_ context.Context, _ commentsgrpc.Principal, author string) error {
+	rule := commentsgrpc.AuthorAuthorizerFunc(func(_ context.Context, _ callers.Principal, author string) error {
 		asked = author
 
 		return nil

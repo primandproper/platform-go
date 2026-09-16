@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
 	waitlistscfg "github.com/primandproper/platform-go/v14/waitlists/config"
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
@@ -30,15 +31,15 @@ import (
 func Example_mount() {
 	var (
 		ctx        context.Context
-		cfg        *waitlistscfg.Config             // yours: a config block
-		client     database.Client                  //
-		pillars    *observability.Pillars           //
-		serverCfg  *grpcserver.Config               //
-		principals waitlistsgrpc.PrincipalExtractor // yours: who is calling
-		authn      grpc.UnaryServerInterceptor      // yours: what puts them on the context
-		grants     authorization.GrantsExtractor    // yours: their authority
-		scopes     waitlistsgrpc.ScopeResolver      // yours: whose catalog an anonymous visitor sees
-		withdrawal waitlistsgrpc.SignupAuthorizer   // yours: who may take somebody off a list
+		cfg        *waitlistscfg.Config           // yours: a config block
+		client     database.Client                //
+		pillars    *observability.Pillars         //
+		serverCfg  *grpcserver.Config             //
+		principals callers.PrincipalExtractor     // yours: who is calling
+		authn      grpc.UnaryServerInterceptor    // yours: what puts them on the context
+		grants     authorization.GrantsExtractor  // yours: their authority
+		scopes     waitlistsgrpc.ScopeResolver    // yours: whose catalog an anonymous visitor sees
+		withdrawal waitlistsgrpc.SignupAuthorizer // yours: who may take somebody off a list
 	)
 
 	_ = func() error {
@@ -102,7 +103,7 @@ func ExampleSignupAuthorizerFunc() {
 	var redeemedSignupID func(context.Context) (string, bool)
 
 	withdrawal := waitlistsgrpc.SignupAuthorizerFunc(
-		func(ctx context.Context, caller waitlistsgrpc.Principal, _ tenancy.Scope, _, signupID string) error {
+		func(ctx context.Context, caller callers.Principal, _ tenancy.Scope, _, signupID string) error {
 			// A signed-in caller is one answer, where the deployment's
 			// unsubscribe page sits behind a sign-in.
 			if caller != nil && caller.UserID() != "" {
@@ -111,7 +112,7 @@ func ExampleSignupAuthorizerFunc() {
 
 			redeemed, ok := redeemedSignupID(ctx)
 			if !ok || redeemed != signupID {
-				return waitlistsgrpc.ErrTargetNotPermitted
+				return callers.ErrTargetNotPermitted
 			}
 
 			return nil

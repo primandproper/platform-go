@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/settings"
 	settingsgrpc "github.com/primandproper/platform-go/v14/settings/grpc"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
@@ -17,19 +17,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TestTheRefusalIsTheDirectorysOwnSentinel is the decision not to mint a second
-// one.
-//
-// A consumer has one rule about which principals a caller has standing over,
-// and an authorizer written for the directory refuses a settings read with the
-// answer it already returns. An errors.Is against either name matches, because
-// they are the same value.
-func TestTheRefusalIsTheDirectorysOwnSentinel(T *testing.T) {
-	T.Parallel()
-
-	test.ErrorIs(T, settingsgrpc.ErrTargetNotPermitted, identitygrpc.ErrTargetNotPermitted)
-	test.ErrorIs(T, identitygrpc.ErrTargetNotPermitted, settingsgrpc.ErrTargetNotPermitted)
-}
+// There used to be a test here asserting that this package's
+// ErrTargetNotPermitted and identity/grpc's were the same value. Both were
+// aliases of one sentinel and both are gone: the refusal is
+// callers.ErrTargetNotPermitted, spelled once for every surface, so what that
+// test pinned is now the type checker's and the assertion had become a
+// tautology.
 
 // TestAnAuthorizerMayWrapTheSentinelAndStillBeRefusing is what lets an
 // implementation say which rule refused without becoming an outage.
@@ -41,8 +34,8 @@ func TestAnAuthorizerMayWrapTheSentinelAndStillBeRefusing(T *testing.T) {
 	T.Parallel()
 
 	h := newHarness(T, settingsgrpc.SubjectAuthorizerFunc(
-		func(_ context.Context, _ settingsgrpc.Principal, subject settings.Subject) error {
-			return platformerrors.Wrapf(settingsgrpc.ErrTargetNotPermitted,
+		func(_ context.Context, _ callers.Principal, subject settings.Subject) error {
+			return platformerrors.Wrapf(callers.ErrTargetNotPermitted,
 				"no membership joins the caller to %s %q", subject.Type, subject.ID)
 		},
 	))
@@ -54,7 +47,7 @@ func TestAnAuthorizerMayWrapTheSentinelAndStillBeRefusing(T *testing.T) {
 	})
 	must.Error(T, err)
 
-	test.ErrorIs(T, err, settingsgrpc.ErrTargetNotPermitted)
+	test.ErrorIs(T, err, callers.ErrTargetNotPermitted)
 	test.EqOp(T, codes.PermissionDenied, status.Code(err))
 }
 
@@ -72,10 +65,10 @@ func TestTheAuthorizerIsAskedWithWhateverTheRequestCarried(T *testing.T) {
 	var asked []settings.Subject
 
 	h := newHarness(T, settingsgrpc.SubjectAuthorizerFunc(
-		func(_ context.Context, _ settingsgrpc.Principal, subject settings.Subject) error {
+		func(_ context.Context, _ callers.Principal, subject settings.Subject) error {
 			asked = append(asked, subject)
 
-			return settingsgrpc.ErrTargetNotPermitted
+			return callers.ErrTargetNotPermitted
 		},
 	))
 	h.seedCatalog(T, testScope)
@@ -88,8 +81,8 @@ func TestTheAuthorizerIsAskedWithWhateverTheRequestCarried(T *testing.T) {
 	test.EqOp(T, settings.Subject{}, asked[0])
 }
 
-// TestTheAuthorizerIsGivenThePrincipalWhole is why the seam takes a Principal
-// rather than the one field this package would have picked.
+// TestTheAuthorizerIsGivenThePrincipalWhole is why the seam takes a
+// callers.Principal rather than the one field this package would have picked.
 //
 // A rule that needs the active account — an administrator editing the settings
 // of the account they are signed into — must not have had that fact discarded
@@ -98,12 +91,12 @@ func TestTheAuthorizerIsGivenThePrincipalWhole(T *testing.T) {
 	T.Parallel()
 
 	h := newHarness(T, settingsgrpc.SubjectAuthorizerFunc(
-		func(_ context.Context, caller settingsgrpc.Principal, subject settings.Subject) error {
+		func(_ context.Context, caller callers.Principal, subject settings.Subject) error {
 			if subject.Type == settings.SubjectAccount && subject.ID == caller.ActiveAccountID() {
 				return nil
 			}
 
-			return settingsgrpc.ErrTargetNotPermitted
+			return callers.ErrTargetNotPermitted
 		},
 	))
 	h.seedCatalog(T, testScope)
@@ -129,5 +122,5 @@ func TestSubjectAuthorizerFuncIsTheInterface(T *testing.T) {
 
 	test.ErrorIs(T, authorizer.AuthorizeSubject(T.Context(),
 		&testPrincipal{userID: testUser, scope: testScope}, strangeSubject),
-		settingsgrpc.ErrTargetNotPermitted)
+		callers.ErrTargetNotPermitted)
 }

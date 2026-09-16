@@ -17,6 +17,21 @@ never comes off a request field, and a write whose caller is already inside the
 process's own transaction is not an RPC. What is below is where waitlists lands
 on each and where it diverges.
 
+# Who is calling
+
+Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+which a consumer's own authentication interceptor puts on the context and
+[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+back. Those are one package for the whole module rather than an interface per
+surface, because a deployment has one authentication interceptor and one notion
+of a caller, and that package's documentation is where the ruling that keeps the
+method set at three lives.
+
+Unlike every other surface in this module, an extractor here reports "nobody" on
+requests that are working exactly as intended: three of this service's RPCs are a
+signup page, and the person on it has not signed in. [NewServer] and the two
+sections below are where that lands.
+
 # Seventeen RPCs and no absences
 
 Every method of waitlists.Store is here. That is unusual on this lane — the
@@ -48,7 +63,8 @@ authentication/signin/grpc's arrangement, applied to a service where only part
 of the surface is public.
 
 The second is that the scope has two sources and each call has exactly one. A
-request carrying a principal takes its tenant from [Principal.Scope], which the
+request carrying a principal takes its tenant from
+[github.com/primandproper/platform-go/v14/callers.Principal.Scope], which the
 consumer's interceptor proved. A request carrying nobody — which is what a
 signup page looks like, and on a pre-launch list the visitor has nothing to sign
 in to — takes it from a [ScopeResolver] reading the connection, which is
@@ -107,6 +123,15 @@ rather than for this wire. Withdraw drops it for a sharper reason: the row it
 hands back is the one from *before* the blanking — the address, the notes, the
 subject — and the caller who has just asked to be forgotten is the last caller to
 send that to. The erasure and its count are unchanged.
+
+# What a refused withdrawal says
+
+[github.com/primandproper/platform-go/v14/callers.ErrTargetNotPermitted] is what
+a [SignupAuthorizer] returns to refuse, and it is never registered as a
+client-safe sentinel. Its text says the caller was refused, and what this
+surface does with it is answer as though nothing had been named — see
+[Server.Withdraw], which is the shape a public RPC over a minted identifier
+owes: a refusal that reads the same as an identifier nobody minted.
 
 # Errors
 

@@ -4,27 +4,12 @@ import (
 	"context"
 	"errors"
 
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 
 	"google.golang.org/grpc/codes"
 )
-
-// ErrTargetNotPermitted indicates a caller who may make this call and may not
-// make it against the account this request named or this row belongs to.
-//
-// It is identity/grpc's sentinel rather than a second one of this package's own,
-// and deliberately the same value: a consumer has one rule about which accounts
-// a caller has standing in, and an authorizer written for the directory refuses
-// the ledger with the answer it already returns. An errors.Is against either
-// name matches.
-//
-// It is never registered as a client-safe sentinel, on either surface. Its text
-// says the caller was refused, and half of what this package does with it is
-// answer as though the row were absent — see the two refusal shapes at the
-// bottom of this file.
-var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 
 // AccountAuthorizer decides whether the caller may act on the account a request
 // named, or on the account a row belongs to.
@@ -46,53 +31,54 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 // to read a membership with — so the question is asked from inside the handler,
 // where the store and the client already are.
 //
-// It is not tenancy. The scope comes off the [Principal] and every store read
-// filters on it, so nothing here crosses a deployment; this is the check inside
-// one.
+// It is not tenancy. The scope comes off the [callers.Principal] and every
+// store read filters on it, so nothing here crosses a deployment; this is the
+// check inside one.
 //
 // # Why there is no default
 //
 // identity/grpc ships MembershipAuthorizer as its default and this ships none,
-// because the two are not in the same position. That package owns the membership
-// table and can answer the question itself; this one has no idea what makes an
-// account somebody's, and every default available to it is wrong in a way
-// nothing reports. One that permits everything hands one customer's ledger to
-// another. One that refuses everything makes six RPCs answer as though nothing
-// existed, which is discovered as a mystery rather than as a wiring failure. One
-// that compares the account id in the request against Principal.ActiveAccountID
-// compares a request field against a request field, which is the reading
-// MembershipAuthorizer's own documentation rejects.
+// because the two are not in the same position. That package owns the
+// membership table and can answer the question itself; this one has no idea
+// what makes an account somebody's, and every default available to it is wrong
+// in a way nothing reports. One that permits everything hands one customer's
+// ledger to another. One that refuses everything makes six RPCs answer as
+// though nothing existed, which is discovered as a mystery rather than as a
+// wiring failure. One that compares the account id in the request against
+// callers.Principal.ActiveAccountID compares a request field against a request
+// field, which is the reading MembershipAuthorizer's own documentation rejects.
 //
 // So it is positional and required, exactly as the principal extractor is, and
 // [ErrNilAccountAuthorizer] is what a server built without one is.
 //
 // A consumer already running identity/grpc passes its MembershipAuthorizer
-// straight in — the method set matches, [Principal] is the same alias, and
-// [ErrTargetNotPermitted] is the same value — so the common case is one argument
-// rather than an implementation.
+// straight in — the method set matches, [callers.Principal] is the one type
+// both surfaces name rather than two of the same shape, and
+// [callers.ErrTargetNotPermitted] is the one value both match on — so the
+// common case is one argument rather than an implementation.
 //
 // # What implementations owe
 //
-// A nil error means permitted. [ErrTargetNotPermitted] means refused. Any other
-// error is a failure to decide — a database that would not answer — and reaches
-// the client as codes.Internal, which is what keeps an unavailable store from
-// reading as a refusal. The three are distinguished by errors.Is, so an
-// implementation may wrap the sentinel with context of its own and still be
+// A nil error means permitted. [callers.ErrTargetNotPermitted] means refused.
+// Any other error is a failure to decide — a database that would not answer —
+// and reaches the client as codes.Internal, which is what keeps an unavailable
+// store from reading as a refusal. The three are distinguished by errors.Is, so
+// an implementation may wrap the sentinel with context of its own and still be
 // refusing.
 type AccountAuthorizer interface {
 	// AuthorizeAccount is asked before an RPC reads an account's own rows, and
 	// after a keyed read has resolved which account a row belongs to.
-	AuthorizeAccount(ctx context.Context, caller Principal, accountID string) error
+	AuthorizeAccount(ctx context.Context, caller callers.Principal, accountID string) error
 }
 
 // AccountAuthorizerFunc adapts a function to [AccountAuthorizer], for a consumer
 // whose rule is one closure over something they already hold.
-type AccountAuthorizerFunc func(ctx context.Context, caller Principal, accountID string) error
+type AccountAuthorizerFunc func(ctx context.Context, caller callers.Principal, accountID string) error
 
 var _ AccountAuthorizer = AccountAuthorizerFunc(nil)
 
 // AuthorizeAccount calls f.
-func (f AccountAuthorizerFunc) AuthorizeAccount(ctx context.Context, caller Principal, accountID string) error {
+func (f AccountAuthorizerFunc) AuthorizeAccount(ctx context.Context, caller callers.Principal, accountID string) error {
 	return f(ctx, caller, accountID)
 }
 
@@ -134,8 +120,8 @@ func (s *Server) authorizeNamedAccount(
 //
 // The chain returned is still the refusal, which is what the log and the span
 // record. Only the status the client reads is the absence, and
-// [ErrTargetNotPermitted] is not client-safe, so its wording does not travel
-// with it.
+// [callers.ErrTargetNotPermitted] is not client-safe, so its wording does not
+// travel with it.
 func (s *Server) authorizeRowOwner(
 	ctx context.Context,
 	req *request,
@@ -167,7 +153,7 @@ func (s *Server) authorize(
 	}
 
 	code := codes.Internal
-	if errors.Is(err, ErrTargetNotPermitted) {
+	if errors.Is(err, callers.ErrTargetNotPermitted) {
 		code = refused
 	}
 

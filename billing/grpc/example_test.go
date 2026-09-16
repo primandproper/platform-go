@@ -6,6 +6,7 @@ import (
 
 	billingcfg "github.com/primandproper/platform-go/v14/billing/config"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
@@ -35,7 +36,7 @@ func Example_mount() {
 		client      database.Client                    //
 		pillars     *observability.Pillars             //
 		serverCfg   *grpcserver.Config                 //
-		principals  identitygrpc.PrincipalExtractor    // yours: who is calling
+		principals  callers.PrincipalExtractor         // yours: who is calling
 		authn       grpc.UnaryServerInterceptor        // yours: what puts them on the context
 		grants      authorization.GrantsExtractor      // yours: their authority
 		memberships *identitygrpc.MembershipAuthorizer // yours: which accounts are theirs

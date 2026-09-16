@@ -104,6 +104,20 @@ consumer's fork of the file. The reservation is on the four entities as well as
 on the requests, since a response telling a client its tenant would be answering
 with something the client supplied.
 
+# Who is calling
+
+Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+which a consumer's own authentication interceptor puts on the context and
+[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+back. Those are one package for the whole module rather than an interface per
+surface, because a deployment has one authentication interceptor and one notion
+of a caller, and that package's documentation is where the ruling that keeps the
+method set at three lives.
+
+What this surface needs off a principal is the user identifier and the scope
+their request is against; the account a request acts on is named in the request
+and checked by the seam below, rather than read off the caller.
+
 # Row-level permission, and the two shapes a refusal takes
 
 [Permissions] is a grant on the method, evaluated by authorization/grpc's
@@ -120,15 +134,15 @@ somebody's, so the seam is a required positional argument rather than a default
 that would be wrong in a way nothing reports. A consumer already running
 identity/grpc passes its MembershipAuthorizer straight in.
 
-And a refusal is answered two ways rather than one. Where the account is named in
-the request, a refusal is codes.PermissionDenied, exactly as the directory
+And a refusal is answered two ways rather than one. Where the account is named
+in the request, a refusal is codes.PermissionDenied, exactly as the directory
 answers. Where the row was read first and the account came off it — the three
 keyed reads — a refusal is codes.NotFound, the same status a row that is not
 there gets, because answering anything else would tell a caller walking
 transaction ids which of them are real. The chain returned is still the refusal
 and the log and the span record it; only the status differs, and
-ErrTargetNotPermitted is not a client-safe sentinel, so its wording does not
-travel.
+[github.com/primandproper/platform-go/v14/callers.ErrTargetNotPermitted] is not
+a client-safe sentinel, so its wording does not travel.
 
 # Errors
 

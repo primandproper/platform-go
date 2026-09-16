@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/settings"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 
@@ -106,7 +107,7 @@ type Server struct {
 
 	store      settings.Store
 	client     database.Client
-	principals PrincipalExtractor
+	principals callers.PrincipalExtractor
 	subjects   SubjectAuthorizer
 	o11y       observability.Observer
 
@@ -138,7 +139,7 @@ type Server struct {
 func NewServer(
 	store settings.Store,
 	client database.Client,
-	principals PrincipalExtractor,
+	principals callers.PrincipalExtractor,
 	subjects SubjectAuthorizer,
 	opts ...Option,
 ) (*Server, error) {
@@ -198,7 +199,7 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 // built rather than a field of it this package chose.
 type request struct {
 	op     observability.Operation
-	caller Principal
+	caller callers.Principal
 	scope  tenancy.Scope
 }
 

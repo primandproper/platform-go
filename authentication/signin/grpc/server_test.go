@@ -7,7 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -49,9 +49,9 @@ func TestNewServer(T *testing.T) {
 		// an alias gives and a second interface with the same three methods
 		// would not.
 		var (
-			_ signingrpc.Principal            = (*testPrincipal)(nil)
-			_ signingrpc.PrincipalExtractor   = extractPrincipal
-			_ identitygrpc.PrincipalExtractor = extractPrincipal
+			_ callers.Principal          = (*testPrincipal)(nil)
+			_ callers.PrincipalExtractor = extractPrincipal
+			_ callers.PrincipalExtractor = extractPrincipal
 		)
 	})
 

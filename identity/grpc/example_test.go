@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
@@ -31,14 +32,14 @@ import (
 func Example_mount() {
 	var (
 		ctx       context.Context
-		cfg       *identitycfg.Config             // yours: a config block
-		client    database.Client                 //
-		pillars   *observability.Pillars          //
-		serverCfg *grpcserver.Config              //
-		hooks     identity.Hooks                  // yours: what commits alongside a write
-		principal identitygrpc.PrincipalExtractor // yours: who is calling
-		authn     grpc.UnaryServerInterceptor     // yours: what puts them on the context
-		grants    authorization.GrantsExtractor   // yours: their authority
+		cfg       *identitycfg.Config           // yours: a config block
+		client    database.Client               //
+		pillars   *observability.Pillars        //
+		serverCfg *grpcserver.Config            //
+		hooks     identity.Hooks                // yours: what commits alongside a write
+		principal callers.PrincipalExtractor    // yours: who is calling
+		authn     grpc.UnaryServerInterceptor   // yours: what puts them on the context
+		grants    authorization.GrantsExtractor // yours: their authority
 	)
 
 	_ = func() error {
@@ -98,12 +99,12 @@ func Example_mount() {
 //
 // Three registrations and two values of their own. The Hooks registration is
 // optional — omit it and the Service gets identity.NoopHooks — and the
-// PrincipalExtractor is not, because a directory server that cannot resolve a
-// caller has no scope to filter its reads on.
+// callers.PrincipalExtractor is not, because a directory server that cannot
+// resolve a caller has no scope to filter its reads on.
 func Example_mountThroughTheContainer() {
 	var (
 		hooks     identity.Hooks
-		principal identitygrpc.PrincipalExtractor
+		principal callers.PrincipalExtractor
 	)
 
 	_ = func(i do.Injector) {
@@ -111,7 +112,7 @@ func Example_mountThroughTheContainer() {
 		// the interface and the named func type rather than on whatever concrete
 		// thing the consumer happens to be holding.
 		do.ProvideValue[identity.Hooks](i, hooks)
-		do.ProvideValue[identitygrpc.PrincipalExtractor](i, principal)
+		do.ProvideValue[callers.PrincipalExtractor](i, principal)
 
 		identitycfg.RegisterStore(i)
 		identitycfg.RegisterService(i)

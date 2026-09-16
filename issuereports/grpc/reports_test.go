@@ -3,6 +3,7 @@ package grpc_test
 import (
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
@@ -165,7 +166,7 @@ func TestGetReport(T *testing.T) {
 		// that said so would tell a caller walking report ids which of them are
 		// real.
 		test.EqOp(t, codes.NotFound, status.Code(err))
-		test.ErrorIs(t, err, issuereportsgrpc.ErrTargetNotPermitted)
+		test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("another tenant's report is not there either", func(t *testing.T) {

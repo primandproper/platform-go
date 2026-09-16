@@ -26,10 +26,19 @@ comments.Store, which says it on each of the two methods.
 
 # Three seams, and one of them has a default
 
-Who is calling is [Principal], which a consumer's own authentication
-interceptor puts on the context and [PrincipalExtractor] reads back. It is
-identity/grpc's alias rather than a second interface: a deployment has one
-notion of a caller.
+Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+which a consumer's own authentication interceptor puts on the context and
+[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+back. Those are one package for the whole module rather than an interface per
+surface: a deployment has one authentication interceptor and one notion of a
+caller.
+
+This surface reads both halves it is given, and the user identifier is the one
+that matters most here. It is what [Server.CreateComment] writes into
+Comment.Author, so "who said this" is answered by the connection rather than by
+a request field somebody could put anybody's name in, and it is what an edit, an
+archive and a by-author page are compared against before the caller is asked to
+justify reaching somebody else's words.
 
 What each method requires is [Permissions], declared in one call by [Require]
 and evaluated by authorization/grpc's interceptor before the request body has
@@ -106,7 +115,7 @@ that six ways cannot tell which field to go back to.
 
 	grpcServer, err := grpcserver.NewGRPCServer(ctx, cfg,
 	    []grpc.UnaryServerInterceptor{
-	        authn,                                  // yours: puts the Principal on the context
+	        authn,                                  // yours: puts the principal on the context
 	        enforcer.UnaryServerInterceptor(),      // authorization/grpc, over the requirements above
 	        grpcerrors.UnaryErrorEncodingInterceptor(),
 	    },

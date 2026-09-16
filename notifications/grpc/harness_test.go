@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/notifications"
 	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
 	"github.com/primandproper/platform-go/v14/notifications/migrations"
@@ -96,7 +96,7 @@ type testPrincipalValue struct {
 	scope           tenancy.Scope
 }
 
-var _ identitygrpc.Principal = (*testPrincipalValue)(nil)
+var _ callers.Principal = (*testPrincipalValue)(nil)
 
 func (p *testPrincipalValue) UserID() string          { return p.userID }
 func (p *testPrincipalValue) Scope() tenancy.Scope    { return p.scope }
@@ -109,7 +109,7 @@ type principalKey struct{}
 // withPrincipal is what a consumer's interceptor does, with the credential
 // reading step removed. A context carrying none reaches the server as an
 // anonymous request.
-func withPrincipal(ctx context.Context, p identitygrpc.Principal) context.Context {
+func withPrincipal(ctx context.Context, p callers.Principal) context.Context {
 	if p == nil {
 		return ctx
 	}
@@ -117,10 +117,10 @@ func withPrincipal(ctx context.Context, p identitygrpc.Principal) context.Contex
 	return context.WithValue(ctx, principalKey{}, p)
 }
 
-// extractPrincipal is the PrincipalExtractor the server is built with. It reads
-// what withPrincipal put there and knows nothing about how.
-func extractPrincipal(ctx context.Context) (identitygrpc.Principal, bool) {
-	p, ok := ctx.Value(principalKey{}).(identitygrpc.Principal)
+// extractPrincipal is the callers.PrincipalExtractor the server is built with.
+// It reads what withPrincipal put there and knows nothing about how.
+func extractPrincipal(ctx context.Context) (callers.Principal, bool) {
+	p, ok := ctx.Value(principalKey{}).(callers.Principal)
 
 	return p, ok
 }

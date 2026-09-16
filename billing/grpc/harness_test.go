@@ -12,8 +12,8 @@ import (
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
 	"github.com/primandproper/platform-go/v14/billing/migrations"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
 	"github.com/primandproper/primitives-go/v2/capitalism"
 	"github.com/primandproper/primitives-go/v2/database"
@@ -95,7 +95,7 @@ type testPrincipal struct {
 	scope           tenancy.Scope
 }
 
-var _ identitygrpc.Principal = (*testPrincipal)(nil)
+var _ callers.Principal = (*testPrincipal)(nil)
 
 func (p *testPrincipal) UserID() string          { return p.userID }
 func (p *testPrincipal) Scope() tenancy.Scope    { return p.scope }
@@ -108,7 +108,7 @@ type principalKey struct{}
 // withPrincipal is what a consumer's interceptor does, with the credential
 // reading step removed. A context carrying none reaches the server as an
 // anonymous request.
-func withPrincipal(ctx context.Context, p identitygrpc.Principal) context.Context {
+func withPrincipal(ctx context.Context, p callers.Principal) context.Context {
 	if p == nil {
 		return ctx
 	}
@@ -116,9 +116,9 @@ func withPrincipal(ctx context.Context, p identitygrpc.Principal) context.Contex
 	return context.WithValue(ctx, principalKey{}, p)
 }
 
-// extractPrincipal is the PrincipalExtractor the server is built with.
-func extractPrincipal(ctx context.Context) (identitygrpc.Principal, bool) {
-	p, ok := ctx.Value(principalKey{}).(identitygrpc.Principal)
+// extractPrincipal is the callers.PrincipalExtractor the server is built with.
+func extractPrincipal(ctx context.Context) (callers.Principal, bool) {
+	p, ok := ctx.Value(principalKey{}).(callers.Principal)
 
 	return p, ok
 }
@@ -133,12 +133,12 @@ func extractPrincipal(ctx context.Context) (identitygrpc.Principal, bool) {
 // answers one.
 func ownAccountAuthorizer() billinggrpc.AccountAuthorizer {
 	return billinggrpc.AccountAuthorizerFunc(
-		func(_ context.Context, caller billinggrpc.Principal, accountID string) error {
+		func(_ context.Context, caller callers.Principal, accountID string) error {
 			if caller != nil && accountID != "" && caller.ActiveAccountID() == accountID {
 				return nil
 			}
 
-			return billinggrpc.ErrTargetNotPermitted
+			return callers.ErrTargetNotPermitted
 		})
 }
 
@@ -146,7 +146,7 @@ func ownAccountAuthorizer() billinggrpc.AccountAuthorizer {
 // answer from a refusal and reaches a client as codes.Internal.
 func brokenAuthorizer(err error) billinggrpc.AccountAuthorizer {
 	return billinggrpc.AccountAuthorizerFunc(
-		func(context.Context, billinggrpc.Principal, string) error { return err })
+		func(context.Context, callers.Principal, string) error { return err })
 }
 
 // harness is one database, one store and one server over them.
