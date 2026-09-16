@@ -22,21 +22,15 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}issue_reports (
     closed_at       DATETIME(6),
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),
-    archived_at     DATETIME(6)
+    archived_at     DATETIME(6),
+
+    -- MySQL has no partial indexes, so unlike the Postgres schema these cover
+    -- the whole table and archived_at leads the discriminating columns. Every
+    -- read filters on it, so putting it in front keeps these as selective as
+    -- the partial clause is elsewhere.
+    KEY {{PREFIX}}issue_reports_scope_idx (scope, archived_at, id),
+    KEY {{PREFIX}}issue_reports_status_idx (scope, archived_at, status, id),
+    KEY {{PREFIX}}issue_reports_reporter_idx (scope, archived_at, reporter, id),
+    KEY {{PREFIX}}issue_reports_subject_idx
+        (scope, archived_at, subject_type, subject_id, id)
 );
-
--- MySQL has no partial indexes, so unlike the Postgres schema these cover the
--- whole table and archived_at leads the discriminating columns. Every read
--- filters on it, so putting it in front keeps these as selective as the partial
--- clause is elsewhere.
-CREATE INDEX {{PREFIX}}issue_reports_scope_idx
-    ON {{PREFIX}}issue_reports (scope, archived_at, id);
-
-CREATE INDEX {{PREFIX}}issue_reports_status_idx
-    ON {{PREFIX}}issue_reports (scope, archived_at, status, id);
-
-CREATE INDEX {{PREFIX}}issue_reports_reporter_idx
-    ON {{PREFIX}}issue_reports (scope, archived_at, reporter, id);
-
-CREATE INDEX {{PREFIX}}issue_reports_subject_idx
-    ON {{PREFIX}}issue_reports (scope, archived_at, subject_type, subject_id, id);

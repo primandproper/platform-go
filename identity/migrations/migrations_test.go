@@ -197,65 +197,33 @@ var indexNames = []string{
 	"identity_invitations_account_idx",
 }
 
-func TestSchema_IsRerunnableInEveryDialect(T *testing.T) {
+// TestSchema_IndexNamesAgreeAcrossDialects is what is left of this package's
+// share of the re-runnability rule once internal/schemaconvention owns the rule
+// itself.
+//
+// That MySQL declares every key inline, and that Postgres and SQLite guard every
+// standalone index with IF NOT EXISTS, is asserted there for all twenty-five
+// schema-shipping packages at once — the failure is invisible from inside any
+// one of them, which is how fourteen of them carried it simultaneously.
+//
+// What stays here is the consequence that is identity's alone. MySQL scopes an
+// index name to its table and would accept shorter ones than the other two
+// dialects need, but ValidatePrefix measures the longest identifier a prefix
+// renders across all three bodies at once, so a name only two of them spelled
+// would be a name that check stopped measuring here.
+func TestSchema_IndexNamesAgreeAcrossDialects(T *testing.T) {
 	T.Parallel()
 
-	T.Run("mysql declares every key inline", func(t *testing.T) {
-		t.Parallel()
+	for _, d := range allDialects {
+		stmts, err := Statements(d, "")
+		must.NoError(T, err)
 
-		// MySQL has no CREATE INDEX IF NOT EXISTS, so a standalone index
-		// statement is the one thing here a second run cannot skip: it reports
-		// a duplicate key name and takes the rest of the migration with it.
-		// Declared inside the CREATE TABLE IF NOT EXISTS, a key is skipped
-		// exactly when the table is.
-		stmts, err := Statements(dialect.MySQL, "")
-		must.NoError(t, err)
-		must.SliceNotEmpty(t, stmts)
-
-		for _, stmt := range stmts {
-			test.StrHasPrefix(t, "CREATE TABLE IF NOT EXISTS ", stmt)
+		joined := strings.Join(stmts, "\n")
+		for _, name := range indexNames {
+			test.StrContains(T, joined, name,
+				test.Sprintf("%s is missing %s", d, name))
 		}
-
-		must.SliceLen(t, len(tableNames), stmts)
-	})
-
-	T.Run("postgres and sqlite create their indexes conditionally", func(t *testing.T) {
-		t.Parallel()
-
-		// The other two dialects have the conditional MySQL lacks, so they keep
-		// the standalone statements — and every one of them has to carry it.
-		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.SQLite} {
-			stmts, err := Statements(d, "")
-			must.NoError(t, err)
-
-			for _, stmt := range stmts {
-				if !strings.Contains(stmt, "INDEX") {
-					continue
-				}
-
-				test.StrContains(t, stmt, "IF NOT EXISTS",
-					test.Sprintf("%s index is unconditional: %s", d, stmt))
-			}
-		}
-	})
-
-	T.Run("the three dialects name the same indexes", func(t *testing.T) {
-		t.Parallel()
-
-		// ValidatePrefix measures the longest identifier a prefix renders
-		// across all three bodies at once, so an index MySQL spelled its own
-		// way would be a name that check stopped measuring here.
-		for _, d := range allDialects {
-			stmts, err := Statements(d, "")
-			must.NoError(t, err)
-
-			joined := strings.Join(stmts, "\n")
-			for _, name := range indexNames {
-				test.StrContains(t, joined, name,
-					test.Sprintf("%s is missing %s", d, name))
-			}
-		}
-	})
+	}
 }
 
 func TestSchema_ScopeColumnHasNoDefault(T *testing.T) {

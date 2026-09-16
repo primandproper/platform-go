@@ -28,11 +28,10 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}shredding_subject_keys (
     -- The pair, not the ID. A user and an account sharing an identifier are two
     -- subjects with two keys, and a primary key on the ID alone would silently
     -- make them one.
-    PRIMARY KEY (subject_type, subject_id)
-);
+    PRIMARY KEY (subject_type, subject_id),
 
--- Serves "what was destroyed, and when". MySQL has no partial indexes, so unlike
--- the Postgres schema this covers the whole table; the live rows sort under a
--- NULL shredded_at and stay out of the range the query asks for.
-CREATE INDEX {{PREFIX}}shredding_subject_keys_shredded_idx
-    ON {{PREFIX}}shredding_subject_keys (shredded_at);
+    -- Serves "what was destroyed, and when". MySQL has no partial indexes, so
+    -- unlike the Postgres schema this covers the whole table; the live rows sort
+    -- under a NULL shredded_at and stay out of the range the query asks for.
+    KEY {{PREFIX}}shredding_subject_keys_shredded_idx (shredded_at)
+);

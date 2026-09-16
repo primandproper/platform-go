@@ -38,6 +38,29 @@ exempt and says why where it is named. Its store assigns the column on the
 insert, because a link's creation time has to come from the same clock its
 expires_at and purge_after were derived from.
 
+# Running a migration twice
+
+The second convention here is about the file rather than the table: applying a
+package's DDL to a database that already has it adds nothing and fails nothing,
+in every dialect that package claims. Replaying from zero against a live
+database is ordinary, and so is re-applying after a run that died partway.
+
+Postgres and SQLite spell it directly — CREATE TABLE IF NOT EXISTS and CREATE
+INDEX IF NOT EXISTS. MySQL has the first and not the second, which is the whole
+of the problem: a standalone CREATE INDEX is the one statement in a MySQL body
+a second run cannot skip. It reports a duplicate key name, and because that
+aborts the statement the rest of the migration never runs — so the failure is
+not the local one it looks like. An index declared inline under the CREATE TABLE
+is part of the table, and is therefore skipped exactly when the table is, which
+is how the same property is spelled on that dialect.
+
+This is asserted here rather than per package for the reason the triple is. The
+failure is invisible from inside one schema — rendering the same DDL twice says
+nothing about what a server does with it the second time, and a package's own
+tests will not notice — and it was in fact true of fourteen of the module's
+schemas at once, each of them looking locally fine. A fifteenth that reaches for
+a standalone CREATE INDEX fails here.
+
 A table is exempt only for a reason that outlives whoever wrote it, and there are
 two shapes. A table a sweeper keeps small — sessions, work queue items, outbox
 messages, WebAuthn ceremony state, metering's ingest ledger, and the tables whose

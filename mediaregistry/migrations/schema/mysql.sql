@@ -10,12 +10,9 @@ CREATE TABLE IF NOT EXISTS uploads_objects (
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),
     archived_at     DATETIME(6),
-    UNIQUE KEY uploads_objects_key_uniq (scope, object_key)
+    UNIQUE KEY uploads_objects_key_uniq (scope, object_key),
+    KEY uploads_objects_owner_idx (scope, archived_at, owner_id, id),
+    KEY uploads_objects_subject_idx
+        (scope, archived_at, belongs_to_type, belongs_to_id, id)
 );
-
-CREATE INDEX uploads_objects_owner_idx
-    ON uploads_objects (scope, archived_at, owner_id, id);
-
-CREATE INDEX uploads_objects_subject_idx
-    ON uploads_objects (scope, archived_at, belongs_to_type, belongs_to_id, id);
 

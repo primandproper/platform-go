@@ -751,7 +751,17 @@ func columnsOf(t *testing.T, ddl, table string) []string {
 	var columns []string
 
 	for line := range strings.SplitSeq(body, "\n") {
-		fields := strings.Fields(strings.TrimSpace(line))
+		trimmed := strings.TrimSpace(line)
+
+		// A clause whose column list wrapped onto its own line, which is what a
+		// long inline KEY renders as. It is the tail of the clause above rather
+		// than a column definition, and a parser that read the first token as a
+		// column name would invent one called "(delivered_at,".
+		if strings.HasPrefix(trimmed, "(") {
+			continue
+		}
+
+		fields := strings.Fields(trimmed)
 		if len(fields) < 2 {
 			continue
 		}

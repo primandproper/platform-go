@@ -19,28 +19,24 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}notifications_inbox (
     read_at         DATETIME(6),
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),
-    archived_at     DATETIME(6)
+    archived_at     DATETIME(6),
+
+    -- MySQL has no partial indexes, so unlike the Postgres schema these cover
+    -- the whole table and the predicate columns lead. Both reads filter on
+    -- archived_at and the second on read_at as well, so putting them in front
+    -- keeps the index as selective as the partial clause is elsewhere.
+    KEY {{PREFIX}}notifications_inbox_principal_idx (scope, principal, archived_at, id),
+    KEY {{PREFIX}}notifications_inbox_unread_idx
+        (scope, principal, archived_at, read_at, id)
 );
-
--- MySQL has no partial indexes, so unlike the Postgres schema these cover the
--- whole table and the predicate columns lead. Both reads filter on archived_at
--- and the second on read_at as well, so putting them in front keeps the index as
--- selective as the partial clause is elsewhere.
-CREATE INDEX {{PREFIX}}notifications_inbox_principal_idx
-    ON {{PREFIX}}notifications_inbox (scope, principal, archived_at, id);
-
-CREATE INDEX {{PREFIX}}notifications_inbox_unread_idx
-    ON {{PREFIX}}notifications_inbox (scope, principal, archived_at, read_at, id);
 
 -- The device registry. No convention triple beyond created_at: a token is
 -- revoked by its owner or invalidated by the provider, and either way the row
 -- goes — see the Postgres schema.
 --
--- The uniqueness is declared inline rather than as a CREATE UNIQUE INDEX,
--- because MySQL has no CREATE INDEX IF NOT EXISTS and a re-run migration must
--- not fail. token is 512 rather than the 2048 the message columns get: FCM
--- registration tokens run to a few hundred characters and APNs tokens to 64,
--- and this column is half of an index key, which MySQL bounds.
+-- token is 512 rather than the 2048 the message columns get: FCM registration
+-- tokens run to a few hundred characters and APNs tokens to 64, and this column
+-- is half of an index key, which MySQL bounds.
 CREATE TABLE IF NOT EXISTS {{PREFIX}}notifications_devices (
     id           VARCHAR(64) NOT NULL PRIMARY KEY,
     scope        VARCHAR(255) NOT NULL,
@@ -49,8 +45,7 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}notifications_devices (
     token        VARCHAR(512) NOT NULL,
     last_seen_at DATETIME(6) NOT NULL,
     created_at   DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-    UNIQUE KEY {{PREFIX}}notifications_devices_token_uniq (platform, token)
-);
 
-CREATE INDEX {{PREFIX}}notifications_devices_principal_idx
-    ON {{PREFIX}}notifications_devices (scope, principal, id);
+    UNIQUE KEY {{PREFIX}}notifications_devices_token_uniq (platform, token),
+    KEY {{PREFIX}}notifications_devices_principal_idx (scope, principal, id)
+);

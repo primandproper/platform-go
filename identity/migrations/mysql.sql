@@ -1,10 +1,7 @@
 -- Every key here is declared inline under its CREATE TABLE IF NOT EXISTS rather
--- than as a CREATE INDEX statement of its own, and that is what makes this body
--- re-runnable. MySQL has no CREATE INDEX IF NOT EXISTS, so a standalone index
--- statement is the one thing in the file a second run cannot skip: it reports a
--- duplicate key name and takes the rest of the migration down with it. An index
--- declared inline is part of the table, and is skipped exactly when the table
--- is.
+-- than as a CREATE INDEX statement of its own, which is the module's rule for
+-- this dialect and not this file's preference. internal/schemaconvention is
+-- where it is written down and where it is checked.
 --
 -- The names are the ones the other two dialects give the same indexes. MySQL
 -- scopes an index name to its table and would accept shorter ones, but the

@@ -39,7 +39,17 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}settings_definitions (
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),
     archived_at     DATETIME(6),
-    UNIQUE KEY {{PREFIX}}settings_definitions_name_uniq (scope, name)
+
+    -- The uniqueness covers archived rows as well as live ones in every
+    -- dialect, which is a decision rather than a MySQL concession — see the
+    -- Postgres schema for why a soft delete does not free a setting's name.
+    UNIQUE KEY {{PREFIX}}settings_definitions_name_uniq (scope, name),
+
+    -- MySQL has no partial indexes, so unlike the Postgres schema this covers
+    -- the whole table and the predicate column leads. The catalog page filters
+    -- on archived_at, so putting it in front keeps the index as selective as
+    -- the partial clause is elsewhere.
+    KEY {{PREFIX}}settings_definitions_scope_idx (scope, archived_at, id)
 );
 
 -- default_value is the one nullable column in this schema that could have been
@@ -49,17 +59,6 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}settings_definitions (
 -- different definitions: the first answers every subject that has not chosen,
 -- and the second answers none of them. Collapsed into one column value they
 -- would be the same row.
-
--- MySQL has no partial indexes, so unlike the Postgres schema this covers the
--- whole table and the predicate column leads. The catalog page filters on
--- archived_at, so putting it in front keeps the index as selective as the
--- partial clause is elsewhere.
---
--- The uniqueness above covers archived rows as well as live ones in every
--- dialect, which is a decision rather than a MySQL concession — see the
--- Postgres schema for why a soft delete does not free a setting's name.
-CREATE INDEX {{PREFIX}}settings_definitions_scope_idx
-    ON {{PREFIX}}settings_definitions (scope, archived_at, id);
 
 -- The values a definition admits, one row each. An empty set means the
 -- definition is not enumerated and any value of its kind is legal. A set rather
@@ -85,11 +84,11 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}settings_values (
     last_updated_at DATETIME(6),
     archived_at     DATETIME(6),
     UNIQUE KEY {{PREFIX}}settings_values_subject_uniq (scope, subject_type, subject_id, definition_id),
+
+    -- Serves the read that answers "who has overridden this setting", which is
+    -- also the walk an edit to a definition's kind or enumeration is checked
+    -- against.
+    KEY {{PREFIX}}settings_values_definition_idx (scope, definition_id, archived_at, id),
     CONSTRAINT {{PREFIX}}settings_values_fk
         FOREIGN KEY (definition_id) REFERENCES {{PREFIX}}settings_definitions (id) ON DELETE CASCADE
 );
-
--- Serves the read that answers "who has overridden this setting", which is also
--- the walk an edit to a definition's kind or enumeration is checked against.
-CREATE INDEX {{PREFIX}}settings_values_definition_idx
-    ON {{PREFIX}}settings_values (scope, definition_id, archived_at, id);

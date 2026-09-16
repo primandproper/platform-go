@@ -68,18 +68,17 @@ prefix rather than by design.
 
 The DDL here only ever creates. Every CREATE TABLE is IF NOT EXISTS, the
 Postgres and SQLite indexes are CREATE INDEX IF NOT EXISTS, and the MySQL keys
-are declared inline in the CREATE TABLE they belong to. MySQL is the one dialect
-with no CREATE INDEX IF NOT EXISTS, and an inline key is how the same property
-is spelled there: the key is part of the table, so a second run skips it exactly
-when it skips the table. A standalone CREATE INDEX would be the one statement in
-the file a re-run could not skip — it reports a duplicate key name, and takes
-the rest of the migration down with it rather than being the local failure it
-looks like.
+are declared inline in the CREATE TABLE they belong to, because MySQL is the one
+dialect with no CREATE INDEX IF NOT EXISTS.
 
-The three bodies still spell the same index names. MySQL scopes an index name to
-its table and would accept shorter ones, but ValidatePrefix measures the longest
-identifier a prefix renders across all three bodies at once, so a name only two
-of them spelled would be a name that check stopped measuring here.
+That is the module's rule rather than this package's, and it is asserted for
+every schema-shipping package at once in internal/schemaconvention, which is
+also where the reasoning is written down. What is worth saying here is the one
+identity-specific consequence: the three bodies spell the same eleven index
+names. MySQL scopes an index name to its table and would accept shorter ones,
+but ValidatePrefix measures the longest identifier a prefix renders across all
+three bodies at once, so a name only two of them spelled would be a name that
+check stopped measuring here.
 
 # The scope column has no default
 

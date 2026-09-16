@@ -20,21 +20,18 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}waitlists (
     closes_at       DATETIME(6) NOT NULL,
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),
-    archived_at     DATETIME(6)
+    archived_at     DATETIME(6),
+
+    -- MySQL has no partial indexes, so unlike the Postgres schema these cover
+    -- the whole table and the predicate column leads: both pages filter on
+    -- archived_at, so putting it in front keeps the index as selective as the
+    -- partial clause is elsewhere.
+    KEY {{PREFIX}}waitlists_scope_idx (scope, archived_at, id),
+    KEY {{PREFIX}}waitlists_open_idx (scope, archived_at, closes_at, id)
 );
 
 -- closes_at is NOT NULL in every dialect — see the Postgres schema for why a
 -- list that never closes is a list that is archived instead.
-
--- MySQL has no partial indexes, so unlike the Postgres schema these cover the
--- whole table and the predicate column leads: both pages filter on archived_at,
--- so putting it in front keeps the index as selective as the partial clause is
--- elsewhere.
-CREATE INDEX {{PREFIX}}waitlists_scope_idx
-    ON {{PREFIX}}waitlists (scope, archived_at, id);
-
-CREATE INDEX {{PREFIX}}waitlists_open_idx
-    ON {{PREFIX}}waitlists (scope, archived_at, closes_at, id);
 
 -- One person's place on one list. contact is the address the list writes to and
 -- contact_digest is what the row is found by and what survives a withdrawal —
@@ -61,14 +58,13 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}waitlist_signups (
     last_updated_at   DATETIME(6),
     archived_at       DATETIME(6),
     UNIQUE KEY {{PREFIX}}waitlist_signups_contact_uniq (scope, waitlist_id, contact_digest),
+
+    -- Serves the queue: one list's live signups, walked by id.
+    KEY {{PREFIX}}waitlist_signups_waitlist_idx (scope, waitlist_id, archived_at, id),
+
+    -- Serves "which lists is this person on".
+    KEY {{PREFIX}}waitlist_signups_subject_idx
+        (scope, subject_type, subject_id, archived_at, id),
     CONSTRAINT {{PREFIX}}waitlist_signups_fk
         FOREIGN KEY (waitlist_id) REFERENCES {{PREFIX}}waitlists (id) ON DELETE CASCADE
 );
-
--- Serves the queue: one list's live signups, walked by id.
-CREATE INDEX {{PREFIX}}waitlist_signups_waitlist_idx
-    ON {{PREFIX}}waitlist_signups (scope, waitlist_id, archived_at, id);
-
--- Serves "which lists is this person on".
-CREATE INDEX {{PREFIX}}waitlist_signups_subject_idx
-    ON {{PREFIX}}waitlist_signups (scope, subject_type, subject_id, archived_at, id);

@@ -1,6 +1,7 @@
 package migrations
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -124,22 +125,13 @@ func TestStatements(T *testing.T) {
 		// scope: an index that did not would be one no scoped read can use, which
 		// is every read this package has.
 		for _, d := range allDialects {
-			stmts, err := Statements(d, testPrefix)
-			must.NoError(t, err)
+			declarations := indexDeclarations(t, d)
 
-			var indexes int
-
-			for _, stmt := range stmts {
-				if !strings.Contains(stmt, "INDEX") {
-					continue
-				}
-
-				indexes++
-
-				test.StrContains(t, stmt, "(scope,", test.Sprintf("dialect %s: %s", d, stmt))
+			for _, declaration := range declarations {
+				test.StrContains(t, declaration, "(scope,", test.Sprintf("dialect %s: %s", d, declaration))
 			}
 
-			test.EqOp(t, 3, indexes, test.Sprintf("dialect %s", d))
+			test.SliceLen(t, 3, declarations, test.Sprintf("dialect %s", d))
 		}
 	})
 
@@ -151,22 +143,55 @@ func TestStatements(T *testing.T) {
 		// stopped at the target would leave the reply read scanning every comment
 		// on the thing.
 		for _, d := range allDialects {
-			stmts, err := Statements(d, testPrefix)
-			must.NoError(t, err)
-
-			var found bool
-
-			for _, stmt := range stmts {
-				if strings.Contains(stmt, "INDEX") &&
-					strings.Contains(stmt, "target_id") &&
-					strings.Contains(stmt, "parent_id") {
-					found = true
-				}
-			}
+			found := slices.ContainsFunc(indexDeclarations(t, d), func(declaration string) bool {
+				return strings.Contains(declaration, "target_id") &&
+					strings.Contains(declaration, "parent_id")
+			})
 
 			test.True(t, found, test.Sprintf("dialect %s indexes no target/parent pair", d))
 		}
 	})
+}
+
+// indexDeclaration matches one index this schema declares, in either of the two
+// shapes a dialect gives it: a CREATE INDEX statement of its own, which is what
+// Postgres and SQLite render, and a KEY clause inside the CREATE TABLE, which is
+// what MySQL renders because it has no CREATE INDEX IF NOT EXISTS to guard a
+// standalone one with. internal/schemaconvention is where that rule lives.
+//
+// PRIMARY KEY and UNIQUE KEY are deliberately not matched: this package declares
+// neither, and a test that counted them would answer a different question than
+// the one it asks.
+var indexDeclaration = regexp.MustCompile(`(?is)(?:CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(\S+)\s+ON\s+\S+\s*|(?:^|[,(\s])KEY\s+(\S+)\s*)\(([^)]*)\)`)
+
+// indexDeclarations is every index the schema declares in dialect d, each
+// normalized to "name (columns)" with its whitespace collapsed.
+//
+// The normalization is what lets one assertion read both shapes: a rendered KEY
+// clause wraps its column list onto the next line when the line would be long,
+// so a test looking for "(scope," in the raw text would find it on two dialects
+// and miss it on the third for reasons of line width.
+func indexDeclarations(t *testing.T, d dialect.Dialect) []string {
+	t.Helper()
+
+	stmts, err := Statements(d, testPrefix)
+	must.NoError(t, err)
+
+	declarations := []string{}
+
+	for _, stmt := range stmts {
+		for _, match := range indexDeclaration.FindAllStringSubmatch(stmt, -1) {
+			name := match[1]
+			if name == "" {
+				name = match[2]
+			}
+
+			declarations = append(declarations,
+				name+" ("+strings.Join(strings.Fields(match[3]), " ")+")")
+		}
+	}
+
+	return declarations
 }
 
 // createStatement returns the CREATE TABLE for the one table, in dialect d.

@@ -33,11 +33,9 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}billing_products (
     created_at              DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at         DATETIME(6),
     archived_at             DATETIME(6),
-    UNIQUE KEY {{PREFIX}}billing_products_external_uniq (scope, external_product_id)
+    UNIQUE KEY {{PREFIX}}billing_products_external_uniq (scope, external_product_id),
+    KEY {{PREFIX}}billing_products_scope_idx (scope, archived_at, id)
 );
-
-CREATE INDEX {{PREFIX}}billing_products_scope_idx
-    ON {{PREFIX}}billing_products (scope, archived_at, id);
 
 CREATE TABLE IF NOT EXISTS {{PREFIX}}billing_subscriptions (
     id                       VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -52,15 +50,13 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}billing_subscriptions (
     last_updated_at          DATETIME(6),
     archived_at              DATETIME(6),
     UNIQUE KEY {{PREFIX}}billing_subscriptions_external_uniq (scope, external_subscription_id),
+    KEY {{PREFIX}}billing_subscriptions_account_idx
+        (scope, belongs_to_account, archived_at, id),
+    KEY {{PREFIX}}billing_subscriptions_current_idx
+        (scope, belongs_to_account, archived_at, current_period_end, id),
     CONSTRAINT {{PREFIX}}billing_subscriptions_product_fk
         FOREIGN KEY (product_id) REFERENCES {{PREFIX}}billing_products (id)
 );
-
-CREATE INDEX {{PREFIX}}billing_subscriptions_account_idx
-    ON {{PREFIX}}billing_subscriptions (scope, belongs_to_account, archived_at, id);
-
-CREATE INDEX {{PREFIX}}billing_subscriptions_current_idx
-    ON {{PREFIX}}billing_subscriptions (scope, belongs_to_account, archived_at, current_period_end, id);
 
 CREATE TABLE IF NOT EXISTS {{PREFIX}}billing_purchases (
     id                      VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -75,12 +71,11 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}billing_purchases (
     last_updated_at         DATETIME(6),
     archived_at             DATETIME(6),
     UNIQUE KEY {{PREFIX}}billing_purchases_external_uniq (scope, external_transaction_id),
+    KEY {{PREFIX}}billing_purchases_account_idx
+        (scope, belongs_to_account, archived_at, id),
     CONSTRAINT {{PREFIX}}billing_purchases_product_fk
         FOREIGN KEY (product_id) REFERENCES {{PREFIX}}billing_products (id)
 );
-
-CREATE INDEX {{PREFIX}}billing_purchases_account_idx
-    ON {{PREFIX}}billing_purchases (scope, belongs_to_account, archived_at, id);
 
 CREATE TABLE IF NOT EXISTS {{PREFIX}}billing_transactions (
     id                      VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -96,11 +91,10 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}billing_transactions (
     last_updated_at         DATETIME(6),
     archived_at             DATETIME(6),
     UNIQUE KEY {{PREFIX}}billing_transactions_external_uniq (scope, external_transaction_id),
+    KEY {{PREFIX}}billing_transactions_account_idx
+        (scope, belongs_to_account, archived_at, id),
     CONSTRAINT {{PREFIX}}billing_transactions_subscription_fk
         FOREIGN KEY (subscription_id) REFERENCES {{PREFIX}}billing_subscriptions (id),
     CONSTRAINT {{PREFIX}}billing_transactions_purchase_fk
         FOREIGN KEY (purchase_id) REFERENCES {{PREFIX}}billing_purchases (id)
 );
-
-CREATE INDEX {{PREFIX}}billing_transactions_account_idx
-    ON {{PREFIX}}billing_transactions (scope, belongs_to_account, archived_at, id);

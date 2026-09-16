@@ -93,12 +93,12 @@ the ordinary way to retire one — and a deletion that left values behind would
 leave rows interpreted against a definition that no longer says what kind they
 are or which of them are legal.
 
-The DDL here only ever creates: every CREATE TABLE is IF NOT EXISTS, so running
-it against tables that already exist adds nothing. The MySQL index statements
-are the exception and are not conditional, because MySQL has no CREATE INDEX IF
-NOT EXISTS; a re-run there reports a duplicate key name rather than silently
-succeeding, which is the same behavior every other schema-shipping package in
-this module has.
+The DDL here only ever creates, and running it against tables that already exist
+adds nothing in every dialect. Every CREATE TABLE is IF NOT EXISTS, the Postgres
+and SQLite indexes carry the same guard, and the MySQL keys are declared inline
+in the table they belong to — which is how the property is spelled on the one
+dialect with no CREATE INDEX IF NOT EXISTS. internal/schemaconvention is where
+that rule is written down and where every package in the module is held to it.
 
 The rendering and prefix vetting live in database/ddl, shared with every other
 schema-shipping package in this module.

@@ -19,18 +19,11 @@ CREATE TABLE IF NOT EXISTS dataprivacy_requests (
     failures        BLOB,
     retained        BLOB,
     last_error      TEXT,
-    key_shredded_at DATETIME(6)
+    key_shredded_at DATETIME(6),
+    KEY dataprivacy_requests_subject_idx
+        (subject_id, subject_scope, created_at, id),
+    KEY dataprivacy_requests_expiry_idx (status, expires_at),
+    KEY dataprivacy_requests_status_due_idx (status, due_at),
+    KEY dataprivacy_requests_reap_idx (completed_at, id)
 );
-
-CREATE INDEX dataprivacy_requests_subject_idx
-    ON dataprivacy_requests (subject_id, subject_scope, created_at, id);
-
-CREATE INDEX dataprivacy_requests_expiry_idx
-    ON dataprivacy_requests (status, expires_at);
-
-CREATE INDEX dataprivacy_requests_status_due_idx
-    ON dataprivacy_requests (status, due_at);
-
-CREATE INDEX dataprivacy_requests_reap_idx
-    ON dataprivacy_requests (completed_at, id);
 

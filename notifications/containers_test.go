@@ -87,11 +87,16 @@ func TestMigrations_RealServers(T *testing.T) {
 			stmts, err := migrations.Statements(dialect.MySQL, "ddl_check")
 			must.NoError(t, err)
 
-			// MySQL has no CREATE INDEX IF NOT EXISTS, so unlike Postgres this
-			// runs once — the tables carry IF NOT EXISTS, the indexes cannot.
-			for _, stmt := range stmts {
-				_, execErr := client.Writer().ExecContext(ctx, stmt)
-				must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
+			// Executed twice, as Postgres is. MySQL has no CREATE INDEX IF NOT
+			// EXISTS, so every key here is declared inline under its CREATE TABLE
+			// IF NOT EXISTS and is skipped along with the table — which only a real
+			// server can confirm, since rendering the same DDL again says nothing
+			// about what the server does with it.
+			for range 2 {
+				for _, stmt := range stmts {
+					_, execErr := client.Writer().ExecContext(ctx, stmt)
+					must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
+				}
 			}
 		})
 	})

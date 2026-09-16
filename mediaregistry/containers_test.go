@@ -87,15 +87,21 @@ func TestMigrations_RealServers(T *testing.T) {
 			stmts, err := migrations.Statements(dialect.MySQL, "ddl_check")
 			must.NoError(t, err)
 
-			// MySQL has no CREATE INDEX IF NOT EXISTS, so unlike Postgres this
-			// runs once — the table carries IF NOT EXISTS, the indexes cannot.
-			// The index key length is what this is really checking: the scope
-			// and a 512-character object key have to stay inside InnoDB's
+			// Executed twice, as Postgres is. MySQL has no CREATE INDEX IF NOT
+			// EXISTS, so every key here is declared inline under its CREATE
+			// TABLE IF NOT EXISTS and is skipped along with the table — which
+			// only a real server can confirm, since rendering the same DDL
+			// again says nothing about what the server does with it.
+			//
+			// The index key length is the other thing this is checking: the
+			// scope and a 512-character object key have to stay inside InnoDB's
 			// 3,072-byte limit, and it fails here rather than in a consumer's
 			// migration if they do not.
-			for _, stmt := range stmts {
-				_, execErr := client.Writer().ExecContext(ctx, stmt)
-				must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
+			for range 2 {
+				for _, stmt := range stmts {
+					_, execErr := client.Writer().ExecContext(ctx, stmt)
+					must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
+				}
 			}
 		})
 	})

@@ -26,19 +26,17 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}uploads_objects (
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),
     archived_at     DATETIME(6),
-    UNIQUE KEY {{PREFIX}}uploads_objects_key_uniq (scope, object_key)
+
+    -- The uniqueness covers archived rows as well as live ones in every
+    -- dialect, which is a decision rather than a MySQL concession — see the
+    -- Postgres schema for why archiving a row does not free its key.
+    UNIQUE KEY {{PREFIX}}uploads_objects_key_uniq (scope, object_key),
+
+    -- MySQL has no partial indexes, so unlike the Postgres schema these cover
+    -- the whole table and the predicate column leads. Both pages filter on
+    -- archived_at, so putting it in front keeps the index as selective as the
+    -- partial clause is elsewhere.
+    KEY {{PREFIX}}uploads_objects_owner_idx (scope, archived_at, owner_id, id),
+    KEY {{PREFIX}}uploads_objects_subject_idx
+        (scope, archived_at, belongs_to_type, belongs_to_id, id)
 );
-
--- MySQL has no partial indexes, so unlike the Postgres schema these cover the
--- whole table and the predicate column leads. Both pages filter on archived_at,
--- so putting it in front keeps the index as selective as the partial clause is
--- elsewhere.
---
--- The uniqueness above covers archived rows as well as live ones in every
--- dialect, which is a decision rather than a MySQL concession — see the Postgres
--- schema for why archiving a row does not free its key.
-CREATE INDEX {{PREFIX}}uploads_objects_owner_idx
-    ON {{PREFIX}}uploads_objects (scope, archived_at, owner_id, id);
-
-CREATE INDEX {{PREFIX}}uploads_objects_subject_idx
-    ON {{PREFIX}}uploads_objects (scope, archived_at, belongs_to_type, belongs_to_id, id);
