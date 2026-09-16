@@ -21,7 +21,7 @@ FROM {{prefix}}webauthn_sessions
 WHERE {{prefix}}webauthn_sessions.challenge = ?1`
 
 const sweepExpiredSessionsSQLite = `DELETE FROM {{prefix}}webauthn_sessions
-WHERE expires_at <= CURRENT_TIMESTAMP`
+WHERE expires_at <= ?1`
 
 const upsertSessionSQLite = `
 INSERT INTO {{prefix}}webauthn_sessions (
@@ -105,8 +105,10 @@ func (q *sqliteQueries) GetSession(ctx context.Context, db DBTX, arg GetSessionP
 }
 
 // SweepExpiredSessions runs the :execrows query against sqlite.
-func (q *sqliteQueries) SweepExpiredSessions(ctx context.Context, db DBTX) (int64, error) {
-	result, err := db.ExecContext(ctx, q.sweepExpiredSessions)
+func (q *sqliteQueries) SweepExpiredSessions(ctx context.Context, db DBTX, arg SweepExpiredSessionsParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.sweepExpiredSessions,
+		timeText(arg.ExpiresBefore),
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -142,6 +144,9 @@ var (
 		SessionData []byte
 		ExpiresAt   time.Time
 	}(GetSessionRow{})
+	_ = struct {
+		ExpiresBefore time.Time
+	}(SweepExpiredSessionsParams{})
 	_ = struct {
 		Challenge   string
 		SessionData []byte

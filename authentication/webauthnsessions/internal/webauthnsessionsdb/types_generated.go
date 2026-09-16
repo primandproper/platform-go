@@ -25,6 +25,11 @@ type GetSessionRow struct {
 	ExpiresAt   time.Time
 }
 
+// SweepExpiredSessionsParams are the arguments to SweepExpiredSessions.
+type SweepExpiredSessionsParams struct {
+	ExpiresBefore time.Time
+}
+
 // UpsertSessionParams are the arguments to UpsertSession.
 type UpsertSessionParams struct {
 	Challenge   string

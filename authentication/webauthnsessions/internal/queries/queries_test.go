@@ -230,15 +230,15 @@ func TestRender_ReadProjectsWhatTheScanReads(T *testing.T) {
 	}
 }
 
-// TestRender_SweepComparesAgainstTheServersClock is the one statement whose
-// meaning moved in the port, so it is pinned rather than left to the renderer.
+// TestRender_SweepComparesAgainstABoundHorizon is the one statement whose clock
+// is a decision rather than a default, so it is pinned rather than left to the
+// renderer.
 //
-// The server's clock is what makes the comparison one expression on three
-// dialects; a bound instant would be a Go rendering compared against text
-// SQLite writes itself. The boundary is inclusive, matching the comparison
-// Consume makes, so there is no instant at which a row is neither live nor
-// expired.
-func TestRender_SweepComparesAgainstTheServersClock(T *testing.T) {
+// The horizon is bound because expires_at is stamped from the store's clock,
+// and the server's own reading would be a second clock on the other side of one
+// comparison. The boundary is inclusive, matching the comparison Consume makes,
+// so there is no instant at which a row is neither live nor expired.
+func TestRender_SweepComparesAgainstABoundHorizon(T *testing.T) {
 	T.Parallel()
 
 	for _, d := range everyDialect {
@@ -248,9 +248,15 @@ func TestRender_SweepComparesAgainstTheServersClock(T *testing.T) {
 			sweep := statement(t, Render(d), SweepExpiredSessionsQuery)
 
 			test.StrContains(t, sweep, "DELETE FROM "+SessionsTable)
-			test.StrContains(t, sweep, ExpiresAtColumn+" <= "+querygen.NowExpression)
-			test.StrNotContains(t, sweep, "sqlc.arg")
+			test.StrContains(t, sweep, ExpiresAtColumn+" <= sqlc.arg("+ExpiresBeforeArg+")")
+			test.StrNotContains(t, sweep, querygen.NowExpression)
 			test.StrNotContains(t, sweep, "sqlc.narg")
+
+			// The horizon is named for the comparison rather than for the
+			// column, which is what keeps it distinct from the deadline the
+			// upsert binds under the column's own name.
+			test.StrContains(t, statement(t, Render(d), UpsertSessionQuery),
+				"sqlc.arg("+ExpiresAtColumn+")")
 		})
 	}
 }

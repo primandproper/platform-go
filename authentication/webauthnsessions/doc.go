@@ -38,14 +38,12 @@ calling Sweep, the table grows by one row per ceremony forever. Expiry itself
 does not depend on the sweep — Consume refuses a row past its deadline whether
 or not anything has removed it yet.
 
-The deadline the sweep compares against is the server's clock rather than the
-injected one, and that is the one thing about this store a clock skew between
-the application and its database can reach. It reaches only when a dead row is
-reclaimed: Consume decides expiry against the store's clock and does so before
-the sweep ever gets to the row, so a ceremony is answerable for exactly as long
-as the clock that stamped it says, whatever the database thinks. What the
-server's clock buys is a comparison the three dialects spell one way, with no
-bound instant whose rendering a driver has to agree about.
+The horizon the sweep compares against is the injected clock rather than the
+server's, because that is the clock the deadline was stamped from. Both sides of
+the comparison therefore move together, and a clock skew between the application
+and its database reaches neither: a ceremony is answerable for exactly as long
+as the clock that stamped it says, and it is reclaimed on that same reading
+rather than on whatever the database makes of the hour.
 
 # Where the SQL comes from
 

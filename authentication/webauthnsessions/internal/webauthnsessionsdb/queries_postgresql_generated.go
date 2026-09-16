@@ -21,7 +21,7 @@ FROM {{prefix}}webauthn_sessions
 WHERE {{prefix}}webauthn_sessions.challenge = $1`
 
 const sweepExpiredSessionsPostgreSQL = `DELETE FROM {{prefix}}webauthn_sessions
-WHERE expires_at <= CURRENT_TIMESTAMP`
+WHERE expires_at <= $1`
 
 const upsertSessionPostgreSQL = `
 INSERT INTO {{prefix}}webauthn_sessions (
@@ -85,8 +85,10 @@ func (q *postgresqlQueries) GetSession(ctx context.Context, db DBTX, arg GetSess
 }
 
 // SweepExpiredSessions runs the :execrows query against postgresql.
-func (q *postgresqlQueries) SweepExpiredSessions(ctx context.Context, db DBTX) (int64, error) {
-	result, err := db.ExecContext(ctx, q.sweepExpiredSessions)
+func (q *postgresqlQueries) SweepExpiredSessions(ctx context.Context, db DBTX, arg SweepExpiredSessionsParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.sweepExpiredSessions,
+		arg.ExpiresBefore,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -122,6 +124,9 @@ var (
 		SessionData []byte
 		ExpiresAt   time.Time
 	}(GetSessionRow{})
+	_ = struct {
+		ExpiresBefore time.Time
+	}(SweepExpiredSessionsParams{})
 	_ = struct {
 		Challenge   string
 		SessionData []byte

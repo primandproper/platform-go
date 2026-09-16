@@ -52,6 +52,14 @@ const (
 	SweepExpiredSessionsQuery = "SweepExpiredSessions"
 )
 
+// ExpiresBeforeArg is the sqlc argument the sweep binds its horizon through.
+//
+// It is named for the comparison rather than for the column, because the column
+// is already an argument name in this corpus: the upsert binds expires_at as
+// the deadline it writes, and a sweep binding a ceiling under the same name
+// would be one name for two different facts about a row.
+const ExpiresBeforeArg = "expires_before"
+
 // Render returns the canonical sqlc input for d: the four statements this
 // store executes, in one file's worth of text.
 //
@@ -134,20 +142,34 @@ func consume(g *querygen.Generator) *querygen.Query {
 
 // sweep is the removal of every row whose deadline has passed.
 //
-// The comparison is against the server's clock rather than a bound instant, and
-// that is a change of meaning as well as of spelling. A bound time.Time is
-// stored by SQLite's driver as Go's own rendering, which compares against
-// nothing the server writes; the server's own clock is one expression all three
-// dialects agree on and the one every other expiry sweep in this module uses —
-// see [querygen.CurrentTime].
+// The horizon is bound rather than read off the server's clock, and that is
+// [querygen.AtMostArgument]'s named case rather than a preference. expires_at is
+// stamped by the store's own clock — now plus a TTL, from a clock the store was
+// handed — so comparing it against CURRENT_TIMESTAMP would be two clocks
+// deciding one row, and under a test clock that only moves when a test moves it
+// the two are years apart.
 //
-// It costs nothing here because the sweep is not what makes a ceremony expire.
-// Consume refuses a row past its deadline against the store's clock, so a row
-// the sweep has not reached is already unusable, and what the sweep does is
-// stop the table growing by a row for every ceremony ever begun.
+// It reads as a smaller difference here than elsewhere, because the sweep is
+// not what makes a ceremony expire: Consume refuses a row past its deadline
+// against the store's clock, so a row the sweep has not reached is already
+// unusable. What the skew reaches is the other direction — a database running
+// ahead reclaims a row Consume still considers live, and the ceremony a user is
+// halfway through becomes a challenge nothing can answer.
+//
+// The dialects spell one bound instant as readily as one clock expression: what
+// the generated querier renders for a bound time.Time on SQLite is the text
+// CURRENT_TIMESTAMP itself writes, so the comparison is between one shape on
+// both sides there as it is on the other two.
+//
+// One statement, no cap. Ceremony rows are small and the index on expires_at
+// makes the delete proportional to what is actually dead rather than to the
+// table, so this is [querygen.Generator.DeleteQuery] with a horizon rather than
+// [querygen.Generator.PruneQuery]: there is no backlog for a bound to protect
+// against, and a bounded pass would make Sweep's count a loop condition rather
+// than an answer.
 func sweep(g *querygen.Generator) *querygen.Query {
 	return g.DeleteQuery(SweepExpiredSessionsQuery, SessionsTable, Columns,
-		querygen.Match{Column: ExpiresAtColumn, Against: querygen.CurrentTime},
+		querygen.Match{Column: ExpiresAtColumn, Against: querygen.AtMostArgument, Arg: ExpiresBeforeArg},
 	)
 }
 

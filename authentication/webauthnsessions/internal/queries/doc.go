@@ -35,16 +35,16 @@ the same shape shredding's subject keys use.
     less than the table because the caller is already holding the key.
   - DeleteSession removes it, and its row count is what decides who owns the
     ceremony when two requests answer the same challenge at once.
-  - SweepExpiredSessions removes everything past its deadline, against the
-    server's clock.
+  - SweepExpiredSessions removes everything past its deadline, against a
+    horizon the store binds from its own clock.
 
-The sweep is the one whose meaning moved in the port, and [sweep] says why: a
-bound time.Time is stored by SQLite's driver in Go's own rendering, which
-compares against nothing the server writes, while CURRENT_TIMESTAMP is one
-expression all three dialects agree on. Nothing depends on the sweep's clock
-being the store's, because the sweep is not what makes a ceremony expire —
-Consume refuses a row past its deadline whether or not anything has removed it
-yet.
+The sweep is the one worth stopping at, and [sweep] says why: expires_at is
+stamped as now-plus-a-TTL from the clock the store was handed, so a comparison
+against the server's CURRENT_TIMESTAMP would be two clocks deciding one row. It
+is the deadline, not the sweep, that makes a ceremony expire — Consume refuses a
+row past its deadline whether or not anything has removed it yet — so the skew
+that matters runs the other way: a database ahead of the application reclaims a
+row Consume still considers live.
 
 The rendered .sql files beside this one are the generator's output — see
 [Render] and authentication/webauthnsessions/internal/queriesgen. Nothing
