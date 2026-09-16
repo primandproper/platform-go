@@ -162,6 +162,9 @@ func (cfg *WorkerConfig) ValidateWithContext(ctx context.Context) error {
 // under a single lease and delivered Concurrency at a time, so it runs in
 // ceil(BatchSize/Concurrency) waves and each wave is bounded by RequestTimeout.
 //
+// A wave is bounded by RequestTimeout because the delivery client is built with
+// it. WithHTTPClient is the one place that can stop being true, and says so.
+//
 // It reports zero when one of those three knobs is out of range, leaving that
 // knob's own validation rule to report it, and saturates rather than wrapping
 // on a batch large enough to overflow the multiplication — a bound no lease can
