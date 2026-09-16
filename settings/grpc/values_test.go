@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/settings"
 	settingsgrpc "github.com/primandproper/platform-go/v14/settings/grpc"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
@@ -527,7 +528,7 @@ func TestTheSubjectAuthorizerGatesEveryValueRPC(T *testing.T) {
 			err := call(t, h)
 			must.Error(t, err)
 
-			test.ErrorIs(t, err, settingsgrpc.ErrTargetNotPermitted)
+			test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
 			test.EqOp(t, codes.PermissionDenied, status.Code(err))
 		})
 	}
@@ -561,7 +562,7 @@ func TestAnAuthorizerThatCannotDecideIsNotARefusal(T *testing.T) {
 	unavailable := platformerrors.New("the membership table is unavailable")
 
 	h := newHarness(T, settingsgrpc.SubjectAuthorizerFunc(
-		func(context.Context, settingsgrpc.Principal, settings.Subject) error { return unavailable },
+		func(context.Context, callers.Principal, settings.Subject) error { return unavailable },
 	))
 	h.seedCatalog(T, testScope)
 

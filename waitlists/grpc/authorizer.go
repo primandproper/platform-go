@@ -4,27 +4,13 @@ import (
 	"context"
 	"errors"
 
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"google.golang.org/grpc/codes"
 )
-
-// ErrTargetNotPermitted indicates a caller who may make this call and may not
-// make it against the signup this request named.
-//
-// It is identity/grpc's sentinel rather than a second one of this package's own,
-// and deliberately the same value: a consumer has one rule about which rows a
-// caller has standing in, and an authorizer written for the directory refuses a
-// withdrawal with the answer it already returns. An errors.Is against either
-// name matches.
-//
-// It is never registered as a client-safe sentinel. Its text says the caller was
-// refused, and what this surface does with it is answer as though nothing had
-// been named — see [Server.authorizeWithdrawal].
-var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 
 // SignupAuthorizer decides whether whoever is calling may withdraw the signup a
 // request named.
@@ -79,16 +65,16 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 // names. That is one implementation and this package ships none of it, because
 // how a person is asked to prove they are themselves is the consumer's, and a
 // deployment whose unsubscribe page sits behind a sign-in answers from
-// [Principal] instead.
+// [callers.Principal] instead.
 //
 // # What implementations owe
 //
-// A nil error means permitted. [ErrTargetNotPermitted] means refused. Any other
-// error is a failure to decide — a database or a link store that would not
-// answer — and reaches the client as codes.Internal, which is what keeps an
-// unavailable dependency from reading as a refusal. The three are distinguished
-// by errors.Is, so an implementation may wrap the sentinel with context of its
-// own and still be refusing.
+// A nil error means permitted. [callers.ErrTargetNotPermitted] means refused.
+// Any other error is a failure to decide — a database or a link store that
+// would not answer — and reaches the client as codes.Internal, which is what
+// keeps an unavailable dependency from reading as a refusal. The three are
+// distinguished by errors.Is, so an implementation may wrap the sentinel with
+// context of its own and still be refusing.
 type SignupAuthorizer interface {
 	// AuthorizeWithdrawal is asked before Withdraw moves the signup a request
 	// named.
@@ -101,7 +87,7 @@ type SignupAuthorizer interface {
 	// needs to.
 	AuthorizeWithdrawal(
 		ctx context.Context,
-		caller Principal,
+		caller callers.Principal,
 		scope tenancy.Scope,
 		listID, signupID string,
 	) error
@@ -111,7 +97,7 @@ type SignupAuthorizer interface {
 // whose rule is one closure over something they already hold.
 type SignupAuthorizerFunc func(
 	ctx context.Context,
-	caller Principal,
+	caller callers.Principal,
 	scope tenancy.Scope,
 	listID, signupID string,
 ) error
@@ -121,7 +107,7 @@ var _ SignupAuthorizer = SignupAuthorizerFunc(nil)
 // AuthorizeWithdrawal calls f.
 func (f SignupAuthorizerFunc) AuthorizeWithdrawal(
 	ctx context.Context,
-	caller Principal,
+	caller callers.Principal,
 	scope tenancy.Scope,
 	listID, signupID string,
 ) error {
@@ -155,7 +141,7 @@ func (s *Server) authorizeWithdrawal(
 		return nil
 	}
 
-	if errors.Is(err, ErrTargetNotPermitted) {
+	if errors.Is(err, callers.ErrTargetNotPermitted) {
 		return grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(),
 			codes.NotFound, "withdrawing waitlist signup %q", signupID)
 	}

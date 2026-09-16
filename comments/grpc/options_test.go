@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/callers"
+
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
@@ -122,7 +124,7 @@ func TestOptions(T *testing.T) {
 	T.Run("WithAuthorAuthorizer replaces the rule", func(t *testing.T) {
 		t.Parallel()
 
-		rule := AuthorAuthorizerFunc(func(context.Context, Principal, string) error { return nil })
+		rule := AuthorAuthorizerFunc(func(context.Context, callers.Principal, string) error { return nil })
 
 		s := apply(WithAuthorAuthorizer(rule))
 

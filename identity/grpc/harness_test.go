@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
@@ -69,7 +70,7 @@ type testPrincipal struct {
 	scope           tenancy.Scope
 }
 
-var _ identitygrpc.Principal = (*testPrincipal)(nil)
+var _ callers.Principal = (*testPrincipal)(nil)
 
 func (p *testPrincipal) UserID() string          { return p.userID }
 func (p *testPrincipal) Scope() tenancy.Scope    { return p.scope }
@@ -94,7 +95,7 @@ const (
 
 // withPrincipal stamps the caller onto an outgoing request, standing in for
 // whatever mints a consumer's credential.
-func withPrincipal(ctx context.Context, p identitygrpc.Principal) context.Context {
+func withPrincipal(ctx context.Context, p callers.Principal) context.Context {
 	if p == nil {
 		return ctx
 	}
@@ -140,10 +141,10 @@ func authenticate(
 	return handler(context.WithValue(ctx, principalKey{}, principal), req)
 }
 
-// extractPrincipal is the PrincipalExtractor the server is built with. It reads
-// what the interceptor above resolved and knows nothing about how.
-func extractPrincipal(ctx context.Context) (identitygrpc.Principal, bool) {
-	p, ok := ctx.Value(principalKey{}).(identitygrpc.Principal)
+// extractPrincipal is the callers.PrincipalExtractor the server is built with.
+// It reads what the interceptor above resolved and knows nothing about how.
+func extractPrincipal(ctx context.Context) (callers.Principal, bool) {
+	p, ok := ctx.Value(principalKey{}).(callers.Principal)
 
 	return p, ok
 }
@@ -158,7 +159,7 @@ type harness struct {
 	// from one that already names a caller ends up naming two, and the server
 	// reads the first.
 	rootCtx   context.Context
-	principal identitygrpc.Principal
+	principal callers.Principal
 	client    *identityclient.Client
 
 	// conn is the same connection the client wraps, for the one test that
@@ -225,7 +226,7 @@ func newHarness(t *testing.T, opts ...identitygrpc.Option) *harness {
 	return newHarnessAs(t, &testPrincipal{userID: "caller", scope: testScope}, opts...)
 }
 
-func newHarnessAs(t *testing.T, principal identitygrpc.Principal, opts ...identitygrpc.Option) *harness {
+func newHarnessAs(t *testing.T, principal callers.Principal, opts ...identitygrpc.Option) *harness {
 	t.Helper()
 
 	db, err := sqlite.NewDatabaseClient(t.Context(),
@@ -309,7 +310,7 @@ func (h *harness) dial(t *testing.T, opts ...grpc.DialOption) *grpc.ClientConn {
 func (h *harness) ctx() context.Context { return withPrincipal(h.rootCtx, h.principal) }
 
 // as returns a context carrying a different caller.
-func (h *harness) as(p identitygrpc.Principal) context.Context {
+func (h *harness) as(p callers.Principal) context.Context {
 	return withPrincipal(h.rootCtx, p)
 }
 

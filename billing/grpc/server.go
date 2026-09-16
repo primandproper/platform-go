@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/billing"
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
+	"github.com/primandproper/platform-go/v14/callers"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -98,7 +99,7 @@ type Server struct {
 
 	store      billing.Store
 	client     database.Client
-	principals PrincipalExtractor
+	principals callers.PrincipalExtractor
 	targets    AccountAuthorizer
 	o11y       observability.Observer
 
@@ -124,7 +125,7 @@ type Server struct {
 func NewServer(
 	store billing.Store,
 	client database.Client,
-	principals PrincipalExtractor,
+	principals callers.PrincipalExtractor,
 	targets AccountAuthorizer,
 	opts ...Option,
 ) (*Server, error) {
@@ -183,7 +184,7 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 // read.
 type request struct {
 	op        observability.Operation
-	principal Principal
+	principal callers.Principal
 	scope     tenancy.Scope
 }
 

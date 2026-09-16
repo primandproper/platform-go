@@ -4,27 +4,13 @@ import (
 	"context"
 	"errors"
 
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/settings"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 
 	"google.golang.org/grpc/codes"
 )
-
-// ErrTargetNotPermitted indicates a caller who may make this call and may not
-// make it about the subject this request named.
-//
-// It is identity/grpc's sentinel rather than a second one of this package's
-// own, and deliberately the same value: a consumer has one rule about which
-// principals a caller has standing over, and an authorizer written for the
-// directory refuses a settings read with the answer it already returns. An
-// errors.Is against either name matches.
-//
-// It is never registered as a client-safe sentinel. Every RPC here answers it
-// with codes.PermissionDenied at the call site, so it needs no mapper, and its
-// text is about the caller rather than about anything they can correct.
-var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 
 // SubjectAuthorizer decides whether the caller may act on the subject a request
 // named.
@@ -47,9 +33,9 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 // after the request has been found well formed and before anything reads or
 // writes a row.
 //
-// It is not tenancy. The scope comes off the [Principal] and every store
-// statement binds it, so nothing here crosses a deployment; this is the check
-// inside one.
+// It is not tenancy. The scope comes off the [callers.Principal] and every
+// store statement binds it, so nothing here crosses a deployment; this is the
+// check inside one.
 //
 // # Why there is no default
 //
@@ -66,20 +52,20 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 // SubjectUser matching the caller is right for one member of an open set and
 // silently closed for the rest, including SubjectAccount, which every
 // administrative settings screen writes. One that compares the account in the
-// request against Principal.ActiveAccountID compares a request field against a
-// request field, which is the reading MembershipAuthorizer's own documentation
-// rejects.
+// request against callers.Principal.ActiveAccountID compares a request field
+// against a request field, which is the reading MembershipAuthorizer's own
+// documentation rejects.
 //
 // So it is positional and required, exactly as the principal extractor is, and
 // [ErrNilSubjectAuthorizer] is what a server built without one is. The
 // self-service rule is two lines with [SubjectAuthorizerFunc]:
 //
-//	settingsgrpc.SubjectAuthorizerFunc(func(_ context.Context, caller settingsgrpc.Principal, subject settings.Subject) error {
+//	settingsgrpc.SubjectAuthorizerFunc(func(_ context.Context, caller callers.Principal, subject settings.Subject) error {
 //		if subject.Type == settings.SubjectUser && subject.ID == caller.UserID() {
 //			return nil
 //		}
 //
-//		return settingsgrpc.ErrTargetNotPermitted
+//		return callers.ErrTargetNotPermitted
 //	})
 //
 // and a deployment that also administers account-wide settings adds the arm
@@ -88,10 +74,10 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 //
 // # What implementations owe
 //
-// A nil error means permitted. [ErrTargetNotPermitted] means refused, and
-// reaches the client as codes.PermissionDenied. Any other error is a failure to
-// decide — a database that would not answer — and reaches the client as
-// codes.Internal, which is what keeps an unavailable store from reading as a
+// A nil error means permitted. [callers.ErrTargetNotPermitted] means refused,
+// and reaches the client as codes.PermissionDenied. Any other error is a
+// failure to decide — a database that would not answer — and reaches the client
+// as codes.Internal, which is what keeps an unavailable store from reading as a
 // refusal. The three are distinguished by errors.Is, so an implementation may
 // wrap the sentinel with context of its own and still be refusing.
 //
@@ -102,19 +88,19 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 type SubjectAuthorizer interface {
 	// AuthorizeSubject is asked before an RPC reads or writes the settings of
 	// the subject a request named.
-	AuthorizeSubject(ctx context.Context, caller Principal, subject settings.Subject) error
+	AuthorizeSubject(ctx context.Context, caller callers.Principal, subject settings.Subject) error
 }
 
 // SubjectAuthorizerFunc adapts a function to [SubjectAuthorizer], for a
 // consumer whose rule is one closure over something they already hold.
-type SubjectAuthorizerFunc func(ctx context.Context, caller Principal, subject settings.Subject) error
+type SubjectAuthorizerFunc func(ctx context.Context, caller callers.Principal, subject settings.Subject) error
 
 var _ SubjectAuthorizer = SubjectAuthorizerFunc(nil)
 
 // AuthorizeSubject calls f.
 func (f SubjectAuthorizerFunc) AuthorizeSubject(
 	ctx context.Context,
-	caller Principal,
+	caller callers.Principal,
 	subject settings.Subject,
 ) error {
 	return f(ctx, caller, subject)
@@ -142,7 +128,7 @@ func (s *Server) authorizeSubject(ctx context.Context, req *request, subject set
 	}
 
 	code := codes.Internal
-	if errors.Is(err, ErrTargetNotPermitted) {
+	if errors.Is(err, callers.ErrTargetNotPermitted) {
 		code = codes.PermissionDenied
 	}
 

@@ -12,9 +12,9 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
 	"github.com/primandproper/platform-go/v14/identity"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/migrations"
 
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
@@ -84,7 +84,7 @@ type testPrincipal struct {
 	scope           tenancy.Scope
 }
 
-var _ identitygrpc.Principal = (*testPrincipal)(nil)
+var _ callers.Principal = (*testPrincipal)(nil)
 
 func (p *testPrincipal) UserID() string          { return p.userID }
 func (p *testPrincipal) Scope() tenancy.Scope    { return p.scope }
@@ -131,10 +131,10 @@ func authenticate(
 	return handler(context.WithValue(ctx, principalKey{}, principal), req)
 }
 
-// extractPrincipal is the PrincipalExtractor the server is built with. It reads
-// what the interceptor above resolved and knows nothing about how.
-func extractPrincipal(ctx context.Context) (identitygrpc.Principal, bool) {
-	p, ok := ctx.Value(principalKey{}).(identitygrpc.Principal)
+// extractPrincipal is the callers.PrincipalExtractor the server is built with.
+// It reads what the interceptor above resolved and knows nothing about how.
+func extractPrincipal(ctx context.Context) (callers.Principal, bool) {
+	p, ok := ctx.Value(principalKey{}).(callers.Principal)
 
 	return p, ok
 }

@@ -24,7 +24,8 @@ tenancy.Scope exists and this package binds it off the caller rather than off a
 request field.
 
 What stays the consumer's is what was always genuinely theirs, and each is a
-seam here rather than a decision: who is calling ([Principal]), what each method
+seam here rather than a decision: who is calling
+([github.com/primandproper/platform-go/v14/callers.Principal]), what each method
 requires ([Permissions], declared in one call by [Require]), which rows a caller
 may name ([TargetAuthorizer], which unlike the other three has a real default),
 what else happens on a write (identity.Hooks, inside the transaction), and
@@ -224,14 +225,17 @@ the scope and the owner together — rather than in a guard ahead of it.
 
 # The two seams grow in opposite directions
 
-[Principal]'s method set is final: three methods, and there will not be a
-fourth. Nine surfaces alias the type verbatim rather than declaring one of their
-own, so it is not this package's interface in any useful sense — it is the one
-shape every consumer of every gRPC surface in this module has implemented on
-their own session type, and a method added here breaks all of them at once with
-no deprecation available, because an interface carries no default. A surface
-that wants more of its caller than the three asks for it as an optional
-interface, declared where it is needed and type-asserted at the call site:
+[github.com/primandproper/platform-go/v14/callers.Principal]'s method set is
+final: three methods, and there will not be a fourth. Ten gRPC surfaces in this
+module name the type, so it is not this package's interface and is no longer
+declared here — it lives in a leaf package of its own, which is what stops a
+consumer wiring only settings from linking the directory to compile it. It is
+the one shape every consumer of every gRPC surface in this module has
+implemented on their own session type, and a method added to it breaks all of
+them at once with no deprecation available, because an interface carries no
+default. A surface that wants more of its caller than the three asks for it as
+an optional interface, declared where it is needed and type-asserted at the call
+site:
 
 	if s, ok := caller.(interface{ SessionID() string }); ok {
 		// the caller's session type answers this one; use it
@@ -240,9 +244,10 @@ interface, declared where it is needed and type-asserted at the call site:
 which a consumer whose type has the method satisfies by having it, and one whose
 type does not keeps compiling through. The precedent is
 [github.com/primandproper/primitives-go/v2/notifications/async.ConnectionAcceptor]
-and the standard library's http.Flusher. The nine aliases inherit this from
-[Principal]'s own documentation and none of them restates it, which is the point
-of their being aliases.
+and the standard library's http.Flusher. That ruling is stated once, in
+[github.com/primandproper/platform-go/v14/callers.Principal]'s own
+documentation, and the surfaces that name the type point at it rather than
+restating it.
 
 The authorizer seams get the opposite ruling and it must not be collapsed into
 the first. [TargetAuthorizer] ships [MembershipAuthorizer] as its default, and

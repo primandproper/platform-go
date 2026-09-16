@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	issuereportscfg "github.com/primandproper/platform-go/v14/issuereports/config"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 
@@ -31,13 +31,13 @@ import (
 func Example_mount() {
 	var (
 		ctx        context.Context
-		cfg        *issuereportscfg.Config         // yours: a config block
-		client     database.Client                 //
-		pillars    *observability.Pillars          //
-		serverCfg  *grpcserver.Config              //
-		principals identitygrpc.PrincipalExtractor // yours: who is calling
-		authn      grpc.UnaryServerInterceptor     // yours: what puts them on the context
-		grants     authorization.GrantsExtractor   // yours: their authority
+		cfg        *issuereportscfg.Config       // yours: a config block
+		client     database.Client               //
+		pillars    *observability.Pillars        //
+		serverCfg  *grpcserver.Config            //
+		principals callers.PrincipalExtractor    // yours: who is calling
+		authn      grpc.UnaryServerInterceptor   // yours: what puts them on the context
+		grants     authorization.GrantsExtractor // yours: their authority
 	)
 
 	_ = func() error {

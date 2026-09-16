@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 
@@ -96,7 +97,7 @@ type Server struct {
 
 	store      comments.Store
 	client     database.Client
-	principals PrincipalExtractor
+	principals callers.PrincipalExtractor
 	authors    AuthorAuthorizer
 	o11y       observability.Observer
 
@@ -126,7 +127,7 @@ type Server struct {
 func NewServer(
 	store comments.Store,
 	client database.Client,
-	principals PrincipalExtractor,
+	principals callers.PrincipalExtractor,
 	opts ...Option,
 ) (*Server, error) {
 	if store == nil {
@@ -181,13 +182,13 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 // asking.
 //
 // The caller is carried whole as well as by identifier, because
-// [AuthorAuthorizer] is handed the [Principal] rather than a string — a
+// [AuthorAuthorizer] is handed the [callers.Principal] rather than a string — a
 // consumer's rule about whose words somebody may touch is written against
 // whatever their own principal carries, and a surface that flattened it to a
 // user id would decide that for them.
 type request struct {
 	op        observability.Operation
-	principal Principal
+	principal callers.Principal
 	userID    string
 	scope     tenancy.Scope
 }

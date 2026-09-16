@@ -67,6 +67,7 @@ reasons behind the three exceptions.
 | `authentication/oauth2serverstore` | The OAuth2 server's client and token tables                                   | postgres, mysql, sqlite          |
 | `rbac`                             | Roles and permissions as rows, behind the policy interface                    | postgres, mysql, sqlite          |
 | `sessions`                         | Server-side sessions over cookies                                             | cache, database (+ http)         |
+| `callers`                          | Who is calling: the interface, its extractor, and the refusal they share      | —                                |
 
 ### Product & commerce
 | Package        | Purpose                                                                                          | Implementations         |
@@ -140,6 +141,7 @@ checking it.
 |------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | a noun with a table, and what it owes          | `audit`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passwordreset`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
 | a domain flow over another domain's tables     | `authentication/signin`                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| the vocabulary a domain transport shares       | `callers`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | the composition root that registers both tiers | `errormappers`, `service`                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 The second row is the one the rule's own wording anticipates when it asks whether
@@ -151,6 +153,21 @@ tier, because an application with no users has nobody to sign in, and because th
 refusals it collapses are a product decision rather than a mechanism. A package
 like it is the shape to expect as more domains arrive: the flows over the nouns,
 after the nouns.
+
+The third row is the newer shape and it arrives for a different reason. `callers`
+owns no table either, and it is not a flow: it is three names — the interface a
+consumer's authentication interceptor satisfies, the function that reads one off
+a context, and the refusal an authorizer returns — that every gRPC surface here
+names and no two of them may disagree about. It is a domain because a principal
+is a user, the directory they are in and the account their request is against,
+and an application with no users has nobody to extract. It is a package of its
+own because it was declared in `identity/grpc` until `/v14`, so a consumer
+wiring only settings, or only comments, linked the directory, its generated
+querier, its migrations and its protobuf bindings in order to compile an
+interface with three methods on it. What makes that stay fixed is a test rather
+than this paragraph: `callers` imports nothing else in this module, and the only
+gRPC surface here that still reaches `identity` is `authentication/signin/grpc`,
+which renders a signed-in user and says so where the test can read it.
 
 Five of the paths above sit under a directory this module does not own the root
 of, and every one of them is under `authentication/`. Four are a primitive with a

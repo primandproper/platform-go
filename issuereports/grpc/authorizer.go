@@ -4,27 +4,13 @@ import (
 	"context"
 	"errors"
 
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/issuereports"
 
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 
 	"google.golang.org/grpc/codes"
 )
-
-// ErrTargetNotPermitted indicates a caller who may make this call and may not
-// make it about the person or the report this request named.
-//
-// It is identity/grpc's sentinel rather than a second one of this package's own,
-// and deliberately the same value: a consumer has one rule about whose rows a
-// caller has standing in, and an authorizer written for the directory refuses
-// the report queue with the answer it already returns. An errors.Is against
-// either name matches.
-//
-// It is never registered as a client-safe sentinel. Its text says the caller was
-// refused, and half of what this package does with it is answer as though the
-// row were absent — see the two refusal shapes at the bottom of this file.
-var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 
 // ReportAuthorizer decides whether the caller may act on the report a request
 // named, or on the reports one person filed.
@@ -46,9 +32,9 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 // to read a row with — so the question is asked from inside the handler, where
 // the store and the client already are.
 //
-// It is not tenancy. The scope comes off the [Principal] and every store read
-// filters on it, so nothing here crosses a deployment; this is the check inside
-// one.
+// It is not tenancy. The scope comes off the [callers.Principal] and every
+// store read filters on it, so nothing here crosses a deployment; this is the
+// check inside one.
 //
 // # The two RPCs that ask, and the eight that do not
 //
@@ -85,16 +71,16 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 //
 // # A third question stays available, and embedding is how
 //
-// This is the opposite ruling to [Principal]'s, and the two must not be
+// This is the opposite ruling to [callers.Principal]'s, and the two must not be
 // collapsed into one. That method set is final because there is nothing for an
-// implementation to inherit: every consumer answers "who is calling" themselves,
-// so a fourth method there breaks all of them with no remedy available. Here
-// there is something to inherit, and it is [ReporterAuthorizer] — not a default,
-// since this package ships none and the section above says why, but the narrow
-// half of every rule a deployment writes, exported and embeddable for exactly
-// this. An implementation that embeds it inherits an answer to a third question
-// on the day this interface grows one, and the shape is the composition
-// [ReporterAuthorizer]'s own documentation already shows:
+// implementation to inherit: every consumer answers "who is calling"
+// themselves, so a fourth method there breaks all of them with no remedy
+// available. Here there is something to inherit, and it is [ReporterAuthorizer]
+// — not a default, since this package ships none and the section above says
+// why, but the narrow half of every rule a deployment writes, exported and
+// embeddable for exactly this. An implementation that embeds it inherits an
+// answer to a third question on the day this interface grows one, and the shape
+// is the composition [ReporterAuthorizer]'s own documentation already shows:
 //
 //	type consoleAuthorizer struct{ issuereportsgrpc.ReporterAuthorizer }
 //
@@ -106,11 +92,11 @@ var ErrTargetNotPermitted = identitygrpc.ErrTargetNotPermitted
 //
 // # What implementations owe
 //
-// A nil error means permitted. [ErrTargetNotPermitted] means refused. Any other
-// error is a failure to decide — a database that would not answer — and reaches
-// the client as codes.Internal, which is what keeps an unavailable store from
-// reading as a refusal. The three are distinguished by errors.Is, so an
-// implementation may wrap the sentinel with context of its own and still be
+// A nil error means permitted. [callers.ErrTargetNotPermitted] means refused.
+// Any other error is a failure to decide — a database that would not answer —
+// and reaches the client as codes.Internal, which is what keeps an unavailable
+// store from reading as a refusal. The three are distinguished by errors.Is, so
+// an implementation may wrap the sentinel with context of its own and still be
 // refusing.
 type ReportAuthorizer interface {
 	// AuthorizeReport is asked after a keyed read has resolved whose report it
@@ -118,11 +104,11 @@ type ReportAuthorizer interface {
 	// consumer's rule may turn on what the report is about as well as on who
 	// filed it — a moderation team that reads reports about the things they
 	// moderate is the ordinary shape of that.
-	AuthorizeReport(ctx context.Context, caller Principal, report *issuereports.Report) error
+	AuthorizeReport(ctx context.Context, caller callers.Principal, report *issuereports.Report) error
 
 	// AuthorizeReporter is asked before an RPC pages the reports one person
 	// filed, with the name the request supplied.
-	AuthorizeReporter(ctx context.Context, caller Principal, reporter string) error
+	AuthorizeReporter(ctx context.Context, caller callers.Principal, reporter string) error
 }
 
 // ReporterAuthorizer permits a caller their own reports and nothing else.
@@ -141,7 +127,7 @@ type ReportAuthorizer interface {
 //	type consoleAuthorizer struct{ issuereportsgrpc.ReporterAuthorizer }
 //
 //	func (a consoleAuthorizer) AuthorizeReport(ctx context.Context,
-//		caller issuereportsgrpc.Principal, report *issuereports.Report) error {
+//		caller callers.Principal, report *issuereports.Report) error {
 //		if triages(caller) {
 //			return nil
 //		}
@@ -158,29 +144,29 @@ type ReporterAuthorizer struct{}
 var _ ReportAuthorizer = ReporterAuthorizer{}
 
 // AuthorizeReport permits a report the caller filed.
-func (ReporterAuthorizer) AuthorizeReport(_ context.Context, caller Principal, report *issuereports.Report) error {
+func (ReporterAuthorizer) AuthorizeReport(_ context.Context, caller callers.Principal, report *issuereports.Report) error {
 	if caller == nil || report == nil || caller.UserID() == "" {
-		return ErrTargetNotPermitted
+		return callers.ErrTargetNotPermitted
 	}
 
 	if report.Reporter == caller.UserID() {
 		return nil
 	}
 
-	return ErrTargetNotPermitted
+	return callers.ErrTargetNotPermitted
 }
 
 // AuthorizeReporter permits a caller naming themselves.
-func (ReporterAuthorizer) AuthorizeReporter(_ context.Context, caller Principal, reporter string) error {
+func (ReporterAuthorizer) AuthorizeReporter(_ context.Context, caller callers.Principal, reporter string) error {
 	if caller == nil || caller.UserID() == "" || reporter == "" {
-		return ErrTargetNotPermitted
+		return callers.ErrTargetNotPermitted
 	}
 
 	if reporter == caller.UserID() {
 		return nil
 	}
 
-	return ErrTargetNotPermitted
+	return callers.ErrTargetNotPermitted
 }
 
 // The two ways this surface asks the question, and the one thing that differs
@@ -219,8 +205,8 @@ func (s *Server) authorizeNamedReporter(
 //
 // The chain returned is still the refusal, which is what the log and the span
 // record. Only the status the client reads is the absence, and
-// [ErrTargetNotPermitted] is not client-safe, so its wording does not travel
-// with it.
+// [callers.ErrTargetNotPermitted] is not client-safe, so its wording does not
+// travel with it.
 func (s *Server) authorizeReadReport(
 	ctx context.Context,
 	req *request,
@@ -251,7 +237,7 @@ func (s *Server) outcome(
 	}
 
 	code := codes.Internal
-	if errors.Is(err, ErrTargetNotPermitted) {
+	if errors.Is(err, callers.ErrTargetNotPermitted) {
 		code = refused
 	}
 

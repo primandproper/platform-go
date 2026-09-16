@@ -16,6 +16,27 @@ The pattern a domain surface here follows is written down once, in
 identity/grpc's documentation, and this package follows it rather than restating
 it. What is below is what is particular to this one.
 
+# Who is calling
+
+Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+which a consumer's own authentication interceptor puts on the context and
+[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+back. Those are one package for the whole module rather than an interface per
+surface, because a deployment has one authentication interceptor and one notion
+of a caller, and that package's documentation is where the ruling that keeps the
+method set at three lives.
+
+The identifier is what a report is filed under. It is the same string
+issuereports.Report.Reporter holds and the same one dataprivacy erases by, so a
+deployment whose principal is not the subject of its own privacy requests has a
+mismatch to fix in its interceptor rather than a conversion to write here.
+
+[github.com/primandproper/platform-go/v14/callers.ErrTargetNotPermitted] is what
+a [ReportAuthorizer] returns to refuse, and it is never registered as a
+client-safe sentinel. Its text says the caller was refused, and half of what
+this package does with it is answer as though the row were absent — see
+[ReportAuthorizer] for the two shapes and which RPCs take each.
+
 # Ten of eleven
 
 issuereports.Store has eleven methods and this service serves ten. The absence is

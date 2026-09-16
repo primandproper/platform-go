@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
 
@@ -49,7 +50,7 @@ var (
 	// ErrNilStore indicates a nil identity.Store.
 	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil identity store for the gRPC server")
 
-	// ErrNilPrincipalExtractor indicates a nil PrincipalExtractor.
+	// ErrNilPrincipalExtractor indicates a nil callers.PrincipalExtractor.
 	//
 	// It is refused at construction rather than defaulted, because the only
 	// default available is one that resolves nobody — and a directory server
@@ -114,11 +115,11 @@ var (
 // # What it is not
 //
 // It holds no policy and decides nothing about who may call it. What each RPC
-// requires is [Permissions], a default fragment a consumer composes into its own
-// authorization policy and enforces with authorization/grpc's interceptor before
-// a method here runs. Who is calling is a [Principal] the consumer's own
-// authentication interceptor put on the context. Neither is optional and neither
-// is here.
+// requires is [Permissions], a default fragment a consumer composes into its
+// own authorization policy and enforces with authorization/grpc's interceptor
+// before a method here runs. Who is calling is a [callers.Principal] the
+// consumer's own authentication interceptor put on the context. Neither is
+// optional and neither is here.
 //
 // It ships no credential RPCs. Setting a password, enrolling a second factor and
 // proving an email address are the sign-in service's, and identity never hashes
@@ -151,7 +152,7 @@ type Server struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 	svc             *identity.Service
-	principals      PrincipalExtractor
+	principals      callers.PrincipalExtractor
 	mintToken       TokenMinter
 	targets         TargetAuthorizer
 
@@ -188,7 +189,7 @@ func NewServer(
 	svc *identity.Service,
 	store identity.Store,
 	client database.Client,
-	principals PrincipalExtractor,
+	principals callers.PrincipalExtractor,
 	opts ...Option,
 ) (*Server, error) {
 	if svc == nil {
@@ -282,7 +283,7 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 // never sees. When this helper itself fails it has already closed everything,
 // and the func it hands back does nothing.
 func (s *Server) caller(ctx context.Context, method string) (
-	context.Context, observability.Operation, Principal, func(err error), error,
+	context.Context, observability.Operation, callers.Principal, func(err error), error,
 ) {
 	ctx, op := s.o11y.Begin(ctx)
 
@@ -319,14 +320,14 @@ func (s *Server) caller(ctx context.Context, method string) (
 }
 
 // scopeOf is the one place a scope is produced, and it comes off the principal.
-// See Principal.Scope for why there is no other source.
+// See callers.Principal.Scope for why there is no other source.
 //
 // It has no nil branch on purpose. caller refuses a request with no principal
 // before any handler reaches this, so a nil here is a handler that skipped
 // caller — and the only thing a nil branch could return is tenancy.Global,
 // which would turn that mistake into a read of the global directory. A panic is
 // the louder and the correct answer.
-func scopeOf(p Principal) tenancy.Scope {
+func scopeOf(p callers.Principal) tenancy.Scope {
 	return p.Scope()
 }
 

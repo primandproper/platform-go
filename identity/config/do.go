@@ -3,6 +3,7 @@ package identitycfg
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 
@@ -84,7 +85,7 @@ func RegisterService(i do.Injector) {
 //
 // Prerequisites: *Config, database.Client, identity.Store (see RegisterStore),
 // *identity.Service (see RegisterService) and an
-// identitygrpc.PrincipalExtractor must be registered before the Server is
+// callers.PrincipalExtractor must be registered before the Server is
 // invoked.
 //
 // The extractor is a MustInvoke where Hooks above is not, and the asymmetry is
@@ -93,7 +94,7 @@ func RegisterService(i do.Injector) {
 // configuration and the second is a hole, so the container refuses to build one.
 // Register it with do.ProvideValue, keyed on the named type:
 //
-//	do.ProvideValue[identitygrpc.PrincipalExtractor](i, principalFromContext)
+//	do.ProvideValue[callers.PrincipalExtractor](i, principalFromContext)
 //
 // Registering the server does not declare its authorization requirements or
 // install its error mappings. See NewServer for what a mount still owes.
@@ -110,7 +111,7 @@ func RegisterServer(i do.Injector) {
 			do.MustInvoke[*identity.Service](i),
 			do.MustInvoke[identity.Store](i),
 			do.MustInvoke[database.Client](i),
-			do.MustInvoke[identitygrpc.PrincipalExtractor](i),
+			do.MustInvoke[callers.PrincipalExtractor](i),
 			WithPillars(pillars),
 		)
 	})

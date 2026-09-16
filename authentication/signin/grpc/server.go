@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
+	"github.com/primandproper/platform-go/v14/callers"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -38,7 +39,7 @@ var (
 	// through it, so there is no server that can be built without one.
 	ErrNilService = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil sign-in service")
 
-	// ErrNilPrincipalExtractor indicates a nil PrincipalExtractor.
+	// ErrNilPrincipalExtractor indicates a nil callers.PrincipalExtractor.
 	//
 	// It is refused at construction rather than defaulted, because the only
 	// default available is one that resolves nobody — and the four RPCs that
@@ -74,9 +75,9 @@ var (
 // It holds no policy. Whether a user without a second factor may sign in, how
 // long a token lives, what it carries, and whether the administrative door
 // exists at all are the service's options, and the service documents each. Who
-// is calling is a [Principal] the consumer's own authentication interceptor put
-// on the context, and whose directory the request is against is a
-// [ScopeResolver] the consumer supplies. None of the three is here.
+// is calling is a [callers.Principal] the consumer's own authentication
+// interceptor put on the context, and whose directory the request is against is
+// a [ScopeResolver] the consumer supplies. None of the three is here.
 //
 // It permissions nothing, and [Require] says so to an authorization policy
 // explicitly rather than by omission — see that function for why the difference
@@ -91,7 +92,7 @@ type Server struct {
 	signinpb.UnimplementedSignInServiceServer
 
 	svc        *signin.Service
-	principals PrincipalExtractor
+	principals callers.PrincipalExtractor
 	scopes     ScopeResolver
 
 	o11y observability.Observer
@@ -115,7 +116,7 @@ var _ signinpb.SignInServiceServer = (*Server)(nil)
 //
 // The scope resolver is an option and defaults to [GlobalScope], which is the
 // single-tenant answer. A multi-tenant deployment names one.
-func NewServer(svc *signin.Service, principals PrincipalExtractor, opts ...Option) (*Server, error) {
+func NewServer(svc *signin.Service, principals callers.PrincipalExtractor, opts ...Option) (*Server, error) {
 	if svc == nil {
 		return nil, ErrNilService
 	}
@@ -167,7 +168,7 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 // caller starts getting the order wrong.
 type request struct {
 	op        observability.Operation
-	principal Principal
+	principal callers.Principal
 	scope     tenancy.Scope
 }
 

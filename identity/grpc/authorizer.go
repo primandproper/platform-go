@@ -4,34 +4,15 @@ import (
 	"context"
 	"errors"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 
 	"github.com/primandproper/primitives-go/v2/database"
-	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/observability"
 
 	"google.golang.org/grpc/codes"
 )
-
-// ErrTargetNotPermitted indicates a caller who may make this call and may not
-// make it against the row this request named.
-//
-// It is the answer to the half of authorization a per-method permission cannot
-// reach. authorization/grpc decides from the full method name and the caller's
-// grants, both of which it has before the request body is parsed; whether the
-// account_id on that body is one this caller has any standing in is a different
-// question, and it is the one [TargetAuthorizer] answers.
-//
-// It is a sentinel of its own rather than a wrap of a platform one, and it is
-// deliberately not a wrap of identity.ErrMembershipNotFound even where a missing
-// membership is what produced it. Wrapping that one would put it in the chain,
-// and identity.GRPCMapper maps it to codes.NotFound — so a refusal would reach
-// a client as an absence, and a caller probing account ids would be told apart
-// the ones that exist from the ones that do not by watching which refusals said
-// which. Every RPC answers this with codes.PermissionDenied at the call site,
-// so it needs no mapper.
-var ErrTargetNotPermitted = platformerrors.New("the caller may not act on the named target")
 
 // TargetAuthorizer decides whether the caller may act on the row a request
 // named.
@@ -45,17 +26,17 @@ var ErrTargetNotPermitted = platformerrors.New("the caller may not act on the na
 // a member with a management grant on their own account held it on every
 // account in the scope. This is where that is decided instead.
 //
-// It is not tenancy. The scope comes off the [Principal] and every store read
-// filters on it, so nothing here crosses a directory; this is the check inside
-// one.
+// It is not tenancy. The scope comes off the [callers.Principal] and every
+// store read filters on it, so nothing here crosses a directory; this is the
+// check inside one.
 //
 // # Why it is a seam
 //
-// The same shape as [Principal]: this package names the question and a consumer
-// may answer it. The consumer's authorization interceptor cannot — it holds the
-// request and the grants and no handle to read a row with — so an interface
-// that is called from the handler, where the store and the client already are,
-// is the only place the answer is reachable.
+// The same shape as [callers.Principal]: this package names the question and a
+// consumer may answer it. The consumer's authorization interceptor cannot — it
+// holds the request and the grants and no handle to read a row with — so an
+// interface that is called from the handler, where the store and the client
+// already are, is the only place the answer is reachable.
 //
 // The default is [MembershipAuthorizer], and a consumer who says nothing gets
 // it. That is the deliberate direction of the asymmetry: a wrong-open default
@@ -67,10 +48,10 @@ var ErrTargetNotPermitted = platformerrors.New("the caller may not act on the na
 //
 // # What implementations owe
 //
-// A nil error means permitted. [ErrTargetNotPermitted] means refused, and
-// reaches the client as codes.PermissionDenied. Any other error is a failure to
-// decide — a database that would not answer — and reaches the client as
-// codes.Internal, which is what keeps an unavailable store from reading as a
+// A nil error means permitted. [callers.ErrTargetNotPermitted] means refused,
+// and reaches the client as codes.PermissionDenied. Any other error is a
+// failure to decide — a database that would not answer — and reaches the client
+// as codes.Internal, which is what keeps an unavailable store from reading as a
 // refusal. The three are distinguished by errors.Is, so an implementation may
 // wrap the sentinel with context of its own and still be refusing.
 //
@@ -81,18 +62,18 @@ var ErrTargetNotPermitted = platformerrors.New("the caller may not act on the na
 //
 // # A fourth question stays available, and the default is how
 //
-// This is the opposite ruling to [Principal]'s, and the two must not be
+// This is the opposite ruling to [callers.Principal]'s, and the two must not be
 // collapsed into one. That method set is final because there is nothing for an
-// implementation to inherit: every consumer answers "who is calling" themselves,
-// so a fourth method there is a break with no remedy. Here there is a default —
-// [MembershipAuthorizer] — and a fourth authorization question is therefore
-// something this package can grow, because an implementation that embeds the
-// default inherits an answer to it on the day it appears:
+// implementation to inherit: every consumer answers "who is calling"
+// themselves, so a fourth method there is a break with no remedy. Here there is
+// a default — [MembershipAuthorizer] — and a fourth authorization question is
+// therefore something this package can grow, because an implementation that
+// embeds the default inherits an answer to it on the day it appears:
 //
 //	type consoleAuthorizer struct{ *identitygrpc.MembershipAuthorizer }
 //
 //	func (a consoleAuthorizer) AuthorizeUser(ctx context.Context,
-//		caller identitygrpc.Principal, userID string) error {
+//		caller callers.Principal, userID string) error {
 //		if operates(caller) {
 //			return nil
 //		}
@@ -103,24 +84,24 @@ var ErrTargetNotPermitted = platformerrors.New("the caller may not act on the na
 // So embedding is how an implementation stays additive, and it is what this
 // package asks a consumer with a rule of their own to do — which is also the
 // composition [NewMembershipAuthorizer] is exported for. An implementation that
-// declares all three methods from nothing is choosing the compile error a fourth
-// would bring, and that is a choice left open rather than a mistake: a consumer
-// whose policy must be total wants to be told when the surface grows a question
-// their policy has not considered. It is the deliberate version of the failure
-// [Principal] has no way to offer.
+// declares all three methods from nothing is choosing the compile error a
+// fourth would bring, and that is a choice left open rather than a mistake: a
+// consumer whose policy must be total wants to be told when the surface grows a
+// question their policy has not considered. It is the deliberate version of the
+// failure [callers.Principal] has no way to offer.
 type TargetAuthorizer interface {
 	// AuthorizeAccount is asked before an RPC acts on the account a request
 	// named.
-	AuthorizeAccount(ctx context.Context, caller Principal, accountID string) error
+	AuthorizeAccount(ctx context.Context, caller callers.Principal, accountID string) error
 
 	// AuthorizeUser is asked before an RPC acts on the user a request named.
-	AuthorizeUser(ctx context.Context, caller Principal, userID string) error
+	AuthorizeUser(ctx context.Context, caller callers.Principal, userID string) error
 
 	// AuthorizeInvitation is asked before an RPC acts on the invitation a
 	// request named. It is given the id rather than the row, because the
 	// handler has not read one — the row is this method's to resolve if its
 	// rule needs it, which is what the default does.
-	AuthorizeInvitation(ctx context.Context, caller Principal, invitationID string) error
+	AuthorizeInvitation(ctx context.Context, caller callers.Principal, invitationID string) error
 }
 
 // MembershipAuthorizer is the default [TargetAuthorizer]: the caller's own
@@ -146,10 +127,10 @@ type TargetAuthorizer interface {
 //
 // # What it deliberately does not do
 //
-// It does not consult [Principal.ActiveAccountID]. That field is whatever the
-// consumer's authentication interceptor put there, frequently from a header the
-// client sent, and comparing a request field against another request field is
-// not a check. A live membership is a row.
+// It does not consult [callers.Principal.ActiveAccountID]. That field is
+// whatever the consumer's authentication interceptor put there, frequently from
+// a header the client sent, and comparing a request field against another
+// request field is not a check. A live membership is a row.
 //
 // It does not know about grants, so it has no operator carve-out: a support role
 // holding identity.users.read is refused a user they share no account with,
@@ -192,21 +173,21 @@ func NewMembershipAuthorizer(client database.Client, store identity.Store) (*Mem
 
 // AuthorizeAccount permits an account the caller holds a live membership in.
 //
-// An absent membership is [ErrTargetNotPermitted] and not the store's
+// An absent membership is [callers.ErrTargetNotPermitted] and not the store's
 // ErrMembershipNotFound, for the reason that sentinel gives: the store's answer
 // maps to codes.NotFound, and a refusal that reached a client as an absence
 // would tell a caller enumerating account ids which of them exist. A request
 // naming no account is refused by the same read, since no membership joins
 // anybody to nothing.
-func (a *MembershipAuthorizer) AuthorizeAccount(ctx context.Context, caller Principal, accountID string) error {
+func (a *MembershipAuthorizer) AuthorizeAccount(ctx context.Context, caller callers.Principal, accountID string) error {
 	if caller == nil {
-		return ErrTargetNotPermitted
+		return callers.ErrTargetNotPermitted
 	}
 
 	_, err := a.store.GetMembership(ctx, a.client.Reader(), caller.Scope(), caller.UserID(), accountID)
 	if err != nil {
 		if errors.Is(err, identity.ErrMembershipNotFound) {
-			return ErrTargetNotPermitted
+			return callers.ErrTargetNotPermitted
 		}
 
 		return err
@@ -220,13 +201,13 @@ func (a *MembershipAuthorizer) AuthorizeAccount(ctx context.Context, caller Prin
 //
 // A user who belongs to no account is permitted to nobody but themselves, which
 // is the honest reading: there is nowhere the caller and they are both members.
-func (a *MembershipAuthorizer) AuthorizeUser(ctx context.Context, caller Principal, userID string) error {
+func (a *MembershipAuthorizer) AuthorizeUser(ctx context.Context, caller callers.Principal, userID string) error {
 	if caller == nil {
-		return ErrTargetNotPermitted
+		return callers.ErrTargetNotPermitted
 	}
 
 	if userID == "" {
-		return ErrTargetNotPermitted
+		return callers.ErrTargetNotPermitted
 	}
 
 	if userID == caller.UserID() {
@@ -246,7 +227,7 @@ func (a *MembershipAuthorizer) AuthorizeUser(ctx context.Context, caller Princip
 	// The caller's own memberships are read first, so a caller who belongs to
 	// nothing costs one read rather than two.
 	if len(callerMemberships) == 0 {
-		return ErrTargetNotPermitted
+		return callers.ErrTargetNotPermitted
 	}
 
 	targetMemberships, err := a.store.ListMembershipsForUser(ctx, reader, scope, userID)
@@ -265,31 +246,32 @@ func (a *MembershipAuthorizer) AuthorizeUser(ctx context.Context, caller Princip
 		}
 	}
 
-	return ErrTargetNotPermitted
+	return callers.ErrTargetNotPermitted
 }
 
 // AuthorizeInvitation permits the invitation's sender, and otherwise applies
 // [MembershipAuthorizer.AuthorizeAccount] to the account it is into.
 //
-// An invitation this scope does not have is [ErrTargetNotPermitted] rather than
-// the store's absence, for the same reason the account rule refuses that way: a
-// caller guessing invitation ids learns nothing from a refusal that reads the
-// same whether the row is there or not. The RPC's own read still answers an
-// absence as one for a caller who was permitted — a sender cancelling something
-// already answered is told it is gone, not that it is somebody else's.
+// An invitation this scope does not have is [callers.ErrTargetNotPermitted]
+// rather than the store's absence, for the same reason the account rule refuses
+// that way: a caller guessing invitation ids learns nothing from a refusal that
+// reads the same whether the row is there or not. The RPC's own read still
+// answers an absence as one for a caller who was permitted — a sender
+// cancelling something already answered is told it is gone, not that it is
+// somebody else's.
 func (a *MembershipAuthorizer) AuthorizeInvitation(
 	ctx context.Context,
-	caller Principal,
+	caller callers.Principal,
 	invitationID string,
 ) error {
 	if caller == nil {
-		return ErrTargetNotPermitted
+		return callers.ErrTargetNotPermitted
 	}
 
 	invitation, err := a.store.GetInvitation(ctx, a.client.Reader(), caller.Scope(), invitationID)
 	if err != nil {
 		if errors.Is(err, identity.ErrInvitationNotFound) {
-			return ErrTargetNotPermitted
+			return callers.ErrTargetNotPermitted
 		}
 
 		return err
@@ -327,7 +309,7 @@ func authorizeOutcome(
 	}
 
 	code := codes.Internal
-	if errors.Is(err, ErrTargetNotPermitted) {
+	if errors.Is(err, callers.ErrTargetNotPermitted) {
 		code = codes.PermissionDenied
 	}
 
@@ -337,7 +319,7 @@ func authorizeOutcome(
 func (s *Server) authorizeAccount(
 	ctx context.Context,
 	op observability.Operation,
-	caller Principal,
+	caller callers.Principal,
 	accountID string,
 ) error {
 	return authorizeOutcome(op, s.targets.AuthorizeAccount(ctx, caller, accountID),
@@ -347,7 +329,7 @@ func (s *Server) authorizeAccount(
 func (s *Server) authorizeUser(
 	ctx context.Context,
 	op observability.Operation,
-	caller Principal,
+	caller callers.Principal,
 	userID string,
 ) error {
 	return authorizeOutcome(op, s.targets.AuthorizeUser(ctx, caller, userID),
@@ -357,7 +339,7 @@ func (s *Server) authorizeUser(
 func (s *Server) authorizeInvitation(
 	ctx context.Context,
 	op observability.Operation,
-	caller Principal,
+	caller callers.Principal,
 	invitationID string,
 ) error {
 	return authorizeOutcome(op, s.targets.AuthorizeInvitation(ctx, caller, invitationID),

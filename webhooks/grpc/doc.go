@@ -17,6 +17,22 @@ binds off the connection, a consumer's catalog stays an opaque string, and a
 write whose caller is already inside the process's own transaction is not an
 RPC. What is below is where webhooks lands on each and where it diverges.
 
+# Who is calling
+
+Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
+which a consumer's own authentication interceptor puts on the context and
+[github.com/primandproper/platform-go/v14/callers.PrincipalExtractor] reads
+back. Those are one package for the whole module rather than an interface per
+surface, because a deployment has one authentication interceptor and one notion
+of a caller, and that package's documentation is where the ruling that keeps the
+method set at three lives.
+
+This surface reads both of the facts it needs off one, which is one more than
+the registry next door reads. The scope bounds every statement; the user
+identifier is what SaveEndpoint writes into Endpoint.CreatedBy, so that "who
+registered this endpoint" is answered by the connection rather than by a request
+field somebody could put anything in.
+
 # Nine RPCs, and nine absences
 
 Endpoint CRUD, subscription CRUD, and the delivery log. That is the half of

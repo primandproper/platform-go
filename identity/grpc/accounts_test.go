@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
@@ -36,7 +37,7 @@ func TestGetAccountIsScopedToTheCallersDirectory(T *testing.T) {
 	_, err = h.client.GetAccount(ctx, &identitypb.GetAccountRequest{AccountId: theirs.Account.ID})
 	must.Error(T, err)
 	test.EqOp(T, codes.PermissionDenied, status.Code(err))
-	test.True(T, errors.Is(err, identitygrpc.ErrTargetNotPermitted))
+	test.True(T, errors.Is(err, callers.ErrTargetNotPermitted))
 }
 
 func TestListAccountsPagesTheCallersDirectoryOnly(T *testing.T) {
@@ -143,7 +144,7 @@ func TestTransferAccountOwnershipRefusesAStrangerToTheDirectory(T *testing.T) {
 		})
 	must.Error(T, err)
 	test.EqOp(T, codes.PermissionDenied, status.Code(err))
-	test.True(T, errors.Is(err, identitygrpc.ErrTargetNotPermitted))
+	test.True(T, errors.Is(err, callers.ErrTargetNotPermitted))
 
 	open := newHarness(T, identitygrpc.WithTargetAuthorizer(permitEverything{}))
 

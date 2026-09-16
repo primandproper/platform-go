@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 
@@ -110,7 +111,7 @@ type Server struct {
 
 	store      waitlists.Store
 	client     database.Client
-	principals PrincipalExtractor
+	principals callers.PrincipalExtractor
 	signups    SignupAuthorizer
 	scopes     ScopeResolver
 	o11y       observability.Observer
@@ -145,7 +146,7 @@ type Server struct {
 func NewServer(
 	store waitlists.Store,
 	client database.Client,
-	principals PrincipalExtractor,
+	principals callers.PrincipalExtractor,
 	signups SignupAuthorizer,
 	opts ...Option,
 ) (*Server, error) {
@@ -211,7 +212,7 @@ func (s *Server) RegisterOn(srv *grpc.Server) {
 // caller rather than from a token.
 type request struct {
 	op        observability.Operation
-	principal Principal
+	principal callers.Principal
 	scope     tenancy.Scope
 }
 

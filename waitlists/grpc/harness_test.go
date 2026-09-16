@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
 	"github.com/primandproper/platform-go/v14/waitlists"
 	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
 	"github.com/primandproper/platform-go/v14/waitlists/migrations"
@@ -88,7 +88,7 @@ type testPrincipal struct {
 	scope           tenancy.Scope
 }
 
-var _ identitygrpc.Principal = (*testPrincipal)(nil)
+var _ callers.Principal = (*testPrincipal)(nil)
 
 func (p *testPrincipal) UserID() string          { return p.userID }
 func (p *testPrincipal) Scope() tenancy.Scope    { return p.scope }
@@ -102,7 +102,7 @@ type principalKey struct{}
 // reading step removed. A context carrying none reaches the server as an
 // anonymous request — which on this service is three RPCs working as intended
 // rather than a failure.
-func withPrincipal(ctx context.Context, p identitygrpc.Principal) context.Context {
+func withPrincipal(ctx context.Context, p callers.Principal) context.Context {
 	if p == nil {
 		return ctx
 	}
@@ -110,10 +110,10 @@ func withPrincipal(ctx context.Context, p identitygrpc.Principal) context.Contex
 	return context.WithValue(ctx, principalKey{}, p)
 }
 
-// extractPrincipal is the PrincipalExtractor the server is built with. It reads
-// what withPrincipal put there and knows nothing about how.
-func extractPrincipal(ctx context.Context) (identitygrpc.Principal, bool) {
-	p, ok := ctx.Value(principalKey{}).(identitygrpc.Principal)
+// extractPrincipal is the callers.PrincipalExtractor the server is built with.
+// It reads what withPrincipal put there and knows nothing about how.
+func extractPrincipal(ctx context.Context) (callers.Principal, bool) {
+	p, ok := ctx.Value(principalKey{}).(callers.Principal)
 
 	return p, ok
 }
@@ -126,7 +126,7 @@ func extractPrincipal(ctx context.Context) (identitygrpc.Principal, bool) {
 // The tests about what a refusal looks like supply one that refuses.
 func permitWithdrawals() waitlistsgrpc.SignupAuthorizer {
 	return waitlistsgrpc.SignupAuthorizerFunc(
-		func(context.Context, waitlistsgrpc.Principal, tenancy.Scope, string, string) error {
+		func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
 			return nil
 		})
 }

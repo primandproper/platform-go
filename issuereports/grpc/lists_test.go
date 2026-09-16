@@ -3,6 +3,7 @@ package grpc_test
 import (
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/issuereports"
 	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
@@ -153,7 +154,7 @@ func TestListReportsByReporter(T *testing.T) {
 		// question is asked before anything is read, so the refusal discloses
 		// nothing about whether that person has ever filed anything.
 		test.EqOp(t, codes.PermissionDenied, status.Code(err))
-		test.ErrorIs(t, err, issuereportsgrpc.ErrTargetNotPermitted)
+		test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("naming somebody who has filed nothing is refused the same way", func(t *testing.T) {

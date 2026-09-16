@@ -1,4 +1,4 @@
-package grpc
+package callers
 
 import (
 	"context"
@@ -17,23 +17,23 @@ import (
 //
 // It is deliberately not [github.com/primandproper/platform-go/v14/identity.Principal],
 // which is a different thing with a confusingly similar name: that one is a
-// read this service performs — a user, their memberships, and the account a
-// request is against — and it is an answer, where this is the question. The
-// server resolves one from the other in GetPrincipal.
+// read a service performs — a user, their memberships, and the account a
+// request is against — and it is an answer, where this is the question.
+// identity/grpc's GetPrincipal resolves one from the other.
 //
 // # The method set is final
 //
-// Three methods, and there will not be a fourth. Nine sibling packages alias
-// this type verbatim — billing/grpc, comments/grpc, issuereports/grpc,
-// notifications/grpc, settings/grpc, waitlists/grpc, webhooks/grpc,
-// authentication/oauth2clients/grpc and authentication/signin/grpc — so a method
-// added here is a method every consumer of every gRPC surface in this module has
-// to grow at once, on whatever session type they already had. An interface
-// carries no default, so there is no deprecation shape available: the break is
-// total and it arrives at compile time in somebody else's repository. The three
-// that are here are the three every one of those surfaces needs to do anything
-// at all — who is calling, whose directory they are in, and which account the
-// call is against.
+// Three methods, and there will not be a fourth. Ten gRPC surfaces in this
+// module name this type — identity/grpc, authentication/signin/grpc,
+// authentication/oauth2clients/grpc, billing/grpc, comments/grpc,
+// issuereports/grpc, notifications/grpc, settings/grpc, waitlists/grpc and
+// webhooks/grpc — so a method added here is a method every consumer of every
+// gRPC surface in this module has to grow at once, on whatever session type
+// they already had. An interface carries no default, so there is no deprecation
+// shape available: the break is total and it arrives at compile time in
+// somebody else's repository. The three that are here are the three every one
+// of those surfaces needs to do anything at all — who is calling, whose
+// directory they are in, and which account the call is against.
 //
 // What the first surface to want a service account flag, a session id or an
 // impersonation marker reaches for instead is an optional interface, declared
@@ -51,11 +51,12 @@ import (
 // and the standard library's http.Flusher; neither is a method the interface
 // beside it grew.
 //
-// This is not the ruling [TargetAuthorizer] carries, and the two should not be
-// collapsed. That one ships a default a consumer embeds, which is a different
-// way of staying additive and is open to it because it has a default to embed.
-// This has none and can have none: a principal is the consumer's own answer to
-// who is calling, and there is nothing here to inherit from.
+// This is not the ruling identity/grpc's TargetAuthorizer carries, and the two
+// should not be collapsed. That one ships a default a consumer embeds, which is
+// a different way of staying additive and is open to it because it has a
+// default to embed. This has none and can have none: a principal is the
+// consumer's own answer to who is calling, and there is nothing here to inherit
+// from.
 type Principal interface {
 	// UserID is the calling user's identifier in this directory.
 	UserID() string
@@ -76,15 +77,18 @@ type Principal interface {
 	ActiveAccountID() string
 }
 
-// PrincipalExtractor resolves a Principal off a request context, reporting
+// PrincipalExtractor resolves a [Principal] off a request context, reporting
 // whether there was one.
 //
 // The consumer supplies it, and the false return is the honest answer for an
 // unauthenticated call rather than an error type this package would have to
-// define. Every RPC on this service needs one — there is no anonymous read
-// here, because a read with no principal has no scope to filter on — so a false
-// is codes.Unauthenticated and the RPC stops.
+// define. Almost every RPC in this module needs one — a read with no principal
+// has no scope to filter on — so a false is codes.Unauthenticated and the RPC
+// stops. The exceptions are declared rather than assumed: three of
+// waitlists/grpc's RPCs are a signup page, and three of
+// authentication/signin/grpc's are sign-in itself, and both packages say so.
 //
-// This mirrors authorization/grpc's GrantsExtractor and idempotency/grpc's
-// WithPrincipalExtractor: platform names the shape, the consumer names the type.
+// This mirrors primitives-go's authorization/grpc GrantsExtractor and
+// idempotency/grpc WithPrincipalExtractor: platform names the shape, the
+// consumer names the type.
 type PrincipalExtractor func(ctx context.Context) (Principal, bool)

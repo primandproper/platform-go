@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/webhooks"
 	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
 
@@ -99,7 +100,7 @@ type Server struct {
 	dispatcher webhooks.Dispatcher
 	store      webhooks.Store
 	client     database.Client
-	principals PrincipalExtractor
+	principals callers.PrincipalExtractor
 	o11y       observability.Observer
 
 	instruments *metrics.OperationSet
@@ -131,7 +132,7 @@ func NewServer(
 	dispatcher webhooks.Dispatcher,
 	store webhooks.Store,
 	client database.Client,
-	principals PrincipalExtractor,
+	principals callers.PrincipalExtractor,
 	opts ...Option,
 ) (*Server, error) {
 	if dispatcher == nil {

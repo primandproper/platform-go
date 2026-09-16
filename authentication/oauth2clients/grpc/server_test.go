@@ -6,7 +6,7 @@ import (
 
 	oauth2clientsgrpc "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients/oauth2clientspb"
-	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -125,7 +125,7 @@ func TestAnExtractorThatAnswersWithNobodyIsAnAnonymousRequest(t *testing.T) {
 
 	h := newHarness(t)
 
-	present := func(context.Context) (identitygrpc.Principal, bool) { return nil, true }
+	present := func(context.Context) (callers.Principal, bool) { return nil, true }
 
 	srv, err := oauth2clientsgrpc.NewServer(h.svc, h.store, h.db, present)
 	must.NoError(t, err)

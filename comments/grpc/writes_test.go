@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
@@ -248,7 +249,7 @@ func TestServer_UpdateComment(T *testing.T) {
 		// so a distinct code would tell a caller walking identifiers which of
 		// them are real.
 		mustBeCode(t, err, codes.NotFound)
-		test.ErrorIs(t, err, commentsgrpc.ErrTargetNotPermitted)
+		test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("permits somebody else's comment where the authorizer allows it", func(t *testing.T) {
@@ -375,7 +376,7 @@ func TestServer_ArchiveComment(T *testing.T) {
 		_, err := h.server.ArchiveComment(h.ctx(t), &commentspb.ArchiveCommentRequest{CommentId: comment.ID})
 
 		mustBeCode(t, err, codes.NotFound)
-		test.ErrorIs(t, err, commentsgrpc.ErrTargetNotPermitted)
+		test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
 	})
 
 	T.Run("refuses a comment already archived", func(t *testing.T) {
