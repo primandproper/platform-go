@@ -57,6 +57,15 @@ func commentIn(scope tenancy.Scope, id string) *comments.Comment {
 	}
 }
 
+// archivedCommentIn is one stored comment a moderator has archived. The body is
+// still there, which is why an export has to carry it.
+func archivedCommentIn(scope tenancy.Scope, id string) *comments.Comment {
+	archived := commentIn(scope, id)
+	archived.ArchivedAt = new(time.Date(2026, time.September, 13, 9, 0, 0, 0, time.UTC))
+
+	return archived
+}
+
 // testReader is the executor a collector is built over.
 //
 // Nothing executes through it: the store beneath the collector is a mock, and
@@ -192,7 +201,7 @@ func TestNewCollector(T *testing.T) {
 func TestCollector_Collect(T *testing.T) {
 	T.Parallel()
 
-	T.Run("collects every scope the resolver names", func(t *testing.T) {
+	T.Run("collects every scope the resolver names, archived comments included", func(t *testing.T) {
 		t.Parallel()
 
 		var reader database.SQLQueryExecutor = &testReader{}
@@ -200,14 +209,31 @@ func TestCollector_Collect(T *testing.T) {
 		store := &commentsmock.StoreMock{
 			ListCommentsByAuthorFunc: func(
 				_ context.Context, q database.SQLQueryExecutor, scope tenancy.Scope,
-				author string, _ *filtering.QueryFilter,
+				author string, filter *filtering.QueryFilter,
 			) (*filtering.QueryFilteredResult[comments.Comment], error) {
 				// The executor is the one the collector was built with, which is
 				// the whole of what the constructor argument buys.
 				test.EqOp(t, reader, q)
 				test.EqOp(t, subject.ID, author)
 
-				return pageOf(commentIn(scope, "comment_in_"+scope.String())), nil
+				// An archived comment is still the words somebody wrote, and
+				// DeleteCommentsByAuthor destroys it, so an export that omitted
+				// it would hand back less than the erasure removes.
+				must.NotNil(t, filter)
+				must.NotNil(t, filter.IncludeArchived)
+				test.True(t, *filter.IncludeArchived)
+
+				// The flag lands on a copy of the walk's filter rather than a
+				// fresh one, so the page size CollectAll asked for survives.
+				must.NotNil(t, filter.MaxResponseSize)
+				test.EqOp(t, filtering.MaxQueryFilterLimit, *filter.MaxResponseSize)
+
+				// The store answers as it would with the flag set: the live row
+				// and the archived one.
+				return pageOf(
+					commentIn(scope, "comment_in_"+scope.String()),
+					archivedCommentIn(scope, "archived_comment_in_"+scope.String()),
+				), nil
 			},
 		}
 
@@ -219,9 +245,13 @@ func TestCollector_Collect(T *testing.T) {
 
 		var collected []comments.Comment
 		must.NoError(t, json.Unmarshal(fragment, &collected))
-		must.SliceLen(t, 2, collected)
+		must.SliceLen(t, 4, collected)
 		test.EqOp(t, "comment_in_acct_1", collected[0].ID)
-		test.EqOp(t, "comment_in_acct_2", collected[1].ID)
+		test.EqOp(t, "archived_comment_in_acct_1", collected[1].ID)
+		test.EqOp(t, "comment_in_acct_2", collected[2].ID)
+		test.EqOp(t, "archived_comment_in_acct_2", collected[3].ID)
+		must.NotNil(t, collected[1].ArchivedAt)
+		must.NotNil(t, collected[3].ArchivedAt)
 	})
 
 	T.Run("a subject who wrote nothing is a domain holding nothing", func(t *testing.T) {
