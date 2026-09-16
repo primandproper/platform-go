@@ -27,11 +27,11 @@ var _ TransactionStore = (*SQLStore)(nil)
 // somebody reconciles by hand — or fail against the index with an error the
 // caller cannot tell from an outage, and would therefore retry forever.
 //
-// Every statement runs on tx: the insert-ignore, the read-back, and the
-// attribution the insert makes when it loses, which asks about the subscription
-// or purchase the row names. A ledger row written against a purchase created
-// earlier in the same transaction is therefore attributed correctly rather than
-// refused for naming a row nobody has.
+// Every statement runs on tx: the checks of the subscription or purchase the row
+// names, the insert-ignore, the read-back, and the attribution the insert makes
+// when it loses. A ledger row written against a purchase created earlier in the
+// same transaction is therefore admitted rather than refused for naming a row
+// nobody has.
 //
 // The instrument is incremented when the statement writes the row rather than
 // when the caller commits: nothing here can observe somebody else's commit, and
@@ -85,15 +85,19 @@ func (s *SQLStore) RecordTransaction(
 	return &recorded, nil
 }
 
-// insertTransaction is the statements the ledger write runs: the insert-ignore,
-// the attribution of a loss, and the read-back of the creation time onto
-// recorded.
+// insertTransaction is the statements the ledger write runs: the referent
+// checks, the insert-ignore, the attribution of a loss, and the read-back of the
+// creation time onto recorded.
 func (s *SQLStore) insertTransaction(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
 	recorded *Transaction,
 ) error {
+	if err := s.requireReferents(ctx, q, scope, recorded); err != nil {
+		return err
+	}
+
 	count, err := s.q.CreateTransaction(ctx, q, createTransactionParams(recorded, scope))
 	if err != nil {
 		return platformerrors.Wrap(err, "recording transaction")
@@ -110,6 +114,53 @@ func (s *SQLStore) insertTransaction(
 	}
 
 	recorded.CreatedAt = row.CreatedAt.UTC()
+
+	return nil
+}
+
+// requireReferents refuses a ledger row naming a subscription or a purchase this
+// scope does not have.
+//
+// The two reads are made on the caller's executor and before the insert, for the
+// reason requireProduct is: the foreign keys would refuse the row on Postgres and
+// SQLite, but MySQL's INSERT IGNORE downgrades a foreign key it could not satisfy
+// to a warning and a zero affected count, which is the count a redelivery
+// produces. Asking first is what makes a bad reference one answer on all three
+// dialects instead of a sentinel on one and a raw driver error on two — and on
+// Postgres that raised error aborts the enclosing transaction, so the audit entry
+// and the outbox event the caller writes next fail with it.
+//
+// Both reads are archived-blind, because archiving a subscription deliberately
+// leaves the ledger rows pointing at it alone and a refund of something since
+// retired is a row this table must still take. See queries.referentChecks.
+//
+// A row names at most one of the two, because validate refuses one that names
+// both, so a ledger write pays for a single read — and a charge that settles
+// neither pays for none, which is the same emptiness the two nullable foreign
+// keys already spell.
+func (s *SQLStore) requireReferents(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	recorded *Transaction,
+) error {
+	if recorded.SubscriptionID != "" {
+		_, err := s.q.CheckSubscriptionPresence(ctx, q, billingdb.CheckSubscriptionPresenceParams{
+			ID: recorded.SubscriptionID, Scope: scope,
+		})
+		if err = requirePresence(err, ErrSubscriptionNotFound, recorded.SubscriptionID); err != nil {
+			return err
+		}
+	}
+
+	if recorded.PurchaseID != "" {
+		_, err := s.q.CheckPurchasePresence(ctx, q, billingdb.CheckPurchasePresenceParams{
+			ID: recorded.PurchaseID, Scope: scope,
+		})
+		if err = requirePresence(err, ErrPurchaseNotFound, recorded.PurchaseID); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -444,22 +495,16 @@ func (s *SQLStore) readTransactionByExternalID(
 	return transactionFromRow((*billingdb.GetTransactionRow)(&row)), nil
 }
 
-// refuseTransactionCreate says what the ledger insert lost to, having written
-// nothing.
+// refuseTransactionCreate says which identifier the ledger insert lost to.
 //
-// The provider's identifier is asked about first, because a redelivered charge is
-// what this count almost always means and ErrTransactionExists is the whole answer
-// to it. Then the two rows this one points at, which is the residual only this
-// table has: MySQL's IGNORE downgrades a foreign key it could not satisfy to the
-// same zero count as a collision, so without asking, a ledger row naming a
-// subscription nobody has would be reported as an id somebody else holds.
-// Postgres and SQLite raise that case at the insert and never arrive here, so the
-// two engines differ in which error names a caller's bad reference and agree in
-// refusing to store it.
+// The rows this one points at are not among the candidates: requireReferents has
+// already asked about them, ahead of the insert, so what is left here is the
+// redelivered charge the zero count usually means and the id a caller supplied
+// itself.
 //
 // There is no update counterpart. A ledger row's provider id is written once and
-// no statement can change it, so the insert-ignore is the only place any of this
-// is asked.
+// no statement can change it, so the insert-ignore is the only place the question
+// is ever asked. See refuseCreate.
 func (s *SQLStore) refuseTransactionCreate(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
@@ -470,25 +515,5 @@ func (s *SQLStore) refuseTransactionCreate(
 		_, err := s.readTransactionByExternalID(ctx, q, scope, recorded.ExternalTransactionID)
 
 		return err
-	}, ErrTransactionNotFound, ErrTransactionExists, func() error {
-		if recorded.SubscriptionID != "" {
-			_, err := s.q.CheckSubscriptionPresence(ctx, q, billingdb.CheckSubscriptionPresenceParams{
-				ID: recorded.SubscriptionID, Scope: scope,
-			})
-			if err = requirePresence(err, ErrSubscriptionNotFound, recorded.SubscriptionID); err != nil {
-				return err
-			}
-		}
-
-		if recorded.PurchaseID != "" {
-			_, err := s.q.CheckPurchasePresence(ctx, q, billingdb.CheckPurchasePresenceParams{
-				ID: recorded.PurchaseID, Scope: scope,
-			})
-			if err = requirePresence(err, ErrPurchaseNotFound, recorded.PurchaseID); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
+	}, ErrTransactionNotFound, ErrTransactionExists)
 }

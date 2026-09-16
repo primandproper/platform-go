@@ -436,7 +436,7 @@ func (s *SQLStore) refuseProductCreate(
 		_, err := s.readProductByExternalID(ctx, q, scope, created.ExternalProductID)
 
 		return err
-	}, ErrProductNotFound, ErrProductExists, nil)
+	}, ErrProductNotFound, ErrProductExists)
 }
 
 // ensureProductExternalIDFree reports whether a provider-side product id is

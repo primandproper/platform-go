@@ -594,7 +594,7 @@ func (s *SQLStore) refuseSubscriptionCreate(
 		_, err := s.readSubscriptionByExternalID(ctx, q, scope, created.ExternalSubscriptionID)
 
 		return err
-	}, ErrSubscriptionNotFound, ErrSubscriptionExists, nil)
+	}, ErrSubscriptionNotFound, ErrSubscriptionExists)
 }
 
 // ensureSubscriptionExternalIDFree reports whether a provider-side subscription
