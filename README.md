@@ -350,8 +350,12 @@ and four are lookups by a payment provider's identifier, which belong to that
 same callback path; the twelfth is the existence check a write makes on its way
 to inserting. What the surface refuses to ship is a reading: there is no
 `GetAccountStanding` and no `is_active` field anywhere in `billing.proto`,
-because which reported status leaves an account entitled is your policy and
-`billing/plans` is where it already lives.
+because which reported status leaves an account entitled is your policy. Two
+packages beside the store are where it lives: `billing/plans` turns a set of
+subscriptions into the plan a caller is on, and `billing/standing` turns a
+status a processor reported into the standing `identity` stores. Each ships the
+strict reading as a value you pass rather than a default you inherit, so taking
+it is a deployment agreeing with it.
 
 `issuereports` is the one whose interesting half is a single method. Ten of its
 store's eleven are on the wire — the filing, the reads, the four queue

@@ -10,9 +10,20 @@ import (
 	"github.com/shoenig/test"
 )
 
-// known is capitalism's closed set, spelled out here so that a status added to
-// that module shows up as a failure in this package rather than as a default
-// arm nobody visited. TestClassify_CoversEveryKnownStatus is what pins it.
+// known is this package's copy of capitalism's closed set, and what it catches
+// is worth being exact about, because the two directions are not symmetrical.
+//
+// A status capitalism removes or renames fails here at compile time, which is
+// the whole of what a spelled-out list can do: capitalism exports Known as a
+// predicate and no enumeration, so nothing in a test can ask it for its set,
+// and a ninth status added there will not red anything in this package.
+//
+// That asymmetry is survivable only because of how Strict is written. The
+// unplaced status takes the refusing path rather than an arm somebody guessed
+// at, so the cost of this list going stale is a standing this package declines
+// to rule on — which is the behavior TestStrict pins under "refuses a status
+// capitalism does not know", and the reason there is no default arm to sweep
+// one up.
 var known = []capitalism.SubscriptionStatus{
 	capitalism.SubscriptionStatusIncomplete,
 	capitalism.SubscriptionStatusIncompleteExpired,
@@ -116,31 +127,27 @@ func TestStrict(T *testing.T) {
 	})
 }
 
+// TestClassify_CoversEveryKnownStatus is the one direction a list can check:
+// every status capitalism documents is one Strict places.
+//
+// The converse — that Strict places nothing capitalism does not know — is not
+// checkable by walking this same list, which would only ask whether the entries
+// in it are in it. What stands in for it is TestStrict's refusal cases, which
+// are the statuses Strict is handed that are deliberately absent here.
+//
+// The Known call is not redundant with the compile. It is what says the list is
+// capitalism's closed set rather than eight strings that happen to be spelled
+// like it, so a constant that survives a rename with its value changed reds
+// here rather than silently becoming a ninth status nothing places.
 func TestClassify_CoversEveryKnownStatus(T *testing.T) {
 	T.Parallel()
 
-	T.Run("every status capitalism knows is placed", func(t *testing.T) {
-		t.Parallel()
+	for _, reported := range known {
+		test.True(T, reported.Known(), test.Sprintf("status %q", reported))
 
-		for _, reported := range known {
-			test.True(t, reported.Known(), test.Sprintf("status %q", reported))
-
-			_, ok := Strict(reported)
-			test.True(t, ok, test.Sprintf("status %q", reported))
-		}
-	})
-
-	T.Run("every status Strict places is one capitalism knows", func(t *testing.T) {
-		t.Parallel()
-
-		// The other direction: a status this package placed but capitalism does
-		// not recognize would be a mapping onto a word no adapter emits.
-		for _, reported := range known {
-			if _, ok := Strict(reported); ok {
-				test.True(t, reported.Known(), test.Sprintf("status %q", reported))
-			}
-		}
-	})
+		_, ok := Strict(reported)
+		test.True(T, ok, test.Sprintf("status %q", reported))
+	}
 }
 
 func TestEnded(T *testing.T) {
