@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -11,9 +12,12 @@ import (
 	"github.com/primandproper/platform-go/v14/metering"
 	meteringcfg "github.com/primandproper/platform-go/v14/metering/config"
 	meteringmock "github.com/primandproper/platform-go/v14/metering/mock"
+	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
+	"github.com/primandproper/platform-go/v14/workqueue"
 
 	capitalismmock "github.com/primandproper/primitives-go/v2/capitalism/mock"
 	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/messagequeue"
@@ -471,6 +475,67 @@ func TestService_Run(T *testing.T) {
 		happensBefore(t, j.all(), "flush:metering", "close:database")
 	})
 
+	// The operations queue is the second drain with no loop of its own, and the
+	// one nothing else would have closed: do runs a Shutdown method and a Queue
+	// spells that Close, so before it was joined here the batcher's goroutine
+	// outlived every shutdown and an Enqueue caught by one waited on its own
+	// deadline instead of being answered.
+	T.Run("closes the operations queue on the way out", func(t *testing.T) {
+		t.Parallel()
+
+		j := &journal{}
+
+		i := lifecycleInjector(t, j, nil)
+
+		queue := operationsQueue(t)
+		do.ProvideNamedValue(i, operationscfg.QueueKey, queue)
+
+		svc, err := New(i)
+		must.NoError(t, err)
+
+		must.NoError(t, svc.Shutdown(t.Context()))
+
+		// Close is what this asserts, through the one thing it changes that a
+		// caller can see: Enqueue after Close is refused rather than batched.
+		err = queue.Enqueue(t.Context(), workqueue.Entry[string]{Key: "after-shutdown"})
+		test.ErrorIs(t, err, workqueue.ErrClosed)
+	})
+
+	T.Run("drains the operations queue before the database it writes to closes", func(t *testing.T) {
+		t.Parallel()
+
+		j := &journal{}
+
+		i := lifecycleInjector(t, j, nil)
+		do.ProvideNamedValue(i, operationscfg.QueueKey, operationsQueue(t))
+		do.ProvideValue(i, meteringFlusher(t, j))
+
+		svc, err := New(i)
+		must.NoError(t, err)
+
+		must.NoError(t, svc.Shutdown(t.Context()))
+
+		// The flush slot, which is the whole reason it is a flush: a drain that
+		// ran after the clients were released would be writing to a closed
+		// database.
+		happensBefore(t, j.all(), "flush:metering", "close:database")
+	})
+
+	T.Run("a service that configured no operations has no queue to close", func(t *testing.T) {
+		t.Parallel()
+
+		j := &journal{}
+
+		svc, err := New(lifecycleInjector(t, j, nil))
+		must.NoError(t, err)
+
+		// An absence rather than a failure. The named key cannot travel through
+		// resolve, so this is the half of that function's contract the hand-written
+		// lookup has to keep for itself.
+		test.SliceEmpty(t, svc.flushes)
+		must.NoError(t, svc.Shutdown(t.Context()))
+	})
+
 	T.Run("a service made of nothing still runs and stops", func(t *testing.T) {
 		t.Parallel()
 
@@ -491,6 +556,39 @@ func TestService_Run(T *testing.T) {
 		must.NoError(t, <-errs)
 	})
 }
+
+// operationsQueue builds a real *workqueue.Queue[string], the way
+// operationscfg.RegisterQueue would. Real, because what the shutdown is being
+// asked to do is Close one, and a stand-in would only prove that a function
+// this package wrote calls itself. The mocked client is never reached: a queue
+// with nothing accumulating writes nothing on its way out.
+func operationsQueue(t *testing.T) *workqueue.Queue[string] {
+	t.Helper()
+
+	// The writer answers, rather than being left nil to panic when it is
+	// reached. A queue that was closed never reaches it — Enqueue after Close is
+	// refused before anything is batched — so the only run that gets here is one
+	// where the shutdown failed to close it, and that run should fail as an
+	// assertion in the test that made the Enqueue rather than as a panic on the
+	// batcher's own goroutine.
+	queue, err := operationscfg.NewQueue(t.Context(), &operationscfg.Config{}, &databasemock.ClientMock{
+		DialectFunc: func() dialect.Dialect { return dialect.Postgres },
+		WriterFunc: func() database.SQLQueryExecutor {
+			return &databasemock.SQLQueryExecutorMock{
+				ExecContextFunc: func(context.Context, string, ...any) (sql.Result, error) {
+					return nil, errQueueWasNotClosed
+				},
+			}
+		},
+	})
+	must.NoError(t, err)
+
+	return queue
+}
+
+// errQueueWasNotClosed is what a write from the operations queue's batcher
+// reports. Reaching it at all means the shutdown left the queue open.
+var errQueueWasNotClosed = platformerrors.New("the operations queue was still accepting work")
 
 // meteringFlusher builds a real *metering.Flusher over mocked storage and a
 // mocked billing provider. Real, because the shutdown's final pass calls Flush

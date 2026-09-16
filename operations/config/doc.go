@@ -22,5 +22,10 @@ The queue is nested rather than referenced. Its name has to agree with
 Operations.QueueName on both sides of the seam — the service enqueues onto it and
 the worker claims from it — and the surest way to make two things agree is to
 derive them from one value, which NewQueue does.
+
+In a container the queue is registered by name, under QueueKey, and resolved with
+InvokeQueue. Every other registration here keys on its own type; this one cannot,
+because *workqueue.Queue[string] is a type a consumer has every reason to
+register too. QueueKey says why.
 */
 package operationscfg
