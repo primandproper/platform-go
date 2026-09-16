@@ -86,10 +86,11 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, testScope, created.Scope)
 		test.Eq(t, []string{"account_member"}, created.Roles)
 
-		// The one read-back in this package that is a secret. The column holds
-		// the token the caller minted, so the row carries what the invitation
-		// exists to mail.
+		// The one read-back in this package that is a secret, and the column is
+		// not where it comes from: the row carries what the invitation exists to
+		// mail because the token the caller minted is put back onto the answer.
 		test.EqOp(t, "tok-7", created.Token)
+		test.EqOp(t, tokenDigest("tok-7"), created.TokenDigest)
 
 		// And none of it landed on the caller's value.
 		test.EqOp(t, "", invitation.ID)
@@ -97,11 +98,13 @@ func runInvitationStoreSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, tenancy.Scope{}, invitation.Scope)
 		test.True(t, invitation.CreatedAt.IsZero())
 
-		// The row is the one a later read returns.
+		// The row is the one a later read returns — less the secret, which no
+		// read of this Store can reconstruct.
 		read, err := store.GetInvitation(t.Context(), env.reader(), testScope, created.ID)
 		must.NoError(t, err)
 		test.EqOp(t, created.CreatedAt, read.CreatedAt)
-		test.EqOp(t, created.Token, read.Token)
+		test.EqOp(t, "", read.Token)
+		test.EqOp(t, created.TokenDigest, read.TokenDigest)
 		test.Eq(t, created.Roles, read.Roles)
 	})
 

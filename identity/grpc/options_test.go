@@ -106,17 +106,28 @@ func TestTheDefaultMinterIsUnguessable(T *testing.T) {
 	tokens := make([]string, 0, 2)
 
 	for _, id := range []string{first.GetId(), second.GetId()} {
-		stored, err := h.store.GetInvitation(T.Context(), h.db.Reader(), testScope, id)
-		must.NoError(T, err)
-		must.StrNotEqFold(T, "", stored.Token, must.Sprint("an invitation was written with no token"))
+		// Off the hook rather than off the row: the column holds a digest, so
+		// the length and the distinctness this test is about are only
+		// observable where the secret is — the read-back AfterInvite receives.
+		token := h.invites.token(T, id)
+		must.StrNotEqFold(T, "", token, must.Sprint("an invitation was issued with no token"))
 
 		// Thirty-two bytes of CSPRNG, base64-encoded. The assertion is on the
 		// floor rather than the exact length so an encoding change does not read
 		// as a security regression, but a token short enough to guess does.
-		test.True(T, len(stored.Token) >= 32,
-			test.Sprintf("an invitation token of %d characters is short enough to guess", len(stored.Token)))
+		test.True(T, len(token) >= 32,
+			test.Sprintf("an invitation token of %d characters is short enough to guess", len(token)))
 
-		tokens = append(tokens, stored.Token)
+		// And what the row holds is not it. A minter this test approves of is
+		// no help if the value it produced is sitting in an indexed column.
+		stored, err := h.store.GetInvitation(T.Context(), h.db.Reader(), testScope, id)
+		must.NoError(T, err)
+		test.EqOp(T, "", stored.Token,
+			test.Sprint("a read of an invitation handed back the token it was mailed"))
+		test.StrNotContains(T, stored.TokenDigest, token,
+			test.Sprint("the invitation token column holds the token"))
+
+		tokens = append(tokens, token)
 	}
 
 	test.NotEqOp(T, tokens[0], tokens[1],

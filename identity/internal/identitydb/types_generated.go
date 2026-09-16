@@ -115,7 +115,7 @@ type CreateInvitationParams struct {
 	ToEmail          string
 	ToName           string
 	ToUser           *string
-	Token            string
+	TokenDigest      string
 	Status           string
 	Note             string
 	StatusNote       string
@@ -124,23 +124,23 @@ type CreateInvitationParams struct {
 
 // CreateUserParams are the arguments to CreateUser.
 type CreateUserParams struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
 }
 
 // DeleteInvitationRolesParams are the arguments to DeleteInvitationRoles.
@@ -242,26 +242,26 @@ type GetArchivedUserParams struct {
 
 // GetArchivedUserRow is one row of GetArchivedUser's result.
 type GetArchivedUserRow struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
-	CreatedAt                     time.Time
-	LastUpdatedAt                 *time.Time
-	ArchivedAt                    *time.Time
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
+	CreatedAt                           time.Time
+	LastUpdatedAt                       *time.Time
+	ArchivedAt                          *time.Time
 }
 
 // GetInvitationParams are the arguments to GetInvitation.
@@ -279,7 +279,7 @@ type GetInvitationRow struct {
 	ToEmail          string
 	ToName           string
 	ToUser           *string
-	Token            string
+	TokenDigest      string
 	Status           string
 	Note             string
 	StatusNote       string
@@ -362,26 +362,26 @@ type GetUserParams struct {
 
 // GetUserRow is one row of GetUser's result.
 type GetUserRow struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
-	CreatedAt                     time.Time
-	LastUpdatedAt                 *time.Time
-	ArchivedAt                    *time.Time
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
+	CreatedAt                           time.Time
+	LastUpdatedAt                       *time.Time
+	ArchivedAt                          *time.Time
 }
 
 // GetUserByEmailAddressParams are the arguments to GetUserByEmailAddress.
@@ -392,56 +392,56 @@ type GetUserByEmailAddressParams struct {
 
 // GetUserByEmailAddressRow is one row of GetUserByEmailAddress's result.
 type GetUserByEmailAddressRow struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
-	CreatedAt                     time.Time
-	LastUpdatedAt                 *time.Time
-	ArchivedAt                    *time.Time
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
+	CreatedAt                           time.Time
+	LastUpdatedAt                       *time.Time
+	ArchivedAt                          *time.Time
 }
 
-// GetUserByEmailVerificationTokenParams are the arguments to GetUserByEmailVerificationToken.
-type GetUserByEmailVerificationTokenParams struct {
-	EmailAddressVerificationToken string
-	Scope                         tenancy.Scope
+// GetUserByEmailVerificationTokenDigestParams are the arguments to GetUserByEmailVerificationTokenDigest.
+type GetUserByEmailVerificationTokenDigestParams struct {
+	EmailAddressVerificationTokenDigest string
+	Scope                               tenancy.Scope
 }
 
-// GetUserByEmailVerificationTokenRow is one row of GetUserByEmailVerificationToken's result.
-type GetUserByEmailVerificationTokenRow struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
-	CreatedAt                     time.Time
-	LastUpdatedAt                 *time.Time
-	ArchivedAt                    *time.Time
+// GetUserByEmailVerificationTokenDigestRow is one row of GetUserByEmailVerificationTokenDigest's result.
+type GetUserByEmailVerificationTokenDigestRow struct {
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
+	CreatedAt                           time.Time
+	LastUpdatedAt                       *time.Time
+	ArchivedAt                          *time.Time
 }
 
 // GetUserByUsernameParams are the arguments to GetUserByUsername.
@@ -452,26 +452,26 @@ type GetUserByUsernameParams struct {
 
 // GetUserByUsernameRow is one row of GetUserByUsername's result.
 type GetUserByUsernameRow struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
-	CreatedAt                     time.Time
-	LastUpdatedAt                 *time.Time
-	ArchivedAt                    *time.Time
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
+	CreatedAt                           time.Time
+	LastUpdatedAt                       *time.Time
+	ArchivedAt                          *time.Time
 }
 
 // GetUserIDByEmailAddressParams are the arguments to GetUserIDByEmailAddress.
@@ -506,26 +506,26 @@ type GetUserIncludingArchivedParams struct {
 
 // GetUserIncludingArchivedRow is one row of GetUserIncludingArchived's result.
 type GetUserIncludingArchivedRow struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
-	CreatedAt                     time.Time
-	LastUpdatedAt                 *time.Time
-	ArchivedAt                    *time.Time
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
+	CreatedAt                           time.Time
+	LastUpdatedAt                       *time.Time
+	ArchivedAt                          *time.Time
 }
 
 // InsertInvitationRoleParams are the arguments to InsertInvitationRole.
@@ -561,36 +561,36 @@ type ListAccountMembersParams struct {
 
 // ListAccountMembersRow is one row of ListAccountMembers's result.
 type ListAccountMembersRow struct {
-	ID                                string
-	Scope                             tenancy.Scope
-	BelongsToUser                     string
-	BelongsToAccount                  string
-	DefaultAccount                    bool
-	CreatedAt                         time.Time
-	LastUpdatedAt                     *time.Time
-	ArchivedAt                        *time.Time
-	UserID                            string
-	UserScope                         tenancy.Scope
-	UserUsername                      string
-	UserEmailAddress                  string
-	UserFirstName                     string
-	UserLastName                      string
-	UserHashedPassword                string
-	UserRequiresPasswordChange        bool
-	UserPasswordLastChangedAt         *time.Time
-	UserTwoFactorSecret               string
-	UserTwoFactorSecretVerifiedAt     *time.Time
-	UserEmailAddressVerifiedAt        *time.Time
-	UserEmailAddressVerificationToken string
-	UserAccountStatus                 string
-	UserAccountStatusExplanation      string
-	UserLastAcceptedTermsOfService    *time.Time
-	UserLastAcceptedPrivacyPolicy     *time.Time
-	UserCreatedAt                     time.Time
-	UserLastUpdatedAt                 *time.Time
-	UserArchivedAt                    *time.Time
-	FilteredCount                     int64
-	TotalCount                        int64
+	ID                                      string
+	Scope                                   tenancy.Scope
+	BelongsToUser                           string
+	BelongsToAccount                        string
+	DefaultAccount                          bool
+	CreatedAt                               time.Time
+	LastUpdatedAt                           *time.Time
+	ArchivedAt                              *time.Time
+	UserID                                  string
+	UserScope                               tenancy.Scope
+	UserUsername                            string
+	UserEmailAddress                        string
+	UserFirstName                           string
+	UserLastName                            string
+	UserHashedPassword                      string
+	UserRequiresPasswordChange              bool
+	UserPasswordLastChangedAt               *time.Time
+	UserTwoFactorSecret                     string
+	UserTwoFactorSecretVerifiedAt           *time.Time
+	UserEmailAddressVerifiedAt              *time.Time
+	UserEmailAddressVerificationTokenDigest string
+	UserAccountStatus                       string
+	UserAccountStatusExplanation            string
+	UserLastAcceptedTermsOfService          *time.Time
+	UserLastAcceptedPrivacyPolicy           *time.Time
+	UserCreatedAt                           time.Time
+	UserLastUpdatedAt                       *time.Time
+	UserArchivedAt                          *time.Time
+	FilteredCount                           int64
+	TotalCount                              int64
 }
 
 // ListAccountMembersDescendingParams are the arguments to ListAccountMembersDescending.
@@ -608,36 +608,36 @@ type ListAccountMembersDescendingParams struct {
 
 // ListAccountMembersDescendingRow is one row of ListAccountMembersDescending's result.
 type ListAccountMembersDescendingRow struct {
-	ID                                string
-	Scope                             tenancy.Scope
-	BelongsToUser                     string
-	BelongsToAccount                  string
-	DefaultAccount                    bool
-	CreatedAt                         time.Time
-	LastUpdatedAt                     *time.Time
-	ArchivedAt                        *time.Time
-	UserID                            string
-	UserScope                         tenancy.Scope
-	UserUsername                      string
-	UserEmailAddress                  string
-	UserFirstName                     string
-	UserLastName                      string
-	UserHashedPassword                string
-	UserRequiresPasswordChange        bool
-	UserPasswordLastChangedAt         *time.Time
-	UserTwoFactorSecret               string
-	UserTwoFactorSecretVerifiedAt     *time.Time
-	UserEmailAddressVerifiedAt        *time.Time
-	UserEmailAddressVerificationToken string
-	UserAccountStatus                 string
-	UserAccountStatusExplanation      string
-	UserLastAcceptedTermsOfService    *time.Time
-	UserLastAcceptedPrivacyPolicy     *time.Time
-	UserCreatedAt                     time.Time
-	UserLastUpdatedAt                 *time.Time
-	UserArchivedAt                    *time.Time
-	FilteredCount                     int64
-	TotalCount                        int64
+	ID                                      string
+	Scope                                   tenancy.Scope
+	BelongsToUser                           string
+	BelongsToAccount                        string
+	DefaultAccount                          bool
+	CreatedAt                               time.Time
+	LastUpdatedAt                           *time.Time
+	ArchivedAt                              *time.Time
+	UserID                                  string
+	UserScope                               tenancy.Scope
+	UserUsername                            string
+	UserEmailAddress                        string
+	UserFirstName                           string
+	UserLastName                            string
+	UserHashedPassword                      string
+	UserRequiresPasswordChange              bool
+	UserPasswordLastChangedAt               *time.Time
+	UserTwoFactorSecret                     string
+	UserTwoFactorSecretVerifiedAt           *time.Time
+	UserEmailAddressVerifiedAt              *time.Time
+	UserEmailAddressVerificationTokenDigest string
+	UserAccountStatus                       string
+	UserAccountStatusExplanation            string
+	UserLastAcceptedTermsOfService          *time.Time
+	UserLastAcceptedPrivacyPolicy           *time.Time
+	UserCreatedAt                           time.Time
+	UserLastUpdatedAt                       *time.Time
+	UserArchivedAt                          *time.Time
+	FilteredCount                           int64
+	TotalCount                              int64
 }
 
 // ListAccountsParams are the arguments to ListAccounts.
@@ -841,7 +841,7 @@ type ListInvitationsRow struct {
 	ToEmail          string
 	ToName           string
 	ToUser           *string
-	Token            string
+	TokenDigest      string
 	Status           string
 	Note             string
 	StatusNote       string
@@ -876,7 +876,7 @@ type ListInvitationsByFromUserRow struct {
 	ToEmail          string
 	ToName           string
 	ToUser           *string
-	Token            string
+	TokenDigest      string
 	Status           string
 	Note             string
 	StatusNote       string
@@ -911,7 +911,7 @@ type ListInvitationsByFromUserDescendingRow struct {
 	ToEmail          string
 	ToName           string
 	ToUser           *string
-	Token            string
+	TokenDigest      string
 	Status           string
 	Note             string
 	StatusNote       string
@@ -946,7 +946,7 @@ type ListInvitationsByToEmailRow struct {
 	ToEmail          string
 	ToName           string
 	ToUser           *string
-	Token            string
+	TokenDigest      string
 	Status           string
 	Note             string
 	StatusNote       string
@@ -981,7 +981,7 @@ type ListInvitationsByToEmailDescendingRow struct {
 	ToEmail          string
 	ToName           string
 	ToUser           *string
-	Token            string
+	TokenDigest      string
 	Status           string
 	Note             string
 	StatusNote       string
@@ -1014,7 +1014,7 @@ type ListInvitationsDescendingRow struct {
 	ToEmail          string
 	ToName           string
 	ToUser           *string
-	Token            string
+	TokenDigest      string
 	Status           string
 	Note             string
 	StatusNote       string
@@ -1080,28 +1080,28 @@ type ListUsersParams struct {
 
 // ListUsersRow is one row of ListUsers's result.
 type ListUsersRow struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
-	CreatedAt                     time.Time
-	LastUpdatedAt                 *time.Time
-	ArchivedAt                    *time.Time
-	FilteredCount                 int64
-	TotalCount                    int64
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
+	CreatedAt                           time.Time
+	LastUpdatedAt                       *time.Time
+	ArchivedAt                          *time.Time
+	FilteredCount                       int64
+	TotalCount                          int64
 }
 
 // ListUsersByIDsParams are the arguments to ListUsersByIDs.
@@ -1112,26 +1112,26 @@ type ListUsersByIDsParams struct {
 
 // ListUsersByIDsRow is one row of ListUsersByIDs's result.
 type ListUsersByIDsRow struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
-	CreatedAt                     time.Time
-	LastUpdatedAt                 *time.Time
-	ArchivedAt                    *time.Time
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
+	CreatedAt                           time.Time
+	LastUpdatedAt                       *time.Time
+	ArchivedAt                          *time.Time
 }
 
 // ListUsersDescendingParams are the arguments to ListUsersDescending.
@@ -1148,28 +1148,28 @@ type ListUsersDescendingParams struct {
 
 // ListUsersDescendingRow is one row of ListUsersDescending's result.
 type ListUsersDescendingRow struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
-	CreatedAt                     time.Time
-	LastUpdatedAt                 *time.Time
-	ArchivedAt                    *time.Time
-	FilteredCount                 int64
-	TotalCount                    int64
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
+	CreatedAt                           time.Time
+	LastUpdatedAt                       *time.Time
+	ArchivedAt                          *time.Time
+	FilteredCount                       int64
+	TotalCount                          int64
 }
 
 // MarkAccountBillingSyncedParams are the arguments to MarkAccountBillingSynced.
@@ -1188,11 +1188,11 @@ type MarkUserEmailAddressUnverifiedParams struct {
 
 // MarkUserEmailAddressVerifiedParams are the arguments to MarkUserEmailAddressVerified.
 type MarkUserEmailAddressVerifiedParams struct {
-	EmailAddressVerifiedAt               *time.Time
-	EmailAddressVerificationToken        string
-	ID                                   string
-	Scope                                tenancy.Scope
-	CurrentEmailAddressVerificationToken string
+	EmailAddressVerifiedAt                     *time.Time
+	EmailAddressVerificationTokenDigest        string
+	ID                                         string
+	Scope                                      tenancy.Scope
+	CurrentEmailAddressVerificationTokenDigest string
 }
 
 // MarkUserTwoFactorSecretVerifiedParams are the arguments to MarkUserTwoFactorSecretVerified.
@@ -1235,26 +1235,26 @@ type SearchUsersByUsernameParams struct {
 
 // SearchUsersByUsernameRow is one row of SearchUsersByUsername's result.
 type SearchUsersByUsernameRow struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
-	CreatedAt                     time.Time
-	LastUpdatedAt                 *time.Time
-	ArchivedAt                    *time.Time
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
+	CreatedAt                           time.Time
+	LastUpdatedAt                       *time.Time
+	ArchivedAt                          *time.Time
 }
 
 // SearchUsersByUsernameDescendingParams are the arguments to SearchUsersByUsernameDescending.
@@ -1267,26 +1267,26 @@ type SearchUsersByUsernameDescendingParams struct {
 
 // SearchUsersByUsernameDescendingRow is one row of SearchUsersByUsernameDescending's result.
 type SearchUsersByUsernameDescendingRow struct {
-	ID                            string
-	Scope                         tenancy.Scope
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	HashedPassword                string
-	RequiresPasswordChange        bool
-	PasswordLastChangedAt         *time.Time
-	TwoFactorSecret               string
-	TwoFactorSecretVerifiedAt     *time.Time
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	AccountStatus                 string
-	AccountStatusExplanation      string
-	LastAcceptedTermsOfService    *time.Time
-	LastAcceptedPrivacyPolicy     *time.Time
-	CreatedAt                     time.Time
-	LastUpdatedAt                 *time.Time
-	ArchivedAt                    *time.Time
+	ID                                  string
+	Scope                               tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	HashedPassword                      string
+	RequiresPasswordChange              bool
+	PasswordLastChangedAt               *time.Time
+	TwoFactorSecret                     string
+	TwoFactorSecretVerifiedAt           *time.Time
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	AccountStatus                       string
+	AccountStatusExplanation            string
+	LastAcceptedTermsOfService          *time.Time
+	LastAcceptedPrivacyPolicy           *time.Time
+	CreatedAt                           time.Time
+	LastUpdatedAt                       *time.Time
+	ArchivedAt                          *time.Time
 }
 
 // SetAccountBillingStatusParams are the arguments to SetAccountBillingStatus.
@@ -1313,10 +1313,10 @@ type SetMembershipDefaultAccountParams struct {
 
 // SetUserEmailAddressVerificationTokenParams are the arguments to SetUserEmailAddressVerificationToken.
 type SetUserEmailAddressVerificationTokenParams struct {
-	EmailAddressVerificationToken string
-	EmailAddressVerifiedAt        *time.Time
-	ID                            string
-	Scope                         tenancy.Scope
+	EmailAddressVerificationTokenDigest string
+	EmailAddressVerifiedAt              *time.Time
+	ID                                  string
+	Scope                               tenancy.Scope
 }
 
 // SetUserRequiresPasswordChangeParams are the arguments to SetUserRequiresPasswordChange.
@@ -1351,14 +1351,14 @@ type UpdateAccountParams struct {
 
 // UpdateUserParams are the arguments to UpdateUser.
 type UpdateUserParams struct {
-	Username                      string
-	EmailAddress                  string
-	FirstName                     string
-	LastName                      string
-	EmailAddressVerifiedAt        *time.Time
-	EmailAddressVerificationToken string
-	ID                            string
-	Scope                         tenancy.Scope
+	Username                            string
+	EmailAddress                        string
+	FirstName                           string
+	LastName                            string
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	ID                                  string
+	Scope                               tenancy.Scope
 }
 
 // UpdateUserAccountStatusParams are the arguments to UpdateUserAccountStatus.

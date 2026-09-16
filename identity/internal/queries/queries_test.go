@@ -115,7 +115,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"ListInvitationsByToEmail", "ListInvitationsByToEmailDescending",
 		"GetArchivedUser", "GetArchivedAccount",
 		"GetUserIncludingArchived",
-		"GetUserByUsername", "GetUserByEmailAddress", "GetUserByEmailVerificationToken",
+		"GetUserByUsername", "GetUserByEmailAddress", "GetUserByEmailVerificationTokenDigest",
 		"GetUserIDByUsername", "GetUserIDByEmailAddress",
 		"GetOwnedAccountIDForUser",
 		"GetMembershipByUserAndAccount", "GetMembershipIDByUserAndAccount",
@@ -450,9 +450,9 @@ func TestRender_KeyedUserReadsEnumerateTheColumn(T *testing.T) {
 	T.Parallel()
 
 	byColumn := map[string]string{
-		"GetUserByUsername":               UserUsernameColumn,
-		"GetUserByEmailAddress":           UserEmailAddressColumn,
-		"GetUserByEmailVerificationToken": UserEmailVerificationTokenColumn,
+		"GetUserByUsername":                     UserUsernameColumn,
+		"GetUserByEmailAddress":                 UserEmailAddressColumn,
+		"GetUserByEmailVerificationTokenDigest": UserEmailVerificationTokenDigestColumn,
 	}
 
 	for _, d := range everyDialect {
@@ -539,7 +539,7 @@ func TestTable_UpdateColumns(t *testing.T) {
 	test.SliceEqFunc(t,
 		[]string{
 			"username", "email_address", "first_name", "last_name",
-			"email_address_verified_at", "email_address_verification_token",
+			"email_address_verified_at", "email_address_verification_token_digest",
 		},
 		Users.UpdateColumns(),
 		func(a, b string) bool { return a == b },
@@ -666,7 +666,7 @@ func TestFieldWrites_NameRealColumns(t *testing.T) {
 		&Users: {
 			hashedPasswordColumn, requiresPasswordChangeColumn, passwordLastChangedAtColumn,
 			twoFactorColumn, twoFactorVerifiedAtColumn,
-			EmailAddressVerifiedAtColumn, UserEmailVerificationTokenColumn,
+			EmailAddressVerifiedAtColumn, UserEmailVerificationTokenDigestColumn,
 			accountStatusColumn, accountStatusExplanationColumn,
 		},
 		&Accounts: {
@@ -688,7 +688,7 @@ func TestFieldWrites_NameRealColumns(t *testing.T) {
 	// a name with the column it compares would make the write set the column to
 	// the value it was requiring it to already hold.
 	for _, table := range allTables {
-		for _, arg := range []string{currentEmailVerificationTokenArg, currentOwnerUserIDArg, currentInvitationStatusArg} {
+		for _, arg := range []string{currentEmailVerificationTokenDigestArg, currentOwnerUserIDArg, currentInvitationStatusArg} {
 			test.False(t, slices.Contains(table.Columns, arg),
 				test.Sprintf("guard argument %q collides with a column of %q", arg, table.Name))
 		}
@@ -705,7 +705,7 @@ func TestFieldWrites_GuardsSurvive(T *testing.T) {
 	T.Parallel()
 
 	guards := map[string]string{
-		"MarkUserEmailAddressVerified": UserEmailVerificationTokenColumn + " = sqlc.arg(" + currentEmailVerificationTokenArg + ")",
+		"MarkUserEmailAddressVerified": UserEmailVerificationTokenDigestColumn + " = sqlc.arg(" + currentEmailVerificationTokenDigestArg + ")",
 		"TransferAccountOwnership":     ownerUserIDColumn + " = sqlc.arg(" + currentOwnerUserIDArg + ")",
 		"AnswerInvitation":             InvitationStatusColumn + " = sqlc.arg(" + currentInvitationStatusArg + ")",
 	}
@@ -745,8 +745,9 @@ func TestFieldWrites_GuardsSurvive(T *testing.T) {
 // TestRender_VerificationColumnsMoveTogether pins the pairing that keeps a
 // verification link from proving an address it was never sent to.
 //
-// email_address_verified_at and email_address_verification_token are one fact
-// written across two columns: the proof, and the outstanding offer to prove.
+// email_address_verified_at and email_address_verification_token_digest are one
+// fact written across two columns: the proof, and the outstanding offer to
+// prove.
 // Every statement that moves one of them has to be deliberate about the other,
 // because the token column records that a link was mailed and not which address
 // it went to — so a statement that changes the address and leaves the token
@@ -788,7 +789,7 @@ func TestRender_VerificationColumnsMoveTogether(T *testing.T) {
 					EmailAddressVerifiedAtColumn+" = sqlc.narg("+EmailAddressVerifiedAtColumn+")",
 					test.Sprintf("statement %q", name))
 
-				assignment := UserEmailVerificationTokenColumn + " = sqlc.arg(" + UserEmailVerificationTokenColumn + ")"
+				assignment := UserEmailVerificationTokenDigestColumn + " = sqlc.arg(" + UserEmailVerificationTokenDigestColumn + ")"
 				if withToken {
 					test.StrContains(t, statement, assignment, test.Sprintf("statement %q", name))
 				} else {

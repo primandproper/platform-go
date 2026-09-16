@@ -58,10 +58,12 @@ func answerInvitationParams(
 // caller's transaction, and answers with the row it wrote, leaving the
 // Invitation it was handed alone — see CreateUser.
 //
-// It is the one read-back here that carries a secret. The token is a column
-// like any other, so the row that comes back holds the token the caller minted
-// — which is what an invitation exists to mail, and what nothing else in this
-// package would let a hook read off a value it did not assemble itself.
+// It is the one read-back here that carries a secret, and the secret does not
+// come off the row: the column holds only a digest, so the token the caller
+// minted is put back onto the value this answers with. That is what an
+// invitation exists to mail, and what nothing else in this package would let a
+// hook read off a value it did not assemble itself — every other read of an
+// invitation carries the digest and nothing more.
 func (s *SQLStore) CreateInvitation(
 	ctx context.Context,
 	tx database.Tx,
@@ -143,6 +145,13 @@ func (s *SQLStore) CreateInvitation(
 	if err != nil {
 		return nil, op.Error(err, "creating identity invitation")
 	}
+
+	// The secret the caller minted, put back on the row that was read: the
+	// column it was written to holds its digest, and a digest is not a link
+	// anybody can follow. It is assigned from the copy this method validated
+	// rather than from the argument, so a caller mutating the Invitation it
+	// handed over while this ran does not decide what gets mailed.
+	created.Token = written.Token
 
 	return created, nil
 }
@@ -257,17 +266,34 @@ func (s *SQLStore) GetInvitationByToken(
 
 // checkInvitationToken vets a presented token against a read invitation.
 //
-// The comparison is constant-time. It is comparing a secret the caller supplied
-// against one from the database, and a byte-at-a-time compare leaks how much of
-// a guess was right — which for a bearer credential that grants membership in
-// somebody else's account is worth closing even though the ID has to be known
-// first.
+// Both sides are digested: the column holds the digest of the token that was
+// mailed, so what is compared is that against the digest of what was presented.
+// Two equal digests are two equal tokens for anything a sender could have
+// minted, and the value the comparison runs over is no longer a secret this
+// process is holding in a byte slice.
+//
+// The comparison is still constant-time. A byte-at-a-time compare leaks how
+// much of a guess was right, and while a digest prefix is not a token prefix —
+// there is no way to walk one back into the other — the cost of closing it is a
+// function call, and the argument that it does not matter here is exactly the
+// argument somebody applies to the next comparison where it does.
 //
 // A wrong token reads as not found rather than as forbidden, so the read is not
 // an oracle for which invitation IDs exist. An expired one is distinguished,
 // because the recipient can act on that: ask for another.
 func (s *SQLStore) checkInvitationToken(invitation *Invitation, token string) error {
-	if subtle.ConstantTimeCompare([]byte(invitation.Token), []byte(token)) != 1 {
+	// Refused before the comparison, because tokenDigest passes the empty
+	// string through and two empty strings compare equal: a row whose digest
+	// column was somehow empty would admit a caller who presented nothing.
+	// Nothing here can write such a row — the column is NOT NULL and
+	// ValidateWithContext requires a token — and this keeps that a property of
+	// the schema rather than a step in an argument the next reader has to
+	// reconstruct.
+	if token == "" {
+		return ErrInvitationNotFound
+	}
+
+	if subtle.ConstantTimeCompare([]byte(invitation.TokenDigest), []byte(tokenDigest(token))) != 1 {
 		return ErrInvitationNotFound
 	}
 

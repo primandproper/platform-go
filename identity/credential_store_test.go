@@ -34,7 +34,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		verified, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
 		test.True(t, verified.EmailAddressVerified())
-		test.EqOp(t, "", verified.EmailAddressVerificationToken)
+		test.EqOp(t, "", verified.EmailAddressVerificationTokenDigest)
 
 		// The token is burned, so the link cannot be replayed.
 		err = env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me")
@@ -236,7 +236,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		reissued, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
 		must.NoError(t, err)
 		test.False(t, reissued.EmailAddressVerified())
-		test.EqOp(t, "prove-it-again", reissued.EmailAddressVerificationToken)
+		test.EqOp(t, tokenDigest("prove-it-again"), reissued.EmailAddressVerificationTokenDigest)
 
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "prove-it-again"))
 

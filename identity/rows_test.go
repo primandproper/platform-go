@@ -103,20 +103,20 @@ func TestUserRowRoundTrip(t *testing.T) {
 	verified := time.Date(2026, 8, 21, 10, 0, 0, 0, eastern)
 
 	row := identitydb.GetUserRow{
-		ID:                            "u1",
-		Scope:                         tenancy.Of("dir"),
-		Username:                      "ada",
-		EmailAddress:                  "ada@example.com",
-		FirstName:                     "Ada",
-		LastName:                      "Lovelace",
-		HashedPassword:                "hash",
-		RequiresPasswordChange:        true,
-		TwoFactorSecret:               "secret",
-		EmailAddressVerifiedAt:        pointer.To(verified),
-		EmailAddressVerificationToken: "token",
-		AccountStatus:                 string(StatusGood),
-		AccountStatusExplanation:      "fine",
-		CreatedAt:                     created,
+		ID:                                  "u1",
+		Scope:                               tenancy.Of("dir"),
+		Username:                            "ada",
+		EmailAddress:                        "ada@example.com",
+		FirstName:                           "Ada",
+		LastName:                            "Lovelace",
+		HashedPassword:                      "hash",
+		RequiresPasswordChange:              true,
+		TwoFactorSecret:                     "secret",
+		EmailAddressVerifiedAt:              pointer.To(verified),
+		EmailAddressVerificationTokenDigest: tokenDigest("token"),
+		AccountStatus:                       string(StatusGood),
+		AccountStatusExplanation:            "fine",
+		CreatedAt:                           created,
 	}
 
 	user := userFromRow(&row)
@@ -131,12 +131,21 @@ func TestUserRowRoundTrip(t *testing.T) {
 	test.Nil(t, user.PasswordLastChangedAt)
 	test.Nil(t, user.ArchivedAt)
 
+	test.EqOp(t, tokenDigest("token"), user.EmailAddressVerificationTokenDigest)
+	test.EqOp(t, "", user.EmailAddressVerificationToken)
+
 	// And back: the create params carry what the domain value holds, with the
-	// named type spelled out the way the column stores it.
+	// named type spelled out the way the column stores it — and the verification
+	// token digested, since the secret is what the field holds and the digest is
+	// what the column takes.
+	user.EmailAddressVerificationToken = "token"
+
 	params := createUserParams(user)
 	test.EqOp(t, string(StatusGood), params.AccountStatus)
 	test.EqOp(t, user.Scope, params.Scope)
 	test.EqOp(t, user.HashedPassword, params.HashedPassword)
+	test.EqOp(t, tokenDigest("token"), params.EmailAddressVerificationTokenDigest)
+	test.StrNotContains(t, params.EmailAddressVerificationTokenDigest, "token")
 
 	// The list row is the same columns plus the page's two counts, converted
 	// through the same function.

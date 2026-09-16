@@ -1,24 +1,24 @@
 CREATE TABLE IF NOT EXISTS identity_users (
-    id                               TEXT PRIMARY KEY,
-    scope                            TEXT NOT NULL,
-    username                         TEXT NOT NULL,
-    email_address                    TEXT NOT NULL,
-    first_name                       TEXT NOT NULL DEFAULT '',
-    last_name                        TEXT NOT NULL DEFAULT '',
-    hashed_password                  TEXT NOT NULL,
-    requires_password_change         BOOLEAN NOT NULL DEFAULT FALSE,
-    password_last_changed_at         DATETIME,
-    two_factor_secret                TEXT NOT NULL DEFAULT '',
-    two_factor_secret_verified_at    DATETIME,
-    email_address_verified_at        DATETIME,
-    email_address_verification_token TEXT NOT NULL DEFAULT '',
-    account_status                   TEXT NOT NULL,
-    account_status_explanation       TEXT NOT NULL DEFAULT '',
-    last_accepted_terms_of_service   DATETIME,
-    last_accepted_privacy_policy     DATETIME,
-    created_at                       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_updated_at                  DATETIME,
-    archived_at                      DATETIME
+    id                                      TEXT PRIMARY KEY,
+    scope                                   TEXT NOT NULL,
+    username                                TEXT NOT NULL,
+    email_address                           TEXT NOT NULL,
+    first_name                              TEXT NOT NULL DEFAULT '',
+    last_name                               TEXT NOT NULL DEFAULT '',
+    hashed_password                         TEXT NOT NULL,
+    requires_password_change                BOOLEAN NOT NULL DEFAULT FALSE,
+    password_last_changed_at                DATETIME,
+    two_factor_secret                       TEXT NOT NULL DEFAULT '',
+    two_factor_secret_verified_at           DATETIME,
+    email_address_verified_at               DATETIME,
+    email_address_verification_token_digest TEXT NOT NULL DEFAULT '',
+    account_status                          TEXT NOT NULL,
+    account_status_explanation              TEXT NOT NULL DEFAULT '',
+    last_accepted_terms_of_service          DATETIME,
+    last_accepted_privacy_policy            DATETIME,
+    created_at                              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_updated_at                         DATETIME,
+    archived_at                             DATETIME
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS identity_users_username_uniq
@@ -31,9 +31,9 @@ CREATE INDEX IF NOT EXISTS identity_users_scope_idx
     ON identity_users (scope, username, id)
     WHERE archived_at IS NULL;
 
-CREATE INDEX IF NOT EXISTS identity_users_email_token_idx
-    ON identity_users (scope, email_address_verification_token)
-    WHERE email_address_verification_token <> '';
+CREATE INDEX IF NOT EXISTS identity_users_email_token_digest_idx
+    ON identity_users (scope, email_address_verification_token_digest)
+    WHERE email_address_verification_token_digest <> '';
 
 CREATE TABLE IF NOT EXISTS identity_user_roles (
     user_id TEXT NOT NULL REFERENCES identity_users (id) ON DELETE CASCADE,
@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS identity_invitations (
     to_email           TEXT NOT NULL,
     to_name            TEXT NOT NULL DEFAULT '',
     to_user            TEXT,
-    token              TEXT NOT NULL,
+    token_digest       TEXT NOT NULL,
     status             TEXT NOT NULL,
     note               TEXT NOT NULL DEFAULT '',
     status_note        TEXT NOT NULL DEFAULT '',

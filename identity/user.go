@@ -149,17 +149,32 @@ type User struct {
 	// having a second factor.
 	TwoFactorSecret string `json:"-"`
 
-	// EmailAddressVerificationToken is the value a verification link carries. It
-	// is cleared when the address is verified, so a link cannot be replayed
-	// after it has worked once, and it is cleared again whenever EmailAddress
-	// moves: the column records that a link was mailed and not which address it
-	// went to, so a token that outlived the address it was minted for would
-	// prove the one that replaced it.
+	// EmailAddressVerificationToken is the secret a verification link carries.
+	// It travels one way: a registration may hand one to Registrar.CreateUser,
+	// which stores its digest, and no read ever fills it in — what a user read
+	// back carries is EmailAddressVerificationTokenDigest.
 	//
 	// Writing it through UpdateUser is not possible, and the field is ignored
 	// there. Store.SetUserEmailAddressVerificationToken issues one and
-	// Store.MarkUserEmailAddressVerified burns it.
+	// Store.MarkUserEmailAddressVerified burns it, each taking the secret as an
+	// argument and digesting it on the way to the column.
 	EmailAddressVerificationToken string `json:"-"`
+
+	// EmailAddressVerificationTokenDigest is what the column holds: the digest
+	// of an outstanding link's token, or the empty string when there is no link
+	// outstanding. It is filled in by every read and ignored by every write.
+	//
+	// The digest is cleared when the address is verified, so a link cannot be
+	// replayed after it has worked once, and it is cleared again whenever
+	// EmailAddress moves: the column records that a link was mailed and not
+	// which address it went to, so a token that outlived the address it was
+	// minted for would prove the one that replaced it.
+	//
+	// Holding one of these proves nothing and unlocks nothing — verification
+	// goes through Store.MarkUserEmailAddressVerified, which is handed the
+	// secret — but it is a verifier for guesses at the secret, so
+	// [User.Redacted] clears it beside the password hash.
+	EmailAddressVerificationTokenDigest string `json:"-"`
 
 	// Scope is whose directory this user is in. See the package documentation:
 	// it is not the account.
@@ -282,6 +297,7 @@ func (u *User) Redacted() *User {
 	clone.HashedPassword = ""
 	clone.TwoFactorSecret = ""
 	clone.EmailAddressVerificationToken = ""
+	clone.EmailAddressVerificationTokenDigest = ""
 
 	return &clone
 }

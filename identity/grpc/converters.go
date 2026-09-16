@@ -20,9 +20,9 @@ import (
 //
 // # The credential fields have no proto side
 //
-// User.HashedPassword, User.TwoFactorSecret, User.EmailAddressVerificationToken
-// and Invitation.Token are absent from the schema, so there is no line here that
-// could carry one. That is the point of putting the guarantee in the schema
+// User.HashedPassword, User.TwoFactorSecret, User.EmailAddressVerificationToken,
+// its digest, Invitation.Token and its digest are absent from the schema, so
+// there is no line here that could carry one. That is the point of putting the guarantee in the schema
 // rather than in a Redacted call somebody has to remember: a converter that
 // forgot to clear a field would compile, and this one cannot be written.
 //

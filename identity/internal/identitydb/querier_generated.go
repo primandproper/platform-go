@@ -147,8 +147,8 @@ type Querier interface {
 	GetUser(ctx context.Context, db DBTX, arg GetUserParams) (GetUserRow, error)
 	// GetUserByEmailAddress runs the :one query.
 	GetUserByEmailAddress(ctx context.Context, db DBTX, arg GetUserByEmailAddressParams) (GetUserByEmailAddressRow, error)
-	// GetUserByEmailVerificationToken runs the :one query.
-	GetUserByEmailVerificationToken(ctx context.Context, db DBTX, arg GetUserByEmailVerificationTokenParams) (GetUserByEmailVerificationTokenRow, error)
+	// GetUserByEmailVerificationTokenDigest runs the :one query.
+	GetUserByEmailVerificationTokenDigest(ctx context.Context, db DBTX, arg GetUserByEmailVerificationTokenDigestParams) (GetUserByEmailVerificationTokenDigestRow, error)
 	// GetUserByUsername runs the :one query.
 	GetUserByUsername(ctx context.Context, db DBTX, arg GetUserByUsernameParams) (GetUserByUsernameRow, error)
 	// GetUserIDByEmailAddress runs the :one query.

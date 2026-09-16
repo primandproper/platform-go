@@ -28,12 +28,19 @@ func TestNoResponseMessageCarriesASecret(T *testing.T) {
 
 	// The Go fields identity keeps out of every response, by the name a proto
 	// field for one would most plausibly have.
+	//
+	// The two digests are on the list beside the secrets they are digests of.
+	// Neither unlocks anything on its own, but each is a verifier for guesses
+	// at one that does, and the answer to "may a client see this" is the same
+	// for both.
 	forbidden := []string{
 		"hashed_password",
 		"password",
 		"two_factor_secret",
 		"email_address_verification_token",
+		"email_address_verification_token_digest",
 		"token",
+		"token_digest",
 		"secret",
 	}
 

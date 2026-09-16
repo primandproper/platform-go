@@ -189,7 +189,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		test.EqOp(t, "unproven@example.com", read.EmailAddress)
 		test.False(t, read.EmailAddressVerified())
-		test.EqOp(t, "", read.EmailAddressVerificationToken)
+		test.EqOp(t, "", read.EmailAddressVerificationTokenDigest)
 	})
 
 	// The mirror, and the case that fails if the token is cleared on every save
@@ -203,11 +203,13 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 
 		must.NoError(t, env.setUserEmailAddressVerificationToken(t, store, testScope, user.ID, "still-good"))
 
-		// The struct in hand carries no token — a caller's copy is usually a
-		// redacted one, and this one was never told about the link — so the
-		// update has to take the token from the row rather than from the User,
-		// or every profile save would burn the outstanding link.
+		// The struct in hand carries neither the token nor its digest — a
+		// caller's copy is usually a redacted one, and this one was never told
+		// about the link — so the update has to take the digest from the row
+		// rather than from the User, or every profile save would burn the
+		// outstanding link.
 		test.EqOp(t, "", user.EmailAddressVerificationToken)
+		test.EqOp(t, "", user.EmailAddressVerificationTokenDigest)
 
 		user.FirstName = "Augusta"
 		must.NoError(t, env.updateUserErr(t, store, user.Scope, user))
