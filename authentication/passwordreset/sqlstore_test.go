@@ -2,6 +2,7 @@ package passwordreset
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -585,6 +586,254 @@ func TestSQLStore_RevokeForUser(T *testing.T) {
 
 		revoked, err := revokeForUser(t, store, testScope(), "")
 		test.EqOp(t, int64(0), revoked)
+		test.ErrorIs(t, err, ErrEmptyUserID)
+	})
+}
+
+func TestSQLStore_DeleteForUser(T *testing.T) {
+	T.Parallel()
+
+	// The difference between this and the revocation, which is the whole reason
+	// it is a second method: a redeemed row is destroyed here and spared there.
+	T.Run("destroys redeemed tokens as well as outstanding ones", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		spent := issue(t, store, time.Hour)
+		outstanding := issue(t, store, time.Hour)
+
+		_, err := consume(t, store, testScope(), spent.Secret)
+		must.NoError(t, err)
+
+		// The revocation would have reported one. This reports both.
+		deleted, err := deleteForUser(t, store, testScope(), testUserID)
+		must.NoError(t, err)
+		test.EqOp(t, int64(2), deleted)
+
+		// "Already used" stops being answerable, which is exactly what a person
+		// who asked to be forgotten is asking for.
+		_, err = verify(t, store, testScope(), spent.Secret)
+		test.ErrorIs(t, err, ErrTokenNotFound)
+
+		_, err = verify(t, store, testScope(), outstanding.Secret)
+		test.ErrorIs(t, err, ErrTokenNotFound)
+	})
+
+	T.Run("destroys an expired token the sweeper has not reached", func(t *testing.T) {
+		t.Parallel()
+
+		// An erasure does not wait for retention. A row past its deadline is
+		// already unspendable and still carries the subject's identifier, which
+		// is the thing being erased.
+		store, clk := newTestStore(t)
+
+		stale := issue(t, store, time.Hour)
+		clk.advance(2 * time.Hour)
+
+		_, err := verify(t, store, testScope(), stale.Secret)
+		test.ErrorIs(t, err, ErrTokenExpired)
+
+		deleted, err := deleteForUser(t, store, testScope(), testUserID)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), deleted)
+
+		_, err = verify(t, store, testScope(), stale.Secret)
+		test.ErrorIs(t, err, ErrTokenNotFound)
+	})
+
+	T.Run("reaches no other user", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		mine := issue(t, store, time.Hour)
+
+		theirs, err := issueFor(t, store, testScope(), "user_02", time.Hour)
+		must.NoError(t, err)
+
+		deleted, err := deleteForUser(t, store, testScope(), testUserID)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), deleted)
+
+		_, err = verify(t, store, testScope(), mine.Secret)
+		test.ErrorIs(t, err, ErrTokenNotFound)
+
+		_, err = verify(t, store, testScope(), theirs.Secret)
+		test.NoError(t, err)
+	})
+
+	T.Run("reaches no other scope", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		mine := issue(t, store, time.Hour)
+
+		theirs, err := issueFor(t, store, tenancy.Of("tenant_b"), testUserID, time.Hour)
+		must.NoError(t, err)
+
+		deleted, err := deleteForUser(t, store, tenancy.Of("tenant_b"), testUserID)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), deleted)
+
+		_, err = verify(t, store, testScope(), mine.Secret)
+		test.NoError(t, err)
+
+		_, err = verify(t, store, tenancy.Of("tenant_b"), theirs.Secret)
+		test.ErrorIs(t, err, ErrTokenNotFound)
+	})
+
+	T.Run("with nothing to erase", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		deleted, err := deleteForUser(t, store, testScope(), testUserID)
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), deleted)
+	})
+
+	T.Run("with no scope", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		deleted, err := deleteForUser(t, store, tenancy.Scope{}, testUserID)
+		test.EqOp(t, int64(0), deleted)
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+	})
+
+	T.Run("with no user", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		deleted, err := deleteForUser(t, store, testScope(), "")
+		test.EqOp(t, int64(0), deleted)
+		test.ErrorIs(t, err, ErrEmptyUserID)
+	})
+}
+
+func TestSQLStore_ListForUser(T *testing.T) {
+	T.Parallel()
+
+	T.Run("reads every token the principal holds, oldest first", func(t *testing.T) {
+		t.Parallel()
+
+		store, clk := newTestStore(t)
+
+		first := issue(t, store, time.Hour)
+		clk.advance(time.Minute)
+		second := issue(t, store, time.Hour)
+
+		held, err := store.ListForUser(t.Context(), store.db.Reader(), testScope(), testUserID)
+		must.NoError(t, err)
+		must.SliceLen(t, 2, held)
+
+		test.EqOp(t, first.Token.ID, held[0].ID)
+		test.EqOp(t, second.Token.ID, held[1].ID)
+		test.EqOp(t, testUserID, held[0].UserID)
+		test.EqOp(t, testScope(), held[0].Scope)
+	})
+
+	T.Run("includes the redeemed and the expired", func(t *testing.T) {
+		t.Parallel()
+
+		// An export says what the table holds, not what is still usable. Both of
+		// these are records of a reset the subject asked for.
+		store, clk := newTestStore(t)
+
+		spent := issue(t, store, time.Hour)
+		_, err := consume(t, store, testScope(), spent.Secret)
+		must.NoError(t, err)
+
+		stale := issue(t, store, time.Minute)
+		clk.advance(2 * time.Hour)
+
+		held, err := store.ListForUser(t.Context(), store.db.Reader(), testScope(), testUserID)
+		must.NoError(t, err)
+		must.SliceLen(t, 2, held)
+
+		byID := map[string]*Token{}
+		for _, token := range held {
+			byID[token.ID] = token
+		}
+
+		must.NotNil(t, byID[spent.Token.ID])
+		must.NotNil(t, byID[spent.Token.ID].RedeemedAt)
+		must.NotNil(t, byID[stale.Token.ID])
+		test.Nil(t, byID[stale.Token.ID].RedeemedAt)
+	})
+
+	T.Run("carries nothing a caller could exchange for a link", func(t *testing.T) {
+		t.Parallel()
+
+		// The projection excludes token_digest, so there is no field on Token
+		// for it to arrive in and nothing here that reverses to the secret.
+		store, _ := newTestStore(t)
+
+		issuance := issue(t, store, time.Hour)
+
+		held, err := store.ListForUser(t.Context(), store.db.Reader(), testScope(), testUserID)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, held)
+
+		encoded, err := json.Marshal(held[0])
+		must.NoError(t, err)
+		test.StrNotContains(t, string(encoded), issuance.Secret)
+		test.StrNotContains(t, string(encoded), store.Digest(issuance.Secret))
+	})
+
+	T.Run("reaches no other user and no other scope", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		mine := issue(t, store, time.Hour)
+
+		_, err := issueFor(t, store, testScope(), "user_02", time.Hour)
+		must.NoError(t, err)
+
+		_, err = issueFor(t, store, tenancy.Of("tenant_b"), testUserID, time.Hour)
+		must.NoError(t, err)
+
+		held, err := store.ListForUser(t.Context(), store.db.Reader(), testScope(), testUserID)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, held)
+		test.EqOp(t, mine.Token.ID, held[0].ID)
+	})
+
+	T.Run("a principal with nothing is an empty answer", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		held, err := store.ListForUser(t.Context(), store.db.Reader(), testScope(), testUserID)
+		must.NoError(t, err)
+		test.SliceEmpty(t, held)
+	})
+
+	T.Run("with no scope", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		held, err := store.ListForUser(t.Context(), store.db.Reader(), tenancy.Scope{}, testUserID)
+		test.Nil(t, held)
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+	})
+
+	T.Run("with no user", func(t *testing.T) {
+		t.Parallel()
+
+		// Reaching the rows with an empty belongs_to_user would be reaching
+		// nothing, but the refusal is what keeps it from being read as an
+		// answer.
+		store, _ := newTestStore(t)
+
+		held, err := store.ListForUser(t.Context(), store.db.Reader(), testScope(), "")
+		test.Nil(t, held)
 		test.ErrorIs(t, err, ErrEmptyUserID)
 	})
 }

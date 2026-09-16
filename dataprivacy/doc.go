@@ -267,11 +267,21 @@ the three readings a read's scope has and why they need a pointer to hold them.
 The fan-out follows the same rule: Collector.Collect and Eraser.Erase are handed
 the confinement beside the subject, so a domain that scopes its rows narrows by
 a value it was passed rather than one it dug out. The privacy adapters this
-module ships — comments/privacy, issuereports/privacy, waitlists/privacy,
-billing/privacy, notifications/privacy's two pairs and dataprivacy/auditerasure —
-each take a resolver that turns that confinement into the scopes their own tables
-use, because what a tenant means is the consumer's model rather than this
-package's.
+module ships — authentication/oauth2clients/privacy,
+authentication/passwordreset/privacy, billing/privacy, comments/privacy,
+identity/privacy, issuereports/privacy, mediaregistry/privacy,
+notifications/privacy's two pairs, settings/privacy, waitlists/privacy and
+dataprivacy/auditerasure — each take a resolver that turns that confinement into
+the scopes their own tables use, because what a tenant means is the consumer's
+model rather than this package's.
+
+Two of them ship one half rather than two, and each says why on its own package.
+billing/privacy has no Eraser, because a subscription and a ledger row are
+financial records every jurisdiction requires kept — metering makes the same
+ruling for the tables an invoice is computed from, and ships neither half.
+mediaregistry/privacy has both, but its Eraser withdraws the rows and reports the
+objects retained: nothing in that package opens the byte path, and the withdrawn
+row is the only record of the key the surviving bytes are at.
 
 # Asking after a request
 

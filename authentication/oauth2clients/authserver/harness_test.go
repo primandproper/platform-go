@@ -70,6 +70,12 @@ func (f *fakeRegistry) ArchiveClient(
 	panic("the authorization server seams do not write registrations")
 }
 
+func (f *fakeRegistry) DeleteClientsForOwner(
+	context.Context, database.Tx, tenancy.Scope, string,
+) (int64, error) {
+	panic("the authorization server seams do not write registrations")
+}
+
 func (f *fakeRegistry) GetClient(
 	context.Context, database.SQLQueryExecutor, tenancy.Scope, string,
 ) (*oauth2clients.Client, error) {

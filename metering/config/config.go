@@ -13,6 +13,13 @@ The registry is not configured here. Which meters an application counts, and wha
 their aggregations mean, is Go code — and there is no useful way to express an
 aggregation in the environment. It is passed explicitly to NewRecorder and
 NewEnforcer.
+
+The privacy seam is not here either, and unlike every other package that says so,
+the absence is not about what an environment variable can express. metering ships
+no dataprivacy.Collector and no dataprivacy.Eraser at all; the ruling is in
+metering's own documentation, under "There is deliberately no privacy adapter".
+A composition root wiring this package registers nothing with a
+dataprivacy.Registry, and that is the intended wiring rather than a gap in it.
 */
 package meteringcfg
 

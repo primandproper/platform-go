@@ -155,6 +155,23 @@ func (e *storeEnv) archive(tb testing.TB, store *SQLStore, scope tenancy.Scope, 
 	return archived, err
 }
 
+// archiveForOwner soft-deletes one principal's objects in a transaction of its
+// own and reports the count the write returned.
+func (e *storeEnv) archiveForOwner(tb testing.TB, store *SQLStore, scope tenancy.Scope, ownerID string) (int64, error) {
+	tb.Helper()
+
+	var archived int64
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		archived, txErr = store.ArchiveObjectsForOwner(tb.Context(), tx, scope, ownerID)
+
+		return txErr
+	})
+
+	return archived, err
+}
+
 // mustRecord and mustArchive are the two above for the cases whose subject is
 // what happens after the write rather than the write itself: they fail the test
 // on a refusal and hand back the row, so a fixture reads as one line.

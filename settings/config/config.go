@@ -17,6 +17,13 @@ rather than environment: they are administered, they change without a
 redeployment, and every one of them is a fact this package's schema already
 stores. A catalog in the environment would be a second place a definition
 lives, and the two would disagree the first time somebody edited one of them.
+
+The privacy seam is not here either, and that absence is the same reading the
+composition root takes of every registry: settings/privacy needs a
+ScopeResolver, which is a mapping from a person to the tenants they belong to,
+and no environment variable can express one. A service that wants its subjects'
+preferences in its subject access requests registers the collector and the
+eraser itself, with the store this package built.
 */
 package settingscfg
 

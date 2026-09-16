@@ -34,6 +34,12 @@ const (
 	tokenKey = "password_reset.token_id"
 	userKey  = "password_reset.user_id"
 	scopeKey = "password_reset.scope"
+
+	// countKey is how many rows a read that answers with a set found. It is set
+	// on the span only: how many outstanding links one person has is a fact
+	// about a request rather than a metric, and a log line carrying it for every
+	// export would be a count nobody reads beside a user id.
+	countKey = "password_reset.count"
 )
 
 var _ Store = (*SQLStore)(nil)
@@ -346,6 +352,82 @@ func (s *SQLStore) RevokeForUser(
 	return revoked, nil
 }
 
+// DeleteForUser destroys every token a principal holds, redeemed ones included.
+//
+// It runs in tx, so a subject's reset links and the rest of their footprint go
+// together or not at all. See the Store documentation for why it is a second
+// method rather than an argument on RevokeForUser.
+func (s *SQLStore) DeleteForUser(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID string,
+) (int64, error) {
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
+
+	if err := scope.Validate(); err != nil {
+		return 0, err
+	}
+
+	if userID == "" {
+		return 0, ErrEmptyUserID
+	}
+
+	op.SetValues(map[string]any{userKey: userID, scopeKey: scope.String()})
+
+	deleted, err := s.q.DeleteTokensForUser(ctx, tx, passwordresetdb.DeleteTokensForUserParams{
+		Scope:         scope,
+		BelongsToUser: userID,
+	})
+	if err != nil {
+		return 0, op.Error(err, "erasing password reset token rows")
+	}
+
+	return deleted, nil
+}
+
+// ListForUser reads every token a principal holds, oldest first.
+//
+// It is unpaged; see the Store documentation for the bound that makes that safe.
+// The digest is not projected, so what comes back is what a caller may see.
+func (s *SQLStore) ListForUser(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	userID string,
+) ([]*Token, error) {
+	ctx, op := s.o11y.Begin(ctx)
+	defer op.End()
+
+	if err := scope.Validate(); err != nil {
+		return nil, err
+	}
+
+	if userID == "" {
+		return nil, ErrEmptyUserID
+	}
+
+	op.SetValues(map[string]any{userKey: userID, scopeKey: scope.String()})
+
+	rows, err := s.q.ListTokensForUser(ctx, q, passwordresetdb.ListTokensForUserParams{
+		Scope:         scope,
+		BelongsToUser: userID,
+	})
+	if err != nil {
+		return nil, op.Error(err, "listing a principal's password reset token rows")
+	}
+
+	tokens := make([]*Token, 0, len(rows))
+	for i := range rows {
+		tokens = append(tokens, tokenFromRow((*passwordresetdb.GetTokenByDigestRow)(&rows[i])))
+	}
+
+	op.SpanOnly(countKey, len(tokens))
+
+	return tokens, nil
+}
+
 // redeem reads a token and stamps its redemption, reporting ErrTokenRedeemed
 // when the stamp finds nothing to write.
 //
@@ -418,6 +500,24 @@ func (s *SQLStore) read(
 		return nil, platformerrors.Wrap(err, "reading password reset token row")
 	}
 
+	return tokenFromRow(&row), nil
+}
+
+// tokenFromRow renders one stored row as a Token.
+//
+// It is one function rather than one per statement because what it does is a
+// precision-and-location narrowing, and a second copy of one of those can drift
+// from the first with nothing to say so. The two statements that project this
+// table — the lookup by digest and the list by principal — hand back identically
+// shaped rows, so the read converts and the list converts through the same
+// lines.
+//
+// Every instant is converted to UTC here rather than left as the driver chose. A
+// location is not the instant, so nothing this package compares would change —
+// but a Token is handed to a caller who prints it, serializes it, and shows it
+// to somebody, and a timestamp that reads differently on Postgres than on SQLite
+// is a difference in this package's output rather than in a driver's.
+func tokenFromRow(row *passwordresetdb.GetTokenByDigestRow) *Token {
 	token := &Token{
 		ID:        row.ID,
 		Scope:     row.Scope,
@@ -426,17 +526,12 @@ func (s *SQLStore) read(
 		CreatedAt: row.CreatedAt.UTC(),
 	}
 
-	// Converted here rather than left as the driver chose. A location is not
-	// the instant, so nothing this package compares would change — but a Token
-	// is handed to a caller who prints it, serializes it, and shows it to
-	// somebody, and a timestamp that reads differently on Postgres than on
-	// SQLite is a difference in this package's output rather than in a driver's.
 	if row.RedeemedAt != nil {
 		utc := row.RedeemedAt.UTC()
 		token.RedeemedAt = &utc
 	}
 
-	return token, nil
+	return token
 }
 
 // liveness reports why a token cannot be spent, or nil when it can.

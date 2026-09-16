@@ -19,6 +19,12 @@ WHERE archived_at IS NULL
 	AND id = $1
 	AND scope = $2`
 
+const archiveObjectsForOwnerPostgreSQL = `UPDATE {{prefix}}uploads_objects SET
+	archived_at = CURRENT_TIMESTAMP
+WHERE archived_at IS NULL
+	AND scope = $1
+	AND owner_id = $2`
+
 const createObjectPostgreSQL = `
 INSERT INTO {{prefix}}uploads_objects (
 	id,
@@ -442,6 +448,7 @@ LIMIT COALESCE($8, 50)`
 // postgresqlQueries answers every query in Querier against postgresql.
 type postgresqlQueries struct {
 	archiveObject                  string
+	archiveObjectsForOwner         string
 	createObject                   string
 	getArchivedObject              string
 	getObject                      string
@@ -461,6 +468,7 @@ type postgresqlQueries struct {
 func newPostgreSQL(prefix string) *postgresqlQueries {
 	return &postgresqlQueries{
 		archiveObject:                  strings.ReplaceAll(archiveObjectPostgreSQL, prefixMarker, prefix),
+		archiveObjectsForOwner:         strings.ReplaceAll(archiveObjectsForOwnerPostgreSQL, prefixMarker, prefix),
 		createObject:                   strings.ReplaceAll(createObjectPostgreSQL, prefixMarker, prefix),
 		getArchivedObject:              strings.ReplaceAll(getArchivedObjectPostgreSQL, prefixMarker, prefix),
 		getObject:                      strings.ReplaceAll(getObjectPostgreSQL, prefixMarker, prefix),
@@ -481,6 +489,19 @@ func (q *postgresqlQueries) ArchiveObject(ctx context.Context, db DBTX, arg Arch
 	result, err := db.ExecContext(ctx, q.archiveObject,
 		arg.ID,
 		arg.Scope,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// ArchiveObjectsForOwner runs the :execrows query against postgresql.
+func (q *postgresqlQueries) ArchiveObjectsForOwner(ctx context.Context, db DBTX, arg ArchiveObjectsForOwnerParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.archiveObjectsForOwner,
+		arg.Scope,
+		arg.OwnerID,
 	)
 	if err != nil {
 		return 0, err
@@ -965,6 +986,10 @@ var (
 		ID    string
 		Scope tenancy.Scope
 	}(ArchiveObjectParams{})
+	_ = struct {
+		Scope   tenancy.Scope
+		OwnerID string
+	}(ArchiveObjectsForOwnerParams{})
 	_ = struct {
 		ID            string
 		Scope         tenancy.Scope

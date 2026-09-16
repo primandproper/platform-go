@@ -30,6 +30,12 @@ type CreateRegisteredClientParams struct {
 	Scopes        string
 }
 
+// DeleteRegisteredClientsForOwnerParams are the arguments to DeleteRegisteredClientsForOwner.
+type DeleteRegisteredClientsForOwnerParams struct {
+	Scope         tenancy.Scope
+	BelongsToUser string
+}
+
 // GetArchivedRegisteredClientParams are the arguments to GetArchivedRegisteredClient.
 type GetArchivedRegisteredClientParams struct {
 	ID    string

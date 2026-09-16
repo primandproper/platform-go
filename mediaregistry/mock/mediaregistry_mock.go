@@ -27,6 +27,9 @@ var _ mediaregistry.Store = &StoreMock{}
 //			ArchiveObjectFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, objectID string) (*mediaregistry.Object, error) {
 //				panic("mock out the ArchiveObject method")
 //			},
+//			ArchiveObjectsForOwnerFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, ownerID string) (int64, error) {
+//				panic("mock out the ArchiveObjectsForOwner method")
+//			},
 //			GetObjectFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, objectID string) (*mediaregistry.Object, error) {
 //				panic("mock out the GetObject method")
 //			},
@@ -57,6 +60,9 @@ var _ mediaregistry.Store = &StoreMock{}
 type StoreMock struct {
 	// ArchiveObjectFunc mocks the ArchiveObject method.
 	ArchiveObjectFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, objectID string) (*mediaregistry.Object, error)
+
+	// ArchiveObjectsForOwnerFunc mocks the ArchiveObjectsForOwner method.
+	ArchiveObjectsForOwnerFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, ownerID string) (int64, error)
 
 	// GetObjectFunc mocks the GetObject method.
 	GetObjectFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, objectID string) (*mediaregistry.Object, error)
@@ -91,6 +97,17 @@ type StoreMock struct {
 			Scope tenancy.Scope
 			// ObjectID is the objectID argument value.
 			ObjectID string
+		}
+		// ArchiveObjectsForOwner holds details about calls to the ArchiveObjectsForOwner method.
+		ArchiveObjectsForOwner []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// OwnerID is the ownerID argument value.
+			OwnerID string
 		}
 		// GetObject holds details about calls to the GetObject method.
 		GetObject []struct {
@@ -174,14 +191,15 @@ type StoreMock struct {
 			In mediaregistry.ObjectInput
 		}
 	}
-	lockArchiveObject        sync.RWMutex
-	lockGetObject            sync.RWMutex
-	lockGetObjectByKey       sync.RWMutex
-	lockListObjects          sync.RWMutex
-	lockListObjectsByIDs     sync.RWMutex
-	lockListObjectsByOwner   sync.RWMutex
-	lockListObjectsBySubject sync.RWMutex
-	lockRecordObject         sync.RWMutex
+	lockArchiveObject          sync.RWMutex
+	lockArchiveObjectsForOwner sync.RWMutex
+	lockGetObject              sync.RWMutex
+	lockGetObjectByKey         sync.RWMutex
+	lockListObjects            sync.RWMutex
+	lockListObjectsByIDs       sync.RWMutex
+	lockListObjectsByOwner     sync.RWMutex
+	lockListObjectsBySubject   sync.RWMutex
+	lockRecordObject           sync.RWMutex
 }
 
 // ArchiveObject calls ArchiveObjectFunc.
@@ -225,6 +243,50 @@ func (mock *StoreMock) ArchiveObjectCalls() []struct {
 	mock.lockArchiveObject.RLock()
 	calls = mock.calls.ArchiveObject
 	mock.lockArchiveObject.RUnlock()
+	return calls
+}
+
+// ArchiveObjectsForOwner calls ArchiveObjectsForOwnerFunc.
+func (mock *StoreMock) ArchiveObjectsForOwner(ctx context.Context, tx database.Tx, scope tenancy.Scope, ownerID string) (int64, error) {
+	if mock.ArchiveObjectsForOwnerFunc == nil {
+		panic("StoreMock.ArchiveObjectsForOwnerFunc: method is nil but Store.ArchiveObjectsForOwner was just called")
+	}
+	callInfo := struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		OwnerID string
+	}{
+		Ctx:     ctx,
+		Tx:      tx,
+		Scope:   scope,
+		OwnerID: ownerID,
+	}
+	mock.lockArchiveObjectsForOwner.Lock()
+	mock.calls.ArchiveObjectsForOwner = append(mock.calls.ArchiveObjectsForOwner, callInfo)
+	mock.lockArchiveObjectsForOwner.Unlock()
+	return mock.ArchiveObjectsForOwnerFunc(ctx, tx, scope, ownerID)
+}
+
+// ArchiveObjectsForOwnerCalls gets all the calls that were made to ArchiveObjectsForOwner.
+// Check the length with:
+//
+//	len(mockedStore.ArchiveObjectsForOwnerCalls())
+func (mock *StoreMock) ArchiveObjectsForOwnerCalls() []struct {
+	Ctx     context.Context
+	Tx      database.Tx
+	Scope   tenancy.Scope
+	OwnerID string
+} {
+	var calls []struct {
+		Ctx     context.Context
+		Tx      database.Tx
+		Scope   tenancy.Scope
+		OwnerID string
+	}
+	mock.lockArchiveObjectsForOwner.RLock()
+	calls = mock.calls.ArchiveObjectsForOwner
+	mock.lockArchiveObjectsForOwner.RUnlock()
 	return calls
 }
 

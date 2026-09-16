@@ -151,7 +151,7 @@ that ruling from the transport. Uploading is the consumer's endpoint, over the
 consumer's own form, because the key, the owner and the subject an object hangs
 off are all theirs; mediaregistry.StoreAndRecord is the line at the end of it.
 
-The eight store methods stay off the wire. There is no metadata surface here —
+The nine store methods stay off the wire. There is no metadata surface here —
 no list-my-objects, no read-the-record — because listing is a resource surface
 over a consumer's noun and this is the guarded serve.
 */

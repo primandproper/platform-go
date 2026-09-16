@@ -19,6 +19,12 @@ WHERE archived_at IS NULL
 	AND id = ?
 	AND scope = ?`
 
+const archiveObjectsForOwnerMySQL = `UPDATE {{prefix}}uploads_objects SET
+	archived_at = CURRENT_TIMESTAMP(6)
+WHERE archived_at IS NULL
+	AND scope = ?
+	AND owner_id = ?`
+
 const createObjectMySQL = `
 INSERT INTO {{prefix}}uploads_objects (
 	id,
@@ -442,6 +448,7 @@ LIMIT ?`
 // mysqlQueries answers every query in Querier against mysql.
 type mysqlQueries struct {
 	archiveObject                  string
+	archiveObjectsForOwner         string
 	createObject                   string
 	getArchivedObject              string
 	getObject                      string
@@ -461,6 +468,7 @@ type mysqlQueries struct {
 func newMySQL(prefix string) *mysqlQueries {
 	return &mysqlQueries{
 		archiveObject:                  strings.ReplaceAll(archiveObjectMySQL, prefixMarker, prefix),
+		archiveObjectsForOwner:         strings.ReplaceAll(archiveObjectsForOwnerMySQL, prefixMarker, prefix),
 		createObject:                   strings.ReplaceAll(createObjectMySQL, prefixMarker, prefix),
 		getArchivedObject:              strings.ReplaceAll(getArchivedObjectMySQL, prefixMarker, prefix),
 		getObject:                      strings.ReplaceAll(getObjectMySQL, prefixMarker, prefix),
@@ -481,6 +489,19 @@ func (q *mysqlQueries) ArchiveObject(ctx context.Context, db DBTX, arg ArchiveOb
 	result, err := db.ExecContext(ctx, q.archiveObject,
 		arg.ID,
 		arg.Scope,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// ArchiveObjectsForOwner runs the :execrows query against mysql.
+func (q *mysqlQueries) ArchiveObjectsForOwner(ctx context.Context, db DBTX, arg ArchiveObjectsForOwnerParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.archiveObjectsForOwner,
+		arg.Scope,
+		arg.OwnerID,
 	)
 	if err != nil {
 		return 0, err
@@ -1037,6 +1058,10 @@ var (
 		ID    string
 		Scope tenancy.Scope
 	}(ArchiveObjectParams{})
+	_ = struct {
+		Scope   tenancy.Scope
+		OwnerID string
+	}(ArchiveObjectsForOwnerParams{})
 	_ = struct {
 		ID            string
 		Scope         tenancy.Scope

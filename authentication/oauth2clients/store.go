@@ -174,4 +174,36 @@ type Store interface {
 	// withdrawn client indistinguishable from an unknown one at the one layer
 	// that can tell the difference.
 	ResolveClientID(ctx context.Context, q database.SQLQueryExecutor, clientID string) (*Client, error)
+
+	// DeleteClientsForOwner destroys every registration one person owns within
+	// the scope, withdrawn ones included, and reports how many it destroyed. It
+	// is what authentication/oauth2clients/privacy's dataprivacy.Eraser is built
+	// on, and it takes the caller's transaction for the reason every other write
+	// here does: a subject's credentials going with the rest of their footprint,
+	// or not at all, is the whole of what an erasure means.
+	//
+	// Zero is not an error. An erasure runs against whatever the subject
+	// actually left behind, and a person who registered nothing is a person with
+	// nothing here to reach.
+	//
+	// It is the one hard delete in this store, and [Store.ArchiveClient] is what
+	// it is not. Withdrawing keeps the row so the authorization server can refuse
+	// the tokens a live client_id names — and it keeps belongs_to_user, Name and
+	// Description with it, which between them are the whole of what this table
+	// says about a person. An erasure that archived would be an erasure that
+	// erased nothing, so this reaches past the write that was already there.
+	//
+	// Deleting does not weaken the refusal it takes away. A token naming a
+	// client_id no row resolves is refused by the absence, which is stricter than
+	// the withdrawn row's refusal rather than looser; what is lost is the ability
+	// to tell a withdrawn client from one that never existed, and for a subject
+	// who asked to be forgotten "never existed" is the answer they asked for.
+	//
+	// It does not reach a registration nobody owns. belongs_to_user is the empty
+	// string on one the deployment or the tenant administers on its own behalf,
+	// so an empty userID is ErrEmptyUserID here for the reason it is on
+	// [Store.ListClientsForOwner], and a sharper one: an erasure that quietly
+	// answered with the rows nobody owns would destroy the deployment's own
+	// credentials on behalf of a subject who never had any.
+	DeleteClientsForOwner(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
 }

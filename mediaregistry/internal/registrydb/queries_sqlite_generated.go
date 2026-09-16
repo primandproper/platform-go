@@ -19,6 +19,12 @@ WHERE archived_at IS NULL
 	AND id = ?1
 	AND scope = ?2`
 
+const archiveObjectsForOwnerSQLite = `UPDATE {{prefix}}uploads_objects SET
+	archived_at = CURRENT_TIMESTAMP
+WHERE archived_at IS NULL
+	AND scope = ?1
+	AND owner_id = ?2`
+
 const createObjectSQLite = `
 INSERT INTO {{prefix}}uploads_objects (
 	id,
@@ -442,6 +448,7 @@ LIMIT COALESCE(?8, 50)`
 // sqliteQueries answers every query in Querier against sqlite.
 type sqliteQueries struct {
 	archiveObject                  string
+	archiveObjectsForOwner         string
 	createObject                   string
 	getArchivedObject              string
 	getObject                      string
@@ -461,6 +468,7 @@ type sqliteQueries struct {
 func newSQLite(prefix string) *sqliteQueries {
 	return &sqliteQueries{
 		archiveObject:                  strings.ReplaceAll(archiveObjectSQLite, prefixMarker, prefix),
+		archiveObjectsForOwner:         strings.ReplaceAll(archiveObjectsForOwnerSQLite, prefixMarker, prefix),
 		createObject:                   strings.ReplaceAll(createObjectSQLite, prefixMarker, prefix),
 		getArchivedObject:              strings.ReplaceAll(getArchivedObjectSQLite, prefixMarker, prefix),
 		getObject:                      strings.ReplaceAll(getObjectSQLite, prefixMarker, prefix),
@@ -511,6 +519,19 @@ func (q *sqliteQueries) ArchiveObject(ctx context.Context, db DBTX, arg ArchiveO
 	result, err := db.ExecContext(ctx, q.archiveObject,
 		arg.ID,
 		arg.Scope,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// ArchiveObjectsForOwner runs the :execrows query against sqlite.
+func (q *sqliteQueries) ArchiveObjectsForOwner(ctx context.Context, db DBTX, arg ArchiveObjectsForOwnerParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.archiveObjectsForOwner,
+		arg.Scope,
+		arg.OwnerID,
 	)
 	if err != nil {
 		return 0, err
@@ -1004,6 +1025,10 @@ var (
 		ID    string
 		Scope tenancy.Scope
 	}(ArchiveObjectParams{})
+	_ = struct {
+		Scope   tenancy.Scope
+		OwnerID string
+	}(ArchiveObjectsForOwnerParams{})
 	_ = struct {
 		ID            string
 		Scope         tenancy.Scope

@@ -41,6 +41,10 @@ const createRegisteredClientMySQL = `INSERT IGNORE INTO {{prefix}}oauth2_registe
 	?
 )`
 
+const deleteRegisteredClientsForOwnerMySQL = `DELETE FROM {{prefix}}oauth2_registered_clients
+WHERE scope = ?
+	AND belongs_to_user = ?`
+
 const getArchivedRegisteredClientMySQL = `SELECT
 	{{prefix}}oauth2_registered_clients.id,
 	{{prefix}}oauth2_registered_clients.scope,
@@ -322,6 +326,7 @@ WHERE archived_at IS NULL
 type mysqlQueries struct {
 	archiveRegisteredClient                 string
 	createRegisteredClient                  string
+	deleteRegisteredClientsForOwner         string
 	getArchivedRegisteredClient             string
 	getRegisteredClient                     string
 	getRegisteredClientByClientID           string
@@ -338,6 +343,7 @@ func newMySQL(prefix string) *mysqlQueries {
 	return &mysqlQueries{
 		archiveRegisteredClient:                 strings.ReplaceAll(archiveRegisteredClientMySQL, prefixMarker, prefix),
 		createRegisteredClient:                  strings.ReplaceAll(createRegisteredClientMySQL, prefixMarker, prefix),
+		deleteRegisteredClientsForOwner:         strings.ReplaceAll(deleteRegisteredClientsForOwnerMySQL, prefixMarker, prefix),
 		getArchivedRegisteredClient:             strings.ReplaceAll(getArchivedRegisteredClientMySQL, prefixMarker, prefix),
 		getRegisteredClient:                     strings.ReplaceAll(getRegisteredClientMySQL, prefixMarker, prefix),
 		getRegisteredClientByClientID:           strings.ReplaceAll(getRegisteredClientByClientIDMySQL, prefixMarker, prefix),
@@ -374,6 +380,19 @@ func (q *mysqlQueries) CreateRegisteredClient(ctx context.Context, db DBTX, arg 
 		arg.SecretHash,
 		arg.RedirectUris,
 		arg.Scopes,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// DeleteRegisteredClientsForOwner runs the :execrows query against mysql.
+func (q *mysqlQueries) DeleteRegisteredClientsForOwner(ctx context.Context, db DBTX, arg DeleteRegisteredClientsForOwnerParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteRegisteredClientsForOwner,
+		arg.Scope,
+		arg.BelongsToUser,
 	)
 	if err != nil {
 		return 0, err
@@ -749,6 +768,10 @@ var (
 		RedirectUris  string
 		Scopes        string
 	}(CreateRegisteredClientParams{})
+	_ = struct {
+		Scope         tenancy.Scope
+		BelongsToUser string
+	}(DeleteRegisteredClientsForOwnerParams{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope

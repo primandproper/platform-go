@@ -251,6 +251,23 @@ func revokeForUser(tb testing.TB, store *SQLStore, scope tenancy.Scope, userID s
 	return revoked, err
 }
 
+// deleteForUser destroys every token one principal holds, in a transaction of
+// its own.
+func deleteForUser(tb testing.TB, store *SQLStore, scope tenancy.Scope, userID string) (int64, error) {
+	tb.Helper()
+
+	var deleted int64
+
+	err := withTx(tb, store, func(tx database.Tx) error {
+		var deleteErr error
+		deleted, deleteErr = store.DeleteForUser(tb.Context(), tx, scope, userID)
+
+		return deleteErr
+	})
+
+	return deleted, err
+}
+
 // recordingLogger counts what was logged as an error, for the one code path in
 // this package whose only effect is a log line: the background sweep, which
 // nothing is waiting on.

@@ -163,8 +163,10 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	want := []string{
 		InsertTokenQuery,
 		GetTokenByDigestQuery,
+		ListTokensForUserQuery,
 		RedeemTokenQuery,
 		RevokeTokensForUserQuery,
+		DeleteTokensForUserQuery,
 		SweepExpiredTokensQuery,
 	}
 
@@ -183,12 +185,21 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 
 			test.SliceEqFunc(t, want, names, func(a, b string) bool { return a == b })
 
-			// Nothing lists these rows and nothing archives one: a token is
-			// written once, read by its digest, stamped once, and deleted. The
-			// absences are what make the table's shape a decision rather than
-			// an oversight.
-			test.StrNotContains(t, rendered, "ListToken")
+			// Nothing archives one of these rows: a token is written once,
+			// read by its digest, stamped once, and deleted. The absence is
+			// what makes the table's shape a decision rather than an oversight.
 			test.StrNotContains(t, rendered, querygen.ArchivedAtColumn)
+
+			// The one list is unpaged, which is the other half of that shape.
+			// A cursor and a filter window are what a paged read brings, and
+			// this corpus has neither — so the sentence the table's DDL and
+			// [Render] both make about them stays true of the whole file
+			// rather than of the statements that predate the list.
+			test.StrNotContains(t, rendered, "page_cursor")
+			test.StrNotContains(t, rendered, "result_limit")
+			test.StrNotContains(t, rendered, "filtered_count")
+			test.StrNotContains(t, rendered, "created_after")
+			test.StrNotContains(t, rendered, querygen.DescendingSuffix)
 		})
 	}
 }

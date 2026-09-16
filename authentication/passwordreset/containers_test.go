@@ -190,6 +190,47 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		test.NoError(t, verifyErr)
 	})
 
+	// The two statements a privacy adapter is built on, against the server's own
+	// types. Both are keyed on a principal of their own rather than on
+	// testUserID, because every subtest here shares one table — so what is
+	// asserted is which rows survive, never how many the table holds.
+	t.Run("lists and erases one principal's whole history", func(t *testing.T) {
+		spent, issueErr := issueFor(t, store, testScope(), "erasure_user", time.Hour)
+		must.NoError(t, issueErr)
+
+		outstanding, issueErr := issueFor(t, store, testScope(), "erasure_user", time.Hour)
+		must.NoError(t, issueErr)
+
+		neighbor, issueErr := issueFor(t, store, testScope(), "erasure_neighbor", time.Hour)
+		must.NoError(t, issueErr)
+
+		_, consumeErr := consume(t, store, testScope(), spent.Secret)
+		must.NoError(t, consumeErr)
+
+		// The list carries the redeemed row and the outstanding one, oldest
+		// first, and reaches nobody else.
+		held, listErr := store.ListForUser(ctx, client.Writer(), testScope(), "erasure_user")
+		must.NoError(t, listErr)
+		must.SliceLen(t, 2, held)
+		test.EqOp(t, spent.Token.ID, held[0].ID)
+		test.EqOp(t, outstanding.Token.ID, held[1].ID)
+		must.NotNil(t, held[0].RedeemedAt)
+		test.Nil(t, held[1].RedeemedAt)
+
+		// The erasure takes the redeemed row too, which is the whole of what it
+		// does that the revocation does not.
+		deleted, deleteErr := deleteForUser(t, store, testScope(), "erasure_user")
+		must.NoError(t, deleteErr)
+		test.EqOp(t, int64(2), deleted)
+
+		gone, listErr := store.ListForUser(ctx, client.Writer(), testScope(), "erasure_user")
+		must.NoError(t, listErr)
+		test.SliceEmpty(t, gone)
+
+		_, verifyErr := verify(t, store, testScope(), neighbor.Secret)
+		test.NoError(t, verifyErr)
+	})
+
 	// A prefix is not decoration: it renders a second table, and both the DDL
 	// and every statement have to agree about which one they mean.
 	t.Run("serves a namespaced table alongside the plain one", func(t *testing.T) {

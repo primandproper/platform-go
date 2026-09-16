@@ -11,6 +11,12 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+// DeleteTokensForUserParams are the arguments to DeleteTokensForUser.
+type DeleteTokensForUserParams struct {
+	Scope         tenancy.Scope
+	BelongsToUser string
+}
+
 // GetTokenByDigestParams are the arguments to GetTokenByDigest.
 type GetTokenByDigestParams struct {
 	TokenDigest string
@@ -34,6 +40,22 @@ type InsertTokenParams struct {
 	BelongsToUser string
 	TokenDigest   string
 	ExpiresAt     time.Time
+	CreatedAt     time.Time
+}
+
+// ListTokensForUserParams are the arguments to ListTokensForUser.
+type ListTokensForUserParams struct {
+	Scope         tenancy.Scope
+	BelongsToUser string
+}
+
+// ListTokensForUserRow is one row of ListTokensForUser's result.
+type ListTokensForUserRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	BelongsToUser string
+	ExpiresAt     time.Time
+	RedeemedAt    *time.Time
 	CreatedAt     time.Time
 }
 

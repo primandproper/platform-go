@@ -216,6 +216,95 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.ErrorIs(t, err, ErrEmptyUserID)
 	})
 
+	t.Run("an erasure destroys one person's registrations and nobody else's", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		mine := env.seed(t, store, testScope, testOwner)
+		alsoMine := env.seed(t, store, testScope, testOwner)
+		theirs := env.seed(t, store, testScope, otherOwner)
+
+		// A registration nobody owns is nobody's to erase, which is the same
+		// reading the self-service page takes of belongs_to_user.
+		administered := env.seed(t, store, testScope, "")
+
+		// And a registry the request did not name is out of reach, which is what
+		// binding the scope rather than deriving it buys.
+		elsewhere := env.seed(t, store, otherScope, testOwner)
+
+		deleted, err := env.eraseForOwner(t, store, testScope, testOwner)
+		must.NoError(t, err)
+		test.EqOp(t, int64(2), deleted)
+
+		// The rows are gone rather than withdrawn: the lookup that still finds a
+		// withdrawn registration finds nothing at all now, which is what makes
+		// this an erasure.
+		for _, gone := range []*Client{mine, alsoMine} {
+			_, readErr := store.ResolveClientID(t.Context(), env.reader(), gone.ClientID)
+			test.ErrorIs(t, readErr, ErrClientNotFound)
+		}
+
+		for _, survivor := range []*Client{theirs, administered, elsewhere} {
+			found, readErr := store.ResolveClientID(t.Context(), env.reader(), survivor.ClientID)
+			must.NoError(t, readErr)
+			test.EqOp(t, survivor.ID, found.ID)
+		}
+	})
+
+	t.Run("an erasure reaches the registrations somebody already withdrew", func(t *testing.T) {
+		t.Parallel()
+
+		// The delete renders no archived predicate, and this is why. A
+		// registration withdrawn last year is still a row with somebody's name
+		// and description on it, and an erasure that skipped archived rows would
+		// miss exactly the ones nobody is looking at.
+		store := env.newStore(t)
+
+		withdrawn := env.seed(t, store, testScope, testOwner)
+		must.NoError(t, env.archive(t, store, testScope, withdrawn.ID))
+
+		// It is still there, which is the whole point of withdrawing.
+		resolved, err := store.ResolveClientID(t.Context(), env.reader(), withdrawn.ClientID)
+		must.NoError(t, err)
+		must.NotNil(t, resolved.ArchivedAt)
+
+		deleted, err := env.eraseForOwner(t, store, testScope, testOwner)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), deleted)
+
+		_, err = store.ResolveClientID(t.Context(), env.reader(), withdrawn.ClientID)
+		test.ErrorIs(t, err, ErrClientNotFound)
+	})
+
+	t.Run("an erasure naming nobody is refused rather than widened", func(t *testing.T) {
+		t.Parallel()
+
+		// Reaching the administered rows here would destroy the deployment's own
+		// credentials on behalf of a subject who never had any.
+		store := env.newStore(t)
+		administered := env.seed(t, store, testScope, "")
+
+		_, err := env.eraseForOwner(t, store, testScope, "")
+		test.ErrorIs(t, err, ErrEmptyUserID)
+
+		found, err := store.ResolveClientID(t.Context(), env.reader(), administered.ClientID)
+		must.NoError(t, err)
+		test.EqOp(t, administered.ID, found.ID)
+	})
+
+	t.Run("a person who registered nothing is not a failure", func(t *testing.T) {
+		t.Parallel()
+
+		// Zero is an answer. An erasure runs against whatever the subject
+		// actually left behind.
+		store := env.newStore(t)
+
+		deleted, err := env.eraseForOwner(t, store, testScope, "somebody_with_none")
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), deleted)
+	})
+
 	t.Run("an update revises the descriptive fields and answers with the row", func(t *testing.T) {
 		t.Parallel()
 
@@ -363,6 +452,13 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		withdrawn, err := store.ArchiveClient(t.Context(), nil, testScope, "id")
 		test.ErrorIs(t, err, ErrNilTransaction)
 		test.Nil(t, withdrawn)
+
+		// The erasure answers with a count rather than a row, so what a refusal
+		// hands back is zero: a caller that ignored the error would add nothing
+		// to its total rather than a number it never earned.
+		deleted, err := store.DeleteClientsForOwner(t.Context(), nil, testScope, testOwner)
+		test.ErrorIs(t, err, ErrNilTransaction)
+		test.EqOp(t, int64(0), deleted)
 	})
 
 	t.Run("every consumer read refuses an unset scope", func(t *testing.T) {
@@ -382,6 +478,13 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.ErrorIs(t, err, tenancy.ErrNoScope)
 
 		_, err = store.ListClientsForOwner(t.Context(), env.reader(), unset, testOwner, nil)
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+
+		// And the write an erasure makes, where an unset scope would be worst:
+		// a statement that fell through to matching every registry for an owner
+		// id would destroy a person's credentials in tenants the request never
+		// named.
+		_, err = env.eraseForOwner(t, store, unset, testOwner)
 		test.ErrorIs(t, err, tenancy.ErrNoScope)
 	})
 

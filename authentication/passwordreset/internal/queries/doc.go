@@ -1,7 +1,7 @@
 /*
 Package queries is the password reset token schema described as data: the
 canonical table name, its columns in the order every read projects them, the
-subsets a write assigns, and the five statements the store executes over them.
+subsets a write assigns, and the seven statements the store executes over them.
 
 It exists because those facts have two consumers that must not disagree. The
 generator behind `make generate` renders them through database/querygen into the
@@ -10,7 +10,7 @@ the querier sqlc-gen-unison generates from those files. A column list spelled in
 both places could differ in one name, and the symptom would be a check that
 passes over SQL nobody executes.
 
-# The five statements
+# The seven statements
 
   - InsertToken writes one issuance. It is a plain INSERT, so a digest
     collision is a failed write rather than a silently replaced row.
@@ -21,6 +21,12 @@ passes over SQL nobody executes.
     answer one link at once.
   - RevokeTokensForUser destroys one principal's outstanding tokens, sparing
     the redeemed ones.
+  - DeleteTokensForUser destroys every token one principal holds, sparing
+    nothing. It is the revocation without its third predicate, and the
+    difference is a revocation against an erasure — see [Render].
+  - ListTokensForUser reads every token one principal holds, oldest first,
+    projecting everything but the digest. It is the one list here and it is
+    unpaged, which is why this corpus still has no cursor and no filter window.
   - SweepExpiredTokens removes everything past its deadline, against a horizon
     the store binds from its own clock.
 
