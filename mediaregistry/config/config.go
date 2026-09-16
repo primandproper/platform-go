@@ -15,6 +15,13 @@ It configures no object storage. Which bucket the bytes go to is uploadscfg's
 question, and keeping the two apart is the same separation the registry itself
 rests on: a consumer registering objects somebody else stored has no storage
 config to give.
+
+The privacy seam is not here either, and that absence is the same reading the
+composition root takes of every registry: mediaregistry/privacy needs a
+ScopeResolver, which is a mapping from a person to the tenants they belong to,
+and no environment variable can express one. A service that wants a subject's
+uploads in its subject access requests registers the collector and the eraser
+itself, with the store this package built.
 */
 package mediaregistrycfg
 

@@ -357,7 +357,10 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	// The registry table only. Which bucket the bytes went to is the Uploads
 	// block's question, and keeping the two apart is the separation the registry
 	// itself rests on: a service registering objects somebody else stored
-	// configures this and no storage at all.
+	// configures this and no storage at all. mediaregistry/privacy's collector
+	// and eraser are the service's to register too, for the reason every
+	// registry in this file is: they need a mapping from a person to the tenants
+	// they belong to.
 	if cfg.MediaRegistry != nil {
 		do.ProvideValue(i, cfg.MediaRegistry)
 		mediaregistrycfg.RegisterStore(i)
@@ -418,6 +421,10 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 		oauth2servercfg.RegisterServer(i)
 	}
 
+	// The store only. settings/privacy's collector and eraser are the service's
+	// to register, for the reason every registry in this file is: they need a
+	// mapping from a person to the tenants they belong to, and no environment
+	// variable can express one.
 	if cfg.Settings != nil {
 		do.ProvideValue(i, cfg.Settings)
 		settingscfg.RegisterStore(i)

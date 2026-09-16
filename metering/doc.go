@@ -301,6 +301,49 @@ cardinality, and a dimension whose values come from user input has no bound. A
 caller that needs per-model limits registers a meter per model, where the
 cardinality is a decision somebody made on purpose.
 
+# There is deliberately no privacy adapter
+
+Ten packages in this module ship a privacy subpackage — a dataprivacy.Collector,
+and where deletion is right a dataprivacy.Eraser, registered at the composition
+root so a subject access request fans out over them. This package ships neither,
+and the omission is the ruling rather than an unfinished job.
+
+Usage.Subject is the account or tenant being billed. It is not a person, and
+nothing here maps one to the other: the field's own documentation says what it
+is, the totals table's primary key leads with it, and a deployment that bills
+individuals has an account per individual rather than a second vocabulary this
+package knows about.
+
+Both tables are the substrate of an invoice. The events table is the evidence
+behind a disputed one — which is why the dedupe is a primary key held for a
+billing period rather than a cache — and the totals table is what was actually
+posted to the provider, sequence and all. billing/privacy's ruling applies to
+both without modification: every jurisdiction that grants a right to erasure also
+requires financial records kept, the retention obligation wins, and an Eraser
+here would be a seam whose only correct implementation erases nothing. Shipping
+one would invite a deployment to register it and believe its usage history had
+been deleted.
+
+The right of access is not the right of erasure, and the access half is answered
+where the facts are legible. What a subject is entitled to see is what they were
+charged for, which is billing/privacy's export — a subscription, a purchase and a
+ledger row, in a vocabulary somebody can read. A quantity folded into a period on
+a meter named in a registry is the arithmetic behind that line rather than a
+second answer to the same question, and neither table carries the id a cursor
+walks, so the read such a collector would need is one this schema does not offer.
+
+Usage.Dimensions is the one place a deployment can put a person into these
+tables, and it is why the observability keys above name every field of an event
+except that one. The field is application-chosen keys and values, and a
+deployment that dimensions by email address has put personal data somewhere this
+package cannot enumerate it, cannot index it, and does not claim to erase it. The
+answer is to not do that — a dimension whose values come from user input has no
+bound, which is already the reason it cannot be a quota key.
+
+A deployment whose counsel reads any of this differently deletes the rows through
+its own migration. It is a decision somebody has made, and this package declines
+to make it for them.
+
 # What is not implemented
 
 AggregationUniqueCount — monthly active users, distinct seats — is named and

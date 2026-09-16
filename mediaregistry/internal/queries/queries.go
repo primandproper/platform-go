@@ -117,9 +117,40 @@ func Render(d dialect.Dialect) string {
 	rendered := g.StandardCRUD(ObjectsTable, ObjectColumns, options()...)
 	rendered = append(rendered, keyedLists(g)...)
 	rendered = append(rendered, keyedReads(g)...)
-	rendered = append(rendered, batchedRead(g))
+	rendered = append(rendered, batchedRead(g), ownerErasure(g))
 
 	return querygen.RenderFile(rendered)
+}
+
+// ownerErasure is the archive of everything one principal uploaded, which is
+// what mediaregistry/privacy's dataprivacy.Eraser is built on.
+//
+// It is an archive rather than a delete, and that is the ruling rather than a
+// milder version of one. Nothing in this package opens, reads or removes an
+// object; the row is the only record of the key the bytes are sitting at, which
+// is the fact a consumer's retention sweep is written from. A hard delete here
+// would destroy that record while leaving the bytes exactly where they are, so
+// an erasure would end with a deployment unable to find what it still has to
+// remove — the opposite of the outcome a right-to-be-forgotten request asks for.
+// See GetArchivedObject, which exists for the same reason at single-row scale.
+//
+// The key is the scope and the owner, and the column list is what says so. It is
+// keyedColumns rather than the whole table: leaving the id out is how a
+// statement keys on something other than a row, so this one names every object a
+// principal owns rather than one of them. What the list keeps is archived_at,
+// which is what renders the archived_at IS NULL that makes the pass idempotent —
+// an object somebody archived last week is not archived twice, and the count is
+// the number of rows this call actually hid rather than the number it matched.
+//
+// It is keyed on the owner rather than on the attachment. belongs_to_type and
+// belongs_to_id name whatever a consumer hung the object off, in the consumer's
+// own vocabulary, and a principal is not one of the things that vocabulary is
+// for; owner_id is the column this package documents as the principal. The
+// partial index over (scope, owner_id, id) on live rows is the one this reads.
+func ownerErasure(g *querygen.Generator) *querygen.Query {
+	return g.ArchiveQuery("ArchiveObjectsForOwner", ObjectsTable, keyedColumns(),
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: OwnerIDColumn})
 }
 
 // keyedLists is the two pages the store answers beyond the scope's own: one

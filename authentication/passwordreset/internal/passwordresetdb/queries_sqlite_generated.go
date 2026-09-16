@@ -13,6 +13,10 @@ import (
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
+const deleteTokensForUserSQLite = `DELETE FROM {{prefix}}password_reset_tokens
+WHERE scope = ?1
+	AND belongs_to_user = ?2`
+
 const getTokenByDigestSQLite = `SELECT
 	{{prefix}}password_reset_tokens.id,
 	{{prefix}}password_reset_tokens.scope,
@@ -41,6 +45,18 @@ INSERT INTO {{prefix}}password_reset_tokens (
 	?6
 )`
 
+const listTokensForUserSQLite = `SELECT
+	{{prefix}}password_reset_tokens.id,
+	{{prefix}}password_reset_tokens.scope,
+	{{prefix}}password_reset_tokens.belongs_to_user,
+	{{prefix}}password_reset_tokens.expires_at,
+	{{prefix}}password_reset_tokens.redeemed_at,
+	{{prefix}}password_reset_tokens.created_at
+FROM {{prefix}}password_reset_tokens
+WHERE {{prefix}}password_reset_tokens.scope = ?1
+	AND {{prefix}}password_reset_tokens.belongs_to_user = ?2
+ORDER BY {{prefix}}password_reset_tokens.created_at ASC, {{prefix}}password_reset_tokens.id ASC`
+
 const redeemTokenSQLite = `UPDATE {{prefix}}password_reset_tokens SET
 	redeemed_at = ?1
 WHERE id = ?2
@@ -56,8 +72,10 @@ WHERE expires_at <= ?1`
 
 // sqliteQueries answers every query in Querier against sqlite.
 type sqliteQueries struct {
+	deleteTokensForUser string
 	getTokenByDigest    string
 	insertToken         string
+	listTokensForUser   string
 	redeemToken         string
 	revokeTokensForUser string
 	sweepExpiredTokens  string
@@ -67,8 +85,10 @@ type sqliteQueries struct {
 // table name the analyzer identified.
 func newSQLite(prefix string) *sqliteQueries {
 	return &sqliteQueries{
+		deleteTokensForUser: strings.ReplaceAll(deleteTokensForUserSQLite, prefixMarker, prefix),
 		getTokenByDigest:    strings.ReplaceAll(getTokenByDigestSQLite, prefixMarker, prefix),
 		insertToken:         strings.ReplaceAll(insertTokenSQLite, prefixMarker, prefix),
+		listTokensForUser:   strings.ReplaceAll(listTokensForUserSQLite, prefixMarker, prefix),
 		redeemToken:         strings.ReplaceAll(redeemTokenSQLite, prefixMarker, prefix),
 		revokeTokensForUser: strings.ReplaceAll(revokeTokensForUserSQLite, prefixMarker, prefix),
 		sweepExpiredTokens:  strings.ReplaceAll(sweepExpiredTokensSQLite, prefixMarker, prefix),
@@ -105,6 +125,19 @@ func timeTextPtr(t *time.Time) any {
 	return timeText(*t)
 }
 
+// DeleteTokensForUser runs the :execrows query against sqlite.
+func (q *sqliteQueries) DeleteTokensForUser(ctx context.Context, db DBTX, arg DeleteTokensForUserParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteTokensForUser,
+		arg.Scope,
+		arg.BelongsToUser,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // GetTokenByDigest runs the :one query against sqlite.
 func (q *sqliteQueries) GetTokenByDigest(ctx context.Context, db DBTX, arg GetTokenByDigestParams) (GetTokenByDigestRow, error) {
 	row := db.QueryRowContext(ctx, q.getTokenByDigest,
@@ -138,6 +171,44 @@ func (q *sqliteQueries) InsertToken(ctx context.Context, db DBTX, arg InsertToke
 	)
 
 	return err
+}
+
+// ListTokensForUser runs the :many query against sqlite.
+func (q *sqliteQueries) ListTokensForUser(ctx context.Context, db DBTX, arg ListTokensForUserParams) ([]ListTokensForUserRow, error) {
+	rows, err := db.QueryContext(ctx, q.listTokensForUser,
+		arg.Scope,
+		arg.BelongsToUser,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListTokensForUserRow
+
+	for rows.Next() {
+		var i ListTokensForUserRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.BelongsToUser,
+			&i.ExpiresAt,
+			&i.RedeemedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
 }
 
 // RedeemToken runs the :execrows query against sqlite.
@@ -186,6 +257,10 @@ func (q *sqliteQueries) SweepExpiredTokens(ctx context.Context, db DBTX, arg Swe
 // transposition at run time.
 var (
 	_ = struct {
+		Scope         tenancy.Scope
+		BelongsToUser string
+	}(DeleteTokensForUserParams{})
+	_ = struct {
 		TokenDigest string
 		Scope       tenancy.Scope
 	}(GetTokenByDigestParams{})
@@ -205,6 +280,18 @@ var (
 		ExpiresAt     time.Time
 		CreatedAt     time.Time
 	}(InsertTokenParams{})
+	_ = struct {
+		Scope         tenancy.Scope
+		BelongsToUser string
+	}(ListTokensForUserParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		BelongsToUser string
+		ExpiresAt     time.Time
+		RedeemedAt    *time.Time
+		CreatedAt     time.Time
+	}(ListTokensForUserRow{})
 	_ = struct {
 		RedeemedAt *time.Time
 		ID         string

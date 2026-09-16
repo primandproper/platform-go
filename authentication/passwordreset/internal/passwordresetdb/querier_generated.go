@@ -27,10 +27,17 @@ import (
 // that discriminates, or set clientFoundRows=true in the MySQL DSN, which
 // switches MySQL to matched semantics.
 type Querier interface {
+	// DeleteTokensForUser runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	DeleteTokensForUser(ctx context.Context, db DBTX, arg DeleteTokensForUserParams) (int64, error)
 	// GetTokenByDigest runs the :one query.
 	GetTokenByDigest(ctx context.Context, db DBTX, arg GetTokenByDigestParams) (GetTokenByDigestRow, error)
 	// InsertToken runs the :exec query.
 	InsertToken(ctx context.Context, db DBTX, arg InsertTokenParams) error
+	// ListTokensForUser runs the :many query.
+	ListTokensForUser(ctx context.Context, db DBTX, arg ListTokensForUserParams) ([]ListTokensForUserRow, error)
 	// RedeemToken runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note

@@ -17,6 +17,12 @@ type ArchiveObjectParams struct {
 	Scope tenancy.Scope
 }
 
+// ArchiveObjectsForOwnerParams are the arguments to ArchiveObjectsForOwner.
+type ArchiveObjectsForOwnerParams struct {
+	Scope   tenancy.Scope
+	OwnerID string
+}
+
 // CreateObjectParams are the arguments to CreateObject.
 type CreateObjectParams struct {
 	ID            string

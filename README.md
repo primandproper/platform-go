@@ -61,9 +61,9 @@ reasons behind the three exceptions.
 |------------------------------------|-------------------------------------------------------------------------------|----------------------------------|
 | `identity`                         | Users, accounts, memberships and invitations, the lifecycle over them, and `identity/privacy`, the directory's contribution to a subject access request | postgres, mysql, sqlite (+ grpc) |
 | `authentication/signin`            | Sign-in: the order the engines and the directory are used in, owning no table | — (+ grpc)                       |
-| `authentication/passwordreset`     | Password reset tokens: digest at rest, single use enforced by the store       | postgres, mysql, sqlite          |
+| `authentication/passwordreset`     | Password reset tokens: digest at rest, single use enforced by the store, and `authentication/passwordreset/privacy` | postgres, mysql, sqlite          |
 | `authentication/webauthnsessions`  | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
-| `authentication/oauth2clients`     | An administered OAuth2 client registry                                        | postgres, mysql, sqlite (+ grpc) |
+| `authentication/oauth2clients`     | An administered OAuth2 client registry, and `authentication/oauth2clients/privacy` | postgres, mysql, sqlite (+ grpc) |
 | `authentication/oauth2serverstore` | The OAuth2 server's client and token tables                                   | postgres, mysql, sqlite          |
 | `rbac`                             | Roles and permissions as rows, behind the policy interface                    | postgres, mysql, sqlite          |
 | `sessions`                         | Server-side sessions over cookies                                             | cache, database (+ http)         |
@@ -73,8 +73,8 @@ reasons behind the three exceptions.
 |----------------|--------------------------------------------------------------------------------------------------|-------------------------|
 | `billing`      | What a deployment sells, and what its customers paid: catalog, subscriptions, purchases, ledger  | postgres, mysql, sqlite |
 | `entitlements` | Feature access & remaining quota                                                                 | —                       |
-| `metering`     | Durable usage metering & quotas                                                                  | postgres, mysql, sqlite |
-| `settings`     | Per-user and per-account runtime settings: admin-defined definitions, per-subject values         | postgres, mysql, sqlite |
+| `metering`     | Durable usage metering & quotas. Ships no privacy adapter, and its doc records the ruling         | postgres, mysql, sqlite |
+| `settings`     | Per-user and per-account runtime settings: definitions, per-subject values, and `settings/privacy` | postgres, mysql, sqlite |
 | `comments`     | Threaded comments on consumer-declared targets                                                   | postgres, mysql, sqlite |
 | `issuereports` | User-submitted issue reports with a triage lifecycle                                             | postgres, mysql, sqlite |
 | `waitlists`    | Pre-launch waitlists: signup lifecycle, and an unsubscribe that outlives the address             | postgres, mysql, sqlite |
@@ -87,7 +87,7 @@ reasons behind the three exceptions.
 | `dataprivacy`   | Subject access & erasure requests           | postgres, mysql, sqlite          |
 | `shredding`     | Per-subject data keys that can be destroyed | postgres, mysql, sqlite          |
 | `retention`     | Policy-driven expiry deletion               | postgres, mysql, sqlite          |
-| `mediaregistry` | Object metadata rows over an object store   | postgres, mysql, sqlite          |
+| `mediaregistry` | Object metadata rows over an object store, and `mediaregistry/privacy`   | postgres, mysql, sqlite          |
 
 ### Coordination & delivery
 | Package         | Purpose                                                                             | Implementations                  |
@@ -423,7 +423,7 @@ is not uniform and neither is the subset of a store that crosses:
 | `billing` | wire surface, read-biased | gRPC | the four status moves, whose caller is a processor callback already inside your transaction |
 | `audit` | wire surface, read-only and scope-bound | gRPC | `Record`, and `Query.Scope` itself |
 | `dataprivacy` | wire surface over the existing `Service` | HTTP | — |
-| `mediaregistry` | binding, not a resource surface | HTTP | all seven store methods; what ships is the guarded serve |
+| `mediaregistry` | binding, not a resource surface | HTTP | all nine store methods; what ships is the guarded serve |
 
 Seven get nothing, and saying so is the point of this section rather than
 leaving them unmentioned: `metering`, `saga`, `timers`, `workqueue`, `outbox`,

@@ -17,6 +17,15 @@ registry and each behind a grant. There is no method here a caller reaches
 without one, which is the property [Permissions] and [Require] are shaped around:
 every method this service declares is in that map.
 
+The store's erasure is a fifth method and not a fifth RPC, and it stays off for
+the reason settings gives about its own: a write whose whole property is that it
+commits inside its caller's transaction is not an RPC.
+[oauth2clients.Store.DeleteClientsForOwner] runs in the transaction that removes
+the rest of a person, on the same Tx as a dozen other domains' erasures, and over
+a wire it would land in a transaction of its own at a moment the caller does not
+choose. What a failure leaves behind is a person erased from one table and
+present in the others, which no amount of retrying repairs.
+
 An earlier revision served ten. The other six — a revision method, and a
 self-service mirror of all five operations reachable behind no permission at all
 — answered no caller in any consumer, and the permissionless five were the

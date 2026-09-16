@@ -29,6 +29,19 @@ FROM password_reset_tokens
 WHERE password_reset_tokens.token_digest = sqlc.arg(token_digest)
 	AND password_reset_tokens.scope = sqlc.arg(scope);
 
+-- name: ListTokensForUser :many
+SELECT
+	password_reset_tokens.id,
+	password_reset_tokens.scope,
+	password_reset_tokens.belongs_to_user,
+	password_reset_tokens.expires_at,
+	password_reset_tokens.redeemed_at,
+	password_reset_tokens.created_at
+FROM password_reset_tokens
+WHERE password_reset_tokens.scope = sqlc.arg(scope)
+	AND password_reset_tokens.belongs_to_user = sqlc.arg(belongs_to_user)
+ORDER BY password_reset_tokens.created_at ASC, password_reset_tokens.id ASC;
+
 -- name: RedeemToken :execrows
 UPDATE password_reset_tokens SET
 	redeemed_at = sqlc.arg(redeemed_at)
@@ -40,6 +53,11 @@ DELETE FROM password_reset_tokens
 WHERE scope = sqlc.arg(scope)
 	AND belongs_to_user = sqlc.arg(belongs_to_user)
 	AND redeemed_at IS NULL;
+
+-- name: DeleteTokensForUser :execrows
+DELETE FROM password_reset_tokens
+WHERE scope = sqlc.arg(scope)
+	AND belongs_to_user = sqlc.arg(belongs_to_user);
 
 -- name: SweepExpiredTokens :execrows
 DELETE FROM password_reset_tokens

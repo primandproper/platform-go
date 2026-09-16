@@ -150,6 +150,30 @@ scheduler calling [SQLStore.Sweep], the table grows by a row for every password
 anybody ever forgot — including the requests nobody followed up, which are the
 ones no redemption ever removes.
 
+# Privacy
+
+A row here says a named person asked to reset their password, when, and whether
+they used the link. That is data held about somebody, so this package is in a
+subject access request through authentication/passwordreset/privacy — a
+dataprivacy.Collector over [Store.ListForUser] and a dataprivacy.Eraser over
+[Store.DeleteForUser].
+
+Those are both new methods rather than the ones that were already here, and each
+absence was the point. [Store.RevokeForUser] spares redeemed rows so that a spent
+link keeps answering "this link has already been used", which is right for a
+completed reset and wrong for an erasure: the person it answers about has asked
+to be forgotten, and the redeemed row is the record of the reset they actually
+completed. And nothing listed these rows at all, so a consumer writing the
+adapter had raw SQL against a table this package owns.
+
+The sweeper is not an erasure either. It removes rows at their own expiry, which
+for a live token is hours away, and an erasure that quietly meant "in a little
+while" would have a completion date that is a TTL nobody told the subject about.
+
+Neither half is wired anywhere by this module: each takes a resolver from a
+person to the scopes their tokens are in, which is a mapping only a consumer's
+tenancy model knows.
+
 # Where the SQL comes from
 
 Every statement this package executes is generated. The table's facts — its

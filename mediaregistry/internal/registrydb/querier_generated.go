@@ -47,6 +47,11 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	ArchiveObject(ctx context.Context, db DBTX, arg ArchiveObjectParams) (int64, error)
+	// ArchiveObjectsForOwner runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	ArchiveObjectsForOwner(ctx context.Context, db DBTX, arg ArchiveObjectsForOwnerParams) (int64, error)
 	// CreateObject runs the :exec query.
 	CreateObject(ctx context.Context, db DBTX, arg CreateObjectParams) error
 	// GetArchivedObject runs the :one query.

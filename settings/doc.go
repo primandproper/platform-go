@@ -215,6 +215,15 @@ table's delete instead. One with two cannot, because a mixed subject_id column
 cannot reference two tables, and this delete is what its dataprivacy.Eraser is
 built on.
 
+That eraser is settings/privacy, which ships it and the collector over
+[Store.ListValuesForSubject] beside it — the two halves a subject access request
+fans out over, in the shape comments/privacy and notifications/privacy take. It
+is a subpackage rather than two methods here because settings would otherwise
+import dataprivacy, which imports operations, which imports the queue and the
+scheduler: a service with a preferences page and no privacy pipeline would
+compile all of it. It takes a [ValueStore] rather than a [Store], since the
+definition catalog is administrative and holds nothing about a subject.
+
 # Scope
 
 Every method takes a tenancy.Scope, and there is no unscoped read of anything

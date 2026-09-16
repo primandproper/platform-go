@@ -300,6 +300,96 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		must.ErrorIs(t, err, ErrObjectNotFound)
 	})
 
+	t.Run("archives everything one owner uploaded, and only that owner's", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		first := env.mustRecord(t, store, testScope, newInput("avatars/ada/one.png", "user_1"))
+		second := env.mustRecord(t, store, testScope, newInput("avatars/ada/two.png", "user_1"))
+		somebodyElse := env.mustRecord(t, store, testScope, newInput("avatars/grace/one.png", "user_2"))
+
+		// Another tenant's row is not reached, which is what binding the scope
+		// rather than deriving it buys: the same owner id in a different
+		// registry is a different person.
+		neighbor := env.mustRecord(t, store, otherScope, newInput("avatars/ada/one.png", "user_1"))
+
+		archived, err := env.archiveForOwner(t, store, testScope, "user_1")
+		must.NoError(t, err)
+		test.EqOp(t, int64(2), archived)
+
+		// Both of theirs are gone from every read that does not ask for
+		// archived rows, and nobody else's moved.
+		for _, gone := range []string{first.ID, second.ID} {
+			_, readErr := store.GetObject(t.Context(), env.reader(), testScope, gone)
+			must.ErrorIs(t, readErr, ErrObjectNotFound)
+		}
+
+		survivor, err := store.GetObject(t.Context(), env.reader(), testScope, somebodyElse.ID)
+		must.NoError(t, err)
+		test.Nil(t, survivor.ArchivedAt)
+
+		acrossTheScope, err := store.GetObject(t.Context(), env.reader(), otherScope, neighbor.ID)
+		must.NoError(t, err)
+		test.Nil(t, acrossTheScope.ArchivedAt)
+	})
+
+	t.Run("archiving an owner twice hides nothing the second time", func(t *testing.T) {
+		t.Parallel()
+
+		// The statement carries archived_at IS NULL, so the pass is idempotent
+		// and the count is what it hid rather than what it matched. An erasure
+		// retried after a rollback elsewhere reports honestly.
+		store := env.newStore(t)
+
+		env.mustRecord(t, store, testScope, newInput("receipts/march.pdf", "user_1"))
+
+		first, err := env.archiveForOwner(t, store, testScope, "user_1")
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), first)
+
+		again, err := env.archiveForOwner(t, store, testScope, "user_1")
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), again)
+	})
+
+	t.Run("an owner who uploaded nothing is not a failure", func(t *testing.T) {
+		t.Parallel()
+
+		// Zero is an answer. An erasure runs against whatever the subject
+		// actually left behind, and reporting nothing-to-do as a failure would
+		// fail an erasure that succeeded.
+		store := env.newStore(t)
+
+		archived, err := env.archiveForOwner(t, store, testScope, "nobody_at_all")
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), archived)
+	})
+
+	t.Run("the archived rows still carry the key the bytes are at", func(t *testing.T) {
+		t.Parallel()
+
+		// This is the whole reason the erasure archives rather than deletes. A
+		// hard delete would take the only record of where the surviving bytes
+		// are with it, so a deployment finishing the job in its bucket would
+		// have nothing left to read the keys from.
+		store := env.newStore(t)
+
+		recorded := env.mustRecord(t, store, testScope, newInput("avatars/ada/original.png", "user_1"))
+
+		archived, err := env.archiveForOwner(t, store, testScope, "user_1")
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), archived)
+
+		includeArchived := true
+		page, err := store.ListObjectsByOwner(t.Context(), env.reader(), testScope, "user_1",
+			&filtering.QueryFilter{IncludeArchived: &includeArchived})
+		must.NoError(t, err)
+		must.SliceLen(t, 1, page.Data)
+		test.EqOp(t, recorded.Key, page.Data[0].Key)
+		must.NotNil(t, page.Data[0].ArchivedAt)
+	})
+
 	t.Run("pages the scope's objects in the direction the filter names", func(t *testing.T) {
 		t.Parallel()
 
@@ -632,6 +722,12 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		_, err = env.archive(t, store, unset, "obj_1")
 		must.Error(t, err)
 
+		// The bulk archive too, and it is the one where an unset scope would
+		// be worst: a statement that fell through to matching every tenant's
+		// rows for an owner id would hide somebody else's uploads.
+		_, err = env.archiveForOwner(t, store, unset, "user_1")
+		must.Error(t, err)
+
 		// The write is refused for the same reason and by the same call, now
 		// that the scope is its argument rather than a field on the row.
 		_, err = env.record(t, store, unset, newInput("a.png", "user_1"))
@@ -875,7 +971,7 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 	t.Run("every method refuses a nil executor", func(t *testing.T) {
 		t.Parallel()
 
-		// Every one of the eight, not a representative one. There is no
+		// Every one of the nine, not a representative one. There is no
 		// connection of the store's own to fall back to, so a method that did
 		// anything but refuse would be reaching for something that is not there.
 		store := env.newStore(t)
@@ -884,6 +980,9 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 		must.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.ArchiveObject(t.Context(), nil, testScope, "obj_1")
+		must.ErrorIs(t, err, ErrNilExecutor)
+
+		_, err = store.ArchiveObjectsForOwner(t.Context(), nil, testScope, "user_1")
 		must.ErrorIs(t, err, ErrNilExecutor)
 
 		_, err = store.GetObject(t.Context(), nil, testScope, "obj_1")

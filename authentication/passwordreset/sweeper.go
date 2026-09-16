@@ -35,7 +35,7 @@ const backgroundSweepFailure = "background sweep of expired password reset token
 // exception the tenancy doctrine allows a component's own machinery.
 //
 // It is also the one method that takes no executor, and for the same reason.
-// The three writes run in the caller's transaction because a reset token is
+// The four writes run in the caller's transaction because a reset token is
 // written for somebody's request; this deletes rows on nobody's behalf, from a
 // background loop or a scheduler tick, and there is no transaction of anybody's
 // for it to join. It runs on the client the store was built with, one statement

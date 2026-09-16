@@ -136,9 +136,39 @@ func Render(d dialect.Dialect) string {
 	g := querygen.For(d)
 
 	rendered := g.StandardCRUD(RegisteredClientsTable, RegisteredClients.Columns, options()...)
-	rendered = append(rendered, create(g), archivedRead(g), byClientID(g))
+	rendered = append(rendered, create(g), archivedRead(g), byClientID(g), ownerErasure(g))
 
 	return querygen.RenderFile(append(rendered, byOwner(g)...))
+}
+
+// ownerErasure is the destruction of every registration one person owns, which
+// is what authentication/oauth2clients/privacy's dataprivacy.Eraser is built on.
+//
+// It is a hard delete where every other removal here is an archive, and the
+// difference is what the two are for. Archiving withdraws a registration while
+// keeping the row, because a client_id names tokens that may still be live and
+// the row is what the authorization server reads to refuse them — but it leaves
+// belongs_to_user, name and description, which between them are the whole of
+// what this table says about a person. An erasure that archived would be an
+// erasure that erased nothing.
+//
+// Deleting does not weaken the refusal it takes away. A token naming a client_id
+// no row resolves is refused by the absence, which is stricter than the archived
+// row's refusal rather than looser; what is lost is the ability to tell a
+// withdrawn client from one that never existed, and for a subject who asked to
+// be forgotten "never existed" is the answer they asked for.
+//
+// The key is the scope and the owner, and the column list is what says so: the
+// id is left out, so the statement names every registration a person owns rather
+// than one of them. querygen.Generator.DeleteQuery renders no archived
+// predicate at all, which is the other half of what this needs — a registration
+// withdrawn last year is still a row with somebody's name on it, and a delete
+// that skipped archived rows would miss exactly the ones nobody is looking at.
+func ownerErasure(g *querygen.Generator) *querygen.Query {
+	return g.DeleteQuery("DeleteRegisteredClientsForOwner", RegisteredClientsTable,
+		RegisteredClients.ColumnsExcept(querygen.IDColumn),
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: BelongsToUserColumn})
 }
 
 // create records a registration, and reports a client_id already in use as zero

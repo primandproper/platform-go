@@ -30,6 +30,9 @@ var _ oauth2clients.Store = &StoreMock{}
 //			CreateClientFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) (*oauth2clients.Client, error) {
 //				panic("mock out the CreateClient method")
 //			},
+//			DeleteClientsForOwnerFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error) {
+//				panic("mock out the DeleteClientsForOwner method")
+//			},
 //			GetClientFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string) (*oauth2clients.Client, error) {
 //				panic("mock out the GetClient method")
 //			},
@@ -57,6 +60,9 @@ type StoreMock struct {
 
 	// CreateClientFunc mocks the CreateClient method.
 	CreateClientFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, client *oauth2clients.Client) (*oauth2clients.Client, error)
+
+	// DeleteClientsForOwnerFunc mocks the DeleteClientsForOwner method.
+	DeleteClientsForOwnerFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
 
 	// GetClientFunc mocks the GetClient method.
 	GetClientFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, id string) (*oauth2clients.Client, error)
@@ -96,6 +102,17 @@ type StoreMock struct {
 			Scope tenancy.Scope
 			// Client is the client argument value.
 			Client *oauth2clients.Client
+		}
+		// DeleteClientsForOwner holds details about calls to the DeleteClientsForOwner method.
+		DeleteClientsForOwner []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// UserID is the userID argument value.
+			UserID string
 		}
 		// GetClient holds details about calls to the GetClient method.
 		GetClient []struct {
@@ -155,13 +172,14 @@ type StoreMock struct {
 			Input *oauth2clients.UpdateInput
 		}
 	}
-	lockArchiveClient       sync.RWMutex
-	lockCreateClient        sync.RWMutex
-	lockGetClient           sync.RWMutex
-	lockListClients         sync.RWMutex
-	lockListClientsForOwner sync.RWMutex
-	lockResolveClientID     sync.RWMutex
-	lockUpdateClient        sync.RWMutex
+	lockArchiveClient         sync.RWMutex
+	lockCreateClient          sync.RWMutex
+	lockDeleteClientsForOwner sync.RWMutex
+	lockGetClient             sync.RWMutex
+	lockListClients           sync.RWMutex
+	lockListClientsForOwner   sync.RWMutex
+	lockResolveClientID       sync.RWMutex
+	lockUpdateClient          sync.RWMutex
 }
 
 // ArchiveClient calls ArchiveClientFunc.
@@ -249,6 +267,50 @@ func (mock *StoreMock) CreateClientCalls() []struct {
 	mock.lockCreateClient.RLock()
 	calls = mock.calls.CreateClient
 	mock.lockCreateClient.RUnlock()
+	return calls
+}
+
+// DeleteClientsForOwner calls DeleteClientsForOwnerFunc.
+func (mock *StoreMock) DeleteClientsForOwner(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error) {
+	if mock.DeleteClientsForOwnerFunc == nil {
+		panic("StoreMock.DeleteClientsForOwnerFunc: method is nil but Store.DeleteClientsForOwner was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		UserID string
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		UserID: userID,
+	}
+	mock.lockDeleteClientsForOwner.Lock()
+	mock.calls.DeleteClientsForOwner = append(mock.calls.DeleteClientsForOwner, callInfo)
+	mock.lockDeleteClientsForOwner.Unlock()
+	return mock.DeleteClientsForOwnerFunc(ctx, tx, scope, userID)
+}
+
+// DeleteClientsForOwnerCalls gets all the calls that were made to DeleteClientsForOwner.
+// Check the length with:
+//
+//	len(mockedStore.DeleteClientsForOwnerCalls())
+func (mock *StoreMock) DeleteClientsForOwnerCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	UserID string
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		UserID string
+	}
+	mock.lockDeleteClientsForOwner.RLock()
+	calls = mock.calls.DeleteClientsForOwner
+	mock.lockDeleteClientsForOwner.RUnlock()
 	return calls
 }
 

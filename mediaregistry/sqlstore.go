@@ -588,6 +588,47 @@ func (s *SQLStore) ArchiveObject(
 	return objectFromArchivedRow(&row), nil
 }
 
+// ArchiveObjectsForOwner soft-deletes every live row one principal owns and
+// reports how many it hid.
+//
+// It is the one counted write here that does not guard on its count. Every other
+// write in this store names a row, so nothing moved means the row was not there;
+// this one names a person, and a person with no uploads is an answer rather than
+// a miss. See the Store documentation for why it archives rather than deletes.
+func (s *SQLStore) ArchiveObjectsForOwner(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	ownerID string,
+) (int64, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(ownerIDKey, ownerID),
+	)
+	defer op.End()
+	defer op.Time(ctx, nil, s.instruments.Latency)()
+
+	s.instruments.Attempt(ctx)
+
+	if tx == nil {
+		return 0, s.failed(ctx, op.Error(ErrNilExecutor, "archiving uploaded objects for owner"))
+	}
+
+	if err := scope.Validate(); err != nil {
+		return 0, s.failed(ctx, op.Error(err, "archiving uploaded objects for owner"))
+	}
+
+	archived, err := s.q.ArchiveObjectsForOwner(ctx, tx,
+		registrydb.ArchiveObjectsForOwnerParams{Scope: scope, OwnerID: ownerID})
+	if err != nil {
+		return 0, s.failed(ctx, op.Error(err, "archiving uploaded objects for owner"))
+	}
+
+	op.Set(countKey, archived)
+
+	return archived, nil
+}
+
 // guardCount maps "touched nothing" onto the sentinel for the row that was not
 // there.
 //

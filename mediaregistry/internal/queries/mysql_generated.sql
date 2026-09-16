@@ -437,3 +437,10 @@ WHERE uploads_objects.archived_at IS NULL
 	AND uploads_objects.scope = sqlc.arg(scope)
 	AND uploads_objects.id IN (sqlc.slice(ids))
 ORDER BY uploads_objects.id ASC;
+
+-- name: ArchiveObjectsForOwner :execrows
+UPDATE uploads_objects SET
+	archived_at = CURRENT_TIMESTAMP(6)
+WHERE archived_at IS NULL
+	AND scope = sqlc.arg(scope)
+	AND owner_id = sqlc.arg(owner_id);

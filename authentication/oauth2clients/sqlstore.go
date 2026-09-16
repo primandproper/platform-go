@@ -380,6 +380,51 @@ func (s *SQLStore) ArchiveClient(
 	return withdrawn, nil
 }
 
+// DeleteClientsForOwner destroys every registration one person owns and reports
+// how many it destroyed.
+//
+// It is the one counted write here that does not go through s.missing: every
+// other one names a row, so nothing moved means the row was not there, while
+// this one names a person and a person with no registrations is an answer.
+//
+// See the Store documentation for why it deletes where ArchiveClient withdraws,
+// and for why an empty owner is refused rather than read as "the administered
+// ones".
+func (s *SQLStore) DeleteClientsForOwner(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID string,
+) (int64, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(ownerKey, userID),
+	)
+	defer op.End()
+
+	if tx == nil {
+		return 0, op.Error(ErrNilTransaction, "erasing a user's oauth2 clients")
+	}
+
+	if userID == "" {
+		return 0, op.Error(ErrEmptyUserID, "erasing a user's oauth2 clients")
+	}
+
+	if err := scope.Validate(); err != nil {
+		return 0, op.Error(err, "erasing a user's oauth2 clients")
+	}
+
+	deleted, err := s.q.DeleteRegisteredClientsForOwner(ctx, tx,
+		oauth2clientsdb.DeleteRegisteredClientsForOwnerParams{Scope: scope, BelongsToUser: userID})
+	if err != nil {
+		return 0, op.Error(err, "erasing a user's oauth2 clients")
+	}
+
+	op.Set(countKey, deleted)
+
+	return deleted, nil
+}
+
 // clientOn reads one live registration on the transaction that just wrote it,
 // with no span of its own.
 //

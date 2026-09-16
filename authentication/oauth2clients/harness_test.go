@@ -213,6 +213,23 @@ func (e *storeEnv) archive(tb testing.TB, store *SQLStore, scope tenancy.Scope, 
 	})
 }
 
+// eraseForOwner destroys one person's registrations and reports both of what the
+// write returned.
+func (e *storeEnv) eraseForOwner(tb testing.TB, store *SQLStore, scope tenancy.Scope, owner string) (int64, error) {
+	tb.Helper()
+
+	var deleted int64
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		deleted, txErr = store.DeleteClientsForOwner(tb.Context(), tx, scope, owner)
+
+		return txErr
+	})
+
+	return deleted, err
+}
+
 // seed writes a registration and fails the test if it could not be written. What
 // it hands back is the stored row, so a fixture carries the creation time and
 // the scope the write settled.

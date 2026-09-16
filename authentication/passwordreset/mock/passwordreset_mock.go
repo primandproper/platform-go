@@ -27,8 +27,14 @@ var _ passwordreset.Store = &StoreMock{}
 //			ConsumeFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, secret string) (*passwordreset.Token, error) {
 //				panic("mock out the Consume method")
 //			},
+//			DeleteForUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error) {
+//				panic("mock out the DeleteForUser method")
+//			},
 //			IssueFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, ttl time.Duration) (*passwordreset.Issuance, error) {
 //				panic("mock out the Issue method")
+//			},
+//			ListForUserFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*passwordreset.Token, error) {
+//				panic("mock out the ListForUser method")
 //			},
 //			RevokeForUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error) {
 //				panic("mock out the RevokeForUser method")
@@ -46,8 +52,14 @@ type StoreMock struct {
 	// ConsumeFunc mocks the Consume method.
 	ConsumeFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, secret string) (*passwordreset.Token, error)
 
+	// DeleteForUserFunc mocks the DeleteForUser method.
+	DeleteForUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
+
 	// IssueFunc mocks the Issue method.
 	IssueFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, ttl time.Duration) (*passwordreset.Issuance, error)
+
+	// ListForUserFunc mocks the ListForUser method.
+	ListForUserFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*passwordreset.Token, error)
 
 	// RevokeForUserFunc mocks the RevokeForUser method.
 	RevokeForUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
@@ -68,6 +80,17 @@ type StoreMock struct {
 			// Secret is the secret argument value.
 			Secret string
 		}
+		// DeleteForUser holds details about calls to the DeleteForUser method.
+		DeleteForUser []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// UserID is the userID argument value.
+			UserID string
+		}
 		// Issue holds details about calls to the Issue method.
 		Issue []struct {
 			// Ctx is the ctx argument value.
@@ -80,6 +103,17 @@ type StoreMock struct {
 			UserID string
 			// TTL is the ttl argument value.
 			TTL time.Duration
+		}
+		// ListForUser holds details about calls to the ListForUser method.
+		ListForUser []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// UserID is the userID argument value.
+			UserID string
 		}
 		// RevokeForUser holds details about calls to the RevokeForUser method.
 		RevokeForUser []struct {
@@ -105,7 +139,9 @@ type StoreMock struct {
 		}
 	}
 	lockConsume       sync.RWMutex
+	lockDeleteForUser sync.RWMutex
 	lockIssue         sync.RWMutex
+	lockListForUser   sync.RWMutex
 	lockRevokeForUser sync.RWMutex
 	lockVerify        sync.RWMutex
 }
@@ -154,6 +190,50 @@ func (mock *StoreMock) ConsumeCalls() []struct {
 	return calls
 }
 
+// DeleteForUser calls DeleteForUserFunc.
+func (mock *StoreMock) DeleteForUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error) {
+	if mock.DeleteForUserFunc == nil {
+		panic("StoreMock.DeleteForUserFunc: method is nil but Store.DeleteForUser was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		UserID string
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		UserID: userID,
+	}
+	mock.lockDeleteForUser.Lock()
+	mock.calls.DeleteForUser = append(mock.calls.DeleteForUser, callInfo)
+	mock.lockDeleteForUser.Unlock()
+	return mock.DeleteForUserFunc(ctx, tx, scope, userID)
+}
+
+// DeleteForUserCalls gets all the calls that were made to DeleteForUser.
+// Check the length with:
+//
+//	len(mockedStore.DeleteForUserCalls())
+func (mock *StoreMock) DeleteForUserCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	UserID string
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		UserID string
+	}
+	mock.lockDeleteForUser.RLock()
+	calls = mock.calls.DeleteForUser
+	mock.lockDeleteForUser.RUnlock()
+	return calls
+}
+
 // Issue calls IssueFunc.
 func (mock *StoreMock) Issue(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, ttl time.Duration) (*passwordreset.Issuance, error) {
 	if mock.IssueFunc == nil {
@@ -199,6 +279,50 @@ func (mock *StoreMock) IssueCalls() []struct {
 	mock.lockIssue.RLock()
 	calls = mock.calls.Issue
 	mock.lockIssue.RUnlock()
+	return calls
+}
+
+// ListForUser calls ListForUserFunc.
+func (mock *StoreMock) ListForUser(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*passwordreset.Token, error) {
+	if mock.ListForUserFunc == nil {
+		panic("StoreMock.ListForUserFunc: method is nil but Store.ListForUser was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Scope  tenancy.Scope
+		UserID string
+	}{
+		Ctx:    ctx,
+		Q:      q,
+		Scope:  scope,
+		UserID: userID,
+	}
+	mock.lockListForUser.Lock()
+	mock.calls.ListForUser = append(mock.calls.ListForUser, callInfo)
+	mock.lockListForUser.Unlock()
+	return mock.ListForUserFunc(ctx, q, scope, userID)
+}
+
+// ListForUserCalls gets all the calls that were made to ListForUser.
+// Check the length with:
+//
+//	len(mockedStore.ListForUserCalls())
+func (mock *StoreMock) ListForUserCalls() []struct {
+	Ctx    context.Context
+	Q      database.SQLQueryExecutor
+	Scope  tenancy.Scope
+	UserID string
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Scope  tenancy.Scope
+		UserID string
+	}
+	mock.lockListForUser.RLock()
+	calls = mock.calls.ListForUser
+	mock.lockListForUser.RUnlock()
 	return calls
 }
 

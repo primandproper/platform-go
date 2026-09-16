@@ -40,35 +40,35 @@ const serviceName = "oauth2clients"
 type Client struct {
 	// CreatedAt is when the registration was accepted, assigned by the database
 	// so that it cannot disagree with the id the cursor walk orders by.
-	CreatedAt time.Time
+	CreatedAt time.Time `json:"createdAt"`
 
 	// LastUpdatedAt is when the registration was last revised, and nil for one
 	// nobody has touched since it was created.
-	LastUpdatedAt *time.Time
+	LastUpdatedAt *time.Time `json:"lastUpdatedAt"`
 
 	// ArchivedAt is when the registration was withdrawn, and nil while it is
 	// live. Withdrawn rather than deleted: a client_id names tokens that may
 	// still be live, and the row is what the authorization server reads to
 	// refuse them.
-	ArchivedAt *time.Time
+	ArchivedAt *time.Time `json:"archivedAt"`
 
 	// Scope is which registry this row is in. See the type documentation.
-	Scope tenancy.Scope
+	Scope tenancy.Scope `json:"scope"`
 
 	// BelongsToUser is the person who owns this credential, or the empty string
 	// for one nobody owns.
-	BelongsToUser string
+	BelongsToUser string `json:"belongsToUser"`
 
 	// ID is the row. It is what audit entries, outbox rows and console URLs
 	// name, and it is not what the client sends — see ClientID.
-	ID string
+	ID string `json:"id"`
 
 	// ClientID is the identifier the client sends at /authorize and /token.
 	//
 	// It is a second identifier rather than the primary key so that rotating it
 	// later does not orphan every reference to the row. It is minted here from
 	// crypto/rand and is globally unique.
-	ClientID string
+	ClientID string `json:"clientID"`
 
 	// SecretHash is the SHA-256 digest of the client secret, hex-encoded,
 	// produced by oauth2server.Hash — the function the authorization server
@@ -78,23 +78,29 @@ type Client struct {
 	// The plaintext is returned to its creator exactly once, by
 	// [Service.CreateClient], and is never stored. Nothing reads it back,
 	// because there is nothing to read.
-	SecretHash string
+	//
+	// It carries json:"-" so that it is not one field somebody forgot when a
+	// registration is rendered. authentication/oauth2clients/privacy exports
+	// these rows to the person who owns them, and [Client.Redacted] clears the
+	// field as well — the tag is what makes a caller who marshals a client they
+	// read some other way safe by default rather than safe if they remembered.
+	SecretHash string `json:"-"`
 
 	// Name is shown on the consent form, and Description is for whoever
 	// administers the registry. Both are free text somebody typed — render
 	// them, never trust them.
-	Name        string
-	Description string
+	Name        string `json:"name"`
+	Description string `json:"description"`
 
 	// RedirectURIs are the exact addresses this client may receive an
 	// authorization code at, matched byte for byte as OAuth 2.1 requires.
-	RedirectURIs []string
+	RedirectURIs []string `json:"redirectURIs"`
 
 	// Scopes are the scopes this client may request. The authorization server
 	// rejects a request for anything outside this set rather than silently
 	// narrowing it, because narrowing hands back a token that looks like the one
 	// that was asked for and is not.
-	Scopes []string
+	Scopes []string `json:"scopes"`
 }
 
 // Administered reports whether this registration belongs to no person.
@@ -128,6 +134,32 @@ func (c *Client) Clone() *Client {
 		archived := *c.ArchivedAt
 		clone.ArchivedAt = &archived
 	}
+
+	return &clone
+}
+
+// Redacted returns a copy of the registration with the secret digest cleared.
+//
+// It is what authentication/oauth2clients/privacy exports, and the reason is
+// identity.User.Redacted's: a subject access request is not a credential dump.
+// SecretHash is the one field here that is a stored credential — everything else
+// is a name somebody typed, an address a token may be sent to, or a timestamp —
+// so clearing it is the whole of what redaction means for this type.
+//
+// The two slices are cloned rather than shared, so a caller that edits what it
+// was handed is not editing the row somebody else is still holding.
+//
+// A nil receiver is a nil result, which is what lets a caller redact the answer
+// of a read that found nothing without checking first.
+func (c *Client) Redacted() *Client {
+	if c == nil {
+		return nil
+	}
+
+	clone := *c
+	clone.RedirectURIs = slices.Clone(c.RedirectURIs)
+	clone.Scopes = slices.Clone(c.Scopes)
+	clone.SecretHash = ""
 
 	return &clone
 }

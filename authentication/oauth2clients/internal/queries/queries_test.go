@@ -359,6 +359,7 @@ func TestRender_EmitsTheGeneratedSetAndTheAuthoredStatements(T *testing.T) {
 	// directions.
 	authored := []string{
 		"CreateRegisteredClient",
+		"DeleteRegisteredClientsForOwner",
 		"GetArchivedRegisteredClient",
 		"GetRegisteredClientByClientID",
 		"ListRegisteredClientsForOwner",

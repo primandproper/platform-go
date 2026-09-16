@@ -125,6 +125,31 @@ answers with the row it moved — see [Store] — and every one of those rows is
 read of the table, so it carries Client.SecretHash and could not carry a
 plaintext if a caller wanted it to.
 
+# Privacy
+
+A registration is one person's: belongs_to_user names them, and the name and the
+description are free text they typed. So this package is in a subject access
+request, through authentication/oauth2clients/privacy — a dataprivacy.Collector
+over [Store.ListClientsForOwner] and a dataprivacy.Eraser over
+[Store.DeleteClientsForOwner].
+
+That delete is the one hard delete in this store, and it exists because the
+archive is not an erasure. Withdrawing keeps the row so the authorization server
+can refuse the tokens a live client_id names, and keeps the owner, the name and
+the description with it. A subject who asked to be forgotten is asking for the
+row, and a token naming a client_id no row resolves is refused by the absence
+anyway.
+
+The export goes through [Client.Redacted], which clears the digest. Everything
+else the subject registered is theirs to see, client_id included: it is a public
+identifier they already hold and send on every authorization request.
+
+Neither half is wired anywhere by this module. Each takes a resolver from a
+person to the registries they have clients in, which is a mapping only a
+consumer's tenancy model knows and which no environment variable can express —
+so a composition root that wants these registers them itself, with the store it
+already built.
+
 # What this package does not do
 
 It does not authenticate anybody, mint a token, or serve an endpoint. It owns a

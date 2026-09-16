@@ -109,10 +109,12 @@ var KeyedColumns = []string{
 // created_at is in it, which is where this table parts company with the
 // convention [querygen.ForInsert] encodes. Everywhere else the database owns
 // the creation time, because a caller-supplied one is how a row ends up with a
-// creation time that disagrees with the id a cursor walks by. Nothing lists
-// these rows, so there is no walk to disagree with — and the issuance reads one
-// clock for the creation time and the deadline it computes from it, which is
-// the property that makes a token's whole lifetime one clock's.
+// creation time that disagrees with the id a cursor walks by. No cursor walks
+// these rows — [listForUser] is unpaged and orders by created_at itself, so the
+// creation time is the sort key rather than something a sort key has to agree
+// with — and the issuance reads one clock for the creation time and the
+// deadline it computes from it, which is the property that makes a token's
+// whole lifetime one clock's.
 var InsertColumns = []string{
 	querygen.IDColumn,
 	ScopeColumn,
@@ -140,6 +142,8 @@ const (
 	GetTokenByDigestQuery    = "GetTokenByDigest"
 	RedeemTokenQuery         = "RedeemToken"
 	RevokeTokensForUserQuery = "RevokeTokensForUser"
+	DeleteTokensForUserQuery = "DeleteTokensForUser"
+	ListTokensForUserQuery   = "ListTokensForUser"
 	SweepExpiredTokensQuery  = "SweepExpiredTokens"
 )
 
@@ -151,7 +155,7 @@ const (
 // be one name for two different facts about a row.
 const ExpiresBeforeArg = "expires_before"
 
-// Render returns the canonical sqlc input for d: the five statements this
+// Render returns the canonical sqlc input for d: the seven statements this
 // store executes, in one file's worth of text.
 //
 // It is what authentication/passwordreset/internal/queriesgen writes to the
@@ -204,9 +208,14 @@ const ExpiresBeforeArg = "expires_before"
 // id and none of the rest, and every absence is deliberate — see
 // authentication/passwordreset/migrations. A reset token is issued, spent once
 // and gone, so an archived_at would keep rows nothing can ever read and would
-// make the sweep the one write unable to reach the rows it exists for; nothing
-// lists these rows, so there is no cursor and no window; and redemption is the
-// row's only mutation, so there is no last mutation to record beside it.
+// make the sweep the one write unable to reach the rows it exists for; and
+// redemption is the row's only mutation, so there is no last mutation to record
+// beside it.
+//
+// The one list here is unpaged, and that is what keeps the sentence above true
+// of the cursor as well. See [listForUser]: there is still no cursor and no
+// filter window in this corpus, because the read that lists a principal's tokens
+// takes no filtering.QueryFilter to carry one.
 func Render(d dialect.Dialect) string {
 	g := querygen.For(d)
 
@@ -219,8 +228,10 @@ func Render(d dialect.Dialect) string {
 	return querygen.RenderFile([]*querygen.Query{
 		insert(g),
 		lookup(g),
+		listForUser(g),
 		redeem(g),
 		revoke(g),
+		erase(g),
 		sweep(g),
 	})
 }
@@ -297,6 +308,65 @@ func revoke(g *querygen.Generator) *querygen.Query {
 		querygen.Match{Column: ScopeColumn},
 		querygen.Match{Column: UserColumn},
 		querygen.Match{Column: RedeemedAtColumn, Against: querygen.NoValue},
+	)
+}
+
+// erase is the destruction of every row one principal holds, which is what
+// authentication/passwordreset/privacy's dataprivacy.Eraser is built on.
+//
+// It is [revoke] without the third match, and that one predicate is the whole
+// difference between the two. A revocation spares redeemed rows on purpose, so
+// that a spent link keeps answering "this link has already been used" for the
+// rest of its life; an erasure is precisely the case where that answer is not
+// owed, because the person it would be answered about has asked to be forgotten.
+// Reaching for the revoke here would leave every redeemed row — which is to say
+// every reset the subject actually completed — with their identifier on it until
+// the sweeper got to it.
+//
+// The key is the scope and the user, from a column list with no id in it, so the
+// statement names every token a principal holds rather than one of them.
+func erase(g *querygen.Generator) *querygen.Query {
+	return g.DeleteQuery(DeleteTokensForUserQuery, TokensTable, KeyedColumns,
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: UserColumn},
+	)
+}
+
+// listForUser is the read of every token one principal holds, which is what
+// authentication/passwordreset/privacy's dataprivacy.Collector is built on.
+//
+// It is unpaged, and that is a ruling rather than a shortcut. A paged read would
+// bring this corpus a cursor, a filter window and a second statement for the
+// descending direction, and it would need the index on (scope, belongs_to_user)
+// to carry the id the walk pages by — all to page a set the sweeper keeps small
+// by construction. Every row here is deleted at its own expiry, so what a
+// principal holds is bounded by the token lifetime rather than by their history,
+// and it is identity.Store.ListMembershipsForUser's argument applied to a table
+// with a stronger version of the same guarantee: paging a handful means a caller
+// who forgets to loop reads some of somebody's data and treats the rest as
+// absent, which for a subject access request is a compliance defect that looks
+// exactly like a correct answer.
+//
+// It is [querygen.Generator.JunctionListAllQuery] over a nil junction, which is
+// how that constructor spells "this list reads one table" — the paged form with
+// the window, the cursor, the LIMIT and the counts removed, leaving the
+// projection, the matches and the ordering. It is rbac's and sessions' construct,
+// adopted rather than re-derived.
+//
+// The projection is [TokenColumns], so the digest does not come back. That is
+// the same reason [lookup] projects it: nothing in this package reads that
+// column, and a list that carried it would put a stored credential's digest in
+// an export.
+//
+// The order is created_at and then the id, ascending — a subject's resets in the
+// order they asked for them, with the id breaking a tie so two issued in the
+// same instant come back in a stable order rather than whichever the engine
+// happened to scan first.
+func listForUser(g *querygen.Generator) *querygen.Query {
+	return g.JunctionListAllQuery(ListTokensForUserQuery, TokensTable, TokenColumns, nil,
+		[]querygen.Order{{Column: querygen.CreatedAtColumn}, {Column: querygen.IDColumn}},
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: UserColumn},
 	)
 }
 

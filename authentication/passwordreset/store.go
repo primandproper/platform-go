@@ -17,7 +17,7 @@ import (
 // somewhere that is not a SQL database should not have to fork the package to
 // keep them.
 //
-// What an implementation owes its callers is not "these four methods". It is
+// What an implementation owes its callers is not "these six methods". It is
 // the three properties the methods exist to hold, none of which the signatures
 // can state:
 //
@@ -39,7 +39,7 @@ import (
 //
 // # The transaction is the caller's
 //
-// The three writes take a database.Tx and the one read takes the wider
+// The four writes take a database.Tx and the two reads take the wider
 // database.SQLQueryExecutor, which is the module's store convention rather than
 // anything this package invented — but this is the package where the reason for
 // it is a security property rather than a bookkeeping one. Consume decides who
@@ -119,4 +119,46 @@ type Store interface {
 	// what makes "this link has already been used" answerable for the life of
 	// the link.
 	RevokeForUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
+
+	// DeleteForUser destroys every token a principal holds — redeemed rows
+	// included — and reports how many it destroyed. It is what
+	// authentication/passwordreset/privacy's dataprivacy.Eraser is built on.
+	//
+	// It is a second method rather than a flag on RevokeForUser, because the
+	// two are different acts that happen to touch one table. A revocation is
+	// part of the reset flow: it runs in the transaction that changed the
+	// password, and it spares redeemed rows on purpose so that a spent link
+	// keeps answering "this link has already been used" for the rest of its
+	// life. An erasure is somebody exercising a right, and it is precisely the
+	// case where that answer is not owed — the person it would be answered
+	// about has asked to be forgotten. A boolean between them would make the
+	// difference something a caller passes rather than something they choose.
+	//
+	// Reaching for the revocation instead would leave every redeemed row, which
+	// is to say every reset the subject actually completed, with their
+	// identifier on it until the sweeper got to it.
+	//
+	// Zero is not an error: a principal who never asked for a reset is a
+	// principal with nothing here to erase.
+	DeleteForUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
+
+	// ListForUser reads every token a principal holds, oldest first, and is what
+	// authentication/passwordreset/privacy's dataprivacy.Collector is built on.
+	//
+	// What it answers with is what a subject access request is entitled to: when
+	// each reset was asked for, when it expires, and whether it was spent. The
+	// digest is not projected — no statement in this package reads that column
+	// back — so there is nothing here a caller could exchange for a link.
+	//
+	// It is unpaged, and that is a decision rather than an omission. Every row
+	// in this table is deleted at its own expiry by the sweeper, so what one
+	// principal holds is bounded by the token lifetime rather than by their
+	// history: it is identity.Store.ListMembershipsForUser's reading, over a
+	// table with a stronger version of the same guarantee. Paging a handful
+	// means a caller who forgets to loop reads some of somebody's data and
+	// treats the rest as absent, which for a subject access request is a
+	// compliance defect that looks exactly like a correct answer.
+	//
+	// An empty result is an empty slice and no error.
+	ListForUser(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*Token, error)
 }

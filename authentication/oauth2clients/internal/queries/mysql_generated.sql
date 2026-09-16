@@ -202,6 +202,11 @@ SELECT
 FROM oauth2_registered_clients
 WHERE oauth2_registered_clients.client_id = sqlc.arg(client_id);
 
+-- name: DeleteRegisteredClientsForOwner :execrows
+DELETE FROM oauth2_registered_clients
+WHERE scope = sqlc.arg(scope)
+	AND belongs_to_user = sqlc.arg(belongs_to_user);
+
 -- name: ListRegisteredClientsForOwner :many
 SELECT
 	oauth2_registered_clients.id,

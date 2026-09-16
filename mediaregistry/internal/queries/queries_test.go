@@ -137,6 +137,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"ListObjectsBySubject", "ListObjectsBySubjectDescending",
 		"GetObjectByKey", "GetObjectIDByKey", "GetArchivedObject",
 		"ListObjectsByIDs",
+		"ArchiveObjectsForOwner",
 	}
 
 	for _, d := range everyDialect {

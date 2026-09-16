@@ -38,6 +38,15 @@ the archived row back: the row is the only record of the key those surviving
 bytes are at, and once the transaction commits every read here is written not to
 see it.
 
+That is also the whole of why mediaregistry/privacy's dataprivacy.Eraser archives
+where every other eraser in this module deletes.
+[Store.ArchiveObjectsForOwner] hides every row a principal owns and the adapter
+reports the objects as retained, naming the count and where the bytes still are —
+because a hard delete would destroy the map and keep the territory, leaving a
+deployment unable to find what it still has to remove. The collector beside it
+exports those rows, archived ones included, so what the subject receives is the
+list of keys their own deployment is working from.
+
 # The row commits with what references it
 
 Both writes take the caller's database.Tx and every read takes the wider

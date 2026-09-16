@@ -197,4 +197,35 @@ type Store interface {
 	// for tax purposes. Archiving a row that is already archived, or one in
 	// another scope, is ErrObjectNotFound.
 	ArchiveObject(ctx context.Context, tx database.Tx, scope tenancy.Scope, objectID string) (*Object, error)
+
+	// ArchiveObjectsForOwner soft-deletes every live row one principal owns
+	// within the scope, and reports how many it hid. It is what
+	// mediaregistry/privacy's dataprivacy.Eraser is built on, and it takes the
+	// caller's transaction for the reason every other write here does: a
+	// subject's uploads going with the rest of their footprint, or not at all,
+	// is the whole of what an erasure means.
+	//
+	// Zero is not an error. An erasure runs against whatever the subject
+	// actually left behind, and a principal who uploaded nothing is a principal
+	// with nothing here to reach — reporting that as a failure would fail an
+	// erasure that succeeded. Rows already archived are skipped rather than
+	// restamped, so the count is what this call hid rather than what it matched.
+	//
+	// It archives where an erasure elsewhere in this module deletes, and the
+	// asymmetry is the ruling rather than a weaker version of one. Nothing here
+	// opens, reads or removes an object: the row is the only record of the key
+	// the bytes are sitting at — see [Store.ArchiveObject], which hands that row
+	// back for exactly this reason — so a hard delete would destroy a
+	// deployment's ability to find what it still has to remove while leaving the
+	// bytes untouched. What the eraser reports instead is the objects as
+	// retained, naming the count and where the bytes still are. A deployment
+	// finishing the job sweeps the archived rows for their keys and removes them
+	// through its own uploads.UploadManager; see the retention package.
+	//
+	// It keys on the owner and not on the attachment. belongs_to_type and
+	// belongs_to_id name whatever the consumer hung an object off, in the
+	// consumer's own vocabulary, and a principal is not one of the things that
+	// vocabulary is for — [Object.OwnerID] is the column this package documents
+	// as the principal.
+	ArchiveObjectsForOwner(ctx context.Context, tx database.Tx, scope tenancy.Scope, ownerID string) (int64, error)
 }
