@@ -203,11 +203,15 @@ type AuditErasureAdapter struct {
 // indistinguishable from a correct one, and startup is the last moment anybody
 // can still notice.
 //
-// Every adapter is built before any is registered, so a nil store in the last
-// field does not leave a registry holding ten of eleven domains. The failure
-// reachable after that point is a key the caller registered already; the error
-// names it, and the registry is to be discarded rather than patched up, because
-// dataprivacy.Registry has no unregister.
+// It registers all eleven or none of them. Every adapter is built before any is
+// registered, so a nil store in the last field does not leave a registry holding
+// ten of eleven domains — and the keys are checked against what the registry
+// already holds before the first one goes in, so a key the caller registered
+// already does not either. Both matter for the same reason the package exists:
+// dataprivacy.Registry has no unregister, and a half-registered one is exactly
+// the state that produces a well-formed export missing a domain. A caller that
+// logs this error and carries on gets a registry it has not touched rather than
+// one holding whichever adapters happened to be ahead of the collision.
 func Register(registry *dataprivacy.Registry, adapters *Adapters) ([]string, error) {
 	if registry == nil {
 		return nil, platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil dataprivacy registry")
@@ -219,6 +223,10 @@ func Register(registry *dataprivacy.Registry, adapters *Adapters) ([]string, err
 
 	built, err := adapters.build()
 	if err != nil {
+		return nil, err
+	}
+
+	if err = checkUnclaimed(registry, built); err != nil {
 		return nil, err
 	}
 
@@ -245,6 +253,46 @@ func Register(registry *dataprivacy.Registry, adapters *Adapters) ([]string, err
 	slices.Sort(keys)
 
 	return keys, nil
+}
+
+// checkUnclaimed refuses the whole set if any of it is already spoken for.
+//
+// It is what makes [Register] all-or-nothing rather than all-or-whatever-was-
+// ahead-of-the-collision. dataprivacy.Registry refuses a re-registration and
+// has no unregister, so without this the caller's recourse to a collision on
+// the seventh adapter is to throw away a registry the first six are in — and
+// the failure mode this package exists to close is a registry that is missing a
+// domain and cannot say so.
+//
+// The two namespaces are checked separately because they are separate: a domain
+// may ship a collector and no eraser, so a key taken in one is not taken in the
+// other. What is not checked is the built set against itself — each key is a
+// distinct package constant, and the roster test is what fails if two packages
+// ever ship the same one.
+//
+// After this, the registrations below can still return an error in principle
+// and are still checked for one, but nothing reachable produces it: the keys
+// are constants that pass validation and the halves are non-nil by
+// construction.
+func checkUnclaimed(registry *dataprivacy.Registry, built []registration) error {
+	collectors := registry.CollectorKeys()
+	erasers := registry.EraserKeys()
+
+	for i := range built {
+		entry := &built[i]
+
+		if entry.collector != nil && slices.Contains(collectors, entry.key) {
+			return platformerrors.Wrapf(dataprivacy.ErrDuplicateKey,
+				"dataprivacy collector %q is already registered", entry.key)
+		}
+
+		if entry.eraser != nil && slices.Contains(erasers, entry.key) {
+			return platformerrors.Wrapf(dataprivacy.ErrDuplicateKey,
+				"dataprivacy eraser %q is already registered", entry.key)
+		}
+	}
+
+	return nil
 }
 
 // registration is one key and the halves that go in under it. A domain may ship

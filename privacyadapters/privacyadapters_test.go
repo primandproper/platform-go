@@ -251,9 +251,9 @@ func TestRegisterRefuses(T *testing.T) {
 
 		// dataprivacy.Registry refuses a re-registration rather than replacing,
 		// because a silent overwrite would drop a domain from every export from
-		// then on. It has no unregister, so the registry this failed against is
-		// to be discarded rather than patched up — which the error can only help
-		// with by naming the key.
+		// then on. It has no unregister, so the collision is checked before the
+		// first adapter goes in: the caller is left holding the registry they
+		// had, not that one plus whichever adapters were ahead of the clash.
 		registry := dataprivacy.NewRegistry()
 
 		must.NoError(t, registry.RegisterCollector(commentsprivacy.DefaultKey,
@@ -269,6 +269,46 @@ func TestRegisterRefuses(T *testing.T) {
 		must.Error(t, err)
 		test.ErrorIs(t, err, dataprivacy.ErrDuplicateKey)
 		test.StrContains(t, err.Error(), commentsprivacy.DefaultKey)
+
+		// Nothing else went in. comments is the collision and the first entry
+		// built, so under a registration that stopped where it failed this
+		// would already be true; what makes it an assertion about the rule
+		// rather than about the order is the eraser half — comments ships one,
+		// the caller registered only a collector, and the clash is therefore
+		// found by a check that read the whole set rather than by the write
+		// that would have succeeded.
+		test.Eq(t, []string{commentsprivacy.DefaultKey}, registry.CollectorKeys())
+		test.SliceEmpty(t, registry.EraserKeys())
+	})
+
+	T.Run("a key the caller registered already, on the last adapter built", func(t *testing.T) {
+		t.Parallel()
+
+		// The same rule where stopping at the failure would not have been
+		// enough: the collision is on a key built last, so a Register that
+		// discovered it by trying would have ten domains in the registry by
+		// then. dataprivacy.Registry has no unregister, so that registry is
+		// unusable and its holder has no way to find out except by asking it
+		// for keys it does not have.
+		registry := dataprivacy.NewRegistry()
+
+		must.NoError(t, registry.RegisterEraser(auditerasure.DefaultKey,
+			dataprivacy.EraserFunc(func(
+				context.Context,
+				database.Tx,
+				tenancy.Scope,
+				dataprivacy.Subject,
+			) (dataprivacy.ErasureOutcome, error) {
+				return dataprivacy.ErasureOutcome{}, nil
+			})))
+
+		_, err := privacyadapters.Register(registry, everything())
+		must.Error(t, err)
+		test.ErrorIs(t, err, dataprivacy.ErrDuplicateKey)
+		test.StrContains(t, err.Error(), auditerasure.DefaultKey)
+
+		test.SliceEmpty(t, registry.CollectorKeys())
+		test.Eq(t, []string{auditerasure.DefaultKey}, registry.EraserKeys())
 	})
 }
 
