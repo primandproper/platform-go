@@ -41,7 +41,11 @@ import (
 // taking an argument describing which subsystems a service has, which is the
 // config tree it exists to avoid importing.
 //
-// Registration is additive and safe to call from more than one goroutine.
+// Registration is additive and safe to call from more than one goroutine. It
+// is also silent about collisions: a sentinel some mapper already claims
+// stays that mapper's, because the registries stop at the first match. A
+// consumer migrating onto this call therefore has mappers to delete rather
+// than only a call to add — see the package documentation for which.
 func Register() {
 	httperrors.RegisterHTTPErrorMapper(dataprivacy.HTTPMapper)
 	grpcerrors.RegisterGRPCErrorMapper(dataprivacy.GRPCMapper)

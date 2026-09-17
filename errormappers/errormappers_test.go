@@ -2,6 +2,7 @@ package errormappers_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/errormappers"
@@ -26,9 +27,148 @@ import (
 // exactly one of. Registering inside each test would work too, and would be
 // asserting that appending the same mappers four times is harmless rather than
 // that appending them once is enough.
+//
+// The probes bracket the call the way a migrating consumer's own mappers do. The
+// pair registered above it stands in for mappers an init function installed
+// before main ran — the shape a consumer arrives in from a release where this
+// module registered nothing — and the pair below it for mappers registered after
+// this call. Both pairs claim errTwiceClaimed, which no package here maps, and
+// they disagree about what it means, so which one answers says which
+// registration won. The third probe claims a platformerrors sentinel, where the
+// answer is decided before any registered mapper is consulted at all.
+//
+// None of them claims anything else, so the rest of the file reads the registry
+// the one call leaves behind.
 func TestMain(m *testing.M) {
+	httperrors.RegisterHTTPErrorMapper(httpProbe{claims: errTwiceClaimed, code: httperrors.ErrValidatingRequestInput, msg: firstClaimMessage})
+	grpcerrors.RegisterGRPCErrorMapper(grpcProbe{claims: errTwiceClaimed, code: codes.InvalidArgument})
+
+	httperrors.RegisterHTTPErrorMapper(httpProbe{claims: platformerrors.ErrPermissionDenied, code: httperrors.ErrDataNotFound, msg: "the mapper that never runs"})
+	grpcerrors.RegisterGRPCErrorMapper(grpcProbe{claims: platformerrors.ErrPermissionDenied, code: codes.NotFound})
+
 	errormappers.Register()
+
+	httperrors.RegisterHTTPErrorMapper(httpProbe{claims: errTwiceClaimed, code: httperrors.ErrDataNotFound, msg: "the mapper that registered second"})
+	grpcerrors.RegisterGRPCErrorMapper(grpcProbe{claims: errTwiceClaimed, code: codes.NotFound})
+
 	m.Run()
+}
+
+// errTwiceClaimed stands in for a sentinel two mappers both claim. It is
+// declared here rather than borrowed from a package in the roster because a
+// sentinel this module maps already has an answer every other test in this file
+// asserts, and shadowing it would be asserting the rule by breaking them.
+var errTwiceClaimed = platformerrors.New("a sentinel two mappers both claim")
+
+const firstClaimMessage = "the mapper that registered first"
+
+// httpProbe and grpcProbe are the consumer's mapper: one sentinel, one answer,
+// and false for everything else. Two types rather than one because the two
+// registries name their method the same and give it different signatures.
+type httpProbe struct {
+	claims error
+	msg    string
+	code   httperrors.ErrorCode
+}
+
+func (p httpProbe) Map(err error) (httperrors.ErrorCode, string, bool) {
+	if errors.Is(err, p.claims) {
+		return p.code, p.msg, true
+	}
+
+	return httperrors.ErrNothingSpecific, "", false
+}
+
+type grpcProbe struct {
+	claims error
+	code   codes.Code
+}
+
+func (p grpcProbe) Map(err error) (codes.Code, bool) {
+	if errors.Is(err, p.claims) {
+		return p.code, true
+	}
+
+	return codes.Unknown, false
+}
+
+// TestRegister_leavesASentinelWithTheMapperThatClaimedItFirst is the rule a
+// consumer migrating onto this call has to act on, and the reason the package
+// documentation tells them to delete their own mappers over these sentinels.
+//
+// Both registries are consulted in registration order and stop at the first
+// match, and an init function runs before main does anything, so a consumer's
+// mapper is registered first and answers for that sentinel however many mappers
+// Register appends behind it. Nothing refuses the second registration and
+// nothing reports that the first one shadowed it, which is why the symptom is a
+// refusal quietly reaching a client as somebody else's answer rather than an
+// error at startup.
+func TestRegister_leavesASentinelWithTheMapperThatClaimedItFirst(T *testing.T) {
+	T.Parallel()
+
+	// Wrapped, because that is how one arrives from a handler.
+	err := platformerrors.Wrap(errTwiceClaimed, "serving a request")
+
+	code, msg := httperrors.ToAPIError(err)
+	test.EqOp(T, httperrors.ErrValidatingRequestInput, code, test.Sprintf(
+		"a sentinel two HTTP mappers claim resolved to %v, which is the mapper registered after Register", code))
+	test.EqOp(T, firstClaimMessage, msg)
+
+	grpcCode := grpcerrors.MapToGRPC(err, codes.Unknown)
+	test.EqOp(T, codes.InvalidArgument, grpcCode, test.Sprintf(
+		"a sentinel two gRPC mappers claim resolved to %v, which is the mapper registered after Register", grpcCode))
+}
+
+// TestRegister_leavesThePlatformSentinelsToThePlatformMapper is the other half
+// of what a consumer deletes, and the half that never did anything.
+//
+// Both registries consult PlatformMapper ahead of every registered mapper, so a
+// consumer's opinion about a platformerrors sentinel is unreachable wherever it
+// is registered — before this call, after it, or from an init function that
+// predates it. Deleting those mappers changes nothing on the wire, which is what
+// makes them safe to delete along with the rest.
+func TestRegister_leavesThePlatformSentinelsToThePlatformMapper(T *testing.T) {
+	T.Parallel()
+
+	// Wrapped, because that is how one arrives from a handler.
+	err := platformerrors.Wrap(platformerrors.ErrPermissionDenied, "serving a request")
+
+	code, msg := httperrors.ToAPIError(err)
+	test.EqOp(T, httperrors.ErrUserIsNotAuthorized, code, test.Sprintf(
+		"a platform sentinel resolved to %v, so a registered mapper outranked PlatformMapper", code))
+	test.EqOp(T, "permission denied", msg)
+
+	grpcCode := grpcerrors.MapToGRPC(err, codes.Unknown)
+	test.EqOp(T, codes.PermissionDenied, grpcCode, test.Sprintf(
+		"a platform sentinel resolved to %v, so a registered mapper outranked PlatformMapper", grpcCode))
+}
+
+// TestRegister_twiceAnswersWhatOnceAnswered pins the other reading of a double
+// registration: the same mappers appended again, which is what a consumer that
+// constructs operations/http.New and also makes this call ends up with.
+//
+// The second copy sits behind the first and is never reached, so both paths
+// registering costs comparisons and answers identically. The expectation is the
+// answer from before the second call rather than a code spelled here, because
+// what this asserts is that the answer did not move.
+func TestRegister_twiceAnswersWhatOnceAnswered(T *testing.T) {
+	T.Parallel()
+
+	// Wrapped, because that is how one arrives from a handler.
+	err := platformerrors.Wrap(identity.ErrUsernameTaken, "registering the user")
+
+	codeBefore, msgBefore := httperrors.ToAPIError(err)
+	grpcBefore := grpcerrors.MapToGRPC(err, codes.Unknown)
+
+	errormappers.Register()
+
+	codeAfter, msgAfter := httperrors.ToAPIError(err)
+	test.EqOp(T, codeBefore, codeAfter, test.Sprint(
+		"a second Register changed what a sentinel resolves to on HTTP"))
+	test.EqOp(T, msgBefore, msgAfter)
+
+	test.EqOp(T, grpcBefore, grpcerrors.MapToGRPC(err, codes.Unknown), test.Sprint(
+		"a second Register changed what a sentinel resolves to on gRPC"))
 }
 
 // TestRegister_resolvesEveryMappedSentinel is the acceptance test for the one
