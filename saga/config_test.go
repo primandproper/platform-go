@@ -18,6 +18,7 @@ func TestWorkerConfig_EnsureDefaults(T *testing.T) {
 		cfg.EnsureDefaults()
 
 		test.EqOp(t, DefaultPollInterval, cfg.PollInterval)
+		test.EqOp(t, DefaultStatsInterval, cfg.StatsInterval)
 		test.EqOp(t, DefaultLeaseDuration, cfg.LeaseDuration)
 		test.EqOp(t, DefaultLockTTL, cfg.LockTTL)
 		test.EqOp(t, DefaultAdvanceTimeout, cfg.AdvanceTimeout)
@@ -39,6 +40,7 @@ func TestWorkerConfig_EnsureDefaults(T *testing.T) {
 
 		cfg := &WorkerConfig{
 			PollInterval:         2 * time.Second,
+			StatsInterval:        90 * time.Second,
 			LeaseDuration:        20 * time.Minute,
 			LockTTL:              21 * time.Minute,
 			AdvanceTimeout:       4 * time.Minute,
@@ -52,6 +54,7 @@ func TestWorkerConfig_EnsureDefaults(T *testing.T) {
 		cfg.EnsureDefaults()
 
 		test.EqOp(t, 2*time.Second, cfg.PollInterval)
+		test.EqOp(t, 90*time.Second, cfg.StatsInterval)
 		test.EqOp(t, 7, cfg.BatchSize)
 		test.EqOp(t, "custom:", cfg.LockKeyPrefix)
 		test.EqOp(t, uint(4), cfg.CompensationBackoff.MaxAttempts)
@@ -97,6 +100,19 @@ func TestWorkerConfig_ValidateWithContext(T *testing.T) {
 		t.Parallel()
 
 		test.Error(t, (&WorkerConfig{}).ValidateWithContext(t.Context()))
+	})
+
+	T.Run("rejects an absent stats interval", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &WorkerConfig{}
+		cfg.EnsureDefaults()
+		cfg.StatsInterval = 0
+
+		// A worker whose stats ticker never fires is a worker whose stuck level
+		// is only ever recorded by whoever remembers to call Worker.Stats — so
+		// it is refused rather than defaulted to off.
+		test.Error(t, cfg.ValidateWithContext(t.Context()))
 	})
 
 	T.Run("rejects an empty key prefix", func(t *testing.T) {

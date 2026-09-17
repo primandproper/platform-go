@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -23,9 +24,13 @@ import (
 	"github.com/primandproper/primitives-go/v2/distributedlock"
 	lockmemory "github.com/primandproper/primitives-go/v2/distributedlock/memory"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/idempotency"
+	"github.com/primandproper/primitives-go/v2/observability/metrics"
+	metricsmock "github.com/primandproper/primitives-go/v2/observability/metrics/mock"
 
 	"github.com/shoenig/test/must"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // baseTime is the instant this suite works relative to.
@@ -373,4 +378,103 @@ func (heldLocker) WithLock(context.Context, string, func(context.Context) error)
 
 func (heldLocker) TryWithLock(context.Context, string, func(context.Context) error) (bool, error) {
 	return false, nil
+}
+
+// recordingInstruments keeps every measurement the component under test made,
+// keyed by instrument name.
+//
+// The suite asserts that instruments exist — see instruments_test.go — and,
+// for the stuck level, what they were fed. A gauge fed the wrong number looks
+// exactly like one working, and this is the number an operator is woken by.
+type recordingInstruments struct {
+	values map[string][]int64
+	mu     sync.Mutex
+}
+
+func newRecordingInstruments() *recordingInstruments {
+	return &recordingInstruments{values: map[string][]int64{}}
+}
+
+// provider hands out instruments that record into i. The histograms are
+// discarded: a latency is not a number this suite has anything to say about.
+func (i *recordingInstruments) provider() metrics.Provider {
+	return &metricsmock.ProviderMock{
+		NewInt64CounterFunc: func(name string, _ ...metric.Int64CounterOption) (metrics.Int64Counter, error) {
+			return &recordingInstrument{into: i, name: name}, nil
+		},
+		NewInt64GaugeFunc: func(name string, _ ...metric.Int64GaugeOption) (metrics.Int64Gauge, error) {
+			return &recordingInstrument{into: i, name: name}, nil
+		},
+		NewFloat64HistogramFunc: func(string, ...metric.Float64HistogramOption) (metrics.Float64Histogram, error) {
+			return &discardHistogram{}, nil
+		},
+	}
+}
+
+// recorded returns the measurements made on one instrument, in order. The name
+// is the suffix this package appends to its service name, so a test names
+// "_instances_stuck_depth" rather than repeating the prefix.
+func (i *recordingInstruments) recorded(suffix string) []int64 {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	for name, values := range i.values {
+		if strings.HasSuffix(name, suffix) {
+			return append([]int64(nil), values...)
+		}
+	}
+
+	return nil
+}
+
+func (i *recordingInstruments) record(name string, value int64) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	i.values[name] = append(i.values[name], value)
+}
+
+// recordingInstrument is both an Int64Counter and an Int64Gauge, which are the
+// same shape as far as a test that only wants the numbers is concerned.
+type recordingInstrument struct {
+	into *recordingInstruments
+	name string
+}
+
+func (c *recordingInstrument) Add(_ context.Context, incr int64, _ ...metric.AddOption) {
+	c.into.record(c.name, incr)
+}
+
+func (c *recordingInstrument) Record(_ context.Context, value int64, _ ...metric.RecordOption) {
+	c.into.record(c.name, value)
+}
+
+type discardHistogram struct{}
+
+func (*discardHistogram) Record(context.Context, float64, ...metric.RecordOption) {}
+
+// failingListStore fails every List, so the stats read's error path is
+// reachable.
+type failingListStore struct {
+	Store
+}
+
+func (s *failingListStore) List(
+	context.Context,
+	*ListScope,
+	*filtering.QueryFilter,
+) (*filtering.QueryFilteredResult[Record], error) {
+	return nil, platformerrors.New("the read replica is unreachable")
+}
+
+// stuckRecord saves an instance already in StatusStuck, as a worker that ran
+// out of compensation attempts would have left it.
+func (e *storeEnv) stuckRecord(t *testing.T, store Store, definitionName, id string) *Record {
+	t.Helper()
+
+	inst := newRecord(id, definitionName, []string{"one"}, testState{}, baseTime)
+	inst.Status = StatusStuck
+	inst.ResumeStatus = StatusCompensating
+
+	return e.saveInstance(t, store, inst, baseTime)
 }

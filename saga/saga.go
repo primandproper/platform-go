@@ -36,6 +36,7 @@ const (
 	advancedKey    = "saga.steps_advanced"
 	stateBytesKey  = "saga.state_bytes"
 	nextAttemptKey = "saga.next_attempt"
+	stuckDepthKey  = "saga.stuck_depth"
 
 	// Store-layer keys. The database client traces the statement, but with the
 	// SQL text suppressed by default — so without these a trace shows an
@@ -167,8 +168,10 @@ const (
 	// library has run out of ways to undo it, which is a fact about the outside
 	// world that no amount of retrying inside this process can change. Most
 	// homegrown saga implementations swallow this case; it is how money goes
-	// missing. Alert on saga_instances_stuck, fix whatever broke, and call
-	// Runner.Resume.
+	// missing. Alert on saga_instances_stuck_depth — the level, not the
+	// counter beside it: this is a state that persists until somebody acts, so
+	// what matters is how many are waiting rather than how often one arrived.
+	// Then fix whatever broke and call Runner.Resume.
 	StatusStuck Status = "stuck"
 )
 

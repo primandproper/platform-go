@@ -144,10 +144,18 @@ this process has run out of ways to undo it.
 
 It is never resolved automatically, because nothing inside this process can
 resolve it — the fact that needs to change is in the outside world. Alert on
-saga_instances_stuck, fix whatever broke, and call Runner.Resume. The
+saga_instances_stuck_depth, fix whatever broke, and call Runner.Resume. The
 compensation budget is deliberately larger than the forward budget
 (DefaultCompensationAttempts is ten against three): giving up on a Do costs a
 compensation, and giving up on an Undo costs somebody's evening.
+
+The gauge rather than saga_instances_stuck, which is the counter the Worker
+increments as it gives up. A stuck instance stays stuck until a person acts, so
+the number worth waking somebody for is the level — how many sagas are half-done
+right now — and a counter cannot report one: it describes a rate, and a deploy
+resets it to zero with the backlog still in the table. Worker.Stats is the read
+behind the gauge, sampled on WorkerConfig.StatsInterval; StuckDepth is the same
+read for a process that runs no Worker and holds only a Store.
 
 Most homegrown saga implementations swallow this case. It is how money goes
 missing.

@@ -46,6 +46,16 @@ const (
 	// the first is still stepping through.
 	DefaultLeaseDuration = 5 * time.Minute
 
+	// DefaultStatsInterval is how often the Worker samples the stuck level onto
+	// saga_instances_stuck_depth.
+	//
+	// A minute, against a poll interval of a second, because the two reads are
+	// not the same shape. A cycle asks an indexed question about the handful of
+	// instances that are due; a sample counts every stuck row in the table, and
+	// a level that changes only when a compensation gives up or an operator
+	// resumes one does not need a reading per second. See Worker.Stats.
+	DefaultStatsInterval = time.Minute
+
 	// DefaultLockTTL bounds the per-instance distributed lock. Like the lease,
 	// it must exceed AdvanceTimeout — a lock that expires mid-pass is not a
 	// lock.
@@ -94,6 +104,12 @@ type WorkerConfig struct {
 	// PollInterval is how often the Worker looks for instances to advance.
 	PollInterval time.Duration `env:"POLL_INTERVAL" json:"pollInterval,omitempty" yaml:"pollInterval,omitempty"`
 
+	// StatsInterval is how often the Worker samples the stuck level onto
+	// saga_instances_stuck_depth. It is its own knob rather than a multiple of
+	// PollInterval because the two reads cost different things — see
+	// DefaultStatsInterval and Worker.Stats.
+	StatsInterval time.Duration `env:"STATS_INTERVAL" json:"statsInterval,omitempty" yaml:"statsInterval,omitempty"`
+
 	// LeaseDuration is how long a claimed instance stays leased. It must exceed
 	// AdvanceTimeout — see ValidateWithContext.
 	LeaseDuration time.Duration `env:"LEASE_DURATION" json:"leaseDuration,omitempty" yaml:"leaseDuration,omitempty"`
@@ -121,6 +137,9 @@ var _ validation.ValidatableWithContext = (*WorkerConfig)(nil)
 func (cfg *WorkerConfig) EnsureDefaults() {
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = DefaultPollInterval
+	}
+	if cfg.StatsInterval <= 0 {
+		cfg.StatsInterval = DefaultStatsInterval
 	}
 	if cfg.LeaseDuration <= 0 {
 		cfg.LeaseDuration = DefaultLeaseDuration
@@ -160,6 +179,7 @@ func (cfg *WorkerConfig) EnsureDefaults() {
 func (cfg *WorkerConfig) ValidateWithContext(ctx context.Context) error {
 	return validation.ValidateStructWithContext(ctx, cfg,
 		validation.Field(&cfg.PollInterval, validation.Required),
+		validation.Field(&cfg.StatsInterval, validation.Required),
 		validation.Field(&cfg.BatchSize, validation.Required, validation.Min(1)),
 		validation.Field(&cfg.Concurrency, validation.Required, validation.Min(1)),
 		validation.Field(&cfg.StepTimeout, validation.Required),

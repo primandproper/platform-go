@@ -1268,6 +1268,13 @@ func runWorkerSuite(t *testing.T, env *storeEnv) {
 		must.EqOp(t, StatusStuck, stuck.Status)
 		test.EqOp(t, StatusCompensating, stuck.ResumeStatus)
 
+		// The level, read on this dialect. The counter the worker just
+		// incremented says a compensation gave up; this says one saga is
+		// half-done and waiting, which is the number an operator is paged on.
+		stuckStats, err := worker.Stats(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), stuckStats.Stuck)
+
 		refundWorks = true
 
 		runner, err := NewRunner[testState](env.client, store, registry, WithRunnerClock(clk))
@@ -1278,5 +1285,11 @@ func runWorkerSuite(t *testing.T, env *storeEnv) {
 
 		final := drain(t, worker, store, clk, "i1", 5)
 		test.EqOp(t, StatusCompensated, final.Status)
+
+		// And back down, which is the whole reason the level exists beside the
+		// counter: the counter is still at one.
+		resumedStats, err := worker.Stats(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), resumedStats.Stuck)
 	})
 }
