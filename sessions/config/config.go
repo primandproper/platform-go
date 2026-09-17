@@ -67,6 +67,40 @@ type Config struct {
 	// SWEEP_INTERVAL=0.
 	SweepInterval *time.Duration `env:"SWEEP_INTERVAL" json:"sweepInterval,omitempty" yaml:"sweepInterval,omitempty"`
 
+	// IdleTimeout bounds how long a session may go unread. Unset takes
+	// sessions.DefaultIdleTimeout; zero disables it, leaving AbsoluteTimeout as
+	// the only deadline and, with no idle deadline to refresh, nothing for a
+	// read to touch.
+	//
+	// The pointer is what puts that off-switch in reach. A time.Duration has
+	// one zero and two things to say with it, and the two readings do not cost
+	// the same: a deployment that said nothing wants the documented half hour,
+	// not sessions that survive a year of inactivity. So a nil is the one that
+	// said nothing and takes the default, and a spelled zero survives to the
+	// store, which already reads a non-positive idle timeout as disabled.
+	//
+	// In the environment that is an absent IDLE_TIMEOUT against IDLE_TIMEOUT=0.
+	IdleTimeout *time.Duration `env:"IDLE_TIMEOUT" json:"idleTimeout,omitempty" yaml:"idleTimeout,omitempty"`
+
+	// TouchInterval is how much of the idle window must elapse before a read
+	// refreshes the idle deadline. Unset leaves the store to pick one; zero
+	// refreshes on every read, which at any real request rate is a write per
+	// request. See sessions.Policy for what the interval buys and what it
+	// costs.
+	//
+	// It is the one field here EnsureDefaults leaves alone, and the pointer
+	// records that as well as it records the zero. The store's own default is
+	// clamped to fit inside whatever idle window it ends up with, so a Config
+	// that spelled sessions.DefaultTouchInterval out would turn a short
+	// IdleTimeout into sessions.ErrTouchExceedsIdleTimeout — an error nobody
+	// asked for, since an explicit interval that does not fit is rejected and a
+	// default one is not. Unset therefore means whatever the store works out,
+	// and only an interval the deployment spelled is passed through.
+	//
+	// In the environment that is an absent TOUCH_INTERVAL against
+	// TOUCH_INTERVAL=0.
+	TouchInterval *time.Duration `env:"TOUCH_INTERVAL" json:"touchInterval,omitempty" yaml:"touchInterval,omitempty"`
+
 	// Provider selects where sessions live: cache or database.
 	Provider string `env:"PROVIDER" envDefault:"cache" json:"provider,omitempty" yaml:"provider,omitempty"`
 
@@ -86,28 +120,35 @@ type Config struct {
 
 	// AbsoluteTimeout bounds a session's total lifetime from the moment it was
 	// established. Nothing extends it — not activity, not renewal — which is
-	// what makes it the only bound on a cookie somebody stole.
+	// what makes it the only bound on a cookie somebody stole. Unset takes
+	// sessions.DefaultAbsoluteTimeout.
+	//
+	// It is deliberately the one timeout here that is not a pointer. A store
+	// with neither timeout enforces nothing and is refused — see
+	// sessions.ErrNoTimeout — so at most one of the two may be switched off,
+	// and this is the one that still bounds a session nobody stops using. A
+	// deployment that wants it gone anyway says so to the store, through
+	// WithStoreOptions, where nothing can mistake it for an unset environment
+	// variable.
 	AbsoluteTimeout time.Duration `env:"ABSOLUTE_TIMEOUT" json:"absoluteTimeout,omitempty" yaml:"absoluteTimeout,omitempty"`
-
-	// IdleTimeout bounds how long a session may go unread.
-	IdleTimeout time.Duration `env:"IDLE_TIMEOUT" json:"idleTimeout,omitempty" yaml:"idleTimeout,omitempty"`
-
-	// TouchInterval is how much of the idle window must elapse before a read
-	// refreshes the idle deadline. Zero refreshes on every read, which at any
-	// real request rate is a write per request; see sessions.Policy.
-	TouchInterval time.Duration `env:"TOUCH_INTERVAL" json:"touchInterval,omitempty" yaml:"touchInterval,omitempty"`
 }
 
 var _ validation.ValidatableWithContext = (*Config)(nil)
 
-// EnsureDefaults fills in zero fields.
+// EnsureDefaults fills in unset fields.
 //
 // The timeouts are defaulted here rather than left to the store so that a
-// Config reads as what it will actually do. SweepInterval is the one field
-// where that requires a pointer: only a nil is unset, so a zero reaching this
-// method is a deployment asking for no sweeper and is left alone. It is
-// deliberately not defaulted for the cache provider, which has nothing to
-// sweep.
+// Config reads as what it will actually do. Three fields need a pointer before
+// that is even possible, because each has a spelled zero that means something
+// other than "unset": only a nil is unset, so a zero reaching this method is a
+// deployment asking for no sweeper, no idle timeout or a refresh on every read,
+// and is left alone.
+//
+// Two of the three are then deliberately left undefaulted anyway. SweepInterval
+// is not defaulted for the cache provider, which has nothing to sweep, and
+// TouchInterval is not defaulted at all: the store picks one against the idle
+// window it ends up with, and a Config that picked first would reject short idle
+// timeouts the store accepts. See those fields for the long form.
 func (cfg *Config) EnsureDefaults() {
 	if cfg.Provider == "" {
 		cfg.Provider = ProviderCache
@@ -115,8 +156,8 @@ func (cfg *Config) EnsureDefaults() {
 	if cfg.AbsoluteTimeout == 0 {
 		cfg.AbsoluteTimeout = sessions.DefaultAbsoluteTimeout
 	}
-	if cfg.IdleTimeout == 0 {
-		cfg.IdleTimeout = sessions.DefaultIdleTimeout
+	if cfg.IdleTimeout == nil {
+		cfg.IdleTimeout = pointer.To(sessions.DefaultIdleTimeout)
 	}
 	if cfg.CookieName == "" {
 		cfg.CookieName = sessionshttp.DefaultCookieName
@@ -160,17 +201,22 @@ func (cfg *Config) provider() string {
 func (cfg *Config) storeOptions(o *options) []sessions.Option {
 	opts := []sessions.Option{
 		sessions.WithAbsoluteTimeout(cfg.AbsoluteTimeout),
-		sessions.WithIdleTimeout(cfg.IdleTimeout),
+		// Dereferenced after EnsureDefaults, so a nil here is a caller that
+		// reached this method some other way; zero is the disabled idle
+		// timeout, which is exactly what the store reads it as.
+		sessions.WithIdleTimeout(pointer.Dereference(cfg.IdleTimeout)),
 		sessions.WithLogger(o.logger),
 		sessions.WithTracerProvider(o.tracerProvider),
 		sessions.WithMetricsProvider(o.metricsProvider),
 	}
 
 	// Applied only when configured, because zero is a meaningful touch interval
-	// — refresh on every read — and cannot double as "unset". Leaving the
-	// option off is what lets the store apply its own default.
-	if cfg.TouchInterval > 0 {
-		opts = append(opts, sessions.WithTouchInterval(cfg.TouchInterval))
+	// — refresh on every read — and nil rather than zero is now what "unset"
+	// looks like. Leaving the option off is what lets the store apply its own
+	// default, which it clamps to the idle window; passing a zero through is a
+	// deployment overriding that.
+	if cfg.TouchInterval != nil {
+		opts = append(opts, sessions.WithTouchInterval(*cfg.TouchInterval))
 	}
 
 	return append(opts, o.store...)
