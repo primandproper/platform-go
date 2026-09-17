@@ -62,5 +62,43 @@ registries are process-global — an error is mapped by whatever is linked into 
 binary, not by whichever container resolved the handler — so calling it twice
 appends a second copy of each mapper, which answers identically and is never
 reached, because the registries stop at the first match.
+
+# A consumer that already maps these sentinels
+
+Stopping at the first match is also the rule for two mappers that disagree, and
+that is the one a consumer migrating onto this call has to act on. Both
+registries are append-only and consulted in registration order, and the first
+mapper to claim an error decides the answer. Nothing compares an arriving mapper
+against the sentinels already spoken for: a second mapper over
+comments.ErrCommentNotFound is not refused, not merged and not warned about — it
+is appended behind the first and never reached for that sentinel. First wins,
+and first means whichever registration ran earlier rather than whichever module
+the mapper came from.
+
+An init function always runs before main does anything, so a consumer that wrote
+its own mappers over this module's sentinels and registered them from init keeps
+answering with those, whatever this call installs afterwards. That is the shape a
+consumer arrives in from a release where this module registered nothing and
+writing them out by hand was the only way to have them at all. Where the two
+agree the cost is a comparison. Where they disagree the consumer's answer is the
+one on the wire, and the disagreement is silent in both directions — the
+package's own mapper is never consulted, and nothing reports that it was skipped.
+
+So delete them. A mapper over a sentinel this module owns is now declared beside
+that sentinel and moves with it, and a copy kept downstream is a second opinion
+about what a refusal means that surfaces only once the two have drifted. What a
+consumer keeps is its mappers over its own sentinels: those collide with nothing
+here and stay registered wherever they already are, before or after this call.
+
+A mapper over the platformerrors sentinels is a different case with the same
+instruction. Both registries consult PlatformMapper ahead of every registered
+mapper, so a consumer's opinion about platformerrors.ErrPermissionDenied has
+been unreachable for as long as it has been registered — by ordering that
+predates this package — and deleting it changes nothing on the wire.
+
+The client-safe lists carry none of this. RegisterClientSafeSentinels builds a
+membership test rather than an ordered chain, so a sentinel registered by both
+sides costs one more comparison and reaches the client with the same words
+either way.
 */
 package errormappers
