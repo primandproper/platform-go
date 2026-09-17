@@ -70,6 +70,30 @@ other than an empty list calls Fragment with its own answer. What stays with the
 consumer either way is the span, the logger, and the repository call: the read
 is the domain's and always will be.
 
+# The fan-out an adapter does not write
+
+A domain's rows are scoped and a request's confinement may name nobody, so every
+adapter resolves the subject to a set of scopes and then works one scope at a
+time. That loop is [ForEachOwner], and it is the one home for it: the resolve,
+the wrap that names the subject, the cancellation check between owners, and
+nothing else. [CollectByScope] and [EraseByScope] are it composed with
+[CollectAll] and with a sum of [ErasureOutcome], which is what most of the
+adapters here were before they existed.
+
+Two rulings live in that loop rather than in eleven copies of it. Owners are not
+sorted — the resolver's order is the resolver's to decide. And owners are not
+de-duplicated: a resolver answering with the same scope twice has a bug, and an
+export that shows its rows twice is how somebody finds out, where collapsing it
+would hide the bug in the one artifact it is most expensive to be wrong in.
+
+An adapter reaches for [ForEachOwner] directly rather than the two helpers when
+its per-scope work is not one read or one write — identity makes two ordered
+writes and skips a directory the subject is not in, billing fans out over
+accounts rather than scopes — or when its own wording is the point, which is
+what oauth2clients calling one of these a registry and mediaregistry calling its
+erasure an archiving both are. dataprivacy/auditerasure reaches for none of it,
+because it hands the whole resolved set to one call and has no loop to home.
+
 # Collect and erase are separate interfaces
 
 Erasure is not the inverse of export. Some data must be retained — financial
@@ -186,6 +210,28 @@ step.
 
 # Assembly
 
+The registry comes first, because everything below takes one. privacyadapters
+puts every adapter this module ships into one in a single call, and hands back
+the keys it registered so a deployment can log what its subject access requests
+will actually cover:
+
+	registry := dataprivacy.NewRegistry()
+
+	registered, err := privacyadapters.Register(registry, &privacyadapters.Adapters{
+	    Reader:   client.Reader(),
+	    Comments: &privacyadapters.CommentsAdapter{Store: commentStore, Resolve: tenantsOf},
+	    Identity: &privacyadapters.IdentityAdapter{Store: userStore, Resolve: tenantsOf},
+	})
+	if err != nil {
+	    return err
+	}
+
+A deployment that registers by hand instead is registering by hand, and the
+thing to know about that is that skipping one raises nothing: the fulfiller
+collects what it was given, writes an artifact whose manifest lists exactly the
+sections it produced, and reports success. An export containing none of the
+subject's comments looks precisely like an export of a subject who wrote none.
+
 The fulfiller supplies the runners and registers them; an operations Worker over
 the same registry runs them.
 
@@ -274,6 +320,14 @@ notifications/privacy's two pairs, settings/privacy, waitlists/privacy and
 dataprivacy/auditerasure — each take a resolver that turns that confinement into
 the scopes their own tables use, because what a tenant means is the consumer's
 model rather than this package's.
+
+That list is checked rather than maintained. privacyadapters' roster test walks
+this module for every package declaring a Collector or an Eraser and requires
+each one to appear both in its registration and in this paragraph, so an adapter
+that lands without being named here fails there rather than going missing from
+somebody's export. The resolver they take is [ScopeResolver], which each of them
+aliases rather than redeclaring — see that type for why the alias is
+load-bearing.
 
 Two of them ship one half rather than two, and each says why on its own package.
 billing/privacy has no Eraser, because a subscription and a ledger row are

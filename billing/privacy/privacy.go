@@ -214,25 +214,35 @@ func (c *Collector) Collect(
 	requestScope tenancy.Scope,
 	subject dataprivacy.Subject,
 ) (json.RawMessage, error) {
-	accounts, err := c.resolve(ctx, requestScope, subject)
+	// Empty rather than nil, and that is load-bearing: this collector marshals
+	// the slice itself rather than handing it to dataprivacy.Fragment, so a nil
+	// one would put null in the artifact where a subject with no accounts should
+	// read an empty list.
+	exports := []Export{}
+
+	// dataprivacy.ForEachOwner over Account rather than over tenancy.Scope. An
+	// account is a scope and an id, neither inferable from the other, and it is
+	// the reason that helper is generic over what it fans out across: a fan-out
+	// fixed to scopes would have left this copy of the loop behind, which is the
+	// copy most likely to drift, being the only one.
+	err := dataprivacy.ForEachOwner(ctx, c.resolve, requestScope, subject,
+		func(ctx context.Context, account Account) error {
+			export, collectErr := c.collectAccount(ctx, &account)
+			if collectErr != nil {
+				return collectErr
+			}
+
+			exports = append(exports, export)
+
+			return nil
+		})
 	if err != nil {
-		return nil, platformerrors.Wrapf(err, "resolving billing accounts for subject %q", subject.ID)
+		return nil, err
 	}
 
-	exports := make([]Export, 0, len(accounts))
-
-	for i := range accounts {
-		export, collectErr := c.collectAccount(ctx, &accounts[i])
-		if collectErr != nil {
-			return nil, collectErr
-		}
-
-		exports = append(exports, export)
-	}
-
-	body, err := json.Marshal(exports)
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "encoding the billing export")
+	body, marshalErr := json.Marshal(exports)
+	if marshalErr != nil {
+		return nil, platformerrors.Wrap(marshalErr, "encoding the billing export")
 	}
 
 	return body, nil

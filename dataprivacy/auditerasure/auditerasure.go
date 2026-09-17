@@ -103,11 +103,13 @@ var ErrInvalidTablePrefix = audit.ErrInvalidTablePrefix
 // whichever tenant asked; a deployment whose audit scopes are tenants reads it
 // as the instruction to delete inside that one, and one whose requests never
 // name a confinement will only ever see the zero Scope.
-type ScopeResolver func(
-	ctx context.Context,
-	requestScope tenancy.Scope,
-	subject dataprivacy.Subject,
-) ([]tenancy.Scope, error)
+//
+// It is [dataprivacy.ScopeResolver] under this package's name, and the = is
+// load-bearing rather than cosmetic: a defined type of its own would be
+// assignable to the identical defined type in the ten sibling adapters only
+// through a conversion, so a deployment with one resolver function would write
+// one conversion per domain.
+type ScopeResolver = dataprivacy.ScopeResolver
 
 // Eraser removes a subject's audit scopes and reports what it could not remove.
 //

@@ -238,6 +238,10 @@ func registerPlatformServices(i do.Injector, cfg *Config) {
 	// express a function. comments/privacy's collector and eraser are the
 	// service's to register too, for the reason every registry in this file is:
 	// they need a mapping from a person to the tenants they belong to.
+	//
+	// privacyadapters.Register is where that registration is made, for this
+	// store and for the nine others this file wires. It takes the resolvers,
+	// which is the whole of why it is not called from here.
 	if cfg.Comments != nil {
 		do.ProvideValue(i, cfg.Comments)
 		commentscfg.RegisterStore(i)

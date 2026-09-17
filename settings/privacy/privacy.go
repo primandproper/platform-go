@@ -114,6 +114,11 @@ import (
 // entries an outcome reports.
 const DefaultKey = "settings"
 
+// heldNoun names what this domain holds, for the message dataprivacy's fan-out
+// helpers wrap a failed read or write in. The registry key names the section;
+// this names the table, which is what somebody reading the log wants.
+const heldNoun = "setting values"
+
 // The sentinels this package returns.
 var (
 	// ErrNilStore indicates a nil settings.ValueStore.
@@ -136,54 +141,26 @@ var (
 
 // ScopeResolver names the scopes a subject's settings may be in.
 //
-// Returning no scopes is legitimate and means the subject has nothing here: the
-// collector reports the domain as holding nothing, and the eraser deletes
-// nothing. Returning too many is how one subject's erasure reaches another
-// tenant's preferences, so it is worth being exact.
-//
-// requestScope is the confinement the privacy request named, which the fulfiller
-// hands over beside the subject. The zero Scope is the request that named none —
-// a plain "give me my data" — and what a resolver makes of that is the whole of
-// the decision this seam exists for.
-type ScopeResolver func(
-	ctx context.Context,
-	requestScope tenancy.Scope,
-	subject dataprivacy.Subject,
-) ([]tenancy.Scope, error)
+// It is [dataprivacy.ScopeResolver] under this package's name, and the = is
+// load-bearing rather than cosmetic: a defined type of its own would be
+// assignable to the identical defined type in the sibling adapters only through
+// a conversion, so a deployment with one resolver function would write one
+// conversion per domain. See dataprivacy.ScopeResolver for what a resolver
+// answers, what returning none means, and why it has no default.
+type ScopeResolver = dataprivacy.ScopeResolver
 
 // RequestScope resolves the scope the request itself names, for a deployment
 // where a privacy request always arrives scoped.
 //
-// A request that names none is ErrUnscopedRequest rather than the global scope.
-// The confinement arrives as a tenancy.Scope, so "confined to nobody" and "the
-// global scope" are already distinct values here and nothing has to reconstruct
-// the difference; what a resolver still cannot do is invent the scope a request
-// declined to name. The difference is not recoverable later: an export that
-// quietly covered only the global scope would be well-formed, would have a
-// section, and would be missing every preference the subject ever set.
-func RequestScope(
-	_ context.Context,
-	requestScope tenancy.Scope,
-	subject dataprivacy.Subject,
-) ([]tenancy.Scope, error) {
-	if requestScope.Validate() != nil {
-		return nil, platformerrors.Wrapf(ErrUnscopedRequest, "subject %q", subject.ID)
-	}
-
-	return []tenancy.Scope{requestScope}, nil
-}
+// A request that names none is [ErrUnscopedRequest] rather than the global
+// scope — see dataprivacy.RequestScopeOr, which this is built from, for why the
+// difference is not recoverable later.
+var RequestScope = dataprivacy.RequestScopeOr(ErrUnscopedRequest)
 
 // FixedScopes resolves every subject to the same scopes, for a deployment whose
 // tenancy is fixed — most often the single-tenant one, as
 // FixedScopes(tenancy.Global()).
-func FixedScopes(scopes ...tenancy.Scope) ScopeResolver {
-	fixed := make([]tenancy.Scope, len(scopes))
-	copy(fixed, scopes)
-
-	return func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
-		return fixed, nil
-	}
-}
+var FixedScopes = dataprivacy.FixedScopes
 
 // subjectOf renders a privacy request's subject as the store keys values on. The
 // two vocabularies agree — see the package documentation — so this is a
@@ -246,28 +223,21 @@ func (c *Collector) Collect(
 	requestScope tenancy.Scope,
 	subject dataprivacy.Subject,
 ) (json.RawMessage, error) {
-	scopes, err := c.resolve(ctx, requestScope, subject)
-	if err != nil {
-		return nil, platformerrors.Wrap(err, "resolving setting scopes for subject")
-	}
-
 	held := subjectOf(subject)
 
-	var chosen []settings.Value
+	chosen, err := dataprivacy.CollectByScope(ctx, c.resolve, requestScope, subject, heldNoun,
+		func(
+			ctx context.Context,
+			scope tenancy.Scope,
+			filter *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[settings.Value], error) {
+			everything := *filter
+			everything.IncludeArchived = new(true)
 
-	for _, scope := range scopes {
-		page, collectErr := dataprivacy.CollectAll(ctx,
-			func(ctx context.Context, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[settings.Value], error) {
-				everything := *filter
-				everything.IncludeArchived = new(true)
-
-				return c.store.ListValuesForSubject(ctx, c.reader, scope, held, &everything)
-			})
-		if collectErr != nil {
-			return nil, platformerrors.Wrapf(collectErr, "collecting setting values in scope %q", scope)
-		}
-
-		chosen = append(chosen, page...)
+			return c.store.ListValuesForSubject(ctx, c.reader, scope, held, &everything)
+		})
+	if err != nil {
+		return nil, err
 	}
 
 	return dataprivacy.Fragment(len(chosen) > 0, chosen)
@@ -310,25 +280,15 @@ func (e *Eraser) Erase(
 		return dataprivacy.ErasureOutcome{}, ErrNilExecutor
 	}
 
-	scopes, err := e.resolve(ctx, requestScope, subject)
-	if err != nil {
-		return dataprivacy.ErasureOutcome{},
-			platformerrors.Wrap(err, "resolving setting scopes for subject")
-	}
-
 	held := subjectOf(subject)
 
-	var outcome dataprivacy.ErasureOutcome
+	return dataprivacy.EraseByScope(ctx, tx, e.resolve, requestScope, subject, heldNoun,
+		func(ctx context.Context, tx database.Tx, scope tenancy.Scope) (dataprivacy.ErasureOutcome, error) {
+			deleted, deleteErr := e.store.DeleteValuesForSubject(ctx, tx, scope, held)
+			if deleteErr != nil {
+				return dataprivacy.ErasureOutcome{}, deleteErr
+			}
 
-	for _, scope := range scopes {
-		deleted, deleteErr := e.store.DeleteValuesForSubject(ctx, tx, scope, held)
-		if deleteErr != nil {
-			return dataprivacy.ErasureOutcome{},
-				platformerrors.Wrapf(deleteErr, "erasing setting values in scope %q", scope)
-		}
-
-		outcome.Deleted += deleted
-	}
-
-	return outcome, nil
+			return dataprivacy.ErasureOutcome{Deleted: deleted}, nil
+		})
 }

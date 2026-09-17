@@ -217,10 +217,13 @@ var Matrix = map[string]map[string]Decision{
 		// and the 400 they resolve to is generous; the mapping predates this package
 		// and is not this package's to change.
 		"ErrNilDatabaseClient": {Err: dataprivacy.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilErase":          {Err: dataprivacy.ErrNilErase, Is: Platform},
 		"ErrNilExecutor":       {Err: dataprivacy.ErrNilExecutor, Is: Platform},
+		"ErrNilFanOut":         {Err: dataprivacy.ErrNilFanOut, Is: Platform},
 		"ErrNilFetch":          {Err: dataprivacy.ErrNilFetch, Is: Platform},
 		"ErrNilOperations":     {Err: dataprivacy.ErrNilOperations, Is: Platform},
 		"ErrNilRequest":        {Err: dataprivacy.ErrNilRequest, Is: Platform},
+		"ErrNilResolver":       {Err: dataprivacy.ErrNilResolver, Is: Platform},
 		"ErrNilStore":          {Err: dataprivacy.ErrNilStore, Is: Platform},
 
 		// Fulfillment-side outcomes and construction failures. A collector that
@@ -246,6 +249,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNotInProgress":      {Err: dataprivacy.ErrNotInProgress, Is: Unhandled},
 		"ErrUnexpiringArtifact": {Err: dataprivacy.ErrUnexpiringArtifact, Is: Unhandled},
 		"ErrUnknownStatus":      {Err: dataprivacy.ErrUnknownStatus, Is: Unhandled},
+		"ErrUnscopedRequest":    {Err: dataprivacy.ErrUnscopedRequest, Is: Unhandled},
 	},
 	linksPkg: {
 		// The four redemption outcomes and the malformed token. These are the whole
