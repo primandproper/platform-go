@@ -662,7 +662,7 @@ func TestPinnedQuantity_matchesTheAssignmentItMirrors(T *testing.T) {
 	T.Run("a settled total snapshots the quantity afresh", func(t *testing.T) {
 		t.Parallel()
 
-		// The settle levelled the two at 100, so this claim takes what has
+		// The settle leveled the two at 100, so this claim takes what has
 		// accumulated since.
 		test.EqOp(t, int64(150), PinnedQuantity(100, 100, 150))
 	})
@@ -676,7 +676,7 @@ func TestPinnedQuantity_matchesTheAssignmentItMirrors(T *testing.T) {
 	T.Run("a pin below the flushed mark is not held on to", func(t *testing.T) {
 		t.Parallel()
 
-		// The strictly-greater comparison is what makes the levelled case a
+		// The strictly-greater comparison is what makes the leveled case a
 		// fresh snapshot rather than a held pin, and this is the same boundary
 		// approached from the other side: there is nothing outstanding, so the
 		// stale pin is not what the next post measures from.
