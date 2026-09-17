@@ -194,9 +194,8 @@ type Store interface {
 	// through — Service.Cancel — so the omission is worth stating rather than
 	// only being true. The write is a conditional transition on the id and it
 	// reads the row back on the same handle; what confines it to a tenant is the
-	// scoped read the caller makes first, which is what Service.Cancel's own
-	// callers do and what operations/http does before it. A consumer holding
-	// this interface directly owns that read.
+	// scoped read made first, and Service.Cancel makes that read itself. A
+	// consumer holding this interface directly owns it instead.
 	RequestCancel(ctx context.Context, id string) (*Operation, error)
 
 	// Stranded reads active operations that nothing is going to pick up: pending

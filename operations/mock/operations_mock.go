@@ -717,7 +717,7 @@ var _ operations.Service = &ServiceMock{}
 //
 //		// make and configure a mocked operations.Service
 //		mockedService := &ServiceMock{
-//			CancelFunc: func(ctx context.Context, id string) (*operations.Operation, error) {
+//			CancelFunc: func(ctx context.Context, scope tenancy.Scope, id string) (*operations.Operation, error) {
 //				panic("mock out the Cancel method")
 //			},
 //			EnqueueFunc: func(ctx context.Context, id string, opts ...operations.StartOption) error {
@@ -749,7 +749,7 @@ var _ operations.Service = &ServiceMock{}
 //	}
 type ServiceMock struct {
 	// CancelFunc mocks the Cancel method.
-	CancelFunc func(ctx context.Context, id string) (*operations.Operation, error)
+	CancelFunc func(ctx context.Context, scope tenancy.Scope, id string) (*operations.Operation, error)
 
 	// EnqueueFunc mocks the Enqueue method.
 	EnqueueFunc func(ctx context.Context, id string, opts ...operations.StartOption) error
@@ -778,6 +778,8 @@ type ServiceMock struct {
 		Cancel []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
 			// ID is the id argument value.
 			ID string
 		}
@@ -856,21 +858,23 @@ type ServiceMock struct {
 }
 
 // Cancel calls CancelFunc.
-func (mock *ServiceMock) Cancel(ctx context.Context, id string) (*operations.Operation, error) {
+func (mock *ServiceMock) Cancel(ctx context.Context, scope tenancy.Scope, id string) (*operations.Operation, error) {
 	if mock.CancelFunc == nil {
 		panic("ServiceMock.CancelFunc: method is nil but Service.Cancel was just called")
 	}
 	callInfo := struct {
-		Ctx context.Context
-		ID  string
+		Ctx   context.Context
+		Scope tenancy.Scope
+		ID    string
 	}{
-		Ctx: ctx,
-		ID:  id,
+		Ctx:   ctx,
+		Scope: scope,
+		ID:    id,
 	}
 	mock.lockCancel.Lock()
 	mock.calls.Cancel = append(mock.calls.Cancel, callInfo)
 	mock.lockCancel.Unlock()
-	return mock.CancelFunc(ctx, id)
+	return mock.CancelFunc(ctx, scope, id)
 }
 
 // CancelCalls gets all the calls that were made to Cancel.
@@ -878,12 +882,14 @@ func (mock *ServiceMock) Cancel(ctx context.Context, id string) (*operations.Ope
 //
 //	len(mockedService.CancelCalls())
 func (mock *ServiceMock) CancelCalls() []struct {
-	Ctx context.Context
-	ID  string
+	Ctx   context.Context
+	Scope tenancy.Scope
+	ID    string
 } {
 	var calls []struct {
-		Ctx context.Context
-		ID  string
+		Ctx   context.Context
+		Scope tenancy.Scope
+		ID    string
 	}
 	mock.lockCancel.RLock()
 	calls = mock.calls.Cancel

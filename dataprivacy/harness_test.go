@@ -285,10 +285,21 @@ type stubOperations struct {
 	cancelErr   error
 	started     []startedOperation
 	enqueued    []string
-	cancelled   []string
+	cancelled   []cancelledOperation
 	nextIDIndex atomic.Int64
 
 	mu sync.Mutex
+}
+
+// cancelledOperation is one call to Cancel.
+//
+// The scope is recorded because it is the whole of what confines the write —
+// operations.Service.Cancel reads under it before asking the store to stop
+// anything — so a cancellation naming the wrong one is a cancellation of
+// nothing, which no assertion on the ID alone would see.
+type cancelledOperation struct {
+	id    string
+	scope tenancy.Scope
 }
 
 // startedOperation is one call to StartInTransaction.
@@ -339,11 +350,11 @@ func newStubOperations() *stubOperations {
 		return s.enqueueErr
 	}
 
-	s.CancelFunc = func(_ context.Context, id string) (*operations.Operation, error) {
+	s.CancelFunc = func(_ context.Context, scope tenancy.Scope, id string) (*operations.Operation, error) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
-		s.cancelled = append(s.cancelled, id)
+		s.cancelled = append(s.cancelled, cancelledOperation{id: id, scope: scope})
 
 		if s.cancelErr != nil {
 			return nil, s.cancelErr
@@ -369,7 +380,7 @@ func (s *stubOperations) enqueuedIDs() []string {
 	return slices.Clone(s.enqueued)
 }
 
-func (s *stubOperations) cancelledIDs() []string {
+func (s *stubOperations) cancelledOperations() []cancelledOperation {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

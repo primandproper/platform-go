@@ -466,7 +466,19 @@ type Service interface {
 		filter *filtering.QueryFilter,
 	) (*filtering.QueryFilteredResult[Operation], error)
 
-	// Cancel asks an operation to stop and returns it as it stands.
+	// Cancel asks an operation belonging to scope to stop and returns it as it
+	// stands.
+	//
+	// The scope confines the cancellation, and it does so through a read rather
+	// than through the write: Store.RequestCancel is a conditional transition on
+	// the id and nothing else, so Cancel makes the scoped read itself before
+	// making it. Cancelling an operation somebody else owns returns an error
+	// wrapping ErrOperationNotFound, which is what cancelling one that does not
+	// exist returns too, for Get's reason.
+	//
+	// The read is here rather than on the caller because a caller reaching this
+	// by an ID is a caller who has been handed the whole table otherwise, and a
+	// consumer's own handler is the one that would not have made it.
 	//
 	// It is a request, not a kill. A pending operation is cancelled outright,
 	// because nothing has started and there is nothing to unwind. A running one
@@ -478,7 +490,7 @@ type Service interface {
 	//
 	// Cancelling a terminal operation returns it unchanged rather than failing:
 	// the caller wanted it not running, and it is not running.
-	Cancel(ctx context.Context, id string) (*Operation, error)
+	Cancel(ctx context.Context, scope tenancy.Scope, id string) (*Operation, error)
 
 	// Recover re-enqueues operations that are recorded but not queued, returning
 	// how many it re-offered.

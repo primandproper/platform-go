@@ -452,7 +452,9 @@ func (s *StoreService) cancelInFlight(
 			"dataprivacy request %q is in progress and names no operation", req.ID)
 	}
 
-	if _, err := s.operations.Cancel(ctx, req.OperationID); err != nil {
+	// The subject owns the operation — start names it — so the subject is the
+	// scope that reaches it.
+	if _, err := s.operations.Cancel(ctx, tenancy.Of(req.Subject.ID), req.OperationID); err != nil {
 		return nil, platformerrors.Wrapf(err, "cancelling the operation fulfilling dataprivacy request %q", req.ID)
 	}
 
