@@ -207,17 +207,20 @@ func TestHandlers_get(T *testing.T) {
 func TestHandlers_cancel(T *testing.T) {
 	T.Parallel()
 
-	T.Run("cancels the owner's own operation", func(t *testing.T) {
+	T.Run("hands the resolved owner to the service and reads nothing first", func(t *testing.T) {
 		t.Parallel()
 
 		op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), State: operations.StateRunning}
 
 		svc := serviceReturning(op)
 
-		var cancelled string
+		var (
+			cancelled   string
+			cancelScope tenancy.Scope
+		)
 
-		svc.CancelFunc = func(_ context.Context, id string) (*operations.Operation, error) {
-			cancelled = id
+		svc.CancelFunc = func(_ context.Context, scope tenancy.Scope, id string) (*operations.Operation, error) {
+			cancelled, cancelScope = id, scope
 
 			return &operations.Operation{
 				ID: id, Owner: tenancy.Of("u1"), State: operations.StateRunning, CancelRequested: true,
@@ -231,24 +234,35 @@ func TestHandlers_cancel(T *testing.T) {
 
 		test.EqOp(t, nethttp.StatusOK, res.Code)
 		test.EqOp(t, "op1", cancelled)
+		test.EqOp(t, tenancy.Of("u1"), cancelScope)
 		test.StrContains(t, res.Body.String(), `"cancelRequested":true`)
+
+		// The read this handler used to make before the write is gone: the
+		// scoped one operations.Service.Cancel makes is the same read, and it
+		// is made for every caller rather than for this one.
+		test.SliceEmpty(t, svc.GetCalls())
 	})
 
-	// Cancel is a write, and a write reached by a guessed ID would be a way to
-	// stop other people's work without ever being able to read it.
-	T.Run("refuses somebody else's operation without cancelling it", func(t *testing.T) {
+	// Cancel is a write reached by a guessed ID, and what stops it being a way
+	// to stop other people's work is the scope this handler resolves and hands
+	// over. The refusal is the service's, and it reads as absence.
+	T.Run("somebody else's operation is refused under the owner it resolved", func(t *testing.T) {
 		t.Parallel()
 
 		op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), State: operations.StateRunning}
 
 		svc := serviceReturning(op)
 
-		called := false
+		var cancelScope tenancy.Scope
 
-		svc.CancelFunc = func(context.Context, string) (*operations.Operation, error) {
-			called = true
+		svc.CancelFunc = func(_ context.Context, scope tenancy.Scope, id string) (*operations.Operation, error) {
+			cancelScope = scope
 
-			return nil, nil
+			if op.Owner != scope {
+				return nil, platformerrors.Wrapf(operations.ErrOperationNotFound, "operation %q", id)
+			}
+
+			return op, nil
 		}
 
 		handler := mount(t, svc, tenancy.Of("u2"))
@@ -257,6 +271,42 @@ func TestHandlers_cancel(T *testing.T) {
 		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodPost, "/operations/op1/cancel", nethttp.NoBody))
 
 		test.EqOp(t, nethttp.StatusNotFound, res.Code)
+		test.EqOp(t, tenancy.Of("u2"), cancelScope)
+	})
+
+	// An owner that cannot be resolved is not an owner of nothing. The write is
+	// reached by an ID alone, so a request that establishes nobody must reach
+	// the service not at all rather than reach it under the zero scope.
+	T.Run("an unresolvable owner cancels nothing", func(t *testing.T) {
+		t.Parallel()
+
+		op := &operations.Operation{ID: "op1", Owner: tenancy.Of("u1"), State: operations.StateRunning}
+
+		svc := serviceReturning(op)
+
+		called := false
+
+		svc.CancelFunc = func(context.Context, tenancy.Scope, string) (*operations.Operation, error) {
+			called = true
+
+			return nil, nil
+		}
+
+		backend := chi.NewBackend(&chi.Config{ServiceName: "operations-test"})
+		router := routing.New(backend, encoding.NewServerEncoderDecoder(encoding.ContentTypeJSON))
+
+		handlers, err := New(svc, WithOwnerResolver(resolverFromContext))
+		must.NoError(t, err)
+
+		handlers.Mount(router)
+
+		// No owner on the context at all, which is what an unauthenticated
+		// request reaching this surface looks like.
+		res := httptest.NewRecorder()
+		router.Handler().ServeHTTP(res, httptest.NewRequestWithContext(
+			t.Context(), nethttp.MethodPost, "/operations/op1/cancel", nethttp.NoBody))
+
+		test.Greater(t, 399, res.Code)
 		test.False(t, called)
 	})
 }

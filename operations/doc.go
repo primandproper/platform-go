@@ -61,11 +61,17 @@ it. There is no read here that omits it, because what an operation holds is the
 status of somebody's export, and the caller who reaches for an unscoped read is
 the caller who has not thought about which somebody.
 
+Service.Cancel takes one too, and it is the only write on that seam that does.
+Cancellation is reached by an ID and nothing else, so an unscoped one is a way to
+stop work you cannot read — and the scope that stops it being that is bound into
+a read Service.Cancel makes before the write rather than into the write itself,
+which is Store.RequestCancel and says on itself why it takes none.
+
 The consequence is that a row belonging to another tenant is a row the query does
 not return — reported as ErrOperationNotFound, the same answer an operation that
-does not exist gets. That used to be a comparison in operations/http after the
-read. It is gone: one surface remembering to make it is one surface, and a
-consumer's own handler is the one that would not have.
+does not exist gets. Both the comparison and the read before the cancel used to
+live in operations/http. They are gone: one surface remembering to make them is
+one surface, and a consumer's own handler is the one that would not have.
 
 An operation started without WithOwner belongs to tenancy.Global(), which is a
 scope like any other and matches only itself. A single-tenant deployment names no

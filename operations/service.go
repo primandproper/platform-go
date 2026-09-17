@@ -331,9 +331,21 @@ func (s *StoreService) List(
 	return results, nil
 }
 
-func (s *StoreService) Cancel(ctx context.Context, id string) (*Operation, error) {
-	ctx, span := s.o11y.Begin(ctx, observability.WithValue(operationIDKey, id))
+func (s *StoreService) Cancel(ctx context.Context, scope tenancy.Scope, id string) (*Operation, error) {
+	ctx, span := s.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		operationIDKey: id,
+		ownerKey:       scope.String(),
+	}))
 	defer span.End()
+
+	// Read first, under the scope. Store.RequestCancel is the worker's own
+	// write, reached by an ID and nothing else, so this read is the whole of
+	// what confines the cancellation to a tenant. There is no comparison after
+	// it: the scope is bound into the statement, so another tenant's row is one
+	// the query does not return.
+	if _, err := s.store.Get(ctx, s.client.Reader(), scope, id); err != nil {
+		return nil, span.Error(err, "reading the operation to cancel")
+	}
 
 	op, err := s.store.RequestCancel(ctx, id)
 	if err != nil {

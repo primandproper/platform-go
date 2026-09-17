@@ -524,7 +524,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 		started, err := h.svc.Start(t.Context(), "cancelled_early", exportRequest{})
 		must.NoError(t, err)
 
-		cancelled, err := h.svc.Cancel(t.Context(), started.ID)
+		cancelled, err := h.svc.Cancel(t.Context(), tenancy.Global(), started.ID)
 		must.NoError(t, err)
 		test.EqOp(t, StateCancelled, cancelled.State)
 
@@ -577,7 +577,7 @@ func runOperationsSuite(t *testing.T, client database.Client) {
 
 		<-running
 
-		_, err = h.svc.Cancel(t.Context(), started.ID)
+		_, err = h.svc.Cancel(t.Context(), tenancy.Global(), started.ID)
 		must.NoError(t, err)
 
 		<-done

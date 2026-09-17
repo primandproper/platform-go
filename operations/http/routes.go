@@ -262,16 +262,16 @@ func (h *Handlers) cancel(ctx context.Context, in cancelInput) (*operations.Oper
 	ctx, span := h.o11y.Begin(ctx, observability.WithValue(operationIDKey, in.ID))
 	defer span.End()
 
-	// Read first, under the scope. Cancel is a write reached by an ID and
-	// nothing else — operations.Store.RequestCancel is machinery and takes no
-	// scope, for the reason it states — so without this read it would be a way
-	// to stop other people's work without ever being able to read it. The read
-	// is what confines the write to a tenant, and it is the caller's to make.
-	if _, err := h.read(ctx, span, in.ID); err != nil {
-		return nil, span.Error(err, "cancelling operation")
+	scope, err := h.scope(ctx, span)
+	if err != nil {
+		return nil, span.Error(err, "resolving operation owner")
 	}
 
-	op, err := h.svc.Cancel(ctx, in.ID)
+	// There is no read before this one. Cancel is a write reached by an ID and
+	// nothing else, and the scoped read that confines it is one
+	// operations.Service.Cancel now makes for every caller rather than one this
+	// handler makes for itself.
+	op, err := h.svc.Cancel(ctx, scope, in.ID)
 	if err != nil {
 		return nil, span.Error(err, "cancelling operation")
 	}

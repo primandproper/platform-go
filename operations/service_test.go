@@ -115,10 +115,10 @@ func TestService_Cancel(T *testing.T) {
 	T.Run("a pending operation is cancelled outright", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "op1", Kind: "export", State: StatePending})
+		store := newFakeStore(&Operation{ID: "op1", Kind: "export", State: StatePending, Owner: testScope})
 		svc := newTestService(t, store, NewRegistry())
 
-		op, err := svc.Cancel(t.Context(), "op1")
+		op, err := svc.Cancel(t.Context(), testScope, "op1")
 
 		must.NoError(t, err)
 		test.EqOp(t, StateCancelled, op.State)
@@ -130,10 +130,10 @@ func TestService_Cancel(T *testing.T) {
 	T.Run("a running operation is only flagged", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "op1", Kind: "export", State: StateRunning})
+		store := newFakeStore(&Operation{ID: "op1", Kind: "export", State: StateRunning, Owner: testScope})
 		svc := newTestService(t, store, NewRegistry())
 
-		op, err := svc.Cancel(t.Context(), "op1")
+		op, err := svc.Cancel(t.Context(), testScope, "op1")
 
 		must.NoError(t, err)
 		test.EqOp(t, StateRunning, op.State)
@@ -144,10 +144,10 @@ func TestService_Cancel(T *testing.T) {
 	T.Run("cancelling a finished operation is not an error", func(t *testing.T) {
 		t.Parallel()
 
-		store := newFakeStore(&Operation{ID: "op1", Kind: "export", State: StateSucceeded, Done: true})
+		store := newFakeStore(&Operation{ID: "op1", Kind: "export", State: StateSucceeded, Done: true, Owner: testScope})
 		svc := newTestService(t, store, NewRegistry())
 
-		op, err := svc.Cancel(t.Context(), "op1")
+		op, err := svc.Cancel(t.Context(), testScope, "op1")
 
 		must.NoError(t, err)
 		test.EqOp(t, StateSucceeded, op.State)
@@ -159,9 +159,30 @@ func TestService_Cancel(T *testing.T) {
 
 		svc := newTestService(t, newFakeStore(), NewRegistry())
 
-		_, err := svc.Cancel(t.Context(), "nope")
+		_, err := svc.Cancel(t.Context(), testScope, "nope")
 
 		test.ErrorIs(t, err, ErrOperationNotFound)
+	})
+
+	// The scoped read is the whole of what confines the write, so the row
+	// another tenant owns is untouched rather than refused after the fact —
+	// and it reads as absent, which is what an operation that does not exist
+	// reads as.
+	T.Run("another tenant's operation is not cancellable", func(t *testing.T) {
+		t.Parallel()
+
+		other := tenancy.Of("u2")
+		store := newFakeStore(&Operation{ID: "op1", Kind: "export", State: StateRunning, Owner: other})
+		svc := newTestService(t, store, NewRegistry())
+
+		_, err := svc.Cancel(t.Context(), testScope, "op1")
+
+		test.ErrorIs(t, err, ErrOperationNotFound)
+
+		untouched := store.snapshot("op1")
+		must.NotNil(t, untouched)
+		test.EqOp(t, StateRunning, untouched.State)
+		test.False(t, untouched.CancelRequested)
 	})
 }
 

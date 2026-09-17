@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/compression"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -211,6 +212,33 @@ func TestService_Confirmation(T *testing.T) {
 		must.NoError(t, err)
 
 		test.EqOp(t, StatusCancelled, cancelled.Status)
+	})
+
+	// A request already running is stopped through its operation, and the
+	// operation belongs to the subject rather than to the request's own
+	// confinement — start names the subject, so cancelling has to name it too.
+	// A cancellation under the wrong scope reads as an operation that does not
+	// exist and stops nothing at all.
+	T.Run("cancelling an in-flight request stops its operation under the subject", func(t *testing.T) {
+		t.Parallel()
+
+		svc, _, _, _, ops := newTestServiceWithOperations(t, &ServiceConfig{})
+
+		submitted, err := svc.Submit(t.Context(), testScope, testSubject, RequestExport)
+		must.NoError(t, err)
+		must.EqOp(t, StatusInProgress, submitted.Status)
+
+		cancelled, err := svc.Cancel(t.Context(), testScopePtr, submitted.ID)
+		must.NoError(t, err)
+
+		// The row stays in progress: the work has not stopped yet, and the
+		// runner is what moves it when it does.
+		test.EqOp(t, StatusInProgress, cancelled.Status)
+
+		asked := ops.cancelledOperations()
+		must.SliceLen(t, 1, asked)
+		test.EqOp(t, submitted.OperationID, asked[0].id)
+		test.EqOp(t, tenancy.Of(testSubject.ID), asked[0].scope)
 	})
 
 	T.Run("confirming twice is refused", func(t *testing.T) {
