@@ -133,9 +133,10 @@ type ClaimedDispatch struct {
 //
 // SaveEndpoint, AddSubscription, ArchiveEndpoint and ArchiveSubscription each
 // return the row the statement left behind, read back on the caller's
-// transaction. RotateSecret is the deliberate exception and says so on itself. A consumer's write almost never travels alone, and the companion
-// it travels with — the audit entry naming who retired an endpoint is the
-// standing example — describes what happened. Without a returned row that entry
+// transaction. RotateSecret is the deliberate exception and says so on itself.
+// A consumer's write almost never travels alone, and the companion it travels
+// with — the audit entry naming who retired an endpoint is the standing
+// example — describes what happened. Without a returned row that entry
 // describes the row as a read found it a statement earlier, which is the row
 // before the write on a create and a row nobody promised still exists on an
 // archive.

@@ -253,11 +253,12 @@ type Secret = requestsigning.Keyring
 
 // SigningSecretLength is how many random bytes NewSigningSecret draws.
 //
-// Thirty-two, because the signature is HMAC-SHA256 and a key shorter than the
-// hash's block is the only dimension of that construction a caller can get
-// wrong. Longer buys nothing — HMAC folds a key past the block size through the
-// hash first — and shorter is the one choice that makes the signature weaker
-// than the algorithm it names.
+// Thirty-two, which is SHA-256's output size, and the key length RFC 2104
+// recommends for HMAC: a key shorter than the hash's output is the one
+// dimension of this construction a caller can get wrong, because it makes the
+// signature weaker than the algorithm it names. Longer buys nothing either —
+// HMAC hashes a key past the block size (sixty-four bytes for SHA-256) down to
+// the output size first, so the strength stops climbing here.
 const SigningSecretLength = 32
 
 // NewSigningSecret mints one signing key.
