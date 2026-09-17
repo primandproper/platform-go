@@ -639,3 +639,47 @@ func statement(t *testing.T, rendered, name string) string {
 
 	return ""
 }
+
+// TestPinnedQuantity_matchesTheAssignmentItMirrors is the Go half of the pin,
+// on the three cases the CASE distinguishes.
+//
+// The rendered half is pinned by TestRender_PinsTheAmountOneIdempotencyKeyStandsFor
+// and the two agreeing on a live row is what the store conformance suite runs on
+// all three dialects. This is the cheap check that reds first when somebody
+// edits one expression and not the other.
+func TestPinnedQuantity_matchesTheAssignmentItMirrors(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a post still outstanding keeps the pin the claim before it made", func(t *testing.T) {
+		t.Parallel()
+
+		// claimed above flushed: a previous claim pinned 150, the settle has
+		// not happened, and usage has since carried the quantity to 200. The
+		// retry owes the same 50 under the same key.
+		test.EqOp(t, int64(150), PinnedQuantity(150, 100, 200))
+	})
+
+	T.Run("a settled total snapshots the quantity afresh", func(t *testing.T) {
+		t.Parallel()
+
+		// The settle levelled the two at 100, so this claim takes what has
+		// accumulated since.
+		test.EqOp(t, int64(150), PinnedQuantity(100, 100, 150))
+	})
+
+	T.Run("a row nobody has ever claimed snapshots the quantity", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, int64(40), PinnedQuantity(0, 0, 40))
+	})
+
+	T.Run("a pin below the flushed mark is not held on to", func(t *testing.T) {
+		t.Parallel()
+
+		// The strictly-greater comparison is what makes the levelled case a
+		// fresh snapshot rather than a held pin, and this is the same boundary
+		// approached from the other side: there is nothing outstanding, so the
+		// stale pin is not what the next post measures from.
+		test.EqOp(t, int64(90), PinnedQuantity(60, 80, 90))
+	})
+}

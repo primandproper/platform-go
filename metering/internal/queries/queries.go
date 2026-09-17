@@ -804,6 +804,30 @@ func pinClaimed() string {
 		ClaimedQuantityColumn, FlushedQuantityColumn, QuantityColumn)
 }
 
+// PinnedQuantity is [pinClaimed]'s CASE, in Go.
+//
+// The store needs the value the claim it just ran wrote, and the claim is an
+// :execrows that projects nothing — MySQL has no RETURNING, so there is no
+// dialect-portable way for the statement to hand it back, and a second read to
+// fetch one column would carry no guard saying it is about the row this flusher
+// holds. So the store computes it from the three columns it projected a
+// statement earlier, which is exact: the select took the row under FOR UPDATE
+// SKIP LOCKED, so nothing else moved the quantity in between.
+//
+// It lives here, beside the assignment it mirrors, because this is the shape
+// that can be got wrong twice. Two expressions of one rule can drift and
+// nothing would say so, and a reader changing either one has to see the other
+// to know that. What catches a drift that gets past both is the store
+// conformance suite, which runs a reclaim on all three dialects and compares
+// what the row holds against what this returned.
+func PinnedQuantity(claimed, flushed, quantity int64) int64 {
+	if claimed > flushed {
+		return claimed
+	}
+
+	return quantity
+}
+
 // markFlushedQuery settles a successful post.
 //
 // The sequence guard is what stops a flusher whose lease lapsed mid-post from

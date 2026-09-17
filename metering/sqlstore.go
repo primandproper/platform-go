@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/metering/internal/meteringdb"
+	"github.com/primandproper/platform-go/v14/metering/internal/queries"
 	"github.com/primandproper/platform-go/v14/metering/migrations"
 
 	"github.com/primandproper/primitives-go/v2/database"
@@ -756,16 +757,14 @@ func (s *SQLStore) claim(
 			continue
 		}
 
-		// The pin the lease just wrote, computed here the way the statement
-		// computed it there. It is exact for the reason the attempt count below
-		// is: the lease matched, so the row is this transaction's for the rest
-		// of it, and the three columns the CASE reads are the three this
-		// flusher just projected. A re-read would say the same thing and would
-		// carry no guard saying it about the row this flusher holds — which is
-		// the trade the batch-shaped claim lost on. See metering/internal/queries.
-		if total.ClaimedQuantity <= total.FlushedQuantity {
-			total.ClaimedQuantity = total.Quantity
-		}
+		// The pin the lease just wrote. It is exact for the reason the attempt
+		// count below is: the lease matched, so the row is this transaction's
+		// for the rest of it, and the three columns the CASE reads are the
+		// three this flusher just projected. The rule itself is spelled beside
+		// the assignment it mirrors rather than here — see
+		// queries.PinnedQuantity, which says why it is spelled twice at all.
+		total.ClaimedQuantity = queries.PinnedQuantity(
+			total.ClaimedQuantity, total.FlushedQuantity, total.Quantity)
 
 		total.FlushAttempts++
 
