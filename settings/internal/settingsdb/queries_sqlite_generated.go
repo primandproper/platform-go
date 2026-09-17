@@ -27,8 +27,7 @@ WHERE archived_at IS NULL
 	AND subject_id = ?3
 	AND definition_id = ?4`
 
-const createDefinitionSQLite = `
-INSERT INTO {{prefix}}settings_definitions (
+const createDefinitionSQLite = `INSERT OR IGNORE INTO {{prefix}}settings_definitions (
 	id,
 	scope,
 	name,
@@ -71,7 +70,8 @@ WHERE {{prefix}}settings_values.scope = ?1
 	AND {{prefix}}settings_values.definition_id = ?4
 	AND {{prefix}}settings_values.archived_at IS NOT NULL`
 
-const getDefinitionSQLite = `SELECT
+const getDefinitionSQLite = `
+SELECT
 	{{prefix}}settings_definitions.id,
 	{{prefix}}settings_definitions.scope,
 	{{prefix}}settings_definitions.name,
@@ -603,9 +603,9 @@ func (q *sqliteQueries) ArchiveValue(ctx context.Context, db DBTX, arg ArchiveVa
 	return result.RowsAffected()
 }
 
-// CreateDefinition runs the :exec query against sqlite.
-func (q *sqliteQueries) CreateDefinition(ctx context.Context, db DBTX, arg CreateDefinitionParams) error {
-	_, err := db.ExecContext(ctx, q.createDefinition,
+// CreateDefinition runs the :execrows query against sqlite.
+func (q *sqliteQueries) CreateDefinition(ctx context.Context, db DBTX, arg CreateDefinitionParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.createDefinition,
 		arg.ID,
 		arg.Scope,
 		arg.Name,
@@ -614,8 +614,11 @@ func (q *sqliteQueries) CreateDefinition(ctx context.Context, db DBTX, arg Creat
 		arg.DefaultValue,
 		arg.AdminOnly,
 	)
+	if err != nil {
+		return 0, err
+	}
 
-	return err
+	return result.RowsAffected()
 }
 
 // DeleteDefinitionOptions runs the :execrows query against sqlite.

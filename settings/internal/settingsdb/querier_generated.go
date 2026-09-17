@@ -52,8 +52,11 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	ArchiveValue(ctx context.Context, db DBTX, arg ArchiveValueParams) (int64, error)
-	// CreateDefinition runs the :exec query.
-	CreateDefinition(ctx context.Context, db DBTX, arg CreateDefinitionParams) error
+	// CreateDefinition runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	CreateDefinition(ctx context.Context, db DBTX, arg CreateDefinitionParams) (int64, error)
 	// DeleteDefinitionOptions runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note

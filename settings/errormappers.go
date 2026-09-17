@@ -30,15 +30,15 @@ import (
 // answer depend on which transport happened to ask.
 //
 // What is deliberately absent is everything that wraps a platform sentinel.
-// Eleven of this package's twenty do — the nil arguments, the empty ones, and
-// the three that wrap errors.ErrUnrecognizedInputValue, which is where a value
-// of the wrong kind and a value outside its enumeration are already answered as
-// bad requests. errors/http asks its platform mapper first, so a case here for
-// one of those would be unreachable, and internal/sentinelmatrix fails a row
-// that claims otherwise.
+// Eleven of this package's twenty-one do — the nil arguments, the empty ones,
+// and the three that wrap errors.ErrUnrecognizedInputValue, which is where a
+// value of the wrong kind and a value outside its enumeration are already
+// answered as bad requests. errors/http asks its platform mapper first, so a
+// case here for one of those would be unreachable, and internal/sentinelmatrix
+// fails a row that claims otherwise.
 //
-// That roster is where each of the twenty is recorded as mapped, platform or
-// unhandled, and it fails when one is in none of the three.
+// That roster is where each of the twenty-one is recorded as mapped, platform
+// or unhandled, and it fails when one is in none of the three.
 var (
 	// HTTPMapper maps this package's sentinels onto HTTP error codes.
 	HTTPMapper httperrors.HTTPErrorMapper = httpMapper{}
@@ -56,18 +56,19 @@ var (
 // errormappers.Register.
 //
 // Two things make this set worth having. The codes collide — a setting that
-// does not exist and a setting nobody has answered are both codes.NotFound, and
-// a name already defined and an edit that would strand values are both about
-// state the caller has to look at — so the code alone frequently does not say
-// which of two very different things happened. And two of the six name the row
-// that stopped a write: ErrStrandedValues carries the subject and the value an
+// does not exist and a setting nobody has answered are both codes.NotFound; a
+// name already defined and an id already carried are both codes.AlreadyExists;
+// and a name already defined and an edit that would strand values are both
+// about state the caller has to look at — so the code alone frequently does not
+// say which of two very different things happened. And two of the seven name
+// the row that stopped a write: ErrStrandedValues carries the subject and the value an
 // administrator has to clear before their edit can land, which is the one
 // message here that is a task rather than a diagnosis.
 //
 // The last two are already client-safe through the platform sentinel they wrap
 // — errors.ErrUnrecognizedInputValue is on errors/grpc's own list — and they
-// are named anyway, so that this set reads as the six refusals a client is
-// meant to read rather than as the four that happened to need registering. A
+// are named anyway, so that this set reads as the seven refusals a client is
+// meant to read rather than as the five that happened to need registering. A
 // sentinel registered twice costs a second comparison and nothing else.
 //
 // Nothing else in this package is here. A nil executor, a stalled cursor, an
@@ -76,6 +77,7 @@ var (
 // nothing.
 var ClientSafeSentinels = []error{
 	ErrDefinitionNameTaken,
+	ErrDefinitionIDTaken,
 	ErrKindMismatch,
 	ErrSettingUnset,
 	ErrStrandedValues,
@@ -116,9 +118,9 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrDuplicateEnumerationValue):
 		return httperrors.ErrValidatingRequestInput, "the setting's allowed values name one value twice", true
 
-	// The two conflicts with state that already exists. Neither is corrected by
-	// re-sending the same request, which is what separates them from the two
-	// above.
+	// The three conflicts with state that already exists. None of them is
+	// corrected by re-sending the same request, which is what separates them
+	// from the two above.
 	//
 	// The stranded-values message deliberately does not carry the subject and
 	// the value the wrapped error names: a page of "who has overridden this" is
@@ -128,6 +130,13 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// administrator and a body a browser renders.
 	case errors.Is(err, ErrDefinitionNameTaken):
 		return httperrors.ErrResourceConflict, "a setting by that name is already defined", true
+
+	// Not a catalog defining a setting twice: an application that chose an id
+	// another definition already carries. Same code, different sentence, because
+	// the remedy is a code change rather than a different name.
+	case errors.Is(err, ErrDefinitionIDTaken):
+		return httperrors.ErrResourceConflict, "another setting already has that id", true
+
 	case errors.Is(err, ErrStrandedValues):
 		return httperrors.ErrResourceConflict, "that edit would strand values subjects have already set", true
 	default:
@@ -148,11 +157,14 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	case errors.Is(err, ErrKindMismatch), errors.Is(err, ErrDuplicateEnumerationValue):
 		return codes.InvalidArgument, true
 
-	// AlreadyExists rather than Aborted, because the collision is on a unique
+	// AlreadyExists rather than Aborted, because both collisions are on a unique
 	// key and that is the code gRPC reserves for exactly that. The name was the
 	// caller's to choose, so re-sending will not help and a different one will —
-	// including for a name freed by archiving, which stays taken.
-	case errors.Is(err, ErrDefinitionNameTaken):
+	// including for a name freed by archiving, which stays taken. The id was the
+	// caller's to choose too, and is the one of the two a client cannot fix by
+	// sending something else, which is why the message rather than the code is
+	// what tells them apart.
+	case errors.Is(err, ErrDefinitionNameTaken), errors.Is(err, ErrDefinitionIDTaken):
 		return codes.AlreadyExists, true
 
 	// FailedPrecondition rather than InvalidArgument: the edit is well formed

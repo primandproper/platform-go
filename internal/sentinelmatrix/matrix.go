@@ -694,19 +694,21 @@ var Matrix = map[string]map[string]Decision{
 	},
 
 	settingsPkg: {
-		// The seven a caller can act on. Three are absences and are all
+		// The eight a caller can act on. Three are absences and are all
 		// codes.NotFound — no setting by that name, no value stored against it,
 		// and a resolution with neither a value nor a default — which is the
 		// clearest case in this roster for why the wording matters as much as the
 		// code, and why all three are client-safe. Two are a request to correct.
-		// Two are state the caller is writing against: a name already defined, and
-		// an edit some stored value no longer satisfies.
+		// Three are state the caller is writing against: a name already defined,
+		// an id another definition already carries, and an edit some stored value
+		// no longer satisfies.
 		//
 		// ErrSettingUnset is mapped despite settings/grpc never returning it: a
 		// resolution carries the unset state in its source rather than as a
 		// refusal, and the sentinel is what a consumer's own handler gets from
 		// Resolution.Int. A mapping that covered only the RPCs this module ships
 		// would make the answer depend on which transport asked.
+		"ErrDefinitionIDTaken":         {Err: settings.ErrDefinitionIDTaken, Is: Mapped},
 		"ErrDefinitionNameTaken":       {Err: settings.ErrDefinitionNameTaken, Is: Mapped},
 		"ErrDefinitionNotFound":        {Err: settings.ErrDefinitionNotFound, Is: Mapped},
 		"ErrDuplicateEnumerationValue": {Err: settings.ErrDuplicateEnumerationValue, Is: Mapped},

@@ -1,9 +1,11 @@
 package settings
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/primandproper/primitives-go/v2/database"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/pointer"
@@ -82,6 +84,99 @@ func runDefinitionSuite(t *testing.T, env *storeEnv) {
 		other, err := env.create(t, store, otherScope, stringDefinition("digest"))
 		must.NoError(t, err)
 		test.EqOp(t, otherScope, other.Scope)
+	})
+
+	t.Run("concurrent creates of one name leave one definition", func(t *testing.T) {
+		t.Parallel()
+
+		// The property a read before the write cannot have. Every racer finds the
+		// name free until somebody writes it, so a create that decided the
+		// collision by reading first would let two of these past the check and
+		// hand the second to the unique index — a driver error naming an index,
+		// on precisely the call ErrDefinitionNameTaken exists for.
+		//
+		// What the insert-ignore promises instead holds however the racers
+		// interleave, which is why this asserts the outcome rather than an
+		// ordering: one definition written, and every other racer told why it
+		// was not the one that wrote it.
+		store := env.newStore(t)
+
+		const racers = 4
+
+		var (
+			start, finished sync.WaitGroup
+			mu              sync.Mutex
+			created         []*Definition
+			refused         []error
+		)
+
+		start.Add(1)
+
+		for range racers {
+			finished.Go(func() {
+				start.Wait()
+
+				definition, err := env.create(t, store, testScope, stringDefinition("digest"))
+
+				mu.Lock()
+				defer mu.Unlock()
+
+				if err != nil {
+					refused = append(refused, err)
+
+					return
+				}
+
+				created = append(created, definition)
+			})
+		}
+
+		start.Done()
+		finished.Wait()
+
+		must.SliceLen(t, 1, created)
+		must.SliceLen(t, racers-1, refused)
+
+		for _, err := range refused {
+			test.ErrorIs(t, err, ErrDefinitionNameTaken)
+		}
+
+		// And one row, which is the half a count of refusals cannot say: a
+		// second INSERT that landed would be a catalog with two definitions
+		// answering to one name and no read that could tell them apart.
+		page, err := store.ListDefinitions(t.Context(), env.reader(), testScope, nil)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, page.Data)
+		test.EqOp(t, created[0].ID, page.Data[0].ID)
+	})
+
+	t.Run("refuses a create whose id another definition already carries", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		first := boolDefinition("compact")
+		first.ID = "definition-chosen-by-hand"
+		mustCreate(t, env, store, testScope, first)
+
+		second := stringDefinition("digest")
+		second.ID = "definition-chosen-by-hand"
+
+		_, err := env.create(t, store, testScope, second)
+		must.Error(t, err)
+
+		// Reachable only from a caller that supplies its own id, and reported by
+		// the two engines whose IGNORE covers every constraint on the table.
+		// Postgres absorbs only the index its ON CONFLICT names, so the primary
+		// key raises there instead — see ErrDefinitionIDTaken.
+		if env.dialect != dialect.Postgres {
+			test.ErrorIs(t, err, ErrDefinitionIDTaken)
+		}
+
+		// The row that was there won unchanged, on every dialect.
+		read, err := store.GetDefinition(t.Context(), env.reader(), testScope, first.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "compact", read.Name)
 	})
 
 	t.Run("archiving does not free the name", func(t *testing.T) {

@@ -29,6 +29,16 @@ var _ DefinitionStore = (*SQLStore)(nil)
 // written — which is the state that makes every value legal or no value legal
 // depending on which half landed, and an enumeration is what every subsequent
 // write is checked against. See [Store] for why the transaction is the caller's.
+//
+// A name this scope already defines is [ErrDefinitionNameTaken], and the insert
+// decides that itself: it is an insert-ignore over the (scope, name) unique
+// index, so the definition that is there wins unchanged and this write reports a
+// zero affected count. That is still not a caught constraint violation, for the
+// reason every uniqueness in this module avoids being one — the caller's next
+// move differs between "that name is taken" and "the database is unwell", and
+// asking them to parse a SQLSTATE to find out is how that distinction gets
+// skipped. What it replaces is a read before the write, which two creates of one
+// name could both pass.
 func (s *SQLStore) CreateDefinition(
 	ctx context.Context,
 	tx database.Tx,
@@ -73,9 +83,56 @@ func (s *SQLStore) CreateDefinition(
 	return &created, nil
 }
 
-// insertDefinition is the statements the create runs: the name collision check,
-// the row, its enumeration, and the read-back of the creation time onto created.
+// insertDefinition is the statements the create runs: the row, its enumeration,
+// and the read-back of the creation time onto created.
+//
+// The insert is an insert-ignore over the (scope, name) unique index, so the
+// name is decided by the statement that writes the row rather than by a read
+// before it — a row already holding the name wins unchanged and the write
+// reports a zero affected count. What the count cannot say is which constraint
+// it lost to, which is refuseDefinitionCreate's one read on the losing path.
 func (s *SQLStore) insertDefinition(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	created *Definition,
+) error {
+	count, err := s.q.CreateDefinition(ctx, q, createDefinitionParams(created, scope))
+	if err != nil {
+		return platformerrors.Wrap(err, "creating setting definition")
+	}
+
+	if count == 0 {
+		return s.refuseDefinitionCreate(ctx, q, scope, created)
+	}
+
+	if err = s.writeEnumeration(ctx, q, created.ID, created.Enumeration); err != nil {
+		return err
+	}
+
+	return s.stampCreatedAt(ctx, q, created)
+}
+
+// refuseDefinitionCreate says which of the create's two identifiers the insert
+// lost to, having written nothing.
+//
+// The insert-ignore reports a loss as a zero affected count and cannot say what
+// it lost to — and on MySQL and SQLite that is broader than the conflict target
+// it names, because IGNORE and OR IGNORE downgrade every constraint on the table
+// rather than the one index. So the attribution is a read, made on the losing
+// path and therefore never on the hot one, and it is the same read
+// UpdateDefinition guards a rename with.
+//
+// The name is asked about first, because that is the collision this catalog is
+// shaped around: a definition already defined in this scope, which is what a
+// composition root looping over a catalog meets on its second boot. What is left
+// is the id, which only a caller that supplied its own can collide on — a create
+// that leaves it empty is given a minted one.
+//
+// Two candidates and no more. This table references nothing, so there is no
+// foreign key for MySQL to downgrade into this same zero count, which is the
+// third candidate billing's namesake has to rule out before it can say the same.
+func (s *SQLStore) refuseDefinitionCreate(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
@@ -85,15 +142,7 @@ func (s *SQLStore) insertDefinition(
 		return err
 	}
 
-	if err := s.q.CreateDefinition(ctx, q, createDefinitionParams(created, scope)); err != nil {
-		return platformerrors.Wrap(err, "creating setting definition")
-	}
-
-	if err := s.writeEnumeration(ctx, q, created.ID, created.Enumeration); err != nil {
-		return err
-	}
-
-	return s.stampCreatedAt(ctx, q, created)
+	return platformerrors.Wrapf(ErrDefinitionIDTaken, "%q", created.ID)
 }
 
 // GetDefinition reads one of the scope's live definitions by id, on the caller's
@@ -528,11 +577,16 @@ func (s *SQLStore) writeEnumeration(
 // refuseTakenName reports ErrDefinitionNameTaken when the scope already defines
 // the name, excluding the row being updated where there is one.
 //
-// The check runs inside the caller's transaction, and it is a check rather than
-// a reliance on the unique index because a constraint violation reaches a caller
-// as a driver error naming an index — which the caller cannot tell apart from
-// the database being unwell, and cannot show to a person. The index is still
-// what makes it true under a concurrent write.
+// It runs inside the caller's transaction, and the two writes reach it from
+// opposite directions. UpdateDefinition runs it before writing, because an
+// UPDATE has no conflict clause that could decide the collision for it — so this
+// is the guard, and the unique index is what makes it true under a concurrent
+// rename. CreateDefinition runs it only after its insert has already written
+// nothing, where it is the attribution of a zero count rather than a guard.
+//
+// Either way what it exists to prevent is the same: a constraint violation
+// reaches a caller as a driver error naming an index, which they cannot tell
+// apart from the database being unwell and cannot show to a person.
 func (s *SQLStore) refuseTakenName(
 	ctx context.Context,
 	q database.SQLQueryExecutor,

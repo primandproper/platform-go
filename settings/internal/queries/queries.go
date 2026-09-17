@@ -116,7 +116,7 @@ var Definitions = Table{
 		DefinitionDefaultValueColumn,
 		DefinitionAdminOnlyColumn,
 	},
-	Omitted: []querygen.StandardQuery{querygen.ExistsQuery},
+	Omitted: []querygen.StandardQuery{querygen.CreateQuery, querygen.ExistsQuery},
 }
 
 // Values is what a subject answered.
@@ -189,6 +189,7 @@ func Render(d dialect.Dialect) string {
 		rendered = append(rendered, g.StandardCRUD(table.Name, table.Columns, table.Options()...)...)
 	}
 
+	rendered = append(rendered, guardedCreate(g))
 	rendered = append(rendered, createdAtReads(g)...)
 	rendered = append(rendered, keyedDefinitionReads(g)...)
 	rendered = append(rendered, nameCollisionCheck(g))
@@ -198,6 +199,48 @@ func Render(d dialect.Dialect) string {
 	rendered = append(rendered, archivedValueReadBack(g), valueErasure(g))
 
 	return querygen.RenderFile(rendered)
+}
+
+// guardedCreate is the definition table's insert, rendered so that a name the
+// scope already defines wins rather than raising.
+//
+// It is here rather than in [querygen.Generator.StandardCRUD]'s standard set
+// because the standard create cannot answer the question
+// settings.CreateDefinition is documented to answer. A plain INSERT reports a
+// taken name as whatever SQLSTATE the driver raises, so a store built on one has
+// to decide beforehand whether the name is free — which is a read and a write
+// with a gap between them. Two creates of one name that cross in that gap both
+// find it free, the unique index stops the second row, and the caller gets a
+// driver error where the documented answer is settings.ErrDefinitionNameTaken:
+// a constraint violation naming an index, which a caller can neither tell apart
+// from the database being unwell nor show to a person.
+//
+// [querygen.Generator.InsertIgnoreQuery] closes the gap by putting the decision
+// in the statement: the row already there wins unchanged, and the affected-row
+// count is how the caller learns it lost. There is no window, because there is
+// only one statement. It also leaves the losing transaction usable, which
+// matters on Postgres — a raised constraint violation aborts the transaction the
+// caller is writing its audit entry and its outbox event in, and a zero count
+// does not.
+//
+// The conflict target is the (scope, name) unique index, spelled exactly as the
+// index is — which is what Postgres requires — and the index is unconditional,
+// so an archived definition still holds its name against this insert. That is
+// the schema's decision rather than this statement's: the values written under a
+// name are interpreted against the definition that claimed it, so a soft delete
+// does not free it. See settings/migrations.
+//
+// What the count does not say is which constraint it lost to, and on MySQL and
+// SQLite that is broader than the target named here — IGNORE and OR IGNORE
+// downgrade every constraint on the table, the primary key included, so a create
+// carrying an id another row already has reports zero there where Postgres
+// raises. The store attributes a zero count by asking nameCollisionCheck, on the
+// losing path only, which of the two it was.
+func guardedCreate(g *querygen.Generator) *querygen.Query {
+	return g.InsertIgnoreQuery("CreateDefinition", DefinitionsTable,
+		Definitions.InsertColumns(), Definitions.Nullable,
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: DefinitionNameColumn})
 }
 
 // createdAtReads is the read-back of the one column an emitted table's create
@@ -244,9 +287,18 @@ func keyedDefinitionReads(g *querygen.Generator) []*querygen.Query {
 	}
 }
 
-// nameCollisionCheck is the read CreateDefinition and UpdateDefinition run
-// before writing, so a taken name reports ErrDefinitionNameTaken rather than a
-// driver's constraint violation.
+// nameCollisionCheck is the read that turns a taken name into
+// ErrDefinitionNameTaken rather than a driver's constraint violation, for the
+// two writes that reach a name collision from opposite directions.
+//
+// UpdateDefinition runs it before writing, because a rename has no statement
+// that decides the collision for it: an UPDATE has no conflict clause to absorb
+// one, and the row it would collide with is another row rather than its own.
+// CreateDefinition runs it after, and only when it has lost — guardedCreate
+// decides the collision inside the insert and reports a loss as a zero count,
+// which says that something was already there and not what. So the same
+// statement is a guard on one path and an attribution on the other, and the
+// create reaches it only on the path where a round trip is not the hot one.
 //
 // Two things about it are not the rest of this file's shape.
 //
@@ -255,11 +307,13 @@ func keyedDefinitionReads(g *querygen.Generator) []*querygen.Query {
 // half of the same reason. The unique index covers archived rows — archiving a
 // definition does not destroy the values stored under its name, so freeing the
 // name would let a second definition claim rows written for the first — and a
-// check that skipped archived rows would report the name free and hand the write
-// to the index, which is the driver error this read exists to prevent. The
-// column list is empty for exactly that reason: querygen renders the archived
-// predicate from the column list, so a read that must see archived rows is a
-// read rendered from no columns at all, keyed entirely on its matches.
+// check that skipped archived rows would report the name free, which is a wrong
+// answer on both paths: it would hand a rename to the index, which is the driver
+// error this read exists to prevent, and it would leave a create that lost to an
+// archived name attributing its loss to the only other thing it could have lost
+// to. The column list is empty for exactly that reason: querygen renders the
+// archived predicate from the column list, so a read that must see archived rows
+// is a read rendered from no columns at all, keyed entirely on its matches.
 //
 // And the row being updated is excluded through an argument the caller may
 // leave unset, which is what lets one statement serve both callers. A rename
