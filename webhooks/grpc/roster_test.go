@@ -13,9 +13,9 @@ import (
 )
 
 // This file is the roster of which store methods cross onto the wire, and it is
-// the ruling rather than a description of it. webhooks.Store has eighteen
-// methods and this service serves nine; the nine absences are each a decision,
-// and a nineteenth method is in neither list until somebody says which.
+// the ruling rather than a description of it. webhooks.Store has nineteen
+// methods and this service serves ten; the nine absences are each a decision,
+// and a twentieth method is in neither list until somebody says which.
 //
 // The mechanism is billing/grpc's, adopted rather than re-derived, and it is
 // internal/sentinelmatrix's applied to methods instead of sentinels — for the

@@ -3,7 +3,7 @@
 // operator registers a URL, picks the events it wants, rotates its signing
 // keys, and reads back what was actually delivered.
 //
-// It is not the delivery pipeline. Nine of the eighteen methods on
+// It is not the delivery pipeline. Ten of the nineteen methods on
 // webhooks.Store are here and nine deliberately are not; the service comment
 // at the bottom of this file names all nine absences and why each one stays
 // off the wire.
@@ -63,19 +63,28 @@
 //
 // See identity.proto, which says the underlying rule at greater length.
 //
-// No signing key on any response. [WebhookSigningKeys] appears on exactly one
-// message in this schema -- [SaveEndpointRequest] -- and it travels in one
-// direction only. webhooks.Store.GetEndpoint reads an endpoint "secrets
-// included" and [WebhookEndpoint] has nowhere to put them, which is the
-// property rather than an oversight: a subscriber authenticates a delivery by
-// its HMAC, so a key readable back over an administrative API is a key
-// anybody who can read that API can forge deliveries with.
+// No signing key on any response. Key material appears on exactly two messages
+// in this schema -- [SaveEndpointRequest] and [RotateSecretRequest] -- and on
+// both it travels in one direction only. webhooks.Store.GetEndpoint reads an
+// endpoint "secrets included" and [WebhookEndpoint] has nowhere to put them,
+// which is the property rather than an oversight: a subscriber authenticates a
+// delivery by its HMAC, so a key readable back over an administrative API is a
+// key anybody who can read that API can forge deliveries with.
+//
+// [RotateSecretResponse] is empty for that reason and not because there is
+// nothing to say. A rotation moves the outgoing key into the previous slot
+// inside the statement, so no message and no process holds it; the incoming key
+// is on the request because the client minted it and is about to hand it to the
+// subscriber, who is the party that verifies with it.
 //
 // The consequence is that a save is a full re-registration, keys included,
 // because there is no read that hands the current ones back. That is deliberate
 // and is not a silent hazard: an endpoint saved without keys is refused rather
 // than saved with none, so the failure is an error at the console and never a
-// subscriber whose signature checks quietly stopped matching.
+// subscriber whose signature checks quietly stopped matching. Rotation is the
+// one thing a caller would otherwise need that read for, and [RotateSecret] is
+// why they do not: it names the incoming key alone, so rolling a subscriber's
+// key never obliges anybody to have been able to read the outgoing one.
 //
 // No created_by in any request. It is output-only, filled from the principal
 // the consumer's interceptor resolved, because provenance a caller could name
@@ -111,6 +120,7 @@ const (
 	WebhooksService_GetEndpoint_FullMethodName         = "/primandproper.platform.webhooks.v1.WebhooksService/GetEndpoint"
 	WebhooksService_ListEndpoints_FullMethodName       = "/primandproper.platform.webhooks.v1.WebhooksService/ListEndpoints"
 	WebhooksService_ArchiveEndpoint_FullMethodName     = "/primandproper.platform.webhooks.v1.WebhooksService/ArchiveEndpoint"
+	WebhooksService_RotateSecret_FullMethodName        = "/primandproper.platform.webhooks.v1.WebhooksService/RotateSecret"
 	WebhooksService_AddSubscription_FullMethodName     = "/primandproper.platform.webhooks.v1.WebhooksService/AddSubscription"
 	WebhooksService_GetSubscription_FullMethodName     = "/primandproper.platform.webhooks.v1.WebhooksService/GetSubscription"
 	WebhooksService_ListSubscriptions_FullMethodName   = "/primandproper.platform.webhooks.v1.WebhooksService/ListSubscriptions"
@@ -126,7 +136,7 @@ const (
 // webhooks that is a resource rather than a protocol, and the only half a
 // person ever touches.
 //
-// Nine RPCs over webhooks.Store's eighteen methods, each behind a grant and
+// Ten RPCs over webhooks.Store's nineteen methods, each behind a grant and
 // each acting only within the tenant the caller's principal names. The other
 // nine are absent on purpose, in three groups.
 //
@@ -164,6 +174,7 @@ type WebhooksServiceClient interface {
 	GetEndpoint(ctx context.Context, in *GetEndpointRequest, opts ...grpc.CallOption) (*GetEndpointResponse, error)
 	ListEndpoints(ctx context.Context, in *ListEndpointsRequest, opts ...grpc.CallOption) (*ListEndpointsResponse, error)
 	ArchiveEndpoint(ctx context.Context, in *ArchiveEndpointRequest, opts ...grpc.CallOption) (*ArchiveEndpointResponse, error)
+	RotateSecret(ctx context.Context, in *RotateSecretRequest, opts ...grpc.CallOption) (*RotateSecretResponse, error)
 	AddSubscription(ctx context.Context, in *AddSubscriptionRequest, opts ...grpc.CallOption) (*AddSubscriptionResponse, error)
 	GetSubscription(ctx context.Context, in *GetSubscriptionRequest, opts ...grpc.CallOption) (*GetSubscriptionResponse, error)
 	ListSubscriptions(ctx context.Context, in *ListSubscriptionsRequest, opts ...grpc.CallOption) (*ListSubscriptionsResponse, error)
@@ -213,6 +224,16 @@ func (c *webhooksServiceClient) ArchiveEndpoint(ctx context.Context, in *Archive
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ArchiveEndpointResponse)
 	err := c.cc.Invoke(ctx, WebhooksService_ArchiveEndpoint_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *webhooksServiceClient) RotateSecret(ctx context.Context, in *RotateSecretRequest, opts ...grpc.CallOption) (*RotateSecretResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RotateSecretResponse)
+	err := c.cc.Invoke(ctx, WebhooksService_RotateSecret_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +298,7 @@ func (c *webhooksServiceClient) ListAttempts(ctx context.Context, in *ListAttemp
 // webhooks that is a resource rather than a protocol, and the only half a
 // person ever touches.
 //
-// Nine RPCs over webhooks.Store's eighteen methods, each behind a grant and
+// Ten RPCs over webhooks.Store's nineteen methods, each behind a grant and
 // each acting only within the tenant the caller's principal names. The other
 // nine are absent on purpose, in three groups.
 //
@@ -315,6 +336,7 @@ type WebhooksServiceServer interface {
 	GetEndpoint(context.Context, *GetEndpointRequest) (*GetEndpointResponse, error)
 	ListEndpoints(context.Context, *ListEndpointsRequest) (*ListEndpointsResponse, error)
 	ArchiveEndpoint(context.Context, *ArchiveEndpointRequest) (*ArchiveEndpointResponse, error)
+	RotateSecret(context.Context, *RotateSecretRequest) (*RotateSecretResponse, error)
 	AddSubscription(context.Context, *AddSubscriptionRequest) (*AddSubscriptionResponse, error)
 	GetSubscription(context.Context, *GetSubscriptionRequest) (*GetSubscriptionResponse, error)
 	ListSubscriptions(context.Context, *ListSubscriptionsRequest) (*ListSubscriptionsResponse, error)
@@ -341,6 +363,9 @@ func (UnimplementedWebhooksServiceServer) ListEndpoints(context.Context, *ListEn
 }
 func (UnimplementedWebhooksServiceServer) ArchiveEndpoint(context.Context, *ArchiveEndpointRequest) (*ArchiveEndpointResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ArchiveEndpoint not implemented")
+}
+func (UnimplementedWebhooksServiceServer) RotateSecret(context.Context, *RotateSecretRequest) (*RotateSecretResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RotateSecret not implemented")
 }
 func (UnimplementedWebhooksServiceServer) AddSubscription(context.Context, *AddSubscriptionRequest) (*AddSubscriptionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddSubscription not implemented")
@@ -446,6 +471,24 @@ func _WebhooksService_ArchiveEndpoint_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(WebhooksServiceServer).ArchiveEndpoint(ctx, req.(*ArchiveEndpointRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WebhooksService_RotateSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RotateSecretRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhooksServiceServer).RotateSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhooksService_RotateSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhooksServiceServer).RotateSecret(ctx, req.(*RotateSecretRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -562,6 +605,10 @@ var WebhooksService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ArchiveEndpoint",
 			Handler:    _WebhooksService_ArchiveEndpoint_Handler,
+		},
+		{
+			MethodName: "RotateSecret",
+			Handler:    _WebhooksService_RotateSecret_Handler,
 		},
 		{
 			MethodName: "AddSubscription",

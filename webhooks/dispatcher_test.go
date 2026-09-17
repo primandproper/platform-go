@@ -3,6 +3,7 @@ package webhooks
 import (
 	"context"
 	"database/sql"
+	"reflect"
 	"testing"
 	"time"
 
@@ -30,6 +31,7 @@ type fakeStore struct {
 	recordAttempt       func(ctx context.Context, attempt *Attempt) error
 	addSubscription     func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType EventType) (*Subscription, error)
 	archiveSubscription func(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*Subscription, error)
+	rotateSecret        func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error
 	requeue             func(ctx context.Context, deliveryID, endpointID string, at time.Time) error
 	backlog             func(ctx context.Context) (int64, time.Time, error)
 	reap                func(ctx context.Context, before time.Time, limit int) (int64, error)
@@ -62,6 +64,14 @@ func (f *fakeStore) ListEndpoints(context.Context, database.SQLQueryExecutor, te
 
 func (f *fakeStore) ArchiveEndpoint(_ context.Context, _ database.Tx, scope tenancy.Scope, endpointID string) (*Endpoint, error) {
 	return &Endpoint{ID: endpointID, Scope: scope}, nil
+}
+
+func (f *fakeStore) RotateSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error {
+	if f.rotateSecret == nil {
+		return nil
+	}
+
+	return f.rotateSecret(ctx, tx, scope, endpointID, next)
 }
 
 func (f *fakeStore) AddSubscription(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType EventType) (*Subscription, error) {
@@ -936,6 +946,118 @@ func TestDispatcher_Unsubscribe(T *testing.T) {
 		})
 
 		test.ErrorIs(t, unsubscribeErr(t, d, testTx(), testScope, "subscription-1"), errStoreFailed)
+	})
+}
+
+func TestDispatcher_RotateSecret(T *testing.T) {
+	T.Parallel()
+
+	T.Run("standard", func(t *testing.T) {
+		t.Parallel()
+
+		var gotEndpoint string
+
+		var gotNext []byte
+
+		d := newTestDispatcher(t, &fakeStore{
+			rotateSecret: func(_ context.Context, tx database.Tx, _ tenancy.Scope, endpointID string, next []byte) error {
+				must.NotNil(t, tx)
+
+				gotEndpoint, gotNext = endpointID, next
+
+				return nil
+			},
+		})
+
+		must.NoError(t, d.RotateSecret(t.Context(), testTx(), testScope, "endpoint-1", []byte("rolled")))
+		test.EqOp(t, "endpoint-1", gotEndpoint)
+		test.Eq(t, []byte("rolled"), gotNext)
+	})
+
+	// The signature is the assertion here: there is nothing to read back, and
+	// this is the one write on this type whose return type is the property.
+	// Anything that made the key reachable again would have to change it.
+	T.Run("answers with nothing but an error", func(t *testing.T) {
+		t.Parallel()
+
+		method, ok := reflect.TypeFor[Dispatcher]().MethodByName("RotateSecret")
+		must.True(t, ok)
+
+		must.EqOp(t, 1, method.Type.NumOut())
+		test.EqOp(t, reflect.TypeFor[error](), method.Type.Out(0))
+	})
+
+	// The store is what refuses an absent endpoint, and the refusal reaches the
+	// caller as the store spelled it rather than as a rotation that happened.
+	T.Run("surfaces an endpoint that is not there", func(t *testing.T) {
+		t.Parallel()
+
+		d := newTestDispatcher(t, &fakeStore{
+			rotateSecret: func(context.Context, database.Tx, tenancy.Scope, string, []byte) error {
+				return platformerrors.Wrap(sql.ErrNoRows, "endpoint")
+			},
+		})
+
+		test.ErrorIs(t, d.RotateSecret(t.Context(), testTx(), testScope, "endpoint-1", []byte("rolled")), sql.ErrNoRows)
+	})
+
+	// The gate this method has, and the reason it goes through the dispatcher at
+	// all: a rotation to nothing leaves an endpoint that cannot be delivered to.
+	T.Run("refuses an empty key before the store is reached", func(t *testing.T) {
+		t.Parallel()
+
+		var called bool
+
+		d := newTestDispatcher(t, &fakeStore{
+			rotateSecret: func(context.Context, database.Tx, tenancy.Scope, string, []byte) error {
+				called = true
+
+				return nil
+			},
+		})
+
+		test.ErrorIs(t, d.RotateSecret(t.Context(), testTx(), testScope, "endpoint-1", nil), ErrNoSigningSecret)
+		test.False(t, called)
+	})
+
+	T.Run("refuses a scope that names nobody", func(t *testing.T) {
+		t.Parallel()
+
+		d := newTestDispatcher(t, &fakeStore{})
+
+		test.ErrorIs(t,
+			d.RotateSecret(t.Context(), testTx(), tenancy.Scope{}, "endpoint-1", []byte("rolled")), ErrNoScope)
+	})
+
+	T.Run("refuses an empty endpoint ID", func(t *testing.T) {
+		t.Parallel()
+
+		d := newTestDispatcher(t, &fakeStore{})
+
+		test.ErrorIs(t,
+			d.RotateSecret(t.Context(), testTx(), testScope, "", []byte("rolled")), platformerrors.ErrInvalidIDProvided)
+	})
+
+	T.Run("refuses a call with no transaction", func(t *testing.T) {
+		t.Parallel()
+
+		d := newTestDispatcher(t, &fakeStore{})
+
+		test.ErrorIs(t,
+			d.RotateSecret(t.Context(), nil, testScope, "endpoint-1", []byte("rolled")), ErrNilExecutor)
+	})
+
+	T.Run("surfaces a store failure", func(t *testing.T) {
+		t.Parallel()
+
+		d := newTestDispatcher(t, &fakeStore{
+			rotateSecret: func(context.Context, database.Tx, tenancy.Scope, string, []byte) error {
+				return errStoreFailed
+			},
+		})
+
+		test.ErrorIs(t,
+			d.RotateSecret(t.Context(), testTx(), testScope, "endpoint-1", []byte("rolled")), errStoreFailed)
 	})
 }
 

@@ -425,6 +425,13 @@ type RequeueDispatchParams struct {
 	EndpointID   string
 }
 
+// RotateEndpointSecretParams are the arguments to RotateEndpointSecret.
+type RotateEndpointSecretParams struct {
+	SecretCurrent []byte
+	ID            string
+	Scope         tenancy.Scope
+}
+
 // SelectClaimableDispatchesParams are the arguments to SelectClaimableDispatches.
 type SelectClaimableDispatchesParams struct {
 	Now            time.Time

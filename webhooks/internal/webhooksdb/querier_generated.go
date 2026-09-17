@@ -126,6 +126,11 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	RequeueDispatch(ctx context.Context, db DBTX, arg RequeueDispatchParams) (int64, error)
+	// RotateEndpointSecret runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	RotateEndpointSecret(ctx context.Context, db DBTX, arg RotateEndpointSecretParams) (int64, error)
 	// SelectClaimableDispatches runs the :many query.
 	SelectClaimableDispatches(ctx context.Context, db DBTX, arg SelectClaimableDispatchesParams) ([]SelectClaimableDispatchesRow, error)
 	// UpsertEndpoint runs the :exec query.

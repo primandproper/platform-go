@@ -33,12 +33,12 @@ identifier is what SaveEndpoint writes into Endpoint.CreatedBy, so that "who
 registered this endpoint" is answered by the connection rather than by a request
 field somebody could put anything in.
 
-# Nine RPCs, and nine absences
+# Ten RPCs, and nine absences
 
-Endpoint CRUD, subscription CRUD, and the delivery log. That is the half of
-webhooks that is a resource rather than a protocol: an operator adds a URL,
-picks event types, rotates a secret, and then asks whether it got through and
-what came back. It is the only half a person ever touches.
+Endpoint CRUD, the signing-key rotation, subscription CRUD, and the delivery
+log. That is the half of webhooks that is a resource rather than a protocol: an
+operator adds a URL, picks event types, rotates a secret, and then asks whether
+it got through and what came back. It is the only half a person ever touches.
 
 The other nine methods of webhooks.Store are absent, and each says so on itself
 rather than only here, so that a reader of the Store finds the answer where they
@@ -81,13 +81,24 @@ reads an endpoint "secrets included" and [EndpointToProto] is where they stop:
 webhookspb.WebhookEndpoint has no field to put them in, which makes the property
 structural rather than a line somebody has to remember not to write.
 
-They travel in the other direction on exactly one message, and they are required
-on every save — including one that changes only a name — because no RPC here
-reads the stored keys back and a save writes what it was given. So a save is a
-full re-registration. That is a cost, and it is the cost worth paying: the
+They travel in the other direction on two messages, and they are required on
+every save — including one that changes only a name — because no RPC here reads
+the stored keys back and a save writes what it was given. So a save is a full
+re-registration. That is a cost, and it is the cost worth paying: the
 alternative in which an omitted keyring means "leave them alone" is one keystroke
 away from an endpoint whose signature checks quietly stopped matching, and the
 one refusal is visible at the console.
+
+RotateSecret is the second message, and it is what keeps that cost from having a
+second half. Rotating through a save means naming both keys, so a client that
+rotates is a client that had to read the outgoing one — which is the read this
+surface does not have and must not grow. The rotation names the incoming key
+alone and the outgoing one is demoted by the statement itself, inside the
+engine, so it is never a value any message or any process holds. Its response is
+empty for that reason rather than for economy: it is the call that would most
+plausibly have handed a key back. Rotating to the key already in force is a
+no-op rather than a second rotation, so a retried request cannot close the
+window the first one opened.
 
 The keyless save is refused here rather than by webhooks.GRPCMapper, with
 codes.InvalidArgument as this one call site's default. webhooks.ErrNoSigningSecret
@@ -96,7 +107,7 @@ mapper case would decide what a keyring with no key means for every other caller
 of requestsigning in the process, where it is a wiring failure and a 500 is
 honest.
 
-# Two writes go through the dispatcher and one goes through the store
+# Three writes go through the dispatcher and one goes through the store
 
 Register and Subscribe are gates, not wrappers. Register validates the URL an
 authenticated request from inside the deployment is about to be made to — SSRF
@@ -104,6 +115,12 @@ prevention, checked here and again at delivery because DNS is mutable — and
 Subscribe checks the event type against the consumer's catalog, so that a typo
 is a refusal rather than an endpoint that never fires. SaveEndpoint and
 AddSubscription therefore write through webhooks.Dispatcher.
+
+RotateSecret writes through the dispatcher as well, though its gate is the
+smallest of the three: an empty key is refused before the transaction is opened,
+because a rotation to nothing leaves an endpoint that cannot be delivered to at
+all. There is no URL to check — the request names none — and the one on the row
+was checked when it was registered and is checked again at delivery.
 
 ArchiveEndpoint writes through the store, and it is the one write here that
 does. There is no Dispatcher.Unregister, because nothing about retiring an
@@ -147,9 +164,10 @@ every sentinel this service returns arrives as codes.Unknown.
 Every failure here is one grpcerrors.PrepareAndLogGRPCStatus with codes.Internal
 as the *default*. The encoding interceptor re-runs the registered mappers over
 the preserved chain, so the mapper wins over the guess made at the call site,
-which is why no handler on this surface switches on a sentinel. The two
+which is why no handler on this surface switches on a sentinel. The three
 exceptions pass a code because nothing maps what they raise: a save that named no
-endpoint, and a save that named no signing keys.
+endpoint, a save that named no signing keys, and a rotation that named no key to
+rotate to.
 */
 package grpc
 

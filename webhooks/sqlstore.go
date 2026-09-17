@@ -552,6 +552,64 @@ func (s *SQLStore) ArchiveEndpoint(ctx context.Context, tx database.Tx, scope te
 	return archived, nil
 }
 
+// RotateSecret installs a new signing key on one of the scope's live endpoints
+// and demotes the one it replaces, through the caller's transaction.
+//
+// One statement does both, and the demotion is an assignment inside it rather
+// than a value this process supplies. That is the difference between a rotation
+// and the re-registration it would otherwise be: the outgoing key never becomes
+// a Go value, so there is nothing here for a read path to have handed over and
+// nothing for a log line to carry. The incoming key is the only key material
+// this method touches, and it arrives already known to whoever minted it.
+//
+// Rotating to the key that is already current is a no-op on the keyring rather
+// than a second rotation — see the statement, which declines to demote in that
+// case. It still reports the endpoint as having been there, because it was.
+//
+// The affected count is the answer to whether the endpoint was there, which is
+// the one thing a write with no read-back still has to report. Zero is an
+// identifier that names nothing live in this scope — never registered, held by
+// another tenant, or since archived — and all three read as absent here for the
+// reason they read as absent from GetEndpoint. A read-back that distinguished
+// them would have to project the row, and the row is what must not be read.
+func (s *SQLStore) RotateSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(endpointIDKey, endpointID),
+	)
+	defer op.End()
+
+	if tx == nil {
+		return op.Error(ErrNilExecutor, "rotating the secret of webhook endpoint %q", endpointID)
+	}
+
+	if err := scope.Validate(); err != nil {
+		return op.Error(err, "rotating the secret of webhook endpoint %q", endpointID)
+	}
+
+	if len(next) == 0 {
+		return op.Error(ErrNoSigningSecret, "rotating the secret of webhook endpoint %q", endpointID)
+	}
+
+	affected, err := s.q.RotateEndpointSecret(ctx, tx, webhooksdb.RotateEndpointSecretParams{
+		SecretCurrent: next,
+		ID:            endpointID,
+		Scope:         scope,
+	})
+	if err != nil {
+		return op.Error(err, "rotating the secret of webhook endpoint %q", endpointID)
+	}
+
+	if affected == 0 {
+		return op.Error(platformerrors.Wrapf(sql.ErrNoRows, "endpoint %q", endpointID),
+			"rotating the secret of webhook endpoint %q", endpointID)
+	}
+
+	op.Set(rotatedKey, true)
+
+	return nil
+}
+
 // AddSubscription subscribes one of the scope's endpoints to eventType.
 //
 // It is an upsert and a read rather than an insert, because a subscription is

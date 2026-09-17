@@ -175,6 +175,15 @@ WHERE archived_at IS NULL
 	AND id = sqlc.arg(id)
 	AND scope = sqlc.arg(scope);
 
+-- name: RotateEndpointSecret :execrows
+UPDATE webhooks_endpoints SET
+	secret_previous = CASE WHEN secret_current = sqlc.arg(secret_current) THEN secret_previous ELSE secret_current END,
+	secret_current = sqlc.arg(secret_current),
+	last_updated_at = CURRENT_TIMESTAMP
+WHERE archived_at IS NULL
+	AND id = sqlc.arg(id)
+	AND scope = sqlc.arg(scope);
+
 -- name: ListEndpointsForEvent :many
 SELECT
 	webhooks_endpoints.id,

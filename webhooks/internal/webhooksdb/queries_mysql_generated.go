@@ -615,6 +615,14 @@ WHERE archived_at IS NULL
 	AND delivery_id = ?
 	AND endpoint_id = ?`
 
+const rotateEndpointSecretMySQL = `UPDATE {{prefix}}webhooks_endpoints SET
+	secret_previous = CASE WHEN secret_current = ? THEN secret_previous ELSE secret_current END,
+	secret_current = ?,
+	last_updated_at = CURRENT_TIMESTAMP(6)
+WHERE archived_at IS NULL
+	AND id = ?
+	AND scope = ?`
+
 const selectClaimableDispatchesMySQL = `SELECT m.id
 FROM {{prefix}}webhooks_dispatches AS m
 WHERE m.delivered_at IS NULL
@@ -712,6 +720,7 @@ type mysqlQueries struct {
 	reapDispatches               string
 	recordDispatchFailure        string
 	requeueDispatch              string
+	rotateEndpointSecret         string
 	selectClaimableDispatches    string
 	upsertEndpoint               string
 	upsertSubscription           string
@@ -748,6 +757,7 @@ func newMySQL(prefix string) *mysqlQueries {
 		reapDispatches:               strings.ReplaceAll(reapDispatchesMySQL, prefixMarker, prefix),
 		recordDispatchFailure:        strings.ReplaceAll(recordDispatchFailureMySQL, prefixMarker, prefix),
 		requeueDispatch:              strings.ReplaceAll(requeueDispatchMySQL, prefixMarker, prefix),
+		rotateEndpointSecret:         strings.ReplaceAll(rotateEndpointSecretMySQL, prefixMarker, prefix),
 		selectClaimableDispatches:    strings.ReplaceAll(selectClaimableDispatchesMySQL, prefixMarker, prefix),
 		upsertEndpoint:               strings.ReplaceAll(upsertEndpointMySQL, prefixMarker, prefix),
 		upsertSubscription:           strings.ReplaceAll(upsertSubscriptionMySQL, prefixMarker, prefix),
@@ -1554,6 +1564,21 @@ func (q *mysqlQueries) RequeueDispatch(ctx context.Context, db DBTX, arg Requeue
 	return result.RowsAffected()
 }
 
+// RotateEndpointSecret runs the :execrows query against mysql.
+func (q *mysqlQueries) RotateEndpointSecret(ctx context.Context, db DBTX, arg RotateEndpointSecretParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.rotateEndpointSecret,
+		arg.SecretCurrent,
+		arg.SecretCurrent,
+		arg.ID,
+		arg.Scope,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // SelectClaimableDispatches runs the :many query against mysql.
 func (q *mysqlQueries) SelectClaimableDispatches(ctx context.Context, db DBTX, arg SelectClaimableDispatchesParams) ([]SelectClaimableDispatchesRow, error) {
 	rows, err := db.QueryContext(ctx, q.selectClaimableDispatches,
@@ -1958,6 +1983,11 @@ var (
 		DeliveryID   string
 		EndpointID   string
 	}(RequeueDispatchParams{})
+	_ = struct {
+		SecretCurrent []byte
+		ID            string
+		Scope         tenancy.Scope
+	}(RotateEndpointSecretParams{})
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
