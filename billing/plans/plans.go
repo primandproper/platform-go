@@ -102,12 +102,21 @@ var (
 	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil billing plans query executor")
 )
 
-// pageSize is how many of an account's current subscriptions Choose is shown.
+// pageSize is how many of an account's current subscriptions the two readers
+// over this table are shown: Choose, and Cycle.
 //
 // An account holds one, or a small handful while an upgrade settles. The bound
 // is here so that a deployment whose data has gone wrong — a sync loop that
 // opened a thousand agreements — answers an entitlement check slowly rather than
 // dragging the lot across the wire on a request path.
+//
+// The two readers want different things from it when it bites, which is why
+// currentSubscriptions reports that it did rather than just honoring it. Choose
+// picks from what it is shown and asks nothing of the rest, so a page that
+// stopped early still answers correctly for every reading this package ships.
+// Cycle is a question about the whole set — Sole answers only when nothing
+// disagrees with the one it picked — and a disagreement that fell off the end of
+// the page is one it would answer confidently and wrongly.
 const pageSize = 25
 
 // Choose picks the plan an account is on from its current subscriptions.
@@ -190,28 +199,42 @@ func New(
 }
 
 // currentSubscriptions reads one page of an account's subscriptions whose paid
-// period covers the store's clock.
+// period covers the store's clock, and reports whether there were more than the
+// page could hold.
 //
 // It is one function rather than a line in each of the two readers over it,
 // because the page size and the filter that carries it are a bound on how much
 // of an account's billing history reaches a request path — and a second copy of
 // a bound is a bound that drifts from the first with nothing to say so.
+//
+// It asks for one more row than it will return, which is what lets it tell a
+// page that happens to be full from a page that was cut short. The truncation is
+// returned rather than handled here because the two readers owe it different
+// answers — see pageSize — and a function that decided for both would be making
+// the wrong one for one of them.
 func currentSubscriptions(
 	ctx context.Context,
 	store billing.SubscriptionStore,
 	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
 	account string,
-) ([]*billing.Subscription, error) {
-	limit := uint16(pageSize)
+) (subscriptions []*billing.Subscription, truncated bool, err error) {
+	// One past the bound: a page holding exactly pageSize rows is
+	// indistinguishable from one the bound cut, and the distinction is the whole
+	// point.
+	limit := uint16(pageSize + 1)
 
 	page, err := store.ListCurrentSubscriptions(ctx, q, scope, account,
 		&filtering.QueryFilter{MaxResponseSize: &limit})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	return page.Data, nil
+	if len(page.Data) > pageSize {
+		return page.Data[:pageSize], true, nil
+	}
+
+	return page.Data, false, nil
 }
 
 // PlanFor implements entitlements.PlanSource.
@@ -221,7 +244,12 @@ func currentSubscriptions(
 // package reads as "this account has no plan" rather than as a failure, and
 // answers from CheckerConfig.FallbackPlan.
 func (s *Source) PlanFor(ctx context.Context, account string) (string, error) {
-	subscriptions, err := currentSubscriptions(ctx, s.store, s.reader, s.scope, account)
+	// The truncation is deliberately not consulted. Choose picks from what it is
+	// shown and asks nothing of the rest, so a page that stopped early still
+	// answers correctly for every reading this package ships — and an account
+	// whose data has gone wrong is one this should answer slowly rather than
+	// refuse to entitle at all.
+	subscriptions, _, err := currentSubscriptions(ctx, s.store, s.reader, s.scope, account)
 	if err != nil {
 		return "", platformerrors.Wrapf(err, "reading current subscriptions for account %q", account)
 	}

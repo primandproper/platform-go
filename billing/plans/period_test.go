@@ -419,3 +419,102 @@ func TestPeriodResolver_UnderTheCalendarResolver(T *testing.T) {
 }
 
 var _ metering.PeriodResolver = (*PeriodResolver)(nil)
+
+// pagingStoreReturning is a SubscriptionStore whose current-subscription read
+// honors the filter's page bound, which is what a real store does and what a
+// test about the bound needs it to do.
+func pagingStoreReturning(subscriptions ...*billing.Subscription) *billingmock.SubscriptionStoreMock {
+	return &billingmock.SubscriptionStoreMock{
+		ListCurrentSubscriptionsFunc: func(
+			_ context.Context,
+			_ database.SQLQueryExecutor,
+			_ tenancy.Scope,
+			_ string,
+			filter *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[billing.Subscription], error) {
+			page := subscriptions
+
+			if filter != nil && filter.MaxResponseSize != nil && len(page) > int(*filter.MaxResponseSize) {
+				page = page[:*filter.MaxResponseSize]
+			}
+
+			return filtering.NewQueryFilteredResultWithoutCounts(page,
+				func(s *billing.Subscription) string { return s.ID }, filter), nil
+		},
+	}
+}
+
+// agreeing builds n subscriptions that all name one window, which is the set
+// Sole is meant to collapse into a single answer.
+func agreeing(n int, start, end time.Time) []*billing.Subscription {
+	subscriptions := make([]*billing.Subscription, 0, n)
+
+	for range n {
+		subscriptions = append(subscriptions, cycling(start, end))
+	}
+
+	return subscriptions
+}
+
+func TestPeriodResolver_PageBound(T *testing.T) {
+	T.Parallel()
+
+	start, end := baseTime.Add(-24*time.Hour), baseTime.Add(24*time.Hour)
+
+	// The page bound is a bound on what Cycle is shown, and Sole's answer is a
+	// statement about the whole set: it says "one window, and nothing disagreed
+	// with it". A disagreement that fell off the end of the page is one it never
+	// saw, so answering from a truncated page would be answering confidently and
+	// wrongly — and the answer keys a durable total no invoice would flag.
+	T.Run("an account past the page bound is refused rather than answered", func(t *testing.T) {
+		t.Parallel()
+
+		store := pagingStoreReturning(agreeing(pageSize+1, start, end)...)
+
+		resolver, err := NewPeriodResolver(store, &testReader{}, testScope, Sole)
+		must.NoError(t, err)
+
+		_, err = resolver.Resolve(t.Context(), testAccount, metering.PeriodBillingPeriod, baseTime)
+
+		test.ErrorIs(t, err, ErrTooManySubscriptions)
+
+		// Not the same answer as an account that has no window: this one may
+		// well have exactly one, and the resolver is saying it could not see
+		// enough of the set to know.
+		test.False(t, errors.Is(err, ErrNoBillingPeriod))
+	})
+
+	// Exactly a full page is not a truncated one, and a resolver that could not
+	// tell them apart would refuse an account it can answer perfectly well.
+	T.Run("an account exactly at the page bound is answered", func(t *testing.T) {
+		t.Parallel()
+
+		store := pagingStoreReturning(agreeing(pageSize, start, end)...)
+
+		resolver, err := NewPeriodResolver(store, &testReader{}, testScope, Sole)
+		must.NoError(t, err)
+
+		bounds, err := resolver.Resolve(t.Context(), testAccount, metering.PeriodBillingPeriod, baseTime)
+
+		must.NoError(t, err)
+		test.EqOp(t, start.UTC(), bounds.Start)
+		test.EqOp(t, end.UTC(), bounds.End)
+	})
+
+	// The asymmetry is deliberate. Choose picks from what it is shown and asks
+	// nothing of the rest, so the reader that entitles an account keeps
+	// answering where the reader that bills it refuses.
+	T.Run("the same account still resolves a plan", func(t *testing.T) {
+		t.Parallel()
+
+		store := pagingStoreReturning(agreeing(pageSize+1, start, end)...)
+
+		source, err := New(store, &testReader{}, testScope, Entitled)
+		must.NoError(t, err)
+
+		plan, err := source.PlanFor(t.Context(), testAccount)
+
+		must.NoError(t, err)
+		test.EqOp(t, "pro", plan)
+	})
+}

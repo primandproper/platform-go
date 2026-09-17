@@ -27,6 +27,22 @@ var (
 	// for, and it arrives a month later looking like a pricing bug.
 	ErrNoBillingPeriod = platformerrors.New("no current subscription supplies a billing period")
 
+	// ErrTooManySubscriptions indicates an account holding more current
+	// subscriptions than one page of this table can show, where the window is
+	// therefore not answerable.
+	//
+	// It is separate from ErrNoBillingPeriod because it is not a statement about
+	// the account: the account may well have exactly one window, and this is the
+	// resolver saying it could not see enough of the set to know. Cycle is a
+	// question about the whole of it — Sole answers only when nothing disagrees
+	// with what it picked — so a disagreement past the page bound is one it would
+	// answer confidently and wrongly, and the wrong answer becomes the primary
+	// key of a durable total that no invoice would say was wrong.
+	//
+	// Source.PlanFor does not refuse the same page, and the asymmetry is the
+	// point: Choose asks nothing of the rows it was not shown. See pageSize.
+	ErrTooManySubscriptions = platformerrors.New("account holds more current subscriptions than the billing period resolver will read")
+
 	// ErrNotBillingPeriod indicates a period other than
 	// metering.PeriodBillingPeriod. This resolver answers that one and no
 	// others; the calendar periods are metering.NewCalendarPeriodResolver's,
@@ -159,6 +175,12 @@ func NewPeriodResolver(
 // metering.CalendarResolver vets the bounds it is handed: what comes back keys
 // a durable total, and a window that does not contain the usage it is keyed by
 // is one nothing downstream can notice.
+//
+// An account holding more current subscriptions than one page can show is
+// ErrTooManySubscriptions rather than a window, for the same reason again: Cycle
+// is a question about the whole set, and a page that was cut short cannot be
+// asked it. That is a deployment whose billing data has gone wrong, and a meter
+// that refuses is one somebody fixes.
 func (r *PeriodResolver) Resolve(
 	ctx context.Context,
 	subject string,
@@ -169,9 +191,18 @@ func (r *PeriodResolver) Resolve(
 		return metering.Bounds{}, platformerrors.Wrapf(ErrNotBillingPeriod, "period %q", p)
 	}
 
-	subscriptions, err := currentSubscriptions(ctx, r.store, r.reader, r.scope, subject)
+	subscriptions, truncated, err := currentSubscriptions(ctx, r.store, r.reader, r.scope, subject)
 	if err != nil {
 		return metering.Bounds{}, platformerrors.Wrapf(err, "reading current subscriptions for subject %q", subject)
+	}
+
+	// Refused before the cycle is consulted rather than after. What was cut off
+	// the page is exactly what Sole needed to see in order to refuse, so asking
+	// it here would be asking a question whose answer is already known to be
+	// unreliable.
+	if truncated {
+		return metering.Bounds{}, platformerrors.Wrapf(ErrTooManySubscriptions,
+			"subject %q holds more than %d", subject, pageSize)
 	}
 
 	covering := make([]*billing.Subscription, 0, len(subscriptions))
