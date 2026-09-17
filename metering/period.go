@@ -109,6 +109,13 @@ type CalendarResolver struct {
 // the wrong invoice — is silent, arrives a month later, and looks like a pricing
 // bug rather than a metering one.
 //
+// What this module ships for the argument is
+// [github.com/primandproper/platform-go/v14/billing/plans.PeriodResolver],
+// which reads the window off the subscription row a deployment storing its
+// subscriptions in billing already has. One whose subscriptions live elsewhere
+// writes the same shape over its own table: the seam is one method, and what it
+// wants is the two instants the provider will invoice between.
+//
 // UTC rather than a configurable zone, and deliberately. A period boundary that
 // moves twice a year is a period that is 23 hours long once and 25 hours long
 // once, and a daily quota that is 25 hours long is a quota somebody will notice
