@@ -121,6 +121,11 @@ import (
 // entries an outcome reports.
 const DefaultKey = "media_registry"
 
+// heldNoun names what this domain holds, for the message dataprivacy's fan-out
+// helpers wrap a failed read in. The registry key names the section; this names
+// the table, which is what somebody reading the log wants.
+const heldNoun = "uploaded objects"
+
 // RetainedObjects is the key an erasure outcome reports the surviving bytes
 // under. It is named here so a consumer reading a request record back looks for
 // a constant rather than for a string somebody typed twice.
@@ -148,54 +153,26 @@ var (
 
 // ScopeResolver names the scopes a subject's uploads may be in.
 //
-// Returning no scopes is legitimate and means the subject has nothing here: the
-// collector reports the domain as holding nothing, and the eraser archives
-// nothing. Returning too many is how one subject's erasure hides another
-// tenant's uploads, so it is worth being exact.
-//
-// requestScope is the confinement the privacy request named, which the fulfiller
-// hands over beside the subject. The zero Scope is the request that named none —
-// a plain "give me my data" — and what a resolver makes of that is the whole of
-// the decision this seam exists for.
-type ScopeResolver func(
-	ctx context.Context,
-	requestScope tenancy.Scope,
-	subject dataprivacy.Subject,
-) ([]tenancy.Scope, error)
+// It is [dataprivacy.ScopeResolver] under this package's name, and the = is
+// load-bearing rather than cosmetic: a defined type of its own would be
+// assignable to the identical defined type in the sibling adapters only through
+// a conversion, so a deployment with one resolver function would write one
+// conversion per domain. See dataprivacy.ScopeResolver for what a resolver
+// answers, what returning none means, and why it has no default.
+type ScopeResolver = dataprivacy.ScopeResolver
 
 // RequestScope resolves the scope the request itself names, for a deployment
 // where a privacy request always arrives scoped.
 //
-// A request that names none is ErrUnscopedRequest rather than the global scope.
-// The confinement arrives as a tenancy.Scope, so "confined to nobody" and "the
-// global scope" are already distinct values here and nothing has to reconstruct
-// the difference; what a resolver still cannot do is invent the scope a request
-// declined to name. The difference is not recoverable later: an export that
-// quietly covered only the global scope would be well-formed, would have a
-// section, and would be missing every file the subject ever uploaded.
-func RequestScope(
-	_ context.Context,
-	requestScope tenancy.Scope,
-	subject dataprivacy.Subject,
-) ([]tenancy.Scope, error) {
-	if requestScope.Validate() != nil {
-		return nil, platformerrors.Wrapf(ErrUnscopedRequest, "subject %q", subject.ID)
-	}
-
-	return []tenancy.Scope{requestScope}, nil
-}
+// A request that names none is [ErrUnscopedRequest] rather than the global
+// scope — see dataprivacy.RequestScopeOr, which this is built from, for why the
+// difference is not recoverable later.
+var RequestScope = dataprivacy.RequestScopeOr(ErrUnscopedRequest)
 
 // FixedScopes resolves every subject to the same scopes, for a deployment whose
 // tenancy is fixed — most often the single-tenant one, as
 // FixedScopes(tenancy.Global()).
-func FixedScopes(scopes ...tenancy.Scope) ScopeResolver {
-	fixed := make([]tenancy.Scope, len(scopes))
-	copy(fixed, scopes)
-
-	return func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
-		return fixed, nil
-	}
-}
+var FixedScopes = dataprivacy.FixedScopes
 
 // Collector returns the objects a subject uploaded.
 type Collector struct {
@@ -251,26 +228,19 @@ func (c *Collector) Collect(
 	requestScope tenancy.Scope,
 	subject dataprivacy.Subject,
 ) (json.RawMessage, error) {
-	scopes, err := c.resolve(ctx, requestScope, subject)
+	uploaded, err := dataprivacy.CollectByScope(ctx, c.resolve, requestScope, subject, heldNoun,
+		func(
+			ctx context.Context,
+			scope tenancy.Scope,
+			filter *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[mediaregistry.Object], error) {
+			everything := *filter
+			everything.IncludeArchived = new(true)
+
+			return c.store.ListObjectsByOwner(ctx, c.reader, scope, subject.ID, &everything)
+		})
 	if err != nil {
-		return nil, platformerrors.Wrap(err, "resolving media registry scopes for subject")
-	}
-
-	var uploaded []mediaregistry.Object
-
-	for _, scope := range scopes {
-		page, collectErr := dataprivacy.CollectAll(ctx,
-			func(ctx context.Context, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[mediaregistry.Object], error) {
-				everything := *filter
-				everything.IncludeArchived = new(true)
-
-				return c.store.ListObjectsByOwner(ctx, c.reader, scope, subject.ID, &everything)
-			})
-		if collectErr != nil {
-			return nil, platformerrors.Wrapf(collectErr, "collecting uploaded objects in scope %q", scope)
-		}
-
-		uploaded = append(uploaded, page...)
+		return nil, err
 	}
 
 	return dataprivacy.Fragment(len(uploaded) > 0, uploaded)
@@ -319,22 +289,27 @@ func (e *Eraser) Erase(
 		return dataprivacy.ErasureOutcome{}, ErrNilExecutor
 	}
 
-	scopes, err := e.resolve(ctx, requestScope, subject)
-	if err != nil {
-		return dataprivacy.ErasureOutcome{},
-			platformerrors.Wrap(err, "resolving media registry scopes for subject")
-	}
-
 	var archived int64
 
-	for _, scope := range scopes {
-		hidden, archiveErr := e.store.ArchiveObjectsForOwner(ctx, tx, scope, subject.ID)
-		if archiveErr != nil {
-			return dataprivacy.ErasureOutcome{},
-				platformerrors.Wrapf(archiveErr, "archiving uploaded objects in scope %q", scope)
-		}
+	// dataprivacy.ForEachOwner rather than EraseByScope, for two reasons and
+	// both of them are this package's ruling. The verb is "archiving", not
+	// "erasing". And the count goes into a local rather than into the outcome:
+	// Deleted and Anonymized stay at zero deliberately, because a withdrawn row
+	// whose bytes survive is neither, and a helper that summed it into one of
+	// them would report a deletion this package did not perform.
+	err := dataprivacy.ForEachOwner(ctx, e.resolve, requestScope, subject,
+		func(ctx context.Context, scope tenancy.Scope) error {
+			hidden, archiveErr := e.store.ArchiveObjectsForOwner(ctx, tx, scope, subject.ID)
+			if archiveErr != nil {
+				return platformerrors.Wrapf(archiveErr, "archiving uploaded objects in scope %q", scope)
+			}
 
-		archived += hidden
+			archived += hidden
+
+			return nil
+		})
+	if err != nil {
+		return dataprivacy.ErasureOutcome{}, err
 	}
 
 	var outcome dataprivacy.ErasureOutcome

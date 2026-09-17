@@ -232,6 +232,31 @@ var (
 	// and a truncated subject access request is indistinguishable from a
 	// complete one to everyone except the regulator asking about the rest.
 	ErrCursorStalled = platformerrors.New("dataprivacy paged read did not advance")
+
+	// ErrNilResolver indicates ForEachOwner given no resolver. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	//
+	// It is refused rather than read as "this subject owns nothing", which is
+	// the answer an absent resolver would otherwise produce: an export with the
+	// domain's section missing, and an erasure that destroyed nothing, both
+	// reported as successes.
+	ErrNilResolver = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil dataprivacy scope resolver")
+
+	// ErrNilFanOut indicates ForEachOwner given no per-owner function. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilFanOut = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil dataprivacy per-owner function")
+
+	// ErrNilErase indicates EraseByScope given no per-scope write. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilErase = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil dataprivacy per-scope erasure")
+
+	// ErrUnscopedRequest indicates a request that names no scope, handed to a
+	// resolver from RequestScopeOr that was given no sentinel of its own.
+	//
+	// Each adapter in this module passes its own, worded for the table it is
+	// about, and this is the fallback for a caller that has none — see
+	// RequestScopeOr for why the wording is worth keeping with the adapter.
+	ErrUnscopedRequest = platformerrors.New("dataprivacy request names no scope")
 )
 
 // SubjectType distinguishes the kinds of thing a request can be about.

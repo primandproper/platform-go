@@ -95,8 +95,9 @@ var roster = map[string]entry{
 	"authentication/webauthnsessions":  {tier: domain, why: "the ceremony table, under a protocol engine that is a primitive"},
 
 	// The composition root.
-	"errormappers": {tier: root},
-	"service":      {tier: root},
+	"errormappers":    {tier: root},
+	"privacyadapters": {tier: root},
+	"service":         {tier: root},
 
 	// internal/ is not in the README's table, because a consumer cannot import
 	// any of it. It is classified here anyway, so that the completeness check
@@ -431,7 +432,7 @@ func readmeTiers(t *testing.T, moduleDir string) map[string]tier {
 			path := cell[1]
 
 			want := domain
-			if slices.Contains([]string{"errormappers", "service"}, path) {
+			if slices.Contains([]string{"errormappers", "privacyadapters", "service"}, path) {
 				want = root
 			}
 

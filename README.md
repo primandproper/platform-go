@@ -107,6 +107,7 @@ reasons behind the three exceptions.
 |----------------|---------------------------------------------------------------------------------|
 | `service`      | One walk of one config that wires both modules                                  |
 | `errormappers` | The one call that tells the two transport registries what these sentinels mean  |
+| `privacyadapters` | The one call that puts every privacy adapter this module ships in a `dataprivacy.Registry` |
 
 ## Primitives and Domains
 
@@ -142,7 +143,7 @@ checking it.
 | a noun with a table, and what it owes          | `audit`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passwordreset`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
 | a domain flow over another domain's tables     | `authentication/signin`                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | the vocabulary a domain transport shares       | `callers`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| the composition root that registers both tiers | `errormappers`, `service`                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| the composition root that registers both tiers | `errormappers`, `privacyadapters`, `service`                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 The second row is the one the rule's own wording anticipates when it asks whether
 a package owns a table *or drives one*. `authentication/signin` owns no schema

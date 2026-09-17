@@ -88,6 +88,11 @@ import (
 // entries an outcome reports.
 const DefaultKey = "comments"
 
+// heldNoun names what this domain holds, for the message dataprivacy's fan-out
+// helpers wrap a failed read or write in. The registry key names the section;
+// this names the table, which is what somebody reading the log wants.
+const heldNoun = "comments"
+
 // The sentinels this package returns.
 var (
 	// ErrNilStore indicates a nil comments.Store.
@@ -110,53 +115,26 @@ var (
 
 // ScopeResolver names the scopes a subject's comments may be in.
 //
-// Returning no scopes is legitimate and means the subject has nothing here: the
-// collector reports the domain as holding nothing, and the eraser deletes
-// nothing. Returning too many is how one subject's erasure reaches another
-// tenant's comments, so it is worth being exact.
-// requestScope is the confinement the privacy request named, which the
-// fulfiller hands over beside the subject. The zero Scope is the request that
-// named none — a plain "give me my data" — and what a resolver makes of that is
-// the whole of the decision this seam exists for.
-type ScopeResolver func(
-	ctx context.Context,
-	requestScope tenancy.Scope,
-	subject dataprivacy.Subject,
-) ([]tenancy.Scope, error)
+// It is [dataprivacy.ScopeResolver] under this package's name, and the = is
+// load-bearing rather than cosmetic: a defined type of its own would be
+// assignable to the identical defined type in the sibling adapters only through
+// a conversion, so a deployment with one resolver function would write one
+// conversion per domain. See dataprivacy.ScopeResolver for what a resolver
+// answers, what returning none means, and why it has no default.
+type ScopeResolver = dataprivacy.ScopeResolver
 
 // RequestScope resolves the scope the request itself names, for a deployment
 // where a privacy request always arrives scoped.
 //
-// A request that names none is ErrUnscopedRequest rather than the global scope.
-// The confinement arrives as a tenancy.Scope, so "confined to nobody" and "the
-// global scope" are already distinct values here and nothing has to reconstruct
-// the difference; what a resolver still cannot do is invent the scope a request
-// declined to name. The difference is not recoverable later: an
-// export that quietly covered only the global scope would be well-formed, would
-// have a section, and would be missing every comment the subject actually wrote.
-func RequestScope(
-	_ context.Context,
-	requestScope tenancy.Scope,
-	subject dataprivacy.Subject,
-) ([]tenancy.Scope, error) {
-	if requestScope.Validate() != nil {
-		return nil, platformerrors.Wrapf(ErrUnscopedRequest, "subject %q", subject.ID)
-	}
-
-	return []tenancy.Scope{requestScope}, nil
-}
+// A request that names none is [ErrUnscopedRequest] rather than the global
+// scope — see dataprivacy.RequestScopeOr, which this is built from, for why the
+// difference is not recoverable later.
+var RequestScope = dataprivacy.RequestScopeOr(ErrUnscopedRequest)
 
 // FixedScopes resolves every subject to the same scopes, for a deployment whose
 // tenancy is fixed — most often the single-tenant one, as
 // FixedScopes(tenancy.Global()).
-func FixedScopes(scopes ...tenancy.Scope) ScopeResolver {
-	fixed := make([]tenancy.Scope, len(scopes))
-	copy(fixed, scopes)
-
-	return func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
-		return fixed, nil
-	}
-}
+var FixedScopes = dataprivacy.FixedScopes
 
 // Collector returns the comments a subject wrote.
 type Collector struct {
@@ -208,26 +186,19 @@ func (c *Collector) Collect(
 	requestScope tenancy.Scope,
 	subject dataprivacy.Subject,
 ) (json.RawMessage, error) {
-	scopes, err := c.resolve(ctx, requestScope, subject)
+	written, err := dataprivacy.CollectByScope(ctx, c.resolve, requestScope, subject, heldNoun,
+		func(
+			ctx context.Context,
+			scope tenancy.Scope,
+			filter *filtering.QueryFilter,
+		) (*filtering.QueryFilteredResult[comments.Comment], error) {
+			everything := *filter
+			everything.IncludeArchived = new(true)
+
+			return c.store.ListCommentsByAuthor(ctx, c.reader, scope, subject.ID, &everything)
+		})
 	if err != nil {
-		return nil, platformerrors.Wrap(err, "resolving comment scopes for subject")
-	}
-
-	var written []comments.Comment
-
-	for _, scope := range scopes {
-		page, collectErr := dataprivacy.CollectAll(ctx,
-			func(ctx context.Context, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[comments.Comment], error) {
-				everything := *filter
-				everything.IncludeArchived = new(true)
-
-				return c.store.ListCommentsByAuthor(ctx, c.reader, scope, subject.ID, &everything)
-			})
-		if collectErr != nil {
-			return nil, platformerrors.Wrapf(collectErr, "collecting comments in scope %q", scope)
-		}
-
-		written = append(written, page...)
+		return nil, err
 	}
 
 	return dataprivacy.Fragment(len(written) > 0, written)
@@ -270,23 +241,13 @@ func (e *Eraser) Erase(
 		return dataprivacy.ErasureOutcome{}, ErrNilExecutor
 	}
 
-	scopes, err := e.resolve(ctx, requestScope, subject)
-	if err != nil {
-		return dataprivacy.ErasureOutcome{},
-			platformerrors.Wrap(err, "resolving comment scopes for subject")
-	}
+	return dataprivacy.EraseByScope(ctx, tx, e.resolve, requestScope, subject, heldNoun,
+		func(ctx context.Context, tx database.Tx, scope tenancy.Scope) (dataprivacy.ErasureOutcome, error) {
+			deleted, deleteErr := e.store.DeleteCommentsByAuthor(ctx, tx, scope, subject.ID)
+			if deleteErr != nil {
+				return dataprivacy.ErasureOutcome{}, deleteErr
+			}
 
-	var outcome dataprivacy.ErasureOutcome
-
-	for _, scope := range scopes {
-		deleted, deleteErr := e.store.DeleteCommentsByAuthor(ctx, tx, scope, subject.ID)
-		if deleteErr != nil {
-			return dataprivacy.ErasureOutcome{},
-				platformerrors.Wrapf(deleteErr, "erasing comments in scope %q", scope)
-		}
-
-		outcome.Deleted += deleted
-	}
-
-	return outcome, nil
+			return dataprivacy.ErasureOutcome{Deleted: deleted}, nil
+		})
 }

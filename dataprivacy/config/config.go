@@ -14,7 +14,18 @@ runners that worker calls, and the Service that starts operations for it.
 
 The registry is not configured here either. Which domains hold data about a
 person is Go code — a set of interface implementations — and there is no useful
-way to express it in the environment. It is passed explicitly to NewFulfiller.
+way to express it in the environment. It is passed explicitly to NewFulfiller,
+and privacyadapters is what fills one: every adapter this module ships, in one
+call, out of the stores and resolvers a deployment already has. It lives at the
+module root rather than here so that a consumer wiring the privacy tables does
+not link ten domain packages to do it.
+
+RegisterAuditEraser is the exception and stays one. "Does this deployment erase
+its own audit records" is a policy question with a different answer per
+jurisdiction and no store behind it, which makes it the one privacy registration
+an environment variable genuinely can express. A deployment takes it or
+privacyadapters' AuditErasureAdapter, not both, because the second registration
+of a key is an error.
 
 The compressor and the encryptor go the same way, for the same reason. They are
 WithCompressor and WithEncryptor: NewFulfiller writes artifacts with them and

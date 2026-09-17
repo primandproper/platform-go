@@ -224,54 +224,26 @@ type SubjectWriter interface {
 
 // ScopeResolver names the directories a subject's rows may be in.
 //
-// Returning no scopes is legitimate and means the subject has nothing here: the
-// collector reports the domain as holding nothing, and the eraser destroys
-// nothing. Returning too many is how one subject's erasure reaches another
-// tenant's directory, so it is worth being exact — though a scope the subject
-// has no row in costs nothing but a read, since both halves treat it as an
-// empty directory rather than as a failure.
-//
-// requestScope is the confinement the privacy request named, which the
-// fulfiller hands over beside the subject. The zero Scope is the request that
-// named none — a plain "give me my data" — and what a resolver makes of that is
-// the whole of the decision this seam exists for.
-type ScopeResolver func(
-	ctx context.Context,
-	requestScope tenancy.Scope,
-	subject dataprivacy.Subject,
-) ([]tenancy.Scope, error)
+// It is [dataprivacy.ScopeResolver] under this package's name, and the = is
+// load-bearing rather than cosmetic: a defined type of its own would be
+// assignable to the identical defined type in the sibling adapters only through
+// a conversion, so a deployment with one resolver function would write one
+// conversion per domain. See dataprivacy.ScopeResolver for what a resolver
+// answers, what returning none means, and why it has no default.
+type ScopeResolver = dataprivacy.ScopeResolver
 
 // RequestScope resolves the scope the request itself names, for a deployment
 // where a privacy request always arrives scoped.
 //
-// A request that names none is ErrUnscopedRequest rather than the global scope.
-// The confinement arrives as a tenancy.Scope, so "confined to nobody" and "the
-// global scope" are already distinct values here and nothing has to reconstruct
-// the difference; what a resolver still cannot do is invent the scope a request
-// declined to name.
-func RequestScope(
-	_ context.Context,
-	requestScope tenancy.Scope,
-	subject dataprivacy.Subject,
-) ([]tenancy.Scope, error) {
-	if requestScope.Validate() != nil {
-		return nil, platformerrors.Wrapf(ErrUnscopedRequest, "subject %q", subject.ID)
-	}
-
-	return []tenancy.Scope{requestScope}, nil
-}
+// A request that names none is [ErrUnscopedRequest] rather than the global
+// scope — see dataprivacy.RequestScopeOr, which this is built from, for why the
+// difference is not recoverable later.
+var RequestScope = dataprivacy.RequestScopeOr(ErrUnscopedRequest)
 
 // FixedScopes resolves every subject to the same scopes, for a deployment whose
-// tenancy is fixed — most often the single-directory one, as
+// tenancy is fixed — most often the single-tenant one, as
 // FixedScopes(tenancy.Global()).
-func FixedScopes(scopes ...tenancy.Scope) ScopeResolver {
-	fixed := make([]tenancy.Scope, len(scopes))
-	copy(fixed, scopes)
-
-	return func(context.Context, tenancy.Scope, dataprivacy.Subject) ([]tenancy.Scope, error) {
-		return fixed, nil
-	}
-}
+var FixedScopes = dataprivacy.FixedScopes
 
 // Export is what one directory holds about a subject.
 //
@@ -351,24 +323,30 @@ func (c *Collector) Collect(
 	requestScope tenancy.Scope,
 	subject dataprivacy.Subject,
 ) (json.RawMessage, error) {
-	scopes, err := c.resolve(ctx, requestScope, subject)
+	var held []Export
+
+	// dataprivacy.ForEachOwner rather than CollectByScope, because what this
+	// collector reads per scope is not one paged list: collectScope makes four
+	// reads and answers whether the subject is in that directory at all. A
+	// scope they are not in contributes nothing and is not an error, which is
+	// the skip the helper that concatenates pages has no way to express.
+	err := dataprivacy.ForEachOwner(ctx, c.resolve, requestScope, subject,
+		func(ctx context.Context, scope tenancy.Scope) error {
+			export, present, collectErr := c.collectScope(ctx, scope, subject)
+			if collectErr != nil {
+				return collectErr
+			}
+
+			if !present {
+				return nil
+			}
+
+			held = append(held, export)
+
+			return nil
+		})
 	if err != nil {
-		return nil, platformerrors.Wrap(err, "resolving identity scopes for subject")
-	}
-
-	held := make([]Export, 0, len(scopes))
-
-	for _, scope := range scopes {
-		export, present, collectErr := c.collectScope(ctx, scope, subject)
-		if collectErr != nil {
-			return nil, collectErr
-		}
-
-		if !present {
-			continue
-		}
-
-		held = append(held, export)
+		return nil, err
 	}
 
 	return dataprivacy.Fragment(len(held) > 0, held)
@@ -530,33 +508,35 @@ func (e *Eraser) Erase(
 		return dataprivacy.ErasureOutcome{}, ErrNilExecutor
 	}
 
-	scopes, err := e.resolve(ctx, requestScope, subject)
-	if err != nil {
-		return dataprivacy.ErasureOutcome{},
-			platformerrors.Wrap(err, "resolving identity scopes for subject")
-	}
-
 	var outcome dataprivacy.ErasureOutcome
 
-	for _, scope := range scopes {
-		invitations, eraseErr := e.store.EraseInvitationsForSubject(ctx, tx, scope, subject.ID)
-		if eraseErr != nil {
-			if errors.Is(eraseErr, identity.ErrUserNotFound) {
-				continue
+	// dataprivacy.ForEachOwner rather than EraseByScope, because a scope is two
+	// ordered writes here rather than one, they are worded separately, and a
+	// directory the subject has no row in is skipped rather than failed. The
+	// helper that sums one write's outcome has nowhere to put any of the three.
+	err := dataprivacy.ForEachOwner(ctx, e.resolve, requestScope, subject,
+		func(ctx context.Context, scope tenancy.Scope) error {
+			invitations, eraseErr := e.store.EraseInvitationsForSubject(ctx, tx, scope, subject.ID)
+			if eraseErr != nil {
+				if errors.Is(eraseErr, identity.ErrUserNotFound) {
+					return nil
+				}
+
+				return platformerrors.Wrapf(eraseErr, "erasing identity invitations in scope %q", scope)
 			}
 
-			return dataprivacy.ErasureOutcome{},
-				platformerrors.Wrapf(eraseErr, "erasing identity invitations in scope %q", scope)
-		}
+			erased, eraseErr := e.store.EraseUser(ctx, tx, scope, subject.ID)
+			if eraseErr != nil {
+				return platformerrors.Wrapf(eraseErr, "erasing the identity user in scope %q", scope)
+			}
 
-		erased, eraseErr := e.store.EraseUser(ctx, tx, scope, subject.ID)
-		if eraseErr != nil {
-			return dataprivacy.ErasureOutcome{},
-				platformerrors.Wrapf(eraseErr, "erasing the identity user in scope %q", scope)
-		}
+			outcome.Deleted += invitations.Deleted + erased
+			outcome.Anonymized += invitations.Anonymized
 
-		outcome.Deleted += invitations.Deleted + erased
-		outcome.Anonymized += invitations.Anonymized
+			return nil
+		})
+	if err != nil {
+		return dataprivacy.ErasureOutcome{}, err
 	}
 
 	return outcome, nil
