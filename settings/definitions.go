@@ -129,9 +129,14 @@ func (s *SQLStore) insertDefinition(
 // is the id, which only a caller that supplied its own can collide on — a create
 // that leaves it empty is given a minted one.
 //
-// Two candidates and no more. This table references nothing, so there is no
-// foreign key for MySQL to downgrade into this same zero count, which is the
-// third candidate billing's namesake has to rule out before it can say the same.
+// Two candidates and no more, and both of the other ways a zero count could
+// arise are closed rather than absent by luck. This table references nothing, so
+// there is no foreign key for MySQL to downgrade into it — the third candidate
+// billing's namesake has to rule out before it can say the same. And a value too
+// long for its column, which MySQL's IGNORE would absorb the same way, cannot
+// reach the insert at all: Definition.validate bounds the four strings this row
+// carries against the widths that hold them. Without that bound the fallback
+// below would report a truncated name as a taken id.
 func (s *SQLStore) refuseDefinitionCreate(
 	ctx context.Context,
 	q database.SQLQueryExecutor,

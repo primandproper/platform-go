@@ -30,14 +30,14 @@ import (
 // answer depend on which transport happened to ask.
 //
 // What is deliberately absent is everything that wraps a platform sentinel.
-// Eleven of this package's twenty-one do — the nil arguments, the empty ones,
-// and the three that wrap errors.ErrUnrecognizedInputValue, which is where a
-// value of the wrong kind and a value outside its enumeration are already
-// answered as bad requests. errors/http asks its platform mapper first, so a
+// Twelve of this package's twenty-two do — the nil arguments, the empty ones,
+// and the four that wrap errors.ErrUnrecognizedInputValue, which is where a
+// value of the wrong kind, a value outside its enumeration and a string too long
+// for the column holding it are already answered as bad requests. errors/http asks its platform mapper first, so a
 // case here for one of those would be unreachable, and internal/sentinelmatrix
 // fails a row that claims otherwise.
 //
-// That roster is where each of the twenty-one is recorded as mapped, platform
+// That roster is where each of the twenty-two is recorded as mapped, platform
 // or unhandled, and it fails when one is in none of the three.
 var (
 	// HTTPMapper maps this package's sentinels onto HTTP error codes.

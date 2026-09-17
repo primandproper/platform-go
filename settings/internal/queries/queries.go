@@ -236,6 +236,13 @@ func Render(d dialect.Dialect) string {
 // carrying an id another row already has reports zero there where Postgres
 // raises. The store attributes a zero count by asking nameCollisionCheck, on the
 // losing path only, which of the two it was.
+//
+// MySQL's IGNORE reaches further still: it downgrades a value too long for its
+// column to a warning and stores the truncated value, which is a success rather
+// than a zero count and so is not something any attribution could catch. That is
+// why settings.Definition is bounded in Go before it gets here — see
+// settings.MaxDefinitionNameLength — and why the store's two candidates are two
+// rather than however many constraints the dialect chose to absorb.
 func guardedCreate(g *querygen.Generator) *querygen.Query {
 	return g.InsertIgnoreQuery("CreateDefinition", DefinitionsTable,
 		Definitions.InsertColumns(), Definitions.Nullable,
