@@ -2,6 +2,7 @@ package grpc_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -144,6 +145,25 @@ func TestServer_LoginForToken(T *testing.T) {
 		test.EqOp(t, codes.InvalidArgument, status.Code(err))
 	})
 
+	T.Run("an issuer failure is not a credential failure", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarnessWithIssuer(t, &failingIssuer{}, nil)
+
+		// The password is right. What failed is the step after proving it, and
+		// a door whose default code was Unauthenticated would report this
+		// outage as a wrong password — something the caller would try to fix by
+		// retyping a credential that was never the problem.
+		_, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.Error(t, err)
+
+		test.NotEqOp(t, codes.Unauthenticated, status.Code(err))
+		test.EqOp(t, codes.Internal, status.Code(err))
+		test.False(t, errors.Is(err, signin.ErrInvalidCredentials))
+	})
+
 	T.Run("a scope resolver that refuses refuses the request", func(t *testing.T) {
 		t.Parallel()
 
@@ -192,6 +212,32 @@ func TestServer_AdminLoginForToken(T *testing.T) {
 		})
 		must.NoError(t, err)
 		test.True(t, response.GetToken().GetAdministrative())
+	})
+
+	T.Run("an issuer failure is not a credential failure", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarnessWithIssuer(t, &failingIssuer{},
+			[]signin.ServiceOption{signin.WithAdminServiceRoles("service_admin")})
+		h.setServiceRoles(t, "service_admin")
+
+		secret := h.enrollTOTP(t)
+
+		// The administrative door defaults the same way the anonymous one does,
+		// and it has more to get wrong: a caller here proved a password and a
+		// second factor before anything could fail.
+		_, err := h.client.AdminLoginForToken(h.rootCtx, &signinpb.AdminLoginForTokenRequest{
+			Credentials: &signinpb.Credentials{
+				Username: "jane",
+				Password: h.password,
+				TotpCode: totpCode(t, secret),
+			},
+		})
+		must.Error(t, err)
+
+		test.NotEqOp(t, codes.Unauthenticated, status.Code(err))
+		test.EqOp(t, codes.Internal, status.Code(err))
+		test.False(t, errors.Is(err, signin.ErrInvalidCredentials))
 	})
 }
 
