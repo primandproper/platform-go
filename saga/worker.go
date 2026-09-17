@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -13,6 +14,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/distributedlock"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/idempotency"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
@@ -74,6 +76,7 @@ type Worker struct {
 	stuckCounter         metrics.Int64Counter
 	claimErrCounter      metrics.Int64Counter
 	contendedCounter     metrics.Int64Counter
+	stuckGauge           metrics.Int64Gauge
 	stepHist             metrics.Float64Histogram
 	advanceHist          metrics.Float64Histogram
 
@@ -206,6 +209,15 @@ func (w *Worker) buildInstruments() error {
 	if w.stuckCounter, err = mp.NewInt64Counter(serviceName + "_instances_stuck"); err != nil {
 		return platformerrors.Wrap(err, "creating instances stuck counter")
 	}
+	// The level behind that counter, and the pair is deliberate rather than
+	// redundant. A stuck instance stays stuck until a person acts, so what an
+	// operator needs to see is how many are waiting — and a counter cannot say:
+	// it reports the rate at which workers gave up, and a process restart sets
+	// it back to zero with the whole backlog still sitting in the table. The
+	// counter is when it happened; this is what is outstanding. See Worker.Stats.
+	if w.stuckGauge, err = mp.NewInt64Gauge(serviceName + "_instances_stuck_depth"); err != nil {
+		return platformerrors.Wrap(err, "creating instances stuck depth gauge")
+	}
 	if w.claimErrCounter, err = mp.NewInt64Counter(serviceName + "_claim_errors"); err != nil {
 		return platformerrors.Wrap(err, "creating claim errors counter")
 	}
@@ -239,12 +251,22 @@ func (w *Worker) Run() {
 	ticker := w.clock.NewTicker(w.cfg.PollInterval)
 	defer ticker.Stop()
 
+	// Its own ticker rather than a counter on the poll tick: the stuck level is
+	// an aggregate over the whole instance table and the poll is an indexed read
+	// of what is due, so sampling at poll cadence would cost more than the work
+	// it reports on. It is the same split outbox's relay makes between its poll
+	// and the tick its backlog gauges ride.
+	statsTicker := w.clock.NewTicker(w.cfg.StatsInterval)
+	defer statsTicker.Stop()
+
 	for {
 		select {
 		case <-w.stop:
 			return
 		case <-ticker.Chan():
 			w.cycle(ctx)
+		case <-statsTicker.Chan():
+			w.sampleStats(ctx)
 		}
 	}
 }
@@ -272,6 +294,102 @@ func (w *Worker) Close(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// sampleStats records the stuck level. Like cycle it logs rather than returns:
+// there is no caller to hand an error to, and the next tick reads again.
+//
+// A failed sample records nothing rather than recording a zero. A gauge told
+// the backlog drained because a read replica was unreachable is worse than one
+// that went stale, because staleness is a thing a monitoring system can see.
+func (w *Worker) sampleStats(ctx context.Context) {
+	if _, err := w.Stats(ctx); err != nil {
+		w.o11y.Logger().Error("sampling saga stats", err)
+	}
+}
+
+// Stats is this package's level, read in one round trip.
+//
+// One field, because only one of the five statuses is a level at all. running
+// and compensating are sagas in motion and their movement is already a rate;
+// completed and compensated are sagas that finished. stuck is the only one a
+// process cannot leave on its own — it persists until a person fixes whatever
+// broke and calls Runner.Resume — so it is the only one whose *number* means
+// something, and the only one a dashboard can read a backlog off.
+type Stats struct {
+	// Stuck counts instances in StatusStuck: compensations that ran out of
+	// attempts and are waiting for an operator.
+	Stuck int64
+}
+
+// Stats reads how many instances are stuck and records the level to
+// saga_instances_stuck_depth.
+//
+// It is the health signal the package documentation tells an operator to alert
+// on. saga_instances_stuck says a worker gave up, once, at some point since
+// this process started; this says how many sagas are half-done right now, which
+// is the number that does not reset when the deployment rolls.
+//
+// The Worker samples it on WorkerConfig.StatsInterval, so a process running one
+// needs to call nothing. It is exported for the process that does not — an
+// operator console, a readiness check, a report — and for the caller who wants
+// the level on a cadence of their own. Either way it is an aggregate over the
+// whole instance table: sample it on a timer, not per request and not per
+// cycle.
+func (w *Worker) Stats(ctx context.Context) (Stats, error) {
+	ctx, op := w.o11y.Begin(ctx)
+	defer op.End()
+
+	stuck, err := w.stuckDepth(ctx)
+	if err != nil {
+		return Stats{}, op.Error(err, "reading saga stats")
+	}
+
+	w.stuckGauge.Record(ctx, stuck)
+
+	op.Set(stuckDepthKey, stuck)
+
+	return Stats{Stuck: stuck}, nil
+}
+
+// stuckDepth counts the instances waiting for an operator.
+//
+// It is the listing store.go calls "the one actually run" — the status scope
+// holding StatusStuck and nothing else — asked for a single row rather than a
+// page. The count is what is wanted and the counts ride on the rows, so a page
+// size of one is the cheapest page that can carry one back, and a page size of
+// zero would come back with nothing to read them off.
+//
+// An empty page reports its counts as unknown rather than as zero, because in
+// general a store whose counts ride on the rows cannot tell "nothing matched"
+// from "this is the page after the last one". Here it can: this is the first
+// page of the predicate, never a continuation, so no rows means no stuck
+// instances, and reporting that as zero is what resets the gauge when the last
+// one is resumed. A gauge that went quiet instead would leave the dashboard
+// showing yesterday's backlog forever.
+func (w *Worker) stuckDepth(ctx context.Context) (int64, error) {
+	filter := filtering.DefaultQueryFilter()
+	filter.SetMaxResponseSize(1)
+
+	page, err := w.store.List(ctx, &ListScope{Statuses: []Status{StatusStuck}}, filter)
+	if err != nil {
+		return 0, platformerrors.Wrap(err, "listing stuck saga instances")
+	}
+
+	filtered, _, known := page.Counts()
+	if !known {
+		return 0, nil
+	}
+
+	// The count is a row count from a database that cannot hold that many rows,
+	// so the narrowing is arithmetic rather than a case anybody reaches. It is
+	// written out because a gauge is the wrong place to learn that a uint64 does
+	// not fit in an int64.
+	if filtered > math.MaxInt64 {
+		return math.MaxInt64, nil
+	}
+
+	return int64(filtered), nil
 }
 
 // cycle claims one batch and advances it. Errors are logged and counted rather
