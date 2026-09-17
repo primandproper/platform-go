@@ -63,6 +63,12 @@ func TestMappers(T *testing.T) {
 			httpMsg:  "a setting by that name is already defined",
 			grpcCode: codes.AlreadyExists,
 		},
+		"an id another definition carries": {
+			err:      settings.ErrDefinitionIDTaken,
+			httpCode: httperrors.ErrResourceConflict,
+			httpMsg:  "another setting already has that id",
+			grpcCode: codes.AlreadyExists,
+		},
 		"an edit that would strand values": {
 			err:      settings.ErrStrandedValues,
 			httpCode: httperrors.ErrResourceConflict,
@@ -123,6 +129,36 @@ func TestTheThreeNotFoundsSayDifferentThings(T *testing.T) {
 	test.MapLen(T, 3, messages, test.Sprint("two of the three not-found answers say the same thing"))
 }
 
+// TestTheTwoCollisionsSayDifferentThings is the not-founds' argument one code
+// further down.
+//
+// A create loses to one of two unique identifiers, and codes.AlreadyExists says
+// the same word about both — while the remedies are a different name and a fix
+// to the code that chose the id. The message is what separates them, which is
+// why both are registered as client-safe.
+func TestTheTwoCollisionsSayDifferentThings(T *testing.T) {
+	T.Parallel()
+
+	messages := map[string]struct{}{}
+
+	for _, err := range []error{
+		settings.ErrDefinitionNameTaken,
+		settings.ErrDefinitionIDTaken,
+	} {
+		code, msg, ok := settings.HTTPMapper.Map(err)
+		must.True(T, ok)
+		must.EqOp(T, httperrors.ErrResourceConflict, code)
+
+		grpcCode, ok := settings.GRPCMapper.Map(err)
+		must.True(T, ok)
+		must.EqOp(T, codes.AlreadyExists, grpcCode)
+
+		messages[msg] = struct{}{}
+	}
+
+	test.MapLen(T, 2, messages, test.Sprint("both collisions say the same thing"))
+}
+
 // TestTheStrandedValuesMessageSaysLessThanTheSentinel is the one place the
 // HTTP message is deliberately narrower than the error it maps.
 //
@@ -159,6 +195,7 @@ func TestTheTwoMappersCoverTheSameSentinels(T *testing.T) {
 		settings.ErrKindMismatch,
 		settings.ErrDuplicateEnumerationValue,
 		settings.ErrDefinitionNameTaken,
+		settings.ErrDefinitionIDTaken,
 		settings.ErrStrandedValues,
 	} {
 		_, _, claimedByHTTP := settings.HTTPMapper.Map(err)
@@ -235,20 +272,22 @@ func TestMappersDeclineWhatIsNotTheirs(T *testing.T) {
 	})
 }
 
-// TestClientSafeSentinelsAreTheSixRefusalsAPersonReads, and nothing that
+// TestClientSafeSentinelsAreTheSevenRefusalsAPersonReads, and nothing that
 // describes the system to whoever wired it up.
 //
 // A nil executor, a stalled cursor and a kind nothing implements are sentences
 // for an operator's log; a client reading the code's name instead loses
-// nothing. The six here are the ones where the code alone does not say what
-// happened.
-func TestClientSafeSentinelsAreTheSixRefusalsAPersonReads(T *testing.T) {
+// nothing. The seven here are the ones where the code alone does not say what
+// happened — the two collisions on the definition table's two unique
+// identifiers being the pair that shares a code and nothing else.
+func TestClientSafeSentinelsAreTheSevenRefusalsAPersonReads(T *testing.T) {
 	T.Parallel()
 
-	must.SliceLen(T, 6, settings.ClientSafeSentinels)
+	must.SliceLen(T, 7, settings.ClientSafeSentinels)
 
 	for _, err := range []error{
 		settings.ErrDefinitionNameTaken,
+		settings.ErrDefinitionIDTaken,
 		settings.ErrKindMismatch,
 		settings.ErrSettingUnset,
 		settings.ErrStrandedValues,

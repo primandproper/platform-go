@@ -1,8 +1,10 @@
 package settings
 
 import (
+	"strings"
 	"testing"
 
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"github.com/shoenig/test"
@@ -214,4 +216,82 @@ func TestReinterprets(T *testing.T) {
 			test.EqOp(t, c.expect, reinterprets(base, c.updated))
 		})
 	}
+}
+
+func TestDefinition_withinBounds(T *testing.T) {
+	T.Parallel()
+
+	// The bound is what keeps MySQL's INSERT IGNORE from storing a truncated
+	// definition and reporting success. Each case is one byte over its column,
+	// because one byte over is the case a limit written down as the wrong number
+	// still passes.
+	T.Run("each stored string is bounded by its column", func(t *testing.T) {
+		t.Parallel()
+
+		for _, tc := range []struct {
+			mangle func(*Definition)
+			name   string
+		}{
+			{
+				name:   "id",
+				mangle: func(d *Definition) { d.ID = strings.Repeat("i", MaxDefinitionIDLength+1) },
+			},
+			{
+				name:   "name",
+				mangle: func(d *Definition) { d.Name = strings.Repeat("n", MaxDefinitionNameLength+1) },
+			},
+			{
+				name:   "description",
+				mangle: func(d *Definition) { d.Description = strings.Repeat("d", MaxDefinitionDescriptionLength+1) },
+			},
+			{
+				name: "default",
+				mangle: func(d *Definition) {
+					d.Default = pointer.To(strings.Repeat("v", MaxDefinitionDefaultLength+1))
+				},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				definition := &Definition{Name: "theme", Kind: KindString}
+				tc.mangle(definition)
+
+				err := definition.validate()
+
+				test.ErrorIs(t, err, ErrDefinitionValueTooLong)
+
+				// Answered as a bad request by the platform mapper rather than
+				// by a case of this package's own, which is the whole reason it
+				// wraps this sentinel — see internal/sentinelmatrix.
+				test.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
+
+				// The message says which string it was, because "too long" with
+				// four candidates is a refusal the caller has to guess at.
+				test.StrContains(t, err.Error(), tc.name)
+			})
+		}
+	})
+
+	T.Run("a definition exactly at each limit is admitted", func(t *testing.T) {
+		t.Parallel()
+
+		definition := &Definition{
+			ID:          strings.Repeat("i", MaxDefinitionIDLength),
+			Name:        strings.Repeat("n", MaxDefinitionNameLength),
+			Description: strings.Repeat("d", MaxDefinitionDescriptionLength),
+			Kind:        KindString,
+			Default:     pointer.To(strings.Repeat("v", MaxDefinitionDefaultLength)),
+		}
+
+		must.NoError(t, definition.validate())
+	})
+
+	// An absent default is not a zero-length one, and the bound must not turn
+	// the nil into a dereference.
+	T.Run("a definition with no default is admitted", func(t *testing.T) {
+		t.Parallel()
+
+		must.NoError(t, (&Definition{Name: "theme", Kind: KindString}).validate())
+	})
 }

@@ -27,8 +27,7 @@ WHERE archived_at IS NULL
 	AND subject_id = $3
 	AND definition_id = $4`
 
-const createDefinitionPostgreSQL = `
-INSERT INTO {{prefix}}settings_definitions (
+const createDefinitionPostgreSQL = `INSERT INTO {{prefix}}settings_definitions (
 	id,
 	scope,
 	name,
@@ -44,7 +43,8 @@ INSERT INTO {{prefix}}settings_definitions (
 	$5,
 	$6,
 	$7
-)`
+)
+ON CONFLICT (scope, name) DO NOTHING`
 
 const deleteDefinitionOptionsPostgreSQL = `DELETE FROM {{prefix}}settings_definition_options
 WHERE definition_id = $1`
@@ -71,7 +71,8 @@ WHERE {{prefix}}settings_values.scope = $1
 	AND {{prefix}}settings_values.definition_id = $4
 	AND {{prefix}}settings_values.archived_at IS NOT NULL`
 
-const getDefinitionPostgreSQL = `SELECT
+const getDefinitionPostgreSQL = `
+SELECT
 	{{prefix}}settings_definitions.id,
 	{{prefix}}settings_definitions.scope,
 	{{prefix}}settings_definitions.name,
@@ -573,9 +574,9 @@ func (q *postgresqlQueries) ArchiveValue(ctx context.Context, db DBTX, arg Archi
 	return result.RowsAffected()
 }
 
-// CreateDefinition runs the :exec query against postgresql.
-func (q *postgresqlQueries) CreateDefinition(ctx context.Context, db DBTX, arg CreateDefinitionParams) error {
-	_, err := db.ExecContext(ctx, q.createDefinition,
+// CreateDefinition runs the :execrows query against postgresql.
+func (q *postgresqlQueries) CreateDefinition(ctx context.Context, db DBTX, arg CreateDefinitionParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.createDefinition,
 		arg.ID,
 		arg.Scope,
 		arg.Name,
@@ -584,8 +585,11 @@ func (q *postgresqlQueries) CreateDefinition(ctx context.Context, db DBTX, arg C
 		arg.DefaultValue,
 		arg.AdminOnly,
 	)
+	if err != nil {
+		return 0, err
+	}
 
-	return err
+	return result.RowsAffected()
 }
 
 // DeleteDefinitionOptions runs the :execrows query against postgresql.

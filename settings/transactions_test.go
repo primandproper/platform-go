@@ -423,10 +423,16 @@ func runTransactionSuite(t *testing.T, env *storeEnv) {
 	t.Run("a refused write inside a transaction leaves the transaction usable", func(t *testing.T) {
 		t.Parallel()
 
-		// Every check the writes make runs before any statement they would send,
-		// so a refusal is the store declining rather than the database aborting.
-		// A caller that inspects one and carries on has a transaction to carry on
-		// in, which is what lets these be collected here and asserted outside.
+		// Most of these refusals are checks that run before any statement the
+		// write would send, so they are the store declining rather than the
+		// database aborting. The taken name is the one that is not: its insert
+		// runs, decides the collision inside the statement, and writes nothing —
+		// a zero affected count rather than a raised constraint violation, which
+		// on Postgres is the difference between a transaction a caller may carry
+		// on in and one the server has already marked for rollback. Either way a
+		// caller that inspects a refusal and carries on has a transaction to
+		// carry on in, which is what lets these be collected here and asserted
+		// outside.
 		store := env.newStore(t)
 
 		taken := mustCreate(t, env, store, testScope, stringDefinition("digest"))

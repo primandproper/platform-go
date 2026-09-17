@@ -70,6 +70,44 @@ var (
 	// stays taken — see settings/migrations.
 	ErrDefinitionNameTaken = platformerrors.New("setting name is already defined")
 
+	// ErrDefinitionIDTaken indicates a create whose id another definition in
+	// this scope already carries.
+	//
+	// It is reachable only from a caller that supplied the id — a create that
+	// leaves it empty is given a minted one — and it is distinct from
+	// ErrDefinitionNameTaken because it names a different mistake: that one is a
+	// catalog defining a setting somebody has already defined, which is the
+	// ordinary second boot, and this is an application handing out an identifier
+	// it has used before.
+	//
+	// MySQL and SQLite report it here. Postgres raises its own primary key
+	// violation instead, because the create's conflict target names the (scope,
+	// name) index and a Postgres ON CONFLICT absorbs only the index it names,
+	// where the IGNORE the other two spell covers every constraint on the table.
+	// The three dialects agree on refusing the row and differ on which error says
+	// so; nothing that is not a caller's own bug reaches either.
+	ErrDefinitionIDTaken = platformerrors.New("another setting definition in this scope already has that id")
+
+	// ErrDefinitionValueTooLong indicates a definition carrying a string longer
+	// than the column that stores it — see MaxDefinitionIDLength and the three
+	// bounds beside it, and the wrapped message for which one it was.
+	//
+	// It wraps errors.ErrUnrecognizedInputValue, so it is answered as a bad
+	// request by the platform mapper rather than by a case of this package's
+	// own, which is where a value of the wrong kind and a value outside its
+	// enumeration are already answered.
+	//
+	// The limit is enforced in Go rather than left to the column, because the
+	// create is an insert-ignore and MySQL's IGNORE downgrades a too-long value
+	// to a warning that truncates it. A definition whose name was silently cut
+	// to 255 bytes is a different setting from the one the caller declared, and
+	// one whose default was cut is a setting that resolves to a value nobody
+	// chose — neither of which the write would report. Postgres and SQLite store
+	// the columns as TEXT and would take the full value, so the bound is also
+	// what keeps one catalog from meaning different things on different
+	// dialects.
+	ErrDefinitionValueTooLong = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "setting definition value is too long")
+
 	// ErrUnknownKind indicates a Kind this package cannot parse.
 	ErrUnknownKind = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "unknown setting kind")
 

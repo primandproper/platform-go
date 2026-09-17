@@ -134,6 +134,40 @@ func (s Subject) Validate() error {
 	return nil
 }
 
+// The bounds on a definition's four stored strings, each the width of the column
+// that holds it in the narrowest dialect this module ships a schema for.
+//
+// They are checked in Go rather than left to the database because the create is
+// an insert-ignore, and MySQL's IGNORE downgrades a value too long for its
+// column to a warning that truncates and stores it. The write reports success,
+// and what is in the row is not what the caller declared. Postgres and SQLite
+// spell these columns TEXT and would have stored the whole thing, so without the
+// bound one catalog means three things on three dialects.
+//
+// The widths are MySQL's because MySQL is the one that had to pick a number: a
+// VARCHAR is indexable and carries a DEFAULT where a TEXT does not — see
+// settings/migrations. A definition that does not fit is a definition to
+// shorten, and ErrDefinitionValueTooLong says which string it was.
+const (
+	// MaxDefinitionIDLength bounds a definition id. It is only reachable from a
+	// caller that supplies its own; a minted one is well inside it.
+	MaxDefinitionIDLength = 64
+
+	// MaxDefinitionNameLength bounds a definition's name. The name is half of
+	// the uniqueness this catalog is keyed on, so two names that differ only
+	// past the limit would be one row rather than two.
+	MaxDefinitionNameLength = 255
+
+	// MaxDefinitionDescriptionLength bounds a definition's description.
+	MaxDefinitionDescriptionLength = 1024
+
+	// MaxDefinitionDefaultLength bounds a definition's default value. A
+	// truncated default is the worst of the four: it is what every subject who
+	// has not answered resolves to, so the setting quietly answers something
+	// nobody chose.
+	MaxDefinitionDefaultLength = 512
+)
+
 // Definition is what a setting is: the name application code asks for, the kind
 // of value it holds, what it falls back to, and which values it admits.
 //
@@ -241,6 +275,12 @@ func (d *Definition) validate() error {
 		return ErrEmptyDefinitionName
 	}
 
+	// Checked before the kind, because a name is what every refusal below names
+	// the definition by and a truncated one names a different definition.
+	if err := d.withinBounds(); err != nil {
+		return err
+	}
+
 	if !d.Kind.Valid() {
 		return platformerrors.Wrapf(ErrUnknownKind, "kind %q", d.Kind)
 	}
@@ -268,6 +308,40 @@ func (d *Definition) validate() error {
 	}
 
 	return d.admits(*d.Default)
+}
+
+// withinBounds reports the first of the definition's stored strings that is
+// longer than the column holding it.
+//
+// The order is the order the columns are declared in, which is also the order a
+// reader of the schema meets them; nothing depends on which one is reported
+// first, because a definition over two bounds is over both however it is fixed.
+func (d *Definition) withinBounds() error {
+	bounds := []struct {
+		value string
+		what  string
+		limit int
+	}{
+		{value: d.ID, what: "id", limit: MaxDefinitionIDLength},
+		{value: d.Name, what: "name", limit: MaxDefinitionNameLength},
+		{value: d.Description, what: "description", limit: MaxDefinitionDescriptionLength},
+	}
+
+	for i := range bounds {
+		bound := &bounds[i]
+
+		if len(bound.value) > bound.limit {
+			return platformerrors.Wrapf(ErrDefinitionValueTooLong,
+				"%s is %d bytes, over the %d-byte limit", bound.what, len(bound.value), bound.limit)
+		}
+	}
+
+	if d.Default != nil && len(*d.Default) > MaxDefinitionDefaultLength {
+		return platformerrors.Wrapf(ErrDefinitionValueTooLong,
+			"default is %d bytes, over the %d-byte limit", len(*d.Default), MaxDefinitionDefaultLength)
+	}
+
+	return nil
 }
 
 // Value is what one subject answered for one definition.

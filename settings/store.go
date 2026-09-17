@@ -116,7 +116,14 @@ type DefinitionStore interface {
 	//
 	// It refuses a name already defined in this scope with
 	// ErrDefinitionNameTaken, a default the setting would not admit, and an
-	// enumeration holding an empty or repeated value.
+	// enumeration holding an empty or repeated value. The name is decided by
+	// the insert rather than by a read before it, so two creates of one name
+	// racing each other leave one definition and one refusal rather than a
+	// driver's constraint violation — see [SQLStore.CreateDefinition].
+	//
+	// A caller that supplies its own id rather than letting the store mint one
+	// may also meet ErrDefinitionIDTaken, which names the other thing a create
+	// can collide on and is the caller's own bug rather than a catalog's.
 	//
 	// The refused name is what a composition root looping this over a catalog
 	// hits on its second boot, and [DeclareDefinitions] is the call that shape
@@ -132,10 +139,11 @@ type DefinitionStore interface {
 	// has been told — narrow, one-directional, and not something a consumer
 	// could close from outside this package.
 	//
-	// Every statement runs on tx: the name collision check, the definition, its
-	// enumeration, and the read-back of the creation time. A value set against
-	// the definition later in the same transaction, through
-	// [ValueStore.SetValue], finds it.
+	// Every statement runs on tx: the definition, its enumeration, the read-back
+	// of the creation time, and — on the path where the insert wrote nothing —
+	// the read that says which identifier it lost to. A value set against the
+	// definition later in the same transaction, through [ValueStore.SetValue],
+	// finds it.
 	CreateDefinition(ctx context.Context, tx database.Tx, scope tenancy.Scope, definition *Definition) (*Definition, error)
 
 	// GetDefinition reads one live definition by id, on the caller's executor. A

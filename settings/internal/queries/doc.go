@@ -36,6 +36,14 @@ against it is read, so the write that changes either is guarded by a walk of
 those values rather than by the column being frozen. Freezing them would be the
 same refusal with no way to say yes.
 
+Its create is the one statement of that set it does not take. The standard
+INSERT answers a name the scope already defines with whatever SQLSTATE the
+driver raises, so a store built on one has to read first — and two creates of
+one name that cross between the read and the write both find it free. What it
+takes instead is an insert-ignore over the (scope, name) unique index, which
+decides the collision inside the statement and reports a loss as a zero affected
+count. See guardedCreate.
+
 Values gets none of the standard set. Its columns are conventional and not one
 of its statements is: every single-row statement keys on the (scope,
 subject_type, subject_id, definition_id) quadruple rather than on the id the
@@ -63,7 +71,9 @@ statements with more predicates rather than a second rendering of them:
     read every value-side method begins with
   - the name collision check, keyed on the name and excluding the row being
     updated — rendered from no column list at all, because the unique index
-    covers archived rows and so must the read
+    covers archived rows and so must the read. It guards the rename, which has
+    no statement that can decide a collision for it, and attributes the create's
+    zero count on the one path where the insert has already lost
   - the read-back of created_at, which the create does not carry because the
     database owns the column
   - the value read keyed on its natural key, and the two paged value lists —

@@ -102,9 +102,15 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	// Descending: a sort direction is which way the ORDER BY runs and which way
 	// the cursor comparison points, so it is answered by a second statement
 	// rather than by a bound argument.
+	//
+	// The create is not among the standard set the definitions table opens with,
+	// and its position says so: it is rendered after that set, because it is the
+	// insert-ignore guardedCreate emits rather than the plain INSERT StandardCRUD
+	// would have.
 	want := []string{
-		"CreateDefinition", "GetDefinition", "ListDefinitions", "ListDefinitionsDescending",
+		"GetDefinition", "ListDefinitions", "ListDefinitionsDescending",
 		"UpdateDefinition", "ArchiveDefinition",
+		"CreateDefinition",
 		"GetDefinitionCreatedAt",
 		"GetDefinitionByName", "GetDefinitionIDByName",
 		"DeleteDefinitionOptions", "InsertDefinitionOption", "ListDefinitionOptionsByDefinitionIDs",
@@ -255,6 +261,46 @@ func TestRender_ErasureReachesClearedValues(T *testing.T) {
 			test.StrNotContains(t, statement, querygen.ArchivedAtColumn)
 			test.StrNotContains(t, statement, ValueDefinitionColumn)
 			test.StrNotContains(t, statement, "sqlc.arg(id)")
+		})
+	}
+}
+
+// TestRender_TheCreateDecidesTheNameCollision is the property a read before the
+// write cannot have: two creates of one name leave one row and one refusal on
+// every dialect, because the decision is inside the statement that writes.
+//
+// The three renderings say the same thing three ways, and only one of them names
+// a target: Postgres takes a trailing ON CONFLICT over the index the schema
+// actually has — which is what it checks the clause against — while MySQL and
+// SQLite take a modifier between the verb and INTO and fire on whichever unique
+// key was violated. All three are annotated :execrows, because the affected-row
+// count is the whole of what the losing caller learns.
+func TestRender_TheCreateDecidesTheNameCollision(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			statement := statementNamed(t, Render(d), "CreateDefinition")
+
+			test.StrContains(t, statement, ":execrows",
+				test.Sprint("the create does not report an affected-row count"))
+
+			switch d {
+			case dialect.Postgres:
+				test.StrContains(t, statement, "INSERT INTO "+DefinitionsTable)
+				test.StrContains(t, statement, "ON CONFLICT (scope, name) DO NOTHING")
+			case dialect.MySQL:
+				test.StrContains(t, statement, "INSERT IGNORE INTO "+DefinitionsTable)
+			default:
+				test.StrContains(t, statement, "INSERT OR IGNORE INTO "+DefinitionsTable)
+			}
+
+			// The conflict target is the index, so the insert carries no
+			// predicate of its own: an INSERT has no WHERE, and a name check
+			// rendered as one would be the read this statement replaced.
+			test.StrNotContains(t, statement, "WHERE")
 		})
 	}
 }

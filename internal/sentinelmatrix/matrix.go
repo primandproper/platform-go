@@ -694,19 +694,21 @@ var Matrix = map[string]map[string]Decision{
 	},
 
 	settingsPkg: {
-		// The seven a caller can act on. Three are absences and are all
+		// The eight a caller can act on. Three are absences and are all
 		// codes.NotFound — no setting by that name, no value stored against it,
 		// and a resolution with neither a value nor a default — which is the
 		// clearest case in this roster for why the wording matters as much as the
 		// code, and why all three are client-safe. Two are a request to correct.
-		// Two are state the caller is writing against: a name already defined, and
-		// an edit some stored value no longer satisfies.
+		// Three are state the caller is writing against: a name already defined,
+		// an id another definition already carries, and an edit some stored value
+		// no longer satisfies.
 		//
 		// ErrSettingUnset is mapped despite settings/grpc never returning it: a
 		// resolution carries the unset state in its source rather than as a
 		// refusal, and the sentinel is what a consumer's own handler gets from
 		// Resolution.Int. A mapping that covered only the RPCs this module ships
 		// would make the answer depend on which transport asked.
+		"ErrDefinitionIDTaken":         {Err: settings.ErrDefinitionIDTaken, Is: Mapped},
 		"ErrDefinitionNameTaken":       {Err: settings.ErrDefinitionNameTaken, Is: Mapped},
 		"ErrDefinitionNotFound":        {Err: settings.ErrDefinitionNotFound, Is: Mapped},
 		"ErrDuplicateEnumerationValue": {Err: settings.ErrDuplicateEnumerationValue, Is: Mapped},
@@ -715,30 +717,32 @@ var Matrix = map[string]map[string]Decision{
 		"ErrStrandedValues":            {Err: settings.ErrStrandedValues, Is: Mapped},
 		"ErrValueNotFound":             {Err: settings.ErrValueNotFound, Is: Mapped},
 
-		// The eleven that are somebody else's sentinel, answered by the platform
+		// The twelve that are somebody else's sentinel, answered by the platform
 		// mappers because that is the tier those sentinels belong to.
 		//
-		// The last three are the ones worth pausing on, because they are refusals
+		// The last four are the ones worth pausing on, because they are refusals
 		// a client reads and are still not this package's to map. A value that is
-		// not of its setting's kind, a value outside the enumeration, and a kind
-		// nothing implements all wrap errors.ErrUnrecognizedInputValue, which
+		// not of its setting's kind, a value outside the enumeration, a kind
+		// nothing implements and a string too long for its column all wrap
+		// errors.ErrUnrecognizedInputValue, which
 		// errors/http already answers as a bad request and errors/grpc as
 		// InvalidArgument — and the platform mapper is asked first, so a case here
 		// would be unreachable. Two of them are on
 		// settings.ClientSafeSentinels anyway, which is the other half of the
 		// question and a separate registry: what the status *says* is decided
 		// there, and what code it carries here.
-		"ErrEmptyDefinitionName":   {Err: settings.ErrEmptyDefinitionName, Is: Platform},
-		"ErrEmptyEnumerationValue": {Err: settings.ErrEmptyEnumerationValue, Is: Platform},
-		"ErrEmptySubjectID":        {Err: settings.ErrEmptySubjectID, Is: Platform},
-		"ErrEmptySubjectType":      {Err: settings.ErrEmptySubjectType, Is: Platform},
-		"ErrNilDatabaseClient":     {Err: settings.ErrNilDatabaseClient, Is: Platform},
-		"ErrNilDefinition":         {Err: settings.ErrNilDefinition, Is: Platform},
-		"ErrNilExecutor":           {Err: settings.ErrNilExecutor, Is: Platform},
-		"ErrNilStore":              {Err: settings.ErrNilStore, Is: Platform},
-		"ErrMalformedValue":        {Err: settings.ErrMalformedValue, Is: Platform},
-		"ErrNotEnumerated":         {Err: settings.ErrNotEnumerated, Is: Platform},
-		"ErrUnknownKind":           {Err: settings.ErrUnknownKind, Is: Platform},
+		"ErrDefinitionValueTooLong": {Err: settings.ErrDefinitionValueTooLong, Is: Platform},
+		"ErrEmptyDefinitionName":    {Err: settings.ErrEmptyDefinitionName, Is: Platform},
+		"ErrEmptyEnumerationValue":  {Err: settings.ErrEmptyEnumerationValue, Is: Platform},
+		"ErrEmptySubjectID":         {Err: settings.ErrEmptySubjectID, Is: Platform},
+		"ErrEmptySubjectType":       {Err: settings.ErrEmptySubjectType, Is: Platform},
+		"ErrNilDatabaseClient":      {Err: settings.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilDefinition":          {Err: settings.ErrNilDefinition, Is: Platform},
+		"ErrNilExecutor":            {Err: settings.ErrNilExecutor, Is: Platform},
+		"ErrNilStore":               {Err: settings.ErrNilStore, Is: Platform},
+		"ErrMalformedValue":         {Err: settings.ErrMalformedValue, Is: Platform},
+		"ErrNotEnumerated":          {Err: settings.ErrNotEnumerated, Is: Platform},
+		"ErrUnknownKind":            {Err: settings.ErrUnknownKind, Is: Platform},
 
 		// The two nobody answers, both of which describe the deployment to
 		// whoever is wiring it up rather than a request to whoever sent it. A

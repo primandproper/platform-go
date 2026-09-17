@@ -27,8 +27,7 @@ WHERE archived_at IS NULL
 	AND subject_id = ?
 	AND definition_id = ?`
 
-const createDefinitionMySQL = `
-INSERT INTO {{prefix}}settings_definitions (
+const createDefinitionMySQL = `INSERT IGNORE INTO {{prefix}}settings_definitions (
 	id,
 	scope,
 	name,
@@ -71,7 +70,8 @@ WHERE {{prefix}}settings_values.scope = ?
 	AND {{prefix}}settings_values.definition_id = ?
 	AND {{prefix}}settings_values.archived_at IS NOT NULL`
 
-const getDefinitionMySQL = `SELECT
+const getDefinitionMySQL = `
+SELECT
 	{{prefix}}settings_definitions.id,
 	{{prefix}}settings_definitions.scope,
 	{{prefix}}settings_definitions.name,
@@ -573,9 +573,9 @@ func (q *mysqlQueries) ArchiveValue(ctx context.Context, db DBTX, arg ArchiveVal
 	return result.RowsAffected()
 }
 
-// CreateDefinition runs the :exec query against mysql.
-func (q *mysqlQueries) CreateDefinition(ctx context.Context, db DBTX, arg CreateDefinitionParams) error {
-	_, err := db.ExecContext(ctx, q.createDefinition,
+// CreateDefinition runs the :execrows query against mysql.
+func (q *mysqlQueries) CreateDefinition(ctx context.Context, db DBTX, arg CreateDefinitionParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.createDefinition,
 		arg.ID,
 		arg.Scope,
 		arg.Name,
@@ -584,8 +584,11 @@ func (q *mysqlQueries) CreateDefinition(ctx context.Context, db DBTX, arg Create
 		arg.DefaultValue,
 		arg.AdminOnly,
 	)
+	if err != nil {
+		return 0, err
+	}
 
-	return err
+	return result.RowsAffected()
 }
 
 // DeleteDefinitionOptions runs the :execrows query against mysql.
