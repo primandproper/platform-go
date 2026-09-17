@@ -190,7 +190,7 @@ func TestSQLStore_observesThePeriodAndAggregation(T *testing.T) {
 		test.EqOp(t, string(AggregationSum), observedAggregation(t, op))
 
 		obs = recordObservations(t, store)
-		must.NoError(t, store.MarkFlushed(t.Context(), total, total.Quantity, baseTime))
+		must.NoError(t, store.MarkFlushed(t.Context(), total, baseTime))
 
 		op = observedWindow(t, obs, monthBounds)
 		test.EqOp(t, string(AggregationSum), observedAggregation(t, op))

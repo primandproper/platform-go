@@ -221,7 +221,7 @@ excess, which is the quantity an overage price is applied to.
 
 	scheduler.Register(flusher.Job(jobs.MustCron("0,5,10,15,20,25,30,35,40,45,50,55 * * * *"), 10*time.Minute))
 
-This is the single most expensive thing in the package to get wrong, so three
+This is the single most expensive thing in the package to get wrong, so four
 mechanisms hold it together.
 
 Each post carries the delta since the last successful post, not the running total.
@@ -235,6 +235,15 @@ successful post. A retry of the same post computes the same key and the provider
 ignores it; the next genuine post computes a different one. FlushIdempotencyKey is
 exported so an operator reconciling an invoice by hand can compute what a given
 post's key would have been.
+
+The amount a key stands for is pinned when the total is claimed, not recomputed
+per attempt. Since the provider keeps the first amount it accepted under a key, a
+retry that measured its delta from the running quantity would post a larger
+figure after usage arrived in between, have it discarded as a duplicate, and then
+settle the row past the difference — which is billed to nobody and reported by
+nothing. Total.ClaimedQuantity is that pin: the claim snapshots it, the settle
+advances the flushed quantity to it and no further, and whatever accumulated
+meanwhile goes out under the next sequence.
 
 The settle is guarded on the sequence the flusher read. A flusher whose lease
 lapsed mid-post cannot advance a sequence another flusher has already moved,

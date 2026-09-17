@@ -216,8 +216,13 @@ func ExampleFlushIdempotencyKey() {
 // A total tracks how much the provider has been told about, so each post carries
 // only the delta. Posting the running total every flush would invoice the sum of
 // every partial total ever posted.
+//
+// The delta is measured from what the claim pinned rather than from the running
+// quantity, so usage that arrives while a post is in flight waits for the next
+// sequence instead of enlarging a post the provider has already accepted under
+// this one's key.
 func ExampleTotal_Delta() {
-	total := &metering.Total{Quantity: 1_050, FlushedQuantity: 1_000}
+	total := &metering.Total{Quantity: 1_075, ClaimedQuantity: 1_050, FlushedQuantity: 1_000}
 
 	fmt.Println(total.Pending(), total.Delta())
 	// Output: true 50

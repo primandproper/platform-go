@@ -23,6 +23,7 @@ WHERE scope = ?
 	AND period_start = ?`
 
 const claimMeteringTotalMySQL = `UPDATE {{prefix}}metering_totals SET
+	claimed_quantity = CASE WHEN claimed_quantity > flushed_quantity THEN claimed_quantity ELSE quantity END,
 	claimed_until = ?,
 	flush_attempts = flush_attempts + 1
 WHERE scope = ?
@@ -67,6 +68,7 @@ const getMeteringTotalMySQL = `SELECT
 	{{prefix}}metering_totals.aggregation,
 	{{prefix}}metering_totals.quantity,
 	{{prefix}}metering_totals.last_occurred_at,
+	{{prefix}}metering_totals.claimed_quantity,
 	{{prefix}}metering_totals.flushed_quantity,
 	{{prefix}}metering_totals.flush_sequence,
 	{{prefix}}metering_totals.flush_attempts,
@@ -87,6 +89,7 @@ const getMeteringTotalForUpdateMySQL = `SELECT
 	{{prefix}}metering_totals.aggregation,
 	{{prefix}}metering_totals.quantity,
 	{{prefix}}metering_totals.last_occurred_at,
+	{{prefix}}metering_totals.claimed_quantity,
 	{{prefix}}metering_totals.flushed_quantity,
 	{{prefix}}metering_totals.flush_sequence,
 	{{prefix}}metering_totals.flush_attempts,
@@ -149,7 +152,7 @@ const insertMeteringTotalMySQL = `INSERT IGNORE INTO {{prefix}}metering_totals (
 )`
 
 const markMeteringTotalFlushedMySQL = `UPDATE {{prefix}}metering_totals SET
-	flushed_quantity = ?,
+	flushed_quantity = claimed_quantity,
 	flush_sequence = flush_sequence + 1,
 	flush_attempts = 0,
 	next_flush = ?,
@@ -196,6 +199,7 @@ const selectFlushableMeteringTotalsMySQL = `SELECT
 	{{prefix}}metering_totals.aggregation,
 	{{prefix}}metering_totals.quantity,
 	{{prefix}}metering_totals.last_occurred_at,
+	{{prefix}}metering_totals.claimed_quantity,
 	{{prefix}}metering_totals.flushed_quantity,
 	{{prefix}}metering_totals.flush_sequence,
 	{{prefix}}metering_totals.flush_attempts,
@@ -362,6 +366,7 @@ func (q *mysqlQueries) GetMeteringTotal(ctx context.Context, db DBTX, arg GetMet
 		&i.Aggregation,
 		&i.Quantity,
 		&i.LastOccurredAt,
+		&i.ClaimedQuantity,
 		&i.FlushedQuantity,
 		&i.FlushSequence,
 		&i.FlushAttempts,
@@ -392,6 +397,7 @@ func (q *mysqlQueries) GetMeteringTotalForUpdate(ctx context.Context, db DBTX, a
 		&i.Aggregation,
 		&i.Quantity,
 		&i.LastOccurredAt,
+		&i.ClaimedQuantity,
 		&i.FlushedQuantity,
 		&i.FlushSequence,
 		&i.FlushAttempts,
@@ -447,7 +453,6 @@ func (q *mysqlQueries) InsertMeteringTotal(ctx context.Context, db DBTX, arg Ins
 // MarkMeteringTotalFlushed runs the :execrows query against mysql.
 func (q *mysqlQueries) MarkMeteringTotalFlushed(ctx context.Context, db DBTX, arg MarkMeteringTotalFlushedParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.markMeteringTotalFlushed,
-		arg.FlushedQuantity,
 		arg.NextFlush,
 		arg.LastUpdatedAt,
 		arg.Scope,
@@ -541,6 +546,7 @@ func (q *mysqlQueries) SelectFlushableMeteringTotals(ctx context.Context, db DBT
 			&i.Aggregation,
 			&i.Quantity,
 			&i.LastOccurredAt,
+			&i.ClaimedQuantity,
 			&i.FlushedQuantity,
 			&i.FlushSequence,
 			&i.FlushAttempts,
@@ -625,6 +631,7 @@ var (
 		Aggregation     string
 		Quantity        int64
 		LastOccurredAt  time.Time
+		ClaimedQuantity int64
 		FlushedQuantity int64
 		FlushSequence   int64
 		FlushAttempts   int64
@@ -646,6 +653,7 @@ var (
 		Aggregation     string
 		Quantity        int64
 		LastOccurredAt  time.Time
+		ClaimedQuantity int64
 		FlushedQuantity int64
 		FlushSequence   int64
 		FlushAttempts   int64
@@ -677,14 +685,13 @@ var (
 		CreatedAt      time.Time
 	}(InsertMeteringTotalParams{})
 	_ = struct {
-		FlushedQuantity int64
-		NextFlush       time.Time
-		LastUpdatedAt   *time.Time
-		Scope           tenancy.Scope
-		Subject         string
-		Meter           string
-		PeriodStart     time.Time
-		FlushSequence   int64
+		NextFlush     time.Time
+		LastUpdatedAt *time.Time
+		Scope         tenancy.Scope
+		Subject       string
+		Meter         string
+		PeriodStart   time.Time
+		FlushSequence int64
 	}(MarkMeteringTotalFlushedParams{})
 	_ = struct {
 		Scope          tenancy.Scope
@@ -724,6 +731,7 @@ var (
 		Aggregation     string
 		Quantity        int64
 		LastOccurredAt  time.Time
+		ClaimedQuantity int64
 		FlushedQuantity int64
 		FlushSequence   int64
 		FlushAttempts   int64

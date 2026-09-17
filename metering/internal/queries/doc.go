@@ -57,7 +57,7 @@ table actually has and both of these are the primary key.
 	FoldMeteringTotalLast          the most recent reading
 	ApplyMeteringConsume           the decision Consume made under the lock
 	SelectFlushableMeteringTotals  the flush claim's read
-	ClaimMeteringTotal             one total's lease
+	ClaimMeteringTotal             one total's lease, and the pin its post carries
 	MarkMeteringTotalFlushed       a settled post
 	ReleaseMeteringFlush           a failed one
 
@@ -65,7 +65,8 @@ Five of them are querygen's own shapes; the rest are written out here, and the
 line between the two halves is the one database/querygen's own doc draws.
 querygen assigns bound values, and these do not: the folds add, maximize, and
 choose between two columns with a CASE; the claim increments an attempt counter
-server-side; the settle advances a sequence by one and clears an error to a
+server-side and pins one column to another through a CASE of its own; the settle
+advances a sequence by one, copies the pin across, and clears an error to a
 literal; the flushable read compares two columns to each other, which no
 argument can express and no index can serve. Rendering those would need an
 expression language in querygen, which is what its closed comparand set exists
@@ -137,5 +138,22 @@ exact because the lease matched and the row is held.
 A statement per row is what this package already does on ingest, for the reason
 [InsertEventQuery] gives: a batch that cannot say which of its rows were new is
 a batch that guesses, and guessing is how usage gets counted twice.
+
+# What one idempotency key stands for
+
+The provider key a post carries varies only with the flush sequence, and the
+sequence moves only when a post settles — so every attempt at one post computes
+the same key, and the provider keeps the amount the first attempt sent. The
+amount therefore has to be decided once, at the claim, and not recomputed per
+attempt: a lost response followed by a retry that read the quantity column again
+would send a larger number under a key the provider already had, have it
+discarded, and then settle past the difference. Nobody is billed for that
+difference and no counter records it.
+
+claimed_quantity is where the decision is kept. The claim pins it and the settle
+releases it, each in its own statement's own assignment rather than from a bound
+value — see [ClaimTotalQuery] and [MarkFlushedQuery] — so the post's amount, the
+key it goes out under, and the amount the row settles to are one fact with one
+writer.
 */
 package queries

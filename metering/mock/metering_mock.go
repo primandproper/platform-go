@@ -30,7 +30,7 @@ var _ metering.Store = &StoreMock{}
 //			ConsumeFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, entry metering.Entry, limit int64, behavior metering.QuotaBehavior, at time.Time) (*metering.Decision, error) {
 //				panic("mock out the Consume method")
 //			},
-//			MarkFlushedFunc: func(ctx context.Context, total *metering.Total, flushed int64, at time.Time) error {
+//			MarkFlushedFunc: func(ctx context.Context, total *metering.Total, at time.Time) error {
 //				panic("mock out the MarkFlushed method")
 //			},
 //			ReapEventsFunc: func(ctx context.Context, horizon time.Time, limit int) (int64, error) {
@@ -59,7 +59,7 @@ type StoreMock struct {
 	ConsumeFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, entry metering.Entry, limit int64, behavior metering.QuotaBehavior, at time.Time) (*metering.Decision, error)
 
 	// MarkFlushedFunc mocks the MarkFlushed method.
-	MarkFlushedFunc func(ctx context.Context, total *metering.Total, flushed int64, at time.Time) error
+	MarkFlushedFunc func(ctx context.Context, total *metering.Total, at time.Time) error
 
 	// ReapEventsFunc mocks the ReapEvents method.
 	ReapEventsFunc func(ctx context.Context, horizon time.Time, limit int) (int64, error)
@@ -111,8 +111,6 @@ type StoreMock struct {
 			Ctx context.Context
 			// Total is the total argument value.
 			Total *metering.Total
-			// Flushed is the flushed argument value.
-			Flushed int64
 			// At is the at argument value.
 			At time.Time
 		}
@@ -279,25 +277,23 @@ func (mock *StoreMock) ConsumeCalls() []struct {
 }
 
 // MarkFlushed calls MarkFlushedFunc.
-func (mock *StoreMock) MarkFlushed(ctx context.Context, total *metering.Total, flushed int64, at time.Time) error {
+func (mock *StoreMock) MarkFlushed(ctx context.Context, total *metering.Total, at time.Time) error {
 	if mock.MarkFlushedFunc == nil {
 		panic("StoreMock.MarkFlushedFunc: method is nil but Store.MarkFlushed was just called")
 	}
 	callInfo := struct {
-		Ctx     context.Context
-		Total   *metering.Total
-		Flushed int64
-		At      time.Time
+		Ctx   context.Context
+		Total *metering.Total
+		At    time.Time
 	}{
-		Ctx:     ctx,
-		Total:   total,
-		Flushed: flushed,
-		At:      at,
+		Ctx:   ctx,
+		Total: total,
+		At:    at,
 	}
 	mock.lockMarkFlushed.Lock()
 	mock.calls.MarkFlushed = append(mock.calls.MarkFlushed, callInfo)
 	mock.lockMarkFlushed.Unlock()
-	return mock.MarkFlushedFunc(ctx, total, flushed, at)
+	return mock.MarkFlushedFunc(ctx, total, at)
 }
 
 // MarkFlushedCalls gets all the calls that were made to MarkFlushed.
@@ -305,16 +301,14 @@ func (mock *StoreMock) MarkFlushed(ctx context.Context, total *metering.Total, f
 //
 //	len(mockedStore.MarkFlushedCalls())
 func (mock *StoreMock) MarkFlushedCalls() []struct {
-	Ctx     context.Context
-	Total   *metering.Total
-	Flushed int64
-	At      time.Time
+	Ctx   context.Context
+	Total *metering.Total
+	At    time.Time
 } {
 	var calls []struct {
-		Ctx     context.Context
-		Total   *metering.Total
-		Flushed int64
-		At      time.Time
+		Ctx   context.Context
+		Total *metering.Total
+		At    time.Time
 	}
 	mock.lockMarkFlushed.RLock()
 	calls = mock.calls.MarkFlushed

@@ -81,8 +81,20 @@ type Total struct {
 	// Quantity is the aggregated total for the period.
 	Quantity int64
 
+	// ClaimedQuantity is how much of Quantity the claim that produced this Total
+	// pinned for the post it owes. It is what the delta is measured from, and
+	// it does not move while a post is outstanding: the provider key varies
+	// only with FlushSequence, so every attempt at one post has to carry the
+	// amount the first attempt did, whatever usage has arrived since.
+	//
+	// A claim that finds nothing outstanding snapshots Quantity into it, which
+	// on a row nobody has ever claimed means the two agree. See
+	// metering/internal/queries.
+	ClaimedQuantity int64
+
 	// FlushedQuantity is how much of Quantity has already been posted to the
-	// provider. The delta between the two is what the next post carries.
+	// provider. The delta between it and ClaimedQuantity is what the next post
+	// carries; the rest waits for the sequence after this one.
 	FlushedQuantity int64
 
 	// FlushSequence counts successful posts for this total. It is the varying
@@ -102,20 +114,29 @@ func (t *Total) Pending() bool {
 	return t != nil && t.Quantity > t.FlushedQuantity
 }
 
-// Delta is the quantity the next post carries: everything accumulated since the
-// last successful flush.
+// Delta is the quantity the next post carries: everything the claim pinned that
+// has not been posted yet.
 //
 // It is a delta rather than the running total because providers aggregate the
 // records within a billing period. Posting a cumulative total on every flush
 // would invoice the sum of every partial total ever posted, which for a meter
 // flushed every five minutes for a month is roughly nine thousand times the
 // right number.
+//
+// It is measured from ClaimedQuantity rather than from Quantity, and that is
+// what makes it the same number on every attempt at one post. The provider
+// deduplicates on a key that varies only with FlushSequence, and the sequence
+// moves only when a post settles — so a retry after a lost response reuses the
+// key the first attempt spent, and the provider keeps the first attempt's
+// amount. A delta read off Quantity would grow with whatever usage arrived in
+// between, be discarded as a duplicate at that larger figure, and then settle
+// the row past it; the difference is never billed.
 func (t *Total) Delta() int64 {
 	if t == nil {
 		return 0
 	}
 
-	return max(0, t.Quantity-t.FlushedQuantity)
+	return max(0, t.ClaimedQuantity-t.FlushedQuantity)
 }
 
 // Store is the persistence seam for usage and its totals.
@@ -278,7 +299,15 @@ type Store interface {
 	ClaimFlushable(ctx context.Context, now time.Time, limit, maxAttempts int, leaseUntil time.Time) ([]*Total, error)
 
 	// MarkFlushed records a successful post: the flushed quantity advances to
-	// what was posted and the sequence increments, both in one statement.
+	// the quantity the claim pinned and the sequence increments, both in one
+	// statement.
+	//
+	// It takes no amount, and the absence is the point. What was posted is
+	// Total.Delta, which is the pin minus what was already flushed — both read
+	// off the row this settles — so the advance is the row's own arithmetic
+	// rather than a number the caller computes a second time. A caller that
+	// could name the new figure could name one past what the provider was told,
+	// which is the under-billing the pin exists to close: see Total.Delta.
 	//
 	// The scope is bound off total rather than passed: this settles the row this
 	// flusher claimed, and a scope the caller supplied would be a second opinion
@@ -295,7 +324,7 @@ type Store interface {
 	// state by a single statement. There is no caller transaction for it to
 	// join: the flusher is servicing itself, and the thing it would be joining
 	// is a network call to a billing provider.
-	MarkFlushed(ctx context.Context, total *Total, flushed int64, at time.Time) error
+	MarkFlushed(ctx context.Context, total *Total, at time.Time) error
 
 	// ReleaseFlush returns a total to the flushable set after a failed post,
 	// recording why and when it may be retried.

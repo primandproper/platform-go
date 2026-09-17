@@ -70,6 +70,11 @@ const (
 	// LastOccurredAtColumn is the event time of the newest record folded in. It
 	// only ever moves forward — see [Render].
 	LastOccurredAtColumn = "last_occurred_at"
+	// ClaimedQuantityColumn is how much of the quantity the flusher holding the
+	// row has pinned for the post it owes. It moves only at a claim that found
+	// nothing outstanding, so the amount one idempotency key stands for is
+	// fixed for as long as that key is the one a retry would reuse.
+	ClaimedQuantityColumn = "claimed_quantity"
 	// FlushedQuantityColumn is how much of the quantity the provider has been
 	// told about.
 	FlushedQuantityColumn = "flushed_quantity"
@@ -146,6 +151,7 @@ var TotalColumns = []string{
 	AggregationColumn,
 	QuantityColumn,
 	LastOccurredAtColumn,
+	ClaimedQuantityColumn,
 	FlushedQuantityColumn,
 	FlushSequenceColumn,
 	FlushAttemptsColumn,
@@ -187,6 +193,7 @@ var TotalProjection = []string{
 	AggregationColumn,
 	QuantityColumn,
 	LastOccurredAtColumn,
+	ClaimedQuantityColumn,
 	FlushedQuantityColumn,
 	FlushSequenceColumn,
 	FlushAttemptsColumn,
@@ -239,10 +246,15 @@ var TotalInsertColumns = []string{
 // renders them: when to try again, why the last attempt failed, the lease
 // handed back, and the stamp.
 //
-// flushed_quantity is deliberately absent. The post may have reached the
-// provider and failed on the way back, so the next attempt has to carry the
-// same delta under the same sequence — which is the whole reason the sequence
-// is the provider key's varying component rather than a timestamp.
+// Neither quantity column is here, and that is the same decision twice. The
+// post may have reached the provider and failed on the way back, so the next
+// attempt has to carry the same delta under the same sequence — which is the
+// whole reason the sequence is the provider key's varying component rather than
+// a timestamp. Leaving flushed_quantity alone is what keeps the delta owed;
+// leaving claimed_quantity alone is what keeps it the same delta, since a pin
+// released here would let the next claim snapshot a quantity usage had moved in
+// the meantime and post a larger amount under the key the failed attempt may
+// already have spent. See [claimTotalQuery].
 var ReleaseColumns = []string{
 	NextFlushColumn,
 	LastErrorColumn,
@@ -738,13 +750,30 @@ func skipLocked(g *querygen.Generator) string {
 	return "\nFOR UPDATE SKIP LOCKED"
 }
 
-// claimTotalQuery leases one selected total.
+// claimTotalQuery leases one selected total, and pins the quantity the post it
+// is being claimed for will carry.
 //
 // The attempt count is incremented here rather than on failure: a flusher that
 // crashes mid-post has still consumed an attempt, so a total whose provider
 // call reliably kills the process eventually gives up rather than being
 // reclaimed forever. That increment is server-side, which is why this statement
 // is written out rather than rendered.
+//
+// So is the pin, and it is the more load-bearing of the two. The provider
+// dedupes on a key derived from the flush sequence, and the sequence does not
+// move until a post settles — so every attempt at one post computes the same
+// key, and the amount that key stands for is whatever the first attempt sent.
+// A retry that recomputed its delta from the quantity column would compute a
+// larger one whenever usage arrived in between, post it under a key the
+// provider already has, have it discarded as a duplicate, and then settle past
+// the difference. That difference is never billed and nothing reports it.
+//
+// [pinClaimed] is therefore a CASE rather than an assignment: a claim that
+// finds a post still outstanding — claimed_quantity above flushed_quantity —
+// leaves the pin where the claim that made it put it, and only a claim that
+// finds the two level takes a fresh snapshot. Since [markFlushedQuery] is what
+// levels them, the pin moves exactly once per sequence, which is exactly as
+// often as the key does.
 //
 // The flushable guard is repeated even though the row was just selected,
 // because between the select and this update another flusher's settle may have
@@ -753,12 +782,50 @@ func skipLocked(g *querygen.Generator) string {
 // rather than being posted a second time.
 func claimTotalQuery() *querygen.Query {
 	assignments := []string{
+		pinClaimed(),
 		nullableAssign(ClaimedUntilColumn),
 		fmt.Sprintf("%[1]s = %[1]s + 1", FlushAttemptsColumn),
 	}
 
 	return updateQuery(ClaimTotalQuery, assignments,
 		append(totalKeyPredicates(), stillOwing()))
+}
+
+// pinClaimed renders the claim's snapshot: the quantity as it stands now where
+// the previous post has settled, and what the row already holds where it has
+// not.
+//
+// It takes no argument at all. The amount a claim pins is the committed
+// quantity at the instant the lease is taken, which is a value only the server
+// holds — a flusher binding one would be binding what it read before the row
+// was locked, which is the read a concurrent recorder invalidates.
+func pinClaimed() string {
+	return fmt.Sprintf("%[1]s = CASE WHEN %[1]s > %[2]s THEN %[1]s ELSE %[3]s END",
+		ClaimedQuantityColumn, FlushedQuantityColumn, QuantityColumn)
+}
+
+// PinnedQuantity is [pinClaimed]'s CASE, in Go.
+//
+// The store needs the value the claim it just ran wrote, and the claim is an
+// :execrows that projects nothing — MySQL has no RETURNING, so there is no
+// dialect-portable way for the statement to hand it back, and a second read to
+// fetch one column would carry no guard saying it is about the row this flusher
+// holds. So the store computes it from the three columns it projected a
+// statement earlier, which is exact: the select took the row under FOR UPDATE
+// SKIP LOCKED, so nothing else moved the quantity in between.
+//
+// It lives here, beside the assignment it mirrors, because this is the shape
+// that can be got wrong twice. Two expressions of one rule can drift and
+// nothing would say so, and a reader changing either one has to see the other
+// to know that. What catches a drift that gets past both is the store
+// conformance suite, which runs a reclaim on all three dialects and compares
+// what the row holds against what this returned.
+func PinnedQuantity(claimed, flushed, quantity int64) int64 {
+	if claimed > flushed {
+		return claimed
+	}
+
+	return quantity
 }
 
 // markFlushedQuery settles a successful post.
@@ -769,13 +836,21 @@ func claimTotalQuery() *querygen.Query {
 // delta under two different keys are two charges, and no idempotency key undoes
 // the second one. The count is how the loser learns it lost.
 //
-// Three of its assignments are the statement's own rather than a caller's, and
-// each says something no argument should be able to say otherwise: the sequence
-// advances by exactly one, the attempt budget is spent and refilled, and the
-// last error is cleared because there no longer is one.
+// Four of its assignments are the statement's own rather than a caller's, and
+// each says something no argument should be able to say otherwise: the flushed
+// quantity advances to the pin and no further, the sequence advances by exactly
+// one, the attempt budget is spent and refilled, and the last error is cleared
+// because there no longer is one.
+//
+// The first of those is what makes the amount posted and the amount settled one
+// number rather than two that agree by convention. What the post carried was
+// claimed_quantity - flushed_quantity, read off the row this statement is
+// settling; assigning the column from an argument would let a caller settle past
+// what the provider was told, which is precisely the under-billing the pin
+// exists to close — see [claimTotalQuery].
 func markFlushedQuery() *querygen.Query {
 	assignments := []string{
-		assign(FlushedQuantityColumn),
+		fmt.Sprintf("%s = %s", FlushedQuantityColumn, ClaimedQuantityColumn),
 		fmt.Sprintf("%[1]s = %[1]s + 1", FlushSequenceColumn),
 		FlushAttemptsColumn + " = 0",
 		assign(NextFlushColumn),

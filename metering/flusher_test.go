@@ -626,6 +626,64 @@ func TestFlusher_Flush(T *testing.T) {
 		test.Eq(t, []int64{1}, instruments.recorded("_flushes_abandoned"))
 	})
 
+	// The lost response is the failure the whole flush protocol is shaped around,
+	// and the retry it provokes is where usage goes missing if the amount a key
+	// stands for is allowed to move. Everything else here posts and settles in
+	// one pass, which is the case that never exercises it.
+	T.Run("bills every unit once when a response is lost and usage arrives before the retry", func(t *testing.T) {
+		t.Parallel()
+
+		db := newSQLiteEnv(t)
+		store := db.newStore(t)
+		env := newTestFlusherOver(t, db, store, staticMapper("cus_123"))
+		env.reporter.loseResponses = 1
+
+		must.NoError(t, mustRecord(t, db, store, newEntry("req-1", 42, AggregationSum)))
+
+		// The provider has the 42 and this flusher does not know it, so the row
+		// goes back to the flushable set at the sequence it was claimed under.
+		result, err := env.flusher.Flush(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, 1, result.Failed)
+
+		// Usage lands between the lost response and the retry. The retry reuses
+		// the key the first attempt spent, so anything this adds to that post is
+		// discarded by the provider and written off by the settle.
+		must.NoError(t, mustRecord(t, db, store, newEntry("req-2", 8, AggregationSum)))
+
+		env.clock.advance(time.Hour)
+
+		result, err = env.flusher.Flush(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, 1, result.Flushed)
+
+		posts := env.reporter.recorded()
+		must.SliceLen(t, 2, posts)
+
+		// Same key, same amount: the retry is a no-op at the provider rather
+		// than a second, larger charge or a silently enlarged first one.
+		test.EqOp(t, posts[0].IdempotencyKey, posts[1].IdempotencyKey)
+		test.EqOp(t, int64(42), posts[1].Quantity)
+
+		env.clock.advance(time.Hour)
+
+		// And the 8 is still owed, under the sequence after the settled one.
+		result, err = env.flusher.Flush(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, 1, result.Flushed)
+
+		posts = env.reporter.recorded()
+		must.SliceLen(t, 3, posts)
+
+		test.EqOp(t, int64(8), posts[2].Quantity)
+		test.NotEqOp(t, posts[1].IdempotencyKey, posts[2].IdempotencyKey)
+
+		// The whole point, stated as the customer sees it: the provider holds
+		// exactly what was recorded, and the row agrees.
+		test.EqOp(t, int64(50), env.reporter.billed())
+		test.EqOp(t, int64(50), db.mustTotal(t, store, testSubject, testMeter, monthBounds).FlushedQuantity)
+	})
+
 	T.Run("posts several totals concurrently", func(t *testing.T) {
 		t.Parallel()
 

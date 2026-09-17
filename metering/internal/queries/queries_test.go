@@ -442,6 +442,49 @@ func TestRender_GuardsTheLeaseAndTheSettles(T *testing.T) {
 	}
 }
 
+// TestRender_PinsTheAmountOneIdempotencyKeyStandsFor pins the pair of
+// assignments that keep a retried post carrying the amount the first attempt
+// sent.
+//
+// The provider key varies only with the flush sequence, and the sequence moves
+// only when a post settles — so every attempt at one post computes the same key
+// and the provider keeps the first amount. The claim therefore snapshots the
+// quantity once and the settle advances to that snapshot and no further. A
+// claim that re-snapshotted, or a settle that took its figure from an argument,
+// would let a retry after intervening usage send a larger number under a spent
+// key, have it discarded, and settle past the difference — which is never
+// billed and which nothing reports.
+func TestRender_PinsTheAmountOneIdempotencyKeyStandsFor(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rendered := Render(d)
+
+			// Pinned where a post is outstanding, snapshotted where none is.
+			// The condition is the settle's own postcondition, so the pin
+			// moves exactly once per sequence.
+			test.StrContains(t, statement(t, rendered, ClaimTotalQuery),
+				"claimed_quantity = CASE WHEN claimed_quantity > flushed_quantity"+
+					" THEN claimed_quantity ELSE quantity END")
+
+			// The server's arithmetic, not a caller's. A bound figure here is a
+			// second opinion about what the post carried, and the expensive
+			// direction to be wrong in is the one that settles too far.
+			settle := statement(t, rendered, MarkFlushedQuery)
+
+			test.StrContains(t, settle, "flushed_quantity = claimed_quantity")
+			test.StrNotContains(t, settle, "flushed_quantity = sqlc.arg")
+
+			// Neither column takes a value from the claim, so a flusher cannot
+			// pin an amount it read before the row was locked.
+			test.StrNotContains(t, statement(t, rendered, ClaimTotalQuery), "claimed_quantity = sqlc.arg")
+		})
+	}
+}
+
 // TestRender_LeavesTheFlushedQuantityAloneOnFailure pins the absence that keeps
 // a retried post carrying the same delta under the same sequence.
 //
@@ -459,6 +502,12 @@ func TestRender_LeavesTheFlushedQuantityAloneOnFailure(T *testing.T) {
 
 			test.StrNotContains(t, release, FlushedQuantityColumn)
 			test.StrNotContains(t, release, FlushSequenceColumn+" = "+FlushSequenceColumn)
+
+			// And neither does it release the pin. A failed post may have
+			// reached the provider, so the retry has to carry the same amount
+			// under the same key — which a re-snapshot at the next claim would
+			// enlarge.
+			test.StrNotContains(t, release, ClaimedQuantityColumn)
 		})
 	}
 }
@@ -589,4 +638,48 @@ func statement(t *testing.T, rendered, name string) string {
 	t.Fatalf("no statement named %q in the rendered file", name)
 
 	return ""
+}
+
+// TestPinnedQuantity_matchesTheAssignmentItMirrors is the Go half of the pin,
+// on the three cases the CASE distinguishes.
+//
+// The rendered half is pinned by TestRender_PinsTheAmountOneIdempotencyKeyStandsFor
+// and the two agreeing on a live row is what the store conformance suite runs on
+// all three dialects. This is the cheap check that reds first when somebody
+// edits one expression and not the other.
+func TestPinnedQuantity_matchesTheAssignmentItMirrors(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a post still outstanding keeps the pin the claim before it made", func(t *testing.T) {
+		t.Parallel()
+
+		// claimed above flushed: a previous claim pinned 150, the settle has
+		// not happened, and usage has since carried the quantity to 200. The
+		// retry owes the same 50 under the same key.
+		test.EqOp(t, int64(150), PinnedQuantity(150, 100, 200))
+	})
+
+	T.Run("a settled total snapshots the quantity afresh", func(t *testing.T) {
+		t.Parallel()
+
+		// The settle leveled the two at 100, so this claim takes what has
+		// accumulated since.
+		test.EqOp(t, int64(150), PinnedQuantity(100, 100, 150))
+	})
+
+	T.Run("a row nobody has ever claimed snapshots the quantity", func(t *testing.T) {
+		t.Parallel()
+
+		test.EqOp(t, int64(40), PinnedQuantity(0, 0, 40))
+	})
+
+	T.Run("a pin below the flushed mark is not held on to", func(t *testing.T) {
+		t.Parallel()
+
+		// The strictly-greater comparison is what makes the leveled case a
+		// fresh snapshot rather than a held pin, and this is the same boundary
+		// approached from the other side: there is nothing outstanding, so the
+		// stale pin is not what the next post measures from.
+		test.EqOp(t, int64(90), PinnedQuantity(60, 80, 90))
+	})
 }

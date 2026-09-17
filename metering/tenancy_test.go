@@ -123,7 +123,7 @@ func suiteTenancy(t *testing.T, env *storeEnv) {
 		// settling one tenant's total leaves the other's owing.
 		for _, total := range claimed {
 			if total.Scope == testScope {
-				must.NoError(t, store.MarkFlushed(t.Context(), total, total.Quantity, baseTime))
+				must.NoError(t, store.MarkFlushed(t.Context(), total, baseTime))
 			}
 		}
 
@@ -150,7 +150,7 @@ func suiteTenancy(t *testing.T, env *storeEnv) {
 		strayed := *claimed[0]
 		strayed.Scope = tenancy.Of("tenant-nobody")
 
-		must.Error(t, store.MarkFlushed(t.Context(), &strayed, strayed.Quantity, baseTime))
+		must.Error(t, store.MarkFlushed(t.Context(), &strayed, baseTime))
 		must.Error(t, store.ReleaseFlush(t.Context(), &strayed, "boom", baseTime))
 
 		// Neither tenant's row moved.
@@ -172,7 +172,7 @@ func suiteTenancy(t *testing.T, env *storeEnv) {
 
 		for _, total := range claimed {
 			if total.Scope == testScope {
-				must.NoError(t, store.MarkFlushed(t.Context(), total, total.Quantity, baseTime))
+				must.NoError(t, store.MarkFlushed(t.Context(), total, baseTime))
 			}
 		}
 

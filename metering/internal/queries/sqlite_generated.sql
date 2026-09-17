@@ -80,6 +80,7 @@ SELECT
 	metering_totals.aggregation,
 	metering_totals.quantity,
 	metering_totals.last_occurred_at,
+	metering_totals.claimed_quantity,
 	metering_totals.flushed_quantity,
 	metering_totals.flush_sequence,
 	metering_totals.flush_attempts,
@@ -101,6 +102,7 @@ SELECT
 	metering_totals.aggregation,
 	metering_totals.quantity,
 	metering_totals.last_occurred_at,
+	metering_totals.claimed_quantity,
 	metering_totals.flushed_quantity,
 	metering_totals.flush_sequence,
 	metering_totals.flush_attempts,
@@ -162,6 +164,7 @@ SELECT
 	metering_totals.aggregation,
 	metering_totals.quantity,
 	metering_totals.last_occurred_at,
+	metering_totals.claimed_quantity,
 	metering_totals.flushed_quantity,
 	metering_totals.flush_sequence,
 	metering_totals.flush_attempts,
@@ -177,6 +180,7 @@ LIMIT COALESCE(sqlc.narg(result_limit), 50);
 
 -- name: ClaimMeteringTotal :execrows
 UPDATE metering_totals SET
+	claimed_quantity = CASE WHEN claimed_quantity > flushed_quantity THEN claimed_quantity ELSE quantity END,
 	claimed_until = sqlc.narg(claimed_until),
 	flush_attempts = flush_attempts + 1
 WHERE scope = sqlc.arg(scope)
@@ -187,7 +191,7 @@ WHERE scope = sqlc.arg(scope)
 
 -- name: MarkMeteringTotalFlushed :execrows
 UPDATE metering_totals SET
-	flushed_quantity = sqlc.arg(flushed_quantity),
+	flushed_quantity = claimed_quantity,
 	flush_sequence = flush_sequence + 1,
 	flush_attempts = 0,
 	next_flush = sqlc.arg(next_flush),
