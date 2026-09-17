@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS metering_totals (
     aggregation      TEXT NOT NULL,
     quantity         INTEGER NOT NULL DEFAULT 0,
     last_occurred_at DATETIME NOT NULL,
+    claimed_quantity INTEGER NOT NULL DEFAULT 0,
     flushed_quantity INTEGER NOT NULL DEFAULT 0,
     flush_sequence   INTEGER NOT NULL DEFAULT 0,
     flush_attempts   INTEGER NOT NULL DEFAULT 0,

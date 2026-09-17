@@ -900,7 +900,7 @@ func suiteFlushLifecycle(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		must.SliceLen(t, 1, claimed)
 
-		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], 42, baseTime))
+		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], baseTime))
 
 		again, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
 		must.NoError(t, err)
@@ -979,7 +979,7 @@ func suiteFlushLifecycle(t *testing.T, env *storeEnv) {
 
 		claimed, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
 		must.NoError(t, err)
-		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], 42, baseTime))
+		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], baseTime))
 
 		must.NoError(t, mustRecord(t, env, store, newEntry("req-2", 8, AggregationSum)))
 
@@ -1006,13 +1006,13 @@ func suiteFlushLifecycle(t *testing.T, env *storeEnv) {
 
 		claimed, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
 		must.NoError(t, err)
-		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], 42, baseTime))
+		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], baseTime))
 
 		// The flusher whose lease lapsed mid-post, coming back to settle. Letting
 		// it advance a sequence somebody else has moved is how the same delta ends
 		// up on the wire under two different keys — the one race an idempotency
 		// key cannot undo.
-		test.Error(t, store.MarkFlushed(t.Context(), claimed[0], 42, baseTime))
+		test.Error(t, store.MarkFlushed(t.Context(), claimed[0], baseTime))
 	})
 
 	t.Run("refuses a release at a stale sequence", func(t *testing.T) {
@@ -1024,7 +1024,7 @@ func suiteFlushLifecycle(t *testing.T, env *storeEnv) {
 
 		claimed, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
 		must.NoError(t, err)
-		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], 42, baseTime))
+		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], baseTime))
 
 		test.Error(t, store.ReleaseFlush(t.Context(), claimed[0], "boom", baseTime))
 	})
@@ -1058,12 +1058,118 @@ func suiteFlushLifecycle(t *testing.T, env *storeEnv) {
 		test.EqOp(t, 2, later[0].FlushAttempts)
 	})
 
+	t.Run("a reclaim after intervening usage carries the amount the first attempt did", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		must.NoError(t, mustRecord(t, env, store, newEntry("req-1", 42, AggregationSum)))
+
+		claimed, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
+		must.NoError(t, err)
+		must.SliceLen(t, 1, claimed)
+
+		test.EqOp(t, int64(42), claimed[0].ClaimedQuantity)
+		test.EqOp(t, int64(42), claimed[0].Delta())
+
+		// The post went out and the response was lost, so the row goes back to
+		// the flushable set with the sequence — and therefore the provider key
+		// — where it was.
+		must.NoError(t, store.ReleaseFlush(t.Context(), claimed[0], "provider timed out", baseTime))
+
+		// Usage arrives while nobody is posting. The next attempt reuses the key
+		// the first one spent, and the provider keeps whatever the first one
+		// carried, so this 8 must not enlarge it.
+		must.NoError(t, mustRecord(t, env, store, newEntry("req-2", 8, AggregationSum)))
+
+		retry, err := store.ClaimFlushable(t.Context(), baseTime.Add(time.Hour), 10, 5, baseTime.Add(2*time.Hour))
+		must.NoError(t, err)
+		must.SliceLen(t, 1, retry)
+
+		test.EqOp(t, int64(50), retry[0].Quantity)
+		test.EqOp(t, int64(42), retry[0].ClaimedQuantity)
+		test.EqOp(t, int64(42), retry[0].Delta())
+		test.EqOp(t, 0, retry[0].FlushSequence)
+		test.EqOp(t, FlushIdempotencyKey(claimed[0]), FlushIdempotencyKey(retry[0]))
+
+		// The settle advances to the pin and stops there. Advancing to the
+		// running quantity would write off 8 the provider was never told about.
+		must.NoError(t, store.MarkFlushed(t.Context(), retry[0], baseTime.Add(time.Hour)))
+
+		remainder, err := store.ClaimFlushable(t.Context(), baseTime.Add(2*time.Hour), 10, 5, baseTime.Add(3*time.Hour))
+		must.NoError(t, err)
+		must.SliceLen(t, 1, remainder)
+
+		test.EqOp(t, int64(42), remainder[0].FlushedQuantity)
+		test.EqOp(t, int64(50), remainder[0].ClaimedQuantity)
+		test.EqOp(t, int64(8), remainder[0].Delta())
+		// A fresh sequence, so the remainder goes out under a key the provider
+		// has not seen rather than being discarded as a duplicate of the 42.
+		test.EqOp(t, 1, remainder[0].FlushSequence)
+		test.NotEqOp(t, FlushIdempotencyKey(retry[0]), FlushIdempotencyKey(remainder[0]))
+	})
+
+	t.Run("a lapsed lease hands the next flusher the same pin", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		must.NoError(t, mustRecord(t, env, store, newEntry("req-1", 42, AggregationSum)))
+
+		first, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
+		must.NoError(t, err)
+		must.SliceLen(t, 1, first)
+
+		// No release at all: the flusher that took this lease died mid-post. The
+		// row is reclaimed by expiry rather than handed back, which is the path
+		// with nobody to record that a post may already be outstanding.
+		must.NoError(t, mustRecord(t, env, store, newEntry("req-2", 8, AggregationSum)))
+
+		second, err := store.ClaimFlushable(t.Context(), baseTime.Add(2*time.Minute), 10, 5, baseTime.Add(3*time.Minute))
+		must.NoError(t, err)
+		must.SliceLen(t, 1, second)
+
+		test.EqOp(t, int64(42), second[0].ClaimedQuantity)
+		test.EqOp(t, int64(42), second[0].Delta())
+		test.EqOp(t, FlushIdempotencyKey(first[0]), FlushIdempotencyKey(second[0]))
+	})
+
+	t.Run("a settled total pins afresh on its next claim", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		must.NoError(t, mustRecord(t, env, store, newEntry("req-1", 42, AggregationSum)))
+
+		claimed, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
+		must.NoError(t, err)
+		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], baseTime))
+
+		// Nothing is outstanding now, so the pin is free to move — which is what
+		// keeps it from freezing at the first post's figure forever.
+		must.NoError(t, mustRecord(t, env, store, newEntry("req-2", 8, AggregationSum)))
+
+		next, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
+		must.NoError(t, err)
+		must.SliceLen(t, 1, next)
+
+		test.EqOp(t, int64(50), next[0].ClaimedQuantity)
+		test.EqOp(t, int64(8), next[0].Delta())
+
+		// And the pin a claimed Total carries is the one the lease actually
+		// wrote, not an optimistic reading of it: the settle advances the row to
+		// its own claimed_quantity, so the flushed quantity read back is what
+		// the column held.
+		must.NoError(t, store.MarkFlushed(t.Context(), next[0], baseTime))
+		test.EqOp(t, int64(50), env.mustTotal(t, store, testSubject, testMeter, monthBounds).FlushedQuantity)
+	})
+
 	t.Run("refuses a nil total", func(t *testing.T) {
 		t.Parallel()
 
 		store := env.newStore(t)
 
-		test.Error(t, store.MarkFlushed(t.Context(), nil, 1, baseTime))
+		test.Error(t, store.MarkFlushed(t.Context(), nil, baseTime))
 		test.Error(t, store.ReleaseFlush(t.Context(), nil, "boom", baseTime))
 	})
 }
@@ -1080,7 +1186,7 @@ func suiteReap(t *testing.T, env *storeEnv) {
 
 		claimed, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
 		must.NoError(t, err)
-		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], 42, baseTime))
+		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], baseTime))
 
 		reaped, err := store.ReapEvents(t.Context(), baseTime.Add(time.Hour), 100)
 		must.NoError(t, err)
@@ -1117,7 +1223,7 @@ func suiteReap(t *testing.T, env *storeEnv) {
 
 		claimed, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
 		must.NoError(t, err)
-		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], 42, baseTime))
+		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], baseTime))
 
 		reaped, err := store.ReapEvents(t.Context(), baseTime.Add(-time.Hour), 100)
 		must.NoError(t, err)
@@ -1135,7 +1241,7 @@ func suiteReap(t *testing.T, env *storeEnv) {
 
 		claimed, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
 		must.NoError(t, err)
-		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], 42, baseTime))
+		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], baseTime))
 
 		// The boundary is inclusive on the doomed side, which is the reading
 		// that leaves no instant at which a row is neither past the horizon nor
@@ -1160,7 +1266,7 @@ func suiteReap(t *testing.T, env *storeEnv) {
 
 		claimed, err := store.ClaimFlushable(t.Context(), baseTime, 10, 5, baseTime.Add(time.Minute))
 		must.NoError(t, err)
-		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], 3, baseTime))
+		must.NoError(t, store.MarkFlushed(t.Context(), claimed[0], baseTime))
 
 		none, err := store.ReapEvents(t.Context(), baseTime.Add(time.Hour), 0)
 		must.NoError(t, err)

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS metering_totals (
     aggregation      VARCHAR(32) NOT NULL,
     quantity         BIGINT NOT NULL DEFAULT 0,
     last_occurred_at DATETIME(6) NOT NULL,
+    claimed_quantity BIGINT NOT NULL DEFAULT 0,
     flushed_quantity BIGINT NOT NULL DEFAULT 0,
     flush_sequence   INT NOT NULL DEFAULT 0,
     flush_attempts   INT NOT NULL DEFAULT 0,

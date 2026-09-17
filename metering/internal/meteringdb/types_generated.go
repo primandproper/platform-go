@@ -82,6 +82,7 @@ type GetMeteringTotalRow struct {
 	Aggregation     string
 	Quantity        int64
 	LastOccurredAt  time.Time
+	ClaimedQuantity int64
 	FlushedQuantity int64
 	FlushSequence   int64
 	FlushAttempts   int64
@@ -107,6 +108,7 @@ type GetMeteringTotalForUpdateRow struct {
 	Aggregation     string
 	Quantity        int64
 	LastOccurredAt  time.Time
+	ClaimedQuantity int64
 	FlushedQuantity int64
 	FlushSequence   int64
 	FlushAttempts   int64
@@ -144,14 +146,13 @@ type InsertMeteringTotalParams struct {
 
 // MarkMeteringTotalFlushedParams are the arguments to MarkMeteringTotalFlushed.
 type MarkMeteringTotalFlushedParams struct {
-	FlushedQuantity int64
-	NextFlush       time.Time
-	LastUpdatedAt   *time.Time
-	Scope           tenancy.Scope
-	Subject         string
-	Meter           string
-	PeriodStart     time.Time
-	FlushSequence   int64
+	NextFlush     time.Time
+	LastUpdatedAt *time.Time
+	Scope         tenancy.Scope
+	Subject       string
+	Meter         string
+	PeriodStart   time.Time
+	FlushSequence int64
 }
 
 // MeteringEventExistsParams are the arguments to MeteringEventExists.
@@ -203,6 +204,7 @@ type SelectFlushableMeteringTotalsRow struct {
 	Aggregation     string
 	Quantity        int64
 	LastOccurredAt  time.Time
+	ClaimedQuantity int64
 	FlushedQuantity int64
 	FlushSequence   int64
 	FlushAttempts   int64

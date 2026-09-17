@@ -92,7 +92,7 @@ func TestSQLStore_DatabaseFaults(T *testing.T) {
 		_, store := newBrokenStore(t)
 		total := &Total{Scope: testScope, Subject: testSubject, Meter: testMeter, PeriodStart: monthBounds.Start}
 
-		test.Error(t, store.MarkFlushed(t.Context(), total, 1, baseTime))
+		test.Error(t, store.MarkFlushed(t.Context(), total, baseTime))
 		test.Error(t, store.ReleaseFlush(t.Context(), total, "boom", baseTime))
 	})
 
@@ -258,7 +258,7 @@ func TestSQLStore_GuardMisses(T *testing.T) {
 		// same delta reaches the provider under two different keys.
 		err := store.MarkFlushed(t.Context(), &Total{
 			Scope: testScope, Subject: testSubject, Meter: testMeter, PeriodStart: monthBounds.Start,
-		}, 1, baseTime)
+		}, baseTime)
 
 		must.Error(t, err)
 		test.StrContains(t, err.Error(), "flush sequence")
@@ -496,7 +496,7 @@ func TestSQLStore_UnreadableResults(T *testing.T) {
 
 		err := store.MarkFlushed(t.Context(), &Total{
 			Scope: testScope, Subject: testSubject, Meter: testMeter, PeriodStart: monthBounds.Start,
-		}, 1, baseTime)
+		}, baseTime)
 
 		test.ErrorIs(t, err, errArbitrary)
 	})

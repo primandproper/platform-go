@@ -392,7 +392,7 @@ func TestTotal_PendingAndDelta(T *testing.T) {
 	T.Run("reports what the provider has not been told", func(t *testing.T) {
 		t.Parallel()
 
-		total := &Total{Quantity: 100, FlushedQuantity: 40}
+		total := &Total{Quantity: 100, ClaimedQuantity: 100, FlushedQuantity: 40}
 
 		test.True(t, total.Pending())
 		test.EqOp(t, int64(60), total.Delta())
@@ -401,7 +401,7 @@ func TestTotal_PendingAndDelta(T *testing.T) {
 	T.Run("settled is not pending", func(t *testing.T) {
 		t.Parallel()
 
-		total := &Total{Quantity: 100, FlushedQuantity: 100}
+		total := &Total{Quantity: 100, ClaimedQuantity: 100, FlushedQuantity: 100}
 
 		test.False(t, total.Pending())
 		test.EqOp(t, int64(0), total.Delta())
@@ -412,9 +412,36 @@ func TestTotal_PendingAndDelta(T *testing.T) {
 
 		// Reachable for a max or last meter whose reading went down. A negative
 		// delta posted to a provider is a credit nobody authorized.
-		total := &Total{Quantity: 40, FlushedQuantity: 100}
+		total := &Total{Quantity: 40, ClaimedQuantity: 40, FlushedQuantity: 100}
 
 		test.False(t, total.Pending())
+		test.EqOp(t, int64(0), total.Delta())
+	})
+
+	T.Run("the delta is the pin, not the usage that arrived after it", func(t *testing.T) {
+		t.Parallel()
+
+		// The row a retry reads after usage landed while the first attempt was
+		// in flight. The provider key varies only with the sequence, and the
+		// sequence has not moved, so this attempt reuses the key the first one
+		// spent — and the provider keeps the first amount. A delta read off the
+		// quantity would send 90 under that key, have it discarded, and settle
+		// the row past 40 nobody was billed for.
+		total := &Total{Quantity: 140, ClaimedQuantity: 100, FlushedQuantity: 50}
+
+		test.True(t, total.Pending())
+		test.EqOp(t, int64(50), total.Delta())
+	})
+
+	T.Run("pending outlives the pin, because the remainder is the next sequence's", func(t *testing.T) {
+		t.Parallel()
+
+		// The same row once the post settled. Nothing is owed under the current
+		// key, and the 40 that arrived meanwhile is owed under the next one — so
+		// the claim predicate has to keep seeing this row.
+		total := &Total{Quantity: 140, ClaimedQuantity: 100, FlushedQuantity: 100}
+
+		test.True(t, total.Pending())
 		test.EqOp(t, int64(0), total.Delta())
 	})
 }

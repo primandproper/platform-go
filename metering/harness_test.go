@@ -506,6 +506,14 @@ type recordingReporter struct {
 
 	mu sync.Mutex
 
+	// loseResponses is how many of the next posts are recorded and then answered
+	// with errArbitrary: the provider has the usage and the caller has no way to
+	// know it. It is the one failure an idempotency key exists for, and the only
+	// one where what a retry carries is the difference between a correct invoice
+	// and a quiet shortfall — so it is a separate knob from err, which models a
+	// post that never landed.
+	loseResponses int
+
 	panicNow bool
 }
 
@@ -525,6 +533,12 @@ func (r *recordingReporter) ReportUsage(_ context.Context, input *capitalism.Usa
 
 	r.posts = append(r.posts, *input)
 
+	if r.loseResponses > 0 {
+		r.loseResponses--
+
+		return errArbitrary
+	}
+
 	return nil
 }
 
@@ -536,6 +550,33 @@ func (r *recordingReporter) recorded() []capitalism.UsageReportInput {
 	copy(posts, r.posts)
 
 	return posts
+}
+
+// billed folds the posts down the way a provider does: a record under an
+// idempotency key it has already accepted changes nothing, so the amount a key
+// stands for is whatever the first post under it carried.
+//
+// It is what a test asserting "the customer was billed for their usage exactly
+// once" has to compare against. Summing the posts instead would count a retry's
+// amount a second time, and reading the row back would report what this package
+// believes rather than what the provider holds — which is the gap the pin
+// exists to close.
+func (r *recordingReporter) billed() int64 {
+	seen := make(map[string]struct{})
+	posts := r.recorded()
+
+	var total int64
+
+	for i := range posts {
+		if _, already := seen[posts[i].IdempotencyKey]; already {
+			continue
+		}
+
+		seen[posts[i].IdempotencyKey] = struct{}{}
+		total += posts[i].Quantity
+	}
+
+	return total
 }
 
 // zeroMapper resolves every subject and meter to nothing at all, which the
@@ -603,7 +644,7 @@ type failingSettleStore struct {
 	Store
 }
 
-func (s *failingSettleStore) MarkFlushed(context.Context, *Total, int64, time.Time) error {
+func (s *failingSettleStore) MarkFlushed(context.Context, *Total, time.Time) error {
 	return errArbitrary
 }
 

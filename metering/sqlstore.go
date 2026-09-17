@@ -756,6 +756,17 @@ func (s *SQLStore) claim(
 			continue
 		}
 
+		// The pin the lease just wrote, computed here the way the statement
+		// computed it there. It is exact for the reason the attempt count below
+		// is: the lease matched, so the row is this transaction's for the rest
+		// of it, and the three columns the CASE reads are the three this
+		// flusher just projected. A re-read would say the same thing and would
+		// carry no guard saying it about the row this flusher holds — which is
+		// the trade the batch-shaped claim lost on. See metering/internal/queries.
+		if total.ClaimedQuantity <= total.FlushedQuantity {
+			total.ClaimedQuantity = total.Quantity
+		}
+
 		total.FlushAttempts++
 
 		claimed = append(claimed, total)
@@ -764,7 +775,7 @@ func (s *SQLStore) claim(
 	return claimed, nil
 }
 
-func (s *SQLStore) MarkFlushed(ctx context.Context, total *Total, flushed int64, at time.Time) error {
+func (s *SQLStore) MarkFlushed(ctx context.Context, total *Total, at time.Time) error {
 	ctx, op := s.o11y.Begin(ctx)
 	defer op.End()
 
@@ -773,11 +784,15 @@ func (s *SQLStore) MarkFlushed(ctx context.Context, total *Total, flushed int64,
 	}
 
 	op.SetValues(map[string]any{
-		scopeKey:       total.Scope.String(),
-		subjectKey:     total.Subject,
-		meterKey:       total.Meter,
-		sequenceKey:    total.FlushSequence,
-		flushedKey:     flushed,
+		scopeKey:    total.Scope.String(),
+		subjectKey:  total.Subject,
+		meterKey:    total.Meter,
+		sequenceKey: total.FlushSequence,
+		// The amount this settle accounts for, which is the pin less what was
+		// already flushed — the same figure the post carried, and the one an
+		// operator reconciling a sequence against an invoice wants. There is no
+		// absolute to log: what the row advances to is the row's own.
+		deltaKey:       total.Delta(),
 		periodStartKey: total.PeriodStart,
 		periodEndKey:   total.PeriodEnd,
 		aggregationKey: string(total.Aggregation),
@@ -785,15 +800,19 @@ func (s *SQLStore) MarkFlushed(ctx context.Context, total *Total, flushed int64,
 
 	stamped := at.UTC()
 
+	// No quantity is bound. The statement advances flushed_quantity to the
+	// claimed_quantity beside it, which is the figure the delta this flusher
+	// posted was measured from — so the amount settled is the amount posted by
+	// construction rather than by two call sites agreeing. See
+	// metering/internal/queries.
 	affected, err := s.q.MarkMeteringTotalFlushed(ctx, s.client.Writer(), meteringdb.MarkMeteringTotalFlushedParams{
-		FlushedQuantity: flushed,
-		NextFlush:       at.UTC(),
-		LastUpdatedAt:   &stamped,
-		Scope:           total.Scope,
-		Subject:         total.Subject,
-		Meter:           total.Meter,
-		PeriodStart:     total.PeriodStart.UTC(),
-		FlushSequence:   int64(total.FlushSequence),
+		NextFlush:     at.UTC(),
+		LastUpdatedAt: &stamped,
+		Scope:         total.Scope,
+		Subject:       total.Subject,
+		Meter:         total.Meter,
+		PeriodStart:   total.PeriodStart.UTC(),
+		FlushSequence: int64(total.FlushSequence),
 	})
 
 	return s.guard.Count(ctx, op, affected, err, total.Meter, "mark_flushed",
@@ -1038,6 +1057,7 @@ func totalFrom(row *meteringdb.SelectFlushableMeteringTotalsRow) *Total {
 		LastError:       row.LastError,
 		Aggregation:     Aggregation(row.Aggregation),
 		Quantity:        row.Quantity,
+		ClaimedQuantity: row.ClaimedQuantity,
 		FlushedQuantity: row.FlushedQuantity,
 		FlushSequence:   int(row.FlushSequence),
 		FlushAttempts:   int(row.FlushAttempts),

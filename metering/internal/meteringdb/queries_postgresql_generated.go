@@ -23,6 +23,7 @@ WHERE scope = $4
 	AND period_start = $7`
 
 const claimMeteringTotalPostgreSQL = `UPDATE {{prefix}}metering_totals SET
+	claimed_quantity = CASE WHEN claimed_quantity > flushed_quantity THEN claimed_quantity ELSE quantity END,
 	claimed_until = $1,
 	flush_attempts = flush_attempts + 1
 WHERE scope = $2
@@ -67,6 +68,7 @@ const getMeteringTotalPostgreSQL = `SELECT
 	{{prefix}}metering_totals.aggregation,
 	{{prefix}}metering_totals.quantity,
 	{{prefix}}metering_totals.last_occurred_at,
+	{{prefix}}metering_totals.claimed_quantity,
 	{{prefix}}metering_totals.flushed_quantity,
 	{{prefix}}metering_totals.flush_sequence,
 	{{prefix}}metering_totals.flush_attempts,
@@ -87,6 +89,7 @@ const getMeteringTotalForUpdatePostgreSQL = `SELECT
 	{{prefix}}metering_totals.aggregation,
 	{{prefix}}metering_totals.quantity,
 	{{prefix}}metering_totals.last_occurred_at,
+	{{prefix}}metering_totals.claimed_quantity,
 	{{prefix}}metering_totals.flushed_quantity,
 	{{prefix}}metering_totals.flush_sequence,
 	{{prefix}}metering_totals.flush_attempts,
@@ -151,18 +154,18 @@ const insertMeteringTotalPostgreSQL = `INSERT INTO {{prefix}}metering_totals (
 ON CONFLICT (scope, subject, meter, period_start) DO NOTHING`
 
 const markMeteringTotalFlushedPostgreSQL = `UPDATE {{prefix}}metering_totals SET
-	flushed_quantity = $1,
+	flushed_quantity = claimed_quantity,
 	flush_sequence = flush_sequence + 1,
 	flush_attempts = 0,
-	next_flush = $2,
+	next_flush = $1,
 	claimed_until = NULL,
 	last_error = '',
-	last_updated_at = $3
-WHERE scope = $4
-	AND subject = $5
-	AND meter = $6
-	AND period_start = $7
-	AND flush_sequence = $8`
+	last_updated_at = $2
+WHERE scope = $3
+	AND subject = $4
+	AND meter = $5
+	AND period_start = $6
+	AND flush_sequence = $7`
 
 const meteringEventExistsPostgreSQL = `SELECT EXISTS (
 	SELECT 1
@@ -203,6 +206,7 @@ const selectFlushableMeteringTotalsPostgreSQL = `SELECT
 	{{prefix}}metering_totals.aggregation,
 	{{prefix}}metering_totals.quantity,
 	{{prefix}}metering_totals.last_occurred_at,
+	{{prefix}}metering_totals.claimed_quantity,
 	{{prefix}}metering_totals.flushed_quantity,
 	{{prefix}}metering_totals.flush_sequence,
 	{{prefix}}metering_totals.flush_attempts,
@@ -364,6 +368,7 @@ func (q *postgresqlQueries) GetMeteringTotal(ctx context.Context, db DBTX, arg G
 		&i.Aggregation,
 		&i.Quantity,
 		&i.LastOccurredAt,
+		&i.ClaimedQuantity,
 		&i.FlushedQuantity,
 		&i.FlushSequence,
 		&i.FlushAttempts,
@@ -394,6 +399,7 @@ func (q *postgresqlQueries) GetMeteringTotalForUpdate(ctx context.Context, db DB
 		&i.Aggregation,
 		&i.Quantity,
 		&i.LastOccurredAt,
+		&i.ClaimedQuantity,
 		&i.FlushedQuantity,
 		&i.FlushSequence,
 		&i.FlushAttempts,
@@ -449,7 +455,6 @@ func (q *postgresqlQueries) InsertMeteringTotal(ctx context.Context, db DBTX, ar
 // MarkMeteringTotalFlushed runs the :execrows query against postgresql.
 func (q *postgresqlQueries) MarkMeteringTotalFlushed(ctx context.Context, db DBTX, arg MarkMeteringTotalFlushedParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.markMeteringTotalFlushed,
-		arg.FlushedQuantity,
 		arg.NextFlush,
 		arg.LastUpdatedAt,
 		arg.Scope,
@@ -543,6 +548,7 @@ func (q *postgresqlQueries) SelectFlushableMeteringTotals(ctx context.Context, d
 			&i.Aggregation,
 			&i.Quantity,
 			&i.LastOccurredAt,
+			&i.ClaimedQuantity,
 			&i.FlushedQuantity,
 			&i.FlushSequence,
 			&i.FlushAttempts,
@@ -627,6 +633,7 @@ var (
 		Aggregation     string
 		Quantity        int64
 		LastOccurredAt  time.Time
+		ClaimedQuantity int64
 		FlushedQuantity int64
 		FlushSequence   int64
 		FlushAttempts   int64
@@ -648,6 +655,7 @@ var (
 		Aggregation     string
 		Quantity        int64
 		LastOccurredAt  time.Time
+		ClaimedQuantity int64
 		FlushedQuantity int64
 		FlushSequence   int64
 		FlushAttempts   int64
@@ -679,14 +687,13 @@ var (
 		CreatedAt      time.Time
 	}(InsertMeteringTotalParams{})
 	_ = struct {
-		FlushedQuantity int64
-		NextFlush       time.Time
-		LastUpdatedAt   *time.Time
-		Scope           tenancy.Scope
-		Subject         string
-		Meter           string
-		PeriodStart     time.Time
-		FlushSequence   int64
+		NextFlush     time.Time
+		LastUpdatedAt *time.Time
+		Scope         tenancy.Scope
+		Subject       string
+		Meter         string
+		PeriodStart   time.Time
+		FlushSequence int64
 	}(MarkMeteringTotalFlushedParams{})
 	_ = struct {
 		Scope          tenancy.Scope
@@ -726,6 +733,7 @@ var (
 		Aggregation     string
 		Quantity        int64
 		LastOccurredAt  time.Time
+		ClaimedQuantity int64
 		FlushedQuantity int64
 		FlushSequence   int64
 		FlushAttempts   int64

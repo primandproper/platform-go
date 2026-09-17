@@ -73,7 +73,8 @@ type FlushResult struct {
 //
 // It is the part of this package where a mistake costs money rather than
 // accuracy, and its whole shape follows from one requirement: a post that is
-// retried must not be a second charge. Three things together give that.
+// retried must not be a second charge, and must not be a smaller one either.
+// Four things together give that.
 //
 // The delta, not the total. Providers aggregate the records inside a billing
 // period, so each post carries only what has accumulated since the last one.
@@ -82,6 +83,12 @@ type FlushResult struct {
 // beside the total, and that counter is what varies in the idempotency key — so a
 // retry of the same post reuses the same key and is a no-op at the provider,
 // while a genuinely new post gets a fresh one.
+//
+// The delta is pinned at the claim, not recomputed per attempt. The provider
+// keeps the first amount it accepted under a key, so a retry that read the
+// running quantity again would post a larger figure under a key already spent,
+// have it discarded, and settle the row past the difference. See
+// Total.ClaimedQuantity.
 //
 // The settle is guarded on the sequence it read. A flusher whose lease lapsed
 // mid-post cannot advance a sequence somebody else has already moved, which is
@@ -457,6 +464,12 @@ func (f *Flusher) reportTimestamp(total *Total) time.Time {
 }
 
 // settle records a successful post — or a deliberate skip — against the total.
+//
+// It names no amount. What the flushed quantity advances to is the quantity the
+// claim pinned, which is the figure delta was measured from — see Total.Delta —
+// so the settle cannot move past what the post carried even when usage arrived
+// while the post was in flight. That remainder is the next sequence's, under the
+// next key.
 func (f *Flusher) settle(
 	ctx context.Context,
 	op observability.Operation,
@@ -464,7 +477,7 @@ func (f *Flusher) settle(
 	delta int64,
 	skipped bool,
 ) flushOutcome {
-	if err := f.store.MarkFlushed(ctx, total, total.Quantity, f.clock.Now().UTC()); err != nil {
+	if err := f.store.MarkFlushed(ctx, total, f.clock.Now().UTC()); err != nil {
 		// The provider has the usage and the row does not say so. The next pass
 		// re-claims the total, posts the same delta under the same sequence — the
 		// sequence did not advance, because this is what failed — and the provider

@@ -82,11 +82,20 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}metering_totals (
     -- it, so a record that arrives late does not displace a newer one — which is
     -- the whole difference between "last" and "most recently ingested".
     last_occurred_at DATETIME NOT NULL,
-    -- How much of quantity the provider has already been told about, and how
-    -- many times it has been told. The sequence is the varying component of the
-    -- provider-side idempotency key: a retried post reuses it and is a no-op, and
-    -- a genuinely new post gets a fresh one.
+    -- How much of quantity a flusher has pinned for the post it currently owes,
+    -- and how much the provider has already been told about. The difference
+    -- between the two is what the next post carries, and claiming it is what
+    -- makes that amount survive a retry: the provider dedupes on a key derived
+    -- from the sequence, so a second attempt that recomputed its delta from a
+    -- quantity usage had moved in the meantime would post a larger amount under
+    -- a key the provider already has, keep the first amount, and settle past
+    -- the difference. Pinned at claim and released by the settle, the amount a
+    -- key stands for cannot change while that key is outstanding.
+    claimed_quantity INTEGER NOT NULL DEFAULT 0,
     flushed_quantity INTEGER NOT NULL DEFAULT 0,
+    -- How many times the provider has been told. The sequence is the varying
+    -- component of the provider-side idempotency key: a retried post reuses it
+    -- and is a no-op, and a genuinely new post gets a fresh one.
     flush_sequence   INTEGER NOT NULL DEFAULT 0,
     flush_attempts   INTEGER NOT NULL DEFAULT 0,
     next_flush       DATETIME NOT NULL,
