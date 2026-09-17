@@ -24,6 +24,13 @@ import (
 // message, which is the point — see signin.ErrInvalidCredentials. The one
 // exception is a user who holds a proven second factor and sent no code: they
 // are told to send one, because a client that cannot be told that cannot ask.
+//
+// signin.GRPCMapper is what says so, and the code passed below is codes.Internal
+// like every other RPC in the module. A door that defaulted to Unauthenticated
+// would answer a failed token issuer, a refused ClaimsBuilder, a hook that
+// rolled the sign-in back or a ScopeResolver that could not name a directory
+// with "wrong password" — an outage dressed as a credential the caller could fix
+// by retyping it.
 func (s *Server) LoginForToken(
 	ctx context.Context,
 	request *signinpb.LoginForTokenRequest,
@@ -44,7 +51,7 @@ func (s *Server) LoginForToken(
 
 	signedIn, err := s.svc.LoginForToken(ctx, req.scope, credentials)
 	if err != nil {
-		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Unauthenticated, "signing in")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "signing in")
 	}
 
 	return &signinpb.LoginForTokenResponse{Token: IssuedTokenToProto(signedIn)}, nil
@@ -58,6 +65,8 @@ func (s *Server) LoginForToken(
 // A service that named no administrative roles answers every call here with
 // PermissionDenied, and a caller cannot tell that apart from not being an
 // administrator. Both are deliberate — see signin.ErrAdminLoginDisabled.
+//
+// Its default code is LoginForToken's, and for the same reason.
 func (s *Server) AdminLoginForToken(
 	ctx context.Context,
 	request *signinpb.AdminLoginForTokenRequest,
@@ -78,7 +87,7 @@ func (s *Server) AdminLoginForToken(
 
 	signedIn, err := s.svc.AdminLoginForToken(ctx, req.scope, credentials)
 	if err != nil {
-		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Unauthenticated, "signing in as an administrator")
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "signing in as an administrator")
 	}
 
 	return &signinpb.AdminLoginForTokenResponse{Token: IssuedTokenToProto(signedIn)}, nil

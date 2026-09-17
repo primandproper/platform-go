@@ -22,6 +22,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
@@ -160,6 +161,21 @@ type harness struct {
 func newHarness(t *testing.T, svcOpts []signin.ServiceOption, opts ...signingrpc.Option) *harness {
 	t.Helper()
 
+	return newHarnessWithIssuer(t, &fakeIssuer{}, svcOpts, opts...)
+}
+
+// newHarnessWithIssuer is newHarness with the token issuer named, for the tests
+// that need one that fails. Nothing else about a sign-in changes: the password
+// is proven and the policy is satisfied, and the only thing that goes wrong is
+// the step after both.
+func newHarnessWithIssuer(
+	t *testing.T,
+	issuer signin.TokenIssuer,
+	svcOpts []signin.ServiceOption,
+	opts ...signingrpc.Option,
+) *harness {
+	t.Helper()
+
 	db, err := sqlite.NewDatabaseClient(t.Context(),
 		&testClientConfig{connectionString: filepath.Join(t.TempDir(), "signin.db")})
 	must.NoError(t, err)
@@ -182,7 +198,7 @@ func newHarness(t *testing.T, svcOpts []signin.ServiceOption, opts ...signingrpc
 
 	svcOpts = append([]signin.ServiceOption{signin.WithTOTPIssuer("Example")}, svcOpts...)
 
-	svc, err := signin.NewService(db, store, authenticator, &fakeIssuer{}, svcOpts...)
+	svc, err := signin.NewService(db, store, authenticator, issuer, svcOpts...)
 	must.NoError(t, err)
 
 	// The scope comes off the connection, which is the seam that exists because
@@ -312,4 +328,22 @@ func (*fakeIssuer) IssueToken(
 	_ map[string]any,
 ) (token, jti string, err error) {
 	return "token-for-" + subject, "jti-" + subject, nil
+}
+
+// errIssuerUnavailable is what a token issuer that cannot reach its signing key
+// returns. It is an ordinary error naming no sentinel, because that is the
+// shape of the failure the doors' default code answers: nothing maps it, so
+// whatever the call site passed is what the caller gets.
+var errIssuerUnavailable = platformerrors.New("signing key is unavailable")
+
+// failingIssuer is a token issuer that is down.
+type failingIssuer struct{}
+
+func (*failingIssuer) IssueToken(
+	_ context.Context,
+	_ string,
+	_ time.Duration,
+	_ map[string]any,
+) (token, jti string, err error) {
+	return "", "", errIssuerUnavailable
 }
