@@ -154,8 +154,8 @@ increments as it gives up. A stuck instance stays stuck until a person acts, so
 the number worth waking somebody for is the level — how many sagas are half-done
 right now — and a counter cannot report one: it describes a rate, and a deploy
 resets it to zero with the backlog still in the table. Worker.Stats is the read
-behind the gauge, sampled on WorkerConfig.StatsInterval and exported for a
-process that runs no Worker.
+behind the gauge, sampled on WorkerConfig.StatsInterval; StuckDepth is the same
+read for a process that runs no Worker and holds only a Store.
 
 Most homegrown saga implementations swallow this case. It is how money goes
 missing.

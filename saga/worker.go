@@ -203,9 +203,13 @@ func (w *Worker) buildInstruments() error {
 	if w.compensatedCounter, err = mp.NewInt64Counter(serviceName + "_instances_compensated"); err != nil {
 		return platformerrors.Wrap(err, "creating instances compensated counter")
 	}
-	// The one to alert on. Everything else in this package is a saga working as
-	// designed, including compensation; this is the counter that means a person
-	// has to go and look at something.
+	// The rate at which workers give up, beside the level that outlives them.
+	// Everything else in this package is a saga working as designed, including
+	// compensation; this is where a person first has to go and look at
+	// something. Alert on the gauge below rather than on this, for the reason
+	// stated there — this counter says a compensation gave up at some point
+	// since the process started, and says nothing about how many are still
+	// waiting.
 	if w.stuckCounter, err = mp.NewInt64Counter(serviceName + "_instances_stuck"); err != nil {
 		return platformerrors.Wrap(err, "creating instances stuck counter")
 	}
@@ -331,16 +335,17 @@ type Stats struct {
 // is the number that does not reset when the deployment rolls.
 //
 // The Worker samples it on WorkerConfig.StatsInterval, so a process running one
-// needs to call nothing. It is exported for the process that does not — an
-// operator console, a readiness check, a report — and for the caller who wants
-// the level on a cadence of their own. Either way it is an aggregate over the
-// whole instance table: sample it on a timer, not per request and not per
-// cycle.
+// needs to call nothing, and a caller wanting the level on a cadence of its own
+// calls this. A process that runs no Worker calls [StuckDepth] instead, which is
+// the same read without the instrument: building a Worker to ask this question
+// would oblige an operator console to supply a lock provider and a definition
+// registry it has no other use for. Either way it is an aggregate over the whole
+// instance table: sample it on a timer, not per request and not per cycle.
 func (w *Worker) Stats(ctx context.Context) (Stats, error) {
 	ctx, op := w.o11y.Begin(ctx)
 	defer op.End()
 
-	stuck, err := w.stuckDepth(ctx)
+	stuck, err := StuckDepth(ctx, w.store)
 	if err != nil {
 		return Stats{}, op.Error(err, "reading saga stats")
 	}
@@ -352,7 +357,15 @@ func (w *Worker) Stats(ctx context.Context) (Stats, error) {
 	return Stats{Stuck: stuck}, nil
 }
 
-// stuckDepth counts the instances waiting for an operator.
+// StuckDepth counts the instances waiting for an operator.
+//
+// It is [Worker.Stats] without the Worker, for the process that reads the level
+// and does not advance sagas: an operator console, a readiness check, a report.
+// Those hold a Store and have no reason to hold a lock provider or a definition
+// registry, which is what constructing a Worker to ask this one question would
+// oblige them to supply. It records no instrument — the gauge belongs to the
+// Worker that owns the meter — so a caller that wants the reading published
+// samples it through a Worker.
 //
 // It is the listing store.go calls "the one actually run" — the status scope
 // holding StatusStuck and nothing else — asked for a single row rather than a
@@ -367,11 +380,18 @@ func (w *Worker) Stats(ctx context.Context) (Stats, error) {
 // instances, and reporting that as zero is what resets the gauge when the last
 // one is resumed. A gauge that went quiet instead would leave the dashboard
 // showing yesterday's backlog forever.
-func (w *Worker) stuckDepth(ctx context.Context) (int64, error) {
+//
+// It is an aggregate over the whole instance table: read it on a timer, not per
+// request.
+func StuckDepth(ctx context.Context, store Store) (int64, error) {
+	if store == nil {
+		return 0, ErrNilStore
+	}
+
 	filter := filtering.DefaultQueryFilter()
 	filter.SetMaxResponseSize(1)
 
-	page, err := w.store.List(ctx, &ListScope{Statuses: []Status{StatusStuck}}, filter)
+	page, err := store.List(ctx, &ListScope{Statuses: []Status{StatusStuck}}, filter)
 	if err != nil {
 		return 0, platformerrors.Wrap(err, "listing stuck saga instances")
 	}

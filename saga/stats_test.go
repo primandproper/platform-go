@@ -156,6 +156,51 @@ func TestWorker_Stats(T *testing.T) {
 	})
 }
 
+// TestStuckDepth is the read without the Worker: the process that reads the
+// level and does not advance sagas holds a Store, and nothing else.
+func TestStuckDepth(T *testing.T) {
+	T.Parallel()
+
+	T.Run("counts the stuck instances over a bare store", func(t *testing.T) {
+		t.Parallel()
+
+		env := newSQLiteEnv(t)
+
+		store := env.newStore(t)
+
+		// No worker, no registry, no locker, no metrics provider — which is the
+		// whole point of the function. An operator console holds this much.
+		depth, err := StuckDepth(t.Context(), store)
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), depth)
+
+		env.stuckRecord(t, store, "orders", "s1")
+		env.stuckRecord(t, store, "orders", "s2")
+
+		depth, err = StuckDepth(t.Context(), store)
+		must.NoError(t, err)
+		test.EqOp(t, int64(2), depth)
+	})
+
+	T.Run("refuses a nil store", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := StuckDepth(t.Context(), nil)
+		must.Error(t, err)
+		test.ErrorIs(t, err, ErrNilStore)
+	})
+
+	T.Run("surfaces the store's error", func(t *testing.T) {
+		t.Parallel()
+
+		env := newSQLiteEnv(t)
+
+		_, err := StuckDepth(t.Context(), &failingListStore{Store: env.newStore(t)})
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), "listing stuck saga instances")
+	})
+}
+
 func TestWorker_SampleStats(T *testing.T) {
 	T.Parallel()
 
