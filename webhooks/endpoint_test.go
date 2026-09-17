@@ -145,6 +145,51 @@ func TestSubscribeTo(T *testing.T) {
 	})
 }
 
+func TestNewSigningSecret(T *testing.T) {
+	T.Parallel()
+
+	T.Run("standard", func(t *testing.T) {
+		t.Parallel()
+
+		key, err := NewSigningSecret(t.Context())
+		must.NoError(t, err)
+
+		// The length is the half of "some random bytes" that can be wrong
+		// without anything failing: a key shorter than HMAC-SHA256's block is
+		// the only dimension of the construction a caller chooses.
+		test.SliceLen(t, SigningSecretLength, key)
+	})
+
+	// Two draws that matched would be a generator with no randomness behind it,
+	// which is the failure that looks exactly like success at every call site.
+	T.Run("draws a different key each time", func(t *testing.T) {
+		t.Parallel()
+
+		first, err := NewSigningSecret(t.Context())
+		must.NoError(t, err)
+
+		second, secondErr := NewSigningSecret(t.Context())
+		must.NoError(t, secondErr)
+
+		test.NotEq(t, first, second)
+	})
+
+	// What it mints is a key the signer will accept, which is the only thing
+	// about the length that is checkable rather than merely asserted.
+	T.Run("mints a key a signature can be taken under", func(t *testing.T) {
+		t.Parallel()
+
+		key, err := NewSigningSecret(t.Context())
+		must.NoError(t, err)
+
+		signature, signErr := requestsigning.Sign(Secret{Current: key}, testBody, signingTime)
+		must.NoError(t, signErr)
+
+		test.NoError(t, requestsigning.Verify(Secret{Current: key}, testBody, signature,
+			requestsigning.WithVerificationTime(signingTime)))
+	})
+}
+
 func TestEndpoint_EventTypes(T *testing.T) {
 	T.Parallel()
 

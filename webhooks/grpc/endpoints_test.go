@@ -439,3 +439,121 @@ func TestArchiveEndpoint(T *testing.T) {
 		test.EqOp(t, codes.Unauthenticated, status.Code(err))
 	})
 }
+
+func TestRotateSecret(T *testing.T) {
+	T.Parallel()
+
+	T.Run("rolls the caller's endpoint onto a new key", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		seeded := h.seed(t, testScope)
+
+		_, err := h.server.RotateSecret(h.ctx(t), &webhookspb.RotateSecretRequest{
+			EndpointId: seeded.ID,
+			SigningKey: []byte("rolled-signing-key"),
+		})
+		must.NoError(t, err)
+
+		// Read through the store rather than the surface, because the surface is
+		// where keys stop: this is the only vantage point from which the
+		// rotation is observable at all.
+		read, err := h.store.GetEndpoint(h.ctx(t), h.db.Reader(), testScope, seeded.ID)
+		must.NoError(t, err)
+
+		test.Eq(t, []byte("rolled-signing-key"), read.Secret.Current)
+		test.Eq(t, []byte("seeded-signing-key"), read.Secret.Previous)
+	})
+
+	// The whole reason this RPC exists rather than a save with a fresh keyring
+	// on it: nothing comes back, so rotating obliges nobody to have been able to
+	// read the key being replaced.
+	T.Run("answers with a message carrying nothing", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		seeded := h.seed(t, testScope)
+
+		res, err := h.server.RotateSecret(h.ctx(t), &webhookspb.RotateSecretRequest{
+			EndpointId: seeded.ID,
+			SigningKey: []byte("rolled-signing-key"),
+		})
+		must.NoError(t, err)
+		must.NotNil(t, res)
+
+		test.False(t, messageCarries(t, res, []byte("rolled-signing-key")),
+			test.Sprint("the rotation's response carries the key it installed"))
+		test.False(t, messageCarries(t, res, []byte("seeded-signing-key")),
+			test.Sprint("the rotation's response carries the key it replaced"))
+	})
+
+	// The statement binds the caller's scope, so another tenant's endpoint is
+	// not there rather than forbidden — the same answer a read of it gets, and
+	// for the same reason.
+	T.Run("cannot rotate another tenant's endpoint", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		seeded := h.seed(t, testScope)
+
+		_, err := h.server.RotateSecret(h.otherCtx(t), &webhookspb.RotateSecretRequest{
+			EndpointId: seeded.ID,
+			SigningKey: []byte("rolled-signing-key"),
+		})
+		must.Error(t, err)
+		test.EqOp(t, codes.NotFound, status.Code(err))
+
+		// And the neighbor's key is where it was.
+		read, readErr := h.store.GetEndpoint(h.ctx(t), h.db.Reader(), testScope, seeded.ID)
+		must.NoError(t, readErr)
+		test.Eq(t, []byte("seeded-signing-key"), read.Secret.Current)
+	})
+
+	// The same answer for an identifier that names nothing anywhere, which is
+	// what keeps the case above from disclosing that it named something.
+	T.Run("an unknown identifier is not found", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		_, err := h.server.RotateSecret(h.ctx(t), &webhookspb.RotateSecretRequest{
+			EndpointId: "no_such_endpoint",
+			SigningKey: []byte("rolled-signing-key"),
+		})
+		must.Error(t, err)
+
+		test.EqOp(t, codes.NotFound, status.Code(err))
+	})
+
+	// Refused at this call site rather than by the mapper, because the sentinel
+	// is requestsigning's and a mapper case would answer for every other raiser
+	// of it in the process.
+	T.Run("refuses a rotation that names no key", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		seeded := h.seed(t, testScope)
+
+		_, err := h.server.RotateSecret(h.ctx(t), &webhookspb.RotateSecretRequest{EndpointId: seeded.ID})
+		must.Error(t, err)
+		test.EqOp(t, codes.InvalidArgument, status.Code(err))
+
+		read, readErr := h.store.GetEndpoint(h.ctx(t), h.db.Reader(), testScope, seeded.ID)
+		must.NoError(t, readErr)
+		test.Eq(t, []byte("seeded-signing-key"), read.Secret.Current)
+	})
+
+	T.Run("refuses a caller with no principal", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		_, err := h.server.RotateSecret(t.Context(), &webhookspb.RotateSecretRequest{
+			EndpointId: "whatever",
+			SigningKey: []byte("rolled-signing-key"),
+		})
+		must.Error(t, err)
+
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+	})
+}

@@ -18,10 +18,16 @@ import (
 // work, and re-drives that work when an operator asks.
 //
 // Every method here writes, and every one of them but Replay takes the caller's
-// database.Tx — a registration, a subscription and the event that fans out are
-// all things an application does beside something else of its own, and the
-// transaction argument is what lets the two commit together. Replay is the
-// exception and says why on its own doc comment.
+// database.Tx — a registration, a subscription, a key rotation and the event
+// that fans out are all things an application does beside something else of its
+// own, and the transaction argument is what lets the two commit together. Replay
+// is the exception and says why on its own doc comment.
+//
+// Every method here but RotateSecret also answers with what it wrote. That one
+// answers with nothing, and it is the only method on this type whose return
+// type is an argument about security rather than about convenience: the row it
+// moves carries an endpoint's signing keys, and a key a caller can read back is
+// a key anyone holding that grant can forge deliveries with.
 type Dispatcher interface {
 	// Dispatch fans an event out to every endpoint in scope that is subscribed to
 	// it, writing through the caller's transaction so the deliveries commit with
@@ -52,6 +58,10 @@ type Dispatcher interface {
 	// alone, and returns the row it retired — or nil where the ID named nothing
 	// in scope, which is Store.ArchiveSubscription's answer arriving unchanged.
 	Unsubscribe(ctx context.Context, tx database.Tx, scope tenancy.Scope, subscriptionID string) (*Subscription, error)
+	// RotateSecret installs next as the signing key of one of the scope's live
+	// endpoints, demoting the key it replaces, through the caller's transaction.
+	// It answers with nothing but an error; see StoreDispatcher.RotateSecret.
+	RotateSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error
 }
 
 var _ Dispatcher = (*StoreDispatcher)(nil)
@@ -70,6 +80,7 @@ type StoreDispatcher struct {
 	dispatchedCounter metrics.Int64Counter
 	fanoutHist        metrics.Float64Histogram
 	replayedCounter   metrics.Int64Counter
+	rotatedCounter    metrics.Int64Counter
 
 	// What the options wrote, kept only until the observer is built from it.
 	// Read d.o11y.Logger() for the logger this dispatcher actually uses; this one
@@ -122,6 +133,9 @@ func NewDispatcher(store Store, reader database.SQLQueryExecutor, opts ...Dispat
 	}
 	if d.replayedCounter, err = mp.NewInt64Counter(serviceName + "_deliveries_replayed"); err != nil {
 		return nil, platformerrors.Wrap(err, "creating deliveries replayed counter")
+	}
+	if d.rotatedCounter, err = mp.NewInt64Counter(serviceName + "_secrets_rotated"); err != nil {
+		return nil, platformerrors.Wrap(err, "creating secrets rotated counter")
 	}
 	if d.fanoutHist, err = mp.NewFloat64Histogram(serviceName + "_dispatch_fanout"); err != nil {
 		return nil, platformerrors.Wrap(err, "creating dispatch fanout histogram")
@@ -291,6 +305,88 @@ func (d *StoreDispatcher) Unsubscribe(ctx context.Context, tx database.Tx, scope
 	}
 
 	return retired, nil
+}
+
+// RotateSecret rolls one endpoint's signing key forward, inside the caller's
+// transaction.
+//
+//	key, err := webhooks.NewSigningSecret(ctx)
+//	if err != nil {
+//		return err
+//	}
+//
+//	if err = client.WithTransaction(ctx, func(tx database.Tx) error {
+//		return dispatcher.RotateSecret(ctx, tx, tenancy.Of(accountID), endpointID, key)
+//	}); err != nil {
+//		return err
+//	}
+//
+//	// key is now the only copy outside the database; show it to the subscriber.
+//
+// The two calls are two calls on purpose, and it is the only shape that works.
+// The subscriber is the party that verifies the signature, so the key has to
+// reach them, which means the process performing the rotation has to hold it
+// once — a rotation that minted internally and answered with an error would
+// leave every future delivery unverifiable by the only party that cares. What
+// is refusable is the other direction: nothing here reads a stored key back,
+// and this method answers with nothing, so the key exists outside the database
+// only in the window between minting it and handing it over.
+//
+// That is what this buys over the rotation that was available before it. Saving
+// the endpoint with a new keyring means supplying both halves, and a caller who
+// must supply the outgoing key is a caller who had to read it — which is the
+// read path the whole arrangement exists to not have. Here the demotion happens
+// inside the statement.
+//
+// It goes through the dispatcher rather than straight to the store for the
+// reason Subscribe does, though the gate is a smaller one: an empty key is
+// ErrNoSigningSecret, refused here rather than at the driver, because a rotation
+// to nothing would leave an endpoint that cannot be delivered to at all. The
+// URL is not re-checked — this call names no URL, and the one on the row was
+// checked when it was registered and is checked again at delivery.
+//
+// The transaction is the caller's for the reason every other write here takes
+// one: the audit entry naming who rotated the key belongs in the same commit,
+// and a store that committed the rotation on its own would have moved the key
+// while that entry was still refusable.
+func (d *StoreDispatcher) RotateSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error {
+	ctx, op := d.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(endpointIDKey, endpointID),
+	)
+	defer op.End()
+
+	if tx == nil {
+		return op.Error(ErrNilExecutor, "rotating the secret of webhook endpoint %q", endpointID)
+	}
+
+	if err := scope.Validate(); err != nil {
+		return op.Error(err, "rotating the secret of webhook endpoint %q", endpointID)
+	}
+
+	if endpointID == "" {
+		return op.Error(platformerrors.ErrInvalidIDProvided, "rotating a webhook endpoint secret")
+	}
+
+	if len(next) == 0 {
+		return op.Error(ErrNoSigningSecret, "rotating the secret of webhook endpoint %q", endpointID)
+	}
+
+	if err := d.store.RotateSecret(ctx, tx, scope, endpointID, next); err != nil {
+		return op.Error(err, "rotating the secret of webhook endpoint %q", endpointID)
+	}
+
+	d.rotatedCounter.Add(ctx, 1)
+
+	// Logged rather than only counted, and Replay is the precedent: both are
+	// rare operator actions that change what the pipeline does next, and the
+	// line is what somebody reconstructing "when did this subscriber's
+	// signatures change" reads. What it carries is the endpoint and the scope
+	// the operation opened with, never the key — a credential in a log is a
+	// credential in every system the logs are shipped to.
+	op.Set(rotatedKey, true).Logger().Info("webhook endpoint signing secret rotated")
+
+	return nil
 }
 
 // Dispatch fans a delivery out to its subscribers, inside the caller's

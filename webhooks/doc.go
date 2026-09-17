@@ -373,6 +373,11 @@ see — plus webhooks_claim_errors, webhooks_dispatches_reaped, and the
 webhooks_delivery_latency_ms, webhooks_cycle_latency_ms, and
 webhooks_claimed_batch_size distributions.
 
+webhooks_secrets_rotated is the odd one, because what it is worth watching for
+is silence. A key nobody rolls is the key a leak is still good against months
+later, and the counter is how a deployment sees that its rotation runbook is
+being run at all.
+
 Per-delivery measurements carry an endpoint attribute, because one worker serves
 every subscriber and a single broken one is invisible in the total. That
 attribute's cardinality grows with the endpoints table; an operator with enough
@@ -384,20 +389,32 @@ is not traced: a root span every poll interval is noise.
 
 # Where this package stops
 
-Nine of the eighteen store methods are served over gRPC by webhooks/grpc: the
-endpoint CRUD, the subscription CRUD and the delivery log. That is the half of
-this package that is a resource rather than a protocol — an operator adds a URL,
-picks the event types it wants, rotates its keys and then asks whether a
-delivery got through and what came back — and it is the only half a person ever
-touches.
+Ten of the nineteen store methods are served over gRPC by webhooks/grpc: the
+endpoint CRUD, the rotation, the subscription CRUD and the delivery log. That is
+the half of this package that is a resource rather than a protocol — an operator
+adds a URL, picks the event types it wants, rotates its keys and then asks
+whether a delivery got through and what came back — and it is the only half a
+person ever touches.
 
-Rotation is not a call of its own. Keys travel toward the store on exactly one
-message and are required on every [Store.SaveEndpoint], so rotating is saving
-the endpoint with a new keyring and a save is always a full re-registration.
-They do not travel back: the proto's endpoint message has no field to put them
-in, which is what makes "an API that hands out signing keys" unrepresentable
-rather than merely unwritten. [Secret] is why that is affordable — the pair is
-what lets one subscriber move without the rest of them breaking.
+Rotation is a call of its own, and what makes it one is the direction key
+material travels. Keys travel toward the store and never back: the proto's
+endpoint message has no field to put them in, which is what makes "an API that
+hands out signing keys" unrepresentable rather than merely unwritten.
+[Store.RotateSecret] and [Dispatcher.RotateSecret] are the same shape stated as
+a method — they take the incoming key and answer with nothing at all.
+
+The alternative was the one this package shipped with, and it is worth saying
+what was wrong with it. A save is a full re-registration, keys included, so
+rotating through [Store.SaveEndpoint] means supplying both halves of the
+keyring — and a caller obliged to supply the outgoing key is a caller obliged to
+have read it, which is the read path the whole arrangement exists to not have.
+The rotation moves that key from one column to the other inside the statement
+instead, so no process holds it. [NewSigningSecret] mints the incoming one, at
+the length HMAC-SHA256 wants, because "some random bytes" was otherwise a
+decision every consumer made again. [Secret] is why a rotation is not an outage
+— the pair is what lets one subscriber move without the rest of them breaking —
+and rotating to the key already in force is a no-op rather than a second
+rotation, so a retry cannot close that window early.
 
 The nine that stay behind each say so on themselves. Seven are the delivery
 machinery [Store] groups under "The delivery machinery takes neither" —

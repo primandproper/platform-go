@@ -226,6 +226,16 @@ func mustSaveEndpoint(t *testing.T, store Store, scope tenancy.Scope, endpoint *
 	return saved
 }
 
+// rotateSecret rolls one endpoint's signing key forward inside a transaction,
+// the way a consumer's own write would.
+func rotateSecret(t *testing.T, store Store, scope tenancy.Scope, endpointID string, next []byte) error {
+	t.Helper()
+
+	return inTx(t, store, func(tx database.Tx) error {
+		return store.RotateSecret(t.Context(), tx, scope, endpointID, next)
+	})
+}
+
 func archiveEndpoint(t *testing.T, store Store, scope tenancy.Scope, endpointID string) (*Endpoint, error) {
 	t.Helper()
 

@@ -13,21 +13,22 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// The endpoint half of the surface: four RPCs over the endpoints registered in
+// The endpoint half of the surface: five RPCs over the endpoints registered in
 // the caller's tenant, each behind a permission.
 //
 // Every one of them takes the tenant off the caller's principal, and none of
-// them takes a scope at all. The three reads and the archive are one call each;
-// the save is one call inside one transaction, because webhooks.Dispatcher's
-// writes take a database.Tx and an RPC handler is the caller with nothing of its
-// own to join.
+// them takes a scope at all. The three reads are one call each; the save, the
+// archive and the rotation are one call inside one transaction, because
+// webhooks.Dispatcher's writes take a database.Tx and an RPC handler is the
+// caller with nothing of its own to join.
 //
 // None of them switches on a sentinel: the error goes through
 // grpcerrors.PrepareAndLogGRPCStatus with codes.Internal as the *default*, and
 // the encoding interceptor re-runs the registered mappers over the preserved
-// chain, so webhooks.GRPCMapper wins over the guess made here. The two places a
-// code is passed as an answer rather than a default are the two refusals nothing
-// maps: a save that named no endpoint, and one that named no signing keys.
+// chain, so webhooks.GRPCMapper wins over the guess made here. The three places
+// a code is passed as an answer rather than a default are the three refusals
+// nothing maps: a save that named no endpoint, one that named no signing keys,
+// and a rotation that named no key to rotate to.
 
 // SaveEndpoint registers an endpoint in the caller's tenant, or re-registers one
 // that is already there, reconciling its subscriptions against the event types
@@ -233,4 +234,71 @@ func (s *Server) ArchiveEndpoint(
 	}
 
 	return &webhookspb.ArchiveEndpointResponse{}, nil
+}
+
+// RotateSecret installs a new signing key on one of the caller's endpoints and
+// demotes the key it replaces.
+//
+// The response is empty, and that is what the RPC is for rather than an economy
+// of fields. Nothing on this surface hands key material back — a subscriber
+// authenticates a delivery by its HMAC, so a key readable over an
+// administrative API is a key anybody holding that grant can forge deliveries
+// with — and a rotation is the call that would most plausibly have. The
+// incoming key is on the request because the client minted it and is about to
+// hand it to the subscriber; the outgoing key moves from one column to the other
+// inside the statement and is never a value this process holds.
+//
+// Without it, rotating over this surface means a SaveEndpoint carrying a whole
+// keyring, and a client that has to supply the outgoing key is a client that had
+// to be able to read it. That is the read this surface does not have, so the
+// rotation is what makes it narrower rather than wider.
+//
+// It writes through webhooks.Dispatcher rather than the store for the reason the
+// save does: the refusals belong in front of the write. There is no URL to check
+// here — this request names none, and the one on the row was checked when it was
+// registered and is checked again at delivery — but an empty key is refused
+// before the transaction is opened, at this call site rather than in
+// webhooks.GRPCMapper, because the sentinel it raises is requestsigning's and a
+// mapper case would answer for every other raiser of it in the process.
+//
+// An identifier that names nothing live in the caller's tenant is NotFound
+// rather than OK, which is where this parts company with ArchiveEndpoint: an
+// archive of something that is not there has already happened, and a rotation of
+// something that is not there has not. It is the answer a read of the same
+// identifier gives, so it still says nothing about whether it exists in somebody
+// else's tenant.
+func (s *Server) RotateSecret(
+	ctx context.Context,
+	request *webhookspb.RotateSecretRequest,
+) (*webhookspb.RotateSecretResponse, error) {
+	ctx, req, done, err := s.caller(ctx, webhookspb.WebhooksService_RotateSecret_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	id := request.GetEndpointId()
+	req.op.Set(endpointKey, id)
+
+	next := request.GetSigningKey()
+	if len(next) == 0 {
+		err = grpcerrors.PrepareAndLogGRPCStatus(webhooks.ErrNoSigningSecret,
+			req.op.Logger(), req.op.Span(), codes.InvalidArgument,
+			"rotating the secret of webhook endpoint %q", id)
+
+		return nil, err
+	}
+
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		return s.dispatcher.RotateSecret(ctx, tx, req.scope, id, next)
+	}); err != nil {
+		err = grpcerrors.PrepareAndLogGRPCStatus(err,
+			req.op.Logger(), req.op.Span(), codes.Internal,
+			"rotating the secret of webhook endpoint %q", id)
+
+		return nil, err
+	}
+
+	return &webhookspb.RotateSecretResponse{}, nil
 }

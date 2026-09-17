@@ -133,9 +133,10 @@ type ClaimedDispatch struct {
 //
 // SaveEndpoint, AddSubscription, ArchiveEndpoint and ArchiveSubscription each
 // return the row the statement left behind, read back on the caller's
-// transaction. A consumer's write almost never travels alone, and the companion
-// it travels with — the audit entry naming who retired an endpoint is the
-// standing example — describes what happened. Without a returned row that entry
+// transaction. RotateSecret is the deliberate exception and says so on itself.
+// A consumer's write almost never travels alone, and the companion it travels
+// with — the audit entry naming who retired an endpoint is the standing
+// example — describes what happened. Without a returned row that entry
 // describes the row as a read found it a statement earlier, which is the row
 // before the write on a create and a row nobody promised still exists on an
 // archive.
@@ -147,22 +148,33 @@ type ClaimedDispatch struct {
 // the same transaction, which is the property the reads taking a
 // database.SQLQueryExecutor rather than a reader exists for.
 //
-// Enqueue is the consumer-facing write that does not return, and the reason is
+// Two consumer writes do not return, for two different reasons. Enqueue's is
 // the one its own doc gives: what it writes is a delivery and one dispatch per
 // endpoint, which is a fan-out rather than a row, and its only caller is
 // Dispatcher.Dispatch — which assembled the delivery it passed and already holds
-// every field of it. The machinery below returns what it has always returned:
-// Reap a count because it deletes a set, Backlog two gauges, and the rest a bare
-// error, because each of them addresses a dispatch the worker is already
-// holding.
+// every field of it. RotateSecret's is the sharper one, and it is the whole
+// point of that method: the row it moved is the one row here whose columns must
+// not travel back, so "the write answers with what it wrote" is exactly the
+// convention it exists to decline. The machinery below returns what it has
+// always returned: Reap a count because it deletes a set, Backlog two gauges,
+// and the rest a bare error, because each of them addresses a dispatch the
+// worker is already holding.
 //
-// # Nine of these are on the wire and nine are not
+// # Ten of these are on the wire and nine are not
 //
 // webhooks/grpc serves endpoint management and delivery history: SaveEndpoint,
-// GetEndpoint, ListEndpoints, ArchiveEndpoint, AddSubscription,
+// GetEndpoint, ListEndpoints, ArchiveEndpoint, RotateSecret, AddSubscription,
 // GetSubscription, ListSubscriptions, ArchiveSubscription and ListAttempts.
 // They are the half of this package that is a resource rather than a protocol,
 // and the only half a person ever touches.
+//
+// RotateSecret is on it because it can be: the request carries a key toward the
+// store and the response carries nothing at all, which is the condition a
+// credential operation has to meet before it is worth publishing. The rotation
+// is in fact the call that makes the surface safer rather than wider — without
+// it, rotating over the wire means a SaveEndpoint carrying both halves of the
+// keyring, and a caller who must supply the outgoing key is a caller who must
+// have been able to read it.
 //
 // The seven above are the first group that stays off it, and the reason is the
 // paragraph they are already documented by: a caller supplying a transaction is
@@ -248,6 +260,45 @@ type Store interface {
 	// The second of those two does come back — the row is still there and still
 	// says when it was retired, which may be before this call.
 	ArchiveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string) (*Endpoint, error)
+	// RotateSecret installs next as the signing key of one of scope's live
+	// endpoints and demotes the key it replaces to previous, through the
+	// caller's transaction. Deliveries are then signed under both until the next
+	// rotation, which is the window a subscriber switches keys in.
+	//
+	// It returns nothing but an error, and that is the property rather than an
+	// omission. The outgoing key moves from one column to the other inside the
+	// engine, so no process ever holds it; the incoming one arrives as an
+	// argument, already known to whoever minted it. Neither direction is a read,
+	// which is what keeps "an API that hands out signing keys" out of this
+	// interface — a key a read path will hand over is a key anyone holding that
+	// grant can forge deliveries with.
+	//
+	// It is the write a rotation would otherwise be spelled as: a SaveEndpoint
+	// carrying a whole keyring, which obliges the caller to supply the outgoing
+	// key and therefore to have read it back first. A caller who does hold both
+	// halves deliberately — one migrating an endpoint's keys in from somewhere
+	// else — still has SaveEndpoint.
+	//
+	// next is required and is used as key material verbatim: a key stored
+	// encoded is decoded by whoever holds it, so that what the database holds
+	// and what the HMAC consumes cannot drift apart. NewSigningSecret mints one.
+	// An empty next is an error wrapping ErrNoSigningSecret.
+	//
+	// Rotating to the key already in force is a no-op rather than a second
+	// rotation: the previous key is left where it is instead of being overwritten
+	// with a copy of the current one. That is what makes this safe to repeat,
+	// which a credential operation has to be — under the other reading, a retried
+	// call would close the window the first one opened and leave every subscriber
+	// that had not yet switched unable to verify anything.
+	//
+	// An identifier naming nothing live in scope — never registered, registered
+	// in another tenant, or since archived — is an error wrapping
+	// database/sql.ErrNoRows, which is what a read of it in this scope answers
+	// too. It is not the answer ArchiveEndpoint gives to the same absence, and
+	// the two differ because the states they are asked for do: an archive of
+	// something that is not there has already happened, and a rotation of
+	// something that is not there has not.
+	RotateSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error
 
 	// AddSubscription subscribes one of scope's endpoints to eventType, through
 	// the caller's transaction, and returns the resulting row.

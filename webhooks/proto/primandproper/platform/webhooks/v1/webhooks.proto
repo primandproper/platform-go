@@ -3,7 +3,7 @@
 // operator registers a URL, picks the events it wants, rotates its signing
 // keys, and reads back what was actually delivered.
 //
-// It is not the delivery pipeline. Nine of the eighteen methods on
+// It is not the delivery pipeline. Ten of the nineteen methods on
 // webhooks.Store are here and nine deliberately are not; the service comment
 // at the bottom of this file names all nine absences and why each one stays
 // off the wire.
@@ -63,19 +63,28 @@
 //
 // See identity.proto, which says the underlying rule at greater length.
 //
-// No signing key on any response. [WebhookSigningKeys] appears on exactly one
-// message in this schema -- [SaveEndpointRequest] -- and it travels in one
-// direction only. webhooks.Store.GetEndpoint reads an endpoint "secrets
-// included" and [WebhookEndpoint] has nowhere to put them, which is the
-// property rather than an oversight: a subscriber authenticates a delivery by
-// its HMAC, so a key readable back over an administrative API is a key
-// anybody who can read that API can forge deliveries with.
+// No signing key on any response. Key material appears on exactly two messages
+// in this schema -- [SaveEndpointRequest] and [RotateSecretRequest] -- and on
+// both it travels in one direction only. webhooks.Store.GetEndpoint reads an
+// endpoint "secrets included" and [WebhookEndpoint] has nowhere to put them,
+// which is the property rather than an oversight: a subscriber authenticates a
+// delivery by its HMAC, so a key readable back over an administrative API is a
+// key anybody who can read that API can forge deliveries with.
+//
+// [RotateSecretResponse] is empty for that reason and not because there is
+// nothing to say. A rotation moves the outgoing key into the previous slot
+// inside the statement, so no message and no process holds it; the incoming key
+// is on the request because the client minted it and is about to hand it to the
+// subscriber, who is the party that verifies with it.
 //
 // The consequence is that a save is a full re-registration, keys included,
 // because there is no read that hands the current ones back. That is deliberate
 // and is not a silent hazard: an endpoint saved without keys is refused rather
 // than saved with none, so the failure is an error at the console and never a
-// subscriber whose signature checks quietly stopped matching.
+// subscriber whose signature checks quietly stopped matching. Rotation is the
+// one thing a caller would otherwise need that read for, and [RotateSecret] is
+// why they do not: it names the incoming key alone, so rolling a subscriber's
+// key never obliges anybody to have been able to read the outgoing one.
 //
 // No created_by in any request. It is output-only, filled from the principal
 // the consumer's interceptor resolved, because provenance a caller could name
@@ -321,6 +330,40 @@ message ArchiveEndpointRequest {
 }
 message ArchiveEndpointResponse {}
 
+// RotateSecretRequest rolls one endpoint's signing key forward.
+//
+// It carries the incoming key and names nothing else, which is the whole reason
+// it is a message of its own rather than a [SaveEndpointRequest] with a fresh
+// keyring on it. A save takes both halves of the keyring, so a client rotating
+// through one has to supply the outgoing key -- and a client that must supply
+// it is a client that had to be able to read it. Here the outgoing key is moved
+// into the previous slot by the statement itself and is never a value anything
+// outside the database holds.
+message RotateSecretRequest {
+  reserved "scope";
+
+  string endpoint_id = 1 [json_name = "endpointID"];
+
+  // signing_key is the key deliveries to this endpoint will be signed under
+  // from now on. Required: a rotation to nothing would leave an endpoint that
+  // cannot be delivered to at all.
+  //
+  // It is the key material itself, used verbatim. A deployment that stores its
+  // keys encoded decodes before sending, so that what the database holds and
+  // what the HMAC consumes cannot drift apart.
+  //
+  // The key it replaces is not named here and cannot be: naming it would be the
+  // read this message exists to avoid. It becomes the endpoint's previous key,
+  // and deliveries carry a signature under both until the next rotation -- which
+  // is the window a subscriber switches keys in without missing a delivery.
+  bytes signing_key = 2;
+}
+
+// RotateSecretResponse is empty, and that is the point of the RPC rather than
+// an economy. See the file comment: nothing on this surface hands key material
+// back, and a rotation is the call that would most plausibly have.
+message RotateSecretResponse {}
+
 message AddSubscriptionRequest {
   reserved "scope";
 
@@ -374,7 +417,7 @@ message ListAttemptsResponse {
 // webhooks that is a resource rather than a protocol, and the only half a
 // person ever touches.
 //
-// Nine RPCs over webhooks.Store's eighteen methods, each behind a grant and
+// Ten RPCs over webhooks.Store's nineteen methods, each behind a grant and
 // each acting only within the tenant the caller's principal names. The other
 // nine are absent on purpose, in three groups.
 //
@@ -412,6 +455,7 @@ service WebhooksService {
   rpc GetEndpoint(GetEndpointRequest) returns (GetEndpointResponse);
   rpc ListEndpoints(ListEndpointsRequest) returns (ListEndpointsResponse);
   rpc ArchiveEndpoint(ArchiveEndpointRequest) returns (ArchiveEndpointResponse);
+  rpc RotateSecret(RotateSecretRequest) returns (RotateSecretResponse);
 
   rpc AddSubscription(AddSubscriptionRequest) returns (AddSubscriptionResponse);
   rpc GetSubscription(GetSubscriptionRequest) returns (GetSubscriptionResponse);

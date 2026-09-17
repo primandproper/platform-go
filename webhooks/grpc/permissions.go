@@ -19,7 +19,7 @@ import (
 // rather than an enum because a consumer's policy is data — a YAML file, a table
 // of roles — and it has to be able to name one without importing Go.
 //
-// There are seven of them over nine RPCs, and the two collapses are deliberate.
+// There are eight of them over ten RPCs, and the two collapses are deliberate.
 // Each get and its list share one grant, because they answer the same question
 // at two cardinalities and a grant that separated them would let a consumer
 // allow enumeration while forbidding the read it enumerates into. A consumer who
@@ -48,6 +48,25 @@ const (
 	// history outlives it, which is what makes this a lighter grant than a save:
 	// nothing is destroyed and nothing is redirected.
 	PermissionArchiveEndpoints authorization.Permission = "webhooks.endpoints.archive"
+
+	// PermissionRotateEndpointSecrets covers rolling an endpoint's signing key
+	// forward.
+	//
+	// It is separate from PermissionSaveEndpoints, and the split is the reason
+	// the rotation is an RPC of its own. A save names the URL an authenticated
+	// request is about to be made to as well as the keys it is signed under, so
+	// a holder of it can point an event stream somewhere else; a rotation names
+	// only the key, so a holder of this can make a subscriber's existing
+	// signatures stop verifying and can do nothing else. "Let the on-call roll a
+	// leaked key at three in the morning" and "let them change where a tenant's
+	// events go" are different amounts of trust, and under one grant they would
+	// have to be the same one.
+	//
+	// It discloses nothing. The request carries the incoming key, which its
+	// sender already holds, and the response carries nothing at all.
+	//
+	//nolint:gosec // G101: a grant naming an operation, not a credential.
+	PermissionRotateEndpointSecrets authorization.Permission = "webhooks.endpoints.rotate_secret"
 
 	// PermissionAddSubscriptions covers subscribing an existing endpoint to one
 	// more event type.
@@ -99,6 +118,7 @@ func Permissions() map[string][]authorization.Permission {
 		webhookspb.WebhooksService_GetEndpoint_FullMethodName:         {PermissionReadEndpoints},
 		webhookspb.WebhooksService_ListEndpoints_FullMethodName:       {PermissionReadEndpoints},
 		webhookspb.WebhooksService_ArchiveEndpoint_FullMethodName:     {PermissionArchiveEndpoints},
+		webhookspb.WebhooksService_RotateSecret_FullMethodName:        {PermissionRotateEndpointSecrets},
 		webhookspb.WebhooksService_AddSubscription_FullMethodName:     {PermissionAddSubscriptions},
 		webhookspb.WebhooksService_GetSubscription_FullMethodName:     {PermissionReadSubscriptions},
 		webhookspb.WebhooksService_ListSubscriptions_FullMethodName:   {PermissionReadSubscriptions},

@@ -68,10 +68,12 @@ const (
 	DeadColumn         = "dead"
 	PayloadColumn      = "payload"
 
-	// secretPreviousColumn is the endpoint's retiring signing key. It is
-	// unexported because nothing outside this package names it: the store binds
-	// it through the generated params, and what it is spelled here for is the
-	// three lists an endpoint's shape is made of.
+	// The endpoint's two signing keys. They are unexported because nothing
+	// outside this package names them: the store binds them through the
+	// generated params, and what they are spelled here for is the three lists an
+	// endpoint's shape is made of — plus the rotation, which is the one
+	// statement that names both at once.
+	secretCurrentColumn  = "secret_current"
 	secretPreviousColumn = "secret_previous"
 )
 
@@ -133,7 +135,7 @@ var Endpoints = Table{
 		"name",
 		"url",
 		"content_type",
-		"secret_current",
+		secretCurrentColumn,
 		secretPreviousColumn,
 		"headers",
 		DisabledColumn,
@@ -142,7 +144,7 @@ var Endpoints = Table{
 		querygen.ArchivedAtColumn,
 	},
 	Nullable:  []string{"created_by", secretPreviousColumn},
-	Updatable: []string{"name", "url", "content_type", "secret_current", secretPreviousColumn, "headers", DisabledColumn},
+	Updatable: []string{"name", "url", "content_type", secretCurrentColumn, secretPreviousColumn, "headers", DisabledColumn},
 }
 
 // Subscriptions is one endpoint's interest in one event type, as a row.
@@ -263,13 +265,14 @@ func Render(d dialect.Dialect) string {
 	return querygen.RenderFile(rendered)
 }
 
-// endpointQueries is the registry's six statements.
+// endpointQueries is the registry's seven statements.
 //
-// Five are rendered and one is the pair a paged list always is. What none of
-// them omits is the scope: the get, the list and the archive each name it, and
-// the two that do not are the ones that cannot — the collision check reads one
-// column precisely to find out whose the row already is, and the fan-out
-// lookup names it on the endpoint rather than on the subscription it joins to.
+// Five are rendered, one is the pair a paged list always is, and one is
+// authored. What none of them omits is the scope: the get, the list, the
+// archive and the rotation each name it, and the two that do not are the ones
+// that cannot — the collision check reads one column precisely to find out
+// whose the row already is, and the fan-out lookup names it on the endpoint
+// rather than on the subscription it joins to.
 func endpointQueries(g *querygen.Generator) []*querygen.Query {
 	scope := querygen.Match{Column: ScopeColumn}
 
@@ -316,7 +319,62 @@ func endpointQueries(g *querygen.Generator) []*querygen.Query {
 	queries := []*querygen.Query{upsert, get, ownership}
 	queries = append(queries, list...)
 
-	return append(queries, archive, endpointsForEvent(g))
+	return append(queries, archive, rotateEndpointSecret(g), endpointsForEvent(g))
+}
+
+// rotateEndpointSecret installs a new current signing key on one of a scope's
+// live endpoints and demotes the key it replaces to previous, so that a
+// rotation is one statement rather than a re-registration.
+//
+// It is authored because it assigns an expression: secret_previous takes the
+// value secret_current already held, and querygen assigns bound values. That
+// expression is the entire reason this statement exists. A consumer rotating
+// through the upsert has to supply both halves of the keyring, which means it
+// has to have read the outgoing key back out of the database first — and a key
+// a read path will hand over is a key anybody holding that grant can forge
+// with. Here the outgoing key moves from one column to the other inside the
+// engine and is never a value any process holds.
+//
+// The two assignments are in this order because MySQL requires it. Postgres and
+// SQLite evaluate every SET expression against the row as it was found, so the
+// order says nothing there; MySQL evaluates them left to right and lets a later
+// assignment read what an earlier one wrote, so demoting after the overwrite
+// would store the incoming key in both columns and lose the outgoing one — a
+// rotation that silently ends the window it exists to open. The order is pinned
+// by a test rather than left to this comment.
+//
+// The demotion is a CASE rather than a bare assignment so that the statement is
+// convergent: rotating to the key that is already current leaves the previous
+// key where it is instead of overwriting it with a copy of the current one. That
+// is the shape a retry has, and under a bare assignment a retried rotation would
+// close the window the first one opened — the outgoing key gone, and every
+// subscriber that had not yet switched now failing to verify. A credential
+// operation that is dangerous to repeat is one nothing may safely retry, so the
+// repetition is made harmless here rather than forbidden everywhere upstream.
+//
+// It is keyed on the id and the scope together, and it refuses an archived
+// endpoint: a retired endpoint is delivered to by nothing, so rotating its keys
+// is a write with no reader. The store reads the affected count as the answer
+// to whether the endpoint was there at all.
+func rotateEndpointSecret(g *querygen.Generator) *querygen.Query {
+	return &querygen.Query{
+		Annotation: querygen.QueryAnnotation{Name: "RotateEndpointSecret", Type: querygen.ExecRowsType},
+		Content: fmt.Sprintf(`UPDATE %s SET
+	%[2]s = CASE WHEN %[3]s = %[4]s THEN %[2]s ELSE %[3]s END,
+	%[3]s = %[4]s,
+	%[5]s = %[6]s
+WHERE %[7]s IS NULL
+	AND %[8]s = %[9]s
+	AND %[10]s = %[11]s;`,
+			EndpointsTable,
+			secretPreviousColumn,
+			secretCurrentColumn, arg(secretCurrentColumn),
+			querygen.LastUpdatedAtColumn, g.StoredNow(),
+			querygen.ArchivedAtColumn,
+			querygen.IDColumn, arg(querygen.IDColumn),
+			ScopeColumn, arg(ScopeColumn),
+		),
+	}
 }
 
 // endpointsForEvent is the fan-out lookup: which live, enabled endpoints in

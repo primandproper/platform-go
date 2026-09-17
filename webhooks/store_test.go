@@ -122,6 +122,152 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.SliceEmpty(t, got.Secret.Previous)
 	})
 
+	// The rotation block. Each of these is a property the statement's CASE, its
+	// assignment order, or its predicate is there for — the pair, not the
+	// column, is what a subscriber verifies against.
+	t.Run("rotating installs the new key and demotes the old one", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		registerEndpoint(t, store, "endpoint-1", "order.created")
+
+		must.NoError(t, rotateSecret(t, store, testScope, "endpoint-1", []byte("rolled")))
+
+		got, err := store.GetEndpoint(ctxFor(t), readerOf(t, store), testScope, "endpoint-1")
+		must.NoError(t, err)
+
+		test.Eq(t, []byte("rolled"), got.Secret.Current)
+		test.Eq(t, []byte("secret-endpoint-1"), got.Secret.Previous)
+	})
+
+	// MySQL evaluates SET assignments left to right and lets a later one read
+	// what an earlier one wrote, so the demotion has to come first. Under the
+	// other order this reads back "rolled" in both columns on that dialect and
+	// passes everywhere else, which is why it is asserted against a server
+	// rather than against the rendered text alone.
+	t.Run("the demoted key is the one the rotation replaced", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		registerEndpoint(t, store, "endpoint-1", "order.created")
+
+		must.NoError(t, rotateSecret(t, store, testScope, "endpoint-1", []byte("second")))
+		must.NoError(t, rotateSecret(t, store, testScope, "endpoint-1", []byte("third")))
+
+		got, err := store.GetEndpoint(ctxFor(t), readerOf(t, store), testScope, "endpoint-1")
+		must.NoError(t, err)
+
+		test.Eq(t, []byte("third"), got.Secret.Current)
+		test.Eq(t, []byte("second"), got.Secret.Previous)
+	})
+
+	// A retry is the shape this has to survive: under a bare demotion the
+	// second call would put the incoming key in both columns and lose the one
+	// every subscriber that had not yet switched is still verifying with.
+	t.Run("rotating to the key already in force demotes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		registerEndpoint(t, store, "endpoint-1", "order.created")
+
+		must.NoError(t, rotateSecret(t, store, testScope, "endpoint-1", []byte("rolled")))
+		must.NoError(t, rotateSecret(t, store, testScope, "endpoint-1", []byte("rolled")))
+
+		got, err := store.GetEndpoint(ctxFor(t), readerOf(t, store), testScope, "endpoint-1")
+		must.NoError(t, err)
+
+		test.Eq(t, []byte("rolled"), got.Secret.Current)
+		test.Eq(t, []byte("secret-endpoint-1"), got.Secret.Previous)
+	})
+
+	t.Run("rotating leaves everything else on the row alone", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		registered := registerEndpoint(t, store, "endpoint-1", "order.created", "order.updated")
+
+		must.NoError(t, rotateSecret(t, store, testScope, "endpoint-1", []byte("rolled")))
+
+		got, err := store.GetEndpoint(ctxFor(t), readerOf(t, store), testScope, "endpoint-1")
+		must.NoError(t, err)
+
+		test.EqOp(t, registered.URL, got.URL)
+		test.EqOp(t, registered.ContentType, got.ContentType)
+		test.EqOp(t, registered.CreatedAt, got.CreatedAt)
+		test.Eq(t, []EventType{orderCreated, orderUpdated}, got.EventTypes())
+		test.False(t, got.Disabled)
+		test.Nil(t, got.ArchivedAt)
+	})
+
+	// An endpoint another tenant holds is not this tenant's to roll, and the
+	// refusal is the same one a read of it gets rather than one that admits the
+	// identifier exists.
+	t.Run("rotating another scope's endpoint reaches nothing", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		registerScopedEndpoint(t, store, otherScope, "endpoint-1", "order.created")
+
+		err := rotateSecret(t, store, testScope, "endpoint-1", []byte("rolled"))
+		test.ErrorIs(t, err, sql.ErrNoRows)
+
+		// And the neighbor's key is untouched.
+		got, readErr := store.GetEndpoint(ctxFor(t), readerOf(t, store), otherScope, "endpoint-1")
+		must.NoError(t, readErr)
+		test.Eq(t, []byte("secret-endpoint-1"), got.Secret.Current)
+		test.SliceEmpty(t, got.Secret.Previous)
+	})
+
+	t.Run("rotating an endpoint that was never registered reaches nothing", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		test.ErrorIs(t, rotateSecret(t, store, testScope, "endpoint-1", []byte("rolled")), sql.ErrNoRows)
+	})
+
+	// A retired endpoint is delivered to by nothing, so rolling its key is a
+	// write with no reader.
+	t.Run("rotating an archived endpoint reaches nothing", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		registerEndpoint(t, store, "endpoint-1", "order.created")
+		mustArchiveEndpoint(t, store, testScope, "endpoint-1")
+
+		test.ErrorIs(t, rotateSecret(t, store, testScope, "endpoint-1", []byte("rolled")), sql.ErrNoRows)
+	})
+
+	t.Run("rotating to no key at all is refused", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		registerEndpoint(t, store, "endpoint-1", "order.created")
+
+		test.ErrorIs(t, rotateSecret(t, store, testScope, "endpoint-1", nil), ErrNoSigningSecret)
+
+		got, err := store.GetEndpoint(ctxFor(t), readerOf(t, store), testScope, "endpoint-1")
+		must.NoError(t, err)
+		test.Eq(t, []byte("secret-endpoint-1"), got.Secret.Current)
+	})
+
+	t.Run("rotating without a transaction is refused", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		test.ErrorIs(t, store.RotateSecret(ctxFor(t), nil, testScope, "endpoint-1", []byte("rolled")), ErrNilExecutor)
+	})
+
+	t.Run("rotating without a scope is refused", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		registerEndpoint(t, store, "endpoint-1", "order.created")
+
+		test.ErrorIs(t, rotateSecret(t, store, tenancy.Scope{}, "endpoint-1", []byte("rolled")), ErrNoScope)
+	})
+
 	t.Run("re-saving reconciles the subscription set", func(t *testing.T) {
 		t.Parallel()
 

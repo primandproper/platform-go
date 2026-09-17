@@ -76,6 +76,9 @@ var _ webhooks.Store = &StoreMock{}
 //			RequeueFunc: func(ctx context.Context, deliveryID string, endpointID string, at time.Time) error {
 //				panic("mock out the Requeue method")
 //			},
+//			RotateSecretFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error {
+//				panic("mock out the RotateSecret method")
+//			},
 //			SaveEndpointFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) (*webhooks.Endpoint, error) {
 //				panic("mock out the SaveEndpoint method")
 //			},
@@ -136,6 +139,9 @@ type StoreMock struct {
 
 	// RequeueFunc mocks the Requeue method.
 	RequeueFunc func(ctx context.Context, deliveryID string, endpointID string, at time.Time) error
+
+	// RotateSecretFunc mocks the RotateSecret method.
+	RotateSecretFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error
 
 	// SaveEndpointFunc mocks the SaveEndpoint method.
 	SaveEndpointFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) (*webhooks.Endpoint, error)
@@ -327,6 +333,19 @@ type StoreMock struct {
 			// At is the at argument value.
 			At time.Time
 		}
+		// RotateSecret holds details about calls to the RotateSecret method.
+		RotateSecret []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// EndpointID is the endpointID argument value.
+			EndpointID string
+			// Next is the next argument value.
+			Next []byte
+		}
 		// SaveEndpoint holds details about calls to the SaveEndpoint method.
 		SaveEndpoint []struct {
 			// Ctx is the ctx argument value.
@@ -356,6 +375,7 @@ type StoreMock struct {
 	lockRecordAttempt       sync.RWMutex
 	lockRecordFailure       sync.RWMutex
 	lockRequeue             sync.RWMutex
+	lockRotateSecret        sync.RWMutex
 	lockSaveEndpoint        sync.RWMutex
 }
 
@@ -1103,6 +1123,54 @@ func (mock *StoreMock) RequeueCalls() []struct {
 	return calls
 }
 
+// RotateSecret calls RotateSecretFunc.
+func (mock *StoreMock) RotateSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error {
+	if mock.RotateSecretFunc == nil {
+		panic("StoreMock.RotateSecretFunc: method is nil but Store.RotateSecret was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		EndpointID string
+		Next       []byte
+	}{
+		Ctx:        ctx,
+		Tx:         tx,
+		Scope:      scope,
+		EndpointID: endpointID,
+		Next:       next,
+	}
+	mock.lockRotateSecret.Lock()
+	mock.calls.RotateSecret = append(mock.calls.RotateSecret, callInfo)
+	mock.lockRotateSecret.Unlock()
+	return mock.RotateSecretFunc(ctx, tx, scope, endpointID, next)
+}
+
+// RotateSecretCalls gets all the calls that were made to RotateSecret.
+// Check the length with:
+//
+//	len(mockedStore.RotateSecretCalls())
+func (mock *StoreMock) RotateSecretCalls() []struct {
+	Ctx        context.Context
+	Tx         database.Tx
+	Scope      tenancy.Scope
+	EndpointID string
+	Next       []byte
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		EndpointID string
+		Next       []byte
+	}
+	mock.lockRotateSecret.RLock()
+	calls = mock.calls.RotateSecret
+	mock.lockRotateSecret.RUnlock()
+	return calls
+}
+
 // SaveEndpoint calls SaveEndpointFunc.
 func (mock *StoreMock) SaveEndpoint(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpoint *webhooks.Endpoint) (*webhooks.Endpoint, error) {
 	if mock.SaveEndpointFunc == nil {
@@ -1166,6 +1234,9 @@ var _ webhooks.Dispatcher = &DispatcherMock{}
 //			ReplayFunc: func(ctx context.Context, scope tenancy.Scope, deliveryID string, endpointID string) error {
 //				panic("mock out the Replay method")
 //			},
+//			RotateSecretFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error {
+//				panic("mock out the RotateSecret method")
+//			},
 //			SubscribeFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType webhooks.EventType) (*webhooks.Subscription, error) {
 //				panic("mock out the Subscribe method")
 //			},
@@ -1187,6 +1258,9 @@ type DispatcherMock struct {
 
 	// ReplayFunc mocks the Replay method.
 	ReplayFunc func(ctx context.Context, scope tenancy.Scope, deliveryID string, endpointID string) error
+
+	// RotateSecretFunc mocks the RotateSecret method.
+	RotateSecretFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error
 
 	// SubscribeFunc mocks the Subscribe method.
 	SubscribeFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, eventType webhooks.EventType) (*webhooks.Subscription, error)
@@ -1229,6 +1303,19 @@ type DispatcherMock struct {
 			// EndpointID is the endpointID argument value.
 			EndpointID string
 		}
+		// RotateSecret holds details about calls to the RotateSecret method.
+		RotateSecret []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// EndpointID is the endpointID argument value.
+			EndpointID string
+			// Next is the next argument value.
+			Next []byte
+		}
 		// Subscribe holds details about calls to the Subscribe method.
 		Subscribe []struct {
 			// Ctx is the ctx argument value.
@@ -1254,11 +1341,12 @@ type DispatcherMock struct {
 			SubscriptionID string
 		}
 	}
-	lockDispatch    sync.RWMutex
-	lockRegister    sync.RWMutex
-	lockReplay      sync.RWMutex
-	lockSubscribe   sync.RWMutex
-	lockUnsubscribe sync.RWMutex
+	lockDispatch     sync.RWMutex
+	lockRegister     sync.RWMutex
+	lockReplay       sync.RWMutex
+	lockRotateSecret sync.RWMutex
+	lockSubscribe    sync.RWMutex
+	lockUnsubscribe  sync.RWMutex
 }
 
 // Dispatch calls DispatchFunc.
@@ -1390,6 +1478,54 @@ func (mock *DispatcherMock) ReplayCalls() []struct {
 	mock.lockReplay.RLock()
 	calls = mock.calls.Replay
 	mock.lockReplay.RUnlock()
+	return calls
+}
+
+// RotateSecret calls RotateSecretFunc.
+func (mock *DispatcherMock) RotateSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error {
+	if mock.RotateSecretFunc == nil {
+		panic("DispatcherMock.RotateSecretFunc: method is nil but Dispatcher.RotateSecret was just called")
+	}
+	callInfo := struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		EndpointID string
+		Next       []byte
+	}{
+		Ctx:        ctx,
+		Tx:         tx,
+		Scope:      scope,
+		EndpointID: endpointID,
+		Next:       next,
+	}
+	mock.lockRotateSecret.Lock()
+	mock.calls.RotateSecret = append(mock.calls.RotateSecret, callInfo)
+	mock.lockRotateSecret.Unlock()
+	return mock.RotateSecretFunc(ctx, tx, scope, endpointID, next)
+}
+
+// RotateSecretCalls gets all the calls that were made to RotateSecret.
+// Check the length with:
+//
+//	len(mockedDispatcher.RotateSecretCalls())
+func (mock *DispatcherMock) RotateSecretCalls() []struct {
+	Ctx        context.Context
+	Tx         database.Tx
+	Scope      tenancy.Scope
+	EndpointID string
+	Next       []byte
+} {
+	var calls []struct {
+		Ctx        context.Context
+		Tx         database.Tx
+		Scope      tenancy.Scope
+		EndpointID string
+		Next       []byte
+	}
+	mock.lockRotateSecret.RLock()
+	calls = mock.calls.RotateSecret
+	mock.lockRotateSecret.RUnlock()
 	return calls
 }
 

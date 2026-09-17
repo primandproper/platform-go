@@ -1,12 +1,14 @@
 package webhooks
 
 import (
+	"context"
 	"encoding/json"
 	"slices"
 	"time"
 
 	"github.com/primandproper/primitives-go/v2/cryptography/requestsigning"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/random"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
@@ -55,6 +57,7 @@ const (
 	backlogAgeKey   = "webhooks.backlog_age_seconds"
 	reapedKey       = "webhooks.reaped"
 	replayedKey     = "webhooks.replayed"
+	rotatedKey      = "webhooks.secret_rotated"
 	deadKey         = "webhooks.dead"
 	limitKey        = "webhooks.limit"
 
@@ -247,6 +250,39 @@ func (c Catalog) EventTypes() []EventType {
 // scheme lives in requestsigning; webhooks is one of its callers, not its
 // owner.
 type Secret = requestsigning.Keyring
+
+// SigningSecretLength is how many random bytes NewSigningSecret draws.
+//
+// Thirty-two, which is SHA-256's output size, and the key length RFC 2104
+// recommends for HMAC: a key shorter than the hash's output is the one
+// dimension of this construction a caller can get wrong, because it makes the
+// signature weaker than the algorithm it names. Longer buys nothing either —
+// HMAC hashes a key past the block size (sixty-four bytes for SHA-256) down to
+// the output size first, so the strength stops climbing here.
+const SigningSecretLength = 32
+
+// NewSigningSecret mints one signing key.
+//
+// It is here rather than left to the caller because every consumer of this
+// package needs one, and "some random bytes" is a decision with exactly one
+// right answer that each of them was otherwise making again — including how
+// many, which is the half that can be wrong without anything failing.
+//
+// It returns the material rather than writing it anywhere, and that is the
+// whole division of labor between this and [Dispatcher.RotateSecret]. The key
+// has to reach the subscriber, who is the party that verifies with it, so
+// somebody in the calling process has to hold it once; what must not happen is
+// a path that hands it back afterwards. So it travels outward here, at the one
+// moment it exists and nothing has stored it, and inward from then on — see
+// RotateSecret, which takes it and answers with nothing.
+func NewSigningSecret(ctx context.Context) ([]byte, error) {
+	key, err := random.GenerateRawBytes(ctx, SigningSecretLength)
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "minting a webhook signing secret")
+	}
+
+	return key, nil
+}
 
 // Endpoint is one subscriber: whose it is, where deliveries go, what they are
 // signed with, and which events reach it.

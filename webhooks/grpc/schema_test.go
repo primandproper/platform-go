@@ -72,8 +72,12 @@ func TestTheScopeNameIsReserved(T *testing.T) {
 // the file rather than the ones somebody remembered. A field added to
 // WebhookEndpoint in a later revision fails here rather than in an incident.
 //
-// Two names are excluded and both are the exception itself: the keyring message,
-// and the single request that carries one.
+// Three names are excluded, and all three are the exception itself: the keyring
+// message, and the two requests that carry key material. Both of those are
+// requests, which is the property this test is really about — key material
+// travels toward the store and never back, so a response is the thing that may
+// not carry it. TestTheRotationAnswersWithNothing pins the second request's own
+// half of that.
 func TestNoResponseMessageCanCarryAKeyring(T *testing.T) {
 	T.Parallel()
 
@@ -84,7 +88,7 @@ func TestNoResponseMessageCanCarryAKeyring(T *testing.T) {
 		message := messages.Get(i)
 
 		name := string(message.Name())
-		if name == "WebhookSigningKeys" || name == "SaveEndpointRequest" {
+		if name == "WebhookSigningKeys" || name == "SaveEndpointRequest" || name == "RotateSecretRequest" {
 			continue
 		}
 
@@ -108,16 +112,34 @@ func TestNoResponseMessageCanCarryAKeyring(T *testing.T) {
 	}
 }
 
-// TestTheServiceIsNineMethods pins the count the .proto's service comment
-// argues for, so that a tenth arrives with a failing test naming the argument
-// rather than as a diff nobody weighed against it.
-func TestTheServiceIsNineMethods(T *testing.T) {
+// TestTheRotationAnswersWithNothing is the other half of the keyring rule, and
+// it is the half a roster of excluded names cannot state.
+//
+// RotateSecretRequest is excluded from the walk above because it carries key
+// material on purpose. What makes that safe is not the exclusion — it is that
+// the response it is paired with is empty, so the rotation reads nothing back. A
+// field added to that response, of any type at all, is a rotation that answers
+// with something, and the next field after that is the current key.
+func TestTheRotationAnswersWithNothing(T *testing.T) {
+	T.Parallel()
+
+	response := messageNamed(T, "primandproper.platform.webhooks.v1.RotateSecretResponse")
+
+	test.EqOp(T, 0, response.Fields().Len(), test.Sprintf(
+		"RotateSecretResponse carries %d fields; a rotation answers with nothing",
+		response.Fields().Len()))
+}
+
+// TestTheServiceIsTenMethods pins the count the .proto's service comment
+// argues for, so that an eleventh arrives with a failing test naming the
+// argument rather than as a diff nobody weighed against it.
+func TestTheServiceIsTenMethods(T *testing.T) {
 	T.Parallel()
 
 	methods := webhookspb.File_primandproper_platform_webhooks_v1_webhooks_proto.
 		Services().ByName("WebhooksService").Methods()
 
-	test.EqOp(T, 9, methods.Len())
+	test.EqOp(T, 10, methods.Len())
 }
 
 func messageNamed(tb testing.TB, name protoreflect.FullName) protoreflect.MessageDescriptor {

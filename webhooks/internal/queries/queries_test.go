@@ -134,7 +134,8 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 
 	want := []string{
 		"UpsertEndpoint", "GetEndpoint", "GetEndpointScope",
-		"ListEndpoints", "ListEndpointsDescending", "ArchiveEndpoint", "ListEndpointsForEvent",
+		"ListEndpoints", "ListEndpointsDescending", "ArchiveEndpoint", "RotateEndpointSecret",
+		"ListEndpointsForEvent",
 		"UpsertSubscription", "GetSubscriptionByPair", "ListSubscriptionsForEndpoint",
 		"ListSubscriptions", "ListSubscriptionsDescending",
 		"GetSubscription", "ArchiveSubscriptionByPair", "ArchiveSubscription",
@@ -283,6 +284,91 @@ func TestRender_TheRequeueClearsTheNameAndDoesNotAskForOne(T *testing.T) {
 
 			test.StrContains(t, requeue, ClaimedByColumn+" = sqlc.narg("+ClaimedByArg+")")
 			test.StrNotContains(t, requeue, HeldByArg)
+		})
+	}
+}
+
+// TestRender_TheRotationDemotesBeforeItOverwrites is the one assertion in this
+// file about the order of two lines, and the order is load-bearing on exactly
+// one dialect.
+//
+// Postgres and SQLite evaluate every SET expression against the row as it was
+// found, so on those two the statement means the same thing either way round.
+// MySQL evaluates them left to right and lets a later assignment read what an
+// earlier one wrote, so a rotation that overwrote secret_current first would
+// demote a copy of the incoming key — the outgoing one gone, the rotation
+// window closed the instant it opened, and every subscriber that had not yet
+// switched unable to verify anything. The rendered text is where that is
+// checkable for all three at once.
+func TestRender_TheRotationDemotesBeforeItOverwrites(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rotation := statement(t, Render(d), "RotateEndpointSecret")
+
+			demotion := strings.Index(rotation, secretPreviousColumn+" =")
+			overwrite := strings.Index(rotation, "\n\t"+secretCurrentColumn+" = sqlc.arg(")
+
+			must.Positive(t, demotion, must.Sprint("the rotation assigns no previous key"))
+			must.Positive(t, overwrite, must.Sprint("the rotation assigns no current key"))
+
+			test.Less(t, overwrite, demotion, test.Sprintf(
+				"the rotation overwrites %s before demoting it, which loses the outgoing key on MySQL",
+				secretCurrentColumn))
+		})
+	}
+}
+
+// TestRender_TheRotationDeclinesToDemoteTheKeyItIsInstalling is what makes the
+// rotation safe to repeat.
+//
+// A retried rotation names the key that is already current. Under a bare
+// demotion the second call would put that key in both columns and lose the one
+// every subscriber that had not yet switched is still verifying with, so the
+// demotion is conditional on the incoming key being a different key.
+func TestRender_TheRotationDeclinesToDemoteTheKeyItIsInstalling(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rotation := statement(t, Render(d), "RotateEndpointSecret")
+
+			test.StrContains(t, rotation, "CASE WHEN "+secretCurrentColumn+" = sqlc.arg("+secretCurrentColumn+")"+
+				" THEN "+secretPreviousColumn+" ELSE "+secretCurrentColumn+" END")
+		})
+	}
+}
+
+// TestRender_TheRotationReadsNoKeyBack is the structural half of "the outgoing
+// key is never a value any process holds".
+//
+// The whole argument for the rotation being a statement of its own is that the
+// demotion happens inside the engine. A projection on it — a RETURNING clause,
+// a read wrapped around it — would put the material back on the wire between
+// the database and this process, which is the one thing the method's empty
+// return type promises it does not do.
+func TestRender_TheRotationReadsNoKeyBack(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rendered := Render(d)
+			rotation := statement(t, rendered, "RotateEndpointSecret")
+
+			test.StrNotContains(t, rotation, "SELECT")
+			test.StrNotContains(t, rotation, "RETURNING")
+
+			// A row count is the only thing it answers with, which is the shape
+			// of a write that reports whether it reached anything and nothing
+			// about what it found there.
+			test.StrContains(t, rendered, "-- name: RotateEndpointSecret :execrows")
 		})
 	}
 }

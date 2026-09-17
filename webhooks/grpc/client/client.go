@@ -31,15 +31,17 @@ say which field a console should put a red border around.
 
 identity's client applies one and this does not, and the reason is what a
 recorded reply would hold. An idempotency store keeps a response so it can be
-replayed, and the request that reaches SaveEndpoint carries an endpoint's HMAC
-signing keys. A store whose purpose is to hand the same bytes back a second time
-is not where a signing key's fingerprint should end up, and it is the same
-reading authentication/oauth2clients' client takes of a minted secret.
+replayed, and two of the requests here carry key material: SaveEndpoint carries
+an endpoint's whole HMAC keyring and RotateSecret carries the key it is rolling
+to. A store whose purpose is to hand the same bytes back a second time is not
+where a signing key's fingerprint should end up, and it is the same reading
+authentication/oauth2clients' client takes of a minted secret.
 
-The cost is smaller here than there, because eight of the nine RPCs are
-naturally idempotent and the ninth is an upsert: a retried save writes the
-endpoint the first one already wrote. What a retry costs is a duplicate write,
-not a duplicate row.
+The cost is smaller here than there, because eight of the ten RPCs are naturally
+idempotent and the other two are convergent: a retried save writes the endpoint
+the first one already wrote, and a retried rotation installs a key that is
+already current, which its own statement declines to demote anything for. What a
+retry costs is a duplicate write, not a duplicate row.
 */
 package client
 
@@ -80,8 +82,8 @@ type Option func(*options)
 // credentials, a resolver.
 //
 // Nothing here supplies transport security, and on this service that is worth
-// stating rather than assuming: SaveEndpoint carries an endpoint's HMAC signing
-// keys in its request. grpc.NewClient refuses a target with no credentials
+// stating rather than assuming: SaveEndpoint and RotateSecret carry HMAC signing
+// key material in their requests. grpc.NewClient refuses a target with no credentials
 // option, which is the right failure, and insecure.NewCredentials is a decision
 // to make deliberately and not one this package will make on your behalf.
 func WithDialOptions(opts ...grpc.DialOption) Option {

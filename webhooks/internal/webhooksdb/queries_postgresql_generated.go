@@ -606,6 +606,14 @@ WHERE archived_at IS NULL
 	AND delivery_id = $7
 	AND endpoint_id = $8`
 
+const rotateEndpointSecretPostgreSQL = `UPDATE {{prefix}}webhooks_endpoints SET
+	secret_previous = CASE WHEN secret_current = $1 THEN secret_previous ELSE secret_current END,
+	secret_current = $1,
+	last_updated_at = CURRENT_TIMESTAMP
+WHERE archived_at IS NULL
+	AND id = $2
+	AND scope = $3`
+
 const selectClaimableDispatchesPostgreSQL = `SELECT m.id
 FROM {{prefix}}webhooks_dispatches AS m
 WHERE m.delivered_at IS NULL
@@ -703,6 +711,7 @@ type postgresqlQueries struct {
 	reapDispatches               string
 	recordDispatchFailure        string
 	requeueDispatch              string
+	rotateEndpointSecret         string
 	selectClaimableDispatches    string
 	upsertEndpoint               string
 	upsertSubscription           string
@@ -739,6 +748,7 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		reapDispatches:               strings.ReplaceAll(reapDispatchesPostgreSQL, prefixMarker, prefix),
 		recordDispatchFailure:        strings.ReplaceAll(recordDispatchFailurePostgreSQL, prefixMarker, prefix),
 		requeueDispatch:              strings.ReplaceAll(requeueDispatchPostgreSQL, prefixMarker, prefix),
+		rotateEndpointSecret:         strings.ReplaceAll(rotateEndpointSecretPostgreSQL, prefixMarker, prefix),
 		selectClaimableDispatches:    strings.ReplaceAll(selectClaimableDispatchesPostgreSQL, prefixMarker, prefix),
 		upsertEndpoint:               strings.ReplaceAll(upsertEndpointPostgreSQL, prefixMarker, prefix),
 		upsertSubscription:           strings.ReplaceAll(upsertSubscriptionPostgreSQL, prefixMarker, prefix),
@@ -1467,6 +1477,20 @@ func (q *postgresqlQueries) RequeueDispatch(ctx context.Context, db DBTX, arg Re
 	return result.RowsAffected()
 }
 
+// RotateEndpointSecret runs the :execrows query against postgresql.
+func (q *postgresqlQueries) RotateEndpointSecret(ctx context.Context, db DBTX, arg RotateEndpointSecretParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.rotateEndpointSecret,
+		arg.SecretCurrent,
+		arg.ID,
+		arg.Scope,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // SelectClaimableDispatches runs the :many query against postgresql.
 func (q *postgresqlQueries) SelectClaimableDispatches(ctx context.Context, db DBTX, arg SelectClaimableDispatchesParams) ([]SelectClaimableDispatchesRow, error) {
 	rows, err := db.QueryContext(ctx, q.selectClaimableDispatches,
@@ -1871,6 +1895,11 @@ var (
 		DeliveryID   string
 		EndpointID   string
 	}(RequeueDispatchParams{})
+	_ = struct {
+		SecretCurrent []byte
+		ID            string
+		Scope         tenancy.Scope
+	}(RotateEndpointSecretParams{})
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
