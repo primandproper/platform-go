@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -14,6 +15,8 @@ import (
 	sessionshttp "github.com/primandproper/platform-go/v14/sessions/http"
 
 	cachecfg "github.com/primandproper/primitives-go/v2/cache/config"
+	"github.com/primandproper/primitives-go/v2/clock"
+	clockmock "github.com/primandproper/primitives-go/v2/clock/mock"
 	"github.com/primandproper/primitives-go/v2/cookies"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -84,7 +87,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 
 		test.EqOp(t, ProviderCache, cfg.Provider)
 		test.EqOp(t, sessions.DefaultAbsoluteTimeout, cfg.AbsoluteTimeout)
-		test.EqOp(t, sessions.DefaultIdleTimeout, cfg.IdleTimeout)
+		test.EqOp(t, sessions.DefaultIdleTimeout, pointer.Dereference(cfg.IdleTimeout))
 		test.EqOp(t, sessionshttp.DefaultCookieName, cfg.CookieName)
 	})
 
@@ -94,7 +97,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		cfg := &Config{
 			Provider:        ProviderDatabase,
 			AbsoluteTimeout: time.Hour,
-			IdleTimeout:     time.Minute,
+			IdleTimeout:     pointer.To(time.Minute),
 			CookieName:      "sid",
 			SweepInterval:   pointer.To(time.Second),
 		}
@@ -102,7 +105,7 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 
 		test.EqOp(t, ProviderDatabase, cfg.Provider)
 		test.EqOp(t, time.Hour, cfg.AbsoluteTimeout)
-		test.EqOp(t, time.Minute, cfg.IdleTimeout)
+		test.EqOp(t, time.Minute, pointer.Dereference(cfg.IdleTimeout))
 		test.EqOp(t, "sid", cfg.CookieName)
 		test.EqOp(t, time.Second, pointer.Dereference(cfg.SweepInterval))
 	})
@@ -131,6 +134,28 @@ func TestConfig_EnsureDefaults(T *testing.T) {
 		cfg.EnsureDefaults()
 
 		test.EqOp(t, time.Duration(0), pointer.Dereference(cfg.SweepInterval))
+	})
+
+	// The same distinction, for the timeout whose zero means "no idle deadline
+	// at all" rather than "nobody said".
+	T.Run("leaves a spelled zero idle timeout alone", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{IdleTimeout: pointer.To(time.Duration(0))}
+		cfg.EnsureDefaults()
+
+		test.EqOp(t, time.Duration(0), pointer.Dereference(cfg.IdleTimeout))
+	})
+
+	// TouchInterval is the one field this method leaves alone either way: the
+	// store picks it against whatever idle window it ends up with.
+	T.Run("defaults no touch interval at all", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{}
+		cfg.EnsureDefaults()
+
+		test.Nil(t, cfg.TouchInterval)
 	})
 }
 
@@ -182,7 +207,7 @@ func TestConfig_ValidateWithContext(T *testing.T) {
 		t.Parallel()
 
 		cfg := memoryConfig()
-		cfg.IdleTimeout = -time.Minute
+		cfg.IdleTimeout = pointer.To(-time.Minute)
 
 		must.Error(t, cfg.ValidateWithContext(t.Context()))
 	})
@@ -228,7 +253,7 @@ func TestConfig_SweepInterval(T *testing.T) {
 			store, err := NewStore[principal](t.Context(), &Config{
 				Provider:        ProviderDatabase,
 				AbsoluteTimeout: time.Minute,
-				IdleTimeout:     time.Minute,
+				IdleTimeout:     pointer.To(time.Minute),
 				SweepInterval:   pointer.To(time.Duration(0)),
 			}, client)
 			must.NoError(t, err)
@@ -260,7 +285,7 @@ func TestConfig_SweepInterval(T *testing.T) {
 			store, err := NewStore[principal](t.Context(), &Config{
 				Provider:        ProviderDatabase,
 				AbsoluteTimeout: time.Minute,
-				IdleTimeout:     time.Minute,
+				IdleTimeout:     pointer.To(time.Minute),
 			}, client)
 			must.NoError(t, err)
 
@@ -273,6 +298,184 @@ func TestConfig_SweepInterval(T *testing.T) {
 			test.EqOp(t, 0, sessionRowCount(t, client))
 		})
 	})
+}
+
+// TestConfig_IdleTimeout exercises the field's documented contract where it is
+// actually decided. The store's own WithIdleTimeout has always read a
+// non-positive value as "disabled"; what could not reach it was a configured
+// one, because EnsureDefaults mapped every zero to the default before the
+// option was built.
+func TestConfig_IdleTimeout(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a zero idle timeout leaves the absolute deadline as the only one", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+
+		cfg := memoryConfig()
+		cfg.AbsoluteTimeout = 24 * time.Hour
+		cfg.IdleTimeout = pointer.To(time.Duration(0))
+
+		store, err := NewStore[principal](t.Context(), cfg, nil,
+			WithStoreOptions(sessions.WithClock(c)))
+		must.NoError(t, err)
+
+		test.EqOp(t, time.Duration(0), store.Policy().Idle)
+
+		session, err := store.New(t.Context(), &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		// Well past the default idle window, and inside the absolute one. While
+		// EnsureDefaults could not tell a zero from an unset field, this read
+		// was sessions.ErrIdleTimeout, and the configuration said it would not
+		// be.
+		c.advance(2 * time.Hour)
+
+		read, err := store.Get(t.Context(), session.ID)
+		must.NoError(t, err)
+		test.EqOp(t, session.CreatedAt.Add(24*time.Hour), read.ExpiresAt)
+	})
+
+	T.Run("an unset idle timeout expires a session nobody reads", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+
+		cfg := memoryConfig()
+		cfg.AbsoluteTimeout = 24 * time.Hour
+
+		store, err := NewStore[principal](t.Context(), cfg, nil,
+			WithStoreOptions(sessions.WithClock(c)))
+		must.NoError(t, err)
+
+		test.EqOp(t, sessions.DefaultIdleTimeout, store.Policy().Idle)
+
+		session, err := store.New(t.Context(), &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		c.advance(2 * time.Hour)
+
+		_, err = store.Get(t.Context(), session.ID)
+		test.ErrorIs(t, err, sessions.ErrIdleTimeout)
+	})
+}
+
+// TestConfig_TouchInterval exercises the other half of the same problem. The
+// store has always read a zero interval as "refresh on every read"; what could
+// not reach it was a configured one, because the option was applied only when
+// the field was positive and a zero is what an unset field looked like.
+func TestConfig_TouchInterval(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a zero interval refreshes the idle deadline on every read", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+
+		cfg := memoryConfig()
+		cfg.IdleTimeout = pointer.To(30 * time.Minute)
+		cfg.TouchInterval = pointer.To(time.Duration(0))
+
+		store, err := NewStore[principal](t.Context(), cfg, nil,
+			WithStoreOptions(sessions.WithClock(c)))
+		must.NoError(t, err)
+
+		test.EqOp(t, time.Duration(0), store.Policy().Touch)
+
+		session, err := store.New(t.Context(), &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		// A second is inside the store's own default interval and outside
+		// this one, which is the whole distinction: the read moves the
+		// anchor rather than leaving it where New put it.
+		c.advance(time.Second)
+
+		read, err := store.Get(t.Context(), session.ID)
+		must.NoError(t, err)
+		test.EqOp(t, session.LastSeenAt.Add(time.Second), read.LastSeenAt)
+	})
+
+	// The contrast, and the reason the field is a pointer rather than a
+	// documented zero: unset has to keep meaning the store's own interval.
+	T.Run("an unset interval leaves the store's default in place", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+
+		cfg := memoryConfig()
+		cfg.IdleTimeout = pointer.To(30 * time.Minute)
+
+		store, err := NewStore[principal](t.Context(), cfg, nil,
+			WithStoreOptions(sessions.WithClock(c)))
+		must.NoError(t, err)
+
+		test.EqOp(t, sessions.DefaultTouchInterval, store.Policy().Touch)
+
+		session, err := store.New(t.Context(), &principal{UserID: "u_1"})
+		must.NoError(t, err)
+
+		c.advance(time.Second)
+
+		read, err := store.Get(t.Context(), session.ID)
+		must.NoError(t, err)
+		test.EqOp(t, session.LastSeenAt, read.LastSeenAt)
+	})
+
+	// The store clamps its own default down to fit a short idle window, and
+	// rejects an explicit interval that does not. Defaulting the field into the
+	// Config would have turned the first case into the second.
+	T.Run("an unset interval is clamped rather than rejected by a short idle window", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := memoryConfig()
+		cfg.IdleTimeout = pointer.To(30 * time.Second)
+
+		store, err := NewStore[principal](t.Context(), cfg, nil)
+		must.NoError(t, err)
+
+		test.EqOp(t, 15*time.Second, store.Policy().Touch)
+	})
+}
+
+// stubClock is a clock.Clock whose time moves only when a test says so.
+//
+// It is built on the generated mock so that a method nothing here calls panics
+// rather than answering something plausible: the sessions store reads Now and
+// Since and nothing else, and a store that started sleeping or ticking should
+// fail this suite rather than pass it on a wall clock.
+type stubClock struct {
+	*clockmock.ClockMock
+
+	now time.Time
+	mu  sync.Mutex
+}
+
+var _ clock.Clock = (*stubClock)(nil)
+
+func newStubClock() *stubClock {
+	c := &stubClock{now: time.Date(2026, time.September, 13, 12, 0, 0, 0, time.UTC)}
+
+	c.ClockMock = &clockmock.ClockMock{
+		NowFunc:   c.read,
+		SinceFunc: func(t time.Time) time.Duration { return c.read().Sub(t) },
+	}
+
+	return c
+}
+
+func (c *stubClock) read() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return c.now
+}
+
+func (c *stubClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.now = c.now.Add(d)
 }
 
 // sessionRowCount reads the session table directly, because a Store read
@@ -364,8 +567,8 @@ func TestNewStore(T *testing.T) {
 
 		cfg := memoryConfig()
 		cfg.AbsoluteTimeout = 2 * time.Hour
-		cfg.IdleTimeout = 20 * time.Minute
-		cfg.TouchInterval = 30 * time.Second
+		cfg.IdleTimeout = pointer.To(20 * time.Minute)
+		cfg.TouchInterval = pointer.To(30 * time.Second)
 
 		store, err := NewStore[principal](t.Context(), cfg, nil)
 		must.NoError(t, err)
@@ -394,7 +597,7 @@ func TestNewStore(T *testing.T) {
 		t.Parallel()
 
 		cfg := memoryConfig()
-		cfg.IdleTimeout = 20 * time.Minute
+		cfg.IdleTimeout = pointer.To(20 * time.Minute)
 
 		store, err := NewStore[principal](t.Context(), cfg, nil,
 			WithStoreOptions(sessions.WithIdleTimeout(5*time.Minute)))
@@ -407,7 +610,7 @@ func TestNewStore(T *testing.T) {
 		t.Parallel()
 
 		cfg := memoryConfig()
-		cfg.TouchInterval = -time.Second
+		cfg.TouchInterval = pointer.To(-time.Second)
 
 		_, err := NewStore[principal](t.Context(), cfg, nil)
 		must.Error(t, err)
