@@ -14,6 +14,16 @@ import (
 	"github.com/shoenig/test/must"
 )
 
+// ActorUnattributed is untyped deliberately, and these pin it: one name has to
+// spell both halves of an unattributed actor, because the ID is what
+// ErrEmptyActor requires and the type is what a reader of the log filters on. A
+// typed ActorType constant would need a conversion at the first, and a plain
+// string constant would need one at the second.
+var (
+	_ string    = ActorUnattributed
+	_ ActorType = ActorUnattributed
+)
+
 func TestNewRecorder(T *testing.T) {
 	T.Parallel()
 
@@ -181,6 +191,16 @@ func TestRecorder_Record(T *testing.T) {
 				wantErr: ErrEmptyActor,
 			},
 			{
+				// Naming the absence in the type alone is still an omission.
+				// ActorUnattributed is the value the ID takes for a write with
+				// no principal on its path, not permission to leave the ID out,
+				// so an entry that carries the type and nothing else is refused
+				// exactly like one that carries neither.
+				name:    "unattributed type with no actor ID",
+				entry:   &Entry{ResourceType: "recipe", EventType: EventCreated, Actor: Actor{Type: ActorUnattributed}},
+				wantErr: ErrEmptyActor,
+			},
+			{
 				// The scope that names nobody. It is the entry a caller
 				// assembled from a lookup that came back empty, and recording
 				// it would file the event in the chain platform-level events
@@ -209,6 +229,34 @@ func TestRecorder_Record(T *testing.T) {
 				test.EqOp(t, 0, countRows(t, client, "audit_log_entries", "1=1"))
 			})
 		}
+	})
+
+	T.Run("records an unattributed actor", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		r := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client)
+
+		// One name for both halves, which is what the constant is untyped for:
+		// a write that reached the recorder with no principal anywhere on its
+		// path says so in the log, in the spelling every consumer shares,
+		// rather than in a placeholder each one invents.
+		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry.Actor = Actor{ID: ActorUnattributed, Type: ActorUnattributed}
+
+		record(t, client, r, entry)
+
+		got, err := reader.Get(t.Context(), entry.ID)
+		must.NoError(t, err)
+		test.EqOp(t, ActorUnattributed, got.Actor.ID)
+		test.EqOp(t, ActorUnattributed, got.Actor.Type)
+
+		// And it is stored as its own claim rather than as the application
+		// acting deliberately, so a query that counts unattributed writes does
+		// not also count every sweep and migration.
+		test.EqOp(t, 1, countRows(t, client, "audit_log_entries", "actor_type = 'unattributed'"))
+		test.EqOp(t, 0, countRows(t, client, "audit_log_entries", "actor_type = 'system'"))
 	})
 
 	T.Run("truncates the timestamp to what the dialect stores", func(t *testing.T) {

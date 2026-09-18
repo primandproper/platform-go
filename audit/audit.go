@@ -69,6 +69,10 @@ var (
 	// ErrEmptyActor indicates an Entry with no actor ID. Every recorded event
 	// has someone or something responsible for it — a background job that
 	// belongs to no user is ActorSystem with the job's name, not an absence.
+	//
+	// It still refuses an entry whose actor is genuinely unknown, because an
+	// unknown actor is a thing to name rather than to leave out: ActorUnattributed
+	// is that name.
 	ErrEmptyActor = platformerrors.New("empty audit actor")
 
 	// ErrEntryNotFound indicates a Get for an ID that is not in the log. It may
@@ -153,6 +157,28 @@ const (
 	// ActorSystem is the application itself: migrations, schedulers, background
 	// jobs — anything with no external principal behind it.
 	ActorSystem ActorType = "system"
+
+	// ActorUnattributed is a write whose actor genuinely is not known, and it
+	// is a different claim from ActorSystem. ActorSystem says the application
+	// acted deliberately and names the job that did; this says the write
+	// reached the recorder through a path that never carried a principal —
+	// typically a repository method taking an ID and nothing else — and that
+	// nobody has since decided who it was.
+	//
+	// It exists because ErrEmptyActor refuses an entry with no actor, rightly,
+	// so every consumer with such a path invents a placeholder of its own. An
+	// invented one differs per consumer and means nothing to a reader of the
+	// log; this one means the same thing everywhere, and a query can count it.
+	//
+	// It is deliberately untyped, so that one name spells both halves of an
+	// unattributed actor — the ID, which ErrEmptyActor still requires, and the
+	// type:
+	//
+	//	Actor{ID: audit.ActorUnattributed, Type: audit.ActorUnattributed}
+	//
+	// Naming the absence is the point. Recording one by omission stays
+	// impossible: an entry that simply left the actor out is still refused.
+	ActorUnattributed = "unattributed"
 )
 
 // Actor is who did the thing.
