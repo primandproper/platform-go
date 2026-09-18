@@ -423,6 +423,15 @@ func (r *ChainRecorder) readChainHead(ctx context.Context, q database.SQLQueryEx
 // value apart from Global(), so "unset" here is genuinely unset rather than the
 // global scope spelled shortly — which is the same distinction Entry.Scope's
 // own validation rests on.
+//
+// The adoption survives a Record that then fails, as every other field this
+// package settles onto a caller's entry does — recordScope assigns the id, the
+// position and the hash as it walks, so a batch that fails partway has already
+// written some of them. What that costs is narrow and is the safe direction: a
+// retry of the same call re-derives the position and the hash from the chain
+// head it re-reads, and a retry that names a *different* scope is refused
+// rather than silently re-aimed, which is what a caller who adopted one scope
+// and then asked for another should be told.
 func adoptScope(scope tenancy.Scope, entry *Entry) error {
 	if entry.Scope != (tenancy.Scope{}) && entry.Scope != scope {
 		return platformerrors.Wrapf(ErrScopeMismatch,

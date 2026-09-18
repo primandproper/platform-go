@@ -268,6 +268,37 @@ func TestRecorder_Record(T *testing.T) {
 		test.EqOp(t, "", good.Hash)
 	})
 
+	// What the adoption leaves behind, pinned because it is the one way a
+	// caller can be surprised by it: an entry that named no scope carries the
+	// one it adopted afterwards, so a second call under a different scope is
+	// refused for a field the caller never set.
+	//
+	// It is the safe direction and the reason adoptScope refuses rather than
+	// re-aims — a caller re-pointing settled entries at another tenant is the
+	// mix-up the sentinel exists for — but it is worth being a test rather than
+	// a sentence, because the first attempt's failure is what makes it
+	// reachable.
+	T.Run("an adopted scope outlives the call that adopted it", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		r := newTestRecorder(t, newStubClock())
+
+		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry.Scope = tenancy.Scope{}
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return r.Record(t.Context(), q, tenancy.Of("acct_1"), entry)
+		}))
+
+		test.EqOp(t, tenancy.Of("acct_1"), entry.Scope)
+
+		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return r.Record(t.Context(), q, tenancy.Of("acct_2"), entry)
+		})
+		test.ErrorIs(t, err, ErrScopeMismatch)
+	})
+
 	// Two tenants in one transaction is two calls, and each chain is its own.
 	// It used to be one call whose slice named both, which is the shape the
 	// scope argument removed.
