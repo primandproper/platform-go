@@ -73,7 +73,9 @@ type Principal interface {
 
 	// ActiveAccountID is the account this request is against, or empty for a
 	// caller who named none — in which case the reads that need one resolve the
-	// user's default.
+	// user's default, or resolve no account at all for a caller who holds no
+	// memberships. The empty value is therefore an answer such a read may
+	// arrive at and not only a question it is handed.
 	ActiveAccountID() string
 }
 
