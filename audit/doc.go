@@ -113,6 +113,31 @@ attacker; deletion is covered by the chain instead. If your deployment can
 revoke UPDATE and DELETE from the application role, do that as well — it is
 strictly stronger than either.
 
+# Two levels, and neither derives the other
+
+An application whose model is a user acting inside an account records both, and
+the mapping is the obvious one: the scope is the account, the actor is the user.
+Nothing here collapses them, and nothing recovers one from the other.
+
+There is no projection helper for that pair, deliberately. One would have to
+assume a consumer has exactly two levels, assume which of them is the tenant,
+and assume the account is recoverable from the scope — three assumptions about a
+consumer's own directory, which is the one shape this package has no opinion on.
+The failure such a helper would license is already written in the wild: a
+conversion that infers the account back by testing whether an entry's scope
+differs from its actor's ID is recovering a fact it never stored, and is right
+only as often as that coincidence holds.
+
+A consumer wanting the pair back reads both fields off the entry. Both are
+there, both were written by the caller who knew them, and reading two fields is
+cheaper than deriving one from the other and safer than assuming it can be.
+
+Where a write's actor genuinely is not known — a repository method that takes an
+ID and nothing else, with no principal anywhere on the path — ActorUnattributed
+names that absence, and spells both halves of the Actor. It is not ActorSystem,
+which is a claim that the application acted deliberately. An entry that simply
+leaves the actor out is still refused; see ErrEmptyActor.
+
 # Redaction
 
 A password hash or a bearer token that reaches this table is in the one table
