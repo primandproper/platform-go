@@ -274,6 +274,11 @@ func (s *SQLStore) ListSubscriptionsForAccount(
 // on the same clock: a test that moves the store's clock past a period's end sees
 // the subscription leave this page, which it would not if the statement read
 // CURRENT_TIMESTAMP.
+//
+// Covering the clock is both ends of the period, which is the other half of that
+// agreement: an agreement whose period has not begun — a scheduled upgrade, a
+// pause that resumes on a date — is no more on this page than a lapsed one, and
+// arrives when its start does.
 func (s *SQLStore) ListCurrentSubscriptions(
 	ctx context.Context,
 	q database.SQLQueryExecutor,

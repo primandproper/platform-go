@@ -966,6 +966,7 @@ SELECT
 			AND (COALESCE(sqlc.narg(include_archived), false) = true OR billing_subscriptions.archived_at IS NULL)
 			AND billing_subscriptions.scope = sqlc.arg(scope)
 			AND billing_subscriptions.belongs_to_account = sqlc.arg(belongs_to_account)
+			AND billing_subscriptions.current_period_start <= sqlc.arg(current_as_of)
 			AND billing_subscriptions.current_period_end > sqlc.arg(current_as_of)
 	) AS filtered_count,
 	(
@@ -974,6 +975,7 @@ SELECT
 		WHERE (COALESCE(sqlc.narg(include_archived), false) = true OR billing_subscriptions.archived_at IS NULL)
 			AND billing_subscriptions.scope = sqlc.arg(scope)
 			AND billing_subscriptions.belongs_to_account = sqlc.arg(belongs_to_account)
+			AND billing_subscriptions.current_period_start <= sqlc.arg(current_as_of)
 			AND billing_subscriptions.current_period_end > sqlc.arg(current_as_of)
 	) AS total_count
 FROM billing_subscriptions
@@ -990,6 +992,7 @@ WHERE billing_subscriptions.created_at > COALESCE(sqlc.narg(created_after), (SEL
 	AND (COALESCE(sqlc.narg(include_archived), false) = true OR billing_subscriptions.archived_at IS NULL)
 	AND billing_subscriptions.scope = sqlc.arg(scope)
 	AND billing_subscriptions.belongs_to_account = sqlc.arg(belongs_to_account)
+	AND billing_subscriptions.current_period_start <= sqlc.arg(current_as_of)
 	AND billing_subscriptions.current_period_end > sqlc.arg(current_as_of)
 	AND billing_subscriptions.id > COALESCE(sqlc.narg(page_cursor), '')
 ORDER BY billing_subscriptions.id ASC
@@ -1024,6 +1027,7 @@ SELECT
 			AND (COALESCE(sqlc.narg(include_archived), false) = true OR billing_subscriptions.archived_at IS NULL)
 			AND billing_subscriptions.scope = sqlc.arg(scope)
 			AND billing_subscriptions.belongs_to_account = sqlc.arg(belongs_to_account)
+			AND billing_subscriptions.current_period_start <= sqlc.arg(current_as_of)
 			AND billing_subscriptions.current_period_end > sqlc.arg(current_as_of)
 	) AS filtered_count,
 	(
@@ -1032,6 +1036,7 @@ SELECT
 		WHERE (COALESCE(sqlc.narg(include_archived), false) = true OR billing_subscriptions.archived_at IS NULL)
 			AND billing_subscriptions.scope = sqlc.arg(scope)
 			AND billing_subscriptions.belongs_to_account = sqlc.arg(belongs_to_account)
+			AND billing_subscriptions.current_period_start <= sqlc.arg(current_as_of)
 			AND billing_subscriptions.current_period_end > sqlc.arg(current_as_of)
 	) AS total_count
 FROM billing_subscriptions
@@ -1048,6 +1053,7 @@ WHERE billing_subscriptions.created_at > COALESCE(sqlc.narg(created_after), (SEL
 	AND (COALESCE(sqlc.narg(include_archived), false) = true OR billing_subscriptions.archived_at IS NULL)
 	AND billing_subscriptions.scope = sqlc.arg(scope)
 	AND billing_subscriptions.belongs_to_account = sqlc.arg(belongs_to_account)
+	AND billing_subscriptions.current_period_start <= sqlc.arg(current_as_of)
 	AND billing_subscriptions.current_period_end > sqlc.arg(current_as_of)
 	AND (billing_subscriptions.id <= COALESCE(sqlc.narg(page_cursor), billing_subscriptions.id) AND billing_subscriptions.id <> COALESCE(sqlc.narg(page_cursor), ''))
 ORDER BY billing_subscriptions.id DESC
