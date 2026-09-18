@@ -434,7 +434,7 @@ func (r *Resolver) UpsertRole(ctx context.Context, q database.SQLQueryExecutor, 
 // archived, or one that was never there, is a no-op rather than an error: the
 // caller asked for the role to grant nothing and it grants nothing.
 //
-// It is the one of this package's three writes whose atomicity does not depend
+// It is the only one of this package's writes whose atomicity does not depend
 // on the executor it is handed: one statement, so it commits or it does not,
 // whether or not the caller opened a transaction. Pass a Tx anyway when the
 // archival belongs with something else the caller is writing.

@@ -72,6 +72,10 @@ declaration, either compiled in or written to the database — which is what kee
 a code-side policy from drifting away from a database-side one, the failure this
 backend would otherwise invite.
 
+SeedPolicy takes that declaration as the single value a deployment actually
+holds — a Policy — rather than as a variadic to be spread back out at the call
+site. Seeding a deployment below is the step it is for.
+
 Writes take an executor rather than a database.Tx, which is a carve-out from the
 module's rule that every exported store write takes one — an enumerated
 exception, granted for the reason below rather than claimed by resembling one of
@@ -94,8 +98,8 @@ window, and a caller with nothing else to join should open one anyway:
 		return resolver.Seed(ctx, tx, roles...)
 	})
 
-ArchiveRole is the one of the three whose atomicity is not the caller's to get
-wrong: it is a single statement, so it is atomic wherever it runs.
+ArchiveRole is the one whose atomicity is not the caller's to get wrong: it is
+a single statement, so it is atomic wherever it runs.
 
 Seed is idempotent, validates the whole policy before writing anything, and
 leaves roles it was not given alone — so it can run on every deploy without
@@ -140,6 +144,62 @@ multi-row VALUES list that preceded them had no static text — its arity was th
 caller's cardinality — so there was nothing for sqlc to check; what replaces it
 costs a round trip per grant, inside the transaction the caller opened if they
 opened one.
+
+# Seeding a deployment
+
+A deployment declares its policy once and seeds it after the DDL. The
+declaration is a Policy, which is the value a release diffs against the last
+one:
+
+	func PlatformPolicy() rbac.Policy {
+		return rbac.Policy{Roles: []authorization.Role{
+			{Name: "member", Description: "a signed-in user", Permissions: []authorization.Permission{"read.things"}},
+			{Name: "admin", Permissions: []authorization.Permission{"write.things"}, Inherits: []string{"member"}},
+		}}
+	}
+
+From a migrate step, where the migration runner has just applied the DDL and is
+still holding its own advisory lock:
+
+	if err := migrator.Up(ctx); err != nil {
+		return err
+	}
+
+	// Still inside the migrator's lock: one process is running this, so the
+	// seed's own convergence is not what is being relied on here.
+	return client.WithTransaction(ctx, func(tx database.Tx) error {
+		return resolver.SeedPolicy(ctx, tx, PlatformPolicy())
+	})
+
+Or from a startup hook, where every replica migrates and then seeds — the same
+call, with nothing serializing the replicas against each other:
+
+	func (s *Service) Start(ctx context.Context) error {
+		if err := s.migrator.Up(ctx); err != nil {
+			return err
+		}
+
+		return s.client.WithTransaction(ctx, func(tx database.Tx) error {
+			return s.resolver.SeedPolicy(ctx, tx, PlatformPolicy())
+		})
+	}
+
+Both are supported, and the difference between them is whose lock is held
+rather than whether one is. This package ships no lock and will not: the one a
+consumer seeds under belongs to its migration runner, which this module does
+not own, so a lock shipped here would be a second lock racing the real one — or
+it would mean owning the migration runner. What the consumer's lock buys is
+quiet rather than correctness. Seeds of one policy converge, as Writing policy
+above describes; what running them unserialized costs is that an engine may
+refuse one of two concurrent writers on a transaction that wrote nothing, for
+the caller to retry.
+
+It is deliberately not a generated migration. A seed writes rows and migrations
+write schema, and this package's DDL is a versioned sequence — splicing the
+policy into it would make every future schema version carry a snapshot of
+whatever the policy was on the day that version was cut, and a policy edit
+would be a schema version. The consumer calls SeedPolicy after the migrations
+instead, from whichever of the two places above it already has.
 
 # Archival
 
