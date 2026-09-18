@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/querygen"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // The tables this package owns, at their canonical spelling — what the emitted
@@ -400,8 +401,25 @@ func lockingDefinitionReads(g *querygen.Generator) []*querygen.Query {
 // the semicolon is not a clause on that statement — it is a second statement
 // that parses as nothing, reported by sqlc as an error against a file this
 // generator wrote.
+//
+// So the terminator is required rather than trimmed off wherever it happens to
+// be found. A trim that matched nothing would leave the clause after a semicolon
+// that is still there — the failure the paragraph above describes, arrived at
+// silently — and a guarantee is not a thing to hold up with a string operation
+// that cannot fail. It panics in the manner Render does in operations, timers
+// and workqueue: what it is handed is a query this file rendered three lines
+// earlier rather than anybody's input, so a querygen that one day terminates its
+// statements somewhere else is a generator that stops rather than a corpus that
+// drifts into emitting the wrong statement as well-formed text.
 func lock(q *querygen.Query, clause string) {
-	q.Content = strings.TrimSuffix(q.Content, ";") + "\n" + clause + ";"
+	trimmed, ok := strings.CutSuffix(q.Content, ";")
+	if !ok {
+		panic(platformerrors.Newf(
+			"settings queries: locking %q: rendered statement does not end in a terminator",
+			q.Annotation.Name))
+	}
+
+	q.Content = trimmed + "\n" + clause + ";"
 }
 
 // nameCollisionCheck is the read that turns a taken name into

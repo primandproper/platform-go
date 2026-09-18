@@ -469,6 +469,54 @@ func TestRender_LockingReadsCarryTheClauseWhereTheDialectHasIt(T *testing.T) {
 	}
 }
 
+// TestLock_RequiresTheTerminatorItMoves pins the guard rather than the clause:
+// lock puts the locking clause ahead of a statement's semicolon, and the way
+// that goes wrong is the semicolon not being where it looked. A trim that
+// matched nothing would leave the clause after a terminator that is still
+// there — two statements, the second parsing as nothing — which is well-formed
+// text that sqlc rejects and, worse, the kind of failure a generator can have
+// without anything looking wrong at the call site.
+//
+// So the assertion is that the impossible input stops the generator. The happy
+// path is covered by the rendering test above, against every dialect.
+func TestLock_RequiresTheTerminatorItMoves(T *testing.T) {
+	T.Parallel()
+
+	T.Run("moves the terminator it finds", func(t *testing.T) {
+		t.Parallel()
+
+		q := &querygen.Query{
+			Annotation: querygen.QueryAnnotation{Name: "GetThing", Type: querygen.OneType},
+			Content:    "SELECT 1;",
+		}
+
+		lock(q, exclusiveLock)
+
+		test.EqOp(t, "SELECT 1\n"+exclusiveLock+";", q.Content)
+	})
+
+	T.Run("refuses a statement with no terminator", func(t *testing.T) {
+		t.Parallel()
+
+		q := &querygen.Query{
+			Annotation: querygen.QueryAnnotation{Name: "GetThing", Type: querygen.OneType},
+			Content:    "SELECT 1;\n",
+		}
+
+		defer func() {
+			recovered, ok := recover().(error)
+			must.True(t, ok)
+			// The query's name, because a generator that stops has to say which
+			// statement it stopped on.
+			test.StrContains(t, recovered.Error(), "GetThing")
+		}()
+
+		lock(q, exclusiveLock)
+
+		t.Fatal("lock accepted a statement that does not end in a terminator")
+	})
+}
+
 // TestRender_OptionReadIsBatchedAndOrdered pins the shape the enumeration
 // hydration depends on: one statement for a whole page of definitions, ordered
 // so that one definition's options arrive together and in a stable order.
