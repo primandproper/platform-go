@@ -128,7 +128,9 @@ func ExampleTable() {
 // would run every night, taking whatever the cutoff selected out of the middle
 // of each scope's hash chain, and nothing would say so until somebody verified
 // a chain and found a break with no watermark to attribute it to. The error
-// names the target that prunes the log correctly.
+// names the target that prunes the log correctly, and the other exit besides:
+// the recognizer matches a name, so a table that only shares one writes its own
+// Target rather than being pruned as a chain it does not have.
 func ExampleTable_Validate() {
 	err := retention.Table{Name: "audit_log_entries", Column: "recorded_at"}.Validate(dialect.SQLite)
 
@@ -137,5 +139,5 @@ func ExampleTable_Validate() {
 
 	// Output:
 	// true
-	// retention table "audit_log_entries"; sweep the audit log with audit.PruneTarget: retention table is hash-chained and cannot be swept declaratively
+	// retention table "audit_log_entries"; sweep the audit log with audit.PruneTarget, or implement Target if this table only shares the name and has no chain to preserve: retention table is hash-chained and cannot be swept declaratively
 }

@@ -103,7 +103,9 @@ func (t Table) Validate(d dialect.Dialect) error {
 	}
 
 	if audit.IsAuditTable(t.Name) {
-		return platformerrors.Wrapf(ErrChainedTable, "retention table %q; sweep the audit log with audit.PruneTarget", t.Name)
+		return platformerrors.Wrapf(ErrChainedTable,
+			"retention table %q; sweep the audit log with audit.PruneTarget, "+
+				"or implement Target if this table only shares the name and has no chain to preserve", t.Name)
 	}
 
 	for _, column := range []string{t.Column, t.key()} {
