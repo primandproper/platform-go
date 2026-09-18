@@ -404,6 +404,7 @@ const listCurrentSubscriptionsMySQL = `SELECT
 			AND (COALESCE(?, false) = true OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 			AND {{prefix}}billing_subscriptions.scope = ?
 			AND {{prefix}}billing_subscriptions.belongs_to_account = ?
+			AND {{prefix}}billing_subscriptions.current_period_start <= ?
 			AND {{prefix}}billing_subscriptions.current_period_end > ?
 	) AS filtered_count,
 	(
@@ -412,6 +413,7 @@ const listCurrentSubscriptionsMySQL = `SELECT
 		WHERE (COALESCE(?, false) = true OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 			AND {{prefix}}billing_subscriptions.scope = ?
 			AND {{prefix}}billing_subscriptions.belongs_to_account = ?
+			AND {{prefix}}billing_subscriptions.current_period_start <= ?
 			AND {{prefix}}billing_subscriptions.current_period_end > ?
 	) AS total_count
 FROM {{prefix}}billing_subscriptions
@@ -428,6 +430,7 @@ WHERE {{prefix}}billing_subscriptions.created_at > COALESCE(?, (SELECT CURRENT_T
 	AND (COALESCE(?, false) = true OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 	AND {{prefix}}billing_subscriptions.scope = ?
 	AND {{prefix}}billing_subscriptions.belongs_to_account = ?
+	AND {{prefix}}billing_subscriptions.current_period_start <= ?
 	AND {{prefix}}billing_subscriptions.current_period_end > ?
 	AND {{prefix}}billing_subscriptions.id > COALESCE(?, '')
 ORDER BY {{prefix}}billing_subscriptions.id ASC
@@ -461,6 +464,7 @@ const listCurrentSubscriptionsDescendingMySQL = `SELECT
 			AND (COALESCE(?, false) = true OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 			AND {{prefix}}billing_subscriptions.scope = ?
 			AND {{prefix}}billing_subscriptions.belongs_to_account = ?
+			AND {{prefix}}billing_subscriptions.current_period_start <= ?
 			AND {{prefix}}billing_subscriptions.current_period_end > ?
 	) AS filtered_count,
 	(
@@ -469,6 +473,7 @@ const listCurrentSubscriptionsDescendingMySQL = `SELECT
 		WHERE (COALESCE(?, false) = true OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 			AND {{prefix}}billing_subscriptions.scope = ?
 			AND {{prefix}}billing_subscriptions.belongs_to_account = ?
+			AND {{prefix}}billing_subscriptions.current_period_start <= ?
 			AND {{prefix}}billing_subscriptions.current_period_end > ?
 	) AS total_count
 FROM {{prefix}}billing_subscriptions
@@ -485,6 +490,7 @@ WHERE {{prefix}}billing_subscriptions.created_at > COALESCE(?, (SELECT CURRENT_T
 	AND (COALESCE(?, false) = true OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 	AND {{prefix}}billing_subscriptions.scope = ?
 	AND {{prefix}}billing_subscriptions.belongs_to_account = ?
+	AND {{prefix}}billing_subscriptions.current_period_start <= ?
 	AND {{prefix}}billing_subscriptions.current_period_end > ?
 	AND ({{prefix}}billing_subscriptions.id <= COALESCE(?, {{prefix}}billing_subscriptions.id) AND {{prefix}}billing_subscriptions.id <> COALESCE(?, ''))
 ORDER BY {{prefix}}billing_subscriptions.id DESC
@@ -1956,9 +1962,11 @@ func (q *mysqlQueries) ListCurrentSubscriptions(ctx context.Context, db DBTX, ar
 		arg.Scope,
 		arg.BelongsToAccount,
 		arg.CurrentAsOf,
+		arg.CurrentAsOf,
 		arg.IncludeArchived,
 		arg.Scope,
 		arg.BelongsToAccount,
+		arg.CurrentAsOf,
 		arg.CurrentAsOf,
 		arg.CreatedAfter,
 		arg.CreatedBefore,
@@ -1967,6 +1975,7 @@ func (q *mysqlQueries) ListCurrentSubscriptions(ctx context.Context, db DBTX, ar
 		arg.IncludeArchived,
 		arg.Scope,
 		arg.BelongsToAccount,
+		arg.CurrentAsOf,
 		arg.CurrentAsOf,
 		arg.PageCursor,
 		arg.ResultLimit,
@@ -2021,9 +2030,11 @@ func (q *mysqlQueries) ListCurrentSubscriptionsDescending(ctx context.Context, d
 		arg.Scope,
 		arg.BelongsToAccount,
 		arg.CurrentAsOf,
+		arg.CurrentAsOf,
 		arg.IncludeArchived,
 		arg.Scope,
 		arg.BelongsToAccount,
+		arg.CurrentAsOf,
 		arg.CurrentAsOf,
 		arg.CreatedAfter,
 		arg.CreatedBefore,
@@ -2032,6 +2043,7 @@ func (q *mysqlQueries) ListCurrentSubscriptionsDescending(ctx context.Context, d
 		arg.IncludeArchived,
 		arg.Scope,
 		arg.BelongsToAccount,
+		arg.CurrentAsOf,
 		arg.CurrentAsOf,
 		arg.PageCursor,
 		arg.PageCursor,

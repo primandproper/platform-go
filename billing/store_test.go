@@ -687,6 +687,40 @@ func runSubscriptionSuite(t *testing.T, env *storeEnv) {
 		test.SliceEmpty(t, page.Data)
 	})
 
+	t.Run("agrees with CurrentAt about an agreement whose period has not begun", func(t *testing.T) {
+		t.Parallel()
+
+		store, stub := env.newStoreWithClock(t)
+		product := mustCreateProduct(t, env, store, testScope, recurringProduct("pro"))
+
+		scheduled := mustCreateSubscription(t, env, store, testScope,
+			scheduledSubscription(product.ID, testAccount))
+
+		// Not yet started, so neither answer is yes. The statement binds both
+		// ends of the period, which is what stops this row reading as current to
+		// the page and lapsed to the row a caller is holding.
+		read, err := store.GetSubscription(t.Context(), env.reader(), testScope, scheduled.ID)
+		must.NoError(t, err)
+		test.False(t, read.CurrentAt(stub.read()))
+
+		page, err := store.ListCurrentSubscriptions(t.Context(), env.reader(), testScope, testAccount, nil)
+		must.NoError(t, err)
+		test.SliceEmpty(t, page.Data)
+
+		// One clock decides both, so moving it past the start turns both over
+		// together.
+		stub.advance(2 * 24 * time.Hour)
+
+		read, err = store.GetSubscription(t.Context(), env.reader(), testScope, scheduled.ID)
+		must.NoError(t, err)
+		test.True(t, read.CurrentAt(stub.read()))
+
+		page, err = store.ListCurrentSubscriptions(t.Context(), env.reader(), testScope, testAccount, nil)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, page.Data)
+		test.EqOp(t, scheduled.ID, page.Data[0].ID)
+	})
+
 	t.Run("syncs the plan, the standing and the period together", func(t *testing.T) {
 		t.Parallel()
 

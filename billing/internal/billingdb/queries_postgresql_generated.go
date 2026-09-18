@@ -408,6 +408,7 @@ const listCurrentSubscriptionsPostgreSQL = `SELECT
 			AND (COALESCE($5, false)::boolean OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 			AND {{prefix}}billing_subscriptions.scope = $6
 			AND {{prefix}}billing_subscriptions.belongs_to_account = $7
+			AND {{prefix}}billing_subscriptions.current_period_start <= $8
 			AND {{prefix}}billing_subscriptions.current_period_end > $8
 	) AS filtered_count,
 	(
@@ -416,6 +417,7 @@ const listCurrentSubscriptionsPostgreSQL = `SELECT
 		WHERE (COALESCE($5, false)::boolean OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 			AND {{prefix}}billing_subscriptions.scope = $6
 			AND {{prefix}}billing_subscriptions.belongs_to_account = $7
+			AND {{prefix}}billing_subscriptions.current_period_start <= $8
 			AND {{prefix}}billing_subscriptions.current_period_end > $8
 	) AS total_count
 FROM {{prefix}}billing_subscriptions
@@ -432,6 +434,7 @@ WHERE {{prefix}}billing_subscriptions.created_at > COALESCE($1, (SELECT CURRENT_
 	AND (COALESCE($5, false)::boolean OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 	AND {{prefix}}billing_subscriptions.scope = $6
 	AND {{prefix}}billing_subscriptions.belongs_to_account = $7
+	AND {{prefix}}billing_subscriptions.current_period_start <= $8
 	AND {{prefix}}billing_subscriptions.current_period_end > $8
 	AND {{prefix}}billing_subscriptions.id > COALESCE($9, '')
 ORDER BY {{prefix}}billing_subscriptions.id ASC
@@ -465,6 +468,7 @@ const listCurrentSubscriptionsDescendingPostgreSQL = `SELECT
 			AND (COALESCE($5, false)::boolean OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 			AND {{prefix}}billing_subscriptions.scope = $6
 			AND {{prefix}}billing_subscriptions.belongs_to_account = $7
+			AND {{prefix}}billing_subscriptions.current_period_start <= $8
 			AND {{prefix}}billing_subscriptions.current_period_end > $8
 	) AS filtered_count,
 	(
@@ -473,6 +477,7 @@ const listCurrentSubscriptionsDescendingPostgreSQL = `SELECT
 		WHERE (COALESCE($5, false)::boolean OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 			AND {{prefix}}billing_subscriptions.scope = $6
 			AND {{prefix}}billing_subscriptions.belongs_to_account = $7
+			AND {{prefix}}billing_subscriptions.current_period_start <= $8
 			AND {{prefix}}billing_subscriptions.current_period_end > $8
 	) AS total_count
 FROM {{prefix}}billing_subscriptions
@@ -489,6 +494,7 @@ WHERE {{prefix}}billing_subscriptions.created_at > COALESCE($1, (SELECT CURRENT_
 	AND (COALESCE($5, false)::boolean OR {{prefix}}billing_subscriptions.archived_at IS NULL)
 	AND {{prefix}}billing_subscriptions.scope = $6
 	AND {{prefix}}billing_subscriptions.belongs_to_account = $7
+	AND {{prefix}}billing_subscriptions.current_period_start <= $8
 	AND {{prefix}}billing_subscriptions.current_period_end > $8
 	AND ({{prefix}}billing_subscriptions.id <= COALESCE($9, {{prefix}}billing_subscriptions.id) AND {{prefix}}billing_subscriptions.id <> COALESCE($9, ''))
 ORDER BY {{prefix}}billing_subscriptions.id DESC

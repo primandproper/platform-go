@@ -90,11 +90,15 @@ const (
 // decided against.
 //
 // It is bound rather than read off the server's clock, which is the choice
-// querygen.AtMostArgument documents: current_period_end is the provider's date,
-// written by the application from whatever clock the store was handed, so
-// comparing it against CURRENT_TIMESTAMP would be two clocks deciding one row —
+// querygen.AtMostArgument documents: the two period columns hold the provider's
+// dates, written by the application from whatever clock the store was handed, so
+// comparing them against CURRENT_TIMESTAMP would be two clocks deciding one row —
 // and under a test clock that only moves when a test moves it, the two are years
 // apart.
+//
+// One name for both ends of the period, deliberately: a statement that bound a
+// floor and a ceiling apart is a statement whose two halves can be handed
+// different instants, and "covers this instant" is one instant by construction.
 const CurrentAsOfArg = "current_as_of"
 
 // Products is the catalog: what a deployment sells, at what price, on what
@@ -505,10 +509,22 @@ func externalIDReads(g *querygen.Generator) []*querygen.Query {
 //
 // ListCurrentSubscriptions is the fourth, and it is the read this table's second
 // index was built for: the account's subscriptions whose paid period covers a
-// bound instant. The comparand is querygen.AtMostArgument inverted — uninverted
-// it is the lapsed half, everything at or past the horizon, and Exclude is its
-// complement, so "current" and "lapsed" are one predicate with one bool between
-// them rather than two spellings that can come to disagree about the boundary.
+// bound instant. Covering an instant is two predicates rather than one, because
+// a paid period has two ends: started, and not yet ended. A statement binding
+// only the end answers a wider question than it claims — a subscription whose
+// period begins next week is not past its end either — and the periods that
+// begin in the future are the ordinary ones, a scheduled start and a resumed
+// pause.
+//
+// Both are querygen.AtMostArgument against the one argument, which is what makes
+// them one instant rather than two that can be bound apart. The end is inverted:
+// uninverted it is the lapsed half, everything at or past the horizon, and
+// Exclude is its complement, so "current" and "lapsed" are one predicate with
+// one bool between them rather than two spellings that can come to disagree
+// about the boundary. The start is not, so its boundary is inclusive where the
+// end's is exclusive — which is Subscription.CurrentAt's reading, spelled in the
+// operators querygen chooses: a period that starts exactly at the horizon covers
+// it, and one that ends exactly there is over.
 //
 // What it deliberately does not do is filter on the status. Which reported
 // status leaves an account entitled is policy — it differs between deployments
@@ -520,7 +536,13 @@ func accountReads(g *querygen.Generator) []*querygen.Query {
 		scope   = querygen.Match{Column: ScopeColumn}
 		account = querygen.Match{Column: AccountColumn}
 
-		current = querygen.Match{
+		started = querygen.Match{
+			Column:  PeriodStartColumn,
+			Against: querygen.AtMostArgument,
+			Arg:     CurrentAsOfArg,
+		}
+
+		notEnded = querygen.Match{
 			Column:  PeriodEndColumn,
 			Against: querygen.AtMostArgument,
 			Arg:     CurrentAsOfArg,
@@ -532,7 +554,7 @@ func accountReads(g *querygen.Generator) []*querygen.Query {
 		Subscriptions.Columns, scope, account)
 
 	rendered = append(rendered, g.ListQueries("ListCurrentSubscriptions", SubscriptionsTable,
-		Subscriptions.Columns, scope, account, current)...)
+		Subscriptions.Columns, scope, account, started, notEnded)...)
 
 	rendered = append(rendered, g.ListQueries("ListPurchasesForAccount", PurchasesTable,
 		Purchases.Columns, scope, account)...)

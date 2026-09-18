@@ -576,6 +576,22 @@ func currentSubscription(productID, accountID string) *Subscription {
 	}
 }
 
+// scheduledSubscription is an agreement whose paid period has not begun: the
+// upgrade that takes effect next cycle, the pause that resumes on a date.
+//
+// It is the row that reads as current to a statement binding only the period's
+// end, and as not current to Subscription.CurrentAt, which is the disagreement
+// the started predicate exists to close.
+func scheduledSubscription(productID, accountID string) *Subscription {
+	return &Subscription{
+		BelongsToAccount:   accountID,
+		ProductID:          productID,
+		Status:             capitalism.SubscriptionStatusActive,
+		CurrentPeriodStart: testNow.Add(24 * time.Hour),
+		CurrentPeriodEnd:   testNow.Add(30 * 24 * time.Hour),
+	}
+}
+
 // lapsedSubscription is an agreement whose paid period ended before testNow.
 func lapsedSubscription(productID, accountID string) *Subscription {
 	return &Subscription{

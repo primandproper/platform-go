@@ -288,6 +288,36 @@ func TestRender_CurrentSubscriptionsBindTheirHorizon(T *testing.T) {
 	}
 }
 
+// TestRender_CurrentSubscriptionsBindBothEndsOfThePeriod is the other half of
+// the agreement with Subscription.CurrentAt: a period covers an instant when it
+// has started and has not ended, and a statement binding only the end calls a
+// subscription that begins next week current.
+//
+// The two predicates name the one argument, which is what makes them one instant
+// rather than two a caller could bind apart, and their operators are the
+// boundary CurrentAt spells: inclusive at the start, exclusive at the end.
+func TestRender_CurrentSubscriptionsBindBothEndsOfThePeriod(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rendered := statements(t, d)
+
+			for _, name := range []string{"ListCurrentSubscriptions", "ListCurrentSubscriptionsDescending"} {
+				statement, ok := rendered[name]
+				must.True(t, ok, must.Sprintf("%s was not emitted", name))
+
+				test.StrContains(t, statement, PeriodStartColumn+" <= ",
+					test.Sprintf("%s does not require the period to have started", name))
+				test.StrContains(t, statement, PeriodEndColumn+" > ",
+					test.Sprintf("%s does not require the period to be unfinished", name))
+			}
+		})
+	}
+}
+
 // TestTables_ColumnsAreDeclaredOnce is the drift check between the four column
 // lists and the DDL they project.
 //
