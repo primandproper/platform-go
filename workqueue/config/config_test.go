@@ -1,6 +1,7 @@
 package workqueuecfg
 
 import (
+	"context"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/workqueue"
@@ -94,5 +95,73 @@ func TestNewQueue(T *testing.T) {
 		// The mismatched codec is the proof it arrived: a passthrough that
 		// dropped it would build cleanly.
 		test.ErrorIs(t, err, workqueue.ErrKeyCodecTypeMismatch)
+	})
+}
+
+// newTestQueue builds the queue NewRunner drains, closed when the test ends.
+func newTestQueue(t *testing.T) *workqueue.Queue[string] {
+	t.Helper()
+
+	q, err := NewQueue[string](t.Context(), validConfig(), clientFor(dialect.Postgres))
+	must.NoError(t, err)
+
+	t.Cleanup(func() { _ = q.Close(t.Context()) })
+
+	return q
+}
+
+func noopHandler(context.Context, workqueue.Item[string]) error { return nil }
+
+func TestNewRunner(T *testing.T) {
+	T.Parallel()
+
+	T.Run("builds a runner over a queue", func(t *testing.T) {
+		t.Parallel()
+
+		r, err := NewRunner(t.Context(), &workqueue.RunnerConfig{}, newTestQueue(t), noopHandler)
+		must.NoError(t, err)
+		test.NotNil(t, r)
+	})
+
+	// Defaulting and validation belong to workqueue.NewRunner; this pins that
+	// they still happen for a config that arrives through here.
+	T.Run("rejects the inputs the runner refuses", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewRunner(t.Context(), nil, newTestQueue(t), noopHandler)
+		test.ErrorIs(t, err, workqueue.ErrNilConfig)
+
+		_, err = NewRunner[string](t.Context(), &workqueue.RunnerConfig{}, nil, noopHandler)
+		test.ErrorIs(t, err, workqueue.ErrNilQueue)
+
+		_, err = NewRunner[string](t.Context(), &workqueue.RunnerConfig{}, newTestQueue(t), nil)
+		test.ErrorIs(t, err, workqueue.ErrNilHandler)
+	})
+
+	T.Run("derives options from every observability argument", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewRunner(t.Context(), &workqueue.RunnerConfig{}, newTestQueue(t), noopHandler,
+			WithPillars(nil),
+			WithLogger(nil),
+			WithTracerProvider(nil),
+			WithMetricsProvider(nil),
+			nil,
+		)
+		must.NoError(t, err)
+	})
+
+	// The runner's passthrough is separate from the queue's, so an option meant
+	// for the loop cannot land on the queue it drains.
+	T.Run("passes runner options through", func(t *testing.T) {
+		t.Parallel()
+
+		o := newOptions([]Option{
+			WithRunnerOptions(workqueue.WithRunnerLogger(nil)),
+			WithQueueOptions(workqueue.WithLogger(nil)),
+		})
+
+		test.SliceLen(t, 1, o.runner)
+		test.SliceLen(t, 1, o.queue)
 	})
 }

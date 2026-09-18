@@ -134,11 +134,12 @@ func (cfg *WorkerConfig) ValidateWithContext(ctx context.Context) error {
 
 // Worker is the claim-fire-complete loop over a timer set.
 //
-// It is the piece a work queue deliberately leaves to its caller, and a timer
-// set supplies because the loop is not the caller's to get wrong: sleeping until
-// the next instant, not through it, is the entire behavior being asked for, and
-// it is expressible in exactly one way. Callers who want their own loop have
-// Claim, Complete, Release, and Wait, which is what this is built from.
+// It is workqueue.Runner's counterpart over a timer set, and it exists for the
+// same reason: the loop is not the caller's to get wrong. Here that is sleeping
+// until the next instant rather than through it, which is the entire behavior
+// being asked for and is expressible in exactly one way. Callers who want their
+// own loop have Claim, Complete, Release, and Wait, which is what this is built
+// from.
 //
 // A Worker holds no state between passes and owns no goroutine until Run is
 // called. Run blocks; stop it by cancelling its context.

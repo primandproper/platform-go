@@ -51,6 +51,11 @@ type Querier interface {
 	CompleteItems(ctx context.Context, db DBTX, arg CompleteItemsParams) (int64, error)
 	// EnqueueItems runs the :exec query.
 	EnqueueItems(ctx context.Context, db DBTX, arg EnqueueItemsParams) error
+	// ExtendItems runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	ExtendItems(ctx context.Context, db DBTX, arg ExtendItemsParams) (int64, error)
 	// ReadQueueStats runs the :one query.
 	ReadQueueStats(ctx context.Context, db DBTX, arg ReadQueueStatsParams) (ReadQueueStatsRow, error)
 	// ReapCompletedItems runs the :execrows query.

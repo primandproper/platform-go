@@ -97,6 +97,25 @@ ON CONFLICT (queue_name, item_key) DO UPDATE SET
 	END,
 	completed_at = NULL`
 
+const extendItemsPostgreSQL = `WITH target AS (
+	SELECT {{prefix}}work_queue_items.queue_name, {{prefix}}work_queue_items.item_key
+	FROM {{prefix}}work_queue_items
+	WHERE {{prefix}}work_queue_items.queue_name = $2
+		AND {{prefix}}work_queue_items.completed_at IS NULL
+		AND ({{prefix}}work_queue_items.item_key, {{prefix}}work_queue_items.leased_by) IN (
+			SELECT keys.item_key, holders.leased_by
+			FROM unnest($3::text[]) WITH ORDINALITY AS keys(item_key, ordinal)
+				JOIN unnest($4::text[]) WITH ORDINALITY AS holders(leased_by, ordinal) USING (ordinal)
+		)
+	ORDER BY {{prefix}}work_queue_items.queue_name, {{prefix}}work_queue_items.item_key
+	FOR UPDATE
+)
+UPDATE {{prefix}}work_queue_items SET
+	lease_until = GREATEST({{prefix}}work_queue_items.lease_until, CURRENT_TIMESTAMP + ($1::bigint * INTERVAL '1 microsecond'))
+FROM target
+WHERE {{prefix}}work_queue_items.queue_name = target.queue_name
+	AND {{prefix}}work_queue_items.item_key = target.item_key`
+
 const readQueueStatsPostgreSQL = `SELECT
 	COALESCE(SUM(CASE WHEN {{prefix}}work_queue_items.completed_at IS NULL THEN 1 ELSE 0 END), 0)::bigint AS pending,
 	COALESCE(SUM(CASE WHEN {{prefix}}work_queue_items.queue_name = $1 AND {{prefix}}work_queue_items.completed_at IS NULL AND {{prefix}}work_queue_items.lease_until <= CURRENT_TIMESTAMP AND {{prefix}}work_queue_items.available_at <= CURRENT_TIMESTAMP AND ($2::int <= 0 OR {{prefix}}work_queue_items.attempts < $2::int) THEN 1 ELSE 0 END), 0)::bigint AS ready,
@@ -179,6 +198,7 @@ type postgresqlQueries struct {
 	claimDueItems      string
 	completeItems      string
 	enqueueItems       string
+	extendItems        string
 	readQueueStats     string
 	reapCompletedItems string
 	releaseItems       string
@@ -193,6 +213,7 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		claimDueItems:      strings.ReplaceAll(claimDueItemsPostgreSQL, prefixMarker, prefix),
 		completeItems:      strings.ReplaceAll(completeItemsPostgreSQL, prefixMarker, prefix),
 		enqueueItems:       strings.ReplaceAll(enqueueItemsPostgreSQL, prefixMarker, prefix),
+		extendItems:        strings.ReplaceAll(extendItemsPostgreSQL, prefixMarker, prefix),
 		readQueueStats:     strings.ReplaceAll(readQueueStatsPostgreSQL, prefixMarker, prefix),
 		reapCompletedItems: strings.ReplaceAll(reapCompletedItemsPostgreSQL, prefixMarker, prefix),
 		releaseItems:       strings.ReplaceAll(releaseItemsPostgreSQL, prefixMarker, prefix),
@@ -264,6 +285,21 @@ func (q *postgresqlQueries) EnqueueItems(ctx context.Context, db DBTX, arg Enque
 	)
 
 	return err
+}
+
+// ExtendItems runs the :execrows query against postgresql.
+func (q *postgresqlQueries) ExtendItems(ctx context.Context, db DBTX, arg ExtendItemsParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.extendItems,
+		arg.LeaseMicroseconds,
+		arg.QueueName,
+		arg.ItemKeys,
+		arg.LeasedBys,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
 }
 
 // ReadQueueStats runs the :one query against postgresql.
@@ -374,6 +410,12 @@ var (
 		Priorities        []int64
 		DelayMicroseconds []int64
 	}(EnqueueItemsParams{})
+	_ = struct {
+		LeaseMicroseconds int64
+		QueueName         string
+		ItemKeys          []string
+		LeasedBys         []string
+	}(ExtendItemsParams{})
 	_ = struct {
 		QueueName      string
 		AttemptCeiling int64

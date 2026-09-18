@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/workqueue/internal/workqueuedb"
+
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	databasemock "github.com/primandproper/primitives-go/v2/database/mock"
@@ -261,5 +263,77 @@ func TestQueue_retrier(T *testing.T) {
 
 		must.Error(t, writeErr)
 		test.EqOp(t, int(queue.cfg.WriteAttempts), calls)
+	})
+}
+
+func TestQueue_Extend(T *testing.T) {
+	T.Parallel()
+
+	// A zero lease would be handed out already expired, which is not an
+	// extension of anything.
+	T.Run("rejects a non-positive lease", func(t *testing.T) {
+		t.Parallel()
+
+		q, stub := stubbedQueue(t)
+
+		_, err := q.Extend(t.Context(), 0, Item[string]{Key: "a", LeasedBy: "claim"})
+		test.ErrorIs(t, err, ErrInvalidLease)
+
+		_, _, extended := stub.calls()
+		test.SliceEmpty(t, extended)
+	})
+
+	// An empty batch is answered without a round trip, as every other batched
+	// writer here answers it.
+	T.Run("issues no statement for an empty batch", func(t *testing.T) {
+		t.Parallel()
+
+		q, stub := stubbedQueue(t)
+
+		held, err := q.Extend(t.Context(), time.Minute)
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), held)
+
+		_, _, extended := stub.calls()
+		test.SliceEmpty(t, extended)
+	})
+
+	// The key and the claim holding it, in primary-key order — the same lock
+	// ordering and the same fence the completion and the hand-back bind.
+	T.Run("binds the claim beside the key, in key order", func(t *testing.T) {
+		t.Parallel()
+
+		q, stub := stubbedQueue(t)
+
+		held, err := q.Extend(t.Context(), 90*time.Second,
+			Item[string]{Key: "c", LeasedBy: "second"},
+			Item[string]{Key: "a", LeasedBy: "first"},
+		)
+		must.NoError(t, err)
+		test.EqOp(t, int64(2), held)
+
+		_, _, extended := stub.calls()
+		must.SliceLen(t, 1, extended)
+		test.Eq(t, []string{"a", "c"}, extended[0].ItemKeys)
+		test.Eq(t, []string{"first", "second"}, extended[0].LeasedBys)
+		test.EqOp(t, (90 * time.Second).Microseconds(), extended[0].LeaseMicroseconds)
+	})
+
+	// The count is what the statement matched, which is how a caller learns its
+	// leases are shorter than its work: the difference is items somebody else is
+	// already running.
+	T.Run("reports how many it still holds", func(t *testing.T) {
+		t.Parallel()
+
+		q, stub := stubbedQueue(t)
+
+		stub.extend = func(workqueuedb.ExtendItemsParams) (int64, error) { return 1, nil }
+
+		held, err := q.Extend(t.Context(), time.Minute,
+			Item[string]{Key: "a", LeasedBy: "mine"},
+			Item[string]{Key: "b", LeasedBy: "lost"},
+		)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), held)
 	})
 }

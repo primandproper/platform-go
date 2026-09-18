@@ -36,6 +36,7 @@ const (
 	claimedKey       = "workqueue.claimed"
 	reclaimedKey     = "workqueue.reclaimed"
 	fencedKey        = "workqueue.fenced"
+	extendedKey      = "workqueue.extended"
 	claimLimitKey    = "workqueue.claim_limit"
 	leaseKey         = "workqueue.lease"
 	attemptKey       = "workqueue.attempt"
@@ -66,8 +67,8 @@ type Item[K comparable] struct {
 	// Key names the work. It is the key that was enqueued, decoded back through
 	// the queue's codec.
 	Key K
-	// LeasedBy names this claim, and it is what Complete and Release address
-	// the item with alongside its key.
+	// LeasedBy names this claim, and it is what Complete, Release and Extend
+	// address the item with alongside its key.
 	//
 	// It is not a timestamp, which is why it is here and a deadline is not: it
 	// is an identity, and comparing it involves no clock at all. The item is
@@ -143,6 +144,7 @@ type Queue[K comparable] struct {
 	claimedCounter   metrics.Int64Counter
 	reclaimedCounter metrics.Int64Counter
 	completedCounter metrics.Int64Counter
+	extendedCounter  metrics.Int64Counter
 	releasedCounter  metrics.Int64Counter
 	fencedCounter    metrics.Int64Counter
 	removedCounter   metrics.Int64Counter
@@ -307,6 +309,7 @@ func (q *Queue[K]) buildInstruments(metricsProvider metrics.Provider) error {
 		{&q.claimedCounter, "items_claimed"},
 		{&q.reclaimedCounter, "leases_expired"},
 		{&q.completedCounter, "items_completed"},
+		{&q.extendedCounter, "leases_extended"},
 		{&q.releasedCounter, "items_released"},
 		{&q.fencedCounter, "items_fenced"},
 		{&q.removedCounter, "items_removed"},
@@ -487,9 +490,10 @@ func (q *Queue[K]) reserveWake() time.Duration {
 // not subtracted. A short batch therefore means the queue is nearly drained, and
 // an empty one means it is.
 //
-// The lease is what the caller promises to finish inside. There is no heartbeat
-// and no way to extend one — a lease that lapses mid-work hands the item to
-// somebody else, and both workers end up doing it. That is waste, provided the
+// The lease is what the caller promises to finish inside, or to push out with
+// Extend before it lapses. Nothing does that on the caller's behalf — Runner is
+// the loop that does — and a lease that lapses mid-work hands the item to
+// somebody else, so both workers end up doing it. That is waste, provided the
 // work is idempotent; if it is not, this package is the wrong tool.
 //
 // It is waste rather than corruption because the claim also stamps a name, and
@@ -655,14 +659,71 @@ func (q *Queue[K]) Complete(ctx context.Context, items ...Item[K]) error {
 	return nil
 }
 
+// Extend pushes the leases on claimed items out by lease, so a worker whose
+// handler is slower than the lease it claimed under keeps the items it is
+// working on. It reports how many of the items it named are still this claim's.
+//
+// It is the only method here a worker calls about work it has neither finished
+// nor given up on, and it is what lets a lease be short while the work is long.
+// Without it the lease has to be sized for the slowest item the queue will ever
+// hold — and a lease that long leaves a dead worker's items parked for exactly
+// that long, which is the trade this method removes.
+//
+// The horizon only moves forward: an extension shorter than what is left on the
+// lease changes nothing, rather than pulling the lease in. Extending is
+// therefore safe to repeat on a timer and safe to call with the same lease the
+// claim was taken under, which is what Runner does.
+//
+// It takes the Items Claim handed out, for Complete's reason: an item is
+// addressed by its key and the claim holding it together, so a straggler whose
+// lease lapsed extends nothing rather than pinning an item its successor is
+// working on to a claim nobody is working under. Completed items are skipped
+// for the same reason Release skips them.
+//
+// The count is the fleet's health rather than a decision for the caller. An
+// item this claim has lost is an item somebody else is already running, and
+// stopping the handler would not un-run it — the work has to be idempotent
+// either way, which is the bargain the whole package is written around. What a
+// short count is worth is knowing: it means leases are shorter than the work,
+// and it is counted and logged as such.
+func (q *Queue[K]) Extend(ctx context.Context, lease time.Duration, items ...Item[K]) (int64, error) {
+	ctx, op := q.o11y.Begin(ctx, observability.WithValues(map[string]any{
+		itemCountKey: len(items),
+		leaseKey:     lease.String(),
+	}))
+	defer op.End()
+
+	if lease <= 0 {
+		return 0, op.Error(ErrInvalidLease, "extending work queue leases")
+	}
+
+	affected, err := q.writeItems(ctx, "extend", items, func(keys, holders []string) (int64, error) {
+		return q.q.ExtendItems(ctx, q.client.Writer(), workqueuedb.ExtendItemsParams{
+			QueueName:         q.cfg.Name,
+			LeaseMicroseconds: lease.Microseconds(),
+			ItemKeys:          keys,
+			LeasedBys:         holders,
+		})
+	})
+	if err != nil {
+		return 0, op.Error(err, "extending work queue leases")
+	}
+
+	op.Set(extendedKey, affected)
+	q.extendedCounter.Add(ctx, affected, q.attrs)
+	q.reportFenced(ctx, op, "extend", len(items), affected)
+
+	return affected, nil
+}
+
 // reportFenced records the items a write did not match.
 //
-// Not an error, and not returned as one: every one of these writes reports on
-// work that has already happened, and an item the queue never held, one an
+// Not an error, and not returned as one: an item the queue never held, one an
 // operator removed, and one a second worker is now holding are all the same
-// answer to the caller — there is nothing else to do. What separates them is a
-// rate. A fleet whose leases are shorter than its work does every item twice
-// and shows up here, and this is the only statement that can see it.
+// answer to the caller — the work either already happened or is happening
+// elsewhere, and there is nothing else to do. What separates them is a rate. A
+// fleet whose leases are shorter than its work does every item twice and shows
+// up here, and these statements are the only ones that can see it.
 func (q *Queue[K]) reportFenced(
 	ctx context.Context,
 	op observability.Operation,

@@ -103,6 +103,11 @@ const (
 	// ClaimLimitArg caps one claim.
 	ClaimLimitArg = "claim_limit"
 	// LeaseArg is how long a claim's lease runs, as microseconds.
+	//
+	// One name for two bindings, because it is one fact: a claim's lease and an
+	// extension of it are both an offset from the server's own clock, and a
+	// worker that extends by something other than what it claimed under has
+	// two lease lengths to reason about rather than one.
 	LeaseArg = "lease_microseconds"
 	// DelayArg is how long an item is held back before it may be claimed, as
 	// microseconds.
@@ -206,6 +211,8 @@ func Render(d dialect.Dialect) string {
 			Content: enqueueItems},
 		{Annotation: querygen.QueryAnnotation{Name: "ClaimDueItems", Type: querygen.ManyType},
 			Content: claimDueItems},
+		{Annotation: querygen.QueryAnnotation{Name: "ExtendItems", Type: querygen.ExecRowsType},
+			Content: extendItems},
 		{Annotation: querygen.QueryAnnotation{Name: "CompleteItems", Type: querygen.ExecRowsType},
 			Content: completeItems},
 		{Annotation: querygen.QueryAnnotation{Name: "ReleaseItems", Type: querygen.ExecRowsType},
@@ -313,8 +320,8 @@ func keyedItems() string {
 	return querygen.Qualify(ItemsTable, KeyColumn) + " = ANY(sqlc.arg(" + KeysArg + ")::text[])"
 }
 
-// leasedPairs renders the membership test the completion and the hand-back
-// address their rows with: the key and the claim that holds it together,
+// leasedPairs renders the membership test the three writers that report on a
+// claim address their rows with: the key and the claim that holds it together,
 // matched against the two parallel arrays the caller bound.
 //
 // The key alone is not an address here. A lease lapses on a worker that is
@@ -429,6 +436,37 @@ RETURNING
 	epoch,
 	HolderColumn,
 	HolderColumn,
+)
+
+// extendItems pushes a running claim's lease out, so work that takes longer
+// than the lease it was claimed under keeps the item it is working on.
+//
+// It is the one statement here that a worker runs about work it has neither
+// finished nor given up on, and it exists because the alternative is sizing
+// every lease for the slowest item a queue will ever hold. A lease long enough
+// for that is a lease that leaves a dead worker's items parked for exactly that
+// long; the extension is what lets a lease be short and the work be long.
+//
+// The claim fences it as it fences the completion and the hand-back, and for
+// the sharper version of the same reason: without the name, a straggler whose
+// lease lapsed would push out a lease a second worker is holding, and the item
+// would be pinned to a claim nobody is working under. Completed items are
+// excluded inside the CTE, so a row the guard excludes is never locked.
+//
+// The horizon only moves forward. GREATEST is what makes the name honest — an
+// extension that arrived while a longer lease was still running would otherwise
+// pull it in, which is the one thing a caller asking for more time cannot be
+// asked to reason about. Nothing else on the row is touched: attempts belongs
+// to the claim that incremented it, and availability belongs to the hand-back.
+var extendItems = lockedTargets(outstanding(), leasedPairs()) + fmt.Sprintf(`UPDATE %[1]s SET
+	%[2]s = GREATEST(%[1]s.%[2]s, %[3]s + %[4]s)
+FROM target
+WHERE %[5]s`,
+	ItemsTable,
+	LeaseColumn,
+	querygen.NowExpression,
+	microseconds(LeaseArg),
+	targetJoin(),
 )
 
 // completeItems retires finished items. Rows are marked rather than deleted, so

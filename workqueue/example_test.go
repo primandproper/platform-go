@@ -138,6 +138,38 @@ func ExampleQueue_Claim() {
 	}
 }
 
+// The same loop, written by nobody: NewRunner claims, hands each item to the
+// handler, completes what worked and hands back what did not — extending the
+// leases on running handlers for as long as they run, and draining the batch it
+// is holding when the context is cancelled.
+//
+//nolint:testableexamples // Postgres-only, as above.
+func ExampleNewRunner() {
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+
+	var queue *workqueue.Queue[tileKey]
+
+	runner, err := workqueue.NewRunner(ctx, &workqueue.RunnerConfig{}, queue,
+		func(ctx context.Context, item workqueue.Item[tileKey]) error {
+			// Idempotent: a worker that is paused for longer than its lease has
+			// its item handed to somebody else, and item.Reclaimed says when
+			// that has happened before.
+			return render(ctx, item.Key)
+		})
+	if err != nil {
+		log.Print(err)
+
+		return
+	}
+
+	// Blocks until ctx is done, then returns its error — after the batch it was
+	// holding has been finished and recorded.
+	if err = runner.Run(ctx); err != nil {
+		log.Print(err)
+	}
+}
+
 // Reap and Stats are called on a schedule the consumer owns — the jobs package
 // is the obvious place — because a component that starts its own timers is one
 // that has to be told when to stop.

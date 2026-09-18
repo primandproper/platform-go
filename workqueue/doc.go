@@ -34,13 +34,21 @@ reason a fleet can coordinate through one table.
 
 # Failure recovery is expiry; exclusivity is a name
 
-There are no heartbeats. A worker that dies simply lets its lease lapse, and the
-item is handed to somebody else. Nothing detects the death; nothing has to.
+Nothing detects a worker's death, and nothing has to: a worker that dies stops
+extending its leases, they lapse, and the items are handed to somebody else.
 
-The price of that simplicity is that work must be idempotent. Two workers can
-briefly hold the same key — a lease lapses while its holder is merely slow, not
-dead — so the item gets done twice. Item.Reclaimed marks a claim that took over a
-lapsed lease, so that window is visible.
+What a worker still running has is Extend, which pushes its claims' horizons out
+for as long as it is working — Runner calls it on a timer, so a consumer using
+that loop gets it without asking. The lease is therefore sized for a missed
+heartbeat rather than for the slowest item the queue will ever hold, which is
+what lets it stay short: a short lease is how quickly a dead worker's items come
+back.
+
+The price that remains is that work must be idempotent. Two workers can briefly
+hold the same key — a worker that is paused or partitioned stops extending
+without knowing it has, and its lease lapses while it is merely slow rather than
+dead — so the item gets done twice. Item.Reclaimed marks a claim that took over
+a lapsed lease, so that window is visible.
 
 What is not a price is the item being recorded wrong. A claim stamps a name on
 every row it takes and hands it back on Item.LeasedBy, and Complete and Release
@@ -58,9 +66,10 @@ again. Matching nothing is not an error — an item the queue never held, one an
 operator removed, and one somebody else now holds are the same answer to a caller
 — so what a short match gets is a counter and a log line.
 
-One consequence reaches a caller: Complete and Release report on a claim, so
-they take the Items that Claim handed out. There is no way to retire an item
-without having held it; Remove is how a queue drops work nobody claimed.
+One consequence reaches a caller: Complete, Release and Extend report on a
+claim, so they take the Items that Claim handed out. There is no way to retire
+an item, or to keep hold of one, without having held it; Remove is how a queue
+drops work nobody claimed.
 
 # The two details that cost real incidents
 
@@ -69,8 +78,8 @@ is obvious until it bites. They are the reason this package exists rather than
 the twenty lines of SQL underneath it.
 
 *Every writer takes its row locks in primary-key order.* Enqueue binds its rows
-in key order and the statement orders them again, and Complete, Release, and
-Remove reach their rows through a CTE that orders and locks them explicitly. With
+in key order and the statement orders them again, and Complete, Release, Extend
+and Remove reach their rows through a CTE that orders and locks them explicitly. With
 one total order, contention between concurrent batch writers degrades into a
 queue; without it, two batches that overlap in opposite orders deadlock
 (SQLSTATE 40P01) the moment they meet. Claim is exempt and safe: SKIP LOCKED
@@ -119,9 +128,23 @@ drained. That depends on the shape of the claim statement — a LIMIT pushed int
 subquery below the lock would silently start returning short batches — so there
 is a test pinning it.
 
-The loop around that is yours, and Wait is the only part of it this package
-supplies: it blocks until a wakeup arrives, until the poll elapses, or until the
-context is done. Given a wakeup it turns an idle worker from one claim query per
+The loop around that is Runner's, or yours. Runner is the one every consumer was
+writing — claim, work, batched complete, batched release with cause, until the
+queue is empty or the context is done — with the two parts of it that are easy
+to get wrong built in: the leases on running handlers are extended while they
+run, and a shutdown drains the batch it claimed rather than abandoning it. The
+handler is the only seam:
+
+	runner, err := workqueue.NewRunner(ctx, &workqueue.RunnerConfig{}, queue,
+	    func(ctx context.Context, item workqueue.Item[string]) error {
+	        return do(ctx, item.Key)
+	    })
+	// ...
+	err = runner.Run(ctx) // blocks until ctx is done
+
+Wait is what that loop sleeps on, and what a hand-written one should sleep on:
+it blocks until a wakeup arrives, until the poll elapses, or until the context is
+done. Given a wakeup it turns an idle worker from one claim query per
 tick into none, and turns the latency of a fresh enqueue from a poll interval
 into a millisecond:
 
@@ -188,8 +211,8 @@ production.
 A batch reaches those statements as one bound array per column rather than as a
 tuple or a placeholder run, so the text of a statement does not depend on how
 many items are in the call. Enqueue splits its merged batch into three parallel
-arrays — key, priority, delay — Complete and Release bind two, the key and the
-claim holding it, and Remove and Requeue bind one. All of them are in
+arrays — key, priority, delay — Complete, Release and Extend bind two, the key
+and the claim holding it, and Remove and Requeue bind one. All of them are in
 primary-key order, which is where the lock-ordering discipline above is
 applied.
 
