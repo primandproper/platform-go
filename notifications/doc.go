@@ -37,6 +37,13 @@ Wire it and dead tokens leave on their own. Leave it unwired and the
 classification still reaches the caller as an error — nothing is hidden — but
 nothing prunes.
 
+notifications/push is the loop that uses both halves: it resolves recipients to
+tokens through [Registry.ListDevicesByPrincipals], sends to each, and calls
+[Registry.InvalidateDeviceToken] on the sentinel — so a deployment prunes
+whether or not its sender was built with the hook, and a fan-out matching the
+provider's wording instead of the sentinel is not something each consumer has to
+get right on its own.
+
 From configuration the same wiring is two registrations rather than a call:
 notifications/config registers the store, notifications/mobile/config registers
 the sender and resolves the registry optionally, and a container carrying both

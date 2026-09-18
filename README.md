@@ -99,7 +99,7 @@ reasons behind the three exceptions.
 | `operations`    | Long-running operations with durable state, two-tier progress, and streamed updates | postgres (+ http)                |
 | `saga`          | Linear durable sagas with compensations                                             | postgres, mysql, sqlite          |
 | `webhooks`      | Outbound webhook delivery                                                           | postgres, mysql, sqlite          |
-| `notifications` | User notifications                                                                  | postgres, mysql, sqlite (+ grpc) |
+| `notifications` | The in-app inbox, the device registry, and the `notifications/push` fan-out         | postgres, mysql, sqlite (+ grpc) |
 | `searchsync`    | Reindexing worker driven by the outbox                                              | —                                |
 
 ### The composition root
