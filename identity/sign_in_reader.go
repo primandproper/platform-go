@@ -16,6 +16,10 @@ import (
 var _ SignInReader = (*SQLStore)(nil)
 
 // GetUserByUsername reads a live user by the handle they sign in with.
+//
+// The handle is folded before it is bound, so the sign-in form's spelling does
+// not have to be the registration's — on any of the three dialects. See
+// FoldHandle.
 func (s *SQLStore) GetUserByUsername(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
@@ -24,7 +28,7 @@ func (s *SQLStore) GetUserByUsername(
 ) (*User, error) {
 	return s.liveUser(ctx, q, scope, "reading identity user by username", func(ctx context.Context) (*User, error) {
 		row, err := s.q.GetUserByUsername(ctx, q, identitydb.GetUserByUsernameParams{
-			Username: username,
+			Username: FoldHandle(username),
 			Scope:    scope,
 		})
 		if err != nil {
@@ -35,7 +39,8 @@ func (s *SQLStore) GetUserByUsername(
 	})
 }
 
-// GetUserByEmailAddress reads a live user by their email address.
+// GetUserByEmailAddress reads a live user by their email address, folded before
+// it is bound as GetUserByUsername's handle is.
 func (s *SQLStore) GetUserByEmailAddress(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
@@ -44,7 +49,7 @@ func (s *SQLStore) GetUserByEmailAddress(
 ) (*User, error) {
 	return s.liveUser(ctx, q, scope, "reading identity user by email address", func(ctx context.Context) (*User, error) {
 		row, err := s.q.GetUserByEmailAddress(ctx, q, identitydb.GetUserByEmailAddressParams{
-			EmailAddress: emailAddress,
+			EmailAddress: FoldHandle(emailAddress),
 			Scope:        scope,
 		})
 		if err != nil {

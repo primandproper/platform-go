@@ -415,6 +415,34 @@ func TestService_LoginForToken(T *testing.T) {
 		test.ErrorIs(t, attempt.Reason, signin.ErrInvalidCredentials)
 	})
 
+	T.Run("a handle is folded before it is read and before it is recorded", func(t *testing.T) {
+		t.Parallel()
+
+		// The directory holds one spelling of a handle, so this package has to
+		// name the same one: the read finds jane whichever case the form
+		// submitted, and the failure a lockout counter counts is recorded under
+		// the folded handle rather than under however the attempt shouted it.
+		e := newEnv(t)
+
+		principal, err := e.svc.Authenticate(t.Context(), testScope,
+			&signin.Credentials{Username: "JaNe", Password: e.password})
+		must.NoError(t, err)
+		test.EqOp(t, e.user.ID, principal.User.ID)
+
+		byEmail, err := e.svc.Authenticate(t.Context(), testScope,
+			&signin.Credentials{EmailAddress: "Jane@Example.com", Password: e.password})
+		must.NoError(t, err)
+		test.EqOp(t, e.user.ID, byEmail.User.ID)
+
+		_, err = e.svc.LoginForToken(t.Context(), testScope,
+			&signin.Credentials{Username: "JANE", Password: "not it"})
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+		must.SliceLen(t, 1, e.hooks.failures)
+		test.EqOp(t, "jane", e.hooks.failures[0].Handle)
+		test.EqOp(t, e.user.ID, e.hooks.failures[0].UserID)
+	})
+
 	T.Run("an unknown handle reaches the hook with no user", func(t *testing.T) {
 		t.Parallel()
 

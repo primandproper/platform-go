@@ -153,6 +153,7 @@ INSERT INTO {{prefix}}identity_users (
 	id,
 	scope,
 	username,
+	username_display,
 	email_address,
 	first_name,
 	last_name,
@@ -184,7 +185,8 @@ INSERT INTO {{prefix}}identity_users (
 	?14,
 	?15,
 	?16,
-	?17
+	?17,
+	?18
 )`
 
 const deleteInvitationRolesSQLite = `DELETE FROM {{prefix}}identity_invitation_roles
@@ -262,6 +264,7 @@ const getArchivedUserSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.username_display,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -360,6 +363,7 @@ const getUserSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.username_display,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -386,6 +390,7 @@ const getUserByEmailAddressSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.username_display,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -412,6 +417,7 @@ const getUserByEmailVerificationTokenDigestSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.username_display,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -438,6 +444,7 @@ const getUserByUsernameSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.username_display,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -478,6 +485,7 @@ const getUserIncludingArchivedSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.username_display,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -535,6 +543,7 @@ const listAccountMembersSQLite = `SELECT
 	{{prefix}}identity_users.id AS user_id,
 	{{prefix}}identity_users.scope AS user_scope,
 	{{prefix}}identity_users.username AS user_username,
+	{{prefix}}identity_users.username_display AS user_username_display,
 	{{prefix}}identity_users.email_address AS user_email_address,
 	{{prefix}}identity_users.first_name AS user_first_name,
 	{{prefix}}identity_users.last_name AS user_last_name,
@@ -612,6 +621,7 @@ const listAccountMembersDescendingSQLite = `SELECT
 	{{prefix}}identity_users.id AS user_id,
 	{{prefix}}identity_users.scope AS user_scope,
 	{{prefix}}identity_users.username AS user_username,
+	{{prefix}}identity_users.username_display AS user_username_display,
 	{{prefix}}identity_users.email_address AS user_email_address,
 	{{prefix}}identity_users.first_name AS user_first_name,
 	{{prefix}}identity_users.last_name AS user_last_name,
@@ -1341,6 +1351,7 @@ const listUsersSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.username_display,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -1401,6 +1412,7 @@ const listUsersByIDsSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.username_display,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -1427,6 +1439,7 @@ const listUsersDescendingSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.username_display,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -1542,6 +1555,7 @@ const searchUsersByUsernameSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.username_display,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -1571,6 +1585,7 @@ const searchUsersByUsernameDescendingSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
+	{{prefix}}identity_users.username_display,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -1658,15 +1673,16 @@ WHERE archived_at IS NULL
 
 const updateUserSQLite = `UPDATE {{prefix}}identity_users SET
 	username = ?1,
-	email_address = ?2,
-	first_name = ?3,
-	last_name = ?4,
-	email_address_verified_at = ?5,
-	email_address_verification_token_digest = ?6,
+	username_display = ?2,
+	email_address = ?3,
+	first_name = ?4,
+	last_name = ?5,
+	email_address_verified_at = ?6,
+	email_address_verification_token_digest = ?7,
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE archived_at IS NULL
-	AND id = ?7
-	AND scope = ?8`
+	AND id = ?8
+	AND scope = ?9`
 
 const updateUserAccountStatusSQLite = `UPDATE {{prefix}}identity_users SET
 	account_status = ?1,
@@ -2103,6 +2119,7 @@ func (q *sqliteQueries) CreateUser(ctx context.Context, db DBTX, arg CreateUserP
 		arg.ID,
 		arg.Scope,
 		arg.Username,
+		arg.UsernameDisplay,
 		arg.EmailAddress,
 		arg.FirstName,
 		arg.LastName,
@@ -2278,6 +2295,7 @@ func (q *sqliteQueries) GetArchivedUser(ctx context.Context, db DBTX, arg GetArc
 		&i.ID,
 		&i.Scope,
 		&i.Username,
+		&i.UsernameDisplay,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2433,6 +2451,7 @@ func (q *sqliteQueries) GetUser(ctx context.Context, db DBTX, arg GetUserParams)
 		&i.ID,
 		&i.Scope,
 		&i.Username,
+		&i.UsernameDisplay,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2468,6 +2487,7 @@ func (q *sqliteQueries) GetUserByEmailAddress(ctx context.Context, db DBTX, arg 
 		&i.ID,
 		&i.Scope,
 		&i.Username,
+		&i.UsernameDisplay,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2503,6 +2523,7 @@ func (q *sqliteQueries) GetUserByEmailVerificationTokenDigest(ctx context.Contex
 		&i.ID,
 		&i.Scope,
 		&i.Username,
+		&i.UsernameDisplay,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2538,6 +2559,7 @@ func (q *sqliteQueries) GetUserByUsername(ctx context.Context, db DBTX, arg GetU
 		&i.ID,
 		&i.Scope,
 		&i.Username,
+		&i.UsernameDisplay,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2607,6 +2629,7 @@ func (q *sqliteQueries) GetUserIncludingArchived(ctx context.Context, db DBTX, a
 		&i.ID,
 		&i.Scope,
 		&i.Username,
+		&i.UsernameDisplay,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2695,6 +2718,7 @@ func (q *sqliteQueries) ListAccountMembers(ctx context.Context, db DBTX, arg Lis
 			&i.UserID,
 			&i.UserScope,
 			&i.UserUsername,
+			&i.UserUsernameDisplay,
 			&i.UserEmailAddress,
 			&i.UserFirstName,
 			&i.UserLastName,
@@ -2764,6 +2788,7 @@ func (q *sqliteQueries) ListAccountMembersDescending(ctx context.Context, db DBT
 			&i.UserID,
 			&i.UserScope,
 			&i.UserUsername,
+			&i.UserUsernameDisplay,
 			&i.UserEmailAddress,
 			&i.UserFirstName,
 			&i.UserLastName,
@@ -3604,6 +3629,7 @@ func (q *sqliteQueries) ListUsers(ctx context.Context, db DBTX, arg ListUsersPar
 			&i.ID,
 			&i.Scope,
 			&i.Username,
+			&i.UsernameDisplay,
 			&i.EmailAddress,
 			&i.FirstName,
 			&i.LastName,
@@ -3667,6 +3693,7 @@ func (q *sqliteQueries) ListUsersByIDs(ctx context.Context, db DBTX, arg ListUse
 			&i.ID,
 			&i.Scope,
 			&i.Username,
+			&i.UsernameDisplay,
 			&i.EmailAddress,
 			&i.FirstName,
 			&i.LastName,
@@ -3725,6 +3752,7 @@ func (q *sqliteQueries) ListUsersDescending(ctx context.Context, db DBTX, arg Li
 			&i.ID,
 			&i.Scope,
 			&i.Username,
+			&i.UsernameDisplay,
 			&i.EmailAddress,
 			&i.FirstName,
 			&i.LastName,
@@ -3883,6 +3911,7 @@ func (q *sqliteQueries) SearchUsersByUsername(ctx context.Context, db DBTX, arg 
 			&i.ID,
 			&i.Scope,
 			&i.Username,
+			&i.UsernameDisplay,
 			&i.EmailAddress,
 			&i.FirstName,
 			&i.LastName,
@@ -3937,6 +3966,7 @@ func (q *sqliteQueries) SearchUsersByUsernameDescending(ctx context.Context, db 
 			&i.ID,
 			&i.Scope,
 			&i.Username,
+			&i.UsernameDisplay,
 			&i.EmailAddress,
 			&i.FirstName,
 			&i.LastName,
@@ -4081,6 +4111,7 @@ func (q *sqliteQueries) UpdateAccount(ctx context.Context, db DBTX, arg UpdateAc
 func (q *sqliteQueries) UpdateUser(ctx context.Context, db DBTX, arg UpdateUserParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.updateUser,
 		arg.Username,
+		arg.UsernameDisplay,
 		arg.EmailAddress,
 		arg.FirstName,
 		arg.LastName,
@@ -4251,6 +4282,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4345,6 +4377,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4437,6 +4470,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4463,6 +4497,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4489,6 +4524,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4515,6 +4551,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4557,6 +4594,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4610,6 +4648,7 @@ var (
 		UserID                                  string
 		UserScope                               tenancy.Scope
 		UserUsername                            string
+		UserUsernameDisplay                     string
 		UserEmailAddress                        string
 		UserFirstName                           string
 		UserLastName                            string
@@ -4653,6 +4692,7 @@ var (
 		UserID                                  string
 		UserScope                               tenancy.Scope
 		UserUsername                            string
+		UserUsernameDisplay                     string
 		UserEmailAddress                        string
 		UserFirstName                           string
 		UserLastName                            string
@@ -5053,6 +5093,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -5081,6 +5122,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -5113,6 +5155,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -5182,6 +5225,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -5210,6 +5254,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -5276,6 +5321,7 @@ var (
 	}(UpdateAccountParams{})
 	_ = struct {
 		Username                            string
+		UsernameDisplay                     string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string

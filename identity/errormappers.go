@@ -44,7 +44,8 @@ var (
 // to a caller verbatim, handed to errors/grpc.RegisterClientSafeSentinels by
 // errormappers.Register alongside the five mappers.
 //
-// They are the ten the mappers claim, and the list is the same ten on purpose:
+// They are the eleven the mappers claim, and the list is the same eleven on
+// purpose:
 // each was given a status because a client acts on it, and a client acting on
 // it needs to know which one it got. gRPC derives its message from the code,
 // and the codes collide — the two collisions are both AlreadyExists, and an
@@ -69,6 +70,7 @@ var ClientSafeSentinels = []error{
 	ErrNoDefaultAccount,
 	ErrInvitationExpired,
 	ErrScopeMismatch,
+	ErrUsernameDisplayMismatch,
 }
 
 type (
@@ -127,6 +129,13 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// authority, the two halves of the request disagreed.
 	case errors.Is(err, ErrScopeMismatch):
 		return httperrors.ErrValidatingRequestInput, "entity does not belong to the named tenant", true
+
+	// The other write whose two halves disagree, and it reads the same way: the
+	// display spelling and the username are one handle, so a value that is a
+	// spelling of some other handle is a request contradicting itself rather
+	// than anything the directory refused.
+	case errors.Is(err, ErrUsernameDisplayMismatch):
+		return httperrors.ErrValidatingRequestInput, "display spelling is not a spelling of the username", true
 	default:
 		return httperrors.ErrNothingSpecific, "", false
 	}
@@ -160,7 +169,8 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 		errors.Is(err, ErrNoDefaultAccount):
 		return codes.FailedPrecondition, true
 
-	case errors.Is(err, ErrScopeMismatch):
+	case errors.Is(err, ErrScopeMismatch),
+		errors.Is(err, ErrUsernameDisplayMismatch):
 		return codes.InvalidArgument, true
 	default:
 		return codes.Unknown, false

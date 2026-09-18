@@ -14,7 +14,7 @@ import (
 
 // mappedSentinels is every sentinel both mappers are expected to have an answer
 // for: the four absences, the two collisions, the two refusals, the expired
-// invitation and the scope mismatch.
+// invitation and the two self-contradicting writes.
 //
 // One list rather than one per transport, deliberately. A service exposing both
 // would otherwise answer a taken username with a considered 409 on one and
@@ -31,6 +31,7 @@ var mappedSentinels = []error{
 	ErrNoDefaultAccount,
 	ErrInvitationExpired,
 	ErrScopeMismatch,
+	ErrUsernameDisplayMismatch,
 }
 
 func TestMappers_coverTheSameSentinels(T *testing.T) {

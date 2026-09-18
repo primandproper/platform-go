@@ -62,6 +62,17 @@ const (
 	UserEmailVerificationTokenDigestColumn = "email_address_verification_token_digest"
 )
 
+// userUsernameDisplayColumn is the spelling a registration submitted, kept
+// beside the folded handle the statements above are keyed on.
+//
+// It is unexported where UserUsernameColumn is exported, and that is the point
+// rather than an oversight: the exported three are exported because the store
+// names them as the column a keyed read is keyed on, and nothing is keyed on
+// this one. No statement predicates on it, no index covers it, and a keyed read
+// that named it would be a second answer to "which user is this", which is the
+// question folding the handle exists to give one answer to.
+const userUsernameDisplayColumn = "username_display"
+
 // The role tables' columns. Each of the three is a child set of one parent row
 // — a user, a membership, an invitation — keyed on that parent and carrying one
 // role per row, with no id, no scope and no timestamps of its own — see
@@ -245,6 +256,7 @@ var Users = Table{
 		querygen.IDColumn,
 		ScopeColumn,
 		UserUsernameColumn,
+		userUsernameDisplayColumn,
 		UserEmailAddressColumn,
 		"first_name",
 		"last_name",
@@ -272,6 +284,7 @@ var Users = Table{
 	},
 	Updatable: []string{
 		UserUsernameColumn,
+		userUsernameDisplayColumn,
 		UserEmailAddressColumn,
 		"first_name",
 		"last_name",

@@ -105,7 +105,11 @@ type Invitation struct {
 	// FromUser is who sent it.
 	FromUser string `json:"fromUser"`
 
-	// ToEmail is the address it was sent to.
+	// ToEmail is the address it was sent to. The Store folds it to lower case on
+	// write and on every lookup, as it folds a User's EmailAddress, so the
+	// invitation is reachable by the address of whoever registers against it
+	// however either was spelled — see "Handles are folded" in the package
+	// documentation.
 	ToEmail string `json:"toEmail"`
 
 	// ToName is what to call the recipient in the email. Optional.

@@ -28,6 +28,7 @@ func fullUser() *identity.User {
 	return &identity.User{
 		ID:                         "user_1",
 		Username:                   "somebody",
+		UsernameDisplay:            "Somebody",
 		EmailAddress:               "somebody@example.com",
 		FirstName:                  "Some",
 		LastName:                   "Body",

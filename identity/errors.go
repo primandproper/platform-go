@@ -51,6 +51,18 @@ var (
 	// module.
 	ErrScopeMismatch = platformerrors.New("identity entity names a different scope than the write")
 
+	// ErrUsernameDisplayMismatch indicates a write whose User.UsernameDisplay is
+	// not a spelling of its Username — "Bob" beside "ada" rather than "Ada".
+	//
+	// The two are one handle in two cases, so a disagreement is not a choice a
+	// caller could have meant: it is the display from before a rename, written
+	// back by somebody who changed the username field of a value they read and
+	// left the other. Refusing it rather than correcting it is the reading
+	// ErrScopeMismatch above takes of the same shape, and a display left empty
+	// adopts the submitted spelling exactly as a user naming no scope adopts
+	// the argument.
+	ErrUsernameDisplayMismatch = platformerrors.New("identity user display spelling names a different username")
+
 	// ErrUsernameTaken indicates a username already registered in this scope.
 	//
 	// It is a distinct error rather than a raw constraint violation because

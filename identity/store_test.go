@@ -105,6 +105,7 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		{name: "admin", run: runAdminWriterSuite},
 		{name: "billing", run: runBillingWriterSuite},
 		{name: "invitations", run: runInvitationStoreSuite},
+		{name: "handle folding", run: runHandleFoldingSuite},
 		{name: "token digests", run: runTokenDigestSuite},
 		{name: "service", run: runServiceSuite},
 		{name: "credential service", run: runCredentialServiceSuite},

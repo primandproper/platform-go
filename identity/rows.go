@@ -187,6 +187,7 @@ func userFromRow(r *identitydb.GetUserRow) *User {
 		ID:                                  r.ID,
 		Scope:                               r.Scope,
 		Username:                            r.Username,
+		UsernameDisplay:                     displayedUsername(r.Username, r.UsernameDisplay),
 		EmailAddress:                        r.EmailAddress,
 		FirstName:                           r.FirstName,
 		LastName:                            r.LastName,
@@ -251,6 +252,7 @@ func userFromUsernameRow(r *identitydb.GetUserByUsernameRow) *User {
 		ID:                                  r.ID,
 		Scope:                               r.Scope,
 		Username:                            r.Username,
+		UsernameDisplay:                     r.UsernameDisplay,
 		EmailAddress:                        r.EmailAddress,
 		FirstName:                           r.FirstName,
 		LastName:                            r.LastName,
@@ -276,6 +278,7 @@ func userFromEmailAddressRow(r *identitydb.GetUserByEmailAddressRow) *User {
 		ID:                                  r.ID,
 		Scope:                               r.Scope,
 		Username:                            r.Username,
+		UsernameDisplay:                     r.UsernameDisplay,
 		EmailAddress:                        r.EmailAddress,
 		FirstName:                           r.FirstName,
 		LastName:                            r.LastName,
@@ -301,6 +304,7 @@ func userFromEmailVerificationTokenDigestRow(r *identitydb.GetUserByEmailVerific
 		ID:                                  r.ID,
 		Scope:                               r.Scope,
 		Username:                            r.Username,
+		UsernameDisplay:                     r.UsernameDisplay,
 		EmailAddress:                        r.EmailAddress,
 		FirstName:                           r.FirstName,
 		LastName:                            r.LastName,
@@ -327,6 +331,7 @@ func userPageRow(r *identitydb.ListUsersRow) pageRow[User] {
 			ID:                                  r.ID,
 			Scope:                               r.Scope,
 			Username:                            r.Username,
+			UsernameDisplay:                     r.UsernameDisplay,
 			EmailAddress:                        r.EmailAddress,
 			FirstName:                           r.FirstName,
 			LastName:                            r.LastName,
@@ -357,6 +362,7 @@ func userFromSearchRow(r *identitydb.SearchUsersByUsernameRow) *User {
 		ID:                                  r.ID,
 		Scope:                               r.Scope,
 		Username:                            r.Username,
+		UsernameDisplay:                     r.UsernameDisplay,
 		EmailAddress:                        r.EmailAddress,
 		FirstName:                           r.FirstName,
 		LastName:                            r.LastName,
@@ -382,6 +388,7 @@ func userFromBatchRow(r *identitydb.ListUsersByIDsRow) *User {
 		ID:                                  r.ID,
 		Scope:                               r.Scope,
 		Username:                            r.Username,
+		UsernameDisplay:                     r.UsernameDisplay,
 		EmailAddress:                        r.EmailAddress,
 		FirstName:                           r.FirstName,
 		LastName:                            r.LastName,
@@ -449,6 +456,7 @@ func createUserParams(u *User) identitydb.CreateUserParams {
 		ID:                                  u.ID,
 		Scope:                               u.Scope,
 		Username:                            u.Username,
+		UsernameDisplay:                     u.UsernameDisplay,
 		EmailAddress:                        u.EmailAddress,
 		FirstName:                           u.FirstName,
 		LastName:                            u.LastName,
@@ -466,7 +474,7 @@ func createUserParams(u *User) identitydb.CreateUserParams {
 	}
 }
 
-// updateUserParams is the profile update: four columns and two derived ones.
+// updateUserParams is the profile update: five columns and two derived ones.
 //
 // verifiedAt and digest are the caller's decision rather than the user's own
 // fields, and they are decided together — moving an address clears the proof
@@ -484,6 +492,7 @@ func updateUserParams(u *User, verifiedAt *time.Time, digest string) identitydb.
 		ID:                                  u.ID,
 		Scope:                               u.Scope,
 		Username:                            u.Username,
+		UsernameDisplay:                     u.UsernameDisplay,
 		EmailAddress:                        u.EmailAddress,
 		FirstName:                           u.FirstName,
 		LastName:                            u.LastName,
@@ -757,6 +766,7 @@ func memberPageRow(r *identitydb.ListAccountMembersRow) pageRow[MembershipWithUs
 		ID:                                  r.UserID,
 		Scope:                               r.UserScope,
 		Username:                            r.UserUsername,
+		UsernameDisplay:                     r.UserUsernameDisplay,
 		EmailAddress:                        r.UserEmailAddress,
 		FirstName:                           r.UserFirstName,
 		LastName:                            r.UserLastName,

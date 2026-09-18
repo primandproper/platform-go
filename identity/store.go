@@ -170,6 +170,13 @@ type Registrar interface {
 	// caller's next move differs, and asking them to parse a SQLSTATE to find
 	// out is how that check gets skipped.
 	//
+	// Both handles are folded to lower case before they are checked and before
+	// they are written, so "Ada" and "ada" are one registration on every
+	// dialect. The spelling submitted is kept: a registration naming no
+	// User.UsernameDisplay adopts the one its Username carried, which is what
+	// the row comes back with. See "Handles are folded" in the package
+	// documentation.
+	//
 	// The user handed back is the row, read on the caller's transaction after
 	// the write. The User passed in is read and not written to: what a caller
 	// wants afterwards is what the database holds, which is not what they
@@ -352,10 +359,15 @@ type SignInReader interface {
 	// GetUserByUsername reads a user by the handle they sign in with. Archived
 	// users are excluded: this is the sign-in read, and a deleted account must
 	// not authenticate.
+	//
+	// The handle is folded before it is bound, so the case a sign-in form
+	// submits does not have to be the case the registration used — see
+	// "Handles are folded" in the package documentation. What comes back
+	// carries both spellings: the folded handle and the display one.
 	GetUserByUsername(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, username string) (*User, error)
 
-	// GetUserByEmailAddress is GetUserByUsername for the address. It is the read
-	// a password-reset flow starts from.
+	// GetUserByEmailAddress is GetUserByUsername for the address, folded the
+	// same way. It is the read a password-reset flow starts from.
 	GetUserByEmailAddress(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, emailAddress string) (*User, error)
 
 	// GetPrincipal reads a user with their memberships and resolves which
@@ -479,6 +491,9 @@ type DirectoryReader interface {
 	// is a username and the filter's SortBy reverses the alphabet rather than
 	// the creation order — which is what a direction means for a read ordered by
 	// something other than an id.
+	//
+	// The prefix is folded before it is matched, because the column holds
+	// folded usernames: a search for "Ad" finds "ada".
 	SearchUsersByUsername(
 		ctx context.Context,
 		q database.SQLQueryExecutor,
@@ -568,8 +583,16 @@ type ProfileWriter interface {
 	// UpdateUserTwoFactorSecret, and their siblings.
 	//
 	// Changing the username or email address to one already registered in this
-	// scope returns ErrUsernameTaken or ErrEmailAddressTaken. Changing the email
-	// address clears its verification: the new address has not been proven. The
+	// scope returns ErrUsernameTaken or ErrEmailAddressTaken. Both are folded
+	// first, as they are at registration, so re-casing a handle is not a change
+	// to it — not a collision with the row's own value, and not a move that
+	// clears the verification below. Re-casing the username does move
+	// User.UsernameDisplay, which is what re-casing a handle is for; a write
+	// carrying a display spelling of some *other* handle is
+	// ErrUsernameDisplayMismatch, because the two are one handle and a caller
+	// who changed one field of a value they read has left the other behind.
+	// Changing the email address to a different one clears its verification:
+	// the new address has not been proven. The
 	// outstanding verification token goes with it, in the same statement — the
 	// column records that a link was mailed, not which address it went to, so a
 	// token that survived the move would let the link sent to the old address
@@ -992,6 +1015,10 @@ type InvitationStore interface {
 	// address in one status, redacted — with InvitationPending, what a newly
 	// registered user is shown. See ListInvitationsFromUser on why the status is
 	// an argument and why it is a required one.
+	//
+	// The address is folded before it is bound, as CreateInvitation folds the
+	// one it stores, so the invitation a sender addressed to Ada@example.com is
+	// the one the user who registered as ada@example.com is shown.
 	ListInvitationsForEmailAddress(
 		ctx context.Context,
 		q database.SQLQueryExecutor,
