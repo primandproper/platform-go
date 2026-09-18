@@ -127,6 +127,59 @@ func TestListReportsByReporter(T *testing.T) {
 		test.SliceNotContains(t, ids, theirs.ID)
 	})
 
+	T.Run("an unnamed reporter is the caller's own", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+
+		mine := h.seedReport(t, testScope, testReporter)
+		theirs := h.seedReport(t, testScope, otherReporter)
+
+		// What a "your reports" view sends: it has nothing to put in the field
+		// that the connection is not already carrying.
+		res, err := h.server.ListReportsByReporter(h.ctx(t, testReporter),
+			&issuereportspb.ListReportsByReporterRequest{})
+		must.NoError(t, err)
+
+		ids := idsOf(res.GetResults())
+		test.SliceContains(t, ids, mine.ID)
+		test.SliceNotContains(t, ids, theirs.ID)
+	})
+
+	T.Run("an unnamed reporter is still put to the rule", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarnessWithAuthorizer(t, &brokenAuthorizer{err: errAuthorizerUnavailable})
+
+		// The caller's own name is a name, so the default does not skip the
+		// question — a deployment whose rule narrows further than
+		// ReporterAuthorizer still answers it.
+		_, err := h.server.ListReportsByReporter(h.ctx(t, testReporter),
+			&issuereportspb.ListReportsByReporterRequest{})
+		must.Error(t, err)
+		test.EqOp(t, codes.Internal, status.Code(err))
+		test.ErrorIs(t, err, errAuthorizerUnavailable)
+	})
+
+	T.Run("a caller with no identifier names nobody and is refused", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		h.seedReport(t, testScope, testReporter)
+
+		// The default copies whatever the principal carries, which here is
+		// nothing. An empty reporter reaching the store would be a read of the
+		// reports filed by nobody, so the rule declines to treat it as a key.
+		ctx := withPrincipal(t.Context(), &testPrincipal{scope: testScope})
+
+		res, err := h.server.ListReportsByReporter(ctx,
+			&issuereportspb.ListReportsByReporterRequest{})
+		must.Error(t, err)
+		test.Nil(t, res)
+		test.EqOp(t, codes.PermissionDenied, status.Code(err))
+		test.ErrorIs(t, err, callers.ErrTargetNotPermitted)
+	})
+
 	T.Run("a triager pages anybody's", func(t *testing.T) {
 		t.Parallel()
 
