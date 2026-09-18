@@ -170,7 +170,8 @@ func TestDurableRecorder_Record(T *testing.T) {
 	T.Run("drops usage for an unregistered meter by default", func(t *testing.T) {
 		t.Parallel()
 
-		recorder, env, store, _ := newTestRecorder(t)
+		logger := newRecordingLogger()
+		recorder, env, store, _ := newTestRecorder(t, WithRecorderLogger(logger))
 
 		// A deploy that adds a meter reaches the ingest path before it reaches
 		// the wiring on some replica somewhere, and failing here would turn a
@@ -181,6 +182,21 @@ func TestDurableRecorder_Record(T *testing.T) {
 		))
 
 		test.EqOp(t, int64(3), totalOf(t, env, store))
+
+		// Dropped is not the same as unremarkable. The record is billable usage
+		// nobody will be charged for, so it lands at Error with the meter that
+		// was not registered, the subject whose usage went unbilled, and
+		// ErrUnknownMeter as the cause — not at Info, where a typo'd meter name
+		// waits for somebody to go looking for it.
+		errors := logger.at(logging.ErrorLevel)
+		must.SliceLen(t, 1, errors)
+		test.ErrorIs(t, errors[0].err, ErrUnknownMeter)
+		test.StrContains(t, errors[0].err.Error(), "not_registered")
+		test.EqOp(t, "not_registered", errors[0].values[meterKey])
+		test.EqOp(t, testSubject, errors[0].values[subjectKey])
+
+		// The meter that was registered is not a line anybody has to read past.
+		test.SliceEmpty(t, logger.messages(logging.InfoLevel))
 	})
 
 	T.Run("refuses an unregistered meter when configured to", func(t *testing.T) {

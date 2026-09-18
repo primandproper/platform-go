@@ -105,6 +105,17 @@ type RecorderConfig struct {
 	// Record that returns an error for a meter the next replica knows about turns
 	// a rollout into an outage on the path that was supposed to be cheap. An
 	// operator who would rather find out loudly sets this.
+	//
+	// The default stays where it is, and the drop is logged at Error instead. The
+	// asymmetry above is about what a rollout should do to a live ingest path; it
+	// says nothing about how quiet the drop should be, and those are two
+	// decisions that were being made by one field. A dropped record is billable
+	// usage nobody will be charged for — the same money the flusher refuses to
+	// discard when it declines to build over an implicit noop reporter — so it is
+	// logged at Error with the meter, the subject, and ErrUnknownMeter as the
+	// cause. A typo'd meter name is then a line somebody's alerting already
+	// watches rather than one it has to be taught to read, and usage_dropped is
+	// the counter that says how much.
 	RejectUnknownMeters bool `env:"REJECT_UNKNOWN_METERS" json:"rejectUnknownMeters,omitempty" yaml:"rejectUnknownMeters,omitempty"`
 }
 
