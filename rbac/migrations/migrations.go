@@ -10,7 +10,7 @@ If you already run database/migrate, hand SQL to WithGeneratedMigration and the
 tables are created by your normal migration run — no DDL copied into your
 repository, nothing to keep in sync as this package evolves:
 
-	ddl, err := migrations.SQL(dialect.Postgres, database.DefaultTablePrefix)
+	ddl, err := migrations.SQL(dialect.Postgres, rbac.DefaultTablePrefix)
 	// ...
 	m, err := migrate.New(dialect.Postgres, myMigrations,
 		migrate.WithGeneratedMigration(44, "create_authorization_tables", ddl),

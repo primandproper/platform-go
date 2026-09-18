@@ -72,13 +72,30 @@ declaration, either compiled in or written to the database — which is what kee
 a code-side policy from drifting away from a database-side one, the failure this
 backend would otherwise invite.
 
-Writes take the caller's executor rather than holding their own, following
-outbox.Writer.Enqueue, so a policy change commits with whatever else its
-transaction did:
+Writes take an executor rather than a database.Tx, which is a carve-out from the
+module's rule that every exported store write takes one — an enumerated
+exception, granted for the reason below rather than claimed by resembling one of
+the four other packages that hold one. Roles are deployment-global: no tenancy
+column, no subject, nothing a consumer holds on somebody else's behalf. And the
+writes are seed-time, run by whatever migrates and bootstraps a deployment,
+which hands over a plain Client.Writer() as often as it hands over a
+transaction. That is also what puts a Dialect in this package's Config where its
+siblings read one off the database.Client they were handed: an executor has none
+to read.
 
-	err := client.WithTransaction(ctx, func(q rbac.Tx) error {
-		return resolver.Seed(ctx, q, roles...)
+What the carve-out costs is that atomicity is the caller's to choose, and there
+is something to choose. A role's grants are cleared and then rewritten across
+several statements, so a rewrite through Client.Writer() commits the clear
+whether or not the rewrite follows it — for the length of that window the role
+grants neither the old policy nor the new one. Inside a transaction there is no
+window, and a caller with nothing else to join should open one anyway:
+
+	err := client.WithTransaction(ctx, func(tx database.Tx) error {
+		return resolver.Seed(ctx, tx, roles...)
 	})
+
+ArchiveRole is the one of the three whose atomicity is not the caller's to get
+wrong: it is a single statement, so it is atomic wherever it runs.
 
 Seed is idempotent, validates the whole policy before writing anything, and
 leaves roles it was not given alone — so it can run on every deploy without
@@ -97,7 +114,10 @@ engine's own locking rules leave it no other answer — SQLite admits one writer
 at a time, and MySQL's default isolation can declare a deadlock between two
 seeds of a role with no grants stored yet — what it reports is an error on a
 transaction that wrote nothing, for the caller to retry, never a policy half of
-which landed. No lock has to be held around the call.
+which landed. The rollback in that sentence is the transaction's rather than the
+seed's: a seed refused partway through a plain Client.Writer() has already
+committed everything it wrote before the refusal. No lock has to be held around
+the call.
 
 Writing a role or a permission is one lookup for the whole batch and then a
 converging write for each row that is actually missing or actually different. A
@@ -118,7 +138,8 @@ Grants and inheritance edges are cleared and rewritten a row at a time, with an
 insert that skips a row already there rather than colliding with it. The
 multi-row VALUES list that preceded them had no static text — its arity was the
 caller's cardinality — so there was nothing for sqlc to check; what replaces it
-costs a round trip per grant, inside the transaction the caller already opened.
+costs a round trip per grant, inside the transaction the caller opened if they
+opened one.
 
 # Archival
 

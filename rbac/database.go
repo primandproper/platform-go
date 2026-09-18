@@ -68,6 +68,12 @@ type Resolver struct {
 // Config configures a Resolver.
 type Config struct {
 	// Dialect selects the SQL emitted. Required.
+	//
+	// Configured here where most of this module's siblings say the dialect comes
+	// from the database.Client: this package is handed a
+	// database.SQLQueryExecutor rather than a Client, and an executor has no
+	// dialect to read. That is the same carve-out the writes are on, which the
+	// package documentation states.
 	Dialect dialect.Dialect `env:"DIALECT" json:"dialect,omitempty" yaml:"dialect,omitempty"`
 	// TablePrefix is the namespace prepended to every policy table name. Empty
 	// renders the schema's own names (authz_roles); set it to share a database
@@ -76,9 +82,12 @@ type Config struct {
 	TablePrefix string `env:"TABLE_PREFIX" json:"tablePrefix,omitempty" yaml:"tablePrefix,omitempty"`
 }
 
-// NewResolver builds a Resolver. The executor is used for reads; writes take
-// the caller's executor per call so that a policy change commits with whatever
-// else its transaction did.
+// NewResolver builds a Resolver. The executor is used for reads; writes take an
+// executor per call rather than a database.Tx, so a policy change commits with
+// whatever else the caller's transaction did — and, where the caller supplies no
+// transaction, commits statement by statement. See the package documentation for
+// the carve-out that shape is, and Seed, UpsertRole and ArchiveRole for what it
+// costs each of them.
 func NewResolver(cfg *Config, db database.SQLQueryExecutor, opts ...Option) (*Resolver, error) {
 	if cfg == nil {
 		return nil, platformerrors.Wrap(platformerrors.ErrNilInputParameter, "config")
@@ -272,8 +281,15 @@ func (r *Resolver) rolesWith(ctx context.Context, q database.SQLQueryExecutor) (
 	return out, nil
 }
 
-// Seed writes roles into the policy tables, using the caller's executor so the
-// whole policy lands in one transaction or not at all.
+// Seed writes roles into the policy tables through the executor it is handed.
+//
+// Inside Client.WithTransaction the whole policy lands or none of it does.
+// Through a plain Client.Writer() it lands statement by statement, and a Seed
+// that fails partway has committed what it wrote up to that point — each role's
+// grants are cleared before they are rewritten, so a role whose rewrite did not
+// follow its clear grants nothing until the next successful Seed. Atomicity is
+// the caller's to choose here, which is the carve-out from this module's
+// Tx-taking write rule that the package documentation records.
 //
 // It is the counterpart to handing the same []authorization.Role to
 // authorization/static: one declaration, either compiled in or written to the
@@ -341,6 +357,12 @@ func (r *Resolver) Seed(ctx context.Context, q database.SQLQueryExecutor, roles 
 // UpsertRole writes a single role. It validates the role against the policy
 // already in the database, so a parent that does not exist — or an inheritance
 // cycle the new edge would close — is rejected rather than written.
+//
+// Like Seed, it is atomic only inside Client.WithTransaction: it reads the
+// existing policy and then clears and rewrites this role's grants across
+// several statements, so through a plain Client.Writer() the read can go stale
+// under a concurrent write and a failure partway leaves the role holding what
+// had been written by then.
 //
 // signature; a pointer here would make the two ways of writing policy differ
 // for no benefit at a call rate of one per administrative action.
@@ -411,6 +433,11 @@ func (r *Resolver) UpsertRole(ctx context.Context, q database.SQLQueryExecutor, 
 // The row count is deliberately unread. Archiving a role that is already
 // archived, or one that was never there, is a no-op rather than an error: the
 // caller asked for the role to grant nothing and it grants nothing.
+//
+// It is the one of this package's three writes whose atomicity does not depend
+// on the executor it is handed: one statement, so it commits or it does not,
+// whether or not the caller opened a transaction. Pass a Tx anyway when the
+// archival belongs with something else the caller is writing.
 func (r *Resolver) ArchiveRole(ctx context.Context, q database.SQLQueryExecutor, name string) error {
 	ctx, op := r.o11y.Begin(ctx)
 	defer op.End()

@@ -349,6 +349,95 @@ func TestResolver_Seed(T *testing.T) {
 	})
 }
 
+// TestResolver_AtomicityIsTheCallersToChoose pins the carve-out this package is
+// on: the three writes take an executor rather than a database.Tx, so they run
+// through whatever a deployment's bootstrap hands them, and the cost of that is
+// that a policy rewrite is atomic only inside Client.WithTransaction. Both
+// halves are asserted, because the documentation claims both and only one of
+// them is the happy path anybody would notice breaking.
+func TestResolver_AtomicityIsTheCallersToChoose(T *testing.T) {
+	T.Parallel()
+
+	T.Run("the three writes run through a plain writer", func(t *testing.T) {
+		t.Parallel()
+
+		r, client := newTestResolver(t)
+
+		must.NoError(t, r.Seed(t.Context(), client.Writer(), testRoles()...))
+		must.NoError(t, r.UpsertRole(t.Context(), client.Writer(), authorization.Role{
+			Name:        "support",
+			Permissions: []authorization.Permission{permRead},
+			Inherits:    []string{"member"},
+		}))
+		must.NoError(t, r.ArchiveRole(t.Context(), client.Writer(), "auditor"))
+
+		set, err := r.PermissionsForRoles(t.Context(), "support")
+		must.NoError(t, err)
+		test.True(t, set.Equal(authorization.NewPermissionSet(permRead)))
+
+		set, err = r.PermissionsForRoles(t.Context(), "auditor")
+		must.NoError(t, err)
+		test.EqOp(t, 0, set.Len())
+	})
+
+	// The window the documentation describes: the clear commits, the rewrite
+	// that was meant to follow it does not, and the role is left granting
+	// neither the old policy nor the new one until the next successful write.
+	T.Run("a rewrite that fails through a plain writer has committed its clear", func(t *testing.T) {
+		t.Parallel()
+
+		r, client := newTestResolver(t)
+		seed(t, r, client, testRoles()...)
+
+		adminID, err := r.lookupRoleID(t.Context(), client.Writer(), "admin")
+		must.NoError(t, err)
+
+		// The parent is unresolvable, so the hierarchy rewrite fails after the
+		// clears — and after the permission it did manage to write.
+		err = r.writeRoleGrants(t.Context(), client.Writer(), map[string]string{"admin": adminID},
+			&authorization.Role{
+				Name:        "admin",
+				Permissions: []authorization.Permission{permWrite},
+				Inherits:    []string{"nonexistent"},
+			})
+		must.Error(t, err)
+
+		set, err := r.PermissionsForRoles(t.Context(), "admin")
+		must.NoError(t, err)
+
+		// permWrite landed and the edge to member did not come back, so what
+		// survives is the half-applied policy rather than either whole one.
+		test.True(t, set.Equal(authorization.NewPermissionSet(permWrite)))
+	})
+
+	T.Run("the same rewrite inside a transaction leaves the policy as it was", func(t *testing.T) {
+		t.Parallel()
+
+		r, client := newTestResolver(t)
+		seed(t, r, client, testRoles()...)
+
+		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
+			adminID, lookupErr := r.lookupRoleID(t.Context(), q, "admin")
+			must.NoError(t, lookupErr)
+
+			return r.writeRoleGrants(t.Context(), q, map[string]string{"admin": adminID},
+				&authorization.Role{
+					Name:        "admin",
+					Permissions: []authorization.Permission{permWrite},
+					Inherits:    []string{"nonexistent"},
+				})
+		})
+		must.Error(t, err)
+
+		set, err := r.PermissionsForRoles(t.Context(), "admin")
+		must.NoError(t, err)
+
+		// The clear rolled back with everything else, so admin still inherits
+		// member's read.
+		test.True(t, set.Equal(authorization.NewPermissionSet(permRead, permWrite)))
+	})
+}
+
 func TestResolver_Roles(T *testing.T) {
 	T.Parallel()
 
