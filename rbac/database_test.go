@@ -350,7 +350,7 @@ func TestResolver_Seed(T *testing.T) {
 }
 
 // TestResolver_AtomicityIsTheCallersToChoose pins the carve-out this package is
-// on: the three writes take an executor rather than a database.Tx, so they run
+// on: the four writes take an executor rather than a database.Tx, so they run
 // through whatever a deployment's bootstrap hands them, and the cost of that is
 // that a policy rewrite is atomic only inside Client.WithTransaction. Both
 // halves are asserted, because the documentation claims both and only one of
@@ -358,12 +358,19 @@ func TestResolver_Seed(T *testing.T) {
 func TestResolver_AtomicityIsTheCallersToChoose(T *testing.T) {
 	T.Parallel()
 
-	T.Run("the three writes run through a plain writer", func(t *testing.T) {
+	T.Run("the four writes run through a plain writer", func(t *testing.T) {
 		t.Parallel()
 
 		r, client := newTestResolver(t)
 
 		must.NoError(t, r.Seed(t.Context(), client.Writer(), testRoles()...))
+
+		// SeedPolicy is in the carve-out for the same reason and by the same
+		// route — it is Seed, reached through the declaration a deployment
+		// holds — so the executor it runs through is asserted here rather than
+		// left to be inferred from the method it delegates to.
+		must.NoError(t, r.SeedPolicy(t.Context(), client.Writer(), testPolicy()))
+
 		must.NoError(t, r.UpsertRole(t.Context(), client.Writer(), authorization.Role{
 			Name:        "support",
 			Permissions: []authorization.Permission{permRead},
