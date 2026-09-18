@@ -1,12 +1,25 @@
 package http
 
 import (
+	"time"
+
 	"github.com/primandproper/platform-go/v14/operations"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/eventstream/sse"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
 )
+
+// DefaultHeartbeatInterval is how often a stream with nothing to report reports
+// nothing anyway. See WithHeartbeatInterval.
+//
+// Fifteen seconds, which clears the 60-second idle timeout that nginx, an AWS
+// ALB and most of the other things a stream travels through ship as their
+// default — with room for three ticks before the first of them fires, so a
+// missed one is not a closed connection. Being comfortably under thirty is the
+// property that matters; the rest of the margin is slack.
+const DefaultHeartbeatInterval = 15 * time.Second
 
 // ErrNilOwnerResolver indicates handlers built without an OwnerResolver.
 //
@@ -15,6 +28,21 @@ import (
 // and the wiring that serves every tenant's operations to anyone look identical.
 // A deployment that genuinely has no owners passes GlobalOwner, by name.
 var ErrNilOwnerResolver = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil operations owner resolver")
+
+// ErrInvalidHeartbeatInterval indicates WithHeartbeatInterval was given a
+// non-positive interval.
+//
+// Refused rather than read as "then send no heartbeats", because those are the
+// two readings a caller most needs told apart and the silent one is the
+// expensive half: it is exactly the behavior this package had before there was a
+// heartbeat, and its symptom is not here — it is a stream a proxy somewhere else
+// closed, minutes later, mid-operation. There is deliberately no spelling of
+// "no heartbeat at all": a long-lived connection nobody ever writes to is not
+// something a deployment wants, it is the bug this interval exists to fix.
+var ErrInvalidHeartbeatInterval = platformerrors.Wrap(
+	platformerrors.ErrUnrecognizedInputValue,
+	"non-positive operations event stream heartbeat interval",
+)
 
 type (
 	// Option configures the handlers at construction.
@@ -28,11 +56,14 @@ type (
 
 		basePath string
 		tags     []string
+
+		heartbeat      time.Duration
+		reconnectDelay sse.ReconnectDelay
 	}
 )
 
 func newOptions(opts []Option) *options {
-	o := &options{basePath: BasePath, tags: []string{"operations"}}
+	o := &options{basePath: BasePath, tags: []string{"operations"}, heartbeat: DefaultHeartbeatInterval}
 
 	for _, opt := range opts {
 		if opt != nil {
@@ -72,6 +103,35 @@ func WithBasePath(basePath string) Option {
 			o.basePath = basePath
 		}
 	}
+}
+
+// WithHeartbeatInterval sets how often the event stream writes a heartbeat
+// frame while the operation it is following has nothing new to say.
+//
+// The default is DefaultHeartbeatInterval and is already under every idle
+// timeout worth naming; what this is for is a deployment that knows its own
+// proxy is stricter than that. A non-positive interval is refused at
+// construction — see ErrInvalidHeartbeatInterval — rather than turning the
+// heartbeat off.
+//
+// It has no effect without WithWatcher: no stream is registered, so there is
+// nothing to keep warm.
+func WithHeartbeatInterval(interval time.Duration) Option {
+	return func(o *options) { o.heartbeat = interval }
+}
+
+// WithReconnectDelay sets the SSE "retry:" field every stream opens with, which
+// is how long a disconnected client waits before reconnecting.
+//
+// The value comes from sse.NewReconnectDelay, which is where one the wire format
+// cannot carry is refused — so this option, like every other here, cannot fail
+// to be applied. Naming none emits no field and leaves each client on its own
+// default, a few seconds, which is a reasonable answer for a single browser and
+// a poor one for a fleet that will all reconnect at once when a proxy restarts.
+// Which of those a deployment has is not something this package can tell, which
+// is why there is no default rather than a guess.
+func WithReconnectDelay(delay sse.ReconnectDelay) Option {
+	return func(o *options) { o.reconnectDelay = delay }
 }
 
 // WithTags sets the OpenAPI tags on every registered operation, replacing the
