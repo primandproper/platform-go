@@ -200,8 +200,9 @@ func (r *DurableRecorder) record(
 //
 // A record naming an unknown meter is dropped and counted rather than failing the
 // batch, unless RejectUnknownMeters says otherwise — see that field for why the
-// default leans the way it does. Every other validation failure fails the batch,
-// because those are the caller's own bug and are the same on every retry.
+// default leans the way it does, and for why the drop is logged at Error rather
+// than Info. Every other validation failure fails the batch, because those are
+// the caller's own bug and are the same on every retry.
 func (r *DurableRecorder) prepare(ctx context.Context, usages []Usage, now time.Time) ([]Entry, error) {
 	entries := make([]Entry, 0, len(usages))
 
@@ -222,7 +223,8 @@ func (r *DurableRecorder) prepare(ctx context.Context, usages []Usage, now time.
 			r.o11y.Logger().WithValues(map[string]any{
 				meterKey:   u.Meter,
 				subjectKey: u.Subject,
-			}).Info("dropping metering usage for an unregistered meter")
+			}).Error("dropping metering usage for an unregistered meter",
+				platformerrors.Wrapf(ErrUnknownMeter, "meter %q", u.Meter))
 
 			continue
 		}
