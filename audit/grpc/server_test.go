@@ -9,7 +9,9 @@ import (
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 	auditgrpc "github.com/primandproper/platform-go/v14/audit/grpc"
+	auditmock "github.com/primandproper/platform-go/v14/audit/mock"
 
+	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/pointer"
@@ -28,8 +30,19 @@ func TestNewServer(T *testing.T) {
 	T.Run("refuses a nil reader", func(t *testing.T) {
 		t.Parallel()
 
-		srv, err := auditgrpc.NewServer(nil, auditgrpc.WithScopeResolver(auditgrpc.GlobalScope))
+		srv, err := auditgrpc.NewServer(nil, newDatabase(t), auditgrpc.WithScopeResolver(auditgrpc.GlobalScope))
 		test.ErrorIs(t, err, auditgrpc.ErrNilReader)
+		test.Nil(t, srv)
+	})
+
+	// Every RPC here is a read that runs on an executor this server supplies,
+	// so a server with no client to take one from is refused rather than built
+	// and left to fail on its first request.
+	T.Run("refuses a nil database client", func(t *testing.T) {
+		t.Parallel()
+
+		srv, err := auditgrpc.NewServer(&audit.SQLReader{}, nil, auditgrpc.WithScopeResolver(auditgrpc.GlobalScope))
+		test.ErrorIs(t, err, auditgrpc.ErrNilDatabaseClient)
 		test.Nil(t, srv)
 	})
 
@@ -40,7 +53,7 @@ func TestNewServer(T *testing.T) {
 	T.Run("refuses an absent scope resolver", func(t *testing.T) {
 		t.Parallel()
 
-		srv, err := auditgrpc.NewServer(&audit.SQLReader{})
+		srv, err := auditgrpc.NewServer(&audit.SQLReader{}, newDatabase(t))
 		test.ErrorIs(t, err, auditgrpc.ErrNilScopeResolver)
 		test.Nil(t, srv)
 	})
@@ -48,7 +61,7 @@ func TestNewServer(T *testing.T) {
 	T.Run("refuses a nil scope resolver", func(t *testing.T) {
 		t.Parallel()
 
-		srv, err := auditgrpc.NewServer(&audit.SQLReader{}, auditgrpc.WithScopeResolver(nil))
+		srv, err := auditgrpc.NewServer(&audit.SQLReader{}, newDatabase(t), auditgrpc.WithScopeResolver(nil))
 		test.ErrorIs(t, err, auditgrpc.ErrNilScopeResolver)
 		test.Nil(t, srv)
 	})
@@ -58,7 +71,7 @@ func TestNewServer(T *testing.T) {
 	T.Run("refuses a scope resolver a later option cleared", func(t *testing.T) {
 		t.Parallel()
 
-		srv, err := auditgrpc.NewServer(&audit.SQLReader{},
+		srv, err := auditgrpc.NewServer(&audit.SQLReader{}, newDatabase(t),
 			auditgrpc.WithScopeResolver(auditgrpc.GlobalScope),
 			auditgrpc.WithScopeResolver(nil),
 		)
@@ -69,11 +82,11 @@ func TestNewServer(T *testing.T) {
 	T.Run("builds with observability and without", func(t *testing.T) {
 		t.Parallel()
 
-		bare, err := auditgrpc.NewServer(&audit.SQLReader{}, auditgrpc.WithScopeResolver(auditgrpc.GlobalScope))
+		bare, err := auditgrpc.NewServer(&audit.SQLReader{}, newDatabase(t), auditgrpc.WithScopeResolver(auditgrpc.GlobalScope))
 		must.NoError(t, err)
 		must.NotNil(t, bare)
 
-		observed, err := auditgrpc.NewServer(&audit.SQLReader{},
+		observed, err := auditgrpc.NewServer(&audit.SQLReader{}, newDatabase(t),
 			auditgrpc.WithScopeResolver(auditgrpc.GlobalScope),
 			auditgrpc.WithPillars(&observability.Pillars{}),
 			nil,
@@ -159,6 +172,43 @@ func TestServer_GetEntry(T *testing.T) {
 		test.EqOp(t, h.yours.ID, mine.GetEntry().GetId())
 	})
 
+	// The confinement is in the read, not in a comparison after it. Everything
+	// above proves the answer; this proves where it comes from, which is what
+	// makes it true for every caller of audit.Reader.Get rather than for this
+	// method. It is the one test here that mocks the reader, deliberately: what
+	// is under test is the argument this package passes, and only a double can
+	// see it.
+	T.Run("passes the connection's scope into the read", func(t *testing.T) {
+		t.Parallel()
+
+		var got *tenancy.Scope
+
+		reader := &auditmock.ReaderMock{
+			GetFunc: func(
+				_ context.Context,
+				_ database.SQLQueryExecutor,
+				scope *tenancy.Scope,
+				id string,
+			) (*audit.Entry, error) {
+				got = scope
+
+				return &audit.Entry{ID: id, Scope: ours}, nil
+			},
+		}
+
+		srv, err := auditgrpc.NewServer(reader, newDatabase(t),
+			auditgrpc.WithScopeResolver(func(context.Context) (tenancy.Scope, error) { return ours, nil }))
+		must.NoError(t, err)
+
+		_, err = srv.GetEntry(t.Context(), &auditpb.GetEntryRequest{EntryId: "audit_1"})
+		must.NoError(t, err)
+
+		// Never nil, which is the reading that answers across every tenant.
+		// This surface has no operator and no way for a client to ask for one.
+		must.NotNil(t, got)
+		test.EqOp(t, ours, *got)
+	})
+
 	T.Run("refuses an empty id", func(t *testing.T) {
 		t.Parallel()
 
@@ -177,7 +227,8 @@ func TestServer_ListEntries(T *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		h.record(t, entryFor(ours, "recipe_3"), entryFor(theirs, "recipe_4"))
+		h.record(t, ours, entryFor(ours, "recipe_3"))
+		h.record(t, theirs, entryFor(theirs, "recipe_4"))
 
 		response, err := h.client.ListEntries(h.asOurs(), &auditpb.ListEntriesRequest{})
 		must.NoError(t, err)
@@ -199,7 +250,7 @@ func TestServer_ListEntries(T *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
-		h.record(t, entryFor(ours, "recipe_3"))
+		h.record(t, ours, entryFor(ours, "recipe_3"))
 
 		response, err := h.client.ListEntries(h.asOurs(), &auditpb.ListEntriesRequest{
 			Query: &auditpb.EntryQuery{ResourceId: "recipe_3"},

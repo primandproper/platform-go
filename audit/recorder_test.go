@@ -135,7 +135,7 @@ func TestRecorder_Record(T *testing.T) {
 		boom := platformerrors.New("caller work failed")
 
 		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-			if recordErr := r.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "recipe_1")); recordErr != nil {
+			if recordErr := r.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "recipe_1")); recordErr != nil {
 				return recordErr
 			}
 
@@ -152,7 +152,7 @@ func TestRecorder_Record(T *testing.T) {
 
 		r := newTestRecorder(t, newStubClock())
 
-		test.ErrorIs(t, r.Record(t.Context(), nil, entryFor(tenancy.Of("acct_1"), "recipe_1")), ErrNilExecutor)
+		test.ErrorIs(t, r.Record(t.Context(), nil, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "recipe_1")), ErrNilExecutor)
 	})
 
 	T.Run("accepts no entries", func(t *testing.T) {
@@ -162,8 +162,169 @@ func TestRecorder_Record(T *testing.T) {
 		r := newTestRecorder(t, newStubClock())
 
 		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return r.Record(t.Context(), q)
+			return r.Record(t.Context(), q, tenancy.Of("acct_1"))
 		}))
+	})
+
+	// The scope that names nobody, refused on the argument the write binds. It
+	// is the call a caller makes from a lookup that came back empty, and
+	// recording it would file the events in the chain platform-level events
+	// belong to — events about somebody, in the log about nobody, findable by
+	// no scoped read.
+	T.Run("refuses a write that names no scope", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		r := newTestRecorder(t, newStubClock())
+
+		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return r.Record(t.Context(), q, tenancy.Scope{}, entryFor(tenancy.Of("acct_1"), "recipe_1"))
+		})
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+
+		test.EqOp(t, 0, countRows(t, client, "audit_log_entries", "1=1"))
+	})
+
+	// Checked before the empty-batch shortcut, so the refusal does not depend
+	// on whether the caller also had anything to write.
+	T.Run("refuses a scopeless write with no entries", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		r := newTestRecorder(t, newStubClock())
+
+		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return r.Record(t.Context(), q, tenancy.Scope{})
+		})
+		test.ErrorIs(t, err, tenancy.ErrNoScope)
+	})
+
+	T.Run("an entry that names no scope adopts the write's", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		r := newTestRecorder(t, newStubClock())
+		reader := newTestReader(t, client)
+
+		scope := tenancy.Of("acct_1")
+
+		entry := entryFor(scope, "recipe_1")
+		entry.Scope = tenancy.Scope{}
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return r.Record(t.Context(), q, scope, entry)
+		}))
+
+		// Written back onto the caller's value, the way every other field
+		// Record assigns is, so the entry names the chain it actually landed
+		// in.
+		test.EqOp(t, scope, entry.Scope)
+
+		read, err := reader.Get(t.Context(), client.Reader(), &scope, entry.ID)
+		must.NoError(t, err)
+		test.EqOp(t, scope, read.Scope)
+	})
+
+	// The global chain is a scope like any other, and the zero Scope is not it:
+	// an entry that names Global is agreeing with a write that names Global,
+	// and disagreeing with any other.
+	T.Run("tells the global scope apart from an unset one", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		r := newTestRecorder(t, newStubClock())
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return r.Record(t.Context(), q, tenancy.Global(), entryFor(tenancy.Global(), "recipe_1"))
+		}))
+
+		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return r.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Global(), "recipe_2"))
+		})
+		test.ErrorIs(t, err, ErrScopeMismatch)
+	})
+
+	// The mismatch is refused rather than corrected, and neither value quietly
+	// wins. Here that matters more than it does anywhere else in this module:
+	// the scope is the chain's partition, so guessing would append to a chain
+	// nobody named rather than mislabel a row.
+	T.Run("refuses an entry naming another tenant, and writes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		r := newTestRecorder(t, newStubClock())
+
+		scope := tenancy.Of("acct_1")
+		good := entryFor(scope, "recipe_1")
+
+		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return r.Record(t.Context(), q, scope, good, entryFor(tenancy.Of("acct_2"), "recipe_2"))
+		})
+		test.ErrorIs(t, err, ErrScopeMismatch)
+
+		// The valid entry ahead of the mismatched one is not written either:
+		// the batch is settled before any of it is.
+		test.EqOp(t, 0, countRows(t, client, "audit_log_entries", "1=1"))
+		test.EqOp(t, "", good.Hash)
+	})
+
+	// What the adoption leaves behind, pinned because it is the one way a
+	// caller can be surprised by it: an entry that named no scope carries the
+	// one it adopted afterwards, so a second call under a different scope is
+	// refused for a field the caller never set.
+	//
+	// It is the safe direction and the reason adoptScope refuses rather than
+	// re-aims — a caller re-pointing settled entries at another tenant is the
+	// mix-up the sentinel exists for — but it is worth being a test rather than
+	// a sentence, because the first attempt's failure is what makes it
+	// reachable.
+	T.Run("an adopted scope outlives the call that adopted it", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		r := newTestRecorder(t, newStubClock())
+
+		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		entry.Scope = tenancy.Scope{}
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return r.Record(t.Context(), q, tenancy.Of("acct_1"), entry)
+		}))
+
+		test.EqOp(t, tenancy.Of("acct_1"), entry.Scope)
+
+		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return r.Record(t.Context(), q, tenancy.Of("acct_2"), entry)
+		})
+		test.ErrorIs(t, err, ErrScopeMismatch)
+	})
+
+	// Two tenants in one transaction is two calls, and each chain is its own.
+	// It used to be one call whose slice named both, which is the shape the
+	// scope argument removed.
+	T.Run("chains two scopes written in one transaction separately", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+		r := newTestRecorder(t, newStubClock())
+
+		mine := entryFor(tenancy.Of("acct_1"), "recipe_1")
+		theirs := entryFor(tenancy.Of("acct_2"), "recipe_2")
+
+		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
+			if err := r.Record(t.Context(), q, tenancy.Of("acct_1"), mine); err != nil {
+				return err
+			}
+
+			return r.Record(t.Context(), q, tenancy.Of("acct_2"), theirs)
+		}))
+
+		// Both are position zero, because a position is a position in a chain
+		// and there are two chains.
+		test.EqOp(t, int64(0), mine.Seq)
+		test.EqOp(t, int64(0), theirs.Seq)
+		test.EqOp(t, "", mine.PrevHash)
+		test.EqOp(t, "", theirs.PrevHash)
 	})
 
 	T.Run("rejects incomplete entries before writing any of them", func(t *testing.T) {
@@ -201,14 +362,18 @@ func TestRecorder_Record(T *testing.T) {
 				wantErr: ErrEmptyActor,
 			},
 			{
-				// The scope that names nobody. It is the entry a caller
-				// assembled from a lookup that came back empty, and recording
-				// it would file the event in the chain platform-level events
-				// belong to — an event about somebody, in the log about
-				// nobody, findable by no scoped read.
-				name:    "no scope",
-				entry:   &Entry{ResourceType: "recipe", EventType: EventCreated, Actor: Actor{ID: "u"}},
-				wantErr: tenancy.ErrNoScope,
+				// A scope that names a different tenant than the write does.
+				// It is a caller holding one tenant's entry and recording it
+				// into another, and here that would not mislabel the row — it
+				// would append to a chain nobody named.
+				name: "another tenant's scope",
+				entry: &Entry{
+					ResourceType: "recipe",
+					EventType:    EventCreated,
+					Actor:        Actor{ID: "u"},
+					Scope:        tenancy.Of("acct_2"),
+				},
+				wantErr: ErrScopeMismatch,
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
@@ -220,7 +385,7 @@ func TestRecorder_Record(T *testing.T) {
 				good := entryFor(tenancy.Of("acct_1"), "recipe_1")
 
 				err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-					return r.Record(t.Context(), q, good, tc.entry)
+					return r.Record(t.Context(), q, tenancy.Of("acct_1"), good, tc.entry)
 				})
 				test.ErrorIs(t, err, tc.wantErr)
 
@@ -247,7 +412,7 @@ func TestRecorder_Record(T *testing.T) {
 
 		record(t, client, r, entry)
 
-		got, err := reader.Get(t.Context(), entry.ID)
+		got, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
 		must.NoError(t, err)
 		test.EqOp(t, ActorUnattributed, got.Actor.ID)
 		test.EqOp(t, ActorUnattributed, got.Actor.Type)
@@ -280,11 +445,11 @@ func TestRecorder_Record(T *testing.T) {
 		// And the round trip is exact, which is the whole reason the truncation
 		// is there: a value that changed on the way back out would make every
 		// entry in the table read as tampered.
-		got, err := reader.Get(t.Context(), entry.ID)
+		got, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
 		must.NoError(t, err)
 		test.EqOp(t, entry.RecordedAt, got.RecordedAt)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	})
@@ -326,7 +491,7 @@ func TestRecorder_Record(T *testing.T) {
 		test.EqOp(t, count, countRows(t, client, "audit_log_entries", "1=1"))
 		test.EqOp(t, int64(count-1), entries[count-1].Seq)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, count, result.Checked)

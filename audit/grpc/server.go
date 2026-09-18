@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
 
+	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	"github.com/primandproper/primitives-go/v2/observability"
@@ -38,6 +39,12 @@ var (
 	// into it, so there is no server that can be built without one.
 	ErrNilReader = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil audit reader")
 
+	// ErrNilDatabaseClient is a server built with no handle to read on. Every
+	// RPC here is a read that runs on an executor this server supplies, so
+	// there is no server that can be built without one.
+	ErrNilDatabaseClient = platformerrors.Wrap(platformerrors.ErrNilInputParameter,
+		"nil database client for the audit gRPC server")
+
 	// ErrNilScopeResolver indicates a [Server] built without a ScopeResolver —
 	// [WithScopeResolver] absent, or given nil.
 	//
@@ -63,9 +70,10 @@ var (
 //
 // Three RPCs, each one call into the reader with a conversion on either side:
 // one entry by id, a page of them, and a verification of the caller's chain.
-// There is no orchestration here and nothing to orchestrate — the reader owns
-// its own handle and runs on the read replica, so this type holds no
-// database.Client and opens no transaction.
+// There is no orchestration here and nothing to orchestrate: it opens no
+// transaction, and the database.Client it holds is read for Reader() and
+// nothing else — every RPC here is a read, and a read that joined a caller's
+// work would be joining work no caller of this surface has.
 //
 // # What it is not
 //
@@ -77,12 +85,14 @@ var (
 // the interface's own documentation, which states the reason the whole
 // transport lane's rule is derived from.
 //
-// audit.Reader.Get takes an id and no scope, because in a process it is an
-// operator's read and the operator chose it. Here the entry's own scope is
-// compared against the connection's, and one belonging to somebody else reads
-// as absent — which is what it is from here. audit.Query.Scope is likewise not
-// reachable: [ScopeResolver] fills it in on every list, and the schema reserves
-// the field name so a client has nothing to send.
+// The scope is never the client's to choose. [ScopeResolver] answers it off the
+// connection and this package binds it into every call — as audit.Query.Scope
+// on a list, as the *tenancy.Scope audit.Reader.Get takes, and as the chain a
+// verification walks — and the schema reserves the field name in every request
+// message, so a client has nothing to send it in. Nothing here compares a scope
+// back after an unconfined read: an entry in somebody else's log is not read at
+// all, and the reader answers that with the same audit.ErrEntryNotFound an id
+// that was never written gets.
 //
 // It holds no policy. What each RPC requires is [Permissions], a default
 // fragment a consumer composes into its own authorization policy and enforces
@@ -105,6 +115,7 @@ type Server struct {
 	auditpb.UnimplementedAuditServiceServer
 
 	reader audit.Reader
+	client database.Client
 	scopes ScopeResolver
 
 	o11y observability.Observer
@@ -121,26 +132,33 @@ var _ auditpb.AuditServiceServer = (*Server)(nil)
 
 // NewServer builds the gRPC surface over an audit reader.
 //
-// It takes the reader rather than a database.Client, which is the dependency
-// shape this domain has and no other one in the lane does: reading the log is
-// the half that owns a handle, and the half that does not is not on this
-// surface at all. It takes the audit.Reader seam rather than the *audit.SQLReader
-// a consumer will usually hand it, so that a consumer whose log lives behind
-// their own implementation gets the same surface — and so that this package's
-// own tests can drive the scope binding without a database.
+// It takes the audit.Reader seam rather than the *audit.SQLReader a consumer
+// will usually hand it, so that a consumer whose log lives behind their own
+// implementation gets the same surface.
 //
-// The reader is positional and the scope resolver is a required option:
+// It takes a database.Client beside it, which is the shape every other surface
+// in the lane has. An audit read runs on the executor its caller supplies, and
+// this surface's caller is a connection with no transaction of its own to join,
+// so the client is read for Reader() and for nothing else: there is no Writer()
+// here, because the recorder is deliberately not on this surface, and no
+// WithTransaction, because three reads have nothing to make atomic.
+//
+// The two are positional and the scope resolver is a required option:
 // [WithScopeResolver] has no default behind it, so a server built without it is
 // refused with [ErrNilScopeResolver] exactly as a nil positional argument was.
 // The refusal is the policy; the spelling is what the rest of the transport
 // lane does, and audit is no longer the one surface where the seam is passed a
 // different way.
-func NewServer(reader audit.Reader, opts ...Option) (*Server, error) {
+func NewServer(reader audit.Reader, client database.Client, opts ...Option) (*Server, error) {
 	if reader == nil {
 		return nil, ErrNilReader
 	}
 
-	s := &Server{reader: reader}
+	if client == nil {
+		return nil, ErrNilDatabaseClient
+	}
+
+	s := &Server{reader: reader, client: client}
 
 	for _, opt := range opts {
 		if opt != nil {
@@ -223,11 +241,14 @@ func (s *Server) begin(ctx context.Context, method string) (
 		return ctx, nil, func(error) {}, err
 	}
 
-	// Validated here rather than left to the reader, because two of the three
-	// RPCs would otherwise carry an unset scope into a comparison instead of
-	// into a query: a resolver that answered the zero Scope without an error
-	// would make GetEntry compare against "no scope" and match the platform
-	// chain's entries.
+	// Validated here rather than left to the reader, so that a resolver which
+	// answered the zero Scope without an error is one refusal with one message
+	// for all three RPCs. Each of them would refuse it on its own — the reader
+	// validates the scope it is handed, and the *tenancy.Scope a get takes
+	// reads a non-nil pointer at the zero Scope as a lookup that came back
+	// empty rather than as "every tenant" — but "the connection could not be
+	// placed" is a fact about the request, and it is answered before the
+	// request is answered at all.
 	if err = scope.Validate(); err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.InvalidArgument, "resolving the log %s is against", method)
 

@@ -146,12 +146,51 @@ func newTestReader(t *testing.T, client database.Client, opts ...ReaderOption) R
 
 // record writes entries through a Recorder inside a transaction, the way a
 // caller would.
+//
+// Record takes one scope per call, so a fixture naming several makes one call
+// per scope — inside one transaction, in the order the scopes were first seen,
+// which is what the recorder itself used to do off each entry's own field. The
+// grouping lives here because it is a fixture's convenience and not a shape the
+// package offers: a consumer writing across two tenants writes two calls.
 func record(t *testing.T, client database.Client, r Recorder, entries ...*Entry) {
 	t.Helper()
 
 	must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
-		return r.Record(t.Context(), q, entries...)
+		for _, scope := range scopesOf(entries) {
+			var batch []*Entry
+			for _, entry := range entries {
+				if entry.Scope == scope {
+					batch = append(batch, entry)
+				}
+			}
+
+			if err := r.Record(t.Context(), q, scope, batch...); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	}))
+}
+
+// scopesOf is the scopes a fixture's entries name, in the order they first
+// appear, so a multi-scope record does not depend on map iteration.
+func scopesOf(entries []*Entry) []tenancy.Scope {
+	var (
+		scopes []tenancy.Scope
+		seen   = make(map[tenancy.Scope]struct{}, 1)
+	)
+
+	for _, entry := range entries {
+		if _, ok := seen[entry.Scope]; ok {
+			continue
+		}
+
+		seen[entry.Scope] = struct{}{}
+		scopes = append(scopes, entry.Scope)
+	}
+
+	return scopes
 }
 
 // entryFor builds a minimally valid entry for a scope.

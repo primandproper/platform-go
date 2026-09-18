@@ -137,6 +137,38 @@ func TestRender_EmitsTheStatementsTheStoresExecute(T *testing.T) {
 	}
 }
 
+// TestRender_NarrowsTheSingleEntryGetOnTheScope pins the predicate that keeps a
+// get by id from answering across every tenant by default.
+//
+// It is a narrowing rather than a key, and the difference is the whole point: an
+// absent argument leaves the read unconfined, which is the operator console's,
+// and a supplied one confines it to a chain. A get that keyed on the scope would
+// have no spelling for the first; one that omitted it, which is what this
+// statement used to be, has no spelling for the second.
+func TestRender_NarrowsTheSingleEntryGetOnTheScope(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			got := statement(t, Render(d), GetEntryQuery)
+
+			test.StrContains(t, got, "id = sqlc.arg(id)")
+			test.StrContains(t, got, "scope = sqlc."+"narg("+SelectorArg(ScopeColumn)+")")
+
+			// Bound under its own name, never the column's: the two ends of the
+			// comparison are two arguments the three engines resolve
+			// differently — see SelectorArgSuffix.
+			test.StrNotContains(t, got, "sqlc."+"narg(scope)")
+
+			// One narrowing and no others. The paged list is where a caller
+			// selects by actor or resource; a get already names one row.
+			test.EqOp(t, 1, strings.Count(got, "IS NULL OR"))
+		})
+	}
+}
+
 // TestRender_KeysTheChainOnItsScope is the natural-key property, and it is the
 // one this schema cannot be wrong about.
 //

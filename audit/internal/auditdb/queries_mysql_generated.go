@@ -69,7 +69,8 @@ const getAuditLogEntryMySQL = `SELECT
 	{{prefix}}audit_log_entries.prev_hash,
 	{{prefix}}audit_log_entries.hash
 FROM {{prefix}}audit_log_entries
-WHERE {{prefix}}audit_log_entries.id = ?`
+WHERE {{prefix}}audit_log_entries.id = ?
+	AND (CAST(? AS CHAR) IS NULL OR {{prefix}}audit_log_entries.scope = ?)`
 
 const getAuditLogEntryBySeqMySQL = `SELECT
 	{{prefix}}audit_log_entries.id,
@@ -462,6 +463,8 @@ func (q *mysqlQueries) GetAuditChain(ctx context.Context, db DBTX, arg GetAuditC
 func (q *mysqlQueries) GetAuditLogEntry(ctx context.Context, db DBTX, arg GetAuditLogEntryParams) (GetAuditLogEntryRow, error) {
 	row := db.QueryRowContext(ctx, q.getAuditLogEntry,
 		arg.ID,
+		arg.ScopeFilter,
+		arg.ScopeFilter,
 	)
 
 	var i GetAuditLogEntryRow
@@ -954,7 +957,8 @@ var (
 		PrunedThroughHash string
 	}(GetAuditChainRow{})
 	_ = struct {
-		ID string
+		ID          string
+		ScopeFilter *string
 	}(GetAuditLogEntryParams{})
 	_ = struct {
 		ID           string

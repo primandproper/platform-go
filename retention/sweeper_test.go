@@ -483,7 +483,7 @@ func TestSweeper_audit(T *testing.T) {
 		reader, err := audit.NewReader(client)
 		must.NoError(t, err)
 
-		result, err := reader.List(t.Context(),
+		result, err := reader.List(t.Context(), client.Reader(),
 			&audit.Query{ResourceType: AuditResourceType},
 			filtering.DefaultQueryFilter(),
 		)
@@ -753,7 +753,7 @@ func TestSweeper_Report(T *testing.T) {
 		reader, err := audit.NewReader(client)
 		must.NoError(t, err)
 
-		entries, err := reader.List(t.Context(),
+		entries, err := reader.List(t.Context(), client.Reader(),
 			&audit.Query{ResourceType: AuditResourceType},
 			filtering.DefaultQueryFilter(),
 		)

@@ -25,7 +25,7 @@ var _ audit.Recorder = &RecorderMock{}
 //
 //		// make and configure a mocked audit.Recorder
 //		mockedRecorder := &RecorderMock{
-//			RecordFunc: func(ctx context.Context, q database.Tx, entries ...*audit.Entry) error {
+//			RecordFunc: func(ctx context.Context, q database.Tx, scope tenancy.Scope, entries ...*audit.Entry) error {
 //				panic("mock out the Record method")
 //			},
 //		}
@@ -36,7 +36,7 @@ var _ audit.Recorder = &RecorderMock{}
 //	}
 type RecorderMock struct {
 	// RecordFunc mocks the Record method.
-	RecordFunc func(ctx context.Context, q database.Tx, entries ...*audit.Entry) error
+	RecordFunc func(ctx context.Context, q database.Tx, scope tenancy.Scope, entries ...*audit.Entry) error
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -46,6 +46,8 @@ type RecorderMock struct {
 			Ctx context.Context
 			// Q is the q argument value.
 			Q database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
 			// Entries is the entries argument value.
 			Entries []*audit.Entry
 		}
@@ -54,23 +56,25 @@ type RecorderMock struct {
 }
 
 // Record calls RecordFunc.
-func (mock *RecorderMock) Record(ctx context.Context, q database.Tx, entries ...*audit.Entry) error {
+func (mock *RecorderMock) Record(ctx context.Context, q database.Tx, scope tenancy.Scope, entries ...*audit.Entry) error {
 	if mock.RecordFunc == nil {
 		panic("RecorderMock.RecordFunc: method is nil but Recorder.Record was just called")
 	}
 	callInfo := struct {
 		Ctx     context.Context
 		Q       database.Tx
+		Scope   tenancy.Scope
 		Entries []*audit.Entry
 	}{
 		Ctx:     ctx,
 		Q:       q,
+		Scope:   scope,
 		Entries: entries,
 	}
 	mock.lockRecord.Lock()
 	mock.calls.Record = append(mock.calls.Record, callInfo)
 	mock.lockRecord.Unlock()
-	return mock.RecordFunc(ctx, q, entries...)
+	return mock.RecordFunc(ctx, q, scope, entries...)
 }
 
 // RecordCalls gets all the calls that were made to Record.
@@ -80,11 +84,13 @@ func (mock *RecorderMock) Record(ctx context.Context, q database.Tx, entries ...
 func (mock *RecorderMock) RecordCalls() []struct {
 	Ctx     context.Context
 	Q       database.Tx
+	Scope   tenancy.Scope
 	Entries []*audit.Entry
 } {
 	var calls []struct {
 		Ctx     context.Context
 		Q       database.Tx
+		Scope   tenancy.Scope
 		Entries []*audit.Entry
 	}
 	mock.lockRecord.RLock()
@@ -103,13 +109,13 @@ var _ audit.Reader = &ReaderMock{}
 //
 //		// make and configure a mocked audit.Reader
 //		mockedReader := &ReaderMock{
-//			GetFunc: func(ctx context.Context, id string) (*audit.Entry, error) {
+//			GetFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, id string) (*audit.Entry, error) {
 //				panic("mock out the Get method")
 //			},
-//			ListFunc: func(ctx context.Context, q *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+//			ListFunc: func(ctx context.Context, q database.SQLQueryExecutor, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
 //				panic("mock out the List method")
 //			},
-//			VerifyFunc: func(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time, afterSeq int64) (*audit.VerificationResult, error) {
+//			VerifyFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, from time.Time, to time.Time, afterSeq int64) (*audit.VerificationResult, error) {
 //				panic("mock out the Verify method")
 //			},
 //		}
@@ -120,13 +126,13 @@ var _ audit.Reader = &ReaderMock{}
 //	}
 type ReaderMock struct {
 	// GetFunc mocks the Get method.
-	GetFunc func(ctx context.Context, id string) (*audit.Entry, error)
+	GetFunc func(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, id string) (*audit.Entry, error)
 
 	// ListFunc mocks the List method.
-	ListFunc func(ctx context.Context, q *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error)
+	ListFunc func(ctx context.Context, q database.SQLQueryExecutor, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error)
 
 	// VerifyFunc mocks the Verify method.
-	VerifyFunc func(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time, afterSeq int64) (*audit.VerificationResult, error)
+	VerifyFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, from time.Time, to time.Time, afterSeq int64) (*audit.VerificationResult, error)
 
 	// calls tracks calls to the methods.
 	calls struct {
@@ -134,6 +140,10 @@ type ReaderMock struct {
 		Get []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope *tenancy.Scope
 			// ID is the id argument value.
 			ID string
 		}
@@ -142,7 +152,9 @@ type ReaderMock struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Q is the q argument value.
-			Q *audit.Query
+			Q database.SQLQueryExecutor
+			// Query is the query argument value.
+			Query *audit.Query
 			// Filter is the filter argument value.
 			Filter *filtering.QueryFilter
 		}
@@ -150,6 +162,8 @@ type ReaderMock struct {
 		Verify []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
 			// Scope is the scope argument value.
 			Scope tenancy.Scope
 			// From is the from argument value.
@@ -166,21 +180,25 @@ type ReaderMock struct {
 }
 
 // Get calls GetFunc.
-func (mock *ReaderMock) Get(ctx context.Context, id string) (*audit.Entry, error) {
+func (mock *ReaderMock) Get(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, id string) (*audit.Entry, error) {
 	if mock.GetFunc == nil {
 		panic("ReaderMock.GetFunc: method is nil but Reader.Get was just called")
 	}
 	callInfo := struct {
-		Ctx context.Context
-		ID  string
+		Ctx   context.Context
+		Q     database.SQLQueryExecutor
+		Scope *tenancy.Scope
+		ID    string
 	}{
-		Ctx: ctx,
-		ID:  id,
+		Ctx:   ctx,
+		Q:     q,
+		Scope: scope,
+		ID:    id,
 	}
 	mock.lockGet.Lock()
 	mock.calls.Get = append(mock.calls.Get, callInfo)
 	mock.lockGet.Unlock()
-	return mock.GetFunc(ctx, id)
+	return mock.GetFunc(ctx, q, scope, id)
 }
 
 // GetCalls gets all the calls that were made to Get.
@@ -188,12 +206,16 @@ func (mock *ReaderMock) Get(ctx context.Context, id string) (*audit.Entry, error
 //
 //	len(mockedReader.GetCalls())
 func (mock *ReaderMock) GetCalls() []struct {
-	Ctx context.Context
-	ID  string
+	Ctx   context.Context
+	Q     database.SQLQueryExecutor
+	Scope *tenancy.Scope
+	ID    string
 } {
 	var calls []struct {
-		Ctx context.Context
-		ID  string
+		Ctx   context.Context
+		Q     database.SQLQueryExecutor
+		Scope *tenancy.Scope
+		ID    string
 	}
 	mock.lockGet.RLock()
 	calls = mock.calls.Get
@@ -202,23 +224,25 @@ func (mock *ReaderMock) GetCalls() []struct {
 }
 
 // List calls ListFunc.
-func (mock *ReaderMock) List(ctx context.Context, q *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
+func (mock *ReaderMock) List(ctx context.Context, q database.SQLQueryExecutor, query *audit.Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[audit.Entry], error) {
 	if mock.ListFunc == nil {
 		panic("ReaderMock.ListFunc: method is nil but Reader.List was just called")
 	}
 	callInfo := struct {
 		Ctx    context.Context
-		Q      *audit.Query
+		Q      database.SQLQueryExecutor
+		Query  *audit.Query
 		Filter *filtering.QueryFilter
 	}{
 		Ctx:    ctx,
 		Q:      q,
+		Query:  query,
 		Filter: filter,
 	}
 	mock.lockList.Lock()
 	mock.calls.List = append(mock.calls.List, callInfo)
 	mock.lockList.Unlock()
-	return mock.ListFunc(ctx, q, filter)
+	return mock.ListFunc(ctx, q, query, filter)
 }
 
 // ListCalls gets all the calls that were made to List.
@@ -227,12 +251,14 @@ func (mock *ReaderMock) List(ctx context.Context, q *audit.Query, filter *filter
 //	len(mockedReader.ListCalls())
 func (mock *ReaderMock) ListCalls() []struct {
 	Ctx    context.Context
-	Q      *audit.Query
+	Q      database.SQLQueryExecutor
+	Query  *audit.Query
 	Filter *filtering.QueryFilter
 } {
 	var calls []struct {
 		Ctx    context.Context
-		Q      *audit.Query
+		Q      database.SQLQueryExecutor
+		Query  *audit.Query
 		Filter *filtering.QueryFilter
 	}
 	mock.lockList.RLock()
@@ -242,18 +268,20 @@ func (mock *ReaderMock) ListCalls() []struct {
 }
 
 // Verify calls VerifyFunc.
-func (mock *ReaderMock) Verify(ctx context.Context, scope tenancy.Scope, from time.Time, to time.Time, afterSeq int64) (*audit.VerificationResult, error) {
+func (mock *ReaderMock) Verify(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, from time.Time, to time.Time, afterSeq int64) (*audit.VerificationResult, error) {
 	if mock.VerifyFunc == nil {
 		panic("ReaderMock.VerifyFunc: method is nil but Reader.Verify was just called")
 	}
 	callInfo := struct {
 		Ctx      context.Context
+		Q        database.SQLQueryExecutor
 		Scope    tenancy.Scope
 		From     time.Time
 		To       time.Time
 		AfterSeq int64
 	}{
 		Ctx:      ctx,
+		Q:        q,
 		Scope:    scope,
 		From:     from,
 		To:       to,
@@ -262,7 +290,7 @@ func (mock *ReaderMock) Verify(ctx context.Context, scope tenancy.Scope, from ti
 	mock.lockVerify.Lock()
 	mock.calls.Verify = append(mock.calls.Verify, callInfo)
 	mock.lockVerify.Unlock()
-	return mock.VerifyFunc(ctx, scope, from, to, afterSeq)
+	return mock.VerifyFunc(ctx, q, scope, from, to, afterSeq)
 }
 
 // VerifyCalls gets all the calls that were made to Verify.
@@ -271,6 +299,7 @@ func (mock *ReaderMock) Verify(ctx context.Context, scope tenancy.Scope, from ti
 //	len(mockedReader.VerifyCalls())
 func (mock *ReaderMock) VerifyCalls() []struct {
 	Ctx      context.Context
+	Q        database.SQLQueryExecutor
 	Scope    tenancy.Scope
 	From     time.Time
 	To       time.Time
@@ -278,6 +307,7 @@ func (mock *ReaderMock) VerifyCalls() []struct {
 } {
 	var calls []struct {
 		Ctx      context.Context
+		Q        database.SQLQueryExecutor
 		Scope    tenancy.Scope
 		From     time.Time
 		To       time.Time

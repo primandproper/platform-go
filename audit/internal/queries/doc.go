@@ -92,6 +92,14 @@ scope read as "the empty one" would answer an operator console asking for
 everything with the platform's own events — and the narrowing reading is the
 only one that leaves "only the platform's" expressible at all.
 
+The single-entry get carries that same scope narrowing, and nothing else. It is
+the one statement here where the two predicates over the scope column sit side
+by side: the get compares against the optional argument, and the chain reads
+beside it compare against the column's own bound value, because those address a
+chain and this one confines a read. A get keyed on the id alone was the read
+that answered across every tenant with nothing on it saying so, which is what
+audit.Reader.Get's *tenancy.Scope now makes a caller decide.
+
 # The timestamps this schema binds
 
 recorded_at is the caller's, always. It is folded into every entry's digest and

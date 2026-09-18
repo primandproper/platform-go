@@ -36,7 +36,6 @@ const (
 	entryIDKey      = "audit.entry_id"
 	entryCountKey   = "audit.entry_count"
 	scopeKey        = "audit.scope"
-	scopeCountKey   = "audit.scope_count"
 	seqKey          = "audit.seq"
 	resourceTypeKey = "audit.resource_type"
 	resourceIDKey   = "audit.resource_id"
@@ -52,12 +51,30 @@ const (
 )
 
 var (
-	// ErrNilExecutor indicates Record was called without a query executor. It
-	// wraps errors.ErrNilInputParameter, so a caller may check either.
+	// ErrNilExecutor indicates a call made without a query executor — Record
+	// without the caller's transaction, or a read without the executor it runs
+	// on. It wraps errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilExecutor = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil audit query executor")
 
 	// ErrNilEntry indicates a nil *Entry was passed to Record.
 	ErrNilEntry = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil audit entry")
+
+	// ErrScopeMismatch indicates a Record whose Entry.Scope names a different
+	// tenant than the scope the call named.
+	//
+	// The argument is what the statements bind, so the two disagreeing is a
+	// caller holding one tenant's entry and recording it into another — either a
+	// stale value or a mix-up, and neither is a thing to guess at. It is the
+	// same reading comments.ErrScopeMismatch takes of a comment written into a
+	// scope it does not name: an unset field adopts, and a set one that
+	// disagrees is refused rather than corrected.
+	//
+	// What makes it worth a sentinel here rather than a correction is that the
+	// scope is the hash chain's partition as well as the row's label. Elsewhere
+	// a scope read off the entity mislabels a row; here it appends to another
+	// tenant's chain, which is the one structure in this module whose whole
+	// value is that it cannot be appended to incorrectly.
+	ErrScopeMismatch = platformerrors.New("audit entry names a different scope than the write")
 
 	// ErrNilDatabaseClient indicates a nil database.Client. It wraps
 	// errors.ErrNilInputParameter, so a caller may check either.
@@ -313,10 +330,16 @@ type Entry struct {
 	// readings are one value, because a tenancy.Scope is one opaque owner
 	// identifier and a chain key is the same — see the package documentation.
 	//
+	// It is not what Record binds. The scope is Record's own argument, and this
+	// field either agrees with it or is unset: an unset one adopts the
+	// argument, and a disagreeing one is ErrScopeMismatch. Record writes the
+	// settled value back here, so an entry read after a successful Record names
+	// the chain it was actually appended to.
+	//
 	// Platform-level events that belong to no tenant name tenancy.Global(),
 	// which is a scope like any other and stored as the empty identifier. The
 	// zero Scope is not that: it is the absence of a decision, and Record
-	// refuses it.
+	// refuses it — on its argument, since that is what the write binds.
 	Scope tenancy.Scope `json:"scope"`
 
 	// Seq is the entry's position in its scope's chain, starting at zero.
@@ -338,14 +361,11 @@ func (e *Entry) validate() error {
 	case e.Actor.ID == "":
 		return ErrEmptyActor
 	default:
-		// The scope is checked through tenancy rather than against a sentinel of
-		// this package's own, so that "the caller forgot the scope" is one error
-		// with one message wherever it is caught. An entry meant for no tenant
-		// names tenancy.Global() and passes here.
-		if err := e.Scope.Validate(); err != nil {
-			return platformerrors.Wrapf(err, "audit entry %q for resource %q", e.ID, e.ResourceType)
-		}
-
+		// The scope is deliberately not checked here, and it used to be. What
+		// the write binds is Record's scope argument, which Record validates
+		// through tenancy before it reads a single entry — so an unset field is
+		// an entry that adopts, not an entry that forgot, and refusing it here
+		// would refuse the ordinary call that names the scope once.
 		return nil
 	}
 }

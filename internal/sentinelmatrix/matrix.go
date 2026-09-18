@@ -111,6 +111,13 @@ var Matrix = map[string]map[string]Decision{
 		// same way on purpose — see that package's GetEntry.
 		"ErrEntryNotFound": {Err: audit.ErrEntryNotFound, Is: Mapped},
 
+		// The other thing a request can be wrong about: an entry that names one
+		// tenant, recorded under a write that names another. Record is not on
+		// the wire, so this reaches a transport through a consumer's own
+		// handler — which is exactly where a 400 is the right answer, since the
+		// remedy is a different request.
+		"ErrScopeMismatch": {Err: audit.ErrScopeMismatch, Is: Mapped},
+
 		// The nil-argument sentinels, which wrap errors.ErrNilInputParameter
 		// and are answered by the platform mapper for that reason.
 		"ErrNilDatabaseClient": {Err: audit.ErrNilDatabaseClient, Is: Platform},

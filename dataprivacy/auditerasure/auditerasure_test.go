@@ -73,12 +73,11 @@ func (e *auditEnv) record(t *testing.T, scope tenancy.Scope, actorID, resourceID
 	t.Helper()
 
 	must.NoError(t, e.client.WithTransaction(t.Context(), func(tx database.Tx) error {
-		return e.recorder.Record(t.Context(), tx, &audit.Entry{
+		return e.recorder.Record(t.Context(), tx, scope, &audit.Entry{
 			EventType:    audit.EventUpdated,
 			ResourceType: "recipe",
 			ResourceID:   resourceID,
 			Actor:        audit.Actor{ID: actorID, Type: audit.ActorUser},
-			Scope:        scope,
 		})
 	}))
 }
@@ -170,7 +169,7 @@ func TestEraser(T *testing.T) {
 
 		env.erase(t, eraser, dataprivacy.Subject{ID: "user-1"})
 
-		result, err := env.reader.Verify(t.Context(), tenancy.Of("account-9"),
+		result, err := env.reader.Verify(t.Context(), env.client.Reader(), tenancy.Of("account-9"),
 			time.Now().Add(-time.Hour), time.Now().Add(time.Hour), audit.ChainStart)
 		must.NoError(t, err)
 

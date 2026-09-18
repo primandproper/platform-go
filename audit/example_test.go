@@ -47,11 +47,16 @@ func Example() {
 		after  = &recipe{ID: "r1", Name: "Stew", OwnerID: "acct_1", Servings: 4}
 	)
 
+	// The scope is the write's argument rather than a field on the entry. An
+	// entry may still name one — it is refused if it disagrees and adopts this
+	// one if it does not — but naming it once, here, is what the chain is
+	// partitioned by.
+	scope := tenancy.Of(after.OwnerID)
+
 	entry := &audit.Entry{
 		EventType:    audit.EventUpdated,
 		ResourceType: "recipe",
 		ResourceID:   after.ID,
-		Scope:        tenancy.Of(after.OwnerID),
 		Actor:        audit.Actor{ID: "user_123", Type: audit.ActorUser, IP: "203.0.113.7"},
 	}
 
@@ -62,12 +67,12 @@ func Example() {
 			return err
 		}
 
-		return recorder.Record(ctx, q, entry)
+		return recorder.Record(ctx, q, scope, entry)
 	}); err != nil {
 		panic(err)
 	}
 
-	result, err := reader.Verify(ctx, tenancy.Of(after.OwnerID), time.Time{}, time.Time{}, audit.ChainStart)
+	result, err := reader.Verify(ctx, client.Reader(), scope, time.Time{}, time.Time{}, audit.ChainStart)
 	if err != nil {
 		panic(err)
 	}
@@ -133,7 +138,6 @@ func ExampleWithRedaction() {
 		EventType:    audit.EventUpdated,
 		ResourceType: "api_key",
 		ResourceID:   "key_1",
-		Scope:        tenancy.Global(),
 		Actor:        audit.Actor{ID: "user_123", Type: audit.ActorUser},
 		Changes: map[string]audit.Change{
 			"password": {New: "hunter2"},
@@ -143,7 +147,7 @@ func ExampleWithRedaction() {
 	}
 
 	if err = client.WithTransaction(ctx, func(q database.Tx) error {
-		return recorder.Record(ctx, q, entry)
+		return recorder.Record(ctx, q, tenancy.Global(), entry)
 	}); err != nil {
 		panic(err)
 	}

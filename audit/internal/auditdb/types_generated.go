@@ -69,7 +69,8 @@ type GetAuditChainRow struct {
 
 // GetAuditLogEntryParams are the arguments to GetAuditLogEntry.
 type GetAuditLogEntryParams struct {
-	ID string
+	ID          string
+	ScopeFilter *string
 }
 
 // GetAuditLogEntryRow is one row of GetAuditLogEntry's result.
