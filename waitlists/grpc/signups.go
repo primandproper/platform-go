@@ -243,6 +243,10 @@ func (s *Server) GetSignupByContact(
 
 // ListSignups pages one list's signups, oldest first, which is the order they
 // joined in.
+//
+// The filter's include_archived is honored only for a caller holding
+// [PermissionArchiveSignups]; for anybody else it is cleared and the page is the
+// people still on the list. See archived.go.
 func (s *Server) ListSignups(
 	ctx context.Context,
 	request *waitlistspb.ListSignupsRequest,
@@ -257,11 +261,9 @@ func (s *Server) ListSignups(
 	listID := request.GetListId()
 	req.op.Set(listKey, listID)
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(),
+		PermissionArchiveSignups, "reading the filter of a waitlist signup page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a waitlist signup page")
-
 		return nil, err
 	}
 
@@ -287,6 +289,11 @@ func (s *Server) ListSignups(
 // still holds the address it was made with. A withdrawn signup is never among
 // them: a withdrawal blanks the subject along with the contact, so the row that
 // remembers a suppression no longer says whose it was.
+//
+// Over the wire that flag is honored only for a caller holding
+// [PermissionArchiveSignups] and cleared for everybody else, so the export is
+// waitlists/privacy's collector calling the store directly rather than a client
+// asking this RPC for it. See archived.go.
 func (s *Server) ListSignupsForSubject(
 	ctx context.Context,
 	request *waitlistspb.ListSignupsForSubjectRequest,
@@ -301,11 +308,9 @@ func (s *Server) ListSignupsForSubject(
 	subject := subjectFromProto(request.GetSubject())
 	req.op.Set(subjectKey, subject.Type.String()).Set(subjectIDKey, subject.ID)
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(),
+		PermissionArchiveSignups, "reading the filter of a subject's waitlist signups")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a subject's waitlist signups")
-
 		return nil, err
 	}
 

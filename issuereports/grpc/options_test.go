@@ -1,8 +1,10 @@
 package grpc
 
 import (
+	"context"
 	"testing"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
@@ -103,5 +105,20 @@ func TestOptions(T *testing.T) {
 		test.NotNil(t, s.logger)
 		test.NotNil(t, s.tracerProvider)
 		test.Nil(t, s.metricsProvider)
+	})
+
+	// The grants extractor has no "absent means noop" answer of its own: absent
+	// is what makes every paged read clear its include_archived, which is the
+	// decision archived.go argues. Both halves are pinned here, and what the
+	// reads do with them is the suite in grpc_test's business.
+	T.Run("WithGrantsExtractor sets and clears the extractor", func(t *testing.T) {
+		t.Parallel()
+
+		s := apply(WithGrantsExtractor(
+			func(context.Context) (authorization.Grants, bool) { return authorization.AllowAll(), true }))
+		test.NotNil(t, s.grants)
+
+		test.Nil(t, apply().grants)
+		test.Nil(t, apply(WithGrantsExtractor(nil)).grants)
 	})
 }

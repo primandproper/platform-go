@@ -134,7 +134,7 @@ settings.Store's writes take a database.Tx and an RPC handler is precisely the
 caller that method's documentation describes: one with nothing of its own to
 join.
 
-# Authorization has two halves, and the second one is required
+# Authorization has three halves, and the second one is required
 
 [Permissions] is the first: a grant on the method, evaluated by
 authorization/grpc's interceptor from the full method name and the caller's
@@ -153,6 +153,16 @@ open so that a deployment whose settings hang off a device or a workspace can
 say so, and a default rule about an open vocabulary would be right for one
 member of it and silently closed for the rest. See [SubjectAuthorizer] for the
 two-line self-service rule and why each available default is wrong.
+
+[WithGrantsExtractor] is the third, and it is the one that reads the first
+half's authority rather than declaring it. A paged read's include_archived
+arrives on the wire, so it is a request and not an instruction: ListDefinitions
+honors it for a caller holding [PermissionArchiveDefinitions], the two value
+reads for one holding [PermissionWriteValues] — the grant that clears a value —
+and everybody else has it cleared before the filter reaches the store. A
+consumer supplies the same authorization.GrantsExtractor they hand the enforcer;
+a server built without it clears the field on every read. archived.go carries
+the ruling.
 
 The seventh value-side RPC, ListValuesForDefinition, names no subject and asks
 nothing of the authorizer. It pages every subject's answer to one setting, which

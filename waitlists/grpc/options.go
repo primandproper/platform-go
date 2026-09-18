@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
@@ -64,6 +65,23 @@ func WithScopeResolver(resolve ScopeResolver) Option {
 			s.scopes = resolve
 		}
 	}
+}
+
+// WithGrantsExtractor supplies what the caller may do, which this surface reads
+// for exactly one decision: whether a paged read's include_archived is honored
+// or cleared.
+//
+// It is the same authorization.GrantsExtractor a consumer already hands
+// primitives-go's authorization/grpc enforcer — the interceptor decides whether
+// a method may be called at all, and this decides which rows the answer may
+// contain, off the same authority so the two cannot disagree.
+//
+// It is an option rather than a parameter because its absence has a coherent
+// answer and a safe one: a server built without it clears the field on every
+// read, so a deployment that has not wired it serves live rows to everybody
+// rather than archived ones to anybody. See archived.go.
+func WithGrantsExtractor(grants authorization.GrantsExtractor) Option {
+	return func(s *Server) { s.grants = grants }
 }
 
 // WithLogger sets the server's logger.

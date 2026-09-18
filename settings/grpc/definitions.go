@@ -143,6 +143,10 @@ func (s *Server) GetDefinitionByName(
 }
 
 // ListDefinitions pages the caller's catalog.
+//
+// The filter's include_archived is honored only for a caller holding
+// [PermissionArchiveDefinitions]; for anybody else it is cleared and the page is
+// the settings still in the catalog. See archived.go.
 func (s *Server) ListDefinitions(
 	ctx context.Context,
 	request *settingspb.ListDefinitionsRequest,
@@ -154,11 +158,9 @@ func (s *Server) ListDefinitions(
 
 	defer func() { done(err) }()
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(),
+		PermissionArchiveDefinitions, "reading the filter of a setting definition page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a setting definition page")
-
 		return nil, err
 	}
 
@@ -280,6 +282,11 @@ func (s *Server) ArchiveDefinition(
 // setting and not a subject, so there is no [SubjectAuthorizer] question to ask
 // and a grant of its own — PermissionReadAllValues — is what stands in front of
 // it.
+//
+// It answers with the values that stand. The filter's include_archived reaches
+// the ones subjects have since cleared, and is honored only for a caller who
+// also holds [PermissionWriteValues] — the grant that clears one — and cleared
+// for everybody else. See archived.go.
 func (s *Server) ListValuesForDefinition(
 	ctx context.Context,
 	request *settingspb.ListValuesForDefinitionRequest,
@@ -294,11 +301,9 @@ func (s *Server) ListValuesForDefinition(
 	name := request.GetName()
 	req.op.Set(definitionKey, name)
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(),
+		PermissionWriteValues, "reading the filter of a setting value page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a setting value page")
-
 		return nil, err
 	}
 

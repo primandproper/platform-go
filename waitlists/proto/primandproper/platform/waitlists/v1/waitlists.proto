@@ -81,6 +81,25 @@
 // No queue position. "You are 4,102nd in line" is a count that changes under
 // whoever is reading it, and the paged reads here carry the counts a caller
 // needs to render a position it is willing to stand behind.
+//
+// # include_archived is a request and not an instruction
+//
+// Every paged read here carries a QueryFilter, and its include_archived says
+// "give me the archived rows too". It is a field on a message a client fills in,
+// so it is a request the server rules on rather than a switch it obeys, and this
+// service archives two nouns under two grants: the list reads honor it for a
+// caller holding waitlists.lists.archive and the signup reads for one holding
+// waitlists.signups.archive. For everybody else the field is cleared before the
+// read, which on [ListOpenListsRequest] is everybody the RPC exists for --
+// somebody who has not signed in carries no grants at all.
+//
+// It is cleared and not refused. A read that failed because the caller asked for
+// too much turns a console's checkbox into an error, and a client cannot tell
+// that refusal from a malformed filter; the page a caller gets is the page they
+// would have got had they never set the field.
+//
+// The same rule, under each surface's own archive grant, is in comments.proto,
+// issuereports.proto and settings.proto.
 
 syntax = "proto3";
 
@@ -270,6 +289,10 @@ message GetListResponse { Waitlist result = 1; }
 message ListListsRequest {
   reserved "scope";
 
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are lists withdrawn from the catalog, and
+  // the field is honored only for a caller holding waitlists.lists.archive
+  // and cleared for everybody else. See the file comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 1;
 }
 message ListListsResponse {
@@ -283,6 +306,10 @@ message ListListsResponse {
 message ListOpenListsRequest {
   reserved "scope";
 
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are lists withdrawn from the catalog, and
+  // the field is honored only for a caller holding waitlists.lists.archive
+  // and cleared for everybody else. See the file comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 1;
 }
 message ListOpenListsResponse {
@@ -379,6 +406,11 @@ message ListSignupsRequest {
   reserved "scope";
 
   string list_id = 1 [json_name = "listID"];
+
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are signups retired administratively, and
+  // the field is honored only for a caller holding waitlists.signups.archive
+  // and cleared for everybody else. See the file comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 message ListSignupsResponse {
@@ -397,6 +429,11 @@ message ListSignupsForSubjectRequest {
   reserved "scope";
 
   SignupSubject subject = 1;
+
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are signups retired administratively, and
+  // the field is honored only for a caller holding waitlists.signups.archive
+  // and cleared for everybody else. See the file comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 message ListSignupsForSubjectResponse {

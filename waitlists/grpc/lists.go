@@ -112,6 +112,11 @@ func (s *Server) GetList(
 
 // ListLists pages the caller's whole catalog, open and closed alike. It is the
 // administrative read; [Server.ListOpenLists] is the public one.
+//
+// Open and closed, and not retired: the filter's include_archived is honored
+// only for a caller holding [PermissionArchiveLists], and cleared for everybody
+// else. A closed list is one that has stopped taking signups and is still part
+// of the catalog; an archived one has been withdrawn from it. See archived.go.
 func (s *Server) ListLists(
 	ctx context.Context,
 	request *waitlistspb.ListListsRequest,
@@ -123,11 +128,9 @@ func (s *Server) ListLists(
 
 	defer func() { done(err) }()
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(),
+		PermissionArchiveLists, "reading the filter of a waitlist page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a waitlist page")
-
 		return nil, err
 	}
 
@@ -155,6 +158,12 @@ func (s *Server) ListLists(
 // It resolves its tenant like the other two public RPCs: off the caller where
 // there is one, and off the connection where there is not. An anonymous visitor
 // therefore sees the catalog the deployment placed them in and no other.
+//
+// It is under the same rule as [Server.ListLists] — the filter's
+// include_archived is honored only for a caller holding
+// [PermissionArchiveLists] — which on this RPC means it is always cleared for
+// the visitor it exists for, because somebody who has not signed in carries no
+// grants at all. See archived.go.
 func (s *Server) ListOpenLists(
 	ctx context.Context,
 	request *waitlistspb.ListOpenListsRequest,
@@ -166,11 +175,9 @@ func (s *Server) ListOpenLists(
 
 	defer func() { done(err) }()
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(),
+		PermissionArchiveLists, "reading the filter of an open waitlist page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of an open waitlist page")
-
 		return nil, err
 	}
 

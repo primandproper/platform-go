@@ -81,6 +81,26 @@
 // else, because the target is what the comment is about, the parent is which
 // conversation it is in, and the author is who said it. A message that carried
 // them would describe an edit this schema's server cannot perform.
+//
+// # include_archived is a request and not an instruction
+//
+// Every paged read here carries a QueryFilter, and its include_archived says
+// "give me the removed rows too". It is a field on a message a client fills in,
+// so it is a request the server rules on rather than a switch it obeys: a caller
+// holding comments.archive gets the comments a moderator took out of the
+// discussion, and for everybody else the field is cleared before the read and
+// the page is the live discussion.
+//
+// It is cleared and not refused. A read that failed because the caller asked for
+// too much turns a console's checkbox into an error, and a client cannot tell
+// that refusal from a malformed filter; the page a caller gets is the page they
+// would have got had they never set the field.
+//
+// The grant is comments.archive rather than comments.read or comments.moderate
+// because removing something somebody said is its own act with its own grant,
+// and a read that hands the removed text back under a lighter one makes that
+// split a name. The same rule, under each surface's own archive grant, is in
+// issuereports.proto, waitlists.proto and settings.proto.
 
 syntax = "proto3";
 
@@ -210,6 +230,11 @@ message ListRootCommentsRequest {
   reserved "scope";
 
   CommentTarget target = 1;
+
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are comments a moderator removed, and the
+  // field is honored only for a caller holding comments.archive and cleared
+  // for everybody else. See the file comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 message ListRootCommentsResponse {
@@ -233,6 +258,10 @@ message ListRepliesRequest {
   // half of the discussion with nothing about the rows saying so.
   string parent_id = 2 [json_name = "parentID"];
 
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are replies a moderator removed, and the
+  // field is honored only for a caller holding comments.archive and cleared
+  // for everybody else. See the file comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 3;
 }
 message ListRepliesResponse {
@@ -254,6 +283,10 @@ message ListCommentsByTargetTypeRequest {
   // the one whose rows they still need to reach.
   string target_type = 1;
 
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are comments a moderator removed, and the
+  // field is honored only for a caller holding comments.archive and cleared
+  // for everybody else. See the file comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 message ListCommentsByTargetTypeResponse {
@@ -271,6 +304,10 @@ message ListCommentsByAuthorRequest {
   // send without the server asking whether they may read somebody else's.
   string author = 1;
 
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are comments a moderator removed, and the
+  // field is honored only for a caller holding comments.archive and cleared
+  // for everybody else. See the file comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 message ListCommentsByAuthorResponse {

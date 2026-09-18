@@ -189,16 +189,20 @@ type harness struct {
 
 // newHarness migrates a uniquely prefixed table and builds the surface over it,
 // with the suite's own two-sided rule.
-func newHarness(tb testing.TB) *harness {
+func newHarness(tb testing.TB, opts ...issuereportsgrpc.Option) *harness {
 	tb.Helper()
 
-	return newHarnessWithAuthorizer(tb, triageAuthorizer{})
+	return newHarnessWithAuthorizer(tb, triageAuthorizer{}, opts...)
 }
 
 // newHarnessWithAuthorizer is newHarness with the seam supplied, for the tests
 // that are about what this surface does with each of the three answers a
 // ReportAuthorizer may give.
-func newHarnessWithAuthorizer(tb testing.TB, targets issuereportsgrpc.ReportAuthorizer) *harness {
+func newHarnessWithAuthorizer(
+	tb testing.TB,
+	targets issuereportsgrpc.ReportAuthorizer,
+	opts ...issuereportsgrpc.Option,
+) *harness {
 	tb.Helper()
 
 	db, err := sqlite.NewDatabaseClient(tb.Context(),
@@ -220,7 +224,8 @@ func newHarnessWithAuthorizer(tb testing.TB, targets issuereportsgrpc.ReportAuth
 	store, err := issuereports.NewSQLStore(db, issuereports.WithTablePrefix(prefix))
 	must.NoError(tb, err)
 
-	server, err := issuereportsgrpc.NewServer(store, db, extractPrincipal, targets)
+	server, err := issuereportsgrpc.NewServer(store, db, extractPrincipal, targets,
+		append([]issuereportsgrpc.Option{issuereportsgrpc.WithGrantsExtractor(extractGrants)}, opts...)...)
 	must.NoError(tb, err)
 
 	return &harness{db: db, store: store, server: server}

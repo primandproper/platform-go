@@ -32,6 +32,10 @@ import (
 // asymmetry arriving intact: the catalog exists to stop a comment being written
 // where nothing will list it, and the type that has been withdrawn from a
 // catalog is exactly the one whose rows an operator still needs to reach.
+//
+// All four paged reads gate on one thing they share: a request for archived
+// comments is honored only for a caller holding [PermissionArchiveComments],
+// and cleared for everybody else. archived.go is where that is argued.
 
 // GetComment reads one of the caller's tenant's live comments.
 //
@@ -72,6 +76,10 @@ func (s *Server) GetComment(
 //
 // The count a client wants beside the discussion is on the response's
 // pagination: the filtered count is of the target's roots, not of the page.
+//
+// The filter's include_archived is honored only for a caller holding
+// [PermissionArchiveComments]; for anybody else it is cleared and the page is
+// the target's live roots. See archived.go.
 func (s *Server) ListRootComments(
 	ctx context.Context,
 	request *commentspb.ListRootCommentsRequest,
@@ -87,7 +95,7 @@ func (s *Server) ListRootComments(
 
 	req.op.Set(targetTypeKey, target.Type.String()).Set(targetIDKey, target.ID)
 
-	filter, err := readFilter(req, request.GetFilter(), "a target's root comments")
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "a target's root comments")
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +123,10 @@ func (s *Server) ListRootComments(
 //
 // A parent that is no longer there is not an error: a reply outlives the
 // comment it replies to — archived, or erased with its author — and it is still
-// a reply.
+// a reply. That is about the parent and not about the page: the filter's
+// include_archived, which decides whether the *replies* that were removed are
+// among the rows, is honored only for a caller holding
+// [PermissionArchiveComments] and cleared for everybody else. See archived.go.
 func (s *Server) ListReplies(
 	ctx context.Context,
 	request *commentspb.ListRepliesRequest,
@@ -134,7 +145,7 @@ func (s *Server) ListReplies(
 		Set(targetIDKey, target.ID).
 		Set(parentIDKey, parentID)
 
-	filter, err := readFilter(req, request.GetFilter(), "a comment's replies")
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "a comment's replies")
 	if err != nil {
 		return nil, err
 	}
@@ -159,6 +170,12 @@ func (s *Server) ListReplies(
 // It is the moderation read, and it is behind a grant of its own because it is
 // the only read here that is not about a discussion the caller is in: the rows
 // it returns are about targets they may never have been shown.
+//
+// [PermissionModerateComments] is not [PermissionArchiveComments], so this read
+// is no exception to the rule the other three are under: the filter's
+// include_archived is honored only for a caller who also holds the archive
+// grant. A moderation queue that wants the removed rows asks for both. See
+// archived.go.
 func (s *Server) ListCommentsByTargetType(
 	ctx context.Context,
 	request *commentspb.ListCommentsByTargetTypeRequest,
@@ -173,7 +190,7 @@ func (s *Server) ListCommentsByTargetType(
 	targetType := comments.TargetType(request.GetTargetType())
 	req.op.Set(targetTypeKey, targetType.String())
 
-	filter, err := readFilter(req, request.GetFilter(), "a target type's comments")
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "a target type's comments")
 	if err != nil {
 		return nil, err
 	}
@@ -200,6 +217,12 @@ func (s *Server) ListCommentsByTargetType(
 // [AuthorAuthorizer] answers it — a refusal is PermissionDenied, before any row
 // is read, so the code says nothing about whether that identifier belongs to
 // anybody.
+//
+// A person reading their own comments does not get back the ones a moderator
+// removed: the filter's include_archived is honored only for a caller holding
+// [PermissionArchiveComments], and standing over an author is a different
+// question from standing over what was taken out of the discussion. See
+// archived.go.
 func (s *Server) ListCommentsByAuthor(
 	ctx context.Context,
 	request *commentspb.ListCommentsByAuthorRequest,
@@ -222,7 +245,7 @@ func (s *Server) ListCommentsByAuthor(
 		return nil, err
 	}
 
-	filter, err := readFilter(req, request.GetFilter(), "an author's comments")
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "an author's comments")
 	if err != nil {
 		return nil, err
 	}
@@ -241,13 +264,20 @@ func (s *Server) ListCommentsByAuthor(
 	}, nil
 }
 
-// readFilter reads the page a request asked for.
+// readFilter reads the page a request asked for, and confines it to what the
+// caller may be shown.
 //
 // It is a helper because a malformed filter is the one failure all four paged
 // reads share, and because the code it answers with is a decision rather than a
 // default: a sort direction nothing recognizes is the client's to fix, so it is
 // InvalidArgument and not the Internal every other call site passes.
-func readFilter(
+//
+// It is also the one place a request for archived comments is answered, which is
+// why it is a method now. A read that parsed its own filter would be a read that
+// could forget the question, and the four of them are written in four places.
+// See archived.go for what is being decided.
+func (s *Server) readFilter(
+	ctx context.Context,
 	req *request,
 	in *filteringpb.QueryFilter,
 	what string,
@@ -257,6 +287,8 @@ func readFilter(
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err,
 			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a page of %s", what)
 	}
+
+	s.confineToLive(ctx, req, filter)
 
 	return filter, nil
 }

@@ -132,6 +132,22 @@ put one. It is unsalted over a fast hash, deliberately — the store's own
 documentation is explicit that it is not there to make a withdrawal secret — so
 a client holding one could test any address it liked against it offline.
 
+# What an archived row is worth asking for
+
+include_archived is on every paged read's filter and it arrives on the wire, so
+it is a request and not an instruction. This service archives two nouns under
+two grants, and each read asks about the one it pages: the list reads honor the
+field for a caller holding [PermissionArchiveLists] and the signup reads for one
+holding [PermissionArchiveSignups]. Everybody else has it cleared before the
+filter reaches the store, which on [Server.ListOpenLists] is everybody the RPC
+exists for — a visitor who has not signed in carries no grants at all, so the
+public catalog is the live catalog.
+
+The authority comes from the authorization.GrantsExtractor a consumer supplies
+to [WithGrantsExtractor], the same one they hand the enforcer. A server built
+without it clears the field on every read, which is the fail-closed default.
+archived.go carries the ruling.
+
 # The writes open their own transactions
 
 waitlists.Store's writes take a database.Tx, which only Client.WithTransaction
