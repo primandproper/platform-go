@@ -121,6 +121,43 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 		must.ErrorIs(t, env.createUserErr(t, store, testScope, byEmail), ErrEmailAddressTaken)
 	})
 
+	t.Run("a handle differing by an accent is a different handle", func(t *testing.T) {
+		t.Parallel()
+
+		// The other half of "one directory, one answer", and the half a Go fold
+		// cannot reach. FoldHandle lowers case; it does not strip accents, and
+		// deliberately — renee and renée are two people, and a fold that
+		// collapsed them would hand one of them the other's account on all
+		// three dialects rather than on one.
+		//
+		// So the convergence goes the other way: the column is collated
+		// utf8mb4_bin on MySQL, which is the byte-exact comparison Postgres and
+		// SQLite already do. Without it, MariaDB's default is accent-insensitive
+		// and these two registrations are one taken handle there and two users
+		// everywhere else — the same divergence the fold exists to remove,
+		// arrived at through the one door the fold does not close.
+		store := env.newStore(t)
+		seedUser(t, env, store, newUser("renee"))
+
+		accented := newUser("renee")
+		accented.Username = "renée"
+		accented.EmailAddress = "renée@example.com"
+
+		second := seedUser(t, env, store, accented)
+		test.EqOp(t, "renée", second.Username)
+
+		// And each handle reaches its own user rather than whichever row the
+		// server's collation decided was close enough.
+		plain, err := store.GetUserByUsername(t.Context(), env.reader(), testScope, "Renee")
+		must.NoError(t, err)
+		test.EqOp(t, "renee", plain.Username)
+
+		withAccent, err := store.GetUserByUsername(t.Context(), env.reader(), testScope, "RENÉE")
+		must.NoError(t, err)
+		test.EqOp(t, "renée", withAccent.Username)
+		test.NotEqOp(t, plain.ID, withAccent.ID)
+	})
+
 	t.Run("the sign-in reads find a user by any casing", func(t *testing.T) {
 		t.Parallel()
 

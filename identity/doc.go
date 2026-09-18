@@ -381,10 +381,23 @@ which compares case-insensitively; Postgres and SQLite compare TEXT byte for
 byte. The same registration sequence therefore gave three different answers to
 "is this handle taken" — Ada and ada were one user on MySQL and two on the
 other two, and ErrUsernameTaken fired for inputs that depended on which server
-a deployment happened to pick. Folding in Go is what makes the collation stop
-mattering, including a server whose default collation is changed underneath a
-running directory: what MySQL folds afterwards is already folded, and what the
-other two compare byte for byte was folded before it was bound.
+a deployment happened to pick. Folding in Go is what makes the case half of the
+collation stop mattering, including a server whose default collation is changed
+underneath a running directory: what MySQL folds afterwards is already folded,
+and what the other two compare byte for byte was folded before it was bound.
+
+Case is not the whole of what a collation decides, and the rest is settled in
+the schema rather than in Go. MariaDB 11 — which is the flavor this module's
+MySQL suite runs against — defaults to utf8mb4_uca1400_ai_ci, which is accent
+insensitive as well: against a stored "renee" it matches "renée", where Postgres
+and SQLite do not. A Go fold cannot close that one and should not try. Stripping
+accents would make renee and renée the same person on all three dialects, which
+is a worse answer than the divergence — nobody's name is a spelling of somebody
+else's — so the convergence goes the other way. username, email_address and
+to_email are collated utf8mb4_bin on MySQL, which is the byte-exact comparison
+the other two engines already do, leaving Go's fold as the only thing that
+folds anything. The clause is in identity/migrations/mysql.sql, and the case
+that fails without it is in the handle folding suite.
 
 FoldHandle is that fold, and it is exported because it is not this package's
 private business. Every write and every lookup here calls it, so does
@@ -409,7 +422,10 @@ whatever case was submitted, so fold the username and email_address columns in
 the same migration that adds username_display, or a lookup will not find the
 rows that were not already lower case. Backfilling the display column itself is
 optional — a row with none reads its folded handle back in UsernameDisplay, so
-a page rendering that field never renders a blank.
+a page rendering that field never renders a blank. On MySQL the same migration
+carries the collation across, with an ALTER per column; it rebuilds the unique
+index, and it cannot newly conflict, because utf8mb4_bin makes rows more
+distinct than the default did rather than less.
 
 # Why there are no handlers here
 
