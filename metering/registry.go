@@ -77,6 +77,28 @@ func (r *Registry) RegisterQuota(q Quota) error {
 	return nil
 }
 
+// RegisterUnlimitedQuota adds an UnlimitedQuota over an already-registered meter.
+//
+// It exists because the period is the one part of an unlimited quota a caller
+// can get wrong, and the registry is already holding the right answer: the meter
+// was registered with a period, and a quota assembled beside that registration
+// spells it a second time from memory. The second spelling buys nothing — the
+// two are required to agree, which is ErrPeriodMismatch — and it is one more
+// line to get right on the day a meter's window changes.
+//
+// It is the whole answer to "this meter is billed and nothing caps it". The
+// alternative a caller reaches for is no quota at all, which is ErrNoQuota on
+// every Check rather than a decision anybody made — see ErrNoQuota, and
+// Unlimited on why unmetered and unlimited are different facts.
+func (r *Registry) RegisterUnlimitedQuota(meter string) error {
+	m, ok := r.meters[meter]
+	if !ok {
+		return platformerrors.Wrapf(ErrUnknownMeter, "quota for meter %q", meter)
+	}
+
+	return r.RegisterQuota(UnlimitedQuota(meter, m.Period))
+}
+
 // Meter returns the meter registered under name.
 func (r *Registry) Meter(name string) (Meter, bool) {
 	m, ok := r.meters[name]

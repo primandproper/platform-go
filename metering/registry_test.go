@@ -123,6 +123,51 @@ func TestRegistry_RegisterQuota(T *testing.T) {
 	})
 }
 
+func TestRegistry_RegisterUnlimitedQuota(T *testing.T) {
+	T.Parallel()
+
+	T.Run("registers the meter's own period", func(t *testing.T) {
+		t.Parallel()
+
+		registry := NewRegistry()
+		must.NoError(t, registry.RegisterMeter(Meter{
+			Name: testMeter, Aggregation: AggregationSum, Period: PeriodDay,
+		}))
+
+		must.NoError(t, registry.RegisterUnlimitedQuota(testMeter))
+
+		q, ok := registry.Quota(testMeter)
+		must.True(t, ok)
+		test.EqOp(t, Unlimited, q.Limit)
+		test.EqOp(t, BehaviorAllowOverage, q.Behavior)
+		// Read off the meter rather than defaulted: a period spelled a second
+		// time is the one part of an unlimited quota a caller can get wrong, and
+		// what it produces is a limit that never fills.
+		test.EqOp(t, PeriodDay, q.Period)
+	})
+
+	T.Run("requires the meter to exist first", func(t *testing.T) {
+		t.Parallel()
+
+		test.ErrorIs(t, NewRegistry().RegisterUnlimitedQuota(testMeter), ErrUnknownMeter)
+	})
+
+	T.Run("refuses a duplicate", func(t *testing.T) {
+		t.Parallel()
+
+		registry := NewRegistry()
+		must.NoError(t, registry.RegisterMeter(Meter{
+			Name: testMeter, Aggregation: AggregationSum, Period: PeriodMonth,
+		}))
+
+		must.NoError(t, registry.RegisterUnlimitedQuota(testMeter))
+		test.ErrorIs(t, registry.RegisterUnlimitedQuota(testMeter), ErrDuplicateQuota)
+		test.ErrorIs(t, registry.RegisterQuota(Quota{
+			Meter: testMeter, Limit: 100, Behavior: BehaviorBlock, Period: PeriodMonth,
+		}), ErrDuplicateQuota)
+	})
+}
+
 func TestRegistry_Listings(T *testing.T) {
 	T.Parallel()
 

@@ -321,7 +321,7 @@ func (s *PlanLimitSource) QuotaFor(ctx context.Context, subject, meter string) (
 
 	behavior, unsubscribed, gated := s.meterLimits(meter)
 	if !gated {
-		return unlimitedQuota(meter, m.Period), nil
+		return UnlimitedQuota(meter, m.Period), nil
 	}
 
 	limit := unsubscribed
@@ -356,15 +356,4 @@ func (s *PlanLimitSource) QuotaFor(ctx context.Context, subject, meter string) (
 		Period:   m.Period,
 		Limit:    limit,
 	}, nil
-}
-
-// unlimitedQuota is the quota for a meter no plan limits: a limit nobody reaches
-// and a behavior that would let them past it anyway.
-func unlimitedQuota(meter string, period Period) Quota {
-	return Quota{
-		Meter:    meter,
-		Behavior: BehaviorAllowOverage,
-		Period:   period,
-		Limit:    Unlimited,
-	}
 }

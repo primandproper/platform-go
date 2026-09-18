@@ -155,8 +155,9 @@ var (
 	//
 	// Unmetered is not the same as unlimited, and this package will not pretend
 	// otherwise. A caller that wants "allow everything on this meter" registers a
-	// quota saying so — BehaviorAllowOverage, or a limit nobody reaches — and the
-	// decision is then visible in the registry instead of implied by an absence.
+	// quota saying so — UnlimitedQuota, or Registry.RegisterUnlimitedQuota, which
+	// spell exactly that — and the decision is then visible in the registry
+	// instead of implied by an absence.
 	ErrNoQuota = platformerrors.New("no quota registered for meter")
 
 	// ErrNilEntitlementReader indicates a PlanLimitSource built without an
@@ -480,6 +481,29 @@ type Quota struct {
 // large round number somebody picked, which is a limit a customer can eventually
 // reach.
 const Unlimited int64 = math.MaxInt64
+
+// UnlimitedQuota is the whole quota for a meter nothing constrains: the limit
+// nobody reaches, and the behavior that would let a subject past it anyway.
+//
+// Unlimited alone is only half of it. A limit of Unlimited under BehaviorBlock
+// is a quota that refuses at infinity, which is the same answer read from the
+// wrong pairing, and one under BehaviorWarn reports an overage nobody can
+// incur; either way the pairing is the part a caller assembles by hand and the
+// part that can be assembled wrongly. The period is the third piece, and it must
+// be the meter's — see ErrPeriodMismatch, and Registry.RegisterUnlimitedQuota,
+// which reads it off the meter rather than asking for it twice.
+//
+// It is what a caller reaches for on hitting ErrNoQuota with nothing to limit:
+// the meter is metered, the usage is billed, and the absence of a limit is
+// stated in the registry rather than implied by the absence of a quota.
+func UnlimitedQuota(meter string, period Period) Quota {
+	return Quota{
+		Meter:    meter,
+		Behavior: BehaviorAllowOverage,
+		Period:   period,
+		Limit:    Unlimited,
+	}
+}
 
 // validate reports whether the quota can be registered against the given meter.
 func (q Quota) validate(m Meter) error {
