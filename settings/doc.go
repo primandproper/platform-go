@@ -72,8 +72,10 @@ exactly the rules that drift when the pair is hand-rolled in an application:
   - A value with no definition. Every write here reads the definition first, in
     the same transaction, and the schema's foreign key holds the same line for a
     writer that did not come through this package.
+
   - A value outside its definition's enumeration. Checked at every write, against
     the definition read inside that write's transaction.
+
   - A definition change that strands stored values. Narrowing an enumeration or
     changing a kind decides how every value already written is read, so
     [SQLStore.UpdateDefinition] walks the live values first and refuses the edit
@@ -81,6 +83,15 @@ exactly the rules that drift when the pair is hand-rolled in an application:
     naming the subject and the value. The alternative is not a smaller problem:
     it is rows that exist, resolve, and fail to parse, for the subjects who chose
     a value somebody has just made illegal.
+
+    The walk is a guarantee rather than a snapshot because of a lock: the edit
+    takes the definition's row exclusively before it walks, and
+    [SQLStore.SetValue] takes the same row under a shared lock, so a value write
+    that would land between the walk and the edit waits for the edit instead.
+    Shared locks are mutually compatible, so only an edit serializes against
+    value writes, and SQLite takes neither and needs neither. What that costs a
+    caller is one ordering rule, stated on both methods: narrow a definition
+    before setting values against it within a single transaction.
 
 # Declaring the catalog at boot
 

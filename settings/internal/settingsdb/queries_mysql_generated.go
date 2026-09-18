@@ -103,10 +103,44 @@ WHERE {{prefix}}settings_definitions.archived_at IS NULL
 	AND {{prefix}}settings_definitions.name = ?
 	AND {{prefix}}settings_definitions.scope = ?`
 
+const getDefinitionByNameForShareMySQL = `SELECT
+	{{prefix}}settings_definitions.id,
+	{{prefix}}settings_definitions.scope,
+	{{prefix}}settings_definitions.name,
+	{{prefix}}settings_definitions.description,
+	{{prefix}}settings_definitions.kind,
+	{{prefix}}settings_definitions.default_value,
+	{{prefix}}settings_definitions.admin_only,
+	{{prefix}}settings_definitions.created_at,
+	{{prefix}}settings_definitions.last_updated_at,
+	{{prefix}}settings_definitions.archived_at
+FROM {{prefix}}settings_definitions
+WHERE {{prefix}}settings_definitions.archived_at IS NULL
+	AND {{prefix}}settings_definitions.name = ?
+	AND {{prefix}}settings_definitions.scope = ?
+LOCK IN SHARE MODE`
+
 const getDefinitionCreatedAtMySQL = `SELECT
 	{{prefix}}settings_definitions.created_at
 FROM {{prefix}}settings_definitions
 WHERE {{prefix}}settings_definitions.id = ?`
+
+const getDefinitionForUpdateMySQL = `SELECT
+	{{prefix}}settings_definitions.id,
+	{{prefix}}settings_definitions.scope,
+	{{prefix}}settings_definitions.name,
+	{{prefix}}settings_definitions.description,
+	{{prefix}}settings_definitions.kind,
+	{{prefix}}settings_definitions.default_value,
+	{{prefix}}settings_definitions.admin_only,
+	{{prefix}}settings_definitions.created_at,
+	{{prefix}}settings_definitions.last_updated_at,
+	{{prefix}}settings_definitions.archived_at
+FROM {{prefix}}settings_definitions
+WHERE {{prefix}}settings_definitions.archived_at IS NULL
+	AND {{prefix}}settings_definitions.id = ?
+	AND {{prefix}}settings_definitions.scope = ?
+FOR UPDATE`
 
 const getDefinitionIdbyNameMySQL = `SELECT
 	{{prefix}}settings_definitions.id
@@ -502,7 +536,9 @@ type mysqlQueries struct {
 	getArchivedValue                     string
 	getDefinition                        string
 	getDefinitionByName                  string
+	getDefinitionByNameForShare          string
 	getDefinitionCreatedAt               string
+	getDefinitionForUpdate               string
 	getDefinitionIdbyName                string
 	getValue                             string
 	insertDefinitionOption               string
@@ -529,7 +565,9 @@ func newMySQL(prefix string) *mysqlQueries {
 		getArchivedValue:                     strings.ReplaceAll(getArchivedValueMySQL, prefixMarker, prefix),
 		getDefinition:                        strings.ReplaceAll(getDefinitionMySQL, prefixMarker, prefix),
 		getDefinitionByName:                  strings.ReplaceAll(getDefinitionByNameMySQL, prefixMarker, prefix),
+		getDefinitionByNameForShare:          strings.ReplaceAll(getDefinitionByNameForShareMySQL, prefixMarker, prefix),
 		getDefinitionCreatedAt:               strings.ReplaceAll(getDefinitionCreatedAtMySQL, prefixMarker, prefix),
+		getDefinitionForUpdate:               strings.ReplaceAll(getDefinitionForUpdateMySQL, prefixMarker, prefix),
 		getDefinitionIdbyName:                strings.ReplaceAll(getDefinitionIdbyNameMySQL, prefixMarker, prefix),
 		getValue:                             strings.ReplaceAll(getValueMySQL, prefixMarker, prefix),
 		insertDefinitionOption:               strings.ReplaceAll(insertDefinitionOptionMySQL, prefixMarker, prefix),
@@ -693,6 +731,31 @@ func (q *mysqlQueries) GetDefinitionByName(ctx context.Context, db DBTX, arg Get
 	return i, err
 }
 
+// GetDefinitionByNameForShare runs the :one query against mysql.
+func (q *mysqlQueries) GetDefinitionByNameForShare(ctx context.Context, db DBTX, arg GetDefinitionByNameForShareParams) (GetDefinitionByNameForShareRow, error) {
+	row := db.QueryRowContext(ctx, q.getDefinitionByNameForShare,
+		arg.Name,
+		arg.Scope,
+	)
+
+	var i GetDefinitionByNameForShareRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.Description,
+		&i.Kind,
+		&i.DefaultValue,
+		&i.AdminOnly,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
 // GetDefinitionCreatedAt runs the :one query against mysql.
 func (q *mysqlQueries) GetDefinitionCreatedAt(ctx context.Context, db DBTX, arg GetDefinitionCreatedAtParams) (GetDefinitionCreatedAtRow, error) {
 	row := db.QueryRowContext(ctx, q.getDefinitionCreatedAt,
@@ -703,6 +766,31 @@ func (q *mysqlQueries) GetDefinitionCreatedAt(ctx context.Context, db DBTX, arg 
 
 	err := row.Scan(
 		&i.CreatedAt,
+	)
+
+	return i, err
+}
+
+// GetDefinitionForUpdate runs the :one query against mysql.
+func (q *mysqlQueries) GetDefinitionForUpdate(ctx context.Context, db DBTX, arg GetDefinitionForUpdateParams) (GetDefinitionForUpdateRow, error) {
+	row := db.QueryRowContext(ctx, q.getDefinitionForUpdate,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetDefinitionForUpdateRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.Description,
+		&i.Kind,
+		&i.DefaultValue,
+		&i.AdminOnly,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
 	)
 
 	return i, err
@@ -1283,11 +1371,43 @@ var (
 		ArchivedAt    *time.Time
 	}(GetDefinitionByNameRow{})
 	_ = struct {
+		Name  string
+		Scope tenancy.Scope
+	}(GetDefinitionByNameForShareParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Name          string
+		Description   string
+		Kind          string
+		DefaultValue  *string
+		AdminOnly     bool
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetDefinitionByNameForShareRow{})
+	_ = struct {
 		ID string
 	}(GetDefinitionCreatedAtParams{})
 	_ = struct {
 		CreatedAt time.Time
 	}(GetDefinitionCreatedAtRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetDefinitionForUpdateParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Name          string
+		Description   string
+		Kind          string
+		DefaultValue  *string
+		AdminOnly     bool
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetDefinitionForUpdateRow{})
 	_ = struct {
 		Name               string
 		Scope              tenancy.Scope

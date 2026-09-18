@@ -304,6 +304,29 @@ func (s *SQLStore) listDefinitions(
 // values and narrow the enumeration together: a value cleared earlier in the
 // transaction is already not live, and does not strand the edit.
 //
+// # The lock, and the order a transaction that also sets owes
+//
+// A walk that only read would make the refusal a snapshot-time opinion: the walk
+// passes, a concurrent [SQLStore.SetValue] commits a value the old enumeration
+// admitted, the narrowing commits, and that value is stranded — the outcome
+// [ErrStrandedValues] says cannot happen. So this takes the definition's row
+// exclusively before the walk and holds it until the caller's transaction ends,
+// while SetValue's read of the same row takes it under a shared lock — and the
+// two wait for each other.
+//
+// The cost is an ordering a caller owes when one transaction does both. Calling
+// SetValue for a definition and then this one upgrades that transaction's lock
+// from shared to exclusive, and two transactions doing it at once deadlock, with
+// the server aborting one of them. So narrow a definition before setting values
+// against it within a single transaction; the reasoning for leaving the upgrade
+// in place rather than engineering it away is on [SQLStore.SetValue].
+//
+// SQLite takes no lock and needs none — one writer at a time is that engine's
+// storage model — so the ordering is Postgres's and MySQL's alone, and stated
+// for all three because a caller does not write its transactions per dialect.
+// The clause each dialect is handed, and why MySQL's is not the one the other
+// spells, is in settings/internal/queries.
+//
 // Only live values are checked. A cleared value resolves to the default rather
 // than to itself, and setting it again goes through the write path with the new
 // definition in hand.
@@ -362,10 +385,18 @@ func (s *SQLStore) UpdateDefinition(
 	return edited, nil
 }
 
-// rewriteDefinition is the statements the update runs: the read of what is
-// there, the name collision check, the stranded-value walk where the edit
+// rewriteDefinition is the statements the update runs: the locking read of what
+// is there, the name collision check, the stranded-value walk where the edit
 // reinterprets stored values, the row, its enumeration, and the read-back of
 // what all of that left.
+//
+// The first read takes the definition's row lock, and it takes it
+// unconditionally rather than under the reinterprets gate below. The gate
+// decides whether the stranded-value walk is needed by comparing the edit
+// against existing, so a gate reading an unlocked row is a decision that is
+// itself racy — the read whose answer picks the lock cannot be the read the lock
+// was for. A rename pays one row lock it has no use for, which is cheaper than
+// reading, locking, and re-reading to find out it did not need one.
 //
 // The read-back is the same read every caller of GetDefinition makes, on the
 // transaction the edit was written in — so it sees the row and the enumeration
@@ -379,7 +410,7 @@ func (s *SQLStore) rewriteDefinition(
 	scope tenancy.Scope,
 	updated *Definition,
 ) (*Definition, error) {
-	existing, err := s.readDefinition(ctx, q, scope, updated.ID)
+	existing, err := s.readDefinitionForUpdate(ctx, q, scope, updated.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -473,6 +504,46 @@ func (s *SQLStore) readDefinition(
 	return definition, nil
 }
 
+// readDefinitionForUpdate is readDefinition with the definition's row lock: the
+// same row, the same scope, the same enumeration attached, taken exclusively on
+// the dialects that have row locking.
+//
+// The lock is what makes [SQLStore.UpdateDefinition]'s refusal a guarantee
+// rather than a snapshot-time opinion. Held from before the stranded-value walk
+// until the caller's transaction commits, it excludes the SetValue that would
+// otherwise write an admissible value against the definition this call is about
+// to narrow — see settings/internal/queries' lockingDefinitionReads for the
+// reasoning, and [SQLStore.SetValue] for the shared half of the pair.
+//
+// The enumeration is read after the lock and is not separately locked. It does
+// not need to be: the option rows are written in exactly two places — the create,
+// whose definition row no other transaction can name yet, and the rewrite this
+// read opens — so holding the definition row is holding its enumeration.
+//
+// On SQLite the statement carries no clause and needs none: one writer at a time
+// is that engine's storage model, so the interleaving the lock excludes cannot
+// arise.
+func (s *SQLStore) readDefinitionForUpdate(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	definitionID string,
+) (*Definition, error) {
+	row, err := s.q.GetDefinitionForUpdate(ctx, q,
+		settingsdb.GetDefinitionForUpdateParams{ID: definitionID, Scope: scope})
+	if err != nil {
+		return nil, notFound(err, ErrDefinitionNotFound)
+	}
+
+	definition := definitionFromLockedRow(&row)
+
+	if err = s.hydrateEnumerations(ctx, q, []*Definition{definition}); err != nil {
+		return nil, err
+	}
+
+	return definition, nil
+}
+
 // readDefinitionByName is the read every value-side method begins with, through
 // whatever executor the caller is holding.
 func (s *SQLStore) readDefinitionByName(
@@ -491,6 +562,45 @@ func (s *SQLStore) readDefinitionByName(
 	}
 
 	definition := definitionFromNameRow(&row)
+
+	if err = s.hydrateEnumerations(ctx, q, []*Definition{definition}); err != nil {
+		return nil, err
+	}
+
+	return definition, nil
+}
+
+// readDefinitionByNameForShare is readDefinitionByName with the definition's row
+// held against an edit: the same row, the same scope, the same enumeration
+// attached, taken under a shared lock on the dialects that have row locking.
+//
+// Shared rather than exclusive because shared locks are mutually compatible, so
+// two subjects setting values for one setting stay parallel and only a
+// definition edit serializes against them. That is the granularity the
+// stranded-value guarantee needs and no more: what has to be excluded is the
+// narrowing, not the other write of the same shape.
+//
+// It is [SQLStore.SetValue]'s read alone. [SQLStore.GetValue] and the resolution
+// reads take no lock — they write nothing that an edit could strand — and
+// [SQLStore.ClearValue] takes none either, since a value it removes is a value
+// no narrowing can be left holding.
+func (s *SQLStore) readDefinitionByNameForShare(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	name string,
+) (*Definition, error) {
+	if name == "" {
+		return nil, ErrEmptyDefinitionName
+	}
+
+	row, err := s.q.GetDefinitionByNameForShare(ctx, q,
+		settingsdb.GetDefinitionByNameForShareParams{Name: name, Scope: scope})
+	if err != nil {
+		return nil, notFound(err, ErrDefinitionNotFound)
+	}
+
+	definition := definitionFromSharedNameRow(&row)
 
 	if err = s.hydrateEnumerations(ctx, q, []*Definition{definition}); err != nil {
 		return nil, err
