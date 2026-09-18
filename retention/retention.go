@@ -62,6 +62,27 @@ var (
 
 	// ErrNilTarget indicates a policy with nothing to delete from.
 	ErrNilTarget = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil retention target")
+
+	// ErrChainedTable indicates a Table pointed at a table whose rows are
+	// hash-chained, which is the audit log and nothing else in this module.
+	//
+	// It is refused rather than swept because the declarative target deletes
+	// whatever a timestamp predicate selected, and doing that to a chain
+	// removes a slice out of the middle of one — which every later
+	// audit.Reader.Verify reports as a break, with no watermark to tell
+	// retention's gap from tampering. The error names audit.PruneTarget, which
+	// prunes each scope as a prefix and writes the watermark that keeps the
+	// distinction.
+	//
+	// It names the other exit too, because the recognizer matches a name rather
+	// than a schema: audit.IsAuditTable treats any '_'-separated prefix as
+	// audit's namespace, so a consumer's own table that happens to end in one of
+	// those two names is refused alongside the real thing. That direction is the
+	// deliberate one — a match too narrow shreds a chain silently, where this one
+	// stops a process at startup — but the way out of it is not PruneTarget,
+	// which would prune a table that has no chain to preserve. A table that only
+	// shares the name implements Target itself.
+	ErrChainedTable = platformerrors.New("retention table is hash-chained and cannot be swept declaratively")
 )
 
 // Target is how a policy selects the rows that have expired.

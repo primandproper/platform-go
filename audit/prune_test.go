@@ -488,3 +488,60 @@ func TestPruneTarget_PropagatesFailures(T *testing.T) {
 		test.EqOp(t, 2, countRows(t, client, "audit_log_entries", "1=1"))
 	})
 }
+
+func TestIsAuditTable(T *testing.T) {
+	T.Parallel()
+
+	T.Run("recognizes both tables at any prefix and in any schema", func(t *testing.T) {
+		t.Parallel()
+
+		for _, name := range []string{
+			"audit_log_entries",
+			"audit_log_chains",
+			"ddb_audit_log_entries",
+			"ddb_audit_log_chains",
+			"archive.audit_log_entries",
+			"archive.ddb_audit_log_chains",
+
+			// Folded, because the dialects disagree about whether an unquoted
+			// identifier is case-sensitive and a caller who shouted the name is
+			// still naming the log.
+			"AUDIT_LOG_ENTRIES",
+			"DDB_Audit_Log_Chains",
+		} {
+			test.True(t, IsAuditTable(name), test.Sprintf("table %q", name))
+		}
+	})
+
+	T.Run("what a PruneTarget describes is always one of them", func(t *testing.T) {
+		t.Parallel()
+
+		// The cross-check that keeps this function honest: whatever name the
+		// target renders for a prefix is a name this recognizes, so the two
+		// cannot drift into a refusal that misses the table it was written for.
+		for _, prefix := range []string{"", "ddb", "a_b"} {
+			test.True(t, IsAuditTable(PruneTarget{TablePrefix: prefix}.Describe()),
+				test.Sprintf("prefix %q", prefix))
+		}
+	})
+
+	T.Run("leaves other tables alone", func(t *testing.T) {
+		t.Parallel()
+
+		for _, name := range []string{
+			"",
+			"widgets",
+			"archive.widgets",
+
+			// Near misses, all of them tables somebody could legitimately own:
+			// a different suffix, the prefix without the separator ddl.Qualify
+			// renders, and the name as a prefix rather than as the tail.
+			"audit_log_events",
+			"auditlog_entries",
+			"myaudit_log_entries",
+			"audit_log_entries_archive",
+		} {
+			test.False(t, IsAuditTable(name), test.Sprintf("table %q", name))
+		}
+	})
+}

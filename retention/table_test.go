@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/audit"
+
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 
@@ -57,6 +59,38 @@ func TestTable_Validate(T *testing.T) {
 		t.Parallel()
 
 		test.ErrorIs(t, Table{Name: "widgets"}.Validate(dialect.SQLite), dialect.ErrInvalidIdentifier)
+	})
+
+	T.Run("rejects the audit tables, at any prefix and in any schema", func(t *testing.T) {
+		t.Parallel()
+
+		// Every one of these would validate as an identifier and render a legal
+		// DELETE. That is the whole reason the refusal is here: the failure it
+		// prevents does not look like a failure until somebody verifies a chain
+		// months later and finds a hole nothing can attribute.
+		for _, name := range []string{
+			"audit_log_entries",
+			"audit_log_chains",
+			"ddb_audit_log_entries",
+			"archive.audit_log_chains",
+		} {
+			err := Table{Name: name, Column: "recorded_at"}.Validate(dialect.Postgres)
+			test.ErrorIs(t, err, ErrChainedTable, test.Sprintf("table %q", name))
+			test.StrContains(t, err.Error(), "audit.PruneTarget", test.Sprintf("table %q", name))
+		}
+	})
+
+	T.Run("the refusal covers what an audit.PruneTarget describes", func(t *testing.T) {
+		t.Parallel()
+
+		// Taken from audit rather than spelled here, so a rename of the table
+		// cannot leave this package refusing a name nobody uses any more.
+		for _, prefix := range []string{"", "ddb"} {
+			name := audit.PruneTarget{TablePrefix: prefix}.Describe()
+
+			test.ErrorIs(t, Table{Name: name, Column: "recorded_at"}.Validate(dialect.SQLite),
+				ErrChainedTable, test.Sprintf("prefix %q", prefix))
+		}
 	})
 }
 

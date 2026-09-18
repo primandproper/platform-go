@@ -677,3 +677,211 @@ func TestSweeper_Policies(T *testing.T) {
 		test.False(t, sweeper.Policies()[0].Disabled)
 	})
 }
+
+func TestSweeper_Report(T *testing.T) {
+	T.Parallel()
+
+	T.Run("samples every policy's cutoff and backlog", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+
+		// Two cohorts: one old enough for both policies, one old enough only
+		// for the shorter window. The two cutoffs are what tell them apart, and
+		// the report is where a policy author reads them.
+		insertWidgets(t, client, "ancient", baseTime.Add(-72*time.Hour), 4)
+		insertWidgets(t, client, "recent", baseTime.Add(-2*time.Hour), 3)
+
+		sweeper, _ := newTestSweeper(t, client, []Policy{
+			{
+				Name:   "widgets-daily",
+				Scope:  tenancy.Global(),
+				Target: Table{Name: widgetsTable, Column: "created_at"},
+				Age:    24 * time.Hour,
+			},
+			{
+				Name:   "widgets-hourly",
+				Scope:  tenancy.Global(),
+				Target: Table{Name: widgetsTable, Column: "created_at"},
+				Age:    time.Hour,
+			},
+		})
+
+		report, err := sweeper.Report(t.Context())
+		must.NoError(t, err)
+		must.SliceLen(t, 2, report.Policies)
+
+		test.EqOp(t, "widgets-daily", report.Policies[0].Name)
+		test.EqOp(t, widgetsTable, report.Policies[0].Target)
+		test.EqOp(t, baseTime.Add(-24*time.Hour), report.Policies[0].Cutoff)
+		test.EqOp(t, int64(4), report.Policies[0].Backlog)
+
+		test.EqOp(t, "widgets-hourly", report.Policies[1].Name)
+		test.EqOp(t, baseTime.Add(-time.Hour), report.Policies[1].Cutoff)
+		test.EqOp(t, int64(7), report.Policies[1].Backlog)
+
+		test.EqOp(t, int64(11), report.Backlog)
+	})
+
+	T.Run("deletes nothing and writes no audit entry", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+
+		insertWidgets(t, client, "stale", baseTime.Add(-48*time.Hour), 5)
+
+		recorder, err := audit.NewRecorder(dialect.SQLite)
+		must.NoError(t, err)
+
+		sweeper, c := newTestSweeper(t, client, []Policy{{
+			Name:   "widgets",
+			Scope:  tenancy.Global(),
+			Target: Table{Name: widgetsTable, Column: "created_at"},
+			Age:    24 * time.Hour,
+		}}, WithSweeperAuditRecorder(recorder))
+
+		report, err := sweeper.Report(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(5), report.Policies[0].Backlog)
+
+		// The rows the policy would have taken are all still there.
+		test.EqOp(t, int64(5), countWidgets(t, client))
+
+		// And nothing was recorded about considering them: a preview is not an
+		// event, and the log the real entries have to be findable in is where
+		// that distinction is paid for.
+		reader, err := audit.NewReader(client)
+		must.NoError(t, err)
+
+		entries, err := reader.List(t.Context(),
+			&audit.Query{ResourceType: AuditResourceType},
+			filtering.DefaultQueryFilter(),
+		)
+		must.NoError(t, err)
+		test.SliceEmpty(t, entries.Data)
+
+		// No batches means no pacing, either.
+		test.SliceEmpty(t, c.pauses())
+	})
+
+	T.Run("never calls Sweep", func(t *testing.T) {
+		t.Parallel()
+
+		target := &stubTarget{name: "widgets", backlogFunc: func(int) (int64, error) { return 9, nil }}
+
+		sweeper, _ := newTestSweeper(t, newTestClient(t), []Policy{{
+			Name:   "widgets",
+			Scope:  tenancy.Global(),
+			Target: target,
+			Age:    time.Hour,
+		}})
+
+		report, err := sweeper.Report(t.Context())
+		must.NoError(t, err)
+
+		test.EqOp(t, 0, target.sweepCalls)
+		test.EqOp(t, 1, target.backlogCalls)
+		test.EqOp(t, int64(9), report.Backlog)
+	})
+
+	T.Run("samples at the configured ceiling", func(t *testing.T) {
+		t.Parallel()
+
+		var sampled int
+		target := &stubTarget{name: "widgets", backlogFunc: func(ceiling int) (int64, error) {
+			sampled = ceiling
+
+			return int64(ceiling), nil
+		}}
+
+		c := newStubClock()
+		sweeper, err := NewSweeper(t.Context(), &SweeperConfig{BacklogCeiling: 17}, newTestClient(t), []Policy{{
+			Name:   "widgets",
+			Scope:  tenancy.Global(),
+			Target: target,
+			Age:    time.Hour,
+		}}, WithSweeperClock(c))
+		must.NoError(t, err)
+
+		report, err := sweeper.Report(t.Context())
+		must.NoError(t, err)
+
+		test.EqOp(t, 17, sampled)
+		test.EqOp(t, int64(17), report.Policies[0].Backlog)
+	})
+
+	T.Run("reports disabled policies", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+
+		insertWidgets(t, client, "stale", baseTime.Add(-48*time.Hour), 6)
+
+		sweeper, _ := newTestSweeper(t, client, []Policy{{
+			Name:     "widgets",
+			Scope:    tenancy.Global(),
+			Target:   Table{Name: widgetsTable, Column: "created_at"},
+			Age:      24 * time.Hour,
+			Disabled: true,
+		}})
+
+		// A sweep leaves it out entirely; a report is what somebody deciding
+		// whether to turn it on reads, so it is present and says so.
+		result, err := sweeper.Sweep(t.Context())
+		must.NoError(t, err)
+		test.SliceEmpty(t, result.Policies)
+
+		report, err := sweeper.Report(t.Context())
+		must.NoError(t, err)
+		must.SliceLen(t, 1, report.Policies)
+		test.True(t, report.Policies[0].Disabled)
+		test.EqOp(t, int64(6), report.Policies[0].Backlog)
+	})
+
+	T.Run("tracks the clock", func(t *testing.T) {
+		t.Parallel()
+
+		sweeper, c := newTestSweeper(t, newTestClient(t), []Policy{{
+			Name:   "widgets",
+			Scope:  tenancy.Global(),
+			Target: Table{Name: widgetsTable, Column: "created_at"},
+			Age:    24 * time.Hour,
+		}})
+
+		report, err := sweeper.Report(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, baseTime.Add(-24*time.Hour), report.Policies[0].Cutoff)
+
+		c.advance(time.Hour)
+
+		report, err = sweeper.Report(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, baseTime.Add(-23*time.Hour), report.Policies[0].Cutoff)
+	})
+
+	T.Run("a policy that cannot be sampled does not stop the others", func(t *testing.T) {
+		t.Parallel()
+
+		boom := platformerrors.New("backlog unavailable")
+
+		failing := &stubTarget{name: "broken", backlogFunc: func(int) (int64, error) { return 0, boom }}
+		working := &stubTarget{name: "widgets", backlogFunc: func(int) (int64, error) { return 4, nil }}
+
+		sweeper, _ := newTestSweeper(t, newTestClient(t), []Policy{
+			{Name: "broken", Scope: tenancy.Global(), Target: failing, Age: time.Hour},
+			{Name: "widgets", Scope: tenancy.Global(), Target: working, Age: time.Hour},
+		})
+
+		report, err := sweeper.Report(t.Context())
+		test.ErrorIs(t, err, boom)
+
+		// The report still describes everything it could sample, and the policy
+		// it could not is present with a zero it did not earn — which is why
+		// the error is returned rather than folded into the number.
+		must.NotNil(t, report)
+		must.SliceLen(t, 2, report.Policies)
+		test.EqOp(t, int64(0), report.Policies[0].Backlog)
+		test.EqOp(t, int64(4), report.Policies[1].Backlog)
+		test.EqOp(t, int64(4), report.Backlog)
+	})
+}

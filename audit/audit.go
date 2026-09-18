@@ -1,7 +1,11 @@
 package audit
 
 import (
+	"slices"
+	"strings"
 	"time"
+
+	"github.com/primandproper/platform-go/v14/audit/internal/queries"
 
 	"github.com/primandproper/primitives-go/v2/database/ddl"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -109,6 +113,36 @@ func ValidateTablePrefix(prefix string) error {
 	}
 
 	return nil
+}
+
+// IsAuditTable reports whether name is one of the two tables this package owns,
+// at any prefix and in any schema.
+//
+// It is exported for the same reason ValidateTablePrefix is: somebody outside
+// this package has to recognize these tables, and the only alternative is a
+// second copy of their names that nothing checks against the DDL. The caller it
+// was written for is retention.Table.Validate, which refuses them — a
+// declarative target deletes the rows a timestamp predicate selected, and doing
+// that to a hash-chained log punches a hole in the middle of a chain that is
+// indistinguishable from tampering. PruneTarget is how these tables are swept.
+//
+// The comparison is on the last dot-separated segment, because a retention
+// table name may be schema-qualified, and it treats any '_'-separated prefix as
+// this package's namespace, because that is exactly what ddl.Qualify renders
+// one as: an unrelated table called ddb_audit_log_entries is not a name anybody
+// arrives at by accident, and the cost of being wrong in that direction is a
+// startup error naming the right escape hatch. Case is folded, because the
+// dialects disagree about whether an unquoted identifier is.
+func IsAuditTable(name string) bool {
+	if idx := strings.LastIndex(name, "."); idx >= 0 {
+		name = name[idx+1:]
+	}
+
+	name = strings.ToLower(name)
+
+	return slices.ContainsFunc(queries.TableNames, func(table string) bool {
+		return name == table || strings.HasSuffix(name, "_"+table)
+	})
 }
 
 // EventType names what happened to a resource.
