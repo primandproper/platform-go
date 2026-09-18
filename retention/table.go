@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/audit"
+
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -72,13 +74,25 @@ func (t Table) key() string {
 	return t.KeyColumn
 }
 
-// Validate vets the dialect and the three identifiers.
+// Validate vets the dialect, the three identifiers, and the one table this
+// target must never be pointed at.
 //
 // It runs at construction so that a typo in a table name is a process that does
 // not start, rather than a policy that reports an error every night into a log
 // nobody reads. The identifiers are checked rather than quoted because they are
 // interpolated into query text: dialect.ValidIdentifier is the same gate the
 // rest of this module's SQL-emitting packages put their table names through.
+//
+// The audit tables are refused here rather than left to fail later, because
+// they would not fail: the DELETE this target renders is legal SQL against
+// audit_log_entries and would run every night, removing whatever the cutoff
+// selected out of the middle of each scope's hash chain. Nothing reports that
+// until somebody runs audit.Reader.Verify, which finds a break it cannot
+// attribute — there is no prune watermark, so retention's gap and a deletion
+// somebody made look the same. The refusal names audit.PruneTarget, which is
+// the target that prunes each scope as a prefix and writes that watermark.
+// audit.IsAuditTable is what recognizes the names, so the two tables are
+// spelled once, in the package that owns them.
 func (t Table) Validate(d dialect.Dialect) error {
 	if !d.Valid() {
 		return platformerrors.Wrapf(dialect.ErrUnsupported, "retention dialect %q", d)
@@ -86,6 +100,10 @@ func (t Table) Validate(d dialect.Dialect) error {
 
 	if !dialect.ValidIdentifier(t.Name) {
 		return platformerrors.Wrapf(dialect.ErrInvalidIdentifier, "retention table %q", t.Name)
+	}
+
+	if audit.IsAuditTable(t.Name) {
+		return platformerrors.Wrapf(ErrChainedTable, "retention table %q; sweep the audit log with audit.PruneTarget", t.Name)
 	}
 
 	for _, column := range []string{t.Column, t.key()} {

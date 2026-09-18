@@ -59,6 +59,34 @@ entry accounting for each sweep; audit does not import this one, and satisfies
 Target structurally instead. Which means the sweep that prunes the audit log
 writes its own accounting entry into the log it just pruned.
 
+Because a Table pointed at those tables would work, it is refused. The DELETE
+this package renders against audit_log_entries is legal SQL and would run every
+night without complaint; the damage only surfaces later, in an
+audit.Reader.Verify that finds a chain with a hole in it and no prune watermark
+to say who made it. So Table.Validate recognizes the audit tables — through
+audit.IsAuditTable, at any prefix and in any schema — and fails construction
+with ErrChainedTable, naming audit.PruneTarget. It is the one table name this
+package knows anything about, and it is there because the alternative to
+knowing is a policy set that looks correct and quietly destroys the evidence
+the other policies are accounted for in.
+
+# A policy set can be previewed
+
+	report, err := sweeper.Report(ctx)
+
+Sweeper.Report samples every policy's cutoff and backlog and writes nothing —
+no DELETE, no transaction, no audit entry, and no instrument. It answers the
+question the declaration cannot: Age is a duration written against a column
+whose meaning somebody had to remember, and the cutoff is that arithmetic
+carried out, with the number of rows currently sitting behind it. A policy
+meant as a thirty-day window and typed as a thirty-minute one is invisible in
+the source and unmistakable in a report taken before the job is registered.
+
+Disabled policies are reported, where a sweep leaves them out of its result
+entirely. A sweep accounts for what it did and a policy that did not run did
+nothing to account for; a report answers what a policy would do, and the policy
+that most needs the answer is the one somebody is deciding whether to turn on.
+
 # The sweep is scheduled, not looped
 
 	sweeper, err := retentioncfg.NewSweeper(ctx, cfg, client, policies,

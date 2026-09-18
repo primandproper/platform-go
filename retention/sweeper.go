@@ -129,6 +129,50 @@ type SweepResult struct {
 	Removed int64
 }
 
+// PolicyReport is what one policy would remove if it ran now.
+type PolicyReport struct {
+	// Cutoff is the instant the policy would delete at or before, computed from
+	// the Sweeper's clock and the policy's Age exactly as a sweep computes it.
+	//
+	// It is the field a preview exists for. Age is a duration somebody wrote
+	// down months ago against a column whose meaning they had to remember, and
+	// the cutoff is that arithmetic carried out — which is where a policy meant
+	// as a thirty-day window and typed as a thirty-minute one becomes visible
+	// before it deletes anything.
+	Cutoff time.Time
+	// Name is the policy's name.
+	Name string
+	// Target is what the policy deletes from, as the Target describes itself.
+	Target string
+	// Backlog is how many rows are at or before Cutoff now, saturating at
+	// SweeperConfig.BacklogCeiling. A reading equal to the ceiling means "at
+	// least this many".
+	Backlog int64
+	// Disabled reports whether the policy is switched off.
+	//
+	// A disabled policy is reported here, where a sweep leaves it out of
+	// SweepResult entirely, and the difference is what the two are for: a sweep
+	// accounts for what it did, and a policy that did not run did nothing to
+	// account for. A report answers what a policy would do, and the policy
+	// somebody most needs that answer about is the one they are deciding
+	// whether to turn on.
+	Disabled bool
+}
+
+// SweepReport is what every policy would remove, in the order the policies were
+// registered.
+type SweepReport struct {
+	// Policies holds one entry per registered policy, disabled ones included.
+	Policies []PolicyReport
+	// Backlog is the total across every policy.
+	//
+	// Each term saturates at SweeperConfig.BacklogCeiling, so this is a floor
+	// rather than a count — which is the same reading the per-policy number
+	// carries, and the reason to look at the entries rather than the sum when
+	// one of them is sitting on the ceiling.
+	Backlog int64
+}
+
 // Sweeper executes retention policies.
 //
 // It owns no goroutine and no ticker: it is rendered as a jobs.Job and
@@ -353,6 +397,73 @@ func (s *Sweeper) Sweep(ctx context.Context) (*SweepResult, error) {
 	}
 
 	return result, nil
+}
+
+// Report samples every policy's cutoff and backlog and deletes nothing.
+//
+// It is the dry run a policy set has no other way to get. Until a sweep has
+// run, the only evidence that a policy says what its author meant is the
+// policy's own source — and the mistake worth catching is not a malformed one,
+// which NewSweeper already refuses, but a well-formed one aimed at the wrong
+// column or carrying an Age in the wrong unit. Both of those are invisible in
+// the declaration and obvious in the cutoff and the row count beside it.
+//
+// Nothing here writes. There is no transaction, no batch, and no audit entry: a
+// preview is not an event, and an entry saying a sweep considered deleting
+// something would be noise in the log the real entries have to be findable in.
+// The reads go through Client.Reader, the same bounded count the sweep's
+// backlog gauge is taken with.
+//
+// It touches no instrument either. The counters and the backlog gauge are the
+// scheduled sweep's account of itself, and a preview somebody ran by hand
+// against a status endpoint would put samples into that timeline which no sweep
+// produced — which is exactly the reading the gauge exists to make
+// unambiguous.
+//
+// Disabled policies are reported. A policy that fails does not stop the others:
+// its error is collected and returned joined with the rest, alongside a report
+// that still carries every policy it could sample — including the failed one,
+// whose Backlog is then zero for want of an answer rather than for want of
+// rows.
+func (s *Sweeper) Report(ctx context.Context) (*SweepReport, error) {
+	ctx, op := s.o11y.BeginCustom(ctx, "report_policies")
+	defer op.End()
+
+	op.Set(policyCountKey, len(s.policies))
+
+	report := &SweepReport{Policies: make([]PolicyReport, 0, len(s.policies))}
+
+	var errs []error
+
+	for i := range s.policies {
+		policy := &s.policies[i]
+
+		entry := PolicyReport{
+			Name:     policy.Name,
+			Target:   policy.Target.Describe(),
+			Cutoff:   s.clock.Now().UTC().Add(-policy.Age),
+			Disabled: policy.Disabled,
+		}
+
+		backlog, err := policy.Target.Backlog(
+			ctx, s.client.Reader(), s.client.Dialect(), entry.Cutoff, s.cfg.BacklogCeiling,
+		)
+		if err != nil {
+			errs = append(errs, platformerrors.Wrapf(err, "reporting retention policy %q", policy.Name))
+		}
+
+		entry.Backlog = backlog
+		report.Policies = append(report.Policies, entry)
+		report.Backlog += backlog
+	}
+
+	op.Set(backlogKey, report.Backlog)
+
+	if len(errs) > 0 {
+		return report, op.Error(platformerrors.Join(errs...), "reporting retention policies")
+	}
+
+	return report, nil
 }
 
 // sweepPolicy drains one policy, samples its backlog, and records the entry

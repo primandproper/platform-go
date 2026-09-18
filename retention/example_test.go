@@ -1,12 +1,14 @@
 package retention_test
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/retention"
 
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
@@ -117,4 +119,23 @@ func ExampleTable() {
 	// Output:
 	// expired-sessions: sessions, age 0s
 	// old-sessions: sessions, age 2160h0m0s
+}
+
+// A Table pointed at the audit log is refused where the policy is declared,
+// because otherwise it would work.
+//
+// The DELETE this target renders against audit_log_entries is legal SQL. It
+// would run every night, taking whatever the cutoff selected out of the middle
+// of each scope's hash chain, and nothing would say so until somebody verified
+// a chain and found a break with no watermark to attribute it to. The error
+// names the target that prunes the log correctly.
+func ExampleTable_Validate() {
+	err := retention.Table{Name: "audit_log_entries", Column: "recorded_at"}.Validate(dialect.SQLite)
+
+	fmt.Println(errors.Is(err, retention.ErrChainedTable))
+	fmt.Println(err)
+
+	// Output:
+	// true
+	// retention table "audit_log_entries"; sweep the audit log with audit.PruneTarget: retention table is hash-chained and cannot be swept declaratively
 }
