@@ -30,7 +30,7 @@ account is the failure the interceptor exists to prevent. It stamps a key the
 caller put on the context and never mints one of its own — a client that
 generated keys by itself would make every call idempotent-looking and none of
 them idempotent, since a retry would carry a fresh key. Use
-idempotency.NewIdempotencyContext to start one.
+idempotency.WithNewKey to start one, once per logical operation.
 
 Both are defaults rather than obligations: WithoutDefaultInterceptors turns them
 off for a caller assembling their own chain.
