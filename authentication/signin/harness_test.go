@@ -167,6 +167,36 @@ func (e *env) registerPasswordless(t *testing.T, username string) *identity.User
 	return registration.User
 }
 
+// registerAccountless writes a user with a password and no account at all: the
+// operator identity/grpc's MembershipAuthorizer doc has in mind, who must sign
+// in before anybody can put them in one.
+//
+// It goes through the store rather than identity.Service.Register because
+// Register mints an account — a user with none is a row this suite has to write
+// for itself.
+func (e *env) registerAccountless(t *testing.T, username string) *identity.User {
+	t.Helper()
+
+	hashed, err := argon2.NewArgon2Authenticator().HashPassword(t.Context(), e.password)
+	must.NoError(t, err)
+
+	var created *identity.User
+
+	must.NoError(t, e.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+		created, err = e.store.CreateUser(t.Context(), tx, testScope, &identity.User{
+			Username:       username,
+			EmailAddress:   username + "@example.com",
+			HashedPassword: hashed,
+			AccountStatus:  identity.StatusGood,
+			Scope:          testScope,
+		})
+
+		return err
+	}))
+
+	return created
+}
+
 // setStatus moves the registered user's account status.
 func (e *env) setStatus(t *testing.T, status identity.AccountStatus, explanation string) {
 	t.Helper()

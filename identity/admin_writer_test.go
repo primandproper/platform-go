@@ -497,9 +497,9 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		t.Parallel()
 
 		// A default is a pointer at a live membership, so a member whose only
-		// account closed keeps none: there is nothing to point at, and that is
-		// the state ErrNoDefaultAccount describes rather than one the archival
-		// invented.
+		// account closed keeps none: there is nothing to point at. They still
+		// get a principal — having nowhere to land is not the same as being
+		// refused the read every authenticated request makes.
 		store := env.newStore(t)
 		owner := seedUser(t, env, store, newUser("ada"))
 		closing := seedAccountFor(t, env, store, owner, "Closing")
@@ -511,8 +511,10 @@ func runAdminWriterSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		test.SliceEmpty(t, after)
 
-		_, err = store.GetPrincipal(t.Context(), env.reader(), testScope, member.ID, "")
-		must.ErrorIs(t, err, ErrNoDefaultAccount)
+		landed, err := store.GetPrincipal(t.Context(), env.reader(), testScope, member.ID, "")
+		must.NoError(t, err)
+		test.EqOp(t, "", landed.ActiveAccountID)
+		test.Nil(t, landed.ActiveMembership())
 	})
 
 	t.Run("moves a member's default off a closing account and not off another's", func(t *testing.T) {

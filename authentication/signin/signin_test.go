@@ -125,6 +125,38 @@ func TestService_LoginForToken(T *testing.T) {
 		test.EqOp(t, e.user.ID, signedIn.Principal.User.ID)
 	})
 
+	T.Run("a user who belongs to no account", func(t *testing.T) {
+		t.Parallel()
+
+		// The principal is resolved after the credentials are proven, so a
+		// directory answer of "no account" used to fail the sign-in at the last
+		// step — for exactly the operator identity/grpc's MembershipAuthorizer
+		// expects a consumer to put in an account after they have signed in.
+		e := newEnv(t)
+		operator := e.registerAccountless(t, "operator")
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope,
+			&signin.Credentials{Username: "operator", Password: e.password})
+		must.NoError(t, err)
+		must.NotNil(t, signedIn)
+
+		test.EqOp(t, "token-for-"+operator.ID, signedIn.Token)
+		test.EqOp(t, operator.ID, signedIn.Principal.User.ID)
+		test.EqOp(t, "", signedIn.Principal.ActiveAccountID)
+		test.Nil(t, signedIn.Principal.ActiveMembership())
+		test.SliceEmpty(t, signedIn.Principal.Memberships)
+
+		// The token is minted against no account, which the default claims
+		// report as an empty one rather than by omitting the key.
+		test.Eq(t, map[string]any{
+			signin.ClaimAccountID: "",
+			signin.ClaimScope:     testScope.String(),
+		}, e.issuer.claims)
+
+		must.SliceLen(t, 1, e.hooks.signIns)
+		test.SliceEmpty(t, e.hooks.failures)
+	})
+
 	T.Run("the four collapsed refusals answer identically", func(t *testing.T) {
 		t.Parallel()
 
@@ -683,6 +715,28 @@ func TestService_Authenticate(T *testing.T) {
 		// appeared, which is the property the hook was split to get.
 		must.SliceLen(t, 2, e.hooks.authentications)
 		must.SliceLen(t, 1, e.hooks.signIns)
+	})
+
+	T.Run("a user who belongs to no account", func(t *testing.T) {
+		t.Parallel()
+
+		// The same answer at the door that mints nothing: the principal is
+		// resolved after the credentials are proven, and no account to resolve
+		// is a principal rather than a refusal.
+		e := newEnv(t)
+		operator := e.registerAccountless(t, "operator")
+
+		principal, err := e.svc.Authenticate(t.Context(), testScope,
+			&signin.Credentials{Username: "operator", Password: e.password})
+		must.NoError(t, err)
+		must.NotNil(t, principal)
+
+		test.EqOp(t, operator.ID, principal.User.ID)
+		test.EqOp(t, "", principal.ActiveAccountID)
+		test.Nil(t, principal.ActiveMembership())
+
+		must.SliceLen(t, 1, e.hooks.authentications)
+		test.SliceEmpty(t, e.hooks.failures)
 	})
 
 	T.Run("the four collapsed refusals answer identically", func(t *testing.T) {

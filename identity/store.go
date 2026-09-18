@@ -54,17 +54,26 @@ type Principal struct {
 
 	// ActiveAccountID is the account this request is against: the one asked
 	// for, or the user's default when none was.
+	//
+	// It is empty for a user who holds no memberships, which is a state and not
+	// a failure — see ActiveMembership and ErrNoDefaultAccount.
 	ActiveAccountID string `json:"activeAccountID"`
 
 	// Memberships are every live membership the user holds, in this scope.
 	Memberships []*Membership `json:"memberships"`
 }
 
-// ActiveMembership returns the membership for ActiveAccountID.
+// ActiveMembership returns the membership for ActiveAccountID, and may be nil.
 //
-// It cannot be nil for a Principal a Store returned — resolving the active
-// account is what the Store did to build one — so a nil here means the value
-// was assembled by hand.
+// For a Principal a Store returned it is nil in exactly one case: a user who
+// holds no memberships, whose ActiveAccountID is empty because there was no
+// account to resolve. Resolving the active account is what the Store did to
+// build the value, so for anybody who belongs to an account the membership is
+// there. A nil alongside a non-empty ActiveAccountID means the Principal was
+// assembled by hand and the assembly named an account the memberships do not
+// contain.
+//
+// A caller that reads roles off it gets none either way — see AccountRoles.
 func (p *Principal) ActiveMembership() *Membership {
 	if p == nil {
 		return nil
@@ -363,13 +372,17 @@ type SignInReader interface {
 	// method rather than about its callers: the answer changes here and nothing
 	// above it moves.
 	//
-	// An empty activeAccountID means the user's default account. A named one
-	// must be an account the user is a live member of; otherwise the read
-	// returns an error wrapping ErrMembershipNotFound rather than a Principal
-	// with an account the caller asked for and has no right to. That check is
-	// the reason this method exists rather than the caller joining the pieces:
-	// it is the one every hand-built session context eventually forgets, and
-	// forgetting it hands one account's data to another account's member.
+	// An empty activeAccountID means the user's default account, or no account
+	// at all for a user who holds no memberships: they get a Principal with an
+	// empty ActiveAccountID and a nil ActiveMembership rather than an error,
+	// which is what lets somebody sign in before anybody has put them in an
+	// account. A named one must be an account the user is a live member of;
+	// otherwise the read returns an error wrapping ErrMembershipNotFound rather
+	// than a Principal with an account the caller asked for and has no right to.
+	// That check is the reason this method exists rather than the caller joining
+	// the pieces: it is the one every hand-built session context eventually
+	// forgets, and forgetting it hands one account's data to another account's
+	// member.
 	GetPrincipal(
 		ctx context.Context,
 		q database.SQLQueryExecutor,
