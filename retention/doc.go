@@ -54,8 +54,9 @@ declarative target could express, in a policy that is otherwise ordinary:
 
 	policy, err := auditcfg.NewRetentionPolicy(ctx, auditConfig)
 
-The dependency runs one way only. This package imports audit, to record the
-entry accounting for each sweep; audit does not import this one, and satisfies
+The dependency runs one way only. This package imports audit for two things —
+to record the entry accounting for each sweep, and to recognize the tables a
+Table must never be pointed at; audit does not import this one, and satisfies
 Target structurally instead. Which means the sweep that prunes the audit log
 writes its own accounting entry into the log it just pruned.
 
