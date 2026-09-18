@@ -5,12 +5,14 @@ import (
 	nethttp "net/http"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/operations"
 
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	httpx "github.com/primandproper/primitives-go/v2/errors/http"
+	"github.com/primandproper/primitives-go/v2/eventstream/sse"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/routing"
@@ -44,6 +46,7 @@ const (
 	operationIDKey = "operations.id"
 	ownerKey       = "operations.owner"
 	streamedKey    = "operations.snapshots_streamed"
+	heartbeatsKey  = "operations.heartbeats_sent"
 )
 
 // OwnerResolver derives the scope a request is entitled to read from.
@@ -78,10 +81,8 @@ func GlobalOwner(context.Context) (tenancy.Scope, error) { return tenancy.Global
 
 // Handlers is the mountable operations read surface.
 type Handlers struct {
-	svc      operations.Service
-	watcher  *operations.Watcher
-	resolver OwnerResolver
-	o11y     observability.Observer
+	svc  operations.Service
+	o11y observability.Observer
 
 	// codec renders every body this package writes by hand: the event-stream
 	// frames, and the refusals that happen before the upgrade. The typed
@@ -95,8 +96,21 @@ type Handlers struct {
 	// types would not survive the newline normalization the framing does.
 	codec encoding.Codec
 
+	watcher  *operations.Watcher
+	resolver OwnerResolver
+
+	// upgrader is built once rather than per request, because the reconnection
+	// hint it writes is the same bytes for every stream and because an Upgrader
+	// assembled from validated options cannot fail to be assembled.
+	upgrader *sse.Upgrader
+
 	basePath string
 	tags     []string
+
+	// heartbeat is how long the stream may go without writing anything. It is
+	// never zero: New refuses a non-positive one, and an absent one is
+	// DefaultHeartbeatInterval.
+	heartbeat time.Duration
 }
 
 // New builds the handlers over a Service.
@@ -114,6 +128,13 @@ func New(svc operations.Service, opts ...Option) (*Handlers, error) {
 
 	if o.resolver == nil {
 		return nil, ErrNilOwnerResolver
+	}
+
+	// Zero is what a caller wrote, not what a caller left out: the default is
+	// applied in newOptions, so anything non-positive arriving here was asked
+	// for. See ErrInvalidHeartbeatInterval for why it is not granted.
+	if o.heartbeat <= 0 {
+		return nil, platformerrors.Wrapf(ErrInvalidHeartbeatInterval, "heartbeat interval %s", o.heartbeat)
 	}
 
 	// This surface answers through errors/http, which maps the primitives and
@@ -145,9 +166,17 @@ func New(svc operations.Service, opts ...Option) (*Handlers, error) {
 		watcher:  o.watcher,
 		resolver: o.resolver,
 		codec:    encoding.NewClientEncoder(encoding.ContentTypeJSON, encoding.WithLogger(o.logger), encoding.WithTracerProvider(o.tracerProvider)),
-		basePath: o.basePath,
-		tags:     o.tags,
-		o11y:     observability.NewObserver(o11yName, o.logger, o.tracerProvider),
+		upgrader: sse.NewUpgrader(
+			sse.WithLogger(o.logger),
+			sse.WithTracerProvider(o.tracerProvider),
+			// The zero ReconnectDelay is the absent one and emits no field. See
+			// WithReconnectDelay for why there is no default to emit.
+			sse.WithReconnectDelay(o.reconnectDelay),
+		),
+		heartbeat: o.heartbeat,
+		basePath:  o.basePath,
+		tags:      o.tags,
+		o11y:      observability.NewObserver(o11yName, o.logger, o.tracerProvider),
 	}, nil
 }
 

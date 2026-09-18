@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	nethttp "net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/encoding"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/eventstream/sse"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/routing"
 	"github.com/primandproper/primitives-go/v2/routing/backends/chi"
@@ -505,6 +507,10 @@ func TestHandlers_openAPI(T *testing.T) {
 	// of doing so, since that is not something a generated client guesses.
 	test.StrContains(T, document, "/operations/{operationID}/events")
 	test.StrContains(T, document, "text/event-stream")
+
+	// Including the frames that are not snapshots. A client cannot be expected
+	// to defend against an event type nothing told it about.
+	test.StrContains(T, document, "`"+EventHeartbeat+"` event")
 }
 
 // The point of the per-route methods: a consumer mounts the reads and leaves the
@@ -629,6 +635,87 @@ func TestHandlers_stream(T *testing.T) {
 		test.StrContains(t, body, "event: "+EventOperation)
 		test.StrContains(t, body, `"state":"succeeded"`)
 		test.StrContains(t, body, `"done":true`)
+	})
+
+	// The acceptance the heartbeat exists for: an operation that reports nothing
+	// for longer than the interval still produces bytes, and the terminal
+	// snapshot still arrives on the same connection afterwards.
+	T.Run("keeps a quiet stream warm and still delivers the terminal snapshot", func(t *testing.T) {
+		t.Parallel()
+
+		store := newStreamingStore("op1", tenancy.Of("u1"))
+
+		watcher, err := operations.NewWatcher(t.Context(), &operations.WatcherConfig{
+			Poll:            100 * time.Millisecond,
+			MinReadInterval: time.Millisecond,
+		}, stubClient{}, store)
+		must.NoError(t, err)
+
+		t.Cleanup(func() { _ = watcher.Close() })
+
+		go func() { _ = watcher.Run(t.Context()) }()
+
+		svc := &operationsmock.ServiceMock{}
+		svc.GetFunc = store.serviceGet
+
+		// Nothing changes about the operation for ten heartbeats' worth of time,
+		// which is the two minutes of silence in miniature.
+		handler := mount(t, svc, tenancy.Of("u1"),
+			WithWatcher(watcher),
+			WithHeartbeatInterval(20*time.Millisecond))
+
+		go func() {
+			time.Sleep(250 * time.Millisecond)
+			store.finish()
+		}()
+
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, "/operations/op1/events", nethttp.NoBody))
+
+		body := res.Body.String()
+
+		test.StrContains(t, body, "event: "+EventHeartbeat)
+		test.Greater(t, 1, strings.Count(body, "event: "+EventHeartbeat))
+
+		// And the stream still ends where it always did.
+		test.StrContains(t, body, "event: "+EventOperation)
+		test.StrContains(t, body, `"done":true`)
+	})
+
+	// The reconnection hint goes out with the headers, before any event, because
+	// the streams that most need it are the ones that have received none.
+	T.Run("opens with the reconnect delay it was given", func(t *testing.T) {
+		t.Parallel()
+
+		store := newStreamingStore("op1", tenancy.Of("u1"))
+
+		watcher, err := operations.NewWatcher(t.Context(), &operations.WatcherConfig{
+			Poll:            100 * time.Millisecond,
+			MinReadInterval: time.Millisecond,
+		}, stubClient{}, store)
+		must.NoError(t, err)
+
+		t.Cleanup(func() { _ = watcher.Close() })
+
+		go func() { _ = watcher.Run(t.Context()) }()
+
+		svc := &operationsmock.ServiceMock{}
+		svc.GetFunc = store.serviceGet
+
+		delay, err := sse.NewReconnectDelay(15 * time.Second)
+		must.NoError(t, err)
+
+		handler := mount(t, svc, tenancy.Of("u1"), WithWatcher(watcher), WithReconnectDelay(delay))
+
+		go func() {
+			time.Sleep(50 * time.Millisecond)
+			store.finish()
+		}()
+
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), nethttp.MethodGet, "/operations/op1/events", nethttp.NoBody))
+
+		test.StrHasPrefix(t, "retry: 15000", res.Body.String())
 	})
 
 	// The scoped read Watch itself makes, made before the upgrade so a refusal

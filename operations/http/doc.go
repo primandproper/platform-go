@@ -74,6 +74,26 @@ generate a document describing a JSON body the endpoint never sends. Going
 through the Backend still gets it the router's middleware, and DescribeStream
 puts a text/event-stream operation in the spec that says what actually happens.
 
+# A quiet stream still writes
+
+An operation can run for minutes without changing, and a stream that says
+nothing while it does is a stream something in the path will close: a 60-second
+idle timeout is the default in nginx, in an AWS ALB, and in most of what sits
+between a browser and this process. The connection would go away mid-operation,
+before the terminal snapshot, which is the one outcome MountEvents refuses to
+serve at all when there is no Watcher behind it.
+
+So the stream writes a heartbeat — an event of its own type carrying no payload
+— whenever DefaultHeartbeatInterval passes with nothing else to send.
+WithHeartbeatInterval moves it for a deployment whose own proxy is stricter, and
+a non-positive interval is refused at construction rather than read as a request
+for silence. A client that registered no listener for the type never sees one,
+which is what makes it safe to send to a client written before it existed.
+
+What the heartbeat does not do is tell a disconnected client when to come back.
+That is the SSE "retry:" field, and WithReconnectDelay is where a deployment
+names it; naming none leaves each client on its own default of a few seconds.
+
 # One replica per stream, as ever
 
 An SSE connection lives on the process that accepted it, and this package's

@@ -5,10 +5,12 @@ import (
 	nethttp "net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
 
+	"github.com/primandproper/primitives-go/v2/eventstream/sse"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
@@ -31,6 +33,14 @@ func TestOptions(T *testing.T) {
 		test.Eq(t, []string{"operations"}, o.tags)
 		test.Nil(t, o.resolver)
 		test.Nil(t, o.watcher)
+
+		// Under thirty seconds is the property that matters: a stream nobody is
+		// writing to is one a proxy closes at sixty.
+		test.EqOp(t, DefaultHeartbeatInterval, o.heartbeat)
+		test.Less(t, 30*time.Second, o.heartbeat)
+
+		// The zero ReconnectDelay is the absent one, and emits no field.
+		test.EqOp(t, time.Duration(0), o.reconnectDelay.Duration())
 	})
 
 	T.Run("each option sets the field it names", func(t *testing.T) {
@@ -39,12 +49,17 @@ func TestOptions(T *testing.T) {
 		var logger logging.Logger = loggingnoop.NewLogger()
 		tracerProvider := tracingnoop.NewTracerProvider()
 
+		delay, err := sse.NewReconnectDelay(5 * time.Second)
+		must.NoError(t, err)
+
 		o := newOptions([]Option{
 			WithOwnerResolver(GlobalOwner),
 			WithBasePath("/jobs"),
 			WithTags("jobs", "async"),
 			WithLogger(logger),
 			WithTracerProvider(tracerProvider),
+			WithHeartbeatInterval(time.Second),
+			WithReconnectDelay(delay),
 		})
 
 		must.NotNil(t, o.resolver)
@@ -52,6 +67,8 @@ func TestOptions(T *testing.T) {
 		test.Eq(t, []string{"jobs", "async"}, o.tags)
 		test.Eq(t, logger, o.logger)
 		test.Eq(t, tracerProvider, o.tracerProvider)
+		test.EqOp(t, time.Second, o.heartbeat)
+		test.EqOp(t, 5*time.Second, o.reconnectDelay.Duration())
 	})
 
 	T.Run("nil options are ignored", func(t *testing.T) {
@@ -80,6 +97,40 @@ func TestOptions(T *testing.T) {
 		handlers, err := New(&operationsmock.ServiceMock{})
 		test.ErrorIs(t, err, ErrNilOwnerResolver)
 		test.Nil(t, handlers)
+	})
+
+	T.Run("a non-positive heartbeat interval is refused at construction", func(t *testing.T) {
+		t.Parallel()
+
+		// Not read as "then send no heartbeats": that is the behavior this
+		// package had before there was one, and its symptom is a stream a proxy
+		// somewhere else closes minutes later, mid-operation.
+		for _, interval := range []time.Duration{0, -time.Second} {
+			handlers, err := New(&operationsmock.ServiceMock{},
+				WithOwnerResolver(GlobalOwner),
+				WithHeartbeatInterval(interval))
+
+			test.ErrorIs(t, err, ErrInvalidHeartbeatInterval)
+			test.Nil(t, handlers)
+		}
+	})
+
+	T.Run("the heartbeat interval reaches the handlers", func(t *testing.T) {
+		t.Parallel()
+
+		handlers, err := New(&operationsmock.ServiceMock{},
+			WithOwnerResolver(GlobalOwner),
+			WithHeartbeatInterval(2*time.Second))
+		must.NoError(t, err)
+
+		test.EqOp(t, 2*time.Second, handlers.heartbeat)
+
+		// And the default is what a caller that named none gets, rather than a
+		// zero the pump would build a ticker from.
+		defaulted, err := New(&operationsmock.ServiceMock{}, WithOwnerResolver(GlobalOwner))
+		must.NoError(t, err)
+
+		test.EqOp(t, DefaultHeartbeatInterval, defaulted.heartbeat)
 	})
 
 	T.Run("the tags reach the OpenAPI document", func(t *testing.T) {

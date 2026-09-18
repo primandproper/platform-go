@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/operations"
 	operationsmock "github.com/primandproper/platform-go/v14/operations/mock"
@@ -191,6 +192,56 @@ func TestHandlers_pump(T *testing.T) {
 		must.SliceLen(t, 1, sent)
 		test.EqOp(t, EventError, sent[0].Type)
 		test.StrContains(t, string(sent[0].Payload), "could not encode the operation")
+	})
+
+	T.Run("writes a heartbeat when the operation has nothing to say", func(t *testing.T) {
+		t.Parallel()
+
+		// The whole point: a stream that produced no bytes for two minutes is a
+		// stream a proxy closes before the terminal snapshot arrives.
+		h := testHandlers(t, WithHeartbeatInterval(time.Millisecond))
+		ctx, span := begin(t, h)
+
+		stream := newRecordingStream()
+
+		// Never sends a snapshot, and closes once the beats have arrived, which
+		// is the quiet operation this exists for.
+		snapshots := make(chan *operations.Operation)
+
+		go func() {
+			defer close(snapshots)
+
+			for len(stream.events()) < 2 {
+				time.Sleep(time.Millisecond)
+			}
+		}()
+
+		h.pump(ctx, span, stream, snapshots)
+
+		sent := stream.events()
+		must.SliceNotEmpty(t, sent)
+
+		for _, event := range sent {
+			test.EqOp(t, EventHeartbeat, event.Type)
+			test.SliceEmpty(t, event.Payload)
+		}
+	})
+
+	T.Run("stops when a heartbeat cannot be written", func(t *testing.T) {
+		t.Parallel()
+
+		// A client that leaves between snapshots is invisible until something is
+		// written at it, so on a quiet operation the heartbeat is the write that
+		// finds the departure.
+		h := testHandlers(t, WithHeartbeatInterval(time.Millisecond))
+		ctx, span := begin(t, h)
+
+		stream := newRecordingStream()
+		stream.sendErr = platformerrors.New("connection reset")
+
+		h.pump(ctx, span, stream, make(chan *operations.Operation))
+
+		test.SliceEmpty(t, stream.events())
 	})
 
 	T.Run("stops when the client has gone", func(t *testing.T) {
