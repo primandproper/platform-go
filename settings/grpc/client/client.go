@@ -1,15 +1,15 @@
 /*
 Package client is a typed client for the settings gRPC service.
 
-It is the generated stub plus the interceptor a caller of this module's services
-would otherwise wire by hand, and it is deliberately thin: every RPC reaches it
-by embedding, so this file adds no method of its own beyond construction and
-shutdown. A client that wrapped each RPC would be thirteen functions that can
-drift from the schema, to gain nothing.
+It is the generated stub plus the two interceptors a caller of this module's
+services would otherwise wire by hand, and it is deliberately thin: every RPC
+reaches it by embedding, so this file adds no method of its own beyond
+construction and shutdown. A client that wrapped each RPC would be thirteen
+functions that can drift from the schema, to gain nothing.
 
 It is imported as settingsclient.
 
-# The interceptor, and why it is on by default
+# The two interceptors, and why they are on by default
 
 Error decoding, because without it every sentinel this service returns arrives
 as a *status.Error that no errors.Is matches. The server encodes the sentinel
@@ -26,21 +26,32 @@ setting that does not exist, a value nobody has stored, and a resolution with
 neither a value nor a default are three different things to tell somebody, and
 the code says the same word about all three.
 
-# Why there is no idempotency interceptor
+Idempotency, because a retried write on this service is answered as a mistake.
+Only [settingspb.SettingsServiceClient.SetValue] converges — it writes the row
+for the (subject, setting) pair rather than adding a second one — and the rest
+of the writes are told apart by whether the work had already been done:
+ClearValue on a value that is already cleared is settings.ErrValueNotFound,
+ArchiveDefinition on a definition that is already archived is
+settings.ErrDefinitionNotFound, and CreateDefinition run twice is
+settings.ErrDefinitionNameTaken. A client retrying a reply it never received
+therefore reads NotFound, or AlreadyExists, for work that succeeded. The
+interceptor is what makes the second attempt answer what the first one did.
 
-identity's client applies one and this does not, and the difference is what a
-recorded reply would be worth. Every write here is idempotent already:
-[settingspb.SettingsServiceClient.SetValue] converges on the row for the
-(subject, setting) pair rather than adding a second one, ClearValue archives a
-row that is already archived without complaint, and ArchiveDefinition answers
-the same way twice. A retried write lands on the state the first one asked for,
-so a store whose purpose is to hand back the first reply would be paying for a
-guarantee the writes make themselves.
+It stamps a key the caller put on the context and never mints one of its own —
+a client that generated keys by itself would make every call idempotent-looking
+and none of them idempotent, since a retry would carry a fresh key. Use
+idempotency.WithNewKey to start one, once per logical operation. A call with no
+key on its context is sent exactly as it would have been without the
+interceptor, so nothing here is imposed on a caller who wants none of it.
 
-The one write where a replay would differ is UpdateDefinition, and the
-difference is the honest one: a second identical edit is refused only if
-somebody else's edit landed in between, which is exactly what the caller wants
-to be told.
+UpdateDefinition is the one write whose replay would differ under its own
+steam, and the difference is the honest one: a second identical edit is refused
+only if somebody else's edit landed in between, which is exactly what the
+caller wants to be told. A recorded reply keyed to the first attempt tells them
+the same thing, because it is the first attempt's answer.
+
+Both are defaults rather than obligations: WithoutDefaultInterceptors turns them
+off for a caller assembling their own chain.
 */
 package client
 
@@ -49,6 +60,7 @@ import (
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	idempotencygrpc "github.com/primandproper/primitives-go/v2/idempotency/grpc"
 
 	"google.golang.org/grpc"
 )
@@ -88,12 +100,13 @@ func WithDialOptions(opts ...grpc.DialOption) Option {
 	return func(o *options) { o.dialOptions = append(o.dialOptions, opts...) }
 }
 
-// WithoutDefaultInterceptors builds a client with no error-decoding
-// interceptor, for a caller assembling their own chain.
+// WithoutDefaultInterceptors builds a client with neither the error-decoding nor
+// the idempotency interceptor, for a caller assembling their own chain.
 //
-// The cost of using it is the one this package's documentation opens with: an
-// errors.Is against a settings sentinel then never matches, and the codes alone
-// do not tell three of the refusals apart.
+// The cost of using it is the two this package's documentation opens with: an
+// errors.Is against a settings sentinel then never matches and the codes alone
+// do not tell three of the refusals apart, and a retried clear or archive is
+// answered NotFound for work that already succeeded.
 func WithoutDefaultInterceptors() Option {
 	return func(o *options) { o.skipInterceptors = true }
 }
@@ -136,22 +149,26 @@ func New(target string, opts ...Option) (*Client, error) {
 // result closes nothing, because the connection is not this client's to close —
 // which is the whole difference between this and New.
 //
-// The interceptor is not applied here and cannot be: it is a dial option, and
-// the connection has already been dialed. A caller wrapping their own
-// connection installs grpcerrors.UnaryErrorDecodingInterceptor on it
-// themselves, and this function's doc is the reminder.
+// The interceptors are not applied here and cannot be: they are dial options,
+// and the connection has already been dialed. A caller wrapping their own
+// connection passes [DefaultInterceptors] when they dial it, and this
+// function's doc is the reminder.
 func Wrap(conn grpc.ClientConnInterface) *Client {
 	return &Client{SettingsServiceClient: settingspb.NewSettingsServiceClient(conn)}
 }
 
-// DefaultInterceptors is the dial option New applies: error decoding.
+// DefaultInterceptors is the dial option New applies: error decoding, then
+// idempotency.
 //
 // It is exported so a caller assembling one connection for several services can
 // install the same chain rather than approximating it.
 func DefaultInterceptors() grpc.DialOption { return defaultInterceptors() }
 
 func defaultInterceptors() grpc.DialOption {
-	return grpc.WithChainUnaryInterceptor(grpcerrors.UnaryErrorDecodingInterceptor())
+	return grpc.WithChainUnaryInterceptor(
+		grpcerrors.UnaryErrorDecodingInterceptor(),
+		idempotencygrpc.NewUnaryClientInterceptor(),
+	)
 }
 
 // Close closes the connection, if this client owns one.
