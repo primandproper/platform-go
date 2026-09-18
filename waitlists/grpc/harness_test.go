@@ -318,6 +318,47 @@ func (h *harness) seedSignup(
 	return signup
 }
 
+// signupByContact reads a signup back through the administrative half of the
+// surface, which is the half this service allows to answer "is this address on
+// this list".
+//
+// It is what the join tests assert on, because the public Join says nothing
+// about what it did — see waitlistsgrpc.Server.Join — so what the surface
+// actually wrote has to be asked of the half that may say. Reading it through
+// the surface rather than through the store is deliberate here, and it is the
+// opposite choice from seedList's: the subject of these tests is the split
+// between the two audiences, so both halves of it belong under test.
+//
+// It reports nil for an address with no live row, so an absence is assertable
+// with the same call as a presence.
+func (h *harness) signupByContact(tb testing.TB, listID, contact string) *waitlistspb.Signup {
+	tb.Helper()
+
+	res, err := h.server.GetSignupByContact(h.ctx(tb), &waitlistspb.GetSignupByContactRequest{
+		ListId: listID, Contact: contact,
+	})
+	if err != nil {
+		must.ErrorIs(tb, err, waitlists.ErrSignupNotFound)
+
+		return nil
+	}
+
+	return res.GetResult()
+}
+
+// signupsOn pages one list's signups through the administrative surface,
+// archived rows included, for the tests that assert a join wrote no second row.
+func (h *harness) signupsOn(tb testing.TB, listID string) []*waitlistspb.Signup {
+	tb.Helper()
+
+	res, err := h.server.ListSignups(h.ctx(tb), &waitlistspb.ListSignupsRequest{
+		ListId: listID, Filter: includeArchived(),
+	})
+	must.NoError(tb, err)
+
+	return res.GetResults()
+}
+
 // invite moves a seeded signup to invited directly through the store, for the
 // tests whose subject is what happens next.
 func (h *harness) invite(tb testing.TB, scope tenancy.Scope, listID, signupID string) {

@@ -149,13 +149,18 @@ func runSurfaceSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		})
 		must.NoError(t, err)
 
-		joined, err := h.server.Join(h.anonCtx(t), &waitlistspb.JoinRequest{
+		// The form is answered rather than refused — the surface does not tell
+		// an anonymous caller which addresses are on this list — so what the
+		// suppression did is asserted on the row rather than on the error.
+		rejoined, err := h.server.Join(h.anonCtx(t), &waitlistspb.JoinRequest{
 			ListId: list.ID, Contact: "ALAN@example.com",
 		})
-		test.Nil(t, joined)
-		must.Error(t, err)
+		must.NoError(t, err)
+		must.NotNil(t, rejoined)
 
-		test.ErrorIs(t, err, waitlists.ErrContactWithdrawn)
-		test.EqOp(t, codes.FailedPrecondition, status.Code(err))
+		signups := h.signupsOn(t, list.ID)
+		must.SliceLen(t, 1, signups)
+		test.EqOp(t, signup.ID, signups[0].GetId())
+		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WITHDRAWN, signups[0].GetStatus())
 	})
 }

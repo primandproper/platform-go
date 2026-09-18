@@ -1182,9 +1182,28 @@ func (x *JoinRequest) GetContact() string {
 	return ""
 }
 
+// JoinResponse is empty, and that is the whole of what the public form is told.
+//
+// Join is reachable without a grant and nothing establishes that the caller owns
+// the address they typed, so every outcome answers the same way: a new signup, a
+// contact already on the list, and a contact that withdrew from it are one
+// response. A response that carried the row would say which -- a new signup's id
+// and created_at against nothing for the other two -- and a caller walking a
+// list of addresses would learn, per address, whether it is on this list and
+// whether its owner asked to be left alone.
+//
+// The field the row used to arrive in is reserved rather than removed, so it
+// cannot come back under its old number. The two refusals it used to carry are
+// still what waitlists.SignupStore.Join returns to a Go caller, and
+// GetSignupByContact is where an authenticated caller asks the same question on
+// the wire.
+//
+// A public Join is therefore not a subscription. Nothing here has established
+// that the person at that address asked for anything, and confirming it is the
+// consumer's -- see the waitlists package documentation, which states the
+// obligation and why this module cannot ship the send.
 type JoinResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Result        *Signup                `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1217,13 +1236,6 @@ func (x *JoinResponse) ProtoReflect() protoreflect.Message {
 // Deprecated: Use JoinResponse.ProtoReflect.Descriptor instead.
 func (*JoinResponse) Descriptor() ([]byte, []int) {
 	return file_primandproper_platform_waitlists_v1_waitlists_proto_rawDescGZIP(), []int{17}
-}
-
-func (x *JoinResponse) GetResult() *Signup {
-	if x != nil {
-		return x.Result
-	}
-	return nil
 }
 
 type GetSignupRequest struct {
@@ -2311,9 +2323,8 @@ const file_primandproper_platform_waitlists_v1_waitlists_proto_rawDesc = "" +
 	"\x13ArchiveListResponse\"W\n" +
 	"\vJoinRequest\x12\x17\n" +
 	"\alist_id\x18\x01 \x01(\tR\x06listID\x12\x18\n" +
-	"\acontact\x18\x02 \x01(\tR\acontactR\x05scopeR\asubjectR\x05notes\"S\n" +
-	"\fJoinResponse\x12C\n" +
-	"\x06result\x18\x01 \x01(\v2+.primandproper.platform.waitlists.v1.SignupR\x06result\"O\n" +
+	"\acontact\x18\x02 \x01(\tR\acontactR\x05scopeR\asubjectR\x05notes\"\x1c\n" +
+	"\fJoinResponseJ\x04\b\x01\x10\x02R\x06result\"O\n" +
 	"\x10GetSignupRequest\x12\x17\n" +
 	"\alist_id\x18\x01 \x01(\tR\x06listID\x12\x1b\n" +
 	"\tsignup_id\x18\x02 \x01(\tR\bsignupIDR\x05scope\"X\n" +
@@ -2476,59 +2487,58 @@ var file_primandproper_platform_waitlists_v1_waitlists_proto_depIdxs = []int32{
 	1,  // 19: primandproper.platform.waitlists.v1.ListOpenListsResponse.results:type_name -> primandproper.platform.waitlists.v1.Waitlist
 	4,  // 20: primandproper.platform.waitlists.v1.UpdateListRequest.list:type_name -> primandproper.platform.waitlists.v1.WaitlistInput
 	1,  // 21: primandproper.platform.waitlists.v1.UpdateListResponse.result:type_name -> primandproper.platform.waitlists.v1.Waitlist
-	3,  // 22: primandproper.platform.waitlists.v1.JoinResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
-	3,  // 23: primandproper.platform.waitlists.v1.GetSignupResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
-	3,  // 24: primandproper.platform.waitlists.v1.GetSignupByContactResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
-	40, // 25: primandproper.platform.waitlists.v1.ListSignupsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	41, // 26: primandproper.platform.waitlists.v1.ListSignupsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	3,  // 27: primandproper.platform.waitlists.v1.ListSignupsResponse.results:type_name -> primandproper.platform.waitlists.v1.Signup
-	2,  // 28: primandproper.platform.waitlists.v1.ListSignupsForSubjectRequest.subject:type_name -> primandproper.platform.waitlists.v1.SignupSubject
-	40, // 29: primandproper.platform.waitlists.v1.ListSignupsForSubjectRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	41, // 30: primandproper.platform.waitlists.v1.ListSignupsForSubjectResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	3,  // 31: primandproper.platform.waitlists.v1.ListSignupsForSubjectResponse.results:type_name -> primandproper.platform.waitlists.v1.Signup
-	3,  // 32: primandproper.platform.waitlists.v1.UpdateSignupNotesResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
-	3,  // 33: primandproper.platform.waitlists.v1.InviteResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
-	3,  // 34: primandproper.platform.waitlists.v1.ConvertResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
-	2,  // 35: primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectRequest.subject:type_name -> primandproper.platform.waitlists.v1.SignupSubject
-	5,  // 36: primandproper.platform.waitlists.v1.WaitlistsService.CreateList:input_type -> primandproper.platform.waitlists.v1.CreateListRequest
-	7,  // 37: primandproper.platform.waitlists.v1.WaitlistsService.GetList:input_type -> primandproper.platform.waitlists.v1.GetListRequest
-	9,  // 38: primandproper.platform.waitlists.v1.WaitlistsService.ListLists:input_type -> primandproper.platform.waitlists.v1.ListListsRequest
-	11, // 39: primandproper.platform.waitlists.v1.WaitlistsService.ListOpenLists:input_type -> primandproper.platform.waitlists.v1.ListOpenListsRequest
-	13, // 40: primandproper.platform.waitlists.v1.WaitlistsService.UpdateList:input_type -> primandproper.platform.waitlists.v1.UpdateListRequest
-	15, // 41: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveList:input_type -> primandproper.platform.waitlists.v1.ArchiveListRequest
-	17, // 42: primandproper.platform.waitlists.v1.WaitlistsService.Join:input_type -> primandproper.platform.waitlists.v1.JoinRequest
-	19, // 43: primandproper.platform.waitlists.v1.WaitlistsService.GetSignup:input_type -> primandproper.platform.waitlists.v1.GetSignupRequest
-	21, // 44: primandproper.platform.waitlists.v1.WaitlistsService.GetSignupByContact:input_type -> primandproper.platform.waitlists.v1.GetSignupByContactRequest
-	23, // 45: primandproper.platform.waitlists.v1.WaitlistsService.ListSignups:input_type -> primandproper.platform.waitlists.v1.ListSignupsRequest
-	25, // 46: primandproper.platform.waitlists.v1.WaitlistsService.ListSignupsForSubject:input_type -> primandproper.platform.waitlists.v1.ListSignupsForSubjectRequest
-	27, // 47: primandproper.platform.waitlists.v1.WaitlistsService.UpdateSignupNotes:input_type -> primandproper.platform.waitlists.v1.UpdateSignupNotesRequest
-	29, // 48: primandproper.platform.waitlists.v1.WaitlistsService.Invite:input_type -> primandproper.platform.waitlists.v1.InviteRequest
-	31, // 49: primandproper.platform.waitlists.v1.WaitlistsService.Convert:input_type -> primandproper.platform.waitlists.v1.ConvertRequest
-	33, // 50: primandproper.platform.waitlists.v1.WaitlistsService.Withdraw:input_type -> primandproper.platform.waitlists.v1.WithdrawRequest
-	35, // 51: primandproper.platform.waitlists.v1.WaitlistsService.WithdrawSignupsForSubject:input_type -> primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectRequest
-	37, // 52: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveSignup:input_type -> primandproper.platform.waitlists.v1.ArchiveSignupRequest
-	6,  // 53: primandproper.platform.waitlists.v1.WaitlistsService.CreateList:output_type -> primandproper.platform.waitlists.v1.CreateListResponse
-	8,  // 54: primandproper.platform.waitlists.v1.WaitlistsService.GetList:output_type -> primandproper.platform.waitlists.v1.GetListResponse
-	10, // 55: primandproper.platform.waitlists.v1.WaitlistsService.ListLists:output_type -> primandproper.platform.waitlists.v1.ListListsResponse
-	12, // 56: primandproper.platform.waitlists.v1.WaitlistsService.ListOpenLists:output_type -> primandproper.platform.waitlists.v1.ListOpenListsResponse
-	14, // 57: primandproper.platform.waitlists.v1.WaitlistsService.UpdateList:output_type -> primandproper.platform.waitlists.v1.UpdateListResponse
-	16, // 58: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveList:output_type -> primandproper.platform.waitlists.v1.ArchiveListResponse
-	18, // 59: primandproper.platform.waitlists.v1.WaitlistsService.Join:output_type -> primandproper.platform.waitlists.v1.JoinResponse
-	20, // 60: primandproper.platform.waitlists.v1.WaitlistsService.GetSignup:output_type -> primandproper.platform.waitlists.v1.GetSignupResponse
-	22, // 61: primandproper.platform.waitlists.v1.WaitlistsService.GetSignupByContact:output_type -> primandproper.platform.waitlists.v1.GetSignupByContactResponse
-	24, // 62: primandproper.platform.waitlists.v1.WaitlistsService.ListSignups:output_type -> primandproper.platform.waitlists.v1.ListSignupsResponse
-	26, // 63: primandproper.platform.waitlists.v1.WaitlistsService.ListSignupsForSubject:output_type -> primandproper.platform.waitlists.v1.ListSignupsForSubjectResponse
-	28, // 64: primandproper.platform.waitlists.v1.WaitlistsService.UpdateSignupNotes:output_type -> primandproper.platform.waitlists.v1.UpdateSignupNotesResponse
-	30, // 65: primandproper.platform.waitlists.v1.WaitlistsService.Invite:output_type -> primandproper.platform.waitlists.v1.InviteResponse
-	32, // 66: primandproper.platform.waitlists.v1.WaitlistsService.Convert:output_type -> primandproper.platform.waitlists.v1.ConvertResponse
-	34, // 67: primandproper.platform.waitlists.v1.WaitlistsService.Withdraw:output_type -> primandproper.platform.waitlists.v1.WithdrawResponse
-	36, // 68: primandproper.platform.waitlists.v1.WaitlistsService.WithdrawSignupsForSubject:output_type -> primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectResponse
-	38, // 69: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveSignup:output_type -> primandproper.platform.waitlists.v1.ArchiveSignupResponse
-	53, // [53:70] is the sub-list for method output_type
-	36, // [36:53] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	3,  // 22: primandproper.platform.waitlists.v1.GetSignupResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
+	3,  // 23: primandproper.platform.waitlists.v1.GetSignupByContactResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
+	40, // 24: primandproper.platform.waitlists.v1.ListSignupsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	41, // 25: primandproper.platform.waitlists.v1.ListSignupsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	3,  // 26: primandproper.platform.waitlists.v1.ListSignupsResponse.results:type_name -> primandproper.platform.waitlists.v1.Signup
+	2,  // 27: primandproper.platform.waitlists.v1.ListSignupsForSubjectRequest.subject:type_name -> primandproper.platform.waitlists.v1.SignupSubject
+	40, // 28: primandproper.platform.waitlists.v1.ListSignupsForSubjectRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	41, // 29: primandproper.platform.waitlists.v1.ListSignupsForSubjectResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	3,  // 30: primandproper.platform.waitlists.v1.ListSignupsForSubjectResponse.results:type_name -> primandproper.platform.waitlists.v1.Signup
+	3,  // 31: primandproper.platform.waitlists.v1.UpdateSignupNotesResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
+	3,  // 32: primandproper.platform.waitlists.v1.InviteResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
+	3,  // 33: primandproper.platform.waitlists.v1.ConvertResponse.result:type_name -> primandproper.platform.waitlists.v1.Signup
+	2,  // 34: primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectRequest.subject:type_name -> primandproper.platform.waitlists.v1.SignupSubject
+	5,  // 35: primandproper.platform.waitlists.v1.WaitlistsService.CreateList:input_type -> primandproper.platform.waitlists.v1.CreateListRequest
+	7,  // 36: primandproper.platform.waitlists.v1.WaitlistsService.GetList:input_type -> primandproper.platform.waitlists.v1.GetListRequest
+	9,  // 37: primandproper.platform.waitlists.v1.WaitlistsService.ListLists:input_type -> primandproper.platform.waitlists.v1.ListListsRequest
+	11, // 38: primandproper.platform.waitlists.v1.WaitlistsService.ListOpenLists:input_type -> primandproper.platform.waitlists.v1.ListOpenListsRequest
+	13, // 39: primandproper.platform.waitlists.v1.WaitlistsService.UpdateList:input_type -> primandproper.platform.waitlists.v1.UpdateListRequest
+	15, // 40: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveList:input_type -> primandproper.platform.waitlists.v1.ArchiveListRequest
+	17, // 41: primandproper.platform.waitlists.v1.WaitlistsService.Join:input_type -> primandproper.platform.waitlists.v1.JoinRequest
+	19, // 42: primandproper.platform.waitlists.v1.WaitlistsService.GetSignup:input_type -> primandproper.platform.waitlists.v1.GetSignupRequest
+	21, // 43: primandproper.platform.waitlists.v1.WaitlistsService.GetSignupByContact:input_type -> primandproper.platform.waitlists.v1.GetSignupByContactRequest
+	23, // 44: primandproper.platform.waitlists.v1.WaitlistsService.ListSignups:input_type -> primandproper.platform.waitlists.v1.ListSignupsRequest
+	25, // 45: primandproper.platform.waitlists.v1.WaitlistsService.ListSignupsForSubject:input_type -> primandproper.platform.waitlists.v1.ListSignupsForSubjectRequest
+	27, // 46: primandproper.platform.waitlists.v1.WaitlistsService.UpdateSignupNotes:input_type -> primandproper.platform.waitlists.v1.UpdateSignupNotesRequest
+	29, // 47: primandproper.platform.waitlists.v1.WaitlistsService.Invite:input_type -> primandproper.platform.waitlists.v1.InviteRequest
+	31, // 48: primandproper.platform.waitlists.v1.WaitlistsService.Convert:input_type -> primandproper.platform.waitlists.v1.ConvertRequest
+	33, // 49: primandproper.platform.waitlists.v1.WaitlistsService.Withdraw:input_type -> primandproper.platform.waitlists.v1.WithdrawRequest
+	35, // 50: primandproper.platform.waitlists.v1.WaitlistsService.WithdrawSignupsForSubject:input_type -> primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectRequest
+	37, // 51: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveSignup:input_type -> primandproper.platform.waitlists.v1.ArchiveSignupRequest
+	6,  // 52: primandproper.platform.waitlists.v1.WaitlistsService.CreateList:output_type -> primandproper.platform.waitlists.v1.CreateListResponse
+	8,  // 53: primandproper.platform.waitlists.v1.WaitlistsService.GetList:output_type -> primandproper.platform.waitlists.v1.GetListResponse
+	10, // 54: primandproper.platform.waitlists.v1.WaitlistsService.ListLists:output_type -> primandproper.platform.waitlists.v1.ListListsResponse
+	12, // 55: primandproper.platform.waitlists.v1.WaitlistsService.ListOpenLists:output_type -> primandproper.platform.waitlists.v1.ListOpenListsResponse
+	14, // 56: primandproper.platform.waitlists.v1.WaitlistsService.UpdateList:output_type -> primandproper.platform.waitlists.v1.UpdateListResponse
+	16, // 57: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveList:output_type -> primandproper.platform.waitlists.v1.ArchiveListResponse
+	18, // 58: primandproper.platform.waitlists.v1.WaitlistsService.Join:output_type -> primandproper.platform.waitlists.v1.JoinResponse
+	20, // 59: primandproper.platform.waitlists.v1.WaitlistsService.GetSignup:output_type -> primandproper.platform.waitlists.v1.GetSignupResponse
+	22, // 60: primandproper.platform.waitlists.v1.WaitlistsService.GetSignupByContact:output_type -> primandproper.platform.waitlists.v1.GetSignupByContactResponse
+	24, // 61: primandproper.platform.waitlists.v1.WaitlistsService.ListSignups:output_type -> primandproper.platform.waitlists.v1.ListSignupsResponse
+	26, // 62: primandproper.platform.waitlists.v1.WaitlistsService.ListSignupsForSubject:output_type -> primandproper.platform.waitlists.v1.ListSignupsForSubjectResponse
+	28, // 63: primandproper.platform.waitlists.v1.WaitlistsService.UpdateSignupNotes:output_type -> primandproper.platform.waitlists.v1.UpdateSignupNotesResponse
+	30, // 64: primandproper.platform.waitlists.v1.WaitlistsService.Invite:output_type -> primandproper.platform.waitlists.v1.InviteResponse
+	32, // 65: primandproper.platform.waitlists.v1.WaitlistsService.Convert:output_type -> primandproper.platform.waitlists.v1.ConvertResponse
+	34, // 66: primandproper.platform.waitlists.v1.WaitlistsService.Withdraw:output_type -> primandproper.platform.waitlists.v1.WithdrawResponse
+	36, // 67: primandproper.platform.waitlists.v1.WaitlistsService.WithdrawSignupsForSubject:output_type -> primandproper.platform.waitlists.v1.WithdrawSignupsForSubjectResponse
+	38, // 68: primandproper.platform.waitlists.v1.WaitlistsService.ArchiveSignup:output_type -> primandproper.platform.waitlists.v1.ArchiveSignupResponse
+	52, // [52:69] is the sub-list for method output_type
+	35, // [35:52] is the sub-list for method input_type
+	35, // [35:35] is the sub-list for extension type_name
+	35, // [35:35] is the sub-list for extension extendee
+	0,  // [0:35] is the sub-list for field type_name
 }
 
 func init() { file_primandproper_platform_waitlists_v1_waitlists_proto_init() }

@@ -146,10 +146,12 @@ const (
 // consumer's authentication interceptor still runs, and a caller who does arrive
 // with a principal has their signup attributed to them.
 //
-// Public is not unguarded. Join is refused for a closed list, for an address
-// already on the list, and for one that has withdrawn from it. Withdraw names a
-// row, so the standing to move it is asked of a seam the consumer implements --
-// see WithdrawRequest. And the read a public caller gets is the catalog of open
+// Public is not unguarded, and it is not talkative either. Join is refused for a
+// closed list, which is a fact about the list rather than about anybody's
+// address, and it answers uniformly for every outcome that is about an address
+// -- see JoinResponse, which is empty for that reason. Withdraw names a row, so
+// the standing to move it is asked of a seam the consumer implements -- see
+// WithdrawRequest. And the read a public caller gets is the catalog of open
 // lists, which is what a signup page publishes anyway.
 //
 // # The administrative fourteen
@@ -160,7 +162,9 @@ const (
 //
 // GetSignupByContact is the one to look at twice. It is a read, it looks
 // harmless beside Join, and it is the difference between a service and an oracle
-// over which addresses are on which list.
+// over which addresses are on which list. It is also the only place on this wire
+// that answers "is this address on this list" at all, now that the public Join
+// does not.
 type WaitlistsServiceClient interface {
 	// The catalog: what lists exist, what they are for, and when each stops
 	// taking signups. ListOpenLists is the public one.
@@ -386,10 +390,12 @@ func (c *waitlistsServiceClient) ArchiveSignup(ctx context.Context, in *ArchiveS
 // consumer's authentication interceptor still runs, and a caller who does arrive
 // with a principal has their signup attributed to them.
 //
-// Public is not unguarded. Join is refused for a closed list, for an address
-// already on the list, and for one that has withdrawn from it. Withdraw names a
-// row, so the standing to move it is asked of a seam the consumer implements --
-// see WithdrawRequest. And the read a public caller gets is the catalog of open
+// Public is not unguarded, and it is not talkative either. Join is refused for a
+// closed list, which is a fact about the list rather than about anybody's
+// address, and it answers uniformly for every outcome that is about an address
+// -- see JoinResponse, which is empty for that reason. Withdraw names a row, so
+// the standing to move it is asked of a seam the consumer implements -- see
+// WithdrawRequest. And the read a public caller gets is the catalog of open
 // lists, which is what a signup page publishes anyway.
 //
 // # The administrative fourteen
@@ -400,7 +406,9 @@ func (c *waitlistsServiceClient) ArchiveSignup(ctx context.Context, in *ArchiveS
 //
 // GetSignupByContact is the one to look at twice. It is a read, it looks
 // harmless beside Join, and it is the difference between a service and an oracle
-// over which addresses are on which list.
+// over which addresses are on which list. It is also the only place on this wire
+// that answers "is this address on this list" at all, now that the public Join
+// does not.
 type WaitlistsServiceServer interface {
 	// The catalog: what lists exist, what they are for, and when each stops
 	// taking signups. ListOpenLists is the public one.

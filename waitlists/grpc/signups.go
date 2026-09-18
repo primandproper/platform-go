@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
@@ -27,23 +28,42 @@ import (
 // instant the statement stamped rather than the one a second read would have
 // found. See waitlists.SignupStore.Invite.
 //
-// None of them switches on a sentinel: the error goes through
-// grpcerrors.PrepareAndLogGRPCStatus with codes.Internal as the *default*, and
-// the encoding interceptor re-runs the registered mappers over the preserved
-// chain, so waitlists.GRPCMapper wins over the guess made here. The places a
-// code is passed as an answer are the ones the store never sees: a join that
-// named no signup, an erasure that named no subject, a filter that could not be
-// read, and the withdrawal a consumer's authorizer refused.
+// One of them switches on a sentinel and the other ten do not: the error goes
+// through grpcerrors.PrepareAndLogGRPCStatus with codes.Internal as the
+// *default*, and the encoding interceptor re-runs the registered mappers over
+// the preserved chain, so waitlists.GRPCMapper wins over the guess made here.
+// The places a code is passed as an answer are the ones the store never sees: a
+// join that named no signup, an erasure that named no subject, a filter that
+// could not be read, and the withdrawal a consumer's authorizer refused.
+//
+// [Server.Join] is the exception, and it switches in order to return no error
+// at all — see its documentation, and quietJoinOutcome below.
 
 // Join adds somebody to a list. It is the form somebody filled in, and it is
 // reachable without a grant.
 //
-// It refuses a list that is closed or missing, a contact already on the list,
-// and a contact that has withdrawn from it — the last of which is the obligation
-// this package is shaped around and outlives the address it is about. All four
-// refusals reach the caller with the sentinel's own wording, because
-// waitlists.ClientSafeSentinels says a gRPC status may quote them: the person
-// reading this one is looking at a signup form.
+// It answers uniformly, and that is the whole of what it tells the caller. A new
+// signup, a contact already on the list and a contact that has withdrawn from it
+// are one empty response — see [waitlistspb.JoinResponse]. Nothing here
+// establishes that the caller owns the address they typed, so an answer that
+// distinguished the three would let somebody walk a list of addresses and learn,
+// per address, whether it is on this list and whether its owner asked to be left
+// alone. That is the oracle [Server.GetSignupByContact] is behind a grant to
+// prevent, and it is not one this method gets to open from the other side.
+//
+// The two sentinels it swallows are still what waitlists.SignupStore.Join
+// returns: a Go caller holding the store is inside the trust boundary and needs
+// to tell "already here" from "asked to be left alone" apart. This is a
+// transport decision, made where the anonymous caller is.
+//
+// What it still refuses is what is true of the list rather than of anybody's
+// address: a list that is closed, and a list that is not there. Neither says
+// anything about who is on it, and both are what a signup page has to render.
+//
+// It does not confirm the address, because this module sends nothing. A public
+// join is not a subscription until somebody at that address says so, and the
+// double opt-in that closes it is the consumer's — see the waitlists package
+// documentation, which states the obligation and why it cannot be shipped here.
 //
 // The signup's subject is the caller where there is one and nobody where there
 // is not. It is never read off the request — see [waitlistspb.JoinRequest],
@@ -85,15 +105,68 @@ func (s *Server) Join(
 
 		return nil
 	}); err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.Internal, "joining waitlist %q", listID)
+		outcome, quiet := quietJoinOutcome(err)
+		if !quiet {
+			err = grpcerrors.PrepareAndLogGRPCStatus(err,
+				req.op.Logger(), req.op.Span(), codes.Internal, "joining waitlist %q", listID)
 
-		return nil, err
+			return nil, err
+		}
+
+		req.op.Set(joinOutcomeKey, outcome)
+
+		// Cleared so that the deferred done counts this as the success the
+		// caller is about to read, rather than as a failure whose status never
+		// went anywhere.
+		err = nil
+
+		return &waitlistspb.JoinResponse{}, nil
 	}
 
-	req.op.Set(signupKey, joined.ID)
+	req.op.Set(signupKey, joined.ID).Set(joinOutcomeKey, joinOutcomeJoined)
 
-	return &waitlistspb.JoinResponse{Result: SignupToProto(joined)}, nil
+	return &waitlistspb.JoinResponse{}, nil
+}
+
+// The outcomes a join records on its operation.
+//
+// The caller is told nothing, and an operator still has to be able to see the
+// difference between a list nobody is joining and a list everybody is already
+// on. So what the response no longer carries is recorded here instead, where it
+// reaches whoever runs the deployment and nobody else.
+//
+// None of the three names a contact. The address is deliberately absent from
+// this surface's operations — see [Server.GetSignupByContact] — so what lands in
+// whatever the deployment exports traces to is that a join against this list was
+// admitted or suppressed, never whose.
+const (
+	joinOutcomeJoined    = "joined"
+	joinOutcomeSignedUp  = "already_signed_up"
+	joinOutcomeWithdrawn = "contact_withdrawn"
+)
+
+// quietJoinOutcome reports whether err is one of the two refusals the public
+// Join answers rather than returns, and what to record on the operation for it.
+//
+// It is the only sentinel switch on this surface. Every other handler leaves the
+// classifying to waitlists.GRPCMapper, which is the right division when the
+// question is which status a refusal deserves; this one is not that question.
+// Whether a refusal may be told to the caller at all is a fact about who reached
+// the method, and the mapper is handed an error rather than a caller.
+//
+// The list-side refusals are deliberately not here. A closed list and a missing
+// one are facts about the list, not about anybody's address, and a signup page
+// that could not tell "we have stopped taking signups" from "you followed a dead
+// link" would be uniform about the wrong thing.
+func quietJoinOutcome(err error) (string, bool) {
+	switch {
+	case errors.Is(err, waitlists.ErrAlreadySignedUp):
+		return joinOutcomeSignedUp, true
+	case errors.Is(err, waitlists.ErrContactWithdrawn):
+		return joinOutcomeWithdrawn, true
+	default:
+		return "", false
+	}
 }
 
 // GetSignup reads one signup on one of the caller's lists.

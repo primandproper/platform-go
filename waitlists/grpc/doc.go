@@ -85,16 +85,46 @@ none of it, because how a person proves they are themselves is the consumer's.
 
 # What the public half is not allowed to answer
 
-GetSignupByContact is administrative, and that is the sharpest authorization
-decision on this service. It is a read, it looks harmless beside Join, and
-answering it for anybody who can reach the port makes the surface an oracle over
-which addresses are on which list — which is what the list holds and what a
-person joining one has not agreed to publish.
+Whether an address is on a list. That is the one fact this half withholds, and
+withholding it takes two decisions rather than one, because there are two ways
+to ask.
 
-The question a person on a signup page is actually asking is "am I already on
-this", and Join's refusal answers it: waitlists.ErrAlreadySignedUp and
-waitlists.ErrContactWithdrawn reach them with the sentinel's own wording, and
-neither discloses anything the caller did not already send.
+GetSignupByContact is the direct way, and keeping it administrative is the
+sharpest authorization decision on this service. It is a read, it looks harmless
+beside Join, and answering it for anybody who can reach the port makes the
+surface an oracle over which addresses are on which list — which is what the
+list holds and what a person joining one has not agreed to publish.
+
+Join is the other way, and it used to answer the same question by refusing.
+waitlists.ErrAlreadySignedUp and waitlists.ErrContactWithdrawn told an anonymous
+caller, per address they typed, whether it was on this list and whether its
+owner had asked to be left alone — which is the oracle the paragraph above
+declines to ship, reached from the write side. Nothing on a signup form
+establishes that the caller owns the address, and "you already sent it" is not
+an answer to that: an address is a public thing to hold and a private thing to
+be on a list with.
+
+So Join answers uniformly. A new signup, an address already on the list and one
+that withdrew are one empty response — see [Server.Join] and
+[waitlistspb.JoinResponse] — and neither sentinel is on
+waitlists.ClientSafeSentinels any more. They are still what the store returns to
+a Go caller, who is inside the trust boundary and needs them, and the
+authenticated read above still answers the question for a console that holds a
+grant. What is left to the visitor is what is true of the list rather than of
+anybody's address: closed, or not there.
+
+The cost is that the form cannot tell somebody they are already on the list, and
+this package cannot buy it back: a uniform answer with nothing behind it means
+an address can be put on a list by whoever typed it. The consumer's double
+opt-in is what closes that, and waitlists' own documentation states the
+obligation and why the send is not shippable here.
+
+What the uniform answer does not cover is how long it takes. A join that
+collides does one read and no insert, and a machine timing thousands of requests
+can see the difference. Closing that would mean the handler doing the work it
+declined to do, on every request, to keep the clock honest — and it is a
+narrower channel than the one the sentinels were, which was a sentence naming
+the answer.
 
 The contact digest is absent for the same family of reasons and is absent
 structurally: waitlists.proto reserves the name, so no response has anywhere to
@@ -116,13 +146,14 @@ left in its place carries a value out of a WithTransaction closure. It matters
 most on the two transitions, because status_changed_at is the field a consumer
 schedules a reminder off and it is stamped from the store's clock.
 
-Five answer with nothing, and three of those now drop a row the store offered.
+Five answer with nothing, and four of those now drop a row the store offered.
 The two retirements drop it because the operator who sent the request already
 holds the row and what the store hands back is for a consumer's audit entry
 rather than for this wire. Withdraw drops it for a sharper reason: the row it
 hands back is the one from *before* the blanking — the address, the notes, the
 subject — and the caller who has just asked to be forgotten is the last caller to
-send that to. The erasure and its count are unchanged.
+send that to. Join drops it for a sharper one still, and the section above is
+where that argument is. The erasure and its count are unchanged.
 
 # What a refused withdrawal says
 
@@ -140,7 +171,7 @@ live beside the sentinels they map, and installing them is the composition root'
 one call — errormappers.Register, which service.Register makes for a service
 built from a service.Config and a service assembled by hand makes itself.
 Without it every sentinel this service returns arrives as codes.Unknown,
-including the four a person on a signup form meets.
+including the three a person on a signup page meets.
 
 Every failure the store raises goes through one
 grpcerrors.PrepareAndLogGRPCStatus with codes.Internal as the *default*. The
@@ -157,9 +188,10 @@ say about them that the call site does not already know.
 
 The refusals waitlists.ClientSafeSentinels names reach a client with the
 sentinel's own wording rather than the code's name, and this is the service where
-that matters most: four of the five are FailedPrecondition, each has a different
-remedy, and the person reading them is looking at a signup form rather than a
-log.
+that matters most: all three are FailedPrecondition, each has a different
+remedy, and the person reading them is looking at a signup page rather than a
+log. The two sentinels that came off that list are the subject of the section
+above; they no longer reach this wire at all.
 */
 package grpc
 

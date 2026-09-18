@@ -177,14 +177,14 @@ func TestMappersDeclineWhatIsNotTheirs(T *testing.T) {
 // TestClientSafeSentinels is the list whose own words a gRPC server may send a
 // caller verbatim.
 //
-// They are the five refusals somebody filling in a signup form or clicking an
-// unsubscribe link meets, and this service is the one where quoting them matters
-// most: four of the five are FailedPrecondition, so the code cannot say which
-// applies, and each has a different remedy.
+// They are the three refusals somebody clicking through this package's surface
+// meets, and this service is the one where quoting them matters most: all three
+// are FailedPrecondition, so the code cannot say which applies, and each has a
+// different remedy.
 func TestClientSafeSentinels(T *testing.T) {
 	T.Parallel()
 
-	must.SliceLen(T, 5, waitlists.ClientSafeSentinels)
+	must.SliceLen(T, 3, waitlists.ClientSafeSentinels)
 
 	messages := map[string]struct{}{}
 
@@ -203,6 +203,36 @@ func TestClientSafeSentinels(T *testing.T) {
 	// sentence would leave the person reading it no better off than the code
 	// alone.
 	test.MapLen(T, len(waitlists.ClientSafeSentinels), messages)
+}
+
+// TestTheContactRefusalsAreNotClientSafe keeps the two refusals that are about
+// an address off the quoted list.
+//
+// They are mapped — a Go caller and an authenticated console both need them —
+// and they are the reason this list is three names rather than five. Each says
+// whether an address is on this list, and nothing on a public signup form
+// establishes that the caller owns the address they typed, so a caller told
+// which of the two applies could walk a list of addresses and learn, per
+// address, whether it is here and whether its owner asked to be left alone.
+//
+// waitlists/grpc's Join answers uniformly for exactly that reason and never
+// returns either; this is the half of that decision that lives beside the
+// sentinels, so a surface written later cannot quote them by accident.
+func TestTheContactRefusalsAreNotClientSafe(T *testing.T) {
+	T.Parallel()
+
+	for _, err := range []error{waitlists.ErrAlreadySignedUp, waitlists.ErrContactWithdrawn} {
+		test.False(T, slices.Contains(waitlists.ClientSafeSentinels, err),
+			test.Sprintf("%v is quotable to a caller who may not own the address it is about", err))
+
+		// Mapped, though: the status a Go caller's own transport puts on it is
+		// a separate decision from whether its sentence may be sent.
+		_, _, ok := waitlists.HTTPMapper.Map(err)
+		test.True(T, ok, test.Sprintf("%v is neither client-safe nor mapped", err))
+
+		_, ok = waitlists.GRPCMapper.Map(err)
+		test.True(T, ok, test.Sprintf("%v is neither client-safe nor mapped", err))
+	}
 }
 
 // TestTheAbsencesAreNotClientSafe keeps the two not-founds off the quoted list.
