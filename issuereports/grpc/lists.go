@@ -118,6 +118,20 @@ func (s *Server) ListReportsByStatus(
 // with different standing behind it. The refusal is codes.PermissionDenied and
 // tells the caller nothing about whether that person has ever filed anything:
 // the question is asked before the read.
+//
+// An unnamed reporter is the caller's own, which is what a "your reports" view
+// sends and is the same reading comments/grpc's ListCommentsByAuthor takes of an
+// unnamed author. It is a default rather than a requirement because the field is
+// the one a person reading what they filed has nothing to put in: a client that
+// had to name itself would be spelling out the identifier the connection already
+// carries, and getting it wrong is a refusal rather than a typo. The rule is
+// still asked — the caller's own name is a name — so a deployment whose rule
+// narrows further than [ReporterAuthorizer] still answers it.
+//
+// A caller with no identifier of their own leaves the field empty, and that is a
+// refusal rather than a read of the reports filed by nobody: the defaulting
+// copies whatever the principal carries, and [ReporterAuthorizer] declines to
+// treat an empty one as a key.
 func (s *Server) ListReportsByReporter(
 	ctx context.Context,
 	request *issuereportspb.ListReportsByReporterRequest,
@@ -130,6 +144,10 @@ func (s *Server) ListReportsByReporter(
 	defer func() { done(err) }()
 
 	reporter := request.GetReporter()
+	if reporter == "" {
+		reporter = req.principal.UserID()
+	}
+
 	req.op.Set(reporterKey, reporter)
 
 	filter, err := filteringgrpc.FromProto(request.GetFilter())

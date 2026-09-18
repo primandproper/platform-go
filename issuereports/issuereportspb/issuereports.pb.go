@@ -888,6 +888,10 @@ type ListReportsByReporterRequest struct {
 	// filed, and a triager reading what one person filed. Which of the two this
 	// caller is, is the question issuereports/grpc's ReportAuthorizer answers --
 	// the grant on the method does not.
+	//
+	// Empty is the caller's own, which is what a "your reports" view sends and the
+	// only value a caller can send without the server asking whether they may read
+	// somebody else's.
 	Reporter      string                   `protobuf:"bytes,1,opt,name=reporter,proto3" json:"reporter,omitempty"`
 	Filter        *filteringpb.QueryFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields

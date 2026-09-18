@@ -95,7 +95,11 @@ The tenant, always, and it is never read off a request field: a scope a client
 could name is a cross-tenant read hiding behind one. The reporter on a write,
 likewise — one a client could name is a report filed in somebody else's words —
 so the creation input reserves the field, and the only request in the schema that
-carries a reporter is the one that names whose list to page.
+carries a reporter is the one that names whose list to page. That one takes the
+principal's identifier when it names nobody, so a "your reports" view sends an
+empty field rather than spelling out what the connection already carries — the
+rule is still asked with it, and a caller who has no identifier of their own is
+refused rather than handed the reports filed by nobody.
 
 Both absences are `reserved` in the .proto rather than merely undocumented, which
 is what makes them a schema protoc enforces in a consumer's fork of the file as

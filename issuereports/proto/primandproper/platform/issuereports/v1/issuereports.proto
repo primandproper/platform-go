@@ -300,6 +300,10 @@ message ListReportsByReporterRequest {
   // filed, and a triager reading what one person filed. Which of the two this
   // caller is, is the question issuereports/grpc's ReportAuthorizer answers --
   // the grant on the method does not.
+  //
+  // Empty is the caller's own, which is what a "your reports" view sends and the
+  // only value a caller can send without the server asking whether they may read
+  // somebody else's.
   string reporter = 1;
 
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
