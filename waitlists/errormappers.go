@@ -44,25 +44,38 @@ var (
 // to a caller verbatim, handed to errors/grpc.RegisterClientSafeSentinels by
 // errormappers.Register alongside the mappers.
 //
-// They are the five refusals a person filling in a signup form or clicking an
-// unsubscribe link meets, and they are here because the codes collide: four of
-// them are FailedPrecondition and every one of the five has a different remedy.
-// A person told "FailedPrecondition" learns nothing, and the page rendering it
-// has to choose between "we have stopped taking signups", "you are already on
-// this list", "you asked us to leave you alone" and "somebody already sent that
-// invitation" from a single code.
+// They are the three refusals a person clicking through this package's surface
+// meets, and they are here because the code cannot tell them apart: all three
+// are FailedPrecondition and each has a different remedy. A person told
+// "FailedPrecondition" learns nothing, and the page rendering it has to choose
+// between "we have stopped taking signups", "you are already off this list" and
+// "somebody already sent that invitation" from a single code.
 //
-// Each is written for the person reading it and none names anybody else. The
-// disclosure they do make is bounded and is the point of the refusal: a caller
-// who already holds an address is told that this address is on this list, which
-// is what they submitted the form to find out. The read that would answer the
-// same question for an address the caller does not hold —
-// SignupStore.GetSignupByContact — is not on the public half of
-// waitlists/grpc, precisely so that this is not an oracle.
+// Every one of the three is a fact about a list or about a row the caller
+// already named, and none of them is a fact about an address. That is the line,
+// and it is what ErrAlreadySignedUp and ErrContactWithdrawn are deliberately
+// below.
+//
+// Those two say whether an address is on a list, which is what the list holds
+// and what a person joining one has not agreed to publish. Nothing on a public
+// signup form establishes that the caller owns the address they typed, so a
+// caller told which of the two applies could walk a list of addresses and learn,
+// per address, whether it is here and whether its owner asked to be left alone —
+// and the second of those is a disclosure about somebody who asked for the
+// opposite. waitlists/grpc's Join therefore answers uniformly and returns
+// neither sentinel, and SignupStore.GetSignupByContact, which answers the same
+// question directly, is behind a grant.
+//
+// Both sentinels are still returned by SignupStore.Join and still mapped below.
+// A Go caller holding the store is inside the trust boundary and has to tell
+// "already here" from "asked to be left alone" apart; an authenticated console
+// reading a signup is told the same thing by the row's own status. What changed
+// is the one audience that could not be vouched for, and a consumer building a
+// public signup form over HTTP owes it the same uniform answer this module's
+// gRPC surface gives — the mapper below will quote either sentence to whoever
+// hands it one.
 var ClientSafeSentinels = []error{
 	ErrListClosed,
-	ErrAlreadySignedUp,
-	ErrContactWithdrawn,
 	ErrWrongStatus,
 	ErrAlreadyWithdrawn,
 }
@@ -87,9 +100,16 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 		return httperrors.ErrDataNotFound, "no such waitlist signup", true
 
 	// The five refusals, each quoted rather than paraphrased. They are written
-	// for the person reading them, which is why they are also the
+	// for the person reading them, which is why three of them are also the
 	// ClientSafeSentinels above — a paraphrase here and the sentinel's own
 	// wording on the gRPC side would be one refusal with two texts.
+	//
+	// ErrAlreadySignedUp and ErrContactWithdrawn are the two that are mapped and
+	// not client-safe, and the difference is the audience rather than the
+	// sentence. A status code and a message go to whoever called; these two say
+	// whether an address is on this list, so a surface that hands them to an
+	// anonymous caller is an oracle over which addresses are. A consumer mapping
+	// them here owes that reading — see ClientSafeSentinels.
 	//
 	// ErrListClosed is deliberately not an absence. A closed list is a page that
 	// says "we are no longer taking signups" and a missing one is a broken link,

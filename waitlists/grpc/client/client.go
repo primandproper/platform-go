@@ -18,32 +18,39 @@ function a caller could forget, and here it is a default instead.
 
 Both idioms work on what comes back:
 
-	if errors.Is(err, waitlists.ErrContactWithdrawn) { ... }  // std errors, matches
+	if errors.Is(err, waitlists.ErrAlreadyWithdrawn) { ... }  // std errors, matches
 	if status.Code(err) == codes.FailedPrecondition { ... }   // and so does the code
 
 It matters more here than on the surfaces next door, because the client of the
 public three is frequently rendering a page for the person who caused the
-refusal. Four of this service's five refusals share FailedPrecondition — a
-closed list, a contact that has withdrawn, a transition from the wrong status,
-and a second withdrawal — and the code alone does not say which sentence to put
-on the page.
+refusal. All three of the refusals this service quotes share
+FailedPrecondition — a closed list, a transition from the wrong status, and a
+second withdrawal — and the code alone does not say which sentence to put on the
+page.
+
+What a client will not find on any of them is whether an address is on a list.
+Join answers uniformly, so a retry, a duplicate and a withdrawn contact are one
+empty response, and waitlists.ErrAlreadySignedUp and
+waitlists.ErrContactWithdrawn never arrive here — a client rendering "you are
+already on this list" from this connection is rendering something it was not
+told. waitlists/grpc's documentation is where that decision lives, and
+GetSignupByContact, behind a grant, is where an authenticated caller asks.
 
 # Why there is no idempotency interceptor
 
 identity's client applies one and this does not, and the reason is the one
 authentication/oauth2clients' client gives in its own words: what a recorded
-reply would hold. Here it is not a credential but an address. An idempotency
-store keeps a response so it can be replayed, and the response to Join carries
-the contact somebody typed into a signup form — an address the deployment has
-promised to use for one thing, in a second store nobody counted when they wrote
-that promise down.
+reply would hold. Here it would hold nothing at all. An idempotency store keeps
+a response so it can be replayed, and Join's response is empty by design, so the
+interceptor would be recording that a call happened in order to tell a retry the
+same thing the server already tells it.
 
-The cost is smaller than it looks. Join is already idempotent where it matters:
-a retried join finds the contact on the list and is refused with
-waitlists.ErrAlreadySignedUp rather than adding somebody twice, because the
-uniqueness is on the digest and not on a request identifier. Fifteen of the
-seventeen RPCs are naturally idempotent, and the sixteenth — CreateList — mints
-a row a retry would duplicate, which is a list somebody archives.
+Because that is the other half: Join is idempotent at the source. A second join
+from the same address does not add a second row — the uniqueness is on the
+digest of the address rather than on a request identifier — and it answers
+exactly as the first did. Fifteen of the seventeen RPCs are naturally
+idempotent, and the sixteenth — CreateList — mints a row a retry would
+duplicate, which is a list somebody archives.
 */
 package client
 

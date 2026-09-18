@@ -36,6 +36,12 @@ const (
 	subjectKey   = "waitlists.subject_type"
 	subjectIDKey = "waitlists.subject_id"
 	countKey     = "waitlists.count"
+
+	// joinOutcomeKey is this surface's own rather than one waitlists uses,
+	// because what it records is a transport decision: the public Join answers
+	// uniformly, so what actually happened is on the operation or nowhere. See
+	// [Server.Join].
+	joinOutcomeKey = "waitlists.join_outcome"
 )
 
 // The wiring failures this surface refuses to be built with, and the one refusal

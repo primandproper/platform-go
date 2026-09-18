@@ -225,12 +225,45 @@ Every signup-side method also takes the list. The list is half of what addresses
 a signup, and a read that omitted it would be a read that could hand one list's
 row to a caller holding another list's id.
 
+# A public signup is not a subscription until it is confirmed
+
+This is the obligation a consumer owes and this package cannot discharge, so it
+is written here rather than assumed.
+
+[SignupStore.Join] takes an address and stores it. Nothing in that establishes
+that the person at the address asked for anything: on a public form, the address
+is whatever the caller typed, and the caller may be somebody else entirely. A
+list built from unconfirmed addresses is a list that will mail people who never
+joined it, and once one of them withdraws, the suppression this package is
+shaped around remembers them forever for a signup they never made.
+
+What closes it is a double opt-in: the write is followed by one message to the
+address, and nothing else is sent there until somebody at it comes back and
+says so. That loop is the consumer's, because the send is — see the section
+below — and [github.com/primandproper/platform-go/v14/links] is the action link
+the reply usually travels on. [SignupStore.Invite] is not that reply and must
+not be read as one: it is the operator deciding whose turn it is, and an
+unconfirmed signup is one nobody should have reached that far.
+
+It is worth saying which half of the problem this package does solve. The
+suppression is unconditional: an address that withdrew stays off the list
+whether its signup was ever confirmed or not, which is the direction that must
+not be got wrong. What the confirmation adds is the other direction — that being
+on the list meant something in the first place.
+
+waitlists/grpc's public Join is shaped by the same fact from the other end. It
+answers uniformly for a new address, one already on the list and one that
+withdrew, because it cannot tell whether the caller owns what they typed; see
+that package, which states the disclosure it makes, which is none.
+
 # What this package does not do
 
 It does not send anything. [SignupStore.Invite] records that somebody was let in;
 what reaches them is
 [github.com/primandproper/primitives-go/v2/email]'s to deliver, off the
-[Signup.StatusChangedAt] this stamps.
+[Signup.StatusChangedAt] this stamps. The confirmation the section above asks
+for is the same absence: this package owns a table and not a mailer, and a store
+that sent mail would be one a consumer could not put in their own transaction.
 
 It does not number the queue. "You are 4,102nd in line" is a count that changes
 under whoever is reading it — every withdrawal ahead of somebody renumbers them —

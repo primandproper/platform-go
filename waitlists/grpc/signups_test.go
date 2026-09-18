@@ -13,13 +13,17 @@ import (
 	"github.com/shoenig/test/must"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestJoin(T *testing.T) {
 	T.Parallel()
 
 	// The form somebody filled in, reached by somebody who has not signed in.
-	T.Run("answers an anonymous caller and attributes the signup to nobody", func(t *testing.T) {
+	//
+	// What comes back is empty, so what is asserted is what the row says. The
+	// response's whole job is to say nothing — see the three subtests below it.
+	T.Run("admits an anonymous caller and attributes the signup to nobody", func(t *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
@@ -29,23 +33,26 @@ func TestJoin(T *testing.T) {
 			ListId: list.ID, Contact: "Ada@example.com",
 		})
 		must.NoError(t, err)
-		must.NotNil(t, res.GetResult())
+		must.NotNil(t, res)
 
-		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WAITING, res.GetResult().GetStatus())
-		test.EqOp(t, list.ID, res.GetResult().GetListId())
+		stored := h.signupByContact(t, list.ID, "ada@example.com")
+		must.NotNil(t, stored)
+
+		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WAITING, stored.GetStatus())
+		test.EqOp(t, list.ID, stored.GetListId())
 
 		// The contact is stored as it was given, so a mail client renders the
 		// capitalization somebody typed.
-		test.EqOp(t, "Ada@example.com", res.GetResult().GetContact())
+		test.EqOp(t, "Ada@example.com", stored.GetContact())
 
 		// A signup that names nobody is the ordinary case for a pre-launch list.
-		test.EqOp(t, "", res.GetResult().GetSubject().GetType())
-		test.EqOp(t, "", res.GetResult().GetSubject().GetId())
+		test.EqOp(t, "", stored.GetSubject().GetType())
+		test.EqOp(t, "", stored.GetSubject().GetId())
 
 		// The moment they joined is the database's, and the lifecycle has not
 		// moved them yet.
-		test.False(t, res.GetResult().GetCreatedAt().AsTime().IsZero())
-		test.Nil(t, res.GetResult().GetStatusChangedAt())
+		test.False(t, stored.GetCreatedAt().AsTime().IsZero())
+		test.Nil(t, stored.GetStatusChangedAt())
 	})
 
 	// The subject is provenance and comes off the principal, never off the
@@ -56,18 +63,40 @@ func TestJoin(T *testing.T) {
 		h := newHarness(t)
 		list := h.seedOpenList(t, testScope)
 
-		res, err := h.server.Join(h.ctx(t), &waitlistspb.JoinRequest{
+		_, err := h.server.Join(h.ctx(t), &waitlistspb.JoinRequest{
 			ListId: list.ID, Contact: "ada@example.com",
 		})
 		must.NoError(t, err)
 
-		test.EqOp(t, string(waitlists.SubjectUser), res.GetResult().GetSubject().GetType())
-		test.EqOp(t, testUser, res.GetResult().GetSubject().GetId())
+		stored := h.signupByContact(t, list.ID, "ada@example.com")
+		must.NotNil(t, stored)
+
+		test.EqOp(t, string(waitlists.SubjectUser), stored.GetSubject().GetType())
+		test.EqOp(t, testUser, stored.GetSubject().GetId())
 	})
 
-	// The four refusals somebody on a signup form meets, and the ones the
-	// client-safe registration exists for: four share FailedPrecondition and
-	// each has a different remedy.
+	// The response carries nothing at all, which is the structural half of
+	// "answers uniformly": there is no field for an outcome to differ in.
+	T.Run("answers with an empty message", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		list := h.seedOpenList(t, testScope)
+
+		res, err := h.server.Join(h.anonCtx(t), &waitlistspb.JoinRequest{
+			ListId: list.ID, Contact: "ada@example.com",
+		})
+		must.NoError(t, err)
+		must.NotNil(t, res)
+
+		encoded, err := proto.Marshal(res)
+		must.NoError(t, err)
+		test.SliceEmpty(t, encoded)
+	})
+
+	// The refusal that survives, and the reason it does: a closed list is a
+	// fact about the list rather than about anybody's address, and a signup
+	// page has to be able to say "we have stopped taking signups".
 	T.Run("refuses a list that has stopped taking signups", func(t *testing.T) {
 		t.Parallel()
 
@@ -84,28 +113,39 @@ func TestJoin(T *testing.T) {
 		test.EqOp(t, codes.FailedPrecondition, status.Code(err))
 	})
 
-	// Two capitalizations of one address are one person, because the digest is
-	// taken of the normalized form.
-	T.Run("refuses a contact already on the list, whatever its capitalization", func(t *testing.T) {
+	// The membership oracle this surface refuses to be, closed from the write
+	// side. Nothing establishes that the caller owns the address they typed, so
+	// an address already on the list is answered rather than refused —
+	// waitlists.ErrAlreadySignedUp stays inside the process.
+	//
+	// Two capitalizations of one address are still one person, which is what
+	// makes this a suppressed refusal rather than a missed one: the second join
+	// found the first row and wrote nothing.
+	T.Run("says nothing about a contact already on the list", func(t *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
 		list := h.seedOpenList(t, testScope)
-		h.seedSignup(t, testScope, list.ID, "ada@example.com")
+		first := h.seedSignup(t, testScope, list.ID, "ada@example.com")
 
-		res, err := h.server.Join(h.ctx(t), &waitlistspb.JoinRequest{
+		res, err := h.server.Join(h.anonCtx(t), &waitlistspb.JoinRequest{
 			ListId: list.ID, Contact: "  ADA@Example.com ",
 		})
-		test.Nil(t, res)
-		must.Error(t, err)
+		must.NoError(t, err)
+		must.NotNil(t, res)
 
-		test.ErrorIs(t, err, waitlists.ErrAlreadySignedUp)
-		test.EqOp(t, codes.AlreadyExists, status.Code(err))
+		// One row, and it is the one that was already there.
+		signups := h.signupsOn(t, list.ID)
+		must.SliceLen(t, 1, signups)
+		test.EqOp(t, first.ID, signups[0].GetId())
+		test.EqOp(t, "ada@example.com", signups[0].GetContact())
 	})
 
-	// The obligation the package is shaped around: a withdrawal outlives the
-	// address it was about.
-	T.Run("refuses a contact that has withdrawn", func(t *testing.T) {
+	// The sharper half of the same decision. waitlists.ErrContactWithdrawn says
+	// that the person at this address asked to be left alone, which is a
+	// disclosure about somebody who asked for the opposite, so the form is told
+	// what it is told about every other address: nothing.
+	T.Run("says nothing about a contact that has withdrawn", func(t *testing.T) {
 		t.Parallel()
 
 		h := newHarness(t)
@@ -117,19 +157,69 @@ func TestJoin(T *testing.T) {
 		})
 		must.NoError(t, err)
 
-		res, err := h.server.Join(h.ctx(t), &waitlistspb.JoinRequest{
+		res, err := h.server.Join(h.anonCtx(t), &waitlistspb.JoinRequest{
 			ListId: list.ID, Contact: "ada@example.com",
 		})
-		test.Nil(t, res)
-		must.Error(t, err)
+		must.NoError(t, err)
+		must.NotNil(t, res)
 
-		test.ErrorIs(t, err, waitlists.ErrContactWithdrawn)
-		test.EqOp(t, codes.FailedPrecondition, status.Code(err))
+		// The suppression is untouched by the answer: still one row, still
+		// withdrawn, and still holding no address. An answer that read as
+		// success and quietly re-subscribed somebody would be worse than the
+		// oracle it replaced.
+		signups := h.signupsOn(t, list.ID)
+		must.SliceLen(t, 1, signups)
+		test.EqOp(t, signup.ID, signups[0].GetId())
+		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WITHDRAWN, signups[0].GetStatus())
+		test.EqOp(t, "", signups[0].GetContact())
+	})
+
+	// The property the three subtests above are each half of, asserted as one
+	// thing: a caller walking a list of addresses cannot tell them apart.
+	//
+	// It compares the encoded messages rather than the fields a converter
+	// happens to set, which is the same reading messageCarries takes — a
+	// response that grew a field would pass a field-by-field comparison written
+	// before it.
+	T.Run("answers a new, an existing and a withdrawn contact identically", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		list := h.seedOpenList(t, testScope)
+
+		existing := h.seedSignup(t, testScope, list.ID, "already@example.com")
+
+		gone := h.seedSignup(t, testScope, list.ID, "gone@example.com")
+		_, err := h.server.Withdraw(h.anonCtx(t), &waitlistspb.WithdrawRequest{
+			ListId: list.ID, SignupId: gone.ID,
+		})
+		must.NoError(t, err)
+
+		var answers [][]byte
+
+		for _, contact := range []string{"new@example.com", existing.Contact, "gone@example.com"} {
+			res, joinErr := h.server.Join(h.anonCtx(t), &waitlistspb.JoinRequest{
+				ListId: list.ID, Contact: contact,
+			})
+			must.NoError(t, joinErr, must.Sprintf("joining with %q", contact))
+
+			encoded, marshalErr := proto.Marshal(res)
+			must.NoError(t, marshalErr)
+
+			answers = append(answers, encoded)
+		}
+
+		must.SliceLen(t, 3, answers)
+		test.Eq(t, answers[0], answers[1])
+		test.Eq(t, answers[0], answers[2])
 	})
 
 	// The tenant of an anonymous join is the connection's, so a list in another
 	// tenant is not one an anonymous visitor can be joined to. The harness's
 	// resolver places them in testScope; this list is not there.
+	//
+	// It is a refusal rather than a uniform answer because it is the same
+	// absence a mistyped list id gets, and it says nothing about an address.
 	T.Run("will not join an anonymous caller to another tenant's list", func(t *testing.T) {
 		t.Parallel()
 
@@ -351,13 +441,16 @@ func TestListSignupsForSubject(T *testing.T) {
 		h := newHarness(t)
 		list := h.seedOpenList(t, testScope)
 
-		joined, err := h.server.Join(h.ctx(t), &waitlistspb.JoinRequest{
+		_, err := h.server.Join(h.ctx(t), &waitlistspb.JoinRequest{
 			ListId: list.ID, Contact: "ada@example.com",
 		})
 		must.NoError(t, err)
 
+		joined := h.signupByContact(t, list.ID, "ada@example.com")
+		must.NotNil(t, joined)
+
 		_, err = h.server.Withdraw(h.ctx(t), &waitlistspb.WithdrawRequest{
-			ListId: list.ID, SignupId: joined.GetResult().GetId(),
+			ListId: list.ID, SignupId: joined.GetId(),
 		})
 		must.NoError(t, err)
 
@@ -377,13 +470,16 @@ func TestListSignupsForSubject(T *testing.T) {
 		h := newHarness(t)
 		list := h.seedOpenList(t, testScope)
 
-		joined, err := h.server.Join(h.ctx(t), &waitlistspb.JoinRequest{
+		_, err := h.server.Join(h.ctx(t), &waitlistspb.JoinRequest{
 			ListId: list.ID, Contact: "ada@example.com",
 		})
 		must.NoError(t, err)
 
+		joined := h.signupByContact(t, list.ID, "ada@example.com")
+		must.NotNil(t, joined)
+
 		_, err = h.server.ArchiveSignup(h.ctx(t), &waitlistspb.ArchiveSignupRequest{
-			ListId: list.ID, SignupId: joined.GetResult().GetId(),
+			ListId: list.ID, SignupId: joined.GetId(),
 		})
 		must.NoError(t, err)
 
@@ -638,13 +734,19 @@ func TestWithdrawSignupsForSubject(T *testing.T) {
 
 		test.EqOp(t, int64(2), res.GetWithdrawn())
 
-		// The suppression outlives the erasure on every list the person was on.
-		joined, err := h.server.Join(h.ctx(t), &waitlistspb.JoinRequest{
+		// The suppression outlives the erasure on every list the person was on,
+		// and the form is not told so — it is told what it is told about every
+		// other address. What the suppression did is visible to the half of the
+		// surface that may see it: the row is still the withdrawn one.
+		rejoined, err := h.server.Join(h.anonCtx(t), &waitlistspb.JoinRequest{
 			ListId: first.ID, Contact: "ada@example.com",
 		})
-		test.Nil(t, joined)
-		must.Error(t, err)
-		test.ErrorIs(t, err, waitlists.ErrContactWithdrawn)
+		must.NoError(t, err)
+		must.NotNil(t, rejoined)
+
+		signups := h.signupsOn(t, first.ID)
+		must.SliceLen(t, 1, signups)
+		test.EqOp(t, waitlistspb.SignupStatus_SIGNUP_STATUS_WITHDRAWN, signups[0].GetStatus())
 	})
 
 	// Zero is not an error: a person who never joined a list is a person with
@@ -703,14 +805,18 @@ func TestArchiveSignup(T *testing.T) {
 		must.Error(t, err)
 		test.ErrorIs(t, err, waitlists.ErrSignupNotFound)
 
-		// The uniqueness covers archived rows, so the next attempt collides
-		// rather than being told the address was withdrawn.
-		joined, err := h.server.Join(h.ctx(t), &waitlistspb.JoinRequest{
+		// The uniqueness covers archived rows, so the next attempt collides —
+		// and the form is not told that either. What the collision cost is
+		// countable only from the administrative half: no second row.
+		rejoined, err := h.server.Join(h.anonCtx(t), &waitlistspb.JoinRequest{
 			ListId: list.ID, Contact: "ada@example.com",
 		})
-		test.Nil(t, joined)
-		must.Error(t, err)
-		test.ErrorIs(t, err, waitlists.ErrAlreadySignedUp)
+		must.NoError(t, err)
+		must.NotNil(t, rejoined)
+
+		all := h.signupsOn(t, list.ID)
+		must.SliceLen(t, 1, all)
+		test.EqOp(t, signup.ID, all[0].GetId())
 	})
 }
 

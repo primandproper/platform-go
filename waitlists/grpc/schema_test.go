@@ -80,6 +80,33 @@ func TestJoinReservesTheProvenanceFields(T *testing.T) {
 		"JoinRequest does not reserve \"notes\", so a form could write the operator's column"))
 }
 
+// TestJoinResponseCarriesNothing is the structural half of "the public Join
+// answers uniformly".
+//
+// [waitlistsgrpc.Server.Join] not filling a field is a handler somebody can
+// change; a message with no field to fill is the decision itself. The two
+// together are what keep a new signup, an address already on the list and one
+// that withdrew from being distinguishable by whoever typed the address — see
+// waitlistspb.JoinResponse.
+//
+// It also pins that the field the row used to arrive in stays reserved, by
+// number and by name. Field numbers are this schema's compatibility promise, so
+// a result reintroduced under 1 would be a different message wearing the old
+// one's wire format in every consumer that had generated against it.
+func TestJoinResponseCarriesNothing(T *testing.T) {
+	T.Parallel()
+
+	response := messageNamed(T, "primandproper.platform.waitlists.v1.JoinResponse")
+
+	test.EqOp(T, 0, response.Fields().Len(), test.Sprint(
+		"JoinResponse carries a field, so its answers can differ by outcome"))
+
+	test.True(T, reserves(response, "result"), test.Sprint(
+		"JoinResponse does not reserve \"result\", so the row could come back under its old name"))
+	test.True(T, reservesNumber(response, 1), test.Sprint(
+		"JoinResponse does not reserve field 1, so the row could come back under its old number"))
+}
+
 // TestTheServiceIsSeventeenMethods pins the count the .proto's service comment
 // argues for, so that an eighteenth arrives with a failing test naming the
 // argument rather than as a diff nobody weighed against it.
@@ -107,6 +134,20 @@ func reserves(message protoreflect.MessageDescriptor, name string) bool {
 
 	for i := range reserved.Len() {
 		if string(reserved.Get(i)) == name {
+			return true
+		}
+	}
+
+	return false
+}
+
+// reservesNumber reports whether a message reserves the given field number.
+func reservesNumber(message protoreflect.MessageDescriptor, number protoreflect.FieldNumber) bool {
+	ranges := message.ReservedRanges()
+
+	for i := range ranges.Len() {
+		span := ranges.Get(i)
+		if number >= span[0] && number < span[1] {
 			return true
 		}
 	}
