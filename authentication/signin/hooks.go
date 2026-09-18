@@ -28,10 +28,12 @@ type FailedSignIn struct {
 	// response cannot. That asymmetry is the point of recording it here.
 	Reason error `json:"-"`
 
-	// Handle is what the attempt named — the username or the email address, as
-	// submitted. It is the key a lockout counter counts against, and it is
-	// present even when it names nobody, which is the case such a counter most
-	// needs to see.
+	// Handle is what the attempt named — the username or the email address —
+	// folded through identity.FoldHandle, which is the spelling the directory
+	// stores and looks up. It is the key a lockout counter counts against, and
+	// folding is what makes "Ada" and "ada" one account's worth of failures
+	// rather than two halves of a threshold neither reaches. It is present even
+	// when it names nobody, which is the case such a counter most needs to see.
 	Handle string `json:"handle"`
 
 	// UserID is who the handle resolved to, or empty when it resolved to

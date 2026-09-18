@@ -135,6 +135,8 @@ message User {
   string id = 1;
 
   // username is the handle the user signs in with, unique within the directory.
+  // It is the folded spelling -- lower case -- which is what the directory is
+  // keyed on and what two users cannot differ by. Compare handles with this.
   string username = 2;
 
   string email_address = 3;
@@ -183,6 +185,16 @@ message User {
 
   // 18 is reserved for the avatar the file comment explains is absent.
   reserved 18;
+
+  // username_display is the same handle as the person spelled it -- "Ada" where
+  // username is "ada". Nothing is keyed on it and nothing is looked up by it;
+  // it is what a page shows. It is never empty on a user this service returns.
+  //
+  // There is no input field beside it, in this message's two inputs or
+  // anywhere else: the spelling a registration or a profile save submits in
+  // their own username field is the spelling that lands here, so a client
+  // sends a handle once and the directory keeps both readings of it.
+  string username_display = 19;
 }
 
 // BillingAddress is where an account's invoices go.

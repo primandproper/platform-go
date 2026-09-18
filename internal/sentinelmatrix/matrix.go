@@ -335,10 +335,12 @@ var Matrix = map[string]map[string]Decision{
 		"ErrLastAccountOwner":  {Err: identity.ErrLastAccountOwner, Is: Mapped},
 		"ErrNoDefaultAccount":  {Err: identity.ErrNoDefaultAccount, Is: Mapped},
 
-		// A write whose entity names a different tenant than the call did. The
-		// two halves of the request disagreed, which is a bad request rather than
-		// a refusal on authority.
-		"ErrScopeMismatch": {Err: identity.ErrScopeMismatch, Is: Mapped},
+		// The two writes whose halves disagree with each other. One names a
+		// different tenant than the call did and the other a different username
+		// than the display spelling beside it, and both are a bad request rather
+		// than a refusal on authority.
+		"ErrScopeMismatch":           {Err: identity.ErrScopeMismatch, Is: Mapped},
+		"ErrUsernameDisplayMismatch": {Err: identity.ErrUsernameDisplayMismatch, Is: Mapped},
 
 		// Wrap errors.ErrNilInputParameter, so the platform mappers answer them.
 		// They are wiring failures rather than anything a client sent.

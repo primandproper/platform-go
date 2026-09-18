@@ -368,6 +368,49 @@ and archived_at come from the server's own CURRENT_TIMESTAMP, which on SQLite is
 the shape that column's comparisons are lexicographic over rather than one that
 happens to sort right — see identity/migrations.
 
+# Handles are folded, because one dialect was folding them for us
+
+A username and an email address are stored, compared and looked up in one
+spelling: lower case, folded in Go before anything is bound. A user who
+registers as "Ada" signs in as "ADA", and the invitation sent to
+Ada@example.com is the one ada@example.com is shown.
+
+It is a fold rather than a collation because the collation is not the same
+everywhere. MySQL renders these columns as VARCHAR under the server's default,
+which compares case-insensitively; Postgres and SQLite compare TEXT byte for
+byte. The same registration sequence therefore gave three different answers to
+"is this handle taken" — Ada and ada were one user on MySQL and two on the
+other two, and ErrUsernameTaken fired for inputs that depended on which server
+a deployment happened to pick. Folding in Go is what makes the collation stop
+mattering, including a server whose default collation is changed underneath a
+running directory: what MySQL folds afterwards is already folded, and what the
+other two compare byte for byte was folded before it was bound.
+
+FoldHandle is that fold, and it is exported because it is not this package's
+private business. Every write and every lookup here calls it, so does
+authentication/signin — for the read it makes and for the handle it records a
+failed attempt under, which is the key a lockout counter counts against — and
+so should a consumer that reaches these columns through an index of their own.
+A second copy of a normalisation is a copy that can disagree with the rows.
+
+The spelling somebody submitted is not lost. A username has two columns: the
+folded handle the directory is keyed on, in User.Username, and the spelling as
+given beside it, in User.UsernameDisplay, which nothing looks up and nothing
+is unique on. Show people the second and compare the first. A write that names
+no display spelling adopts the username's, which is what a registration does,
+and one that names a spelling of some other handle is refused — see
+ErrUsernameDisplayMismatch.
+
+An email address gets no such companion. Nobody renders the case of their own
+address, and a second column is a second thing to keep in step.
+
+What this costs a directory that already has rows: they were written in
+whatever case was submitted, so fold the username and email_address columns in
+the same migration that adds username_display, or a lookup will not find the
+rows that were not already lower case. Backfilling the display column itself is
+optional — a row with none reads its folded handle back in UsernameDisplay, so
+a page rendering that field never renders a blank.
+
 # Why there are no handlers here
 
 The bargain above — you keep your policy, your HTTP handlers and your proto —

@@ -95,6 +95,12 @@ func (s *SQLStore) CreateInvitation(
 
 	written.EnsureDefaults()
 
+	// Folded before the validation, as a user's address is at registration: the
+	// column is read back by the address of whoever registers against it, and
+	// an invitation whose spelling only the sender knows is one the recipient
+	// is never shown. See FoldHandle.
+	written.ToEmail = FoldHandle(written.ToEmail)
+
 	if err := written.ValidateWithContext(ctx); err != nil {
 		return nil, op.Error(err, "creating identity invitation")
 	}
@@ -324,6 +330,10 @@ func (s *SQLStore) ListInvitationsFromUser(
 
 // ListInvitationsForEmailAddress pages the invitations addressed to an email
 // address in one status, in the direction the filter names.
+//
+// The address is folded before it is bound, because to_email holds the folded
+// spelling — an invitation sent to Ada@example.com is the invitation the user
+// who registered as ada@example.com is owed. See FoldHandle.
 func (s *SQLStore) ListInvitationsForEmailAddress(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
@@ -332,7 +342,7 @@ func (s *SQLStore) ListInvitationsForEmailAddress(
 	status InvitationStatus,
 	filter *filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[Invitation], error) {
-	return s.pageInvitations(ctx, q, invitationToEmailColumn, scope, emailAddress, status, filter,
+	return s.pageInvitations(ctx, q, invitationToEmailColumn, scope, FoldHandle(emailAddress), status, filter,
 		"listing identity invitations for email address")
 }
 

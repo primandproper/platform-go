@@ -240,7 +240,7 @@ func (s *Service) prove(
 
 	attempt := &FailedSignIn{Handle: handle, Administrative: administrative}
 
-	user, err := s.readByHandle(ctx, scope, credentials)
+	user, err := s.readByHandle(ctx, scope, credentials, handle)
 	if err != nil {
 		return nil, s.refuse(ctx, op, scope, attempt, err, "reading the user a sign-in named")
 	}
@@ -280,7 +280,14 @@ func (s *Service) prove(
 }
 
 // handle returns the one handle a set of credentials names, refusing both and
-// neither.
+// neither, folded the way the directory folds it.
+//
+// The fold is identity.FoldHandle rather than a lower-casing of this package's
+// own, because a second copy of a normalisation is a copy that can disagree
+// with the rows. It is what makes everything downstream agree on which handle
+// an attempt named: the read below binds this value, and a lockout counter
+// counts FailedSignIn.Handle against it, so "Ada" and "ada" are one account's
+// worth of failures rather than two halves of a threshold neither reaches.
 func (c *Credentials) handle() (string, error) {
 	if c == nil {
 		return "", ErrNilCredentials
@@ -294,9 +301,9 @@ func (c *Credentials) handle() (string, error) {
 	case c.Password == "":
 		return "", ErrEmptyPassword
 	case c.Username != "":
-		return c.Username, nil
+		return identity.FoldHandle(c.Username), nil
 	default:
-		return c.EmailAddress, nil
+		return identity.FoldHandle(c.EmailAddress), nil
 	}
 }
 
@@ -309,19 +316,21 @@ func (c *Credentials) handle() (string, error) {
 // gone, a scope that will not validate — passes through as itself, because
 // collapsing those into "invalid credentials" would tell a user to check their
 // password while the database is down.
+//
+// The handle is the folded one Credentials.handle produced rather than the
+// field it came from, so what is read and what a failure is recorded under are
+// the same string. identity's own store folds this argument too, and the
+// directory here is an interface a consumer may satisfy with something else —
+// which is the half this fold covers.
 func (s *Service) readByHandle(
 	ctx context.Context,
 	scope tenancy.Scope,
 	credentials *Credentials,
+	handle string,
 ) (*identity.User, error) {
 	read := s.directory.GetUserByUsername
 	if credentials.Username == "" {
 		read = s.directory.GetUserByEmailAddress
-	}
-
-	handle := credentials.Username
-	if handle == "" {
-		handle = credentials.EmailAddress
 	}
 
 	user, err := read(ctx, s.client.Reader(), scope, handle)

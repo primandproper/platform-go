@@ -333,9 +333,10 @@ func (s *SQLStore) SearchUsersByUsername(
 
 	filter = pageFilter(filter)
 
-	// Escaped once and bound twice, so the page and the number describing it
-	// cannot come to search for different things.
-	pattern := querygen.PrefixPattern(prefix)
+	// Folded before it is escaped, because the column holds folded handles —
+	// see FoldHandle. Escaped once and bound twice, so the page and the number
+	// describing it cannot come to search for different things.
+	pattern := querygen.PrefixPattern(FoldHandle(prefix))
 
 	searchRows, err := sortedRows(filter,
 		func() ([]identitydb.SearchUsersByUsernameRow, error) {

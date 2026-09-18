@@ -28,6 +28,11 @@
 -- nothing in this package truncates to them, so a directory that needs more
 -- widens the column rather than losing the tail silently.
 --
+--
+-- username is the lookup column, folded to lower case by the store on write and
+-- on every lookup; username_display is the spelling as given, read by nothing.
+-- See postgres.sql for why, and identity's package documentation under
+-- "Handles are folded".
 -- email_address_verification_token_digest holds the digest of the token a
 -- verification link carries, never the token itself. See postgres.sql for why,
 -- and identity.SQLStore for where the hashing happens.
@@ -35,6 +40,7 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_users (
     id                                      VARCHAR(64) NOT NULL PRIMARY KEY,
     scope                                   VARCHAR(255) NOT NULL,
     username                                VARCHAR(255) NOT NULL,
+    username_display                        VARCHAR(255) NOT NULL DEFAULT '',
     email_address                           VARCHAR(320) NOT NULL,
     first_name                              VARCHAR(255) NOT NULL DEFAULT '',
     last_name                               VARCHAR(255) NOT NULL DEFAULT '',

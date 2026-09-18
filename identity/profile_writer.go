@@ -57,6 +57,15 @@ func (s *SQLStore) UpdateUser(
 		return nil, op.Error(err, "updating identity user")
 	}
 
+	// Folded before the validation and before the collision checks, as they are
+	// at creation, so a profile save that only changed the case of a handle
+	// stores the same value it already held — and so the address comparison in
+	// profileUpdateParams reads that save as no change at all, rather than as a
+	// move that clears the verification it was never meant to touch.
+	if err := foldUserHandles(&written); err != nil {
+		return nil, op.Error(err, "updating identity user")
+	}
+
 	if err := written.validateProfile(ctx); err != nil {
 		return nil, op.Error(err, "updating identity user")
 	}

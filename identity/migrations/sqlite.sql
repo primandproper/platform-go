@@ -10,6 +10,11 @@
 -- to make unspellable in Go. NOT NULL with nothing to fall back on makes that
 -- write fail instead. See the tenancy package.
 --
+--
+-- username is the lookup column, folded to lower case by the store on write and
+-- on every lookup; username_display is the spelling as given, read by nothing.
+-- See postgres.sql for why, and identity's package documentation under
+-- "Handles are folded".
 -- email_address_verification_token_digest holds the digest of the token a
 -- verification link carries, never the token itself. See postgres.sql for why,
 -- and identity.SQLStore for where the hashing happens.
@@ -17,6 +22,7 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_users (
     id                                      TEXT PRIMARY KEY,
     scope                                   TEXT NOT NULL,
     username                                TEXT NOT NULL,
+    username_display                        TEXT NOT NULL DEFAULT '',
     email_address                           TEXT NOT NULL,
     first_name                              TEXT NOT NULL DEFAULT '',
     last_name                               TEXT NOT NULL DEFAULT '',

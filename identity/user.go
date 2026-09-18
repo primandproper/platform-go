@@ -117,9 +117,35 @@ type User struct {
 	ID string `json:"id"`
 
 	// Username is the handle the user signs in with, unique within Scope.
+	//
+	// It is the folded spelling: the Store lowers it on write and on every
+	// lookup, so what a read returns is the handle the directory is keyed on
+	// rather than the case a registration submitted, and two users cannot
+	// differ by case alone. Compare handles with this field. Show people
+	// UsernameDisplay. See "Handles are folded" in the package documentation.
 	Username string `json:"username"`
 
+	// UsernameDisplay is the same handle as the person spelled it — "Ada" where
+	// Username is "ada". Nothing is keyed on it, nothing is looked up by it,
+	// and it exists because people capitalise their own names and expect to see
+	// it back.
+	//
+	// On a write it may be left empty, and then it adopts the spelling of the
+	// Username the write submitted, which is what a registration wants. A value
+	// that folds to a different handle than Username is refused with
+	// ErrUsernameDisplayMismatch rather than corrected: the two are one handle
+	// in two spellings, so a disagreement between them is a caller writing back
+	// a display they forgot to change.
+	//
+	// On a read it is never empty. A row written before the directory had this
+	// column reads its folded handle back here, so a template rendering this
+	// field is never rendering a blank.
+	UsernameDisplay string `json:"usernameDisplay"`
+
 	// EmailAddress is the address the user is reachable at, unique within Scope.
+	// It is folded the way Username is, and gets no display companion: nobody
+	// renders the case of their own address, and a second column is a second
+	// thing to keep in step.
 	EmailAddress string `json:"emailAddress"`
 
 	// FirstName and LastName are the user's name as they gave it. Both are

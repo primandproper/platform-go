@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS identity_users (
     id                                      VARCHAR(64) NOT NULL PRIMARY KEY,
     scope                                   VARCHAR(255) NOT NULL,
     username                                VARCHAR(255) NOT NULL,
+    username_display                        VARCHAR(255) NOT NULL DEFAULT '',
     email_address                           VARCHAR(320) NOT NULL,
     first_name                              VARCHAR(255) NOT NULL DEFAULT '',
     last_name                               VARCHAR(255) NOT NULL DEFAULT '',

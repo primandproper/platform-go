@@ -817,6 +817,10 @@ func (s *Service) SetUserServiceRoles(
 type ProfileUpdate struct {
 	_ struct{} `json:"-"`
 
+	// Username is the handle as the person spelled it. There is deliberately no
+	// second field for the display spelling: the two columns behind it are the
+	// fold of this value and this value, and a client that sent them
+	// separately could send two handles.
 	Username     *string `json:"username"`
 	EmailAddress *string `json:"emailAddress"`
 	FirstName    *string `json:"firstName"`
@@ -835,12 +839,24 @@ func (u *ProfileUpdate) apply(user *User) []string {
 
 	var changed []string
 
+	// The username is two columns and so is not one of the four below: what the
+	// form submits is a spelling, the row holds the folded handle and the
+	// spelling beside it, and both move together. The comparison folds for the
+	// same reason — re-capitalising a handle is not a rename, and a form saved
+	// unedited must still write nothing — while a change to the spelling alone
+	// is a change, because it is what the user will be shown.
+	if u.Username != nil &&
+		(*u.Username != user.UsernameDisplay || FoldHandle(*u.Username) != user.Username) {
+		user.Username = FoldHandle(*u.Username)
+		user.UsernameDisplay = *u.Username
+		changed = append(changed, "username")
+	}
+
 	fields := []struct {
 		set   *string
 		field *string
 		name  string
 	}{
-		{u.Username, &user.Username, "username"},
 		{u.EmailAddress, &user.EmailAddress, "emailAddress"},
 		{u.FirstName, &user.FirstName, "firstName"},
 		{u.LastName, &user.LastName, "lastName"},
