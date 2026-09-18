@@ -644,7 +644,6 @@ func (s *Sweeper) recordSweep(ctx context.Context, policy *Policy, result *Polic
 		ResourceType: AuditResourceType,
 		ResourceID:   policy.Name,
 		Actor:        s.actor,
-		Scope:        policy.Scope,
 		Metadata: map[string]string{
 			"target":       result.Target,
 			"cutoff":       cutoff.Format(time.RFC3339Nano),
@@ -666,7 +665,7 @@ func (s *Sweeper) recordSweep(ctx context.Context, policy *Policy, result *Polic
 	ctx = context.WithoutCancel(ctx)
 
 	err := s.client.WithTransaction(ctx, func(q database.Tx) error {
-		return s.recorder.Record(ctx, q, entry)
+		return s.recorder.Record(ctx, q, policy.Scope, entry)
 	})
 	if err != nil {
 		return platformerrors.Wrapf(err, "recording retention sweep of policy %q", policy.Name)

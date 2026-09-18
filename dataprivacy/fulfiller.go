@@ -1173,12 +1173,11 @@ func (f *Fulfiller) record(
 	}
 	maps.Copy(fields, metadata)
 
-	return f.recorder.Record(ctx, tx, &audit.Entry{
+	return f.recorder.Record(ctx, tx, auditScope(req.Scope), &audit.Entry{
 		EventType:    audit.EventUpdated,
 		ResourceType: auditResourceType,
 		ResourceID:   req.ID,
 		Actor:        f.actor(ctx),
-		Scope:        auditScope(req.Scope),
 		Metadata:     fields,
 		RecordedAt:   f.clock.Now().UTC(),
 	})

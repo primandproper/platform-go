@@ -123,10 +123,10 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		first, second := entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_1"), "r2")
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, first, second)
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_1"), first, second)
 		}))
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), env.client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 2, result.Checked)
@@ -153,10 +153,10 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		}
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entries...)
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_1"), entries...)
 		}))
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), env.client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.True(t, result.Complete)
@@ -165,7 +165,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 
 		// And the same chain walked from the middle, which is what a caller
 		// resuming an incomplete verification sends.
-		resumed, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, 2)
+		resumed, err := reader.Verify(t.Context(), env.client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, 2)
 		must.NoError(t, err)
 		test.True(t, resumed.Intact())
 		test.True(t, resumed.Complete)
@@ -184,19 +184,61 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		entry.RecordedAt = time.Date(2026, time.July, 31, 12, 0, 0, 123456789, time.UTC)
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entry)
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_1"), entry)
 		}))
 
 		// The truncation at the write site is what makes this hold: Postgres and
 		// MySQL keep microseconds, and a timestamp that changed on the way back
 		// would make every entry read as tampered.
-		read, err := reader.Get(t.Context(), entry.ID)
+		read, err := reader.Get(t.Context(), env.client.Reader(), nil, entry.ID)
 		must.NoError(t, err)
 		test.EqOp(t, entry.RecordedAt, read.RecordedAt)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), env.client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
+	})
+
+	// The get's scope narrowing, on a real server. Its NULL arm is a bare cast
+	// that each engine resolves its own way — MySQL to a string type of its
+	// own — so "an absent argument narrows nothing" is a claim only an engine
+	// can settle, and it is the claim that decides whether an unnarrowed get
+	// answers everything or nothing.
+	t.Run("narrows a single-entry get by scope", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		prefix := env.newPrefix(t)
+		recorder := env.recorder(t, c, prefix)
+		reader := env.reader(t, prefix)
+
+		mine := entryFor(tenancy.Of("acct_1"), "r1")
+		theirs := entryFor(tenancy.Of("acct_2"), "r2")
+
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+			if err := recorder.Record(t.Context(), q, tenancy.Of("acct_1"), mine); err != nil {
+				return err
+			}
+
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_2"), theirs)
+		}))
+
+		scope := tenancy.Of("acct_1")
+
+		read, err := reader.Get(t.Context(), env.client.Reader(), &scope, mine.ID)
+		must.NoError(t, err)
+		test.EqOp(t, mine.ID, read.ID)
+
+		_, err = reader.Get(t.Context(), env.client.Reader(), &scope, theirs.ID)
+		test.ErrorIs(t, err, ErrEntryNotFound)
+
+		// And the unnarrowed read still reaches both, which is the half a
+		// predicate that quietly matched nothing would also pass.
+		for _, entry := range []*Entry{mine, theirs} {
+			found, getErr := reader.Get(t.Context(), env.client.Reader(), nil, entry.ID)
+			must.NoError(t, getErr)
+			test.EqOp(t, entry.ID, found.ID)
+		}
 	})
 
 	t.Run("rolls back with the caller's transaction", func(t *testing.T) {
@@ -209,7 +251,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		boom := fmt.Errorf("caller work failed")
 
 		err := env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			if recordErr := recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "r1")); recordErr != nil {
+			if recordErr := recorder.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "r1")); recordErr != nil {
 				return recordErr
 			}
 
@@ -231,7 +273,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		first, second := entryFor(tenancy.Of("acct_1"), "r1"), entryFor(tenancy.Of("acct_1"), "r2")
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, first, second)
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_1"), first, second)
 		}))
 
 		_, err := env.client.Writer().ExecContext(t.Context(),
@@ -240,7 +282,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			"somebody_else", second.ID)
 		must.NoError(t, err)
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), env.client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		must.False(t, result.Intact())
 		test.EqOp(t, BreakContentAltered, result.FirstBreak.Reason)
@@ -256,7 +298,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		entry := entryFor(tenancy.Of("acct_1"), "r1")
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entry)
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_1"), entry)
 		}))
 
 		// The unique index on (scope, seq) is what makes a fork unrepresentable
@@ -283,13 +325,13 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		reader := env.reader(t, prefix)
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "r1"))
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "r1"))
 		}))
 
 		c.advance(2 * time.Hour)
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "r2"))
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "r2"))
 		}))
 
 		// Exercises the CASE-expression prune bounds and the keyset scope page
@@ -297,7 +339,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		// between dialects.
 		test.EqOp(t, int64(1), env.prune(t, c, prefix, time.Hour))
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), env.client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, 1, result.Checked)
@@ -322,13 +364,13 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		unrelated.Actor = Actor{ID: "user_2", Type: ActorUser}
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("user_1"), "r1"), entryFor(tenancy.Of("user_1"), "r2"))
+			return recorder.Record(t.Context(), q, tenancy.Of("user_1"), entryFor(tenancy.Of("user_1"), "r1"), entryFor(tenancy.Of("user_1"), "r2"))
 		}))
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("user_1_devices"), "d1"))
+			return recorder.Record(t.Context(), q, tenancy.Of("user_1_devices"), entryFor(tenancy.Of("user_1_devices"), "d1"))
 		}))
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_9"), "r3"), actedOn, unrelated)
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_9"), entryFor(tenancy.Of("acct_9"), "r3"), actedOn, unrelated)
 		}))
 
 		// Two scopes in one statement. The bound set is `= ANY($1::text[])` on
@@ -363,7 +405,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		test.EqOp(t, 3, countRows(t, env.client, prefix+"_audit_log_entries", "scope = 'acct_9'"))
 		test.EqOp(t, 1, countRows(t, env.client, prefix+"_audit_log_chains", "scope = 'acct_9'"))
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_9"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), env.client.Reader(), tenancy.Of("acct_9"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact(), test.Sprintf("break: %+v", result.FirstBreak))
 		test.EqOp(t, 3, result.Checked)
@@ -373,10 +415,10 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		// a head that is no longer there, and the verification below would
 		// report the hole as tampering.
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("user_1"), "r5"))
+			return recorder.Record(t.Context(), q, tenancy.Of("user_1"), entryFor(tenancy.Of("user_1"), "r5"))
 		}))
 
-		result, err = reader.Verify(t.Context(), tenancy.Of("user_1"), time.Time{}, time.Time{}, ChainStart)
+		result, err = reader.Verify(t.Context(), env.client.Reader(), tenancy.Of("user_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact(), test.Sprintf("break: %+v", result.FirstBreak))
 		test.EqOp(t, 1, result.Checked)
@@ -399,7 +441,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		for i := range writers {
 			go func() {
 				errs <- env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-					return recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), fmt.Sprintf("r%d", i)))
+					return recorder.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), fmt.Sprintf("r%d", i)))
 				})
 			}()
 		}
@@ -408,7 +450,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			must.NoError(t, <-errs)
 		}
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), env.client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 		test.EqOp(t, writers, result.Checked)
@@ -430,7 +472,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		for range writers {
 			go func() {
 				errs <- env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-					return recorder.Record(t.Context(), q, entryFor(tenancy.Of("brand_new_scope"), "r"))
+					return recorder.Record(t.Context(), q, tenancy.Of("brand_new_scope"), entryFor(tenancy.Of("brand_new_scope"), "r"))
 				})
 			}()
 		}
@@ -453,7 +495,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		entry := entryFor(tenancy.Of("acct_1"), "r1")
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entry)
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_1"), entry)
 		}))
 
 		_, err := env.client.Writer().ExecContext(t.Context(),
@@ -481,7 +523,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		entry := entryFor(tenancy.Of("acct_1"), "r1")
 
 		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entry)
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_1"), entry)
 		}))
 
 		_, err := env.client.Writer().ExecContext(t.Context(),
@@ -500,17 +542,23 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		recorder := env.recorder(t, c, prefix)
 		reader := env.reader(t, prefix)
 
-		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q,
-				entryFor(tenancy.Of("acct_1"), "r1"),
-				entryFor(tenancy.Of("acct_1"), "r2"),
-				entryFor(tenancy.Of("acct_2"), "r3"),
-			)
-		}))
-
 		scope := tenancy.Of("acct_1")
 
-		listed, err := reader.List(t.Context(), &Query{Scope: &scope}, nil)
+		// Two scopes, two calls: Record appends into the chain its argument
+		// names, so the second tenant's entry is a second write rather than a
+		// fourth element of the first one's slice.
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+			if err := recorder.Record(t.Context(), q, scope,
+				entryFor(tenancy.Of("acct_1"), "r1"),
+				entryFor(tenancy.Of("acct_1"), "r2"),
+			); err != nil {
+				return err
+			}
+
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_2"), entryFor(tenancy.Of("acct_2"), "r3"))
+		}))
+
+		listed, err := reader.List(t.Context(), env.client.Reader(), &Query{Scope: &scope}, nil)
 		must.NoError(t, err)
 		test.SliceLen(t, 2, listed.Data)
 		test.EqOp(t, uint64(2), listed.TotalCount)
@@ -597,10 +645,10 @@ func TestAudit_MigratorIntegration_Containers(T *testing.T) {
 		must.NoError(t, err)
 
 		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return recorder.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "r1"))
+			return recorder.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "r1"))
 		}))
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	}

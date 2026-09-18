@@ -29,11 +29,10 @@ is just another statement in the caller's transaction and lives or dies with it:
 			return err
 		}
 
-		return recorder.Record(ctx, q, &audit.Entry{
+		return recorder.Record(ctx, q, tenancy.Of(accountID), &audit.Entry{
 			EventType:    audit.EventUpdated,
 			ResourceType: "recipe",
 			ResourceID:   after.ID,
-			Scope:        tenancy.Of(accountID),
 			Actor:        audit.Actor{ID: userID, Type: audit.ActorUser, IP: remoteIP},
 			Changes:      changes,
 		})
@@ -104,6 +103,27 @@ the event under the platform's own chain. The distinction is worth a type
 because it is the one a string cannot hold, and both this package and
 comments/privacy had reimplemented it — a pointer here, a sentinel there —
 before they shared one.
+
+It is named once per write, as Record's own argument, and one call appends to
+one chain. Entry.Scope is not a second place to say it: an entry that names
+none adopts the argument, and one that names a different tenant is
+ErrScopeMismatch rather than either value quietly winning. That is the rule
+every write in this module follows — a scope goes into the statement bound as a
+tenancy.Scope rather than derived from a field on something the caller
+assembled elsewhere — and here it buys more than a correctly labeled row.
+Because the scope is also the partition, an entry carrying the wrong one would
+not mislabel anything: it would append to another tenant's chain, and a chain
+is the one structure here whose whole value is that it cannot be appended to
+incorrectly.
+
+What that costs is the batch that spanned tenants, which one call used to allow
+because the scope was read off each entry. A transaction spans one tenant's
+work, so a caller with entries for two makes two calls, into one transaction
+and two chains.
+
+The reading is a *tenancy.Scope wherever a read may legitimately decline to
+narrow — Query.Scope and Reader.Get — because there a third answer exists that a
+Scope cannot hold: "do not narrow at all". See Reading it.
 
 Append-only enforcement is available but optional, because it is separately
 privileged: migrations.AppendOnlyStatements renders triggers that make the
@@ -185,24 +205,41 @@ retention.Policy itself permits a zero age.
 
 # Reading it
 
+Every read takes the caller's executor, the way Record takes the caller's
+transaction. Hand it Client.Reader() from a console and it runs on the replica;
+hand it the database.Tx you are already inside and it sees the entry you have
+just recorded and not yet committed. That second case is the ordinary one and
+this package used to make it impossible: the reader bound a handle of its own,
+so a caller could not read back what they had just written.
+
 Reader.List pages with filtering.QueryFilter, so the cursor, limit, and time
 window an HTTP caller already knows how to send work here unchanged — the window
 maps onto recorded_at, which is when the event happened. Query selects by scope,
-actor, resource, and event type, one value each. Note that Query.Scope is a
-*tenancy.Scope where an Entry's is a tenancy.Scope: a narrowing has a third
-reading a scope does not, "do not narrow at all", and in a multi-tenant read
-path telling that from "the platform's own events" is a disclosure rather than a
-wrong answer.
+actor, resource, and event type, one value each.
+
+Reader.Get takes a *tenancy.Scope, and so does Query.Scope, where an Entry's is
+a tenancy.Scope. A narrowing has a third reading a scope does not: nil is "do
+not narrow at all", which is what an operator console asks for and what nothing
+a tenant can reach should. A scope confines the read to one chain — tenancy.Global
+included, which reads the platform's own events and nobody else's — and a
+non-nil pointer at the zero Scope is a caller whose lookup came back empty,
+refused with tenancy.ErrNoScope rather than widened. In a multi-tenant read path
+telling the first of those from the second is a disclosure rather than a wrong
+answer, which is why the distinction is a type rather than a convention.
+
+An entry that exists but sits outside a named scope reads as ErrEntryNotFound,
+the same answer an id that was never written gets. Telling them apart would make
+a Get an oracle for which entry ids exist in another tenant's log.
 
 # On the wire
 
 audit/grpc serves the Reader over gRPC — one entry, a page of them, and a
 verification — and it is strictly narrower than that interface on purpose.
-Record is not on it, for the reason Recorder gives. Query.Scope is not settable
-through it either: the scope binds off the connection, and the schema reserves
-the field name so that a request has nothing to carry one in. What makes the
-crossing worth making is Verify, which is the capability nobody writes for
-themselves and the one worth running on a schedule from somewhere else.
+Record is not on it, for the reason Recorder gives. The scope is not settable
+through it either: it binds off the connection into every call, and the schema
+reserves the field name so that a request has nothing to carry one in. What
+makes the crossing worth making is Verify, which is the capability nobody writes
+for themselves and the one worth running on a schedule from somewhere else.
 
 # Where the SQL comes from
 

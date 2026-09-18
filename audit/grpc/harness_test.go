@@ -137,14 +137,24 @@ type harness struct {
 	yours *audit.Entry
 }
 
-// newHarness stands the whole stack up and records one entry per tenant.
-func newHarness(t *testing.T, opts ...auditgrpc.Option) *harness {
+// newDatabase is an empty SQLite client, for the constructor tests that need a
+// database.Client and never run a statement through it.
+func newDatabase(t *testing.T) database.Client {
 	t.Helper()
 
 	db, err := sqlite.NewDatabaseClient(t.Context(),
 		&testClientConfig{connectionString: filepath.Join(t.TempDir(), "audit.db")})
 	must.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
+
+	return db
+}
+
+// newHarness stands the whole stack up and records one entry per tenant.
+func newHarness(t *testing.T, opts ...auditgrpc.Option) *harness {
+	t.Helper()
+
+	db := newDatabase(t)
 
 	stmts, err := migrations.Statements(dialect.SQLite, audit.DefaultTablePrefix)
 	must.NoError(t, err)
@@ -161,7 +171,7 @@ func newHarness(t *testing.T, opts ...auditgrpc.Option) *harness {
 	must.NoError(t, err)
 
 	// The harness's resolver goes first so a caller's opts can replace it.
-	srv, err := auditgrpc.NewServer(reader,
+	srv, err := auditgrpc.NewServer(reader, db,
 		append([]auditgrpc.Option{auditgrpc.WithScopeResolver(resolveScope)}, opts...)...)
 	must.NoError(t, err)
 
@@ -196,22 +206,30 @@ func newHarness(t *testing.T, opts ...auditgrpc.Option) *harness {
 		yours:   entryFor(theirs, "recipe_2"),
 	}
 
+	// Two tenants, two calls: a recording names the chain it appends to, so the
+	// second tenant's entry is a second write rather than another element of
+	// the first one's slice.
 	must.NoError(t, db.WithTransaction(t.Context(), func(tx database.Tx) error {
-		return recorder.Record(t.Context(), tx, h.mine, h.yours)
+		if recordErr := recorder.Record(t.Context(), tx, ours, h.mine); recordErr != nil {
+			return recordErr
+		}
+
+		return recorder.Record(t.Context(), tx, theirs, h.yours)
 	}))
 
 	return h
 }
 
-// record writes one more entry, for the tests that need a second one.
-func (h *harness) record(t *testing.T, entries ...*audit.Entry) {
+// record writes one more entry into one tenant's chain, for the tests that need
+// a second one.
+func (h *harness) record(t *testing.T, scope tenancy.Scope, entries ...*audit.Entry) {
 	t.Helper()
 
 	recorder, err := audit.NewRecorder(dialect.SQLite)
 	must.NoError(t, err)
 
 	must.NoError(t, h.db.WithTransaction(t.Context(), func(tx database.Tx) error {
-		return recorder.Record(t.Context(), tx, entries...)
+		return recorder.Record(t.Context(), tx, scope, entries...)
 	}))
 }
 

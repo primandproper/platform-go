@@ -404,7 +404,12 @@ func entryStatements(g *querygen.Generator) []*querygen.Query {
 		// safe was arithmetic over a column count nothing verified.
 		g.InsertQuery(InsertEntryQuery, EntriesTable, EntryColumns, EntryNullableColumns),
 
-		g.GetQuery(GetEntryQuery, EntriesTable, EntryColumns),
+		// Narrowed by an optional scope rather than keyed by the id alone.
+		// The reading is [scopeNarrowing]'s: an absent argument answers across
+		// every tenant, which is the operator console's read, and a supplied
+		// one confines the get to a chain — so the caller who does not narrow
+		// has said so rather than been defaulted into it.
+		g.GetQuery(GetEntryQuery, EntriesTable, EntryColumns, scopeNarrowing()),
 
 		// Keyed on the position rather than the id, which is how a verification
 		// anchors a range beginning mid-chain: the entry before the first one in
@@ -518,14 +523,34 @@ func SelectorArg(column string) string { return column + SelectorArgSuffix }
 func selectors() []querygen.Match {
 	matches := make([]querygen.Match, 0, len(SelectorColumns))
 	for _, column := range SelectorColumns {
-		matches = append(matches, querygen.Match{
-			Column:  column,
-			Arg:     SelectorArg(column),
-			Against: querygen.OptionalNarrowing,
-		})
+		matches = append(matches, narrowing(column))
 	}
 
 	return matches
+}
+
+// scopeNarrowing is the scope selector on its own, which the single-entry get
+// carries as its only narrowing.
+//
+// It is the same predicate the paged list binds and deliberately not the
+// scopeMatch above it. That one addresses a chain and an absent argument is a
+// scope — the platform's — which is the reading a get by id must not take: a
+// caller who did not narrow is asking across every tenant, and a caller who
+// named the empty scope is asking about the platform's own events. Only the
+// narrowing leaves both spellable, and audit.Reader.Get carries the distinction
+// out to the caller as a *tenancy.Scope.
+func scopeNarrowing() querygen.Match {
+	return narrowing(ScopeColumn)
+}
+
+// narrowing is one selector: a column an absent argument leaves alone, bound
+// under its own name for the reason [SelectorArgSuffix] gives.
+func narrowing(column string) querygen.Match {
+	return querygen.Match{
+		Column:  column,
+		Arg:     SelectorArg(column),
+		Against: querygen.OptionalNarrowing,
+	}
 }
 
 // chainRangeQuery renders one page of a verification's walk: one scope's

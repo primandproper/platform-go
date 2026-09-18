@@ -162,7 +162,7 @@ func TestErasure_DeleteScopes(T *testing.T) {
 
 		eraseScopes(t, client, newTestErasure(t), []tenancy.Scope{tenancy.Of("user_1")})
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_9"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), client.Reader(), tenancy.Of("acct_9"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact(), test.Sprintf("break: %+v", result.FirstBreak))
 		test.EqOp(t, 3, result.Checked)

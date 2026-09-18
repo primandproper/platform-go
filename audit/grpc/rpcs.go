@@ -17,15 +17,17 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// GetEntry reads one entry by id.
+// GetEntry reads one entry by id, out of the log the connection is against.
 //
-// The reader's Get takes an id and no scope, because in a process it is an
-// operator's read against a reader they built. Here the entry's scope is
-// compared against the connection's afterwards, and one belonging to somebody
-// else is answered exactly as an id that does not exist is: audit.ErrEntryNotFound,
-// mapped to codes.NotFound. Telling the two apart would make this an oracle for
-// which entry ids exist in another tenant's log, which is the one thing an audit
-// log must not become.
+// The scope goes into the read rather than into a comparison after it. The
+// reader's Get takes a *tenancy.Scope in which nil is the operator's read
+// across every tenant; this surface has no operator and never passes nil, so an
+// entry belonging to somebody else is not read at all and is answered exactly
+// as an id that does not exist is — audit.ErrEntryNotFound, mapped to
+// codes.NotFound. Telling the two apart would make this an oracle for which
+// entry ids exist in another tenant's log, which is the one thing an audit log
+// must not become, and answering it inside the read is what makes that true of
+// every caller of Get rather than of this method.
 func (s *Server) GetEntry(
 	ctx context.Context,
 	request *auditpb.GetEntryRequest,
@@ -39,12 +41,16 @@ func (s *Server) GetEntry(
 
 	req.op.Set(entryIDKey, request.GetEntryId())
 
-	entry, err := s.reader.Get(ctx, request.GetEntryId())
+	entry, err := s.reader.Get(ctx, s.client.Reader(), &req.scope, request.GetEntryId())
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "reading audit entry %q", request.GetEntryId())
 	}
 
-	if entry == nil || entry.Scope != req.scope {
+	// A nil entry with a nil error is a reader that answered neither way. The
+	// SQL one cannot, but audit.Reader is a seam a consumer may implement, and
+	// a nil dereference in the converter below is a worse account of that than
+	// the answer this surface gives for an entry it will not describe.
+	if entry == nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(
 			platformerrors.Wrapf(audit.ErrEntryNotFound, "audit entry %q", request.GetEntryId()),
 			req.op.Logger(), req.op.Span(), codes.NotFound, "reading audit entry %q", request.GetEntryId())
@@ -86,7 +92,7 @@ func (s *Server) ListEntries(
 	query := queryFromProto(request.GetQuery())
 	query.Scope = pointer.To(req.scope)
 
-	page, err := s.reader.List(ctx, query, filter)
+	page, err := s.reader.List(ctx, s.client.Reader(), query, filter)
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "listing audit entries")
 	}
@@ -140,7 +146,8 @@ func (s *Server) VerifyChain(
 		afterSeq = request.GetAfterSeq()
 	}
 
-	result, err := s.reader.Verify(ctx, req.scope, timeFromProto(request.GetFrom()), timeFromProto(request.GetTo()), afterSeq)
+	result, err := s.reader.Verify(ctx, s.client.Reader(), req.scope,
+		timeFromProto(request.GetFrom()), timeFromProto(request.GetTo()), afterSeq)
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "verifying an audit chain")
 	}

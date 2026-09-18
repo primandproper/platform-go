@@ -10,11 +10,12 @@ It is imported as auditgrpc.
 
 Three RPCs, all reads: GetEntry, ListEntries, VerifyChain. Each converts, calls
 one thing on the reader, and converts back. There is no orchestration and
-nothing to orchestrate — the reader owns its own handle and runs against the
-read replica, so this package holds no database.Client, which is a dependency
-shape no other domain in the transport lane has.
+nothing to orchestrate: nothing here opens a transaction, and the
+database.Client the server takes is read for Reader() and for nothing else —
+an audit read runs on the executor its caller supplies, and this surface's
+caller is a connection with no transaction of its own to join.
 
-What ships is strictly narrower than the interface beneath it, in three places,
+What ships is strictly narrower than the interface beneath it, in two places,
 and each is the reason this is a surface rather than a re-export.
 
 audit.Recorder is absent. The reason is on the interface itself and it is the
@@ -24,20 +25,24 @@ can commit while the change it describes rolls back — or the reverse — is no
 record of what happened, and no amount of retrying fixes it after the fact. See
 identity/grpc, where that rule is stated once for every surface that follows it.
 
-audit.Query.Scope is not settable. In the Go type it is a *tenancy.Scope in
-which nil means every tenant's events, and the field's own comment says getting
-that backwards is a cross-tenant disclosure rather than a wrong answer. Held in
-a process it is a capability an operator built deliberately; in a request field
-it would be one any caller has. So the scope binds off the connection through a
-[ScopeResolver] — authentication/signin/grpc is the precedent — and the schema
-reserves the field name in every request message, which makes the absence
-something protoc enforces rather than something a reviewer has to notice.
+The scope is not settable. Both of the reads that may decline to narrow take a
+*tenancy.Scope in which nil means every tenant's events, and those fields' own
+comments say getting that backwards is a cross-tenant disclosure rather than a
+wrong answer. Held in a process the unnarrowed read is a capability an operator
+built deliberately; in a request field it would be one any caller has. So the
+scope binds off the connection through a [ScopeResolver] —
+authentication/signin/grpc is the precedent — and the schema reserves the field
+name in every request message, which makes the absence something protoc enforces
+rather than something a reviewer has to notice.
 
-audit.Reader.Get takes an id and no scope, because in a process it is an
-operator's read. Here the entry's own scope is compared against the connection's
-and one belonging to somebody else is answered as absent, identically to an id
-that never existed — telling the two apart would make this an oracle for which
-entry ids exist in another tenant's log.
+Nothing here compares a scope back after an unconfined read. This package used
+to: GetEntry read by id alone, because audit.Reader.Get took no scope, and then
+tested the entry's own against the connection's. Get takes the scope now, so an
+entry belonging to somebody else is not read at all — and it is still answered
+identically to an id that never existed, since telling the two apart would make
+this an oracle for which entry ids exist in another tenant's log. The answer
+moved into the method, which is what makes it true for every caller of Get
+rather than for this one surface.
 
 # Why the reading is worth crossing at all
 
@@ -89,7 +94,7 @@ Without it, an entry that is not there arrives as codes.Unknown.
 
 	reader, err := audit.NewReader(client, audit.WithReaderLogger(logger))
 
-	srv, err := auditgrpc.NewServer(reader,
+	srv, err := auditgrpc.NewServer(reader, client,        // the client is read for Reader()
 		auditgrpc.WithScopeResolver(scopeFromConnection),   // required: no default
 		auditgrpc.WithPillars(pillars))
 

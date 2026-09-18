@@ -45,7 +45,8 @@ import (
 // an RPC — and identity/grpc's package documentation states it once for every
 // surface that follows.
 type Recorder interface {
-	// Record appends entries to the log inside the caller's transaction.
+	// Record appends entries to one scope's chain, inside the caller's
+	// transaction.
 	//
 	// It writes the assigned ID, timestamp, and chain fields back into each
 	// entry, so a caller can reference or notarize what it just wrote without a
@@ -53,8 +54,19 @@ type Recorder interface {
 	//
 	// It is variadic where the prior art took one entry, because a transaction
 	// that touches three resources should not pay three chain-head lookups and
-	// three INSERTs while holding locks. Entries are chained in the order given.
-	Record(ctx context.Context, q database.Tx, entries ...*Entry) error
+	// three INSERTs while holding locks. Entries are chained in the order given,
+	// into the chain the scope argument names.
+	//
+	// The scope is an argument rather than a field read off each entry, and
+	// here that is more than the module's rule about a write binding a scope it
+	// was given. An Entry.Scope also picks the hash-chain partition, so a
+	// caller who assembled the wrong one would not mislabel a row — they would
+	// append to another tenant's chain, and a chain is the one structure in
+	// this module whose whole value is that it cannot be appended to
+	// incorrectly. An entry that names no scope adopts this one; an entry whose
+	// scope disagrees with it is ErrScopeMismatch rather than either value
+	// quietly winning.
+	Record(ctx context.Context, q database.Tx, scope tenancy.Scope, entries ...*Entry) error
 }
 
 var _ Recorder = (*ChainRecorder)(nil)
@@ -148,15 +160,38 @@ func NewRecorder(d dialect.Dialect, opts ...RecorderOption) (*ChainRecorder, err
 	return r, nil
 }
 
-// Record appends entries inside the caller's transaction.
-func (r *ChainRecorder) Record(ctx context.Context, q database.Tx, entries ...*Entry) error {
-	ctx, op := r.o11y.Begin(ctx)
+// Record appends entries to one scope's chain, inside the caller's transaction.
+//
+// One call writes into one chain. The variadic form is a batch of entries for
+// the transaction's own tenant — several resources touched by one request — and
+// deliberately not a batch across tenants: that shape existed only because the
+// scope was read off each entry, and nothing in this module needs it, since a
+// transaction spans one tenant's work. If machinery ever does, it comes back
+// named for what it does rather than available by accident to every caller who
+// passes a slice.
+func (r *ChainRecorder) Record(
+	ctx context.Context,
+	q database.Tx,
+	scope tenancy.Scope,
+	entries ...*Entry,
+) error {
+	ctx, op := r.o11y.Begin(ctx, observability.WithValue(scopeKey, scope.String()))
 	defer op.End()
 
 	if q == nil {
 		r.recordErrCounter.Add(ctx, 1)
 
 		return op.Error(ErrNilExecutor, "recording audit entries")
+	}
+
+	// Checked before the empty-batch shortcut, because a scope nobody named is
+	// a caller mistake whether or not they also passed entries — and a call
+	// that reported success for one would report it again once the batch was
+	// not empty.
+	if err := scope.Validate(); err != nil {
+		r.recordErrCounter.Add(ctx, 1)
+
+		return op.Error(err, "recording audit entries")
 	}
 
 	if len(entries) == 0 {
@@ -167,31 +202,29 @@ func (r *ChainRecorder) Record(ctx context.Context, q database.Tx, entries ...*E
 
 	op.Set(entryCountKey, len(entries))
 
-	// Validated up front, before anything is written, so a bad entry in the
-	// middle of a batch cannot leave the earlier ones recorded and the chain
-	// advanced past them.
+	// Validated and settled up front, before anything is written, so a bad
+	// entry in the middle of a batch cannot leave the earlier ones recorded and
+	// the chain advanced past them.
 	for _, entry := range entries {
 		if err := entry.validate(); err != nil {
 			r.recordErrCounter.Add(ctx, 1)
 
 			return op.Error(err, "validating audit entries")
 		}
-	}
 
-	// Grouped by scope while preserving the order within each, because the
-	// chain is per scope: two entries in different scopes are unrelated
-	// positions and must not be chained to one another.
-	scopes, byScope := groupByScope(entries)
-	op.Set(scopeCountKey, len(scopes))
+		if err := adoptScope(scope, entry); err != nil {
+			r.recordErrCounter.Add(ctx, 1)
+
+			return op.Error(err, "validating audit entries")
+		}
+	}
 
 	now := r.clock.Now().UTC().Truncate(r.precision)
 
-	for _, scope := range scopes {
-		if err := r.recordScope(ctx, q, scope, byScope[scope], now); err != nil {
-			r.recordErrCounter.Add(ctx, 1)
+	if err := r.recordScope(ctx, q, scope, entries, now); err != nil {
+		r.recordErrCounter.Add(ctx, 1)
 
-			return op.Error(err, "recording audit entries for scope %s", scope)
-		}
+		return op.Error(err, "recording audit entries for scope %s", scope)
 	}
 
 	// Counted after the statements succeed, but the caller's transaction can
@@ -373,22 +406,30 @@ func (r *ChainRecorder) readChainHead(ctx context.Context, q database.SQLQueryEx
 	return &chainState{headHash: row.HeadHash, headSeq: row.HeadSeq}, nil
 }
 
-// groupByScope buckets entries by scope, returning the scopes in the order they
-// were first seen so that Record's behavior does not depend on map iteration.
-// Entries have already been validated, so none is nil.
+// adoptScope settles which chain an entry is appended to, and writes the answer
+// onto the entry — which is the caller's own value, the way every other field
+// Record assigns is.
 //
-// A tenancy.Scope is a comparable struct, so it keys the map directly rather
-// than through the identifier it names — which is what keeps the bucketing on
-// the value the chain is partitioned by.
-func groupByScope(entries []*Entry) (scopes []tenancy.Scope, byScope map[tenancy.Scope][]*Entry) {
-	byScope = make(map[tenancy.Scope][]*Entry, 1)
-
-	for _, entry := range entries {
-		if _, seen := byScope[entry.Scope]; !seen {
-			scopes = append(scopes, entry.Scope)
-		}
-		byScope[entry.Scope] = append(byScope[entry.Scope], entry)
+// The scope the call named is what the statements bind, so an entry that names
+// a different one is refused rather than corrected: the two disagreeing is a
+// caller holding one tenant's entry and recording it into another, which is a
+// stale value or a mix-up and is not a thing to guess at. Here the cost of
+// guessing is higher than it is anywhere else in this module, because the scope
+// is the chain's partition as well as the row's label — a silent correction
+// would move the entry into a different chain, and a silent adoption of the
+// entry's own value would append to one the caller never named.
+//
+// An entry that names none adopts the argument. tenancy.Scope tells the zero
+// value apart from Global(), so "unset" here is genuinely unset rather than the
+// global scope spelled shortly — which is the same distinction Entry.Scope's
+// own validation rests on.
+func adoptScope(scope tenancy.Scope, entry *Entry) error {
+	if entry.Scope != (tenancy.Scope{}) && entry.Scope != scope {
+		return platformerrors.Wrapf(ErrScopeMismatch,
+			"audit entry names %q, the write names %q", entry.Scope, scope)
 	}
 
-	return scopes, byScope
+	entry.Scope = scope
+
+	return nil
 }

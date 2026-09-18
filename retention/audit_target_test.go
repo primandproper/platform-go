@@ -37,11 +37,20 @@ func auditEntry(scope tenancy.Scope, resourceID string) *audit.Entry {
 
 // recordAuditEntries writes entries through a Recorder inside a transaction,
 // the way a caller would.
-func recordAuditEntries(t *testing.T, client database.Client, recorder audit.Recorder, entries ...*audit.Entry) {
+//
+// Record appends into the chain its scope argument names, so the fixture takes
+// the scope and every entry it is handed belongs to it.
+func recordAuditEntries(
+	t *testing.T,
+	client database.Client,
+	recorder audit.Recorder,
+	scope tenancy.Scope,
+	entries ...*audit.Entry,
+) {
 	t.Helper()
 
 	must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
-		return recorder.Record(t.Context(), q, entries...)
+		return recorder.Record(t.Context(), q, scope, entries...)
 	}))
 }
 
@@ -95,12 +104,13 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 
 		sweeper, c, recorder, client := newAuditSweeper(t, nil)
 
-		recordAuditEntries(t, client, recorder,
-			auditEntry(tenancy.Of("acct_1"), "r1"), auditEntry(tenancy.Of("acct_1"), "r2"), auditEntry(tenancy.Of("acct_2"), "r1"))
+		recordAuditEntries(t, client, recorder, tenancy.Of("acct_1"),
+			auditEntry(tenancy.Of("acct_1"), "r1"), auditEntry(tenancy.Of("acct_1"), "r2"))
+		recordAuditEntries(t, client, recorder, tenancy.Of("acct_2"), auditEntry(tenancy.Of("acct_2"), "r1"))
 
 		c.advance(48 * time.Hour)
 		survivor := auditEntry(tenancy.Of("acct_1"), "r3")
-		recordAuditEntries(t, client, recorder, survivor)
+		recordAuditEntries(t, client, recorder, tenancy.Of("acct_1"), survivor)
 
 		result, err := sweeper.Sweep(t.Context())
 		must.NoError(t, err)
@@ -116,7 +126,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 		reader, err := audit.NewReader(client)
 		must.NoError(t, err)
 
-		verification, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, audit.ChainStart)
+		verification, err := reader.Verify(t.Context(), client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, audit.ChainStart)
 		must.NoError(t, err)
 		test.True(t, verification.Intact())
 		test.EqOp(t, 1, verification.Checked)
@@ -127,7 +137,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 
 		sweeper, c, recorder, client := newAuditSweeper(t, nil)
 
-		recordAuditEntries(t, client, recorder, auditEntry(tenancy.Of("acct_1"), "r1"), auditEntry(tenancy.Of("acct_1"), "r2"))
+		recordAuditEntries(t, client, recorder, tenancy.Of("acct_1"), auditEntry(tenancy.Of("acct_1"), "r1"), auditEntry(tenancy.Of("acct_1"), "r2"))
 		c.advance(48 * time.Hour)
 
 		_, err := sweeper.Sweep(t.Context())
@@ -136,7 +146,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 		reader, err := audit.NewReader(client)
 		must.NoError(t, err)
 
-		entries, err := reader.List(t.Context(),
+		entries, err := reader.List(t.Context(), client.Reader(),
 			&audit.Query{ResourceType: AuditResourceType},
 			filtering.DefaultQueryFilter(),
 		)
@@ -165,7 +175,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 			p.MaxBatches = 1
 		})
 
-		recordAuditEntries(t, client, recorder,
+		recordAuditEntries(t, client, recorder, tenancy.Of("acct_1"),
 			auditEntry(tenancy.Of("acct_1"), "r1"), auditEntry(tenancy.Of("acct_1"), "r2"), auditEntry(tenancy.Of("acct_1"), "r3"))
 		c.advance(48 * time.Hour)
 

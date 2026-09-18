@@ -14,6 +14,7 @@ import (
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -32,12 +33,20 @@ func newRecordingAudit() *recordingAudit {
 	r := &recordingAudit{}
 
 	r.RecorderMock = &auditmock.RecorderMock{
-		RecordFunc: func(_ context.Context, _ database.Tx, entries ...*audit.Entry) error {
+		RecordFunc: func(_ context.Context, _ database.Tx, scope tenancy.Scope, entries ...*audit.Entry) error {
 			r.mu.Lock()
 			defer r.mu.Unlock()
 
 			if r.err != nil {
 				return r.err
+			}
+
+			// The scope the write named, written onto the entries the way the
+			// real recorder does, so an assertion about an entry's chain reads
+			// what the call bound rather than what the caller happened to leave
+			// on the struct.
+			for _, entry := range entries {
+				entry.Scope = scope
 			}
 
 			r.entries = append(r.entries, entries...)

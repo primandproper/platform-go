@@ -35,7 +35,7 @@ func TestRedaction(T *testing.T) {
 		}
 		record(t, client, recorder, entry)
 
-		read, err := reader.Get(t.Context(), entry.ID)
+		read, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
 		must.NoError(t, err)
 		must.MapLen(t, 1, read.Changes)
 		test.MapNotContainsKey(t, read.Changes, "passwordHash")
@@ -62,7 +62,7 @@ func TestRedaction(T *testing.T) {
 		}
 		record(t, client, recorder, entry)
 
-		read, err := reader.Get(t.Context(), entry.ID)
+		read, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
 		must.NoError(t, err)
 
 		oldHash, ok := read.Changes["token"].Old.(string)
@@ -92,7 +92,7 @@ func TestRedaction(T *testing.T) {
 		}
 		record(t, client, recorder, entry)
 
-		read, err := reader.Get(t.Context(), entry.ID)
+		read, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
 		must.NoError(t, err)
 		test.Nil(t, read.Changes["token"].Old)
 		test.NotNil(t, read.Changes["token"].New)
@@ -115,7 +115,7 @@ func TestRedaction(T *testing.T) {
 		}
 		record(t, client, recorder, entry)
 
-		read, err := reader.Get(t.Context(), entry.ID)
+		read, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
 		must.NoError(t, err)
 		must.MapLen(t, 1, read.Metadata)
 		test.EqOp(t, "req_1", read.Metadata["requestID"])
@@ -138,7 +138,7 @@ func TestRedaction(T *testing.T) {
 		}
 		record(t, client, recorder, entry)
 
-		read, err := reader.Get(t.Context(), entry.ID)
+		read, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
 		must.NoError(t, err)
 		must.MapLen(t, 2, read.Metadata)
 
@@ -166,7 +166,7 @@ func TestRedaction(T *testing.T) {
 		}
 		record(t, client, recorder, entry)
 
-		read, err := reader.Get(t.Context(), entry.ID)
+		read, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
 		must.NoError(t, err)
 		must.MapLen(t, 1, read.Changes)
 		test.MapContainsKey(t, read.Changes, "name")
@@ -190,7 +190,7 @@ func TestRedaction(T *testing.T) {
 		}
 		record(t, client, recorder, entry)
 
-		read, err := reader.Get(t.Context(), entry.ID)
+		read, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
 		must.NoError(t, err)
 		test.MapEmpty(t, read.Changes)
 	})
@@ -206,7 +206,7 @@ func TestRedaction(T *testing.T) {
 		entry := entryFor(tenancy.Of("acct_1"), "recipe_1")
 		record(t, client, recorder, entry)
 
-		read, err := reader.Get(t.Context(), entry.ID)
+		read, err := reader.Get(t.Context(), client.Reader(), nil, entry.ID)
 		must.NoError(t, err)
 		test.MapContainsKey(t, read.Changes, "name")
 	})
@@ -231,7 +231,7 @@ func TestRedaction(T *testing.T) {
 			},
 		})
 
-		result, err := reader.Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		result, err := reader.Verify(t.Context(), client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		must.NoError(t, err)
 		test.True(t, result.Intact())
 	})

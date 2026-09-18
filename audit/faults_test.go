@@ -97,7 +97,7 @@ func TestRecorder_PropagatesFailures(T *testing.T) {
 		r := newTestRecorder(t, newStubClock())
 
 		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return r.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "recipe_1"))
+			return r.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "recipe_1"))
 		})
 		test.Error(t, err)
 	})
@@ -111,11 +111,11 @@ func TestRecorder_PropagatesFailures(T *testing.T) {
 		r := newTestRecorder(t, newStubClock())
 
 		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return r.Record(t.Context(), q, entryFor(tenancy.Of("acct_1"), "seed"))
+			return r.Record(t.Context(), q, tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "seed"))
 		}))
 
 		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return r.Record(t.Context(), database.NewTxForTesting(&execFailingExecutor{SQLQueryExecutor: q}), entryFor(tenancy.Of("acct_1"), "recipe_1"))
+			return r.Record(t.Context(), database.NewTxForTesting(&execFailingExecutor{SQLQueryExecutor: q}), tenancy.Of("acct_1"), entryFor(tenancy.Of("acct_1"), "recipe_1"))
 		})
 		test.ErrorIs(t, err, errDatabase)
 	})
@@ -132,7 +132,7 @@ func TestRecorder_PropagatesFailures(T *testing.T) {
 		entry.Changes = map[string]Change{"broken": {New: make(chan int)}}
 
 		err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-			return r.Record(t.Context(), q, entry)
+			return r.Record(t.Context(), q, tenancy.Of("acct_1"), entry)
 		})
 		test.Error(t, err)
 
@@ -154,7 +154,7 @@ func TestRecorder_PropagatesFailures(T *testing.T) {
 			entry.Changes = changes
 
 			err := client.WithTransaction(t.Context(), func(q database.Tx) error {
-				return r.Record(t.Context(), q, entry)
+				return r.Record(t.Context(), q, tenancy.Of("acct_1"), entry)
 			})
 			test.Error(t, err)
 		}
@@ -175,33 +175,44 @@ func (*execFailingExecutor) ExecContext(context.Context, string, ...any) (sql.Re
 func TestReader_PropagatesFailures(T *testing.T) {
 	T.Parallel()
 
-	newFailingReader := func(t *testing.T) Reader {
+	// The reader and the executor come from the same closed client: the reader
+	// is built over it for its dialect, and the executor it is handed is the one
+	// whose statements fail.
+	newFailingReader := func(t *testing.T) (Reader, database.SQLQueryExecutor) {
 		t.Helper()
 
-		r, err := NewReader(newFailingClient(t))
+		client := newFailingClient(t)
+
+		r, err := NewReader(client)
 		must.NoError(t, err)
 
-		return r
+		return r, client.Reader()
 	}
 
 	T.Run("Get", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newFailingReader(t).Get(t.Context(), "entry_1")
+		reader, q := newFailingReader(t)
+
+		_, err := reader.Get(t.Context(), q, nil, "entry_1")
 		test.Error(t, err)
 	})
 
 	T.Run("List", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newFailingReader(t).List(t.Context(), nil, filtering.DefaultQueryFilter())
+		reader, q := newFailingReader(t)
+
+		_, err := reader.List(t.Context(), q, nil, filtering.DefaultQueryFilter())
 		test.ErrorIs(t, err, errDatabase)
 	})
 
 	T.Run("Verify", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := newFailingReader(t).Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		reader, q := newFailingReader(t)
+
+		_, err := reader.Verify(t.Context(), q, tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		test.ErrorIs(t, err, errDatabase)
 	})
 
@@ -217,7 +228,7 @@ func TestReader_PropagatesFailures(T *testing.T) {
 		// assumed.
 		exec(t, client, "DROP TABLE "+"audit_log_chains")
 
-		_, err := newTestReader(t, client).Verify(t.Context(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
+		_, err := newTestReader(t, client).Verify(t.Context(), client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, ChainStart)
 		test.Error(t, err)
 	})
 
@@ -244,29 +255,25 @@ func TestReader_PropagatesFailures(T *testing.T) {
 		// does not.
 		remaining := 1
 
-		reader, err := NewReader(&rowFailingClient{Client: client, remaining: &remaining})
+		reader, err := NewReader(client)
 		must.NoError(t, err)
 
-		_, err = reader.Verify(t.Context(), tenancy.Of("acct_1"), second.RecordedAt.Add(-time.Second), time.Time{}, ChainStart)
+		_, err = reader.Verify(t.Context(),
+			&rowFailingExecutor{SQLQueryExecutor: client.Reader(), remaining: &remaining},
+			tenancy.Of("acct_1"), second.RecordedAt.Add(-time.Second), time.Time{}, ChainStart)
 		test.Error(t, err)
 	})
 }
 
-// rowFailingClient serves the first failAfter single-row reads normally and
+// rowFailingExecutor serves the first `remaining` single-row reads normally and
 // breaks every one after that.
 //
-// The counter lives on the client rather than the executor because Reader() is
-// called once per statement, so per-executor state would reset before it ever
-// reached zero.
-type rowFailingClient struct {
-	database.Client
-	remaining *int
-}
-
-func (c *rowFailingClient) Reader() database.SQLQueryExecutor {
-	return &rowFailingExecutor{SQLQueryExecutor: c.Client.Reader(), remaining: c.remaining}
-}
-
+// It is handed straight to the read under test, which is what makes the counter
+// mean anything: one Verify runs every one of its statements on the executor it
+// was given, so state kept here survives from the chain read to the anchor
+// lookup after it. It used to have to wrap a database.Client for that, because
+// a reader that called Reader() per statement reset any per-executor state
+// before it reached zero.
 type rowFailingExecutor struct {
 	database.SQLQueryExecutor
 	remaining *int
@@ -298,14 +305,14 @@ func TestRows_ReportUndecodableBlobs(T *testing.T) {
 		exec(t, client,
 			"UPDATE audit_log_entries SET change_set = ? WHERE id = ?", []byte("not json"), entry.ID)
 
-		_, err := newTestReader(t, client).Get(t.Context(), entry.ID)
+		_, err := newTestReader(t, client).Get(t.Context(), client.Reader(), nil, entry.ID)
 		test.Error(t, err)
 
 		exec(t, client,
 			"UPDATE audit_log_entries SET change_set = NULL, metadata = ? WHERE id = ?",
 			[]byte("not json"), entry.ID)
 
-		_, err = newTestReader(t, client).List(t.Context(), nil, nil)
+		_, err = newTestReader(t, client).List(t.Context(), client.Reader(), nil, nil)
 		test.Error(t, err)
 	})
 }

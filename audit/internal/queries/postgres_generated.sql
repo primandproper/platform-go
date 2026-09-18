@@ -91,7 +91,8 @@ SELECT
 	audit_log_entries.prev_hash,
 	audit_log_entries.hash
 FROM audit_log_entries
-WHERE audit_log_entries.id = sqlc.arg(id);
+WHERE audit_log_entries.id = sqlc.arg(id)
+	AND (sqlc.narg(scope_filter)::text IS NULL OR audit_log_entries.scope = sqlc.narg(scope_filter));
 
 -- name: GetAuditLogEntryBySeq :one
 SELECT

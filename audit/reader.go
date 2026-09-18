@@ -266,34 +266,59 @@ func (r *VerificationResult) Intact() bool {
 
 // Reader reads the audit log.
 //
-// It is a separate interface from Recorder because the two have genuinely
-// different dependencies: writing takes the caller's executor and holds no
-// database handle at all, while reading owns its own and runs against the read
-// replica.
+// It is a separate interface from Recorder because the two answer different
+// questions of the same tables — one appends into a chain, three read it back —
+// and not because they take different dependencies. Every method here takes the
+// caller's executor, exactly as Record takes the caller's transaction, so a
+// caller who recorded an entry inside a transaction can read it back inside the
+// same one. That is the module's read shape and audit used to be its one
+// exception: the reads bound the reader's own Reader() handle, which is a
+// connection that cannot see the row the caller just wrote.
+//
+// The wider type is deliberate. A database.Tx satisfies
+// database.SQLQueryExecutor, so one method serves both an operator console
+// holding Client.Reader() and a recorder's caller still inside their
+// transaction, and the second sees that transaction's uncommitted entries.
 type Reader interface {
-	// Get returns one entry by ID. It returns an error wrapping ErrEntryNotFound
-	// when there is no such entry.
-	Get(ctx context.Context, id string) (*Entry, error)
-	// List pages through the entries matching q.
-	List(ctx context.Context, q *Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Entry], error)
+	// Get returns one entry by ID, optionally confined to a scope. It returns
+	// an error wrapping ErrEntryNotFound when there is no such entry in that
+	// scope.
+	//
+	// The scope is a *tenancy.Scope carrying Query.Scope's three readings, for
+	// Query.Scope's reason: nil narrows nothing, which is the operator
+	// console's read; a scope names one chain, and tenancy.Global names the one
+	// platform-level events are recorded in; and a non-nil pointer at the zero
+	// Scope is a caller whose own lookup came back empty, refused with
+	// tenancy.ErrNoScope rather than widened to every tenant.
+	Get(ctx context.Context, q database.SQLQueryExecutor, scope *tenancy.Scope, id string) (*Entry, error)
+	// List pages through the entries matching query.
+	List(ctx context.Context, q database.SQLQueryExecutor, query *Query, filter *filtering.QueryFilter) (*filtering.QueryFilteredResult[Entry], error)
 	// Verify walks one scope's hash chain over a time range, from afterSeq
 	// onwards, and reports the first break or that there was none.
 	//
 	// The scope is a tenancy.Scope rather than the string it names, so a call
 	// that lost its scope fails to compile rather than walking the global
-	// chain. Pass ChainStart as afterSeq to walk from the beginning of the
-	// range, or a previous result's LastSeq to continue it. See the method on
-	// SQLReader for what an unset scope does and for what bounds one call.
-	Verify(ctx context.Context, scope tenancy.Scope, from, to time.Time, afterSeq int64) (*VerificationResult, error)
+	// chain. It is not the *tenancy.Scope Get takes, because a verification
+	// walks one chain: "every tenant" is not a chain, and the third reading has
+	// nothing to mean here. Pass ChainStart as afterSeq to walk from the
+	// beginning of the range, or a previous result's LastSeq to continue it.
+	// See the method on SQLReader for what an unset scope does and for what
+	// bounds one call.
+	Verify(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, from, to time.Time, afterSeq int64) (*VerificationResult, error)
 }
 
 var _ Reader = (*SQLReader)(nil)
 
 // SQLReader is the SQL Reader. It is exported, and returned by NewReader, so a
 // caller can depend on the reader it built rather than on the Reader seam.
+//
+// It holds no database.Client. The one NewReader takes is read for its dialect,
+// which is what instantiates the querier below, and then dropped — every read
+// runs on the executor its caller supplies, so there is no statement this
+// reader issues on a connection of its own. See the Reader interface for why
+// that is the whole point rather than a detail.
 type SQLReader struct {
-	client database.Client
-	o11y   observability.Observer
+	o11y observability.Observer
 
 	// q is the generated querier, instantiated for the client's dialect at the
 	// configured prefix. It takes the executor per call, so a read against the
@@ -319,8 +344,13 @@ type SQLReader struct {
 	verificationCeiling  int64
 }
 
-// NewReader builds a Reader over the database holding the audit tables. The
-// dialect comes from the client, so the two cannot disagree.
+// NewReader builds a Reader over the audit tables. The dialect comes from the
+// client, so the two cannot disagree.
+//
+// The client is taken for its dialect and for nothing else, and the reader
+// keeps no reference to it: every read is handed an executor, so there is no
+// Reader() call left in this file and no read that runs outside the caller's
+// own transaction when they are in one.
 func NewReader(client database.Client, opts ...ReaderOption) (*SQLReader, error) {
 	if client == nil {
 		return nil, ErrNilDatabaseClient
@@ -332,7 +362,6 @@ func NewReader(client database.Client, opts ...ReaderOption) (*SQLReader, error)
 	}
 
 	r := &SQLReader{
-		client:               client,
 		prefix:               DefaultTablePrefix,
 		verificationPageSize: DefaultVerificationPageSize,
 		verificationCeiling:  DefaultVerificationCeiling,
@@ -372,16 +401,63 @@ func NewReader(client database.Client, opts ...ReaderOption) (*SQLReader, error)
 	return r, nil
 }
 
-// Get returns one entry.
-func (r *SQLReader) Get(ctx context.Context, id string) (*Entry, error) {
+// Get returns one entry, optionally confined to a scope.
+//
+// # The scope, and its three readings
+//
+// It is a *tenancy.Scope and it carries exactly what Query.Scope carries, for
+// the same reason. Nil narrows nothing and answers across every tenant, which
+// is the operator console's read and the one a request-scoped caller must never
+// make. A scope confines the read to one chain, and tenancy.Global is a scope
+// like any other — the chain platform-level events are recorded in. A non-nil
+// pointer at the zero Scope is neither of those: it is a caller whose own
+// lookup came back empty, and it is refused with tenancy.ErrNoScope rather than
+// widened into the read that answers everything.
+//
+// A plain tenancy.Scope would collapse the first reading into the second, since
+// Scope tells the global scope from an undecided one and tells neither from "do
+// not narrow at all" — and in a multi-tenant read path that distinction is a
+// cross-tenant disclosure rather than a wrong answer.
+//
+// An entry that exists but sits outside a named scope is ErrEntryNotFound, the
+// same answer an id that was never written gets. Telling the two apart would
+// make this method an oracle for which entry ids exist in another tenant's log,
+// which is the one thing an audit log must not become — so it is answered here,
+// on the method every caller reaches, rather than by each surface comparing the
+// scope back after an unconfined read.
+func (r *SQLReader) Get(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope *tenancy.Scope,
+	id string,
+) (*Entry, error) {
 	ctx, op := r.o11y.Begin(ctx, observability.WithValue(entryIDKey, id))
 	defer op.End()
+
+	if q == nil {
+		return nil, op.Error(ErrNilExecutor, "getting audit entry")
+	}
 
 	if id == "" {
 		return nil, op.Error(platformerrors.ErrInvalidIDProvided, "getting audit entry")
 	}
 
-	row, err := r.q.GetAuditLogEntry(ctx, r.client.Reader(), auditdb.GetAuditLogEntryParams{ID: id})
+	// Attached before it is checked, so a read that named a scope it had lost
+	// is refused with the scope it asked for legible in the trace. The prose
+	// spelling is deliberate: "<global>" reads as a decision where the empty
+	// identifier reads as a field nobody filled in.
+	if scope != nil {
+		op.Set(scopeKey, scope.String())
+
+		if err := scope.Validate(); err != nil {
+			return nil, op.Error(err, "getting audit entry")
+		}
+	}
+
+	row, err := r.q.GetAuditLogEntry(ctx, q, auditdb.GetAuditLogEntryParams{
+		ID:          id,
+		ScopeFilter: scopeFilter(scope),
+	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, op.Error(platformerrors.Wrapf(ErrEntryNotFound, "audit entry %q", id), "getting audit entry")
@@ -401,29 +477,34 @@ func (r *SQLReader) Get(ctx context.Context, id string) (*Entry, error) {
 // List pages through matching entries, newest first when the filter says so.
 func (r *SQLReader) List(
 	ctx context.Context,
-	q *Query,
+	q database.SQLQueryExecutor,
+	query *Query,
 	filter *filtering.QueryFilter,
 ) (*filtering.QueryFilteredResult[Entry], error) {
 	ctx, op := r.o11y.Begin(ctx)
 	defer op.End()
+
+	if q == nil {
+		return nil, op.Error(ErrNilExecutor, "listing audit entries")
+	}
 
 	if filter == nil {
 		filter = filtering.DefaultQueryFilter()
 	}
 
 	tracing.AttachQueryFilterToSpan(op.Span(), filter)
-	q.attachTo(op)
+	query.attachTo(op)
 
 	// Checked after the query is on the span and before anything is bound, so a
 	// read that named a scope it had lost is refused with the query it asked
 	// legible in the trace.
-	if err := q.validate(); err != nil {
+	if err := query.validate(); err != nil {
 		return nil, op.Error(err, "listing audit entries")
 	}
 
 	filter = pageFilter(filter)
 
-	rows, err := r.listRows(ctx, q, filter)
+	rows, err := r.listRows(ctx, q, query, filter)
 	if err != nil {
 		return nil, op.Error(err, "listing audit entries")
 	}
@@ -440,8 +521,13 @@ func (r *SQLReader) List(
 }
 
 // listRows runs whichever direction the filter asks for and converts the page.
-func (r *SQLReader) listRows(ctx context.Context, q *Query, filter *filtering.QueryFilter) ([]pageRow, error) {
-	narrowings := q.selectors()
+func (r *SQLReader) listRows(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	query *Query,
+	filter *filtering.QueryFilter,
+) ([]pageRow, error) {
+	narrowings := query.selectors()
 
 	params := auditdb.ListAuditLogEntriesParams{
 		ScopeFilter:        narrowings.scope,
@@ -463,10 +549,10 @@ func (r *SQLReader) listRows(ctx context.Context, q *Query, filter *filtering.Qu
 
 	got, err := sortedRows(filter,
 		func() ([]auditdb.ListAuditLogEntriesRow, error) {
-			return r.q.ListAuditLogEntries(ctx, r.client.Reader(), params)
+			return r.q.ListAuditLogEntries(ctx, q, params)
 		},
 		func() ([]auditdb.ListAuditLogEntriesDescendingRow, error) {
-			return r.q.ListAuditLogEntriesDescending(ctx, r.client.Reader(),
+			return r.q.ListAuditLogEntriesDescending(ctx, q,
 				auditdb.ListAuditLogEntriesDescendingParams(params))
 		},
 		func(row auditdb.ListAuditLogEntriesDescendingRow) auditdb.ListAuditLogEntriesRow {
@@ -555,6 +641,7 @@ func pageFilter(filter *filtering.QueryFilter) *filtering.QueryFilter {
 // which is what an entry recorded for no tenant records into.
 func (r *SQLReader) Verify(
 	ctx context.Context,
+	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
 	from, to time.Time,
 	afterSeq int64,
@@ -563,6 +650,10 @@ func (r *SQLReader) Verify(
 		observability.WithValue(scopeKey, scope.String()),
 		observability.WithValue(afterSeqKey, afterSeq))
 	defer op.End()
+
+	if q == nil {
+		return nil, op.Error(ErrNilExecutor, "verifying an audit chain")
+	}
 
 	if err := scope.Validate(); err != nil {
 		return nil, op.Error(err, "verifying an audit chain")
@@ -579,7 +670,7 @@ func (r *SQLReader) Verify(
 			break
 		}
 
-		stored, err := r.chainPage(ctx, scope, from, to, walk.lastSeq, size)
+		stored, err := r.chainPage(ctx, q, scope, from, to, walk.lastSeq, size)
 		if err != nil {
 			return nil, op.Error(err, "reading audit chain for scope %s", scope)
 		}
@@ -595,7 +686,7 @@ func (r *SQLReader) Verify(
 		// range, and every page after the first is anchored by the page before
 		// it.
 		if !walk.anchored {
-			anchor, anchorErr := r.anchorFor(ctx, scope, stored[0].entry.Seq)
+			anchor, anchorErr := r.anchorFor(ctx, q, scope, stored[0].entry.Seq)
 			if anchorErr != nil {
 				return nil, op.Error(anchorErr, "anchoring audit chain for scope %s", scope)
 			}
@@ -667,11 +758,12 @@ func (r *SQLReader) verificationPage(checked int64) int64 {
 // the form the walk hashes over.
 func (r *SQLReader) chainPage(
 	ctx context.Context,
+	q database.SQLQueryExecutor,
 	scope tenancy.Scope,
 	from, to time.Time,
 	afterSeq, size int64,
 ) ([]storedEntry, error) {
-	rows, err := r.q.ListAuditChainEntries(ctx, r.client.Reader(), auditdb.ListAuditChainEntriesParams{
+	rows, err := r.q.ListAuditChainEntries(ctx, q, auditdb.ListAuditChainEntriesParams{
 		Scope:          scope,
 		RecordedAfter:  boundOrNil(from),
 		RecordedBefore: boundOrNil(to),
@@ -711,8 +803,13 @@ type anchorState struct {
 // and any other range starts mid-chain and links to the entry before it. If
 // that entry is simply absent, the chain has a hole retention did not make,
 // which is a deletion and is reported as one.
-func (r *SQLReader) anchorFor(ctx context.Context, scope tenancy.Scope, firstSeq int64) (*anchorState, error) {
-	prunedThroughSeq, prunedThroughHash, err := r.prunedThrough(ctx, scope)
+func (r *SQLReader) anchorFor(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	firstSeq int64,
+) (*anchorState, error) {
+	prunedThroughSeq, prunedThroughHash, err := r.prunedThrough(ctx, q, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -721,7 +818,7 @@ func (r *SQLReader) anchorFor(ctx context.Context, scope tenancy.Scope, firstSeq
 		return &anchorState{prevHash: prunedThroughHash, known: true}, nil
 	}
 
-	row, err := r.q.GetAuditLogEntryBySeq(ctx, r.client.Reader(),
+	row, err := r.q.GetAuditLogEntryBySeq(ctx, q,
 		auditdb.GetAuditLogEntryBySeqParams{Scope: scope, Seq: firstSeq - 1})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -741,11 +838,15 @@ func (r *SQLReader) anchorFor(ctx context.Context, scope tenancy.Scope, firstSeq
 
 // prunedThrough reads how far retention has pruned a scope. A scope with no
 // chain row has never been written to, and so has never been pruned either.
-func (r *SQLReader) prunedThrough(ctx context.Context, scope tenancy.Scope) (seq int64, hash string, err error) {
+func (r *SQLReader) prunedThrough(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+) (seq int64, hash string, err error) {
 	// The unlocked read, where the recorder takes the locked one. A verifier
 	// holds nothing: it is reading what a chain has already committed, and a
 	// row lock here would make a report block a write.
-	row, err := r.q.GetAuditChain(ctx, r.client.Reader(), auditdb.GetAuditChainParams{Scope: scope})
+	row, err := r.q.GetAuditChain(ctx, q, auditdb.GetAuditChainParams{Scope: scope})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return -1, "", nil

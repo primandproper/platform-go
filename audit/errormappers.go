@@ -22,11 +22,20 @@ import (
 // side effect a consumer cannot opt out of. The composition root registers the
 // domain tier, and for this module that is one call — errormappers.Register.
 //
-// # Why one sentinel is claimed and eleven are not
+// # Why two sentinels are claimed and eleven are not
 //
-// This package's surface is three reads, and the reader is the only half of it
-// a client can reach. Of everything it can raise, exactly one is a fact about
-// the request rather than about the process serving it: the entry is not there.
+// The reader is the only half of this package a client can reach, and of
+// everything it can raise exactly one is a fact about the request rather than
+// about the process serving it: the entry is not there.
+//
+// ErrScopeMismatch is the second, and it is claimed although Record is
+// deliberately not on the wire. A consumer's own handler is where it surfaces —
+// a request carrying a tenant, an entry assembled from a body that named a
+// different one — and that is a request to fix rather than a process to fix, so
+// it is a 400 wherever a consumer hands it to a transport. Mapping it costs one
+// comparison in a process that never produces it; not mapping it costs a 500
+// for the one client mistake this package can name. comments.ErrScopeMismatch
+// reads the identical case the identical way.
 //
 // The rest divide in two. The nil-argument sentinels wrap
 // errors.ErrNilInputParameter and the platform mappers already answer them, so
@@ -60,10 +69,11 @@ var (
 
 // There is no ClientSafeSentinels here, unlike links, identity, signin and
 // oauth2clients. That list exists where several refusals share one code and the
-// message is the only thing that tells them apart. One mapped sentinel cannot
-// collide with anything, and "NotFound" is the whole of what this service has
-// to say about an entry it will not describe — deliberately, since the
-// alternative wordings would all distinguish "no such entry" from "not yours".
+// message is the only thing that tells them apart. These two do not share one:
+// "NotFound" is the whole of what this service has to say about an entry it
+// will not describe — deliberately, since the alternative wordings would all
+// distinguish "no such entry" from "not yours" — and a scope mismatch is the
+// only thing this package answers InvalidArgument to.
 
 type (
 	httpMapper struct{}
@@ -82,6 +92,14 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// for, and it is not a thing to tell a client by varying a status.
 	case errors.Is(err, ErrEntryNotFound):
 		return httperrors.ErrDataNotFound, "audit entry not found", true
+
+	// The entry named one tenant and the write named another. A consumer's
+	// handler is the only place that can happen, and there it is a request to
+	// correct rather than a state to wait on — the message says which half is
+	// wrong without repeating either scope back to a caller who may not be
+	// entitled to one of them.
+	case errors.Is(err, ErrScopeMismatch):
+		return httperrors.ErrValidatingRequestInput, "the audit entry does not belong to that scope", true
 	default:
 		return httperrors.ErrNothingSpecific, "", false
 	}
@@ -95,6 +113,11 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	switch {
 	case errors.Is(err, ErrEntryNotFound):
 		return codes.NotFound, true
+
+	// InvalidArgument rather than FailedPrecondition: the remedy is a different
+	// request, not a change to the system's state that makes this one succeed.
+	case errors.Is(err, ErrScopeMismatch):
+		return codes.InvalidArgument, true
 	default:
 		return codes.Unknown, false
 	}

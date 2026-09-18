@@ -593,7 +593,7 @@ func (s *StoreService) record(
 		return nil
 	}
 
-	return s.recorder.Record(ctx, q, s.entryFor(ctx, req, event, metadata))
+	return s.recorder.Record(ctx, q, auditScope(req.Scope), s.entryFor(ctx, req, event, metadata))
 }
 
 // recordOutOfBand appends an audit entry in a transaction of its own, for the
@@ -604,7 +604,7 @@ func (s *StoreService) recordOutOfBand(ctx context.Context, req *Request, event 
 	}
 
 	return s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.recorder.Record(ctx, tx, s.entryFor(ctx, req, event, metadata))
+		return s.recorder.Record(ctx, tx, auditScope(req.Scope), s.entryFor(ctx, req, event, metadata))
 	})
 }
 
@@ -627,7 +627,6 @@ func (s *StoreService) entryFor(ctx context.Context, req *Request, event audit.E
 		ResourceType: auditResourceType,
 		ResourceID:   req.ID,
 		Actor:        s.actor(ctx),
-		Scope:        auditScope(req.Scope),
 		Metadata:     fields,
 		RecordedAt:   s.clock.Now().UTC(),
 	}
