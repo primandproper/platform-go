@@ -162,6 +162,43 @@ func TestTable_buildDelete(T *testing.T) {
 		}
 	})
 
+	T.Run("every arm filters and orders on Column alone", func(t *testing.T) {
+		t.Parallel()
+
+		// This is what makes the index the type's documentation names the right
+		// one: an index leading on Column serves the predicate and the ordering
+		// in one range scan, and it serves them for exactly as long as no other
+		// column is in either. A second column grown into the WHERE or the ORDER
+		// BY would leave that sentence true of nothing and the regression
+		// invisible — the sweep returns the same counts either way and differs
+		// only in what it cost.
+		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
+			query, _ := Table{Name: "widgets", Column: "created_at", KeyColumn: "widget_id"}.
+				buildDelete(d, cutoff, 10)
+
+			test.EqOp(t, 1, strings.Count(query, "WHERE created_at <= "), test.Sprintf("dialect %q: %s", d, query))
+			test.EqOp(t, 1, strings.Count(query, "ORDER BY created_at "), test.Sprintf("dialect %q: %s", d, query))
+			test.EqOp(t, 1, strings.Count(query, "ORDER BY "), test.Sprintf("dialect %q: %s", d, query))
+			test.StrNotContains(t, query, "expires_at", test.Sprintf("dialect %q", d))
+		}
+	})
+
+	T.Run("only the arms that bound a read name the key column", func(t *testing.T) {
+		t.Parallel()
+
+		// The key column's uniqueness obligation is carried by the two dialects
+		// that render an IN against it, and by neither of them on MySQL. Which
+		// is why the obligation is documented as a requirement on the schema
+		// rather than discovered on the second dialect somebody deploys to.
+		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
+			query, _ := Table{Name: "widgets", Column: "created_at", KeyColumn: "widget_id"}.
+				buildDelete(d, cutoff, 10)
+
+			test.EqOp(t, d.SupportsWriteLimit(), !strings.Contains(query, "widget_id"),
+				test.Sprintf("dialect %q: %s", d, query))
+		}
+	})
+
 	T.Run("the cutoff is bound as UTC", func(t *testing.T) {
 		t.Parallel()
 
@@ -231,6 +268,42 @@ func TestTable_Sweep(T *testing.T) {
 		must.NoError(t, err)
 		test.EqOp(t, int64(0), removed)
 		test.EqOp(t, int64(1), countWidgets(t, client))
+	})
+
+	T.Run("a key column with duplicates deletes rows the batch did not choose", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+
+		_, err := client.Writer().ExecContext(t.Context(),
+			"CREATE TABLE gadgets (id TEXT PRIMARY KEY, owner TEXT NOT NULL, created_at DATETIME NOT NULL)")
+		must.NoError(t, err)
+
+		for _, row := range []struct {
+			at    time.Time
+			id    string
+			owner string
+		}{
+			{id: "old", owner: "alice", at: baseTime.Add(-time.Hour)},
+			{id: "new", owner: "alice", at: baseTime.Add(time.Hour)},
+		} {
+			_, insertErr := client.Writer().ExecContext(t.Context(),
+				"INSERT INTO gadgets (id, owner, created_at) VALUES (?, ?, ?)", row.id, row.owner, row.at.UTC())
+			must.NoError(t, insertErr)
+		}
+
+		removed, err := Table{Name: "gadgets", Column: "created_at", KeyColumn: "owner"}.
+			Sweep(t.Context(), database.NewTxForTesting(client.Writer()), dialect.SQLite, baseTime, 1)
+		must.NoError(t, err)
+
+		// A batch of one selected one row and the DELETE removed two, the
+		// second of them an hour on the safe side of the cutoff. That is the
+		// schema obligation KeyColumn documents, demonstrated rather than
+		// asserted about: the bound is on the read, and the write is only as
+		// bounded as the key is unique. Nothing in the statement can notice,
+		// which is why it is a requirement rather than advice.
+		test.EqOp(t, int64(2), removed)
+		test.EqOp(t, int64(0), countGadgets(t, client))
 	})
 
 	T.Run("reports the error from a table that does not exist", func(t *testing.T) {

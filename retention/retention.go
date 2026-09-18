@@ -174,6 +174,24 @@ type Policy struct {
 	// why zero is permitted here, and why it is worth being sure which of the
 	// two a given policy means. A zero Age against a created_at deletes the
 	// table.
+	//
+	// The cutoff it produces is two clocks rather than one. Age is subtracted
+	// from the Sweeper's clock — clock.NewClock unless WithSweeperClock was
+	// handed another — and the result is compared against a column somebody
+	// else stamped: a DEFAULT CURRENT_TIMESTAMP the server wrote, or another
+	// process reading database.Client.CurrentTime. Ordinary skew between the
+	// two is bounded by the window, which is the same reading a bound retention
+	// horizon carries everywhere else in the module: a cutoff a second early
+	// deletes a row a second early, against an Age measured in days. Running
+	// behind the stamping clock keeps rows past their age; running ahead
+	// deletes them before it is up.
+	//
+	// So an Age measured in seconds against a column another clock stamped is a
+	// policy whose behavior is the skew, and the answer is a longer Age rather
+	// than a better clock. The extreme case is a test: a clock parked at a
+	// fixed instant does not drift from the server's, it is simply years away
+	// from it, so fixture rows have to be stamped from the same clock the
+	// sweeper was given.
 	Age time.Duration
 
 	// BatchSize caps how many rows one batch removes. Zero takes the Sweeper's
