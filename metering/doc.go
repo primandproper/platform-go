@@ -42,6 +42,17 @@ times for different reasons.
 	    return err
 	}
 
+A meter that is counted and capped by nothing says so, rather than going without
+a quota:
+
+	if err := registry.RegisterUnlimitedQuota("llm_tokens"); err != nil {
+	    return err
+	}
+
+Skipping it is ErrNoQuota on every Check, because unmetered and unlimited are
+different facts — see below, and metering.Unlimited. UnlimitedQuota is the same
+quota as a value, for a QuotaSource assembling one per subject.
+
 Then three components over one Store, each wanted by a different process:
 
 A Recorder ingests usage. It is the write path, says nothing about limits, and is
@@ -288,7 +299,8 @@ order they resolve in:
 
 and the three-way distinction that order depends on. Unlimited is
 metering.Unlimited paired with BehaviorAllowOverage — a limit nobody reaches, not
-a value the enforcer special-cases. Unmetered is a meter with no quota at all,
+a value the enforcer special-cases — which is what UnlimitedQuota and
+Registry.RegisterUnlimitedQuota spell. Unmetered is a meter with no quota at all,
 which is ErrNoQuota and not a synonym for unlimited. Zero is no usage allowed,
 which is a real configuration for a feature switched off on a tier. Getting the
 three confused is either a customer blocked who should not be or a limit that

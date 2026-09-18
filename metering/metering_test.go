@@ -2,6 +2,7 @@ package metering
 
 import (
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -271,6 +272,47 @@ func TestQuota_validate(T *testing.T) {
 		q.Period = PeriodDay
 
 		test.ErrorIs(t, q.validate(meter), ErrPeriodMismatch)
+	})
+}
+
+func TestUnlimitedQuota(T *testing.T) {
+	T.Parallel()
+
+	T.Run("spells the whole quota, not just the limit", func(t *testing.T) {
+		t.Parallel()
+
+		q := UnlimitedQuota(testMeter, PeriodMonth)
+
+		test.EqOp(t, testMeter, q.Meter)
+		test.EqOp(t, Unlimited, q.Limit)
+		// The pairing is the half a caller assembles by hand: Unlimited under
+		// BehaviorBlock is a quota that refuses at infinity.
+		test.EqOp(t, BehaviorAllowOverage, q.Behavior)
+		test.EqOp(t, PeriodMonth, q.Period)
+	})
+
+	T.Run("takes the period it is given", func(t *testing.T) {
+		t.Parallel()
+
+		meter := Meter{Name: testMeter, Aggregation: AggregationSum, Period: PeriodDay}
+
+		must.NoError(t, UnlimitedQuota(testMeter, PeriodDay).validate(meter))
+		test.ErrorIs(t, UnlimitedQuota(testMeter, PeriodMonth).validate(meter), ErrPeriodMismatch)
+	})
+
+	T.Run("decides without a limit", func(t *testing.T) {
+		t.Parallel()
+
+		q := UnlimitedQuota(testMeter, PeriodMonth)
+
+		// The arithmetic is the same arithmetic every other quota gets — nothing
+		// special-cases the value — and what comes out of it is an allow with no
+		// overage for a quantity no meter will ever reach.
+		d := newDecision(testMeter, q.Behavior, math.MaxInt64-1, q.Limit, monthBounds.End)
+
+		test.True(t, d.Allowed)
+		test.EqOp(t, int64(0), d.Overage)
+		test.EqOp(t, Unlimited, d.Limit)
 	})
 }
 

@@ -431,6 +431,43 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 		test.ErrorIs(t, err, ErrNoQuota)
 	})
 
+	T.Run("answers an unlimited quota without a limit", func(t *testing.T) {
+		t.Parallel()
+
+		db := newSQLiteEnv(t)
+		store := db.newStore(t)
+
+		registry := NewRegistry()
+		must.NoError(t, registry.RegisterMeter(Meter{
+			Name: testMeter, Aggregation: AggregationSum, Period: PeriodMonth,
+		}))
+		must.NoError(t, registry.RegisterUnlimitedQuota(testMeter))
+
+		enforcer, err := db.newEnforcer(t, &EnforcerConfig{}, store, registry,
+			WithEnforcerClock(newStubClock()))
+		must.NoError(t, err)
+
+		// The alternative this exists to replace: no quota at all, which is
+		// ErrNoQuota on every check rather than a decision anybody made.
+		decision, err := enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1_000_000_000)
+		must.NoError(t, err)
+
+		test.True(t, decision.Allowed)
+		test.EqOp(t, int64(0), decision.Overage)
+		test.EqOp(t, Unlimited, decision.Limit)
+
+		// And through the durable path, where the limit is bound into SQL rather
+		// than compared in Go: the largest int64 there is still a limit the
+		// engine can hold and nobody can reach.
+		decision, err = consumeIn(t, db, enforcer, testSubject, testMeter, 1_000_000_000)
+		must.NoError(t, err)
+
+		test.True(t, decision.Allowed)
+		test.EqOp(t, int64(0), decision.Overage)
+		test.EqOp(t, Unlimited, decision.Limit)
+		test.EqOp(t, int64(1_000_000_000), decision.Used)
+	})
+
 	T.Run("reports a quota over the wrong period", func(t *testing.T) {
 		t.Parallel()
 
