@@ -176,6 +176,16 @@ type DefinitionStore interface {
 	// same rule, applied to the values as the transaction sees them rather than
 	// as the last commit left them.
 	//
+	// The walk is a guarantee rather than a snapshot because the implementation
+	// takes the definition's row exclusively before it walks and holds it until
+	// the caller's transaction ends, so no [ValueStore.SetValue] can commit a
+	// value in the window between the walk and the write. What that costs a
+	// caller is one ordering rule: within a single transaction, narrow a
+	// definition before setting values against it. The other order upgrades that
+	// transaction's lock on the definition from shared to exclusive, and two
+	// transactions doing it at once deadlock. See [SQLStore.UpdateDefinition]
+	// for the reasoning and for what SQLite does instead.
+	//
 	// The definition it hands back is read on tx after the write, so it carries
 	// the last_updated_at the server stamped. The caller's argument is left
 	// alone — a write that mutates what it was handed and a write that returns
@@ -227,7 +237,13 @@ type ValueStore interface {
 	//
 	// The definition read that validates the write runs on tx, so a definition
 	// created through [DefinitionStore.CreateDefinition] earlier in the same
-	// transaction is one a value can be set against.
+	// transaction is one a value can be set against. That read also holds the
+	// definition against a concurrent edit until the caller's transaction ends,
+	// which is what makes the check above exclusive rather than an opinion about
+	// a snapshot — concurrent SetValue calls are unaffected, since only an edit
+	// serializes against them. The ordering it asks of a transaction that also
+	// edits is stated on [DefinitionStore.UpdateDefinition]: narrow first, then
+	// set.
 	SetValue(ctx context.Context, tx database.Tx, scope tenancy.Scope, subject Subject, name, raw string) (*Value, error)
 
 	// GetValue reads the answer a subject stored, or ErrValueNotFound when they

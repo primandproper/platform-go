@@ -107,12 +107,18 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	// and its position says so: it is rendered after that set, because it is the
 	// insert-ignore guardedCreate emits rather than the plain INSERT StandardCRUD
 	// would have.
+	//
+	// The two locking reads are named on all three dialects, which is what keeps
+	// the roster from varying by engine: SQLite renders them without a clause
+	// rather than not rendering them. Which of the three carries a clause is
+	// TestRender_LockingReadsCarryTheClauseWhereTheDialectHasIt's question.
 	want := []string{
 		"GetDefinition", "ListDefinitions", "ListDefinitionsDescending",
 		"UpdateDefinition", "ArchiveDefinition",
 		"CreateDefinition",
 		"GetDefinitionCreatedAt",
-		"GetDefinitionByName", "GetDefinitionIDByName",
+		"GetDefinitionByName", "GetDefinitionForUpdate", "GetDefinitionByNameForShare",
+		"GetDefinitionIDByName",
 		"DeleteDefinitionOptions", "InsertDefinitionOption", "ListDefinitionOptionsByDefinitionIDs",
 		"GetValue",
 		"ListValuesForSubject", "ListValuesForSubjectDescending",
@@ -386,6 +392,131 @@ func TestRender_ArchivedValueReadBackSeesOnlyArchivedRows(T *testing.T) {
 	}
 }
 
+// TestRender_LockingReadsCarryTheClauseWhereTheDialectHasIt pins the half of the
+// stranded-value guarantee that is statement text rather than store code.
+//
+// The lock is what makes settings.SQLStore's refusal a guarantee rather than an
+// opinion about a snapshot, and it lives in two statements that are otherwise
+// their unlocked counterparts exactly — same projection, same predicates, same
+// scope. So what is worth pinning is the three things that could silently stop
+// being true: that the pair differs from the unlocked pair only by the clause,
+// that the strengths are not transposed, and that the clause appears exactly
+// where dialect.SupportsSkipLocked() holds.
+//
+// The last is the one a reader will want the reasoning for. SQLite renders both
+// statements and carries neither clause, because one writer at a time is that
+// engine's storage model — the clause is unnecessary there rather than merely
+// unspellable — and rendering the names anyway is what keeps the roster from
+// varying by dialect.
+func TestRender_LockingReadsCarryTheClauseWhereTheDialectHasIt(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			rendered := Render(d)
+
+			byID := statementNamed(t, rendered, "GetDefinitionForUpdate")
+			byName := statementNamed(t, rendered, "GetDefinitionByNameForShare")
+
+			// Each is its unlocked counterpart plus at most the clause, which is
+			// the property that keeps the locked form from drifting into a
+			// different read of a different row.
+			test.EqOp(t, unlocked(statementNamed(t, rendered, "GetDefinition")), unlocked(byID))
+			test.EqOp(t, unlocked(statementNamed(t, rendered, "GetDefinitionByName")), unlocked(byName))
+
+			// Both key on the scope and reach live rows only: an edit or a value
+			// write against a retired setting is a not-found, locked or not.
+			for _, statement := range []string{byID, byName} {
+				test.StrContains(t, statement, ScopeColumn+" = ")
+				test.StrContains(t, statement, querygen.ArchivedAtColumn+" IS NULL")
+			}
+
+			if !d.SupportsSkipLocked() {
+				// Neither spelling of either lock, rather than neither of the
+				// two this dialect would have used: what is being asserted is
+				// that nothing in the SQLite corpus locks, not that one
+				// particular clause was left off.
+				for _, clause := range everyLockClause {
+					test.StrNotContains(t, rendered, clause)
+				}
+
+				return
+			}
+
+			// The edit's read is exclusive and the value write's is shared, in
+			// that assignment and not the other one. Transposed, concurrent
+			// value writes would serialize and concurrent narrowings would not.
+			test.StrContains(t, byID, "\n"+exclusiveLock+";")
+			test.StrContains(t, byName, "\n"+sharedLock(d)+";")
+
+			// MySQL's shared lock is the spelling MariaDB also takes, which is
+			// the one thing about these two statements that is not the same text
+			// on both locking dialects.
+			if d == dialect.MySQL {
+				test.EqOp(t, "LOCK IN SHARE MODE", sharedLock(d))
+				test.StrNotContains(t, rendered, "FOR SHARE")
+			}
+
+			// And nothing else in the corpus locks. The unlocked reads are what
+			// GetDefinition and GetValue run on a Reader() outside any
+			// transaction, where a clause locks nothing and fails against a read
+			// replica.
+			test.EqOp(t, 1, strings.Count(rendered, exclusiveLock))
+			test.EqOp(t, 1, strings.Count(rendered, sharedLock(d)))
+		})
+	}
+}
+
+// TestLock_RequiresTheTerminatorItMoves pins the guard rather than the clause:
+// lock puts the locking clause ahead of a statement's semicolon, and the way
+// that goes wrong is the semicolon not being where it looked. A trim that
+// matched nothing would leave the clause after a terminator that is still
+// there — two statements, the second parsing as nothing — which is well-formed
+// text that sqlc rejects and, worse, the kind of failure a generator can have
+// without anything looking wrong at the call site.
+//
+// So the assertion is that the impossible input stops the generator. The happy
+// path is covered by the rendering test above, against every dialect.
+func TestLock_RequiresTheTerminatorItMoves(T *testing.T) {
+	T.Parallel()
+
+	T.Run("moves the terminator it finds", func(t *testing.T) {
+		t.Parallel()
+
+		q := &querygen.Query{
+			Annotation: querygen.QueryAnnotation{Name: "GetThing", Type: querygen.OneType},
+			Content:    "SELECT 1;",
+		}
+
+		lock(q, exclusiveLock)
+
+		test.EqOp(t, "SELECT 1\n"+exclusiveLock+";", q.Content)
+	})
+
+	T.Run("refuses a statement with no terminator", func(t *testing.T) {
+		t.Parallel()
+
+		q := &querygen.Query{
+			Annotation: querygen.QueryAnnotation{Name: "GetThing", Type: querygen.OneType},
+			Content:    "SELECT 1;\n",
+		}
+
+		defer func() {
+			recovered, ok := recover().(error)
+			must.True(t, ok)
+			// The query's name, because a generator that stops has to say which
+			// statement it stopped on.
+			test.StrContains(t, recovered.Error(), "GetThing")
+		}()
+
+		lock(q, exclusiveLock)
+
+		t.Fatal("lock accepted a statement that does not end in a terminator")
+	})
+}
+
 // TestRender_OptionReadIsBatchedAndOrdered pins the shape the enumeration
 // hydration depends on: one statement for a whole page of definitions, ordered
 // so that one definition's options arrive together and in a stable order.
@@ -514,4 +645,22 @@ func statementNamed(t *testing.T, rendered, name string) string {
 	t.Fatalf("the corpus has no statement named %q", name)
 
 	return ""
+}
+
+// everyLockClause is every locking clause any dialect here renders, which is one
+// more than the two any single dialect uses: the shared lock is spelled two ways.
+var everyLockClause = []string{exclusiveLock, sharedLock(dialect.Postgres), sharedLock(dialect.MySQL)}
+
+// unlocked returns a statement with any trailing locking clause removed, so that
+// two statements can be compared on everything else.
+func unlocked(statement string) string {
+	for _, clause := range everyLockClause {
+		statement = strings.Replace(statement, "\n"+clause+";", ";", 1)
+	}
+
+	// The two statements being compared are named differently by construction,
+	// so the annotation line goes with the clause.
+	_, body, _ := strings.Cut(statement, "\n")
+
+	return body
 }

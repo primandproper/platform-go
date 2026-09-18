@@ -32,6 +32,25 @@ var _ ValueStore = (*SQLStore)(nil)
 // other side. It also means a definition the caller created earlier in the same
 // transaction is one this can set a value against.
 //
+// # The lock, and the order a transaction that also edits owes
+//
+// The read takes the definition's row under a shared lock, held until the
+// caller's transaction ends. That is what makes the check-then-write above
+// actually exclusive rather than snapshot-time: an UpdateDefinition narrowing
+// the enumeration wants the same row exclusively, and cannot have it until this
+// write has committed or rolled back. Shared locks are mutually compatible, so
+// two subjects setting values for one setting still run in parallel — only an
+// edit serializes against them.
+//
+// The cost is an ordering a caller owes when one transaction does both. Calling
+// this and then [SQLStore.UpdateDefinition] for the same definition upgrades
+// that transaction's lock from shared to exclusive, and two transactions doing
+// it at once deadlock, with the server aborting one of them. So narrow a
+// definition before setting values against it within a single transaction. It is
+// stated rather than engineered around: taking the exclusive lock here instead
+// would remove the upgrade by serializing every value write for a setting, which
+// charges the common case to fix the rare one.
+//
 // The write converges rather than inserts: the (scope, subject, definition)
 // quadruple is unique across live and archived rows alike, so a subject setting
 // a value they had cleared revives the row they cleared, keeping the creation
@@ -59,7 +78,7 @@ func (s *SQLStore) SetValue(
 		return nil, op.Error(err, "setting %q", name)
 	}
 
-	definition, err := s.readDefinitionByName(ctx, tx, scope, name)
+	definition, err := s.readDefinitionByNameForShare(ctx, tx, scope, name)
 	if err != nil {
 		return nil, op.Error(err, "setting %q", name)
 	}

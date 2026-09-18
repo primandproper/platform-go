@@ -73,8 +73,12 @@ type Querier interface {
 	GetDefinition(ctx context.Context, db DBTX, arg GetDefinitionParams) (GetDefinitionRow, error)
 	// GetDefinitionByName runs the :one query.
 	GetDefinitionByName(ctx context.Context, db DBTX, arg GetDefinitionByNameParams) (GetDefinitionByNameRow, error)
+	// GetDefinitionByNameForShare runs the :one query.
+	GetDefinitionByNameForShare(ctx context.Context, db DBTX, arg GetDefinitionByNameForShareParams) (GetDefinitionByNameForShareRow, error)
 	// GetDefinitionCreatedAt runs the :one query.
 	GetDefinitionCreatedAt(ctx context.Context, db DBTX, arg GetDefinitionCreatedAtParams) (GetDefinitionCreatedAtRow, error)
+	// GetDefinitionForUpdate runs the :one query.
+	GetDefinitionForUpdate(ctx context.Context, db DBTX, arg GetDefinitionForUpdateParams) (GetDefinitionForUpdateRow, error)
 	// GetDefinitionIDByName runs the :one query.
 	GetDefinitionIDByName(ctx context.Context, db DBTX, arg GetDefinitionIDByNameParams) (GetDefinitionIDByNameRow, error)
 	// GetValue runs the :one query.

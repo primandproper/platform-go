@@ -109,6 +109,26 @@ type GetDefinitionByNameRow struct {
 	ArchivedAt    *time.Time
 }
 
+// GetDefinitionByNameForShareParams are the arguments to GetDefinitionByNameForShare.
+type GetDefinitionByNameForShareParams struct {
+	Name  string
+	Scope tenancy.Scope
+}
+
+// GetDefinitionByNameForShareRow is one row of GetDefinitionByNameForShare's result.
+type GetDefinitionByNameForShareRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	Name          string
+	Description   string
+	Kind          string
+	DefaultValue  *string
+	AdminOnly     bool
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
+}
+
 // GetDefinitionCreatedAtParams are the arguments to GetDefinitionCreatedAt.
 type GetDefinitionCreatedAtParams struct {
 	ID string
@@ -117,6 +137,26 @@ type GetDefinitionCreatedAtParams struct {
 // GetDefinitionCreatedAtRow is one row of GetDefinitionCreatedAt's result.
 type GetDefinitionCreatedAtRow struct {
 	CreatedAt time.Time
+}
+
+// GetDefinitionForUpdateParams are the arguments to GetDefinitionForUpdate.
+type GetDefinitionForUpdateParams struct {
+	ID    string
+	Scope tenancy.Scope
+}
+
+// GetDefinitionForUpdateRow is one row of GetDefinitionForUpdate's result.
+type GetDefinitionForUpdateRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	Name          string
+	Description   string
+	Kind          string
+	DefaultValue  *string
+	AdminOnly     bool
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	ArchivedAt    *time.Time
 }
 
 // GetDefinitionIDByNameParams are the arguments to GetDefinitionIDByName.

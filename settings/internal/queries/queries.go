@@ -1,8 +1,11 @@
 package queries
 
 import (
+	"strings"
+
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/querygen"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 )
 
 // The tables this package owns, at their canonical spelling — what the emitted
@@ -192,6 +195,7 @@ func Render(d dialect.Dialect) string {
 	rendered = append(rendered, guardedCreate(g))
 	rendered = append(rendered, createdAtReads(g)...)
 	rendered = append(rendered, keyedDefinitionReads(g)...)
+	rendered = append(rendered, lockingDefinitionReads(g)...)
 	rendered = append(rendered, nameCollisionCheck(g))
 	rendered = append(rendered, optionWrites(g)...)
 	rendered = append(rendered, valueReads(g)...)
@@ -292,6 +296,130 @@ func keyedDefinitionReads(g *querygen.Generator) []*querygen.Query {
 			querygen.Match{Column: DefinitionNameColumn},
 			querygen.Match{Column: ScopeColumn}),
 	}
+}
+
+// exclusiveLock is the clause the definition edit's read carries, and it is the
+// same text on both dialects that have row locking at all.
+//
+// It is a constant rather than a literal in the statement for the reason the
+// column names above are: this package's tests read the clause instead of
+// spelling it a second time, and a clause written twice is a clause that can be
+// written differently twice.
+const exclusiveLock = "FOR UPDATE"
+
+// sharedLock is the clause the value write's read carries, and it is the one
+// place in this corpus where two dialects that both have a feature spell it
+// differently.
+//
+// Postgres takes FOR SHARE. MySQL is handed LOCK IN SHARE MODE, which is not the
+// older spelling out of inertia. FOR SHARE arrived in MySQL 8.0 and MariaDB has
+// never parsed it, and MariaDB is the flavor this module's MySQL suite runs
+// against — so a statement written the first way would be a syntax error against
+// half of what "MySQL" names here, on the one statement holding up a guarantee.
+// LOCK IN SHARE MODE is what both accept: MySQL has carried it since 5.x and
+// still parses it at 8.4, where it is deprecated rather than gone. A release
+// that does remove it is a release this returns FOR SHARE on, which is a version
+// test in this function and nothing else.
+//
+// SQLite is handed neither and needs neither.
+func sharedLock(d dialect.Dialect) string {
+	if d == dialect.MySQL {
+		return "LOCK IN SHARE MODE"
+	}
+
+	return "FOR SHARE"
+}
+
+// lockingDefinitionReads is the stranded-value guarantee's other half: the same
+// two definition reads as above, each taking a row lock on the definition it
+// read.
+//
+// # What the lock is for
+//
+// settings.SQLStore's UpdateDefinition refuses an edit that some stored value no
+// longer satisfies, by walking the live values before it writes. Without a lock
+// that refusal is check-then-write: T1 walks and finds every value admissible,
+// T2 sets a value that the old enumeration admits and commits, T1 narrows and
+// commits — and T2's value is stranded, which is the exact outcome
+// settings.ErrStrandedValues says cannot happen. The walk and the write have to
+// exclude a concurrent value write for the interval between them, and a row lock
+// on the definition is what excludes it.
+//
+// # Why two of them, and why these two strengths
+//
+// The edit takes the exclusive lock and the value write takes the shared one,
+// which is the smallest pair that closes the race. Shared locks are mutually
+// compatible, so concurrent SetValue calls against one definition stay parallel
+// and only a definition *edit* serializes against them. Giving the value write
+// FOR UPDATE instead would serialize every value write for a setting — the
+// common case — to exclude an edit, which is the rare one.
+//
+// # Why new statements rather than a clause on the existing reads
+//
+// The two unlocked reads above are what settings.SQLStore answers GetDefinition
+// and GetValue with, and a caller runs those on Reader() outside any
+// transaction. A locking clause there locks nothing worth locking, and against a
+// read replica it fails outright. So the locked forms are their own statements
+// under their own names, in the shape outbox/internal/queries renders
+// selectClaimable twice under SkipLockedName.
+//
+// # Why all three dialects render them
+//
+// The clause is carried only where dialect.SupportsSkipLocked() holds, which is
+// exactly Postgres and MySQL — the same two that have row locking at all, which
+// is why that predicate is reused here despite naming something narrower than
+// this use. (A SupportsRowLocking() in primitives-go would be the tidier name;
+// this is deliberately not waiting on one.) What the two dialects do not share
+// is the shared lock's spelling — see sharedLock.
+//
+// SQLite renders both statements without a clause, and needs neither: one writer
+// at a time is that engine's whole storage model, so the interleaving the lock
+// excludes is unreachable there. Rendering on all three anyway is what keeps the
+// roster of statement names from varying by dialect, which is the reason outbox
+// gives for the same choice.
+func lockingDefinitionReads(g *querygen.Generator) []*querygen.Query {
+	byID := g.ReadQuery("GetDefinitionForUpdate", DefinitionsTable, Definitions.Columns,
+		querygen.Read{Projection: Definitions.Columns},
+		querygen.Match{Column: ScopeColumn})
+
+	byName := g.ReadQuery("GetDefinitionByNameForShare", DefinitionsTable, Definitions.KeyedColumns(),
+		querygen.Read{Projection: Definitions.Columns},
+		querygen.Match{Column: DefinitionNameColumn},
+		querygen.Match{Column: ScopeColumn})
+
+	if g.Dialect().SupportsSkipLocked() {
+		lock(byID, exclusiveLock)
+		lock(byName, sharedLock(g.Dialect()))
+	}
+
+	return []*querygen.Query{byID, byName}
+}
+
+// lock puts a locking clause on a rendered read, ahead of its terminator.
+//
+// The terminator moves rather than being written around, because a clause after
+// the semicolon is not a clause on that statement — it is a second statement
+// that parses as nothing, reported by sqlc as an error against a file this
+// generator wrote.
+//
+// So the terminator is required rather than trimmed off wherever it happens to
+// be found. A trim that matched nothing would leave the clause after a semicolon
+// that is still there — the failure the paragraph above describes, arrived at
+// silently — and a guarantee is not a thing to hold up with a string operation
+// that cannot fail. It panics in the manner Render does in operations, timers
+// and workqueue: what it is handed is a query this file rendered three lines
+// earlier rather than anybody's input, so a querygen that one day terminates its
+// statements somewhere else is a generator that stops rather than a corpus that
+// drifts into emitting the wrong statement as well-formed text.
+func lock(q *querygen.Query, clause string) {
+	trimmed, ok := strings.CutSuffix(q.Content, ";")
+	if !ok {
+		panic(platformerrors.Newf(
+			"settings queries: locking %q: rendered statement does not end in a terminator",
+			q.Annotation.Name))
+	}
+
+	q.Content = trimmed + "\n" + clause + ";"
 }
 
 // nameCollisionCheck is the read that turns a taken name into

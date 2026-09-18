@@ -180,6 +180,42 @@ WHERE settings_definitions.archived_at IS NULL
 	AND settings_definitions.name = sqlc.arg(name)
 	AND settings_definitions.scope = sqlc.arg(scope);
 
+-- name: GetDefinitionForUpdate :one
+SELECT
+	settings_definitions.id,
+	settings_definitions.scope,
+	settings_definitions.name,
+	settings_definitions.description,
+	settings_definitions.kind,
+	settings_definitions.default_value,
+	settings_definitions.admin_only,
+	settings_definitions.created_at,
+	settings_definitions.last_updated_at,
+	settings_definitions.archived_at
+FROM settings_definitions
+WHERE settings_definitions.archived_at IS NULL
+	AND settings_definitions.id = sqlc.arg(id)
+	AND settings_definitions.scope = sqlc.arg(scope)
+FOR UPDATE;
+
+-- name: GetDefinitionByNameForShare :one
+SELECT
+	settings_definitions.id,
+	settings_definitions.scope,
+	settings_definitions.name,
+	settings_definitions.description,
+	settings_definitions.kind,
+	settings_definitions.default_value,
+	settings_definitions.admin_only,
+	settings_definitions.created_at,
+	settings_definitions.last_updated_at,
+	settings_definitions.archived_at
+FROM settings_definitions
+WHERE settings_definitions.archived_at IS NULL
+	AND settings_definitions.name = sqlc.arg(name)
+	AND settings_definitions.scope = sqlc.arg(scope)
+LOCK IN SHARE MODE;
+
 -- name: GetDefinitionIDByName :one
 SELECT
 	settings_definitions.id

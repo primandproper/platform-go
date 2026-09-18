@@ -193,6 +193,36 @@ func definitionFromNameRow(r *settingsdb.GetDefinitionByNameRow) *Definition {
 	}
 }
 
+func definitionFromLockedRow(r *settingsdb.GetDefinitionForUpdateRow) *Definition {
+	return &Definition{
+		ID:            r.ID,
+		Scope:         r.Scope,
+		Name:          r.Name,
+		Description:   r.Description,
+		Kind:          Kind(r.Kind),
+		Default:       r.DefaultValue,
+		AdminOnly:     r.AdminOnly,
+		CreatedAt:     r.CreatedAt.UTC(),
+		LastUpdatedAt: utcPtr(r.LastUpdatedAt),
+		ArchivedAt:    utcPtr(r.ArchivedAt),
+	}
+}
+
+func definitionFromSharedNameRow(r *settingsdb.GetDefinitionByNameForShareRow) *Definition {
+	return &Definition{
+		ID:            r.ID,
+		Scope:         r.Scope,
+		Name:          r.Name,
+		Description:   r.Description,
+		Kind:          Kind(r.Kind),
+		Default:       r.DefaultValue,
+		AdminOnly:     r.AdminOnly,
+		CreatedAt:     r.CreatedAt.UTC(),
+		LastUpdatedAt: utcPtr(r.LastUpdatedAt),
+		ArchivedAt:    utcPtr(r.ArchivedAt),
+	}
+}
+
 func definitionPageRow(r *settingsdb.ListDefinitionsRow) pageRow[Definition] {
 	return pageRow[Definition]{
 		value: &Definition{

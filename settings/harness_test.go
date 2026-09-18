@@ -20,18 +20,34 @@ import (
 )
 
 // testClientConfig is the minimum database.ClientConfig a SQLite client needs.
+//
+// maxOpenConns is zero for every case but one. A suite whose transactions never
+// overlap wants one connection, because one connection is what turns a test that
+// accidentally holds two transactions at once into a hang rather than into a
+// pass — and the whole store takes the caller's transaction, so overlapping is
+// a thing a test does on purpose or not at all. The one case that does it on
+// purpose is the stranded-values race, which needs both transactions in flight,
+// and it says so by naming a number.
 type testClientConfig struct {
 	connectionString string
+	maxOpenConns     int
 }
 
 var _ database.ClientConfig = (*testClientConfig)(nil)
 
-func (c *testClientConfig) GetReadConnectionString() string   { return c.connectionString }
-func (c *testClientConfig) GetWriteConnectionString() string  { return c.connectionString }
-func (c *testClientConfig) GetMaxPingAttempts() uint64        { return 1 }
-func (c *testClientConfig) GetPingWaitPeriod() time.Duration  { return time.Millisecond }
-func (c *testClientConfig) GetMaxIdleConns() int              { return 2 }
-func (c *testClientConfig) GetMaxOpenConns() int              { return 1 }
+func (c *testClientConfig) GetReadConnectionString() string  { return c.connectionString }
+func (c *testClientConfig) GetWriteConnectionString() string { return c.connectionString }
+func (c *testClientConfig) GetMaxPingAttempts() uint64       { return 1 }
+func (c *testClientConfig) GetPingWaitPeriod() time.Duration { return time.Millisecond }
+
+func (c *testClientConfig) GetMaxIdleConns() int {
+	return max(2, c.maxOpenConns)
+}
+
+func (c *testClientConfig) GetMaxOpenConns() int {
+	return max(1, c.maxOpenConns)
+}
+
 func (c *testClientConfig) GetConnMaxLifetime() time.Duration { return time.Minute }
 
 // prefixCounter names a fresh table set per subtest. Subtests share one database

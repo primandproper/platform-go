@@ -103,10 +103,42 @@ WHERE {{prefix}}settings_definitions.archived_at IS NULL
 	AND {{prefix}}settings_definitions.name = ?1
 	AND {{prefix}}settings_definitions.scope = ?2`
 
+const getDefinitionByNameForShareSQLite = `SELECT
+	{{prefix}}settings_definitions.id,
+	{{prefix}}settings_definitions.scope,
+	{{prefix}}settings_definitions.name,
+	{{prefix}}settings_definitions.description,
+	{{prefix}}settings_definitions.kind,
+	{{prefix}}settings_definitions.default_value,
+	{{prefix}}settings_definitions.admin_only,
+	{{prefix}}settings_definitions.created_at,
+	{{prefix}}settings_definitions.last_updated_at,
+	{{prefix}}settings_definitions.archived_at
+FROM {{prefix}}settings_definitions
+WHERE {{prefix}}settings_definitions.archived_at IS NULL
+	AND {{prefix}}settings_definitions.name = ?1
+	AND {{prefix}}settings_definitions.scope = ?2`
+
 const getDefinitionCreatedAtSQLite = `SELECT
 	{{prefix}}settings_definitions.created_at
 FROM {{prefix}}settings_definitions
 WHERE {{prefix}}settings_definitions.id = ?1`
+
+const getDefinitionForUpdateSQLite = `SELECT
+	{{prefix}}settings_definitions.id,
+	{{prefix}}settings_definitions.scope,
+	{{prefix}}settings_definitions.name,
+	{{prefix}}settings_definitions.description,
+	{{prefix}}settings_definitions.kind,
+	{{prefix}}settings_definitions.default_value,
+	{{prefix}}settings_definitions.admin_only,
+	{{prefix}}settings_definitions.created_at,
+	{{prefix}}settings_definitions.last_updated_at,
+	{{prefix}}settings_definitions.archived_at
+FROM {{prefix}}settings_definitions
+WHERE {{prefix}}settings_definitions.archived_at IS NULL
+	AND {{prefix}}settings_definitions.id = ?1
+	AND {{prefix}}settings_definitions.scope = ?2`
 
 const getDefinitionIdbyNameSQLite = `SELECT
 	{{prefix}}settings_definitions.id
@@ -502,7 +534,9 @@ type sqliteQueries struct {
 	getArchivedValue                     string
 	getDefinition                        string
 	getDefinitionByName                  string
+	getDefinitionByNameForShare          string
 	getDefinitionCreatedAt               string
+	getDefinitionForUpdate               string
 	getDefinitionIdbyName                string
 	getValue                             string
 	insertDefinitionOption               string
@@ -529,7 +563,9 @@ func newSQLite(prefix string) *sqliteQueries {
 		getArchivedValue:                     strings.ReplaceAll(getArchivedValueSQLite, prefixMarker, prefix),
 		getDefinition:                        strings.ReplaceAll(getDefinitionSQLite, prefixMarker, prefix),
 		getDefinitionByName:                  strings.ReplaceAll(getDefinitionByNameSQLite, prefixMarker, prefix),
+		getDefinitionByNameForShare:          strings.ReplaceAll(getDefinitionByNameForShareSQLite, prefixMarker, prefix),
 		getDefinitionCreatedAt:               strings.ReplaceAll(getDefinitionCreatedAtSQLite, prefixMarker, prefix),
+		getDefinitionForUpdate:               strings.ReplaceAll(getDefinitionForUpdateSQLite, prefixMarker, prefix),
 		getDefinitionIdbyName:                strings.ReplaceAll(getDefinitionIdbyNameSQLite, prefixMarker, prefix),
 		getValue:                             strings.ReplaceAll(getValueSQLite, prefixMarker, prefix),
 		insertDefinitionOption:               strings.ReplaceAll(insertDefinitionOptionSQLite, prefixMarker, prefix),
@@ -723,6 +759,31 @@ func (q *sqliteQueries) GetDefinitionByName(ctx context.Context, db DBTX, arg Ge
 	return i, err
 }
 
+// GetDefinitionByNameForShare runs the :one query against sqlite.
+func (q *sqliteQueries) GetDefinitionByNameForShare(ctx context.Context, db DBTX, arg GetDefinitionByNameForShareParams) (GetDefinitionByNameForShareRow, error) {
+	row := db.QueryRowContext(ctx, q.getDefinitionByNameForShare,
+		arg.Name,
+		arg.Scope,
+	)
+
+	var i GetDefinitionByNameForShareRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.Description,
+		&i.Kind,
+		&i.DefaultValue,
+		&i.AdminOnly,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
 // GetDefinitionCreatedAt runs the :one query against sqlite.
 func (q *sqliteQueries) GetDefinitionCreatedAt(ctx context.Context, db DBTX, arg GetDefinitionCreatedAtParams) (GetDefinitionCreatedAtRow, error) {
 	row := db.QueryRowContext(ctx, q.getDefinitionCreatedAt,
@@ -733,6 +794,31 @@ func (q *sqliteQueries) GetDefinitionCreatedAt(ctx context.Context, db DBTX, arg
 
 	err := row.Scan(
 		&i.CreatedAt,
+	)
+
+	return i, err
+}
+
+// GetDefinitionForUpdate runs the :one query against sqlite.
+func (q *sqliteQueries) GetDefinitionForUpdate(ctx context.Context, db DBTX, arg GetDefinitionForUpdateParams) (GetDefinitionForUpdateRow, error) {
+	row := db.QueryRowContext(ctx, q.getDefinitionForUpdate,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetDefinitionForUpdateRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.Description,
+		&i.Kind,
+		&i.DefaultValue,
+		&i.AdminOnly,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
 	)
 
 	return i, err
@@ -1250,11 +1336,43 @@ var (
 		ArchivedAt    *time.Time
 	}(GetDefinitionByNameRow{})
 	_ = struct {
+		Name  string
+		Scope tenancy.Scope
+	}(GetDefinitionByNameForShareParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Name          string
+		Description   string
+		Kind          string
+		DefaultValue  *string
+		AdminOnly     bool
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetDefinitionByNameForShareRow{})
+	_ = struct {
 		ID string
 	}(GetDefinitionCreatedAtParams{})
 	_ = struct {
 		CreatedAt time.Time
 	}(GetDefinitionCreatedAtRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetDefinitionForUpdateParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Name          string
+		Description   string
+		Kind          string
+		DefaultValue  *string
+		AdminOnly     bool
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetDefinitionForUpdateRow{})
 	_ = struct {
 		Name               string
 		Scope              tenancy.Scope

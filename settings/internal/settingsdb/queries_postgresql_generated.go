@@ -104,10 +104,44 @@ WHERE {{prefix}}settings_definitions.archived_at IS NULL
 	AND {{prefix}}settings_definitions.name = $1
 	AND {{prefix}}settings_definitions.scope = $2`
 
+const getDefinitionByNameForSharePostgreSQL = `SELECT
+	{{prefix}}settings_definitions.id,
+	{{prefix}}settings_definitions.scope,
+	{{prefix}}settings_definitions.name,
+	{{prefix}}settings_definitions.description,
+	{{prefix}}settings_definitions.kind,
+	{{prefix}}settings_definitions.default_value,
+	{{prefix}}settings_definitions.admin_only,
+	{{prefix}}settings_definitions.created_at,
+	{{prefix}}settings_definitions.last_updated_at,
+	{{prefix}}settings_definitions.archived_at
+FROM {{prefix}}settings_definitions
+WHERE {{prefix}}settings_definitions.archived_at IS NULL
+	AND {{prefix}}settings_definitions.name = $1
+	AND {{prefix}}settings_definitions.scope = $2
+FOR SHARE`
+
 const getDefinitionCreatedAtPostgreSQL = `SELECT
 	{{prefix}}settings_definitions.created_at
 FROM {{prefix}}settings_definitions
 WHERE {{prefix}}settings_definitions.id = $1`
+
+const getDefinitionForUpdatePostgreSQL = `SELECT
+	{{prefix}}settings_definitions.id,
+	{{prefix}}settings_definitions.scope,
+	{{prefix}}settings_definitions.name,
+	{{prefix}}settings_definitions.description,
+	{{prefix}}settings_definitions.kind,
+	{{prefix}}settings_definitions.default_value,
+	{{prefix}}settings_definitions.admin_only,
+	{{prefix}}settings_definitions.created_at,
+	{{prefix}}settings_definitions.last_updated_at,
+	{{prefix}}settings_definitions.archived_at
+FROM {{prefix}}settings_definitions
+WHERE {{prefix}}settings_definitions.archived_at IS NULL
+	AND {{prefix}}settings_definitions.id = $1
+	AND {{prefix}}settings_definitions.scope = $2
+FOR UPDATE`
 
 const getDefinitionIdbyNamePostgreSQL = `SELECT
 	{{prefix}}settings_definitions.id
@@ -503,7 +537,9 @@ type postgresqlQueries struct {
 	getArchivedValue                     string
 	getDefinition                        string
 	getDefinitionByName                  string
+	getDefinitionByNameForShare          string
 	getDefinitionCreatedAt               string
+	getDefinitionForUpdate               string
 	getDefinitionIdbyName                string
 	getValue                             string
 	insertDefinitionOption               string
@@ -530,7 +566,9 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		getArchivedValue:                     strings.ReplaceAll(getArchivedValuePostgreSQL, prefixMarker, prefix),
 		getDefinition:                        strings.ReplaceAll(getDefinitionPostgreSQL, prefixMarker, prefix),
 		getDefinitionByName:                  strings.ReplaceAll(getDefinitionByNamePostgreSQL, prefixMarker, prefix),
+		getDefinitionByNameForShare:          strings.ReplaceAll(getDefinitionByNameForSharePostgreSQL, prefixMarker, prefix),
 		getDefinitionCreatedAt:               strings.ReplaceAll(getDefinitionCreatedAtPostgreSQL, prefixMarker, prefix),
+		getDefinitionForUpdate:               strings.ReplaceAll(getDefinitionForUpdatePostgreSQL, prefixMarker, prefix),
 		getDefinitionIdbyName:                strings.ReplaceAll(getDefinitionIdbyNamePostgreSQL, prefixMarker, prefix),
 		getValue:                             strings.ReplaceAll(getValuePostgreSQL, prefixMarker, prefix),
 		insertDefinitionOption:               strings.ReplaceAll(insertDefinitionOptionPostgreSQL, prefixMarker, prefix),
@@ -694,6 +732,31 @@ func (q *postgresqlQueries) GetDefinitionByName(ctx context.Context, db DBTX, ar
 	return i, err
 }
 
+// GetDefinitionByNameForShare runs the :one query against postgresql.
+func (q *postgresqlQueries) GetDefinitionByNameForShare(ctx context.Context, db DBTX, arg GetDefinitionByNameForShareParams) (GetDefinitionByNameForShareRow, error) {
+	row := db.QueryRowContext(ctx, q.getDefinitionByNameForShare,
+		arg.Name,
+		arg.Scope,
+	)
+
+	var i GetDefinitionByNameForShareRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.Description,
+		&i.Kind,
+		&i.DefaultValue,
+		&i.AdminOnly,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
+	)
+
+	return i, err
+}
+
 // GetDefinitionCreatedAt runs the :one query against postgresql.
 func (q *postgresqlQueries) GetDefinitionCreatedAt(ctx context.Context, db DBTX, arg GetDefinitionCreatedAtParams) (GetDefinitionCreatedAtRow, error) {
 	row := db.QueryRowContext(ctx, q.getDefinitionCreatedAt,
@@ -704,6 +767,31 @@ func (q *postgresqlQueries) GetDefinitionCreatedAt(ctx context.Context, db DBTX,
 
 	err := row.Scan(
 		&i.CreatedAt,
+	)
+
+	return i, err
+}
+
+// GetDefinitionForUpdate runs the :one query against postgresql.
+func (q *postgresqlQueries) GetDefinitionForUpdate(ctx context.Context, db DBTX, arg GetDefinitionForUpdateParams) (GetDefinitionForUpdateRow, error) {
+	row := db.QueryRowContext(ctx, q.getDefinitionForUpdate,
+		arg.ID,
+		arg.Scope,
+	)
+
+	var i GetDefinitionForUpdateRow
+
+	err := row.Scan(
+		&i.ID,
+		&i.Scope,
+		&i.Name,
+		&i.Description,
+		&i.Kind,
+		&i.DefaultValue,
+		&i.AdminOnly,
+		&i.CreatedAt,
+		&i.LastUpdatedAt,
+		&i.ArchivedAt,
 	)
 
 	return i, err
@@ -1213,11 +1301,43 @@ var (
 		ArchivedAt    *time.Time
 	}(GetDefinitionByNameRow{})
 	_ = struct {
+		Name  string
+		Scope tenancy.Scope
+	}(GetDefinitionByNameForShareParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Name          string
+		Description   string
+		Kind          string
+		DefaultValue  *string
+		AdminOnly     bool
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetDefinitionByNameForShareRow{})
+	_ = struct {
 		ID string
 	}(GetDefinitionCreatedAtParams{})
 	_ = struct {
 		CreatedAt time.Time
 	}(GetDefinitionCreatedAtRow{})
+	_ = struct {
+		ID    string
+		Scope tenancy.Scope
+	}(GetDefinitionForUpdateParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		Name          string
+		Description   string
+		Kind          string
+		DefaultValue  *string
+		AdminOnly     bool
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		ArchivedAt    *time.Time
+	}(GetDefinitionForUpdateRow{})
 	_ = struct {
 		Name               string
 		Scope              tenancy.Scope
