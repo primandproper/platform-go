@@ -319,6 +319,20 @@ func TestPrincipal(T *testing.T) {
 		test.Nil(t, principal.ActiveMembership())
 	})
 
+	T.Run("a member of nothing has no active membership", func(t *testing.T) {
+		t.Parallel()
+
+		// The shape a Store returns for a user who belongs to no account: no
+		// active account to resolve, so no membership to find, and the service
+		// roles are the whole of what they may do.
+		principal := &Principal{User: &User{ID: "u1", ServiceRoles: []string{"service_admin"}}}
+		test.Nil(t, principal.ActiveMembership())
+		test.EqOp(t, "", principal.ActiveAccountID)
+		test.Nil(t, principal.AccountRoles())
+		test.Eq(t, []string{"service_admin"}, principal.Roles())
+		test.SliceEmpty(t, principal.AccountIDs())
+	})
+
 	T.Run("roles are the union", func(t *testing.T) {
 		t.Parallel()
 

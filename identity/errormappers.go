@@ -119,7 +119,7 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrLastAccountOwner):
 		return httperrors.ErrResourceConflict, "account must be transferred to another owner first", true
 	case errors.Is(err, ErrNoDefaultAccount):
-		return httperrors.ErrResourceConflict, "user belongs to no account", true
+		return httperrors.ErrResourceConflict, "user must be given a default account first", true
 
 	// A write whose entity names a different tenant than the call did. It is the
 	// caller's mistake and it is a request-shaped one, so it reads as a bad

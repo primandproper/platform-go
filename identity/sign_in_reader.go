@@ -110,15 +110,25 @@ func (s *SQLStore) GetPrincipal(
 // context eventually forgets, and forgetting it is what serves one account's
 // data to another account's member, because everything downstream then trusts
 // the ID it was handed.
+//
+// A user who holds no memberships at all resolves to no account rather than to
+// an error. Nothing is being claimed there, so there is nothing to refuse, and
+// refusing it refused them the Principal every authenticated request starts
+// from — which is to say it refused them the sign-in they need before anybody
+// can put them in an account. ErrNoDefaultAccount is left to the state it names:
+// memberships with no default among them.
 func resolveActiveAccount(memberships []*Membership, requested string) (string, error) {
 	if requested == "" {
-		// The read orders default_account first, so the head is the default when
-		// there is one.
-		if len(memberships) > 0 && memberships[0].DefaultAccount {
+		switch {
+		case len(memberships) == 0:
+			return "", nil
+		case memberships[0].DefaultAccount:
+			// The read orders default_account first, so the head is the default
+			// when there is one.
 			return memberships[0].BelongsToAccount, nil
+		default:
+			return "", ErrNoDefaultAccount
 		}
-
-		return "", ErrNoDefaultAccount
 	}
 
 	for _, membership := range memberships {

@@ -147,8 +147,10 @@ type Credentials struct {
 	TOTPCode string `json:"-"`
 
 	// ActiveAccountID is the account the token should be issued for. Empty means
-	// the user's default account, and an account the user is not a live member
-	// of is refused by the directory rather than honored.
+	// the user's default account — or no account at all, for a user who holds no
+	// memberships, who signs in and gets a token against nothing rather than
+	// being refused. An account the user is not a live member of is refused by
+	// the directory rather than honored.
 	ActiveAccountID string `json:"activeAccountID"`
 }
 
@@ -197,10 +199,13 @@ type AuthStatus struct {
 	// User is the caller, redacted.
 	User *identity.User `json:"user"`
 
-	// ActiveAccountID is the account this caller's requests are against.
+	// ActiveAccountID is the account this caller's requests are against, and is
+	// empty for a caller who belongs to none.
 	ActiveAccountID string `json:"activeAccountID"`
 
-	// AccountIDs is every account they are a live member of, default first.
+	// AccountIDs is every account they are a live member of, default first. It
+	// is empty for a caller who belongs to none, which is the state a client
+	// acts on by sending them somewhere to be put in one.
 	AccountIDs []string `json:"accountIDs"`
 
 	// HasPassword reports whether they hold a password credential at all. A

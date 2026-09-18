@@ -89,7 +89,8 @@ func (s *Service) AdminAuthenticate(
 //
 // Whether the user must hold a second factor is [SecondFactorPolicy]. Which
 // account the token is for is the caller's ActiveAccountID, resolved by the
-// directory, which refuses an account they are not a live member of. How long
+// directory, which refuses an account they are not a live member of and answers
+// with no account at all for a user who is a member of nothing. How long
 // the token lives is [WithTokenTTL] and what it carries is [ClaimsBuilder].
 // Everything else — a rate limit, a lockout, a captcha, a device check — is the
 // consumer's, in front of this call, informed by what

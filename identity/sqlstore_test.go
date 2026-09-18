@@ -169,13 +169,32 @@ func TestResolveActiveAccount(T *testing.T) {
 		must.ErrorIs(t, err, ErrMembershipNotFound)
 	})
 
-	T.Run("reports a user with no default", func(t *testing.T) {
+	T.Run("answers a member of nothing with no account", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := resolveActiveAccount(nil, "")
-		must.ErrorIs(t, err, ErrNoDefaultAccount)
+		// Nothing is being claimed, so there is nothing to refuse. Refusing it
+		// is what kept an operator who belonged to no account from signing in
+		// to be put in one.
+		active, err := resolveActiveAccount(nil, "")
+		must.NoError(t, err)
+		test.EqOp(t, "", active)
+	})
 
-		_, err = resolveActiveAccount([]*Membership{{BelongsToAccount: "a1"}}, "")
+	T.Run("refuses an account a member of nothing names", func(t *testing.T) {
+		t.Parallel()
+
+		// Holding no memberships excuses a caller from naming an account, not
+		// from being a member of the one they do name.
+		_, err := resolveActiveAccount(nil, "a1")
+		must.ErrorIs(t, err, ErrMembershipNotFound)
+	})
+
+	T.Run("reports memberships with no default among them", func(t *testing.T) {
+		t.Parallel()
+
+		// The state no write in this package leaves behind, and the one the
+		// sentinel is left to name.
+		_, err := resolveActiveAccount([]*Membership{{BelongsToAccount: "a1"}}, "")
 		must.ErrorIs(t, err, ErrNoDefaultAccount)
 	})
 }

@@ -338,12 +338,41 @@ func TestService_GetAuthStatus(T *testing.T) {
 		test.False(t, status.HasPassword)
 	})
 
+	T.Run("a user who belongs to no account", func(t *testing.T) {
+		t.Parallel()
+
+		// The read a client makes on load answers for them too: no active
+		// account and no accounts at all, which is the state the client acts on
+		// by sending them somewhere to be put in one.
+		e := newEnv(t)
+		operator := e.registerAccountless(t, "operator")
+
+		status, err := e.svc.GetAuthStatus(t.Context(), testScope, operator.ID, "")
+		must.NoError(t, err)
+		must.NotNil(t, status)
+
+		test.EqOp(t, operator.ID, status.User.ID)
+		test.EqOp(t, "", status.ActiveAccountID)
+		test.SliceEmpty(t, status.AccountIDs)
+		test.True(t, status.HasPassword)
+	})
+
 	T.Run("an account the caller does not belong to", func(t *testing.T) {
 		t.Parallel()
 
 		e := newEnv(t)
 
 		_, err := e.svc.GetAuthStatus(t.Context(), testScope, e.user.ID, "acct_somebody_else")
+		test.ErrorIs(t, err, identity.ErrMembershipNotFound)
+	})
+
+	T.Run("an account a caller who belongs to none names", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+		operator := e.registerAccountless(t, "operator")
+
+		_, err := e.svc.GetAuthStatus(t.Context(), testScope, operator.ID, e.accountID)
 		test.ErrorIs(t, err, identity.ErrMembershipNotFound)
 	})
 

@@ -217,8 +217,10 @@ func runMembershipWriterSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		test.SliceEmpty(t, memberships)
 
-		_, err = store.GetPrincipal(t.Context(), env.reader(), testScope, member.ID, "")
-		must.ErrorIs(t, err, ErrNoDefaultAccount)
+		landed, err := store.GetPrincipal(t.Context(), env.reader(), testScope, member.ID, "")
+		must.NoError(t, err)
+		test.EqOp(t, "", landed.ActiveAccountID)
+		test.Nil(t, landed.ActiveMembership())
 
 		// Rejoining converges onto the archived row rather than inserting a
 		// second one, and it is their first live membership again.

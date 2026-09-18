@@ -89,13 +89,33 @@ func runSignInReaderSuite(t *testing.T, env *storeEnv) {
 		must.ErrorIs(t, err, ErrMembershipNotFound)
 	})
 
-	t.Run("reports a user with no default account", func(t *testing.T) {
+	t.Run("builds a principal for a user who belongs to no account", func(t *testing.T) {
+		t.Parallel()
+
+		// The read every authenticated request makes has to answer for an
+		// operator who has never been put in an account, because signing in is
+		// how they get put in one — see ErrNoDefaultAccount.
+		store := env.newStore(t)
+		user := seedUser(t, env, store, newUser("ada"))
+
+		principal, err := store.GetPrincipal(t.Context(), env.reader(), testScope, user.ID, "")
+		must.NoError(t, err)
+		test.EqOp(t, user.ID, principal.User.ID)
+		test.EqOp(t, "", principal.ActiveAccountID)
+		test.Nil(t, principal.ActiveMembership())
+		test.SliceEmpty(t, principal.Memberships)
+		test.SliceEmpty(t, principal.AccountRoles())
+	})
+
+	t.Run("refuses an account a user who belongs to none names", func(t *testing.T) {
 		t.Parallel()
 
 		store := env.newStore(t)
 		user := seedUser(t, env, store, newUser("ada"))
+		owner := seedUser(t, env, store, newUser("brian"))
+		account := seedAccountFor(t, env, store, owner, "Acme")
 
-		_, err := store.GetPrincipal(t.Context(), env.reader(), testScope, user.ID, "")
-		must.ErrorIs(t, err, ErrNoDefaultAccount)
+		_, err := store.GetPrincipal(t.Context(), env.reader(), testScope, user.ID, account.ID)
+		must.ErrorIs(t, err, ErrMembershipNotFound)
 	})
 }
