@@ -621,12 +621,17 @@ func AcceptanceToProto(a *identity.Acceptance) *identitypb.Acceptance {
 	}
 }
 
-// userFromRegistrationInput builds the User a registration writes.
+// UserFromRegistrationInput builds the User a registration writes.
 //
 // It assigns only the four fields the input carries. The status, the timestamps
 // and the ID are the store's, and a credential is nobody's here — see the
 // proto's own documentation on why RegisterRequest has no password.
-func userFromRegistrationInput(in *identitypb.UserRegistrationInput) *identity.User {
+//
+// It is exported because the sign-in service registers too, over the same input
+// message: that surface carries the credential this one may not, and assembles
+// the rest of the registrant exactly as this one does. A second copy of these
+// four assignments is a copy that can drift from the message they read.
+func UserFromRegistrationInput(in *identitypb.UserRegistrationInput) *identity.User {
 	if in == nil {
 		return nil
 	}
@@ -639,9 +644,11 @@ func userFromRegistrationInput(in *identitypb.UserRegistrationInput) *identity.U
 	}
 }
 
-// accountFromCreationInput builds the Account a registration writes. The owner
+// AccountFromCreationInput builds the Account a registration writes. The owner
 // is the registrant and is assigned by the Service, not here.
-func accountFromCreationInput(in *identitypb.AccountCreationInput) *identity.Account {
+//
+// Exported for the reason UserFromRegistrationInput is.
+func AccountFromCreationInput(in *identitypb.AccountCreationInput) *identity.Account {
 	if in == nil {
 		return nil
 	}

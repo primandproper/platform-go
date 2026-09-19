@@ -26,6 +26,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
+	"github.com/primandproper/primitives-go/v2/random"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	pquernatotp "github.com/pquerna/otp/totp"
@@ -144,10 +145,11 @@ func extractPrincipal(ctx context.Context) (callers.Principal, bool) {
 
 // harness is one database, one service and one connected client.
 type harness struct {
-	db     database.Client
-	store  identity.Store
-	svc    *signin.Service
-	client *signinclient.Client
+	db        database.Client
+	store     identity.Store
+	svc       *signin.Service
+	directory *identity.Service
+	client    *signinclient.Client
 
 	// rootCtx carries no credential. Every request context is built from it
 	// rather than from the last one, because metadata appends: a context derived
@@ -222,7 +224,14 @@ func buildHarness(
 
 	authenticator := argon2.NewArgon2Authenticator()
 
-	svcOpts = append([]signin.ServiceOption{signin.WithTOTPIssuer("Example")}, svcOpts...)
+	identitySvc, err := identity.NewService(db, store)
+	must.NoError(t, err)
+
+	svcOpts = append([]signin.ServiceOption{
+		signin.WithTOTPIssuer("Example"),
+		signin.WithRegistrar(identitySvc),
+		signin.WithVerifications(store),
+	}, svcOpts...)
 
 	if withRefresh {
 		refreshStmts, stmtErr := refreshmigrations.Statements(dialect.SQLite, prefix)
@@ -277,12 +286,13 @@ func buildHarness(
 	t.Cleanup(func() { _ = conn.Close() })
 
 	h := &harness{
-		db:       db,
-		store:    store,
-		svc:      svc,
-		client:   signinclient.Wrap(conn),
-		rootCtx:  t.Context(),
-		password: "correct horse battery staple",
+		db:        db,
+		store:     store,
+		svc:       svc,
+		directory: identitySvc,
+		client:    signinclient.Wrap(conn),
+		rootCtx:   t.Context(),
+		password:  "correct horse battery staple",
 	}
 
 	h.register(t, authenticator)
@@ -387,4 +397,33 @@ func (*failingIssuer) IssueToken(
 	_ map[string]any,
 ) (token, jti string, err error) {
 	return "", "", errIssuerUnavailable
+}
+
+// mailedSecrets is a random.Generator that hands back a token the test knows.
+//
+// It is what signin.WithSecretGenerator exists for, and it stands in for the
+// one step of a registration that cannot happen over a connection: the
+// verification link goes to somebody's inbox, and whoever clicks it is not the
+// client that called Register. A test asserting the whole flow has to play the
+// mail client, and this is how it reads the mail.
+type mailedSecrets struct {
+	secret string
+}
+
+var _ random.Generator = (*mailedSecrets)(nil)
+
+func (m *mailedSecrets) GenerateBase64EncodedString(context.Context, int) (string, error) {
+	return m.secret, nil
+}
+
+func (m *mailedSecrets) GenerateHexEncodedString(context.Context, int) (string, error) {
+	return m.secret, nil
+}
+
+func (m *mailedSecrets) GenerateBase32EncodedString(context.Context, int) (string, error) {
+	return m.secret, nil
+}
+
+func (m *mailedSecrets) GenerateRawBytes(context.Context, int) ([]byte, error) {
+	return []byte(m.secret), nil
 }

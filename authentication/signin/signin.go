@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/random"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -72,6 +73,15 @@ const (
 	opRevokeRefreshFamily  = "revoke_refresh_token_family"
 	opRevokeRefreshSubject = "revoke_refresh_tokens_for_subject"
 	opUpdatePassword       = "update_password"
+
+	// The registration door and the three that finish one. Registering is a
+	// series of its own rather than a kind of login: what a dashboard asks of it
+	// is how many people arrived, which has nothing to do with how often they
+	// come back.
+	opRegister             = "register"
+	opAttachPassword       = "attach_password"
+	opVerifyEmailAddress   = "verify_email_address"
+	opCompleteVerification = "complete_verification"
 	//nolint:gosec // G101: these are instrument labels naming two operations, not credentials.
 	opRefreshTOTPSecret = "refresh_totp_secret"
 	//nolint:gosec // G101: as above.
@@ -325,6 +335,22 @@ type Service struct {
 	clk           clock.Clock
 	o11y          observability.Observer
 
+	// registrar is nil until WithRegistrar names one, and nil is what "this
+	// service registers nobody" means: Register refuses with
+	// ErrRegistrationNotConfigured, which is the right shape for a consumer
+	// using this service as a credential check over a directory somebody else
+	// fills.
+	registrar Registrar
+
+	// verifications is nil until WithVerifications names one, and nil means the
+	// three doors that finish a registration refuse with
+	// ErrVerificationsNotConfigured.
+	verifications Verifications
+
+	// secrets is what mints a verification token. It is never nil — the
+	// constructor defaults it — and WithSecretGenerator replaces it.
+	secrets random.Generator
+
 	// refreshTokens is nil until WithRefreshTokenStore names one, and nil is
 	// what "this service issues one token per sign-in" means: the two token
 	// doors mint no refresh token, and the three refresh doors refuse with
@@ -415,6 +441,7 @@ func NewService(
 		authenticator: authenticator,
 		issuer:        issuer,
 		verifier:      totp.NewVerifier(),
+		secrets:       random.NewGenerator(),
 		generator:     totp.NewGenerator(),
 		hooks:         NoopHooks{},
 		clk:           clock.NewClock(),
