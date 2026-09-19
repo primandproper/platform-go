@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/messagequeue"
 	messagequeuemock "github.com/primandproper/primitives-go/v2/messagequeue/mock"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
 	retrycfg "github.com/primandproper/primitives-go/v2/retry/config"
 
 	"github.com/shoenig/test"
@@ -70,6 +71,28 @@ func (p *recordingPublisher) fail(err error) {
 func newTestRelay(t *testing.T, client database.Client, c *stubClock, opts ...func(*RelayConfig)) (*Relay, *recordingPublisher) {
 	t.Helper()
 
+	return buildTestRelay(t, client, c, opts, nil)
+}
+
+// newTestRelayLogging is newTestRelay with its logger recorded, for the tests
+// that assert on a line the relay writes rather than on what it wrote to the
+// table. Go allows one variadic and newTestRelay's belongs to the config
+// mutators, so the two entry points share a body rather than a signature.
+func newTestRelayLogging(t *testing.T, client database.Client, c *stubClock, logger logging.Logger) (*Relay, *recordingPublisher) {
+	t.Helper()
+
+	return buildTestRelay(t, client, c, nil, []RelayOption{WithRelayLogger(logger)})
+}
+
+func buildTestRelay(
+	t *testing.T,
+	client database.Client,
+	c *stubClock,
+	mutators []func(*RelayConfig),
+	opts []RelayOption,
+) (*Relay, *recordingPublisher) {
+	t.Helper()
+
 	rec := &recordingPublisher{}
 
 	publisher := &messagequeuemock.PublisherMock{
@@ -93,11 +116,11 @@ func newTestRelay(t *testing.T, client database.Client, c *stubClock, opts ...fu
 			Multiplier:   2,
 		},
 	}
-	for _, opt := range opts {
-		opt(cfg)
+	for _, mutate := range mutators {
+		mutate(cfg)
 	}
 
-	relay, err := NewRelay(t.Context(), cfg, client, provider, WithRelayClock(c))
+	relay, err := NewRelay(t.Context(), cfg, client, provider, append([]RelayOption{WithRelayClock(c)}, opts...)...)
 	must.NoError(t, err)
 
 	return relay, rec
@@ -162,7 +185,7 @@ func TestRelay_cycle(T *testing.T) {
 
 		test.SliceEmpty(t, rec.payloads())
 		test.EqOp(t, 1, countRows(t, client, "published_at IS NULL AND attempts = 1"))
-		test.EqOp(t, 0, countRows(t, client, "quarantined = TRUE"))
+		test.EqOp(t, 0, countRows(t, client, "quarantined_at IS NOT NULL"))
 
 		// Still backing off: the next cycle must not pick it up again.
 		relay.cycle(t.Context())
@@ -206,7 +229,7 @@ func TestRelay_cycle(T *testing.T) {
 			c.advance(time.Hour)
 		}
 
-		test.EqOp(t, 1, countRows(t, client, "quarantined = TRUE"))
+		test.EqOp(t, 1, countRows(t, client, "quarantined_at IS NOT NULL"))
 
 		// A quarantined message never blocks the queue behind it.
 		rec.fail(nil)
@@ -548,7 +571,7 @@ func TestRelay_outcomeWrites_fenceOnTheClaim(T *testing.T) {
 
 		relay.recordFailure(t.Context(), &straggler, platformerrors.New("broker refused"))
 
-		test.EqOp(t, 0, countRows(t, client, "quarantined = TRUE"))
+		test.EqOp(t, 0, countRows(t, client, "quarantined_at IS NOT NULL"))
 		test.EqOp(t, 0, countRows(t, client, "last_error IS NOT NULL"))
 
 		// The holder's lease is intact: a released lease here would hand the
@@ -699,7 +722,7 @@ func TestRelay_backlog(T *testing.T) {
 			c.advance(time.Hour)
 		}
 
-		must.EqOp(t, 1, countRows(t, client, "quarantined = TRUE"))
+		must.EqOp(t, 1, countRows(t, client, "quarantined_at IS NOT NULL"))
 
 		// A permanently broken message must not read as a permanently growing
 		// backlog, or the signal is useless on exactly the day it matters.
@@ -750,6 +773,62 @@ func TestRelay_reap(T *testing.T) {
 
 		test.EqOp(t, 0, countRows(t, client, "published_at IS NOT NULL"))
 		test.EqOp(t, 1, countRows(t, client, "published_at IS NULL"))
+	})
+
+	T.Run("a quarantined row outlives the published horizon and goes on its own", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, rec := newTestRelay(t, client, c)
+
+		quarantine(t, client, relay, rec, c,
+			Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+
+		// Well past the window that governs delivered rows, which is the whole
+		// reason the two are separate: an undelivered event is the one an
+		// operator still has something to decide about.
+		c.advance(DefaultRetention + time.Hour)
+
+		relay.reap(t.Context())
+		test.EqOp(t, 1, countRows(t, client, "quarantined_at IS NOT NULL"))
+
+		c.advance(DefaultQuarantineRetention)
+
+		relay.reap(t.Context())
+		test.EqOp(t, 0, countRows(t, client, "1=1"))
+	})
+
+	T.Run("reaping a quarantined row says so, with the id and the last error", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		logger := newRecordingLogger()
+		relay, rec := newTestRelayLogging(t, client, c, logger)
+
+		quarantine(t, client, relay, rec, c,
+			Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+
+		quarantined, err := relay.Quarantined(t.Context(), 0)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, quarantined)
+
+		c.advance(DefaultQuarantineRetention + time.Hour)
+
+		relay.reap(t.Context())
+
+		// The line is the last record the event existed, so both halves of it
+		// are pinned: which message went, and why nobody could deliver it.
+		warnings := logger.warnings()
+		must.SliceLen(t, 1, warnings)
+		id, ok := warnings[0].values[messageIDKey].(string)
+		must.True(t, ok)
+		test.EqOp(t, quarantined[0].ID, id)
+
+		lastError, ok := warnings[0].values[lastErrorKey].(string)
+		must.True(t, ok)
+		test.StrContains(t, lastError, "poison")
 	})
 }
 
@@ -825,5 +904,203 @@ func TestNewRelay(T *testing.T) {
 		must.NoError(t, err)
 
 		test.EqOp(t, ClaimLease, r.cfg.ClaimMode)
+	})
+}
+
+// quarantine drives a message all the way to the terminal state, by failing
+// every publish until its attempts are spent.
+//
+// It takes the relay's configured attempt budget from the relay rather than
+// restating it, because a test that spelled the count itself would keep passing
+// with the wrong number of cycles the day the harness changed the budget.
+func quarantine(t *testing.T, client database.Client, relay *Relay, rec *recordingPublisher, c *stubClock, msgs ...Message) {
+	t.Helper()
+
+	rec.fail(platformerrors.New("poison"))
+	defer rec.fail(nil)
+
+	enqueue(t, client, newTestWriter(t, c), msgs...)
+
+	for range relay.cfg.Backoff.MaxAttempts {
+		relay.cycle(t.Context())
+		c.advance(time.Hour)
+	}
+
+	must.EqOp(t, len(msgs), countRows(t, client, "quarantined_at IS NOT NULL"))
+}
+
+func TestRelay_Quarantined(T *testing.T) {
+	T.Parallel()
+
+	T.Run("returns the abandoned messages with the error that abandoned them", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, rec := newTestRelay(t, client, c)
+
+		at := c.read().UTC()
+
+		quarantine(t, client, relay, rec, c,
+			Message{Topic: "orders", Key: "acct-1", Payload: map[string]any{"id": "a"}})
+
+		quarantined, err := relay.Quarantined(t.Context(), 0)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, quarantined)
+
+		test.EqOp(t, "orders", quarantined[0].Topic)
+		test.EqOp(t, "acct-1", quarantined[0].Key)
+		test.EqOp(t, relay.cfg.Backoff.MaxAttempts, uint(quarantined[0].Attempts))
+		test.StrContains(t, quarantined[0].LastError, "poison")
+
+		// The two instants are what the operator reads the window off: the
+		// event's own age, and how long it has been abandoned.
+		test.True(t, quarantined[0].CreatedAt.Equal(at))
+		test.False(t, quarantined[0].QuarantinedAt.Before(at))
+
+		// An id is what Release takes, so it has to come back.
+		test.NotEqOp(t, "", quarantined[0].ID)
+	})
+
+	T.Run("returns the longest-abandoned first and stops at the limit", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, rec := newTestRelay(t, client, c)
+
+		quarantine(t, client, relay, rec, c,
+			Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+
+		first, err := relay.Quarantined(t.Context(), 0)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, first)
+
+		c.advance(time.Hour)
+
+		rec.fail(platformerrors.New("poison"))
+		enqueue(t, client, newTestWriter(t, c), Message{Topic: "invoices", Payload: map[string]any{"id": "b"}})
+
+		for range relay.cfg.Backoff.MaxAttempts {
+			relay.cycle(t.Context())
+			c.advance(time.Hour)
+		}
+		rec.fail(nil)
+
+		both, err := relay.Quarantined(t.Context(), 0)
+		must.NoError(t, err)
+		must.SliceLen(t, 2, both)
+		test.EqOp(t, first[0].ID, both[0].ID)
+
+		// A limit is a page of a list somebody is reading, so it takes from the
+		// same end rather than a different one.
+		page, err := relay.Quarantined(t.Context(), 1)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, page)
+		test.EqOp(t, first[0].ID, page[0].ID)
+	})
+
+	T.Run("an empty quarantine is an empty answer", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, _ := newTestRelay(t, client, c)
+
+		enqueue(t, client, newTestWriter(t, c), Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+
+		quarantined, err := relay.Quarantined(t.Context(), 0)
+		must.NoError(t, err)
+		test.SliceEmpty(t, quarantined)
+	})
+}
+
+func TestRelay_Release(T *testing.T) {
+	T.Parallel()
+
+	T.Run("a released message publishes on the next cycle", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, rec := newTestRelay(t, client, c)
+
+		quarantine(t, client, relay, rec, c,
+			Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+
+		quarantined, err := relay.Quarantined(t.Context(), 0)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, quarantined)
+
+		released, err := relay.Release(t.Context(), quarantined[0].ID)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), released)
+
+		// Due immediately, rather than at whatever backoff the failure that
+		// abandoned it had computed — the operator releasing it has just fixed
+		// the thing it was failing on.
+		relay.cycle(t.Context())
+
+		test.Eq(t, []string{`{"id":"a"}`}, rec.payloads())
+		test.EqOp(t, 0, countRows(t, client, "quarantined_at IS NOT NULL"))
+		test.EqOp(t, 1, countRows(t, client, "published_at IS NOT NULL"))
+	})
+
+	T.Run("a released message keeps its attempts and returns after one failure", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, rec := newTestRelay(t, client, c)
+
+		quarantine(t, client, relay, rec, c,
+			Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+
+		quarantined, err := relay.Quarantined(t.Context(), 0)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, quarantined)
+
+		released, err := relay.Release(t.Context(), quarantined[0].ID)
+		must.NoError(t, err)
+		must.EqOp(t, int64(1), released)
+
+		// Still broken: one cycle, not another whole budget, and it is back.
+		rec.fail(platformerrors.New("poison"))
+		relay.cycle(t.Context())
+		rec.fail(nil)
+
+		test.EqOp(t, 1, countRows(t, client, "quarantined_at IS NOT NULL"))
+	})
+
+	T.Run("an id that is not quarantined is left alone", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, _ := newTestRelay(t, client, c)
+
+		enqueue(t, client, newTestWriter(t, c), Message{Topic: "orders", Payload: map[string]any{"id": "a"}})
+
+		var id string
+		must.NoError(t, client.Reader().
+			QueryRowContext(t.Context(), "SELECT id FROM outbox_messages").Scan(&id))
+
+		// The count is the answer: the id exists, it is simply not in the
+		// quarantine, and its schedule is not this call's to reset.
+		released, err := relay.Release(t.Context(), id, identifiers.New())
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), released)
+	})
+
+	T.Run("no ids is no statement", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, _ := newTestRelay(t, client, c)
+
+		released, err := relay.Release(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), released)
 	})
 }

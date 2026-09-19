@@ -228,11 +228,18 @@ report missing.
 
 The rest: outbox_messages_enqueued against outbox_messages_published (the gap is
 the rollback rate), outbox_messages_failed, outbox_messages_quarantined — alert on
-any increase, since a quarantined message is a dropped event — outbox_claim_errors,
-outbox_messages_reaped, and the outbox_publish_latency_ms, outbox_cycle_latency_ms
-and outbox_claimed_batch_size distributions. Everything per-message carries a topic
-attribute, because one Relay serves every topic and a single broken publisher is
-invisible in the total.
+any increase, since a quarantined message is a dropped event, and see "The
+quarantine" below for what to do when it fires — outbox_claim_errors,
+outbox_messages_reaped, outbox_quarantined_messages_reaped, and the
+outbox_publish_latency_ms, outbox_cycle_latency_ms and outbox_claimed_batch_size
+distributions. Everything per-message carries a topic attribute, because one
+Relay serves every topic and a single broken publisher is invisible in the
+total.
+
+The two reaped counters are separate on purpose. A published row reaped is
+housekeeping and runs at the rate of the whole stream; a quarantined one reaped
+is an undelivered event destroyed for good, and summed into the other number it
+would never be seen.
 
 Spans cover Enqueue, each claim, each publish, and each reap, and an Enqueue
 names the side effects that ran — including one that failed, since a trace that
@@ -251,6 +258,28 @@ failure this package is most likely to actually meet.
 Published rows are marked rather than deleted, so a duplicate or a gap can be
 investigated after the fact, and a reaper deletes them once they age past
 Retention.
+
+# The quarantine
+
+Relay.Quarantined lists the messages the relay has given up on, oldest first,
+each with the error that abandoned it; Relay.Release hands ids back to the
+claimable set, due immediately, and the next cycle publishes them. That is the
+whole loop the outbox_messages_quarantined alarm exists to start: read the
+quarantine, find the broken topic or the rejected payload, fix it, release.
+
+A released message keeps its attempt count, so it gets one more publish and
+returns to the quarantine if that fails too. Releasing an id that is not
+quarantined does nothing, and the count Release returns is how many of the ids
+it named actually moved.
+
+Quarantined rows are reaped on their own horizon, RelayConfig.QuarantineRetention,
+which defaults to a month against the published rows' day. Reaping one deletes
+an event that was never delivered and cannot be recovered from anywhere — the
+Warn line the reap writes, naming the id and the last error, is the last record
+that the event existed. The window is not a grace period the relay is watching
+on anybody's behalf: it is the time an operator has to answer the alarm, and a
+deployment whose quarantine alarm goes unanswered for a month is a deployment
+throwing events away on a timer. Set it to whatever that answer actually takes.
 */
 package outbox
 

@@ -22,11 +22,27 @@ const (
 	DefaultLeaseDuration = 30 * time.Second
 	// DefaultRetention is how long published rows are kept before reaping.
 	DefaultRetention = 24 * time.Hour
+	// DefaultQuarantineRetention is how long quarantined rows are kept before
+	// reaping, and it is a month against the published horizon's day.
+	//
+	// The two windows are keeping different things for different reasons. A
+	// published row was delivered, and it is kept only long enough that a
+	// duplicate or a gap can be investigated while somebody still remembers the
+	// incident. A quarantined row was never delivered at all, so reaping it
+	// discards the event permanently — and the operator who is going to decide
+	// what to do about it learns of it from an alarm on
+	// outbox_messages_quarantined, which fires on a working day rather than
+	// within a working day. The window is what that person has.
+	DefaultQuarantineRetention = 30 * 24 * time.Hour
 	// DefaultReapInterval is how often the reaper runs.
 	DefaultReapInterval = 5 * time.Minute
 	// DefaultReapBatchSize caps one reap, so a large backlog is removed over
 	// several passes instead of one long-running DELETE.
 	DefaultReapBatchSize = 1000
+	// DefaultQuarantineLimit is how many messages Relay.Quarantined returns when
+	// the caller names no limit of its own. It is a page for somebody reading,
+	// not a batch for something draining, which is why it is not BatchSize.
+	DefaultQuarantineLimit = 100
 	// DefaultMinWakeInterval is the floor between two wake-driven cycles. It
 	// only bites during a burst: a wake that arrives when the last cycle is
 	// already older than this runs immediately, which is the ordinary case and
@@ -102,6 +118,15 @@ type RelayConfig struct {
 	LeaseDuration time.Duration `env:"LEASE_DURATION" json:"leaseDuration,omitempty" yaml:"leaseDuration,omitempty"`
 	// Retention is how long published rows are kept before reaping.
 	Retention time.Duration `env:"RETENTION" json:"retention,omitempty" yaml:"retention,omitempty"`
+	// QuarantineRetention is how long quarantined rows are kept before reaping.
+	//
+	// It is separate from Retention, and it is meant to be much longer: reaping
+	// a quarantined row discards an event nobody ever received. Nothing here
+	// refuses a shorter one — an operator who has decided their quarantine is
+	// noise may say so — but a deployment that sets this below Retention has
+	// asked for its undelivered events to be destroyed before its delivered
+	// ones.
+	QuarantineRetention time.Duration `env:"QUARANTINE_RETENTION" json:"quarantineRetention,omitempty" yaml:"quarantineRetention,omitempty"`
 	// ReapInterval is how often the reaper runs.
 	ReapInterval time.Duration `env:"REAP_INTERVAL" json:"reapInterval,omitempty" yaml:"reapInterval,omitempty"`
 	// ReapBatchSize caps how many rows one reap deletes.
@@ -136,6 +161,9 @@ func (cfg *RelayConfig) EnsureDefaults() {
 	if cfg.Retention <= 0 {
 		cfg.Retention = DefaultRetention
 	}
+	if cfg.QuarantineRetention <= 0 {
+		cfg.QuarantineRetention = DefaultQuarantineRetention
+	}
 	if cfg.ReapInterval <= 0 {
 		cfg.ReapInterval = DefaultReapInterval
 	}
@@ -163,6 +191,7 @@ func (cfg *RelayConfig) ValidateWithContext(ctx context.Context) error {
 		validation.Field(&cfg.PollInterval, validation.Required, validation.Min(time.Millisecond)),
 		validation.Field(&cfg.LeaseDuration, validation.Required, validation.Min(time.Second)),
 		validation.Field(&cfg.Retention, validation.Required, validation.Min(time.Minute)),
+		validation.Field(&cfg.QuarantineRetention, validation.Required, validation.Min(time.Minute)),
 		validation.Field(&cfg.ReapInterval, validation.Required, validation.Min(time.Second)),
 		validation.Field(&cfg.ReapBatchSize, validation.Required, validation.Min(1)),
 		validation.Field(&cfg.MinWakeInterval, validation.Required, validation.Min(time.Millisecond)),

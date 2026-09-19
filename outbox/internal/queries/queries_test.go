@@ -191,8 +191,12 @@ func TestRender_EmitsTheStatementsTheOutboxExecutes(T *testing.T) {
 		"FetchClaimedOutboxMessages",
 		"MarkOutboxMessagesPublished",
 		"RecordOutboxMessageFailure",
+		"SelectQuarantinedOutboxMessages",
+		"ReleaseQuarantinedOutboxMessages",
 		"OutboxBacklog",
 		"ReapPublishedOutboxMessages",
+		"SelectReapableQuarantinedOutboxMessages",
+		"ReapQuarantinedOutboxMessages",
 	}
 
 	for _, d := range everyDialect {
@@ -289,7 +293,7 @@ func TestRender_TheClaimSkipsWhatItMustNeverPublishTwice(T *testing.T) {
 				claim := statement(t, Render(d), name)
 
 				test.StrContains(t, claim, "m.published_at IS NULL")
-				test.StrContains(t, claim, "m.quarantined = FALSE")
+				test.StrContains(t, claim, "m.quarantined_at IS NULL")
 				test.StrContains(t, claim, "m.next_attempt <= sqlc.arg("+NowArg+")")
 				test.StrContains(t, claim,
 					"m.claimed_until IS NULL OR m.claimed_until <= sqlc.arg("+LeaseExpiredByArg+")")
@@ -334,7 +338,7 @@ func TestRender_TheClaimTakesTheLeaseRatherThanAssumingIt(T *testing.T) {
 // select landed before the winner's claim, and whose claim lands after the
 // winner's retirement, publishes the batch a second time. Recording a failure
 // hands the lease back the same way, under a backoff and possibly a quarantine
-// flag that a lease-only guard would also walk straight past.
+// stamp that a lease-only guard would also walk straight past.
 //
 // So the claim owes every row-state test the select makes. This pins each of
 // them against the statement, because the bug was one of them missing and
@@ -354,7 +358,7 @@ func TestRender_TheClaimRepeatsTheSelectsWholeRowStateTest(T *testing.T) {
 
 			for _, predicate := range []string{
 				PublishedAtColumn + " IS NULL",
-				QuarantinedColumn + " = FALSE",
+				QuarantinedAtColumn + " IS NULL",
 				NextAttemptColumn + " <= sqlc.arg(" + NowArg + ")",
 				"(" + ClaimedUntilColumn + " IS NULL OR " + ClaimedUntilColumn + " <= sqlc.arg(" + LeaseExpiredByArg + "))",
 			} {
@@ -536,7 +540,7 @@ func TestRender_TheInsertBindsOneInstantTwice(T *testing.T) {
 			// The three state columns the schema defaults are not supplied, so
 			// an enqueued message starts unclaimed, unpublished and unattempted
 			// whatever a caller passes.
-			for _, column := range []string{ClaimedUntilColumn, PublishedAtColumn, AttemptsColumn, QuarantinedColumn} {
+			for _, column := range []string{ClaimedUntilColumn, PublishedAtColumn, AttemptsColumn, QuarantinedAtColumn} {
 				test.False(t, slices.Contains(InsertColumns, column), test.Sprintf("column %q", column))
 			}
 		})
@@ -580,12 +584,12 @@ func TestRender_TheBacklogIsOneRoundTripAndNoRowWhenEmpty(T *testing.T) {
 
 			test.StrContains(t, probe, "COUNT(*) AS depth")
 			test.StrContains(t, probe, "AS oldest")
-			test.StrContains(t, probe, "GROUP BY "+OutboxTable+"."+QuarantinedColumn)
+			test.StrContains(t, probe, "GROUP BY "+OutboxTable+"."+QuarantinedAtColumn)
 
 			// Quarantined rows are excluded from both numbers: they are never
 			// going to be published, so counting them would make a permanently
 			// broken message look like a permanently growing backlog.
-			test.EqOp(t, 2, strings.Count(probe, QuarantinedColumn+" = FALSE"))
+			test.EqOp(t, 2, strings.Count(probe, QuarantinedAtColumn+" IS NULL"))
 		})
 	}
 }
@@ -775,4 +779,108 @@ func columnsOf(t *testing.T, ddl, table string) []string {
 	}
 
 	return columns
+}
+
+// TestRender_TheQuarantineReapReadsTheRowsItDestroys pins the pass's two
+// statements against each other.
+//
+// The read exists because the delete is the end of the evidence: a quarantined
+// row that ages out is an event nobody ever received, and the line naming its
+// id and its last error is the last record it existed. A read that named a
+// different set than the delete takes would put the wrong ids in that line, so
+// they share a predicate, an ordering and a cap — and this is what says they
+// still do.
+func TestRender_TheQuarantineReapReadsTheRowsItDestroys(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				read = statement(t, Render(d), "SelectReapableQuarantinedOutboxMessages")
+				reap = statement(t, Render(d), "ReapQuarantinedOutboxMessages")
+			)
+
+			for _, predicate := range []string{
+				QuarantinedAtColumn + " IS NOT NULL",
+				QuarantinedAtColumn + " <= sqlc.arg(" + BeforeArg + ")",
+			} {
+				test.StrContains(t, read, predicate)
+				test.StrContains(t, reap, predicate)
+			}
+
+			// Longest-abandoned first, in both, so a quarantine that has been
+			// filling for a month drains in the order it filled.
+			for _, ordering := range []string{QuarantinedAtColumn + " ASC", querygen.IDColumn + " ASC"} {
+				test.StrContains(t, read, ordering)
+				test.StrContains(t, reap, ordering)
+			}
+
+			// The horizon is the Relay's clock rather than the server's, for
+			// the reason the published reap's is.
+			test.StrNotContains(t, read, querygen.NowExpression)
+			test.StrNotContains(t, reap, querygen.NowExpression)
+
+			// last_error is what the whole read is for: an id alone would name
+			// a message nobody can say anything about afterwards.
+			test.StrContains(t, read, LastErrorColumn)
+		})
+	}
+}
+
+// TestRender_TheQuarantineReadCarriesNoPayload is the one column this list
+// deliberately does not project.
+//
+// A quarantine read is a list, the payloads behind it are unbounded and
+// arbitrary, and a page of them is a consumer's whole event stream traveling
+// out through a log-shaped API. What replays a message is its id.
+func TestRender_TheQuarantineReadCarriesNoPayload(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			read := statement(t, Render(d), "SelectQuarantinedOutboxMessages")
+
+			test.StrNotContains(t, read, PayloadColumn)
+			test.StrContains(t, read, LastErrorColumn)
+			test.StrContains(t, read, QuarantinedAtColumn+" IS NOT NULL")
+		})
+	}
+}
+
+// TestRender_TheReleaseTouchesOnlyWhatARetryNeeds is the write an operator
+// runs, pinned to what it is allowed to change.
+//
+// It clears the quarantine stamp and binds the next attempt, and that is all.
+// The attempt count is the record that this message has already spent its
+// budget, so a release that reset it would hand the next operator a message
+// reading as fresh; published_at and the lease are not this statement's to
+// touch at all. The guard is what makes an id that is not quarantined a no-op
+// rather than a live message's backoff reset by somebody reading a stale list.
+func TestRender_TheReleaseTouchesOnlyWhatARetryNeeds(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			release := statement(t, Render(d), "ReleaseQuarantinedOutboxMessages")
+
+			assignments, _, found := strings.Cut(release, "WHERE")
+			must.True(t, found)
+
+			test.StrContains(t, assignments, QuarantinedAtColumn+" = NULL")
+			test.StrContains(t, assignments, NextAttemptColumn+" = sqlc.arg("+NextAttemptColumn+")")
+
+			for _, column := range []string{AttemptsColumn, PublishedAtColumn, ClaimedUntilColumn, ClaimedByColumn} {
+				test.StrNotContains(t, assignments, column,
+					test.Sprintf("the release assigns %q", column))
+			}
+
+			test.StrContains(t, release, QuarantinedAtColumn+" IS NOT NULL")
+		})
+	}
 }

@@ -148,6 +148,37 @@ func TestRelayConfig_ValidateWithContext(T *testing.T) {
 		test.EqOp(t, ClaimLease, r.cfg.ClaimMode)
 	})
 
+	// The quarantine window governs rows nobody ever received, so it is not the
+	// published horizon under another name and must not quietly become it.
+	T.Run("defaults the quarantine window longer than the published one", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validConfig()
+
+		test.EqOp(t, DefaultQuarantineRetention, cfg.QuarantineRetention)
+		test.True(t, cfg.QuarantineRetention > cfg.Retention)
+	})
+
+	T.Run("leaves a configured quarantine window alone", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &RelayConfig{ClaimMode: ClaimLease, QuarantineRetention: time.Hour}
+		cfg.EnsureDefaults()
+
+		test.EqOp(t, time.Hour, cfg.QuarantineRetention)
+	})
+
+	T.Run("rejects a quarantine window below the floor", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := validConfig()
+		cfg.QuarantineRetention = time.Millisecond
+
+		err := cfg.ValidateWithContext(t.Context())
+		must.Error(t, err)
+		test.StrContains(t, err.Error(), "quarantineRetention")
+	})
+
 	T.Run("NewRelay surfaces a config that fails validation", func(t *testing.T) {
 		t.Parallel()
 
@@ -212,6 +243,7 @@ func TestNewRelay_instrumentFailures(T *testing.T) {
 		{"messages_failed", "creating messages failed counter"},
 		{"messages_quarantined", "creating messages quarantined counter"},
 		{"messages_reaped", "creating messages reaped counter"},
+		{"quarantined_messages_reaped", "creating quarantined messages reaped counter"},
 		{"claim_errors", "creating claim error counter"},
 		{"backlog_depth", "creating backlog depth gauge"},
 		{"backlog_age_seconds", "creating backlog age gauge"},

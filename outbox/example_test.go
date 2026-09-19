@@ -287,5 +287,5 @@ func ExampleStatements() {
 	}
 
 	fmt.Println("statements:", len(stmts))
-	// Output: statements: 4
+	// Output: statements: 5
 }

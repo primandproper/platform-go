@@ -16,7 +16,7 @@ const claimOutboxMessagesMySQL = `UPDATE {{prefix}}outbox_messages SET
 	claimed_by = ?,
 	attempts = attempts + 1
 WHERE published_at IS NULL
-	AND quarantined = FALSE
+	AND quarantined_at IS NULL
 	AND next_attempt <= ?
 	AND (claimed_until IS NULL OR claimed_until <= ?)
 	AND id IN (/*SLICE:ids*/?)`
@@ -63,14 +63,14 @@ const outboxBacklogMySQL = `SELECT
 		SELECT queued.created_at
 		FROM {{prefix}}outbox_messages AS queued
 		WHERE queued.published_at IS NULL
-			AND queued.quarantined = FALSE
+			AND queued.quarantined_at IS NULL
 		ORDER BY queued.created_at ASC
 		LIMIT 1
 	) AS oldest
 FROM {{prefix}}outbox_messages
 WHERE {{prefix}}outbox_messages.published_at IS NULL
-	AND {{prefix}}outbox_messages.quarantined = FALSE
-GROUP BY {{prefix}}outbox_messages.quarantined`
+	AND {{prefix}}outbox_messages.quarantined_at IS NULL
+GROUP BY {{prefix}}outbox_messages.quarantined_at`
 
 const reapPublishedOutboxMessagesMySQL = `DELETE FROM {{prefix}}outbox_messages
 WHERE published_at IS NOT NULL
@@ -78,19 +78,31 @@ WHERE published_at IS NOT NULL
 ORDER BY published_at ASC
 LIMIT ?`
 
+const reapQuarantinedOutboxMessagesMySQL = `DELETE FROM {{prefix}}outbox_messages
+WHERE quarantined_at IS NOT NULL
+	AND quarantined_at <= ?
+ORDER BY quarantined_at ASC, id ASC
+LIMIT ?`
+
 const recordOutboxMessageFailureMySQL = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = ?,
 	claimed_by = ?,
 	next_attempt = ?,
 	last_error = ?,
-	quarantined = ?
+	quarantined_at = ?
 WHERE id = ?
 	AND claimed_by = ?`
+
+const releaseQuarantinedOutboxMessagesMySQL = `UPDATE {{prefix}}outbox_messages SET
+	quarantined_at = NULL,
+	next_attempt = ?
+WHERE quarantined_at IS NOT NULL
+	AND id IN (/*SLICE:ids*/?)`
 
 const selectClaimableOutboxMessagesMySQL = `SELECT m.id
 FROM {{prefix}}outbox_messages AS m
 WHERE m.published_at IS NULL
-	AND m.quarantined = FALSE
+	AND m.quarantined_at IS NULL
 	AND m.next_attempt <= ?
 	AND (m.claimed_until IS NULL OR m.claimed_until <= ?)
 	AND (m.partition_key = '' OR NOT EXISTS (
@@ -98,7 +110,7 @@ WHERE m.published_at IS NULL
 		FROM {{prefix}}outbox_messages AS prior
 		WHERE prior.partition_key = m.partition_key
 			AND prior.published_at IS NULL
-			AND prior.quarantined = FALSE
+			AND prior.quarantined_at IS NULL
 			AND (prior.created_at < m.created_at
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
@@ -108,7 +120,7 @@ LIMIT ?`
 const selectClaimableOutboxMessagesSkipLockedMySQL = `SELECT m.id
 FROM {{prefix}}outbox_messages AS m
 WHERE m.published_at IS NULL
-	AND m.quarantined = FALSE
+	AND m.quarantined_at IS NULL
 	AND m.next_attempt <= ?
 	AND (m.claimed_until IS NULL OR m.claimed_until <= ?)
 	AND (m.partition_key = '' OR NOT EXISTS (
@@ -116,13 +128,35 @@ WHERE m.published_at IS NULL
 		FROM {{prefix}}outbox_messages AS prior
 		WHERE prior.partition_key = m.partition_key
 			AND prior.published_at IS NULL
-			AND prior.quarantined = FALSE
+			AND prior.quarantined_at IS NULL
 			AND (prior.created_at < m.created_at
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
 ORDER BY m.created_at, m.id
 LIMIT ?
 FOR UPDATE SKIP LOCKED`
+
+const selectQuarantinedOutboxMessagesMySQL = `SELECT
+	{{prefix}}outbox_messages.id,
+	{{prefix}}outbox_messages.topic,
+	{{prefix}}outbox_messages.partition_key,
+	{{prefix}}outbox_messages.created_at,
+	{{prefix}}outbox_messages.quarantined_at,
+	{{prefix}}outbox_messages.attempts,
+	{{prefix}}outbox_messages.last_error
+FROM {{prefix}}outbox_messages
+WHERE {{prefix}}outbox_messages.quarantined_at IS NOT NULL
+ORDER BY {{prefix}}outbox_messages.quarantined_at ASC, {{prefix}}outbox_messages.id ASC
+LIMIT ?`
+
+const selectReapableQuarantinedOutboxMessagesMySQL = `SELECT
+	{{prefix}}outbox_messages.id,
+	{{prefix}}outbox_messages.last_error
+FROM {{prefix}}outbox_messages
+WHERE {{prefix}}outbox_messages.quarantined_at IS NOT NULL
+	AND {{prefix}}outbox_messages.quarantined_at <= ?
+ORDER BY {{prefix}}outbox_messages.quarantined_at ASC, {{prefix}}outbox_messages.id ASC
+LIMIT ?`
 
 // mysqlQueries answers every query in Querier against mysql.
 type mysqlQueries struct {
@@ -132,9 +166,13 @@ type mysqlQueries struct {
 	markOutboxMessagesPublished             string
 	outboxBacklog                           string
 	reapPublishedOutboxMessages             string
+	reapQuarantinedOutboxMessages           string
 	recordOutboxMessageFailure              string
+	releaseQuarantinedOutboxMessages        string
 	selectClaimableOutboxMessages           string
 	selectClaimableOutboxMessagesSkipLocked string
+	selectQuarantinedOutboxMessages         string
+	selectReapableQuarantinedOutboxMessages string
 }
 
 // newMySQL returns the mysql querier with prefix substituted into every
@@ -147,9 +185,13 @@ func newMySQL(prefix string) *mysqlQueries {
 		markOutboxMessagesPublished:             strings.ReplaceAll(markOutboxMessagesPublishedMySQL, prefixMarker, prefix),
 		outboxBacklog:                           strings.ReplaceAll(outboxBacklogMySQL, prefixMarker, prefix),
 		reapPublishedOutboxMessages:             strings.ReplaceAll(reapPublishedOutboxMessagesMySQL, prefixMarker, prefix),
+		reapQuarantinedOutboxMessages:           strings.ReplaceAll(reapQuarantinedOutboxMessagesMySQL, prefixMarker, prefix),
 		recordOutboxMessageFailure:              strings.ReplaceAll(recordOutboxMessageFailureMySQL, prefixMarker, prefix),
+		releaseQuarantinedOutboxMessages:        strings.ReplaceAll(releaseQuarantinedOutboxMessagesMySQL, prefixMarker, prefix),
 		selectClaimableOutboxMessages:           strings.ReplaceAll(selectClaimableOutboxMessagesMySQL, prefixMarker, prefix),
 		selectClaimableOutboxMessagesSkipLocked: strings.ReplaceAll(selectClaimableOutboxMessagesSkipLockedMySQL, prefixMarker, prefix),
+		selectQuarantinedOutboxMessages:         strings.ReplaceAll(selectQuarantinedOutboxMessagesMySQL, prefixMarker, prefix),
+		selectReapableQuarantinedOutboxMessages: strings.ReplaceAll(selectReapableQuarantinedOutboxMessagesMySQL, prefixMarker, prefix),
 	}
 }
 
@@ -289,6 +331,19 @@ func (q *mysqlQueries) ReapPublishedOutboxMessages(ctx context.Context, db DBTX,
 	return result.RowsAffected()
 }
 
+// ReapQuarantinedOutboxMessages runs the :execrows query against mysql.
+func (q *mysqlQueries) ReapQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg ReapQuarantinedOutboxMessagesParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.reapQuarantinedOutboxMessages,
+		arg.Before,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // RecordOutboxMessageFailure runs the :execrows query against mysql.
 func (q *mysqlQueries) RecordOutboxMessageFailure(ctx context.Context, db DBTX, arg RecordOutboxMessageFailureParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordOutboxMessageFailure,
@@ -296,10 +351,32 @@ func (q *mysqlQueries) RecordOutboxMessageFailure(ctx context.Context, db DBTX, 
 		arg.ClaimedBy,
 		arg.NextAttempt,
 		arg.LastError,
-		arg.Quarantined,
+		arg.QuarantinedAt,
 		arg.ID,
 		arg.HeldBy,
 	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// ReleaseQuarantinedOutboxMessages runs the :execrows query against mysql.
+func (q *mysqlQueries) ReleaseQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg ReleaseQuarantinedOutboxMessagesParams) (int64, error) {
+	query := q.releaseQuarantinedOutboxMessages
+
+	args := make([]any, 0, 1+len(arg.IDs))
+
+	args = append(args, arg.NextAttempt)
+
+	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
+
+	for _, v := range arg.IDs {
+		args = append(args, v)
+	}
+
+	result, err := db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -375,6 +452,78 @@ func (q *mysqlQueries) SelectClaimableOutboxMessagesSkipLocked(ctx context.Conte
 	return items, nil
 }
 
+// SelectQuarantinedOutboxMessages runs the :many query against mysql.
+func (q *mysqlQueries) SelectQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg SelectQuarantinedOutboxMessagesParams) ([]SelectQuarantinedOutboxMessagesRow, error) {
+	rows, err := db.QueryContext(ctx, q.selectQuarantinedOutboxMessages,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []SelectQuarantinedOutboxMessagesRow
+
+	for rows.Next() {
+		var i SelectQuarantinedOutboxMessagesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Topic,
+			&i.PartitionKey,
+			&i.CreatedAt,
+			&i.QuarantinedAt,
+			&i.Attempts,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// SelectReapableQuarantinedOutboxMessages runs the :many query against mysql.
+func (q *mysqlQueries) SelectReapableQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg SelectReapableQuarantinedOutboxMessagesParams) ([]SelectReapableQuarantinedOutboxMessagesRow, error) {
+	rows, err := db.QueryContext(ctx, q.selectReapableQuarantinedOutboxMessages,
+		arg.Before,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []SelectReapableQuarantinedOutboxMessagesRow
+
+	for rows.Next() {
+		var i SelectReapableQuarantinedOutboxMessagesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 // Shape assertions.
 //
 // Each conversion below compiles only if the shared type still has exactly
@@ -421,14 +570,22 @@ var (
 		ResultLimit int64
 	}(ReapPublishedOutboxMessagesParams{})
 	_ = struct {
-		ClaimedUntil *time.Time
-		ClaimedBy    *string
-		NextAttempt  time.Time
-		LastError    *string
-		Quarantined  bool
-		ID           string
-		HeldBy       *string
+		Before      *time.Time
+		ResultLimit int64
+	}(ReapQuarantinedOutboxMessagesParams{})
+	_ = struct {
+		ClaimedUntil  *time.Time
+		ClaimedBy     *string
+		NextAttempt   time.Time
+		LastError     *string
+		QuarantinedAt *time.Time
+		ID            string
+		HeldBy        *string
 	}(RecordOutboxMessageFailureParams{})
+	_ = struct {
+		NextAttempt time.Time
+		IDs         []string
+	}(ReleaseQuarantinedOutboxMessagesParams{})
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
@@ -445,4 +602,24 @@ var (
 	_ = struct {
 		ID string
 	}(SelectClaimableOutboxMessagesSkipLockedRow{})
+	_ = struct {
+		ResultLimit int64
+	}(SelectQuarantinedOutboxMessagesParams{})
+	_ = struct {
+		ID            string
+		Topic         string
+		PartitionKey  string
+		CreatedAt     time.Time
+		QuarantinedAt *time.Time
+		Attempts      int64
+		LastError     *string
+	}(SelectQuarantinedOutboxMessagesRow{})
+	_ = struct {
+		Before      *time.Time
+		ResultLimit int64
+	}(SelectReapableQuarantinedOutboxMessagesParams{})
+	_ = struct {
+		ID        string
+		LastError *string
+	}(SelectReapableQuarantinedOutboxMessagesRow{})
 )

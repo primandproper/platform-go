@@ -1,7 +1,9 @@
 package outbox
 
 import (
+	"maps"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -13,6 +15,8 @@ import (
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	"github.com/primandproper/primitives-go/v2/observability/logging"
+	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
 
 	"github.com/shoenig/test/must"
 )
@@ -148,3 +152,68 @@ func countRows(t *testing.T, client database.Client, where string) int {
 
 	return n
 }
+
+// warnedLine is one Warn a component wrote, and the values its logger carried
+// when it did.
+type warnedLine struct {
+	values  map[string]any
+	message string
+}
+
+// recordingLogger keeps the Warn lines a component writes, so a test can assert
+// on the one the quarantine reap emits — which is the last record that a
+// discarded event ever existed, and therefore the one thing about that pass
+// worth pinning.
+//
+// It embeds the noop logger and overrides only what it needs: everything else
+// this package logs is already observed by the assertions around it. Derived
+// loggers share the root's slice, because a component builds the line's values
+// through WithValues and logs through what that returned.
+type recordingLogger struct {
+	logging.Logger
+
+	lines  *[]warnedLine
+	values map[string]any
+	mu     *sync.Mutex
+}
+
+var _ logging.Logger = (*recordingLogger)(nil)
+
+func newRecordingLogger() *recordingLogger {
+	return &recordingLogger{
+		Logger: loggingnoop.NewLogger(),
+		lines:  &[]warnedLine{},
+		values: map[string]any{},
+		mu:     &sync.Mutex{},
+	}
+}
+
+func (l *recordingLogger) Warn(message string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	*l.lines = append(*l.lines, warnedLine{message: message, values: maps.Clone(l.values)})
+}
+
+func (l *recordingLogger) warnings() []warnedLine {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return slices.Clone(*l.lines)
+}
+
+func (l *recordingLogger) with(values map[string]any) logging.Logger {
+	merged := make(map[string]any, len(l.values)+len(values))
+	maps.Copy(merged, l.values)
+	maps.Copy(merged, values)
+
+	return &recordingLogger{Logger: l.Logger, lines: l.lines, values: merged, mu: l.mu}
+}
+
+func (l *recordingLogger) WithValue(key string, value any) logging.Logger {
+	return l.with(map[string]any{key: value})
+}
+
+func (l *recordingLogger) WithValues(values map[string]any) logging.Logger { return l.with(values) }
+func (l *recordingLogger) Clone() logging.Logger                           { return l.with(nil) }
+func (l *recordingLogger) WithName(string) logging.Logger                  { return l.with(nil) }

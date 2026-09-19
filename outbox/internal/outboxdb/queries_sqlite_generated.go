@@ -16,7 +16,7 @@ const claimOutboxMessagesSQLite = `UPDATE {{prefix}}outbox_messages SET
 	claimed_by = ?2,
 	attempts = attempts + 1
 WHERE published_at IS NULL
-	AND quarantined = FALSE
+	AND quarantined_at IS NULL
 	AND next_attempt <= ?3
 	AND (claimed_until IS NULL OR claimed_until <= ?4)
 	AND id IN (/*SLICE:ids*/?)`
@@ -63,14 +63,14 @@ const outboxBacklogSQLite = `SELECT
 		SELECT queued.created_at
 		FROM {{prefix}}outbox_messages AS queued
 		WHERE queued.published_at IS NULL
-			AND queued.quarantined = FALSE
+			AND queued.quarantined_at IS NULL
 		ORDER BY queued.created_at ASC
 		LIMIT 1
 	) AS oldest
 FROM {{prefix}}outbox_messages
 WHERE {{prefix}}outbox_messages.published_at IS NULL
-	AND {{prefix}}outbox_messages.quarantined = FALSE
-GROUP BY {{prefix}}outbox_messages.quarantined`
+	AND {{prefix}}outbox_messages.quarantined_at IS NULL
+GROUP BY {{prefix}}outbox_messages.quarantined_at`
 
 const reapPublishedOutboxMessagesSQLite = `DELETE FROM {{prefix}}outbox_messages
 WHERE id IN (
@@ -82,19 +82,35 @@ WHERE id IN (
 	LIMIT ?2
 )`
 
+const reapQuarantinedOutboxMessagesSQLite = `DELETE FROM {{prefix}}outbox_messages
+WHERE id IN (
+	SELECT doomed.id
+	FROM {{prefix}}outbox_messages AS doomed
+	WHERE doomed.quarantined_at IS NOT NULL
+		AND doomed.quarantined_at <= ?1
+	ORDER BY doomed.quarantined_at ASC, doomed.id ASC
+	LIMIT ?2
+)`
+
 const recordOutboxMessageFailureSQLite = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = ?1,
 	claimed_by = ?2,
 	next_attempt = ?3,
 	last_error = ?4,
-	quarantined = ?5
+	quarantined_at = ?5
 WHERE id = ?6
 	AND claimed_by = ?7`
+
+const releaseQuarantinedOutboxMessagesSQLite = `UPDATE {{prefix}}outbox_messages SET
+	quarantined_at = NULL,
+	next_attempt = ?1
+WHERE quarantined_at IS NOT NULL
+	AND id IN (/*SLICE:ids*/?)`
 
 const selectClaimableOutboxMessagesSQLite = `SELECT m.id
 FROM {{prefix}}outbox_messages AS m
 WHERE m.published_at IS NULL
-	AND m.quarantined = FALSE
+	AND m.quarantined_at IS NULL
 	AND m.next_attempt <= ?1
 	AND (m.claimed_until IS NULL OR m.claimed_until <= ?2)
 	AND (m.partition_key = '' OR NOT EXISTS (
@@ -102,7 +118,7 @@ WHERE m.published_at IS NULL
 		FROM {{prefix}}outbox_messages AS prior
 		WHERE prior.partition_key = m.partition_key
 			AND prior.published_at IS NULL
-			AND prior.quarantined = FALSE
+			AND prior.quarantined_at IS NULL
 			AND (prior.created_at < m.created_at
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
@@ -112,7 +128,7 @@ LIMIT COALESCE(?3, 50)`
 const selectClaimableOutboxMessagesSkipLockedSQLite = `SELECT m.id
 FROM {{prefix}}outbox_messages AS m
 WHERE m.published_at IS NULL
-	AND m.quarantined = FALSE
+	AND m.quarantined_at IS NULL
 	AND m.next_attempt <= ?1
 	AND (m.claimed_until IS NULL OR m.claimed_until <= ?2)
 	AND (m.partition_key = '' OR NOT EXISTS (
@@ -120,12 +136,34 @@ WHERE m.published_at IS NULL
 		FROM {{prefix}}outbox_messages AS prior
 		WHERE prior.partition_key = m.partition_key
 			AND prior.published_at IS NULL
-			AND prior.quarantined = FALSE
+			AND prior.quarantined_at IS NULL
 			AND (prior.created_at < m.created_at
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
 ORDER BY m.created_at, m.id
 LIMIT COALESCE(?3, 50)`
+
+const selectQuarantinedOutboxMessagesSQLite = `SELECT
+	{{prefix}}outbox_messages.id,
+	{{prefix}}outbox_messages.topic,
+	{{prefix}}outbox_messages.partition_key,
+	{{prefix}}outbox_messages.created_at,
+	{{prefix}}outbox_messages.quarantined_at,
+	{{prefix}}outbox_messages.attempts,
+	{{prefix}}outbox_messages.last_error
+FROM {{prefix}}outbox_messages
+WHERE {{prefix}}outbox_messages.quarantined_at IS NOT NULL
+ORDER BY {{prefix}}outbox_messages.quarantined_at ASC, {{prefix}}outbox_messages.id ASC
+LIMIT COALESCE(?1, 50)`
+
+const selectReapableQuarantinedOutboxMessagesSQLite = `SELECT
+	{{prefix}}outbox_messages.id,
+	{{prefix}}outbox_messages.last_error
+FROM {{prefix}}outbox_messages
+WHERE {{prefix}}outbox_messages.quarantined_at IS NOT NULL
+	AND {{prefix}}outbox_messages.quarantined_at <= ?1
+ORDER BY {{prefix}}outbox_messages.quarantined_at ASC, {{prefix}}outbox_messages.id ASC
+LIMIT COALESCE(?2, 50)`
 
 // sqliteQueries answers every query in Querier against sqlite.
 type sqliteQueries struct {
@@ -135,9 +173,13 @@ type sqliteQueries struct {
 	markOutboxMessagesPublished             string
 	outboxBacklog                           string
 	reapPublishedOutboxMessages             string
+	reapQuarantinedOutboxMessages           string
 	recordOutboxMessageFailure              string
+	releaseQuarantinedOutboxMessages        string
 	selectClaimableOutboxMessages           string
 	selectClaimableOutboxMessagesSkipLocked string
+	selectQuarantinedOutboxMessages         string
+	selectReapableQuarantinedOutboxMessages string
 }
 
 // newSQLite returns the sqlite querier with prefix substituted into every
@@ -150,9 +192,13 @@ func newSQLite(prefix string) *sqliteQueries {
 		markOutboxMessagesPublished:             strings.ReplaceAll(markOutboxMessagesPublishedSQLite, prefixMarker, prefix),
 		outboxBacklog:                           strings.ReplaceAll(outboxBacklogSQLite, prefixMarker, prefix),
 		reapPublishedOutboxMessages:             strings.ReplaceAll(reapPublishedOutboxMessagesSQLite, prefixMarker, prefix),
+		reapQuarantinedOutboxMessages:           strings.ReplaceAll(reapQuarantinedOutboxMessagesSQLite, prefixMarker, prefix),
 		recordOutboxMessageFailure:              strings.ReplaceAll(recordOutboxMessageFailureSQLite, prefixMarker, prefix),
+		releaseQuarantinedOutboxMessages:        strings.ReplaceAll(releaseQuarantinedOutboxMessagesSQLite, prefixMarker, prefix),
 		selectClaimableOutboxMessages:           strings.ReplaceAll(selectClaimableOutboxMessagesSQLite, prefixMarker, prefix),
 		selectClaimableOutboxMessagesSkipLocked: strings.ReplaceAll(selectClaimableOutboxMessagesSkipLockedSQLite, prefixMarker, prefix),
+		selectQuarantinedOutboxMessages:         strings.ReplaceAll(selectQuarantinedOutboxMessagesSQLite, prefixMarker, prefix),
+		selectReapableQuarantinedOutboxMessages: strings.ReplaceAll(selectReapableQuarantinedOutboxMessagesSQLite, prefixMarker, prefix),
 	}
 }
 
@@ -321,6 +367,19 @@ func (q *sqliteQueries) ReapPublishedOutboxMessages(ctx context.Context, db DBTX
 	return result.RowsAffected()
 }
 
+// ReapQuarantinedOutboxMessages runs the :execrows query against sqlite.
+func (q *sqliteQueries) ReapQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg ReapQuarantinedOutboxMessagesParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.reapQuarantinedOutboxMessages,
+		timeTextPtr(arg.Before),
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // RecordOutboxMessageFailure runs the :execrows query against sqlite.
 func (q *sqliteQueries) RecordOutboxMessageFailure(ctx context.Context, db DBTX, arg RecordOutboxMessageFailureParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordOutboxMessageFailure,
@@ -328,10 +387,32 @@ func (q *sqliteQueries) RecordOutboxMessageFailure(ctx context.Context, db DBTX,
 		arg.ClaimedBy,
 		timeText(arg.NextAttempt),
 		arg.LastError,
-		arg.Quarantined,
+		timeTextPtr(arg.QuarantinedAt),
 		arg.ID,
 		arg.HeldBy,
 	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// ReleaseQuarantinedOutboxMessages runs the :execrows query against sqlite.
+func (q *sqliteQueries) ReleaseQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg ReleaseQuarantinedOutboxMessagesParams) (int64, error) {
+	query := q.releaseQuarantinedOutboxMessages
+
+	args := make([]any, 0, 1+len(arg.IDs))
+
+	args = append(args, timeText(arg.NextAttempt))
+
+	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
+
+	for _, v := range arg.IDs {
+		args = append(args, v)
+	}
+
+	result, err := db.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -407,6 +488,78 @@ func (q *sqliteQueries) SelectClaimableOutboxMessagesSkipLocked(ctx context.Cont
 	return items, nil
 }
 
+// SelectQuarantinedOutboxMessages runs the :many query against sqlite.
+func (q *sqliteQueries) SelectQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg SelectQuarantinedOutboxMessagesParams) ([]SelectQuarantinedOutboxMessagesRow, error) {
+	rows, err := db.QueryContext(ctx, q.selectQuarantinedOutboxMessages,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []SelectQuarantinedOutboxMessagesRow
+
+	for rows.Next() {
+		var i SelectQuarantinedOutboxMessagesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Topic,
+			&i.PartitionKey,
+			&i.CreatedAt,
+			&i.QuarantinedAt,
+			&i.Attempts,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// SelectReapableQuarantinedOutboxMessages runs the :many query against sqlite.
+func (q *sqliteQueries) SelectReapableQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg SelectReapableQuarantinedOutboxMessagesParams) ([]SelectReapableQuarantinedOutboxMessagesRow, error) {
+	rows, err := db.QueryContext(ctx, q.selectReapableQuarantinedOutboxMessages,
+		timeTextPtr(arg.Before),
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []SelectReapableQuarantinedOutboxMessagesRow
+
+	for rows.Next() {
+		var i SelectReapableQuarantinedOutboxMessagesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 // Shape assertions.
 //
 // Each conversion below compiles only if the shared type still has exactly
@@ -453,14 +606,22 @@ var (
 		ResultLimit int64
 	}(ReapPublishedOutboxMessagesParams{})
 	_ = struct {
-		ClaimedUntil *time.Time
-		ClaimedBy    *string
-		NextAttempt  time.Time
-		LastError    *string
-		Quarantined  bool
-		ID           string
-		HeldBy       *string
+		Before      *time.Time
+		ResultLimit int64
+	}(ReapQuarantinedOutboxMessagesParams{})
+	_ = struct {
+		ClaimedUntil  *time.Time
+		ClaimedBy     *string
+		NextAttempt   time.Time
+		LastError     *string
+		QuarantinedAt *time.Time
+		ID            string
+		HeldBy        *string
 	}(RecordOutboxMessageFailureParams{})
+	_ = struct {
+		NextAttempt time.Time
+		IDs         []string
+	}(ReleaseQuarantinedOutboxMessagesParams{})
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
@@ -477,4 +638,24 @@ var (
 	_ = struct {
 		ID string
 	}(SelectClaimableOutboxMessagesSkipLockedRow{})
+	_ = struct {
+		ResultLimit int64
+	}(SelectQuarantinedOutboxMessagesParams{})
+	_ = struct {
+		ID            string
+		Topic         string
+		PartitionKey  string
+		CreatedAt     time.Time
+		QuarantinedAt *time.Time
+		Attempts      int64
+		LastError     *string
+	}(SelectQuarantinedOutboxMessagesRow{})
+	_ = struct {
+		Before      *time.Time
+		ResultLimit int64
+	}(SelectReapableQuarantinedOutboxMessagesParams{})
+	_ = struct {
+		ID        string
+		LastError *string
+	}(SelectReapableQuarantinedOutboxMessagesRow{})
 )

@@ -75,11 +75,19 @@ const (
 	// LastErrorColumn holds the truncated reason the last publish failed, and
 	// is cleared when one succeeds.
 	LastErrorColumn = "last_error"
-	// QuarantinedColumn marks a message no future claim will admit. It is the
-	// terminal state a message reaches once it has exhausted its attempts,
-	// without which one permanently broken message holds the head of its
-	// partition forever.
-	QuarantinedColumn = "quarantined"
+	// QuarantinedAtColumn is stamped when the fleet gave up on a message, and
+	// marks one no future claim will admit. It is the terminal state a message
+	// reaches once it has exhausted its attempts, without which one permanently
+	// broken message holds the head of its partition forever.
+	//
+	// It is an instant rather than a flag, and the instant is what the second
+	// retention window is measured from. A flag says a message was abandoned
+	// and a horizon needs to know when, so a bool would have sent the
+	// quarantine reap looking for its stamp in some other column — next_attempt
+	// is the only candidate, and it means "when to try next" on every row a
+	// claim will ever read. The table already spells every other thing that
+	// happened to a row as a nullable instant, and this is one more of them.
+	QuarantinedAtColumn = "quarantined_at"
 )
 
 // The arguments the authored statements bind. A rendered statement takes its
@@ -131,7 +139,7 @@ var Columns = []string{
 	PublishedAtColumn,
 	AttemptsColumn,
 	LastErrorColumn,
-	QuarantinedColumn,
+	QuarantinedAtColumn,
 }
 
 // InsertColumns is what one enqueued row supplies values for, in the order the
@@ -150,8 +158,8 @@ var InsertColumns = []string{
 }
 
 // FailureColumns is what a failed publish assigns: the lease released and its
-// holder with it, the retry scheduled, the reason recorded, and the terminal
-// flag.
+// holder with it, the retry scheduled, the reason recorded, and the instant the
+// fleet gave up.
 //
 // It is the table's mutable set less published_at and attempts, and both
 // absences are load-bearing. A failure that assigned published_at would retire
@@ -164,7 +172,7 @@ var FailureColumns = []string{
 	ClaimedByColumn,
 	NextAttemptColumn,
 	LastErrorColumn,
-	QuarantinedColumn,
+	QuarantinedAtColumn,
 }
 
 // ClaimedColumns is what the read of a leased batch projects, which is a
@@ -183,20 +191,57 @@ var ClaimedColumns = []string{
 	AttemptsColumn,
 }
 
+// QuarantinedColumns is what the operator's read of the quarantine projects,
+// which is a message to decide about rather than a message to publish.
+//
+// last_error is the column the whole read exists for: a quarantined row is a
+// dropped event, and the only question worth asking of it is why. The rest is
+// what makes the answer actionable — which topic and which partition key are
+// affected, when the event was created and when the fleet gave up on it, and
+// how many attempts that took.
+//
+// The payload is deliberately not among them. A quarantine read is a list, the
+// payloads behind it are unbounded and arbitrary, and a page of them is a
+// consumer's whole event stream traveling through a log-shaped API. What a
+// caller needs to replay one is its id, which Release takes.
+var QuarantinedColumns = []string{
+	querygen.IDColumn,
+	TopicColumn,
+	PartitionKeyColumn,
+	querygen.CreatedAtColumn,
+	QuarantinedAtColumn,
+	AttemptsColumn,
+	LastErrorColumn,
+}
+
+// ReapableQuarantineColumns is what the quarantine reap reads before it
+// deletes: the id of a row about to be destroyed, and the reason it was
+// abandoned.
+//
+// The reap logs both, and that line is the last record the event existed at
+// all — which is why this pass reads before it writes rather than counting rows
+// the way the published reap does. There is nothing to read a deleted row back
+// from.
+var ReapableQuarantineColumns = []string{
+	querygen.IDColumn,
+	LastErrorColumn,
+}
+
 // Nullable names the columns a write may set to NULL, which lives in the schema
 // neither this package nor querygen reads. A NOT NULL column bound through
 // sqlc.narg yields a parameter that can express a NULL the server will reject,
 // and a nullable one bound through sqlc.arg yields one that cannot express the
 // NULL the column takes; both are quiet.
-var Nullable = []string{ClaimedUntilColumn, ClaimedByColumn, PublishedAtColumn, LastErrorColumn}
+var Nullable = []string{ClaimedUntilColumn, ClaimedByColumn, PublishedAtColumn, LastErrorColumn, QuarantinedAtColumn}
 
 // Render returns the canonical sqlc input for one dialect: every statement the
 // Writer and the Relay execute, in the order below, as the bytes the committed
 // .sql beside this file holds.
 //
 // The order is the order a message goes through: enqueued, selected, leased,
-// read back, retired or rescheduled, counted in the backlog, and finally
-// collected once it has aged past retention.
+// read back, retired or rescheduled, listed and released again if it was
+// quarantined, counted in the backlog, and finally collected once it has aged
+// past whichever retention its terminal state is measured by.
 func Render(d dialect.Dialect) string {
 	g := querygen.For(d)
 
@@ -215,8 +260,12 @@ func Render(d dialect.Dialect) string {
 		fetchClaimed(g),
 		markPublished(g),
 		recordFailure(g),
+		selectQuarantined(g),
+		releaseQuarantined(g),
 		backlog(),
 		reapPublished(g),
+		selectReapableQuarantined(g),
+		reapQuarantined(g),
 	})
 }
 
@@ -319,7 +368,7 @@ func selectClaimable(g *querygen.Generator, skipLocked bool) *querygen.Query {
 	statement := fmt.Sprintf(`SELECT %[1]s.%[3]s
 FROM %[2]s AS %[1]s
 WHERE %[1]s.%[4]s IS NULL
-	AND %[1]s.%[5]s = FALSE
+	AND %[1]s.%[5]s IS NULL
 	AND %[1]s.%[6]s <= sqlc.arg(%[7]s)
 	AND (%[1]s.%[8]s IS NULL OR %[1]s.%[8]s <= sqlc.arg(%[9]s))
 	AND (%[1]s.%[10]s = '' OR NOT EXISTS (
@@ -327,7 +376,7 @@ WHERE %[1]s.%[4]s IS NULL
 		FROM %[2]s AS %[11]s
 		WHERE %[11]s.%[10]s = %[1]s.%[10]s
 			AND %[11]s.%[4]s IS NULL
-			AND %[11]s.%[5]s = FALSE
+			AND %[11]s.%[5]s IS NULL
 			AND (%[11]s.%[12]s < %[1]s.%[12]s
 				OR (%[11]s.%[12]s = %[1]s.%[12]s AND %[11]s.%[3]s < %[1]s.%[3]s))
 	))
@@ -337,7 +386,7 @@ ORDER BY %[1]s.%[12]s, %[1]s.%[3]s
 		OutboxTable,
 		querygen.IDColumn,
 		PublishedAtColumn,
-		QuarantinedColumn,
+		QuarantinedAtColumn,
 		NextAttemptColumn,
 		NowArg,
 		ClaimedUntilColumn,
@@ -428,7 +477,7 @@ func claimMessages(g *querygen.Generator) *querygen.Query {
 	%s = sqlc.arg(%s),
 	%s = %s + 1
 WHERE %s IS NULL
-	AND %s = FALSE
+	AND %s IS NULL
 	AND %s <= sqlc.arg(%s)
 	AND (%s IS NULL OR %s <= sqlc.arg(%s))
 	AND %s;`,
@@ -437,7 +486,7 @@ WHERE %s IS NULL
 			ClaimedByColumn, ClaimedByColumn,
 			AttemptsColumn, AttemptsColumn,
 			PublishedAtColumn,
-			QuarantinedColumn,
+			QuarantinedAtColumn,
 			NextAttemptColumn, NowArg,
 			ClaimedUntilColumn, ClaimedUntilColumn, LeaseExpiredByArg,
 			g.SetCondition(querygen.IDColumn, IDsArg),
@@ -541,6 +590,139 @@ func recordFailure(g *querygen.Generator) *querygen.Query {
 		querygen.Match{Column: ClaimedByColumn, Arg: HeldByArg})
 }
 
+// selectQuarantined renders the operator's read of the messages the fleet has
+// given up on, most recently abandoned last.
+//
+// It is a sweep rather than a list, and the distinction is the one
+// querygen.SweepQuery draws: a list carries a caller's filter window, and a
+// window over this predicate would let a date range decide which dropped events
+// an operator gets to see. What this read has instead is an order that says
+// which message was abandoned first and a limit that says how many to look at.
+//
+// The order is (quarantined_at, id) rather than the publish order the rest of
+// this corpus takes, because nothing here is going to be published in order —
+// the question a reader has is which messages have been sitting in the
+// quarantine longest, and the id breaks the tie among a batch abandoned in one
+// instant.
+func selectQuarantined(g *querygen.Generator) *querygen.Query {
+	return g.SweepQuery("SelectQuarantinedOutboxMessages", OutboxTable, Columns,
+		querygen.Sweep{
+			Order:      quarantineOrder(),
+			Projection: QuarantinedColumns,
+		},
+		querygen.Match{Column: QuarantinedAtColumn, Against: querygen.NoValue, Exclude: true})
+}
+
+// releaseQuarantined renders the write that puts abandoned messages back in
+// front of the claim, which is the one thing an operator can do about a
+// quarantined row besides watch it age out.
+//
+// The quarantine stamp is cleared and the next attempt is bound, so a released
+// message is due when the caller says it is due rather than at whatever instant
+// the failure that abandoned it had computed. The lease is not among the
+// assignments and does not need to be: the failure that quarantined the row
+// released it in the same statement, so there is no holder to displace.
+//
+// The attempt count is not among them either, and that is the ruling rather
+// than an omission. A released message gets one more publish and goes straight
+// back where the operator found it if that one fails, because the count is the
+// record that it has already spent its budget — clearing it would hand the next
+// operator a message that reads as fresh and hide that the fleet gave up on it
+// once already.
+//
+// It is guarded on the row still being quarantined, so an id that names a live
+// message is a no-op rather than a backoff somebody else's relay was relying on
+// being reset. It is annotated :execrows for that guard: the count is how the
+// caller learns which of the ids it named were actually in the quarantine, and
+// a later read cannot answer that — a message released and published in between
+// is gone from both.
+//
+// The set binds last, as every set predicate in this module does.
+func releaseQuarantined(g *querygen.Generator) *querygen.Query {
+	return &querygen.Query{
+		Annotation: querygen.QueryAnnotation{Name: "ReleaseQuarantinedOutboxMessages", Type: querygen.ExecRowsType},
+		Content: fmt.Sprintf(`UPDATE %s SET
+	%s = NULL,
+	%s = sqlc.arg(%s)
+WHERE %s IS NOT NULL
+	AND %s;`,
+			OutboxTable,
+			QuarantinedAtColumn,
+			NextAttemptColumn, NextAttemptColumn,
+			QuarantinedAtColumn,
+			g.SetCondition(querygen.IDColumn, IDsArg),
+		),
+	}
+}
+
+// selectReapableQuarantined renders the read the quarantine reap takes before
+// it deletes: the rows it is about to destroy, and the reason each was
+// abandoned.
+//
+// It exists because the delete below is the end of the evidence. A published
+// row that ages out was delivered and the reap has nothing to say about it; a
+// quarantined one that ages out is an event nobody ever received, and the log
+// line naming it is the last record that it existed. There is no reading that
+// back afterwards, so it is read first.
+//
+// It shares the prune's predicates, its ordering and its cap, so the rows it
+// names are the rows the delete takes — see reapQuarantined for the one gap
+// between them, which is another relay's reaper.
+func selectReapableQuarantined(g *querygen.Generator) *querygen.Query {
+	return g.SweepQuery("SelectReapableQuarantinedOutboxMessages", OutboxTable, Columns,
+		querygen.Sweep{
+			Order:      quarantineOrder(),
+			Projection: ReapableQuarantineColumns,
+		},
+		quarantineHorizon()...)
+}
+
+// reapQuarantined renders the delete that removes abandoned rows past the
+// quarantine retention window, capped the way the published reap is capped.
+//
+// It is a second pass rather than a second horizon on the first one, because
+// the two windows are different lengths and measured from different columns: a
+// published row has been delivered and is kept only so a duplicate or a gap can
+// be investigated, and a quarantined one is an undelivered event kept so
+// somebody can decide what to do about it. Merging them would make the longer
+// window govern both.
+//
+// The pass takes the rows abandoned longest ago first, so a quarantine that has
+// been filling for a month drains in the order it filled.
+func reapQuarantined(g *querygen.Generator) *querygen.Query {
+	return g.PruneQuery("ReapQuarantinedOutboxMessages", OutboxTable, querygen.Prune{
+		Key:   []string{querygen.IDColumn},
+		Order: quarantineOrder(),
+	}, quarantineHorizon()...)
+}
+
+// quarantineOrder is the order every statement over the quarantine takes: the
+// message abandoned longest ago first, and the id to break a tie among the ones
+// abandoned in the same instant.
+//
+// It is one function because the reap's two statements have to agree about it
+// exactly — the read names the rows the delete takes — and because a reader
+// paging through the quarantine and a reaper draining it are looking at the
+// same list from the same end.
+func quarantineOrder() []querygen.Order {
+	return []querygen.Order{{Column: QuarantinedAtColumn}, {Column: querygen.IDColumn}}
+}
+
+// quarantineHorizon is what dooms a quarantined row: it is quarantined, and it
+// was abandoned at or before the instant the pass computed.
+//
+// Both halves are needed and neither is redundant. The horizon alone would
+// match every row whose quarantined_at is NULL under an engine that compared
+// NULL as anything, which none of the three do — but the IS NOT NULL is what
+// says out loud that this pass is about the quarantine, and it is what the
+// index the schema declares is partial on.
+func quarantineHorizon() []querygen.Match {
+	return []querygen.Match{
+		{Column: QuarantinedAtColumn, Against: querygen.NoValue, Exclude: true},
+		{Column: QuarantinedAtColumn, Arg: BeforeArg, Against: querygen.AtMostArgument},
+	}
+}
+
 // backlog is the health probe: how many messages are waiting, and when the
 // oldest of them was created.
 //
@@ -581,21 +763,21 @@ func backlog() *querygen.Query {
 		SELECT %[1]s.%[2]s
 		FROM %[3]s AS %[1]s
 		WHERE %[1]s.%[4]s IS NULL
-			AND %[1]s.%[5]s = FALSE
+			AND %[1]s.%[5]s IS NULL
 		ORDER BY %[1]s.%[2]s ASC
 		LIMIT 1
 	) AS oldest
 FROM %[3]s
 WHERE %[6]s IS NULL
-	AND %[7]s = FALSE
+	AND %[7]s IS NULL
 GROUP BY %[7]s;`,
 			queued,
 			querygen.CreatedAtColumn,
 			OutboxTable,
 			PublishedAtColumn,
-			QuarantinedColumn,
+			QuarantinedAtColumn,
 			querygen.Qualify(OutboxTable, PublishedAtColumn),
-			querygen.Qualify(OutboxTable, QuarantinedColumn),
+			querygen.Qualify(OutboxTable, QuarantinedAtColumn),
 		),
 	}
 }

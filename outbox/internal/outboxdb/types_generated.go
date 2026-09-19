@@ -61,15 +61,27 @@ type ReapPublishedOutboxMessagesParams struct {
 	ResultLimit int64
 }
 
+// ReapQuarantinedOutboxMessagesParams are the arguments to ReapQuarantinedOutboxMessages.
+type ReapQuarantinedOutboxMessagesParams struct {
+	Before      *time.Time
+	ResultLimit int64
+}
+
 // RecordOutboxMessageFailureParams are the arguments to RecordOutboxMessageFailure.
 type RecordOutboxMessageFailureParams struct {
-	ClaimedUntil *time.Time
-	ClaimedBy    *string
-	NextAttempt  time.Time
-	LastError    *string
-	Quarantined  bool
-	ID           string
-	HeldBy       *string
+	ClaimedUntil  *time.Time
+	ClaimedBy     *string
+	NextAttempt   time.Time
+	LastError     *string
+	QuarantinedAt *time.Time
+	ID            string
+	HeldBy        *string
+}
+
+// ReleaseQuarantinedOutboxMessagesParams are the arguments to ReleaseQuarantinedOutboxMessages.
+type ReleaseQuarantinedOutboxMessagesParams struct {
+	NextAttempt time.Time
+	IDs         []string
 }
 
 // SelectClaimableOutboxMessagesParams are the arguments to SelectClaimableOutboxMessages.
@@ -94,4 +106,32 @@ type SelectClaimableOutboxMessagesSkipLockedParams struct {
 // SelectClaimableOutboxMessagesSkipLockedRow is one row of SelectClaimableOutboxMessagesSkipLocked's result.
 type SelectClaimableOutboxMessagesSkipLockedRow struct {
 	ID string
+}
+
+// SelectQuarantinedOutboxMessagesParams are the arguments to SelectQuarantinedOutboxMessages.
+type SelectQuarantinedOutboxMessagesParams struct {
+	ResultLimit int64
+}
+
+// SelectQuarantinedOutboxMessagesRow is one row of SelectQuarantinedOutboxMessages's result.
+type SelectQuarantinedOutboxMessagesRow struct {
+	ID            string
+	Topic         string
+	PartitionKey  string
+	CreatedAt     time.Time
+	QuarantinedAt *time.Time
+	Attempts      int64
+	LastError     *string
+}
+
+// SelectReapableQuarantinedOutboxMessagesParams are the arguments to SelectReapableQuarantinedOutboxMessages.
+type SelectReapableQuarantinedOutboxMessagesParams struct {
+	Before      *time.Time
+	ResultLimit int64
+}
+
+// SelectReapableQuarantinedOutboxMessagesRow is one row of SelectReapableQuarantinedOutboxMessages's result.
+type SelectReapableQuarantinedOutboxMessagesRow struct {
+	ID        string
+	LastError *string
 }
