@@ -842,6 +842,37 @@ func runPurchaseSuite(t *testing.T, env *storeEnv) {
 		test.EqOp(t, int64(999), read.AmountCents)
 	})
 
+	t.Run("creates outstanding however settled the argument looks", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		product := mustCreateProduct(t, env, store, testScope, oneTimeProduct("lifetime"))
+
+		// A caller recording something already paid for — a comped order, an
+		// import — hands the stamp over on the entity. It is dropped: the create
+		// is not a second writer of that column, and the row it wrote is one
+		// CompletePurchase's NULL guard can still act on.
+		settled := testNow.Add(-2 * time.Hour)
+		wanted := outstandingPurchase(product.ID, testAccount)
+		wanted.CompletedAt = &settled
+
+		created := mustCreatePurchase(t, env, store, testScope, wanted)
+		test.Nil(t, created.CompletedAt)
+		test.False(t, created.Complete())
+
+		read, err := store.GetPurchase(t.Context(), env.reader(), testScope, created.ID)
+		must.NoError(t, err)
+		test.Nil(t, read.CompletedAt)
+		test.False(t, read.Complete())
+
+		// Create-then-complete is how the settled purchase is actually recorded,
+		// and the guard is there to be won because the create left it alone.
+		completed, err := env.completePurchase(t, store, testScope, created.ID, settled)
+		must.NoError(t, err)
+		must.NotNil(t, completed.CompletedAt)
+		test.True(t, settled.Equal(completed.CompletedAt.UTC()))
+	})
+
 	t.Run("completes once, at the provider's own moment", func(t *testing.T) {
 		t.Parallel()
 

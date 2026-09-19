@@ -380,6 +380,12 @@ type PurchaseStore interface {
 	// CreatePurchase records a sale through the caller's transaction and returns
 	// it as stored, outstanding. A nil tx is an error wrapping ErrNilExecutor.
 	//
+	// Always outstanding: a CompletedAt on the argument is dropped rather than
+	// written, because CompletePurchase is the only writer of that column and is
+	// guarded on it being NULL. A purchase that is settled the moment it is
+	// recorded — a comped order, a historical import — is create-then-complete in
+	// the one transaction, which is one more statement and keeps the one writer.
+	//
 	// The row is written when the attempt starts rather than when it settles, so
 	// that the transaction recording the attempt has something of ours to point
 	// at. A provider-side transaction id already claimed in this scope returns an
