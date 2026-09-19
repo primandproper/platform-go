@@ -24,7 +24,7 @@ is a target gone with its comments still live, or a subject erased everywhere
 but here. See identity/grpc for the pattern this is an instance of, and
 comments.Store, which says it on each of the two methods.
 
-# Three seams, and one of them has a default
+# Four seams, and two of them have a default
 
 Who is calling is [github.com/primandproper/platform-go/v14/callers.Principal],
 which a consumer's own authentication interceptor puts on the context and
@@ -53,6 +53,17 @@ that default is closed: a consumer who says nothing gets a discussion in which
 authors edit and archive their own words and nobody else's, rather than one in
 which a single grant is the right to rewrite anybody's sentence under their own
 name.
+
+What the caller may do is authorization's Grants, read back through the
+authorization.GrantsExtractor a consumer supplies to [WithGrantsExtractor] —
+the same one they hand authorization/grpc's enforcer. It is read for exactly one
+decision, and the decision is why it is here rather than only in front of the
+handler: a paged read's include_archived arrives on the wire, so it is a request
+and not an instruction, and it is honored only for a caller holding
+[PermissionArchiveComments]. Its default is also closed: a server built without
+it clears the field on every read, so a deployment that has not wired it serves
+live comments to everybody rather than removed ones to anybody. archived.go
+carries the ruling.
 
 # Authorship comes off the connection
 
@@ -107,7 +118,9 @@ that six ways cannot tell which field to go back to.
 
 	srv, err := commentsgrpc.NewServer(store, client, principalFromContext,
 	    commentsgrpc.WithPillars(pillars),
-	    commentsgrpc.WithAuthorAuthorizer(yourModerationRule))
+	    commentsgrpc.WithAuthorAuthorizer(yourModerationRule),
+	    commentsgrpc.WithGrantsExtractor(grants))   // the enforcer's, so a moderator's
+	                                                // include_archived is honored
 
 	reqs, err := commentsgrpc.Require(authzgrpc.NewRequirements()).Build()
 

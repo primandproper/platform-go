@@ -51,8 +51,15 @@ func Example_mount() {
 		// cannot see the grant that says who triages. ReporterAuthorizer is the
 		// narrow half — a deployment with a triage console composes it with
 		// whatever says this caller is a triager.
+		//
+		// The grants extractor is the enforcer's, handed to the surface as
+		// well: the interceptor decides whether a method may be called, and
+		// this decides whether a paged read's include_archived is honored. A
+		// server built without it clears the field, so the archived reports
+		// reach nobody until it is wired.
 		srv, err := issuereportsgrpc.NewServer(store, client, principals,
-			issuereportsgrpc.ReporterAuthorizer{}, issuereportsgrpc.WithPillars(pillars))
+			issuereportsgrpc.ReporterAuthorizer{}, issuereportsgrpc.WithPillars(pillars),
+			issuereportsgrpc.WithGrantsExtractor(grants))
 		if err != nil {
 			return err
 		}

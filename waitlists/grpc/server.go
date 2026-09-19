@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -42,6 +43,10 @@ const (
 	// uniformly, so what actually happened is on the operation or nowhere. See
 	// [Server.Join].
 	joinOutcomeKey = "waitlists.join_outcome"
+
+	// archivedClearedKey records that a read asked for archived rows and did not
+	// hold the grant that reaches them. See archived.go.
+	archivedClearedKey = "waitlists.include_archived_cleared"
 )
 
 // The wiring failures this surface refuses to be built with, and the one refusal
@@ -120,6 +125,7 @@ type Server struct {
 	principals callers.PrincipalExtractor
 	signups    SignupAuthorizer
 	scopes     ScopeResolver
+	grants     authorization.GrantsExtractor
 	o11y       observability.Observer
 
 	instruments *metrics.OperationSet

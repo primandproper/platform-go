@@ -168,7 +168,11 @@ type harness struct {
 // shared one: DDL invalidates every prepared statement on the whole database,
 // so one parallel subtest creating its tables makes another's next read fail
 // with "database schema has changed" whatever prefix either is using.
-func newHarness(tb testing.TB, authorizer settingsgrpc.SubjectAuthorizer) *harness {
+func newHarness(
+	tb testing.TB,
+	authorizer settingsgrpc.SubjectAuthorizer,
+	opts ...settingsgrpc.Option,
+) *harness {
 	tb.Helper()
 
 	db, err := sqlite.NewDatabaseClient(tb.Context(),
@@ -194,7 +198,8 @@ func newHarness(tb testing.TB, authorizer settingsgrpc.SubjectAuthorizer) *harne
 		authorizer = settingsgrpc.SubjectAuthorizerFunc(selfOnly)
 	}
 
-	server, err := settingsgrpc.NewServer(store, db, extractPrincipal, authorizer)
+	server, err := settingsgrpc.NewServer(store, db, extractPrincipal, authorizer,
+		append([]settingsgrpc.Option{settingsgrpc.WithGrantsExtractor(extractGrants)}, opts...)...)
 	must.NoError(tb, err)
 
 	return &harness{db: db, store: store, server: server}

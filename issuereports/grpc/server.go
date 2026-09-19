@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/issuereports"
 	"github.com/primandproper/platform-go/v14/issuereports/issuereportspb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -35,6 +36,10 @@ const (
 	fromStatusKey  = "issuereports.from_status"
 	subjectTypeKey = "issuereports.subject_type"
 	subjectIDKey   = "issuereports.subject_id"
+
+	// archivedClearedKey records that a read asked for archived reports and did
+	// not hold the grant that reaches them. See archived.go.
+	archivedClearedKey = "issuereports.include_archived_cleared"
 )
 
 // The wiring failures this surface refuses to be built with.
@@ -98,6 +103,7 @@ type Server struct {
 	client     database.Client
 	principals callers.PrincipalExtractor
 	targets    ReportAuthorizer
+	grants     authorization.GrantsExtractor
 	o11y       observability.Observer
 
 	instruments *metrics.OperationSet

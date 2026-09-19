@@ -185,7 +185,8 @@ func newHarnessWithTargets(tb testing.TB, targets comments.Targets, opts ...comm
 		comments.WithTablePrefix(prefix), comments.WithTargets(targets))
 	must.NoError(tb, err)
 
-	server, err := commentsgrpc.NewServer(store, db, extractPrincipal, opts...)
+	server, err := commentsgrpc.NewServer(store, db, extractPrincipal,
+		append([]commentsgrpc.Option{commentsgrpc.WithGrantsExtractor(extractGrants)}, opts...)...)
 	must.NoError(tb, err)
 
 	return &harness{db: db, store: store, server: server}

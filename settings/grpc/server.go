@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/settings"
 	"github.com/primandproper/platform-go/v14/settings/settingspb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -34,6 +35,10 @@ const (
 	subjectTypeKey  = "settings.subject_type"
 	subjectIDKey    = "settings.subject_id"
 	countKey        = "settings.count"
+
+	// archivedClearedKey records that a read asked for archived rows and did not
+	// hold the grant that reaches them. See archived.go.
+	archivedClearedKey = "settings.include_archived_cleared"
 )
 
 // The wiring failures this surface refuses to be built with, and the two
@@ -109,6 +114,7 @@ type Server struct {
 	client     database.Client
 	principals callers.PrincipalExtractor
 	subjects   SubjectAuthorizer
+	grants     authorization.GrantsExtractor
 	o11y       observability.Observer
 
 	instruments *metrics.OperationSet

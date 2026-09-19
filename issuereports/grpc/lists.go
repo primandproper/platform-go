@@ -29,8 +29,16 @@ import (
 //
 // A filter no converter can read is answered as malformed, before anything is
 // gated or read: saying so discloses nothing about any row.
+//
+// All five gate on one thing they share: a request for archived reports is
+// honored only for a caller holding [PermissionArchiveReports], and cleared for
+// everybody else. archived.go is where that is argued.
 
 // ListReports pages every report in the caller's tenant.
+//
+// The filter's include_archived is honored only for a caller holding
+// [PermissionArchiveReports]; for anybody else it is cleared and the page is the
+// live queue. See archived.go.
 func (s *Server) ListReports(
 	ctx context.Context,
 	request *issuereportspb.ListReportsRequest,
@@ -42,11 +50,8 @@ func (s *Server) ListReports(
 
 	defer func() { done(err) }()
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "reading the filter of an issue report page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of an issue report page")
-
 		return nil, err
 	}
 
@@ -74,6 +79,12 @@ func (s *Server) ListReports(
 //
 // The count a console wants beside the queue is on the response's pagination:
 // the filtered count is of everything in that status, not of the page.
+//
+// The filter's include_archived is honored only for a caller holding
+// [PermissionArchiveReports]; for anybody else it is cleared. A report that was
+// archived while open is therefore out of the open queue for a triager who
+// cannot archive, which is the same answer they would get without the flag. See
+// archived.go.
 func (s *Server) ListReportsByStatus(
 	ctx context.Context,
 	request *issuereportspb.ListReportsByStatusRequest,
@@ -88,11 +99,8 @@ func (s *Server) ListReportsByStatus(
 	status := StatusFromProto(request.GetStatus())
 	req.op.Set(statusKey, status.String())
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "reading the filter of an issue report queue")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of an issue report queue")
-
 		return nil, err
 	}
 
@@ -132,6 +140,11 @@ func (s *Server) ListReportsByStatus(
 // refusal rather than a read of the reports filed by nobody: the defaulting
 // copies whatever the principal carries, and [ReporterAuthorizer] declines to
 // treat an empty one as a key.
+//
+// A person reading what they filed does not get back the ones somebody archived:
+// the filter's include_archived is honored only for a caller holding
+// [PermissionArchiveReports], and standing over a reporter is a different
+// question from standing over what was taken out of the queue. See archived.go.
 func (s *Server) ListReportsByReporter(
 	ctx context.Context,
 	request *issuereportspb.ListReportsByReporterRequest,
@@ -150,11 +163,8 @@ func (s *Server) ListReportsByReporter(
 
 	req.op.Set(reporterKey, reporter)
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "reading the filter of a reporter's issue reports")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a reporter's issue reports")
-
 		return nil, err
 	}
 
@@ -183,6 +193,9 @@ func (s *Server) ListReportsByReporter(
 // The subject type is the application's own word and nothing here validates it:
 // one this deployment does not use is an empty page rather than a refusal, which
 // is the honest answer for a vocabulary this package does not own.
+//
+// The filter's include_archived is honored only for a caller holding
+// [PermissionArchiveReports]; for anybody else it is cleared. See archived.go.
 func (s *Server) ListReportsBySubjectType(
 	ctx context.Context,
 	request *issuereportspb.ListReportsBySubjectTypeRequest,
@@ -197,11 +210,8 @@ func (s *Server) ListReportsBySubjectType(
 	subjectType := request.GetSubjectType()
 	req.op.Set(subjectTypeKey, subjectType)
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "reading the filter of a subject type's issue reports")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a subject type's issue reports")
-
 		return nil, err
 	}
 
@@ -221,6 +231,9 @@ func (s *Server) ListReportsBySubjectType(
 
 // ListReportsForSubject pages every report about one particular thing, which is
 // what a moderation view of that thing renders.
+//
+// The filter's include_archived is honored only for a caller holding
+// [PermissionArchiveReports]; for anybody else it is cleared. See archived.go.
 func (s *Server) ListReportsForSubject(
 	ctx context.Context,
 	request *issuereportspb.ListReportsForSubjectRequest,
@@ -239,11 +252,8 @@ func (s *Server) ListReportsForSubject(
 
 	req.op.Set(subjectTypeKey, subjectType).Set(subjectIDKey, subjectID)
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(), "reading the filter of a subject's issue reports")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a subject's issue reports")
-
 		return nil, err
 	}
 

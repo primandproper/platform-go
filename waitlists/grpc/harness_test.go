@@ -233,7 +233,8 @@ func newHarnessOn(
 		waitlists.WithTablePrefix(prefix), waitlists.WithClock(newStubClock()))
 	must.NoError(tb, err)
 
-	server, err := waitlistsgrpc.NewServer(store, db, extractPrincipal, authorizer, opts...)
+	server, err := waitlistsgrpc.NewServer(store, db, extractPrincipal, authorizer,
+		append([]waitlistsgrpc.Option{waitlistsgrpc.WithGrantsExtractor(extractGrants)}, opts...)...)
 	must.NoError(tb, err)
 
 	return &harness{db: db, store: store, server: server}

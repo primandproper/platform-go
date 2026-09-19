@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/comments"
 	"github.com/primandproper/platform-go/v14/comments/commentspb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -41,6 +42,10 @@ const (
 	authorKey     = comments.AuthorAttributeKey
 	targetTypeKey = "comments.target_type"
 	targetIDKey   = "comments.target_id"
+
+	// archivedClearedKey records that a read asked for archived comments and
+	// did not hold the grant that reaches them. See archived.go.
+	archivedClearedKey = "comments.include_archived_cleared"
 )
 
 // The wiring failures this surface refuses to be built with, and the one
@@ -92,6 +97,11 @@ var _ commentspb.CommentsServiceServer = (*Server)(nil)
 // map a consumer composes into their own ([Permissions], declared in one call
 // by [Require]), and whose comments a caller may reach is [AuthorAuthorizer],
 // which unlike the other two has a default.
+//
+// It reads that grant map as well as declaring it, in one place: a paged read
+// honors a request for archived comments only from a caller holding
+// [PermissionArchiveComments], which is what [WithGrantsExtractor] is for and
+// archived.go argues at length.
 type Server struct {
 	commentspb.UnimplementedCommentsServiceServer
 
@@ -99,6 +109,7 @@ type Server struct {
 	client     database.Client
 	principals callers.PrincipalExtractor
 	authors    AuthorAuthorizer
+	grants     authorization.GrantsExtractor
 	o11y       observability.Observer
 
 	instruments *metrics.OperationSet

@@ -227,6 +227,13 @@ func (s *Server) ClearValue(
 // It is an inventory of overrides rather than the settings screen's read: the
 // settings a subject has *not* answered are not here, and [Server.ResolveAll]
 // is what includes them at their default.
+//
+// Neither are the ones they answered and later cleared. The filter's
+// include_archived reaches those, and is honored only for a caller holding
+// [PermissionWriteValues] — the grant that clears a value — and cleared for
+// everybody else. That is asked in addition to [SubjectAuthorizer] and not
+// instead of it: the authorizer says whose page this is, and this says whether
+// the cleared rows are on it. See archived.go.
 func (s *Server) ListValuesForSubject(
 	ctx context.Context,
 	request *settingspb.ListValuesForSubjectRequest,
@@ -245,11 +252,9 @@ func (s *Server) ListValuesForSubject(
 		return nil, err
 	}
 
-	filter, err := filteringgrpc.FromProto(request.GetFilter())
+	filter, err := s.readFilter(ctx, req, request.GetFilter(),
+		PermissionWriteValues, "reading the filter of a setting value page")
 	if err != nil {
-		err = grpcerrors.PrepareAndLogGRPCStatus(err,
-			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "reading the filter of a setting value page")
-
 		return nil, err
 	}
 

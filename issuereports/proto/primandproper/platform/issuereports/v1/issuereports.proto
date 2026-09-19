@@ -80,6 +80,26 @@
 // their footprint commit or roll back together, which is a property an RPC
 // cannot have. It is reached through dataprivacy's eraser, from the consumer's
 // own erasure run, and issuereports/grpc/doc.go carries the ruling.
+//
+// # include_archived is a request and not an instruction
+//
+// Every paged read here carries a QueryFilter, and its include_archived says
+// "give me the archived rows too". It is a field on a message a client fills in,
+// so it is a request the server rules on rather than a switch it obeys: a caller
+// holding issues.reports.archive gets the reports somebody took out of the
+// queue, and for everybody else the field is cleared before the read and the
+// page is the live queue.
+//
+// It is cleared and not refused. A read that failed because the caller asked for
+// too much turns a console's checkbox into an error, and a client cannot tell
+// that refusal from a malformed filter; the page a caller gets is the page they
+// would have got had they never set the field.
+//
+// The grant is issues.reports.archive rather than issues.reports.read or
+// issues.reports.triage because taking a report out of the queue is its own act
+// with its own grant, and a read that hands the removed rows back under a
+// lighter one makes that split a name. The same rule, under each surface's own
+// archive grant, is in comments.proto, waitlists.proto and settings.proto.
 
 syntax = "proto3";
 
@@ -263,6 +283,11 @@ message GetReportResponse {
 message ListReportsRequest {
   reserved "scope";
 
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are reports somebody took out of the
+  // queue, and the field is honored only for a caller holding
+  // issues.reports.archive and cleared for everybody else. See the file
+  // comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 1;
 }
 
@@ -281,6 +306,11 @@ message ListReportsByStatusRequest {
   // misspelled looks like.
   ReportStatus status = 1;
 
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are reports somebody took out of the
+  // queue, and the field is honored only for a caller holding
+  // issues.reports.archive and cleared for everybody else. See the file
+  // comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 
@@ -306,6 +336,11 @@ message ListReportsByReporterRequest {
   // somebody else's.
   string reporter = 1;
 
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are reports somebody took out of the
+  // queue, and the field is honored only for a caller holding
+  // issues.reports.archive and cleared for everybody else. See the file
+  // comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 
@@ -323,6 +358,11 @@ message ListReportsBySubjectTypeRequest {
   // anybody has said about recipes.
   string subject_type = 1;
 
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are reports somebody took out of the
+  // queue, and the field is honored only for a caller holding
+  // issues.reports.archive and cleared for everybody else. See the file
+  // comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 2;
 }
 
@@ -340,6 +380,11 @@ message ListReportsForSubjectRequest {
   string subject_type = 1;
   string subject_id = 2 [json_name = "subjectID"];
 
+  // filter pages the result. Its include_archived is a request rather than an
+  // instruction: the rows it reaches are reports somebody took out of the
+  // queue, and the field is honored only for a caller holding
+  // issues.reports.archive and cleared for everybody else. See the file
+  // comment.
   primandproper.platform.filtering.v1.QueryFilter filter = 3;
 }
 

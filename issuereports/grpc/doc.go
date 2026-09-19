@@ -64,7 +64,7 @@ decide about the status the report is in now. It reaches them as codes.Aborted,
 which is gRPC's code for exactly that, and it is registered client-safe so the
 sentence travels with it.
 
-# Authorization has two halves, and this table has two audiences
+# Authorization has three halves, and this table has two audiences
 
 [Permissions] is the first half: a grant on the method, evaluated by
 authorization/grpc's interceptor from the full method name and the caller's
@@ -82,6 +82,16 @@ question has two halves and this package can only answer one. Whether a report i
 the caller's own is a column it owns; whether this caller is a triager is a grant
 it cannot see. [ReporterAuthorizer] is the narrow half, exported so a deployment
 either passes it or composes it rather than re-deriving it.
+
+[WithGrantsExtractor] is the third, and it is the one that reads the first
+half's authority rather than declaring it. A paged read's include_archived
+arrives on the wire, so it is a request and not an instruction: it is honored
+only for a caller holding [PermissionArchiveReports], and cleared for everybody
+else before the filter reaches the store. A consumer supplies the same
+authorization.GrantsExtractor they hand the enforcer; a server built without it
+clears the field on every read, which is the fail-closed default and serves the
+live queue to everybody rather than the archived rows to anybody. archived.go
+carries the ruling.
 
 The other eight RPCs are not row-gated, and that is a ruling rather than an
 omission. CreateReport files in the caller's own name. The four queue listings

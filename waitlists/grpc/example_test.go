@@ -48,8 +48,14 @@ func Example_mount() {
 			return err
 		}
 
+		// The grants extractor is the enforcer's, handed to the surface as
+		// well: the interceptor decides whether a method may be called, and
+		// this decides whether a paged read's include_archived is honored. A
+		// server built without it clears the field, so the archived lists and
+		// signups reach nobody until it is wired.
 		srv, err := waitlistsgrpc.NewServer(store, client, principals, withdrawal,
 			waitlistsgrpc.WithScopeResolver(scopes),
+			waitlistsgrpc.WithGrantsExtractor(grants),
 			waitlistsgrpc.WithPillars(pillars),
 		)
 		if err != nil {
