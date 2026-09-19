@@ -57,6 +57,21 @@ var (
 // willing to tell them — ErrInvalidCredentials in particular says "invalid
 // credentials" and will never say which half was wrong.
 //
+// ErrRefreshTokenReused is mapped by both switches above and is deliberately not
+// here. The rest of this list is sentinels whose own words are the remedy; that
+// one's words are "we noticed", which is a sentence to write in an operator's
+// log and not one to hand whoever is holding the stolen credential.
+//
+// Leaving it out is only half of what makes it read as ErrInvalidCredentials
+// does, and the half that does nothing on its own. This list is what
+// ClientSafeMessage quotes from, and a sentinel it cannot find falls through to
+// the handler's description — a different string from "invalid credentials",
+// and so an oracle for the one question this sentinel exists not to answer. The
+// other half is on the sentinel: it wraps ErrInvalidCredentials, so the chain
+// walk passes over the unregistered node and quotes the registered one inside
+// it. Absent from this list and wrapping a member of it is the pair, and
+// neither works alone. See the sentinel, and TestClientSafeMessage_refreshTokenReuse.
+//
 // ErrUserBanned is the one whose wire message is less than what the error
 // carries. A banned user's own explanation is wrapped around the sentinel, and
 // a client-safe message is the sentinel's own words rather than the wrapper's,
@@ -93,7 +108,13 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// into two codes would hand a client a branch that is also an oracle.
 	case errors.Is(err, ErrSecondFactorRequired):
 		return httperrors.ErrAuthenticationFailed, "a second-factor code is required", true
-	case errors.Is(err, ErrInvalidCredentials):
+	// A replayed refresh token answers exactly as a wrong password does, message
+	// included. It is mapped rather than left to the default because a 500 for a
+	// detected token reuse would be an outage's status code for a caller's
+	// request, and it is mapped to this because the alternative is telling
+	// whoever presented it that their theft was noticed. The family has already
+	// been revoked by the time this is reached; the caller is simply signed out.
+	case errors.Is(err, ErrRefreshTokenReused), errors.Is(err, ErrInvalidCredentials):
 		return httperrors.ErrAuthenticationFailed, "invalid credentials", true
 
 	// The two refusals on authority. Suspension and termination are told apart
@@ -134,7 +155,9 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	// opposed to having proven it and not being allowed. Every client library
 	// treats the two differently, and a sign-in answering PermissionDenied
 	// would send a retry-with-credentials path down the give-up branch.
-	case errors.Is(err, ErrSecondFactorRequired), errors.Is(err, ErrInvalidCredentials):
+	case errors.Is(err, ErrSecondFactorRequired),
+		errors.Is(err, ErrInvalidCredentials),
+		errors.Is(err, ErrRefreshTokenReused):
 		return codes.Unauthenticated, true
 
 	// Proven, and refused anyway. All four are somebody the service knows and

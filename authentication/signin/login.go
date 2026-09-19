@@ -8,6 +8,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
@@ -187,16 +188,33 @@ func (s *Service) login(
 		return nil, err
 	}
 
-	if signIn, err = s.mintToken(ctx, principal, administrative); err != nil {
+	// The login this sign-in begins, minted here rather than by the store,
+	// because it names a sign-in rather than a row: a service that stores no
+	// refresh tokens still has a login for a claim and a hook to name.
+	familyID := identifiers.New()
+	op.Set(familyKey, familyID)
+
+	if signIn, err = s.mintToken(ctx, principal, familyID, administrative); err != nil {
 		return nil, op.Error(err, "issuing a token")
 	}
 
 	auth := &Authentication{Principal: principal, Administrative: administrative}
 
-	// One transaction for both hooks, in the order the two events happened, so
-	// a consumer's token row may reference its authentication row and neither
-	// outlives the other. See Hooks.
+	// One transaction for the refresh token and both hooks, in the order the
+	// events happened, so a consumer's token row may reference its
+	// authentication row and neither outlives the other. See Hooks.
+	//
+	// The refresh token is minted inside it and before them, which is the whole
+	// reason the mint is here rather than beside the access token above: a hook
+	// recording a sign-in has to see the login it is recording, and a refresh
+	// token written in a transaction of its own could commit over a sign-in the
+	// hooks then rolled back — a credential outstanding for a sign-in that never
+	// happened.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		if txErr := s.mintRefreshToken(ctx, tx, scope, signIn, familyID); txErr != nil {
+			return txErr
+		}
+
 		if hookErr := s.hooks.AfterAuthenticate(ctx, tx, scope, auth); hookErr != nil {
 			return hookErr
 		}
@@ -463,14 +481,26 @@ func (s *Service) verifySecondFactor(ctx context.Context, user *identity.User, c
 	return nil
 }
 
-// mintToken issues the token a completed sign-in hands back.
-func (s *Service) mintToken(ctx context.Context, principal *identity.Principal, administrative bool) (*SignIn, error) {
+// mintToken issues the access token a completed sign-in or a completed exchange
+// hands back.
+//
+// The family is an argument rather than something read off the principal,
+// because it is the one fact here that is not about the person: a sign-in mints
+// a fresh one and an exchange passes the spent token's, which is what makes the
+// successor a successor rather than a second login. It reaches the claims
+// builder through ClaimsInput, which is why that seam takes a struct.
+func (s *Service) mintToken(
+	ctx context.Context,
+	principal *identity.Principal,
+	familyID string,
+	administrative bool,
+) (*SignIn, error) {
 	ttl := s.tokenTTL
 	if administrative {
 		ttl = s.adminTokenTTL
 	}
 
-	claims, err := s.claims(ctx, principal)
+	claims, err := s.claims(ctx, &ClaimsInput{Principal: principal, FamilyID: familyID})
 	if err != nil {
 		return nil, platformerrors.Wrap(err, "building token claims")
 	}
@@ -483,6 +513,7 @@ func (s *Service) mintToken(ctx context.Context, principal *identity.Principal, 
 	return &SignIn{
 		Token:          token,
 		TokenID:        jti,
+		FamilyID:       familyID,
 		ExpiresAt:      s.clk.Now().UTC().Add(ttl),
 		Principal:      principal,
 		Administrative: administrative,

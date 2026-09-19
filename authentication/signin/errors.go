@@ -89,6 +89,43 @@ var (
 	// because there the same sentence names a user to whoever guessed a handle.
 	ErrNoPasswordCredential = platformerrors.New("user holds no password credential")
 
+	// ErrRefreshTokenReused indicates a refresh token presented after it had
+	// already been exchanged, and it is the one refusal in this package that is
+	// also an alarm.
+	//
+	// A refresh token is single-use, so a second presentation means two parties
+	// hold one credential: whoever signed in, and whoever took a copy. Which of
+	// them is presenting it now cannot be told from here — a thief's replay and a
+	// client's retry are the same request — so the answer is to end the family,
+	// which signs both of them out. That is the standard response and the only
+	// one that does not leave the theft running.
+	//
+	// It wraps ErrInvalidCredentials, and that is what makes the collapse real
+	// rather than asserted. The two transports answer differently by
+	// construction: an HTTPErrorMapper returns the words it wants a client to
+	// read, so mapping this case to "invalid credentials" is one line there,
+	// while a GRPCErrorMapper returns only a code and the message comes from
+	// errors/grpc.ClientSafeMessage — which walks the chain and quotes the first
+	// registered sentinel it reaches. A sentinel that is registered says its own
+	// words; one that is not falls through to the handler's description, which
+	// is a different string from "invalid credentials" and therefore an oracle
+	// for exactly the question this sentinel must not answer. Wrapping puts
+	// ErrInvalidCredentials in the chain, so the walk reaches it and a replay
+	// reads identically to a wrong password on both transports.
+	//
+	// It is itself deliberately absent from ClientSafeSentinels, which is the
+	// other half: registered, it would speak these words, and "that token was
+	// already spent" tells a thief their theft was detected. Absent, the walk
+	// passes over it and quotes what it wraps. The sentinel stays legible in the
+	// consumer's own logs and to errors.Is, which is where it is useful.
+	//
+	// A caller matching ErrInvalidCredentials therefore matches this too, and
+	// that is the intent rather than a side effect: a replayed refresh token is
+	// an invalid credential, and a consumer branching on the refusal wants the
+	// same branch. Reuse is still reachable on its own for whoever wants to
+	// alarm on it.
+	ErrRefreshTokenReused = platformerrors.Wrap(ErrInvalidCredentials, "refresh token has already been exchanged")
+
 	// ErrTOTPIssuerNotConfigured indicates Service.RefreshTOTPSecret on a
 	// service built without WithTOTPIssuer.
 	//
@@ -97,6 +134,25 @@ var (
 	// It is a wiring failure and reads as one: no status is mapped for it, so it
 	// is a 500, which is what it is.
 	ErrTOTPIssuerNotConfigured = platformerrors.New("no TOTP issuer label is configured")
+
+	// ErrRefreshTokensNotConfigured indicates one of the three refresh doors on
+	// a service built without WithRefreshTokenStore.
+	//
+	// Such a service issues one token per sign-in and holds no table, which is
+	// what this package did before rotation existed and is still the right shape
+	// for a consumer using Service.Authenticate as a credential check. Reaching
+	// for a refresh door from one is a wiring failure and reads as one: no status
+	// is mapped for it, so it is a 500, which is what it is.
+	ErrRefreshTokensNotConfigured = platformerrors.New("no refresh token store is configured")
+
+	// ErrRefreshTokenTTLTooShort indicates a service whose refresh tokens would
+	// die before the access tokens they mint.
+	//
+	// It is refused at construction because it is not recoverable at a call: a
+	// client holding a working access token has no reason to refresh, so by the
+	// time it does the family is already gone, and the sign-in ends at a moment
+	// nothing chose. It is a wiring failure and no status is mapped for it.
+	ErrRefreshTokenTTLTooShort = platformerrors.New("refresh token lifetime is shorter than the token lifetime")
 )
 
 // The nil-argument and empty-argument refusals. Each wraps a platform sentinel,
@@ -150,4 +206,15 @@ var (
 	// both has a bug, and picking one for them makes it a bug that signs
 	// somebody in.
 	ErrAmbiguousHandle = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "credentials name both a username and an email address")
+
+	// ErrEmptyRefreshToken indicates an exchange that presented nothing.
+	//
+	// It is not ErrInvalidCredentials, for the reason ErrEmptyHandle is not: an
+	// empty request is a client that did not submit rather than a guess that
+	// missed, and answering it with a refusal would put a database round trip
+	// behind every empty request a bot sends.
+	ErrEmptyRefreshToken = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token")
+
+	// ErrEmptyFamilyID indicates a revocation that named no login.
+	ErrEmptyFamilyID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token family ID")
 )

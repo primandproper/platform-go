@@ -49,7 +49,10 @@ var tenancyColumns = map[string][]string{
 	"audit":                        {"audit_log_chains.scope", "audit_log_entries.scope"},
 	"authentication/oauth2clients": {"oauth2_registered_clients.scope"},
 	"authentication/passwordreset": {"password_reset_tokens.scope"},
-	"dataprivacy":                  {"dataprivacy_requests.subject_scope"},
+	// signin owns no table; the refresh tokens its rotation mints live in a
+	// subpackage of their own, which is where the column is.
+	"authentication/signin/refreshtokens": {"signin_refresh_tokens.scope"},
+	"dataprivacy":                         {"dataprivacy_requests.subject_scope"},
 	"identity": {
 		"identity_accounts.scope",
 		"identity_invitations.scope",

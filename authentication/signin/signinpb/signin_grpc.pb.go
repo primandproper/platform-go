@@ -68,11 +68,19 @@
 // than a recommendation -- see [RefreshTOTPSecretResponse] for what the second
 // one costs.
 //
-// No refresh token, and no session. This service issues one token with one
-// lifetime. Refreshing it is signing in again; keeping it in a cookie is
-// github.com/primandproper/platform-go/v14/sessions; turning it back into a
-// caller is the consumer's interceptor. None of the three is a decision a
-// schema should be making for everybody.
+// A refresh token, and still no session. [IssuedToken] carries a second
+// credential that mints the first again without a password, and a family
+// identifier naming the login both belong to. What it does not carry is a
+// session: keeping either token in a cookie is
+// github.com/primandproper/platform-go/v14/sessions, and turning one back into a
+// caller is the consumer's interceptor. Neither is a decision a schema should be
+// making for everybody.
+//
+// A service that stores no refresh tokens leaves both new fields empty, which is
+// the shape this file described before they existed and is still a valid one --
+// see signin.WithRefreshTokenStore. family_id is populated either way, because it
+// names a sign-in rather than a stored row, and it is the same value the access
+// token carries as its conventional "sid" claim.
 //
 // No passkeys, no password reset, no email verification and no session
 // management. Each is a flow of its own over an engine this module already
@@ -100,13 +108,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SignInService_LoginForToken_FullMethodName      = "/primandproper.platform.signin.v1.SignInService/LoginForToken"
-	SignInService_AdminLoginForToken_FullMethodName = "/primandproper.platform.signin.v1.SignInService/AdminLoginForToken"
-	SignInService_GetAuthStatus_FullMethodName      = "/primandproper.platform.signin.v1.SignInService/GetAuthStatus"
-	SignInService_GetSelf_FullMethodName            = "/primandproper.platform.signin.v1.SignInService/GetSelf"
-	SignInService_UpdatePassword_FullMethodName     = "/primandproper.platform.signin.v1.SignInService/UpdatePassword"
-	SignInService_RefreshTOTPSecret_FullMethodName  = "/primandproper.platform.signin.v1.SignInService/RefreshTOTPSecret"
-	SignInService_VerifyTOTPSecret_FullMethodName   = "/primandproper.platform.signin.v1.SignInService/VerifyTOTPSecret"
+	SignInService_LoginForToken_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/LoginForToken"
+	SignInService_AdminLoginForToken_FullMethodName   = "/primandproper.platform.signin.v1.SignInService/AdminLoginForToken"
+	SignInService_ExchangeRefreshToken_FullMethodName = "/primandproper.platform.signin.v1.SignInService/ExchangeRefreshToken"
+	SignInService_GetAuthStatus_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/GetAuthStatus"
+	SignInService_GetSelf_FullMethodName              = "/primandproper.platform.signin.v1.SignInService/GetSelf"
+	SignInService_UpdatePassword_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/UpdatePassword"
+	SignInService_RefreshTOTPSecret_FullMethodName    = "/primandproper.platform.signin.v1.SignInService/RefreshTOTPSecret"
+	SignInService_VerifyTOTPSecret_FullMethodName     = "/primandproper.platform.signin.v1.SignInService/VerifyTOTPSecret"
 )
 
 // SignInServiceClient is the client API for SignInService service.
@@ -115,16 +124,18 @@ const (
 //
 // SignInService is sign-in.
 //
-// Three of its RPCs are anonymous by definition and four require a caller. What
+// Four of its RPCs are anonymous by definition and four require a caller. What
 // none of them requires is a permission: there is no grant that would make
 // "sign in" safer, and the four authenticated ones take their subject from the
 // caller and have no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an
 // authorization policy, which is not the same thing as being left out of one.
 type SignInServiceClient interface {
-	// The two doors.
+	// The two doors, and the one that keeps a sign-in alive without reopening
+	// either of them.
 	LoginForToken(ctx context.Context, in *LoginForTokenRequest, opts ...grpc.CallOption) (*LoginForTokenResponse, error)
 	AdminLoginForToken(ctx context.Context, in *AdminLoginForTokenRequest, opts ...grpc.CallOption) (*AdminLoginForTokenResponse, error)
+	ExchangeRefreshToken(ctx context.Context, in *ExchangeRefreshTokenRequest, opts ...grpc.CallOption) (*ExchangeRefreshTokenResponse, error)
 	// The two reads a client makes on load.
 	GetAuthStatus(ctx context.Context, in *GetAuthStatusRequest, opts ...grpc.CallOption) (*GetAuthStatusResponse, error)
 	GetSelf(ctx context.Context, in *GetSelfRequest, opts ...grpc.CallOption) (*GetSelfResponse, error)
@@ -156,6 +167,16 @@ func (c *signInServiceClient) AdminLoginForToken(ctx context.Context, in *AdminL
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AdminLoginForTokenResponse)
 	err := c.cc.Invoke(ctx, SignInService_AdminLoginForToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *signInServiceClient) ExchangeRefreshToken(ctx context.Context, in *ExchangeRefreshTokenRequest, opts ...grpc.CallOption) (*ExchangeRefreshTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExchangeRefreshTokenResponse)
+	err := c.cc.Invoke(ctx, SignInService_ExchangeRefreshToken_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -218,16 +239,18 @@ func (c *signInServiceClient) VerifyTOTPSecret(ctx context.Context, in *VerifyTO
 //
 // SignInService is sign-in.
 //
-// Three of its RPCs are anonymous by definition and four require a caller. What
+// Four of its RPCs are anonymous by definition and four require a caller. What
 // none of them requires is a permission: there is no grant that would make
 // "sign in" safer, and the four authenticated ones take their subject from the
 // caller and have no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an
 // authorization policy, which is not the same thing as being left out of one.
 type SignInServiceServer interface {
-	// The two doors.
+	// The two doors, and the one that keeps a sign-in alive without reopening
+	// either of them.
 	LoginForToken(context.Context, *LoginForTokenRequest) (*LoginForTokenResponse, error)
 	AdminLoginForToken(context.Context, *AdminLoginForTokenRequest) (*AdminLoginForTokenResponse, error)
+	ExchangeRefreshToken(context.Context, *ExchangeRefreshTokenRequest) (*ExchangeRefreshTokenResponse, error)
 	// The two reads a client makes on load.
 	GetAuthStatus(context.Context, *GetAuthStatusRequest) (*GetAuthStatusResponse, error)
 	GetSelf(context.Context, *GetSelfRequest) (*GetSelfResponse, error)
@@ -250,6 +273,9 @@ func (UnimplementedSignInServiceServer) LoginForToken(context.Context, *LoginFor
 }
 func (UnimplementedSignInServiceServer) AdminLoginForToken(context.Context, *AdminLoginForTokenRequest) (*AdminLoginForTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AdminLoginForToken not implemented")
+}
+func (UnimplementedSignInServiceServer) ExchangeRefreshToken(context.Context, *ExchangeRefreshTokenRequest) (*ExchangeRefreshTokenResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExchangeRefreshToken not implemented")
 }
 func (UnimplementedSignInServiceServer) GetAuthStatus(context.Context, *GetAuthStatusRequest) (*GetAuthStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAuthStatus not implemented")
@@ -319,6 +345,24 @@ func _SignInService_AdminLoginForToken_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SignInServiceServer).AdminLoginForToken(ctx, req.(*AdminLoginForTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SignInService_ExchangeRefreshToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExchangeRefreshTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).ExchangeRefreshToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_ExchangeRefreshToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).ExchangeRefreshToken(ctx, req.(*ExchangeRefreshTokenRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -427,6 +471,10 @@ var SignInService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AdminLoginForToken",
 			Handler:    _SignInService_AdminLoginForToken_Handler,
+		},
+		{
+			MethodName: "ExchangeRefreshToken",
+			Handler:    _SignInService_ExchangeRefreshToken_Handler,
 		},
 		{
 			MethodName: "GetAuthStatus",

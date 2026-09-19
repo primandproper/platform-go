@@ -12,6 +12,8 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
+	"github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens"
+	refreshmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/errormappers"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -176,6 +178,30 @@ func newHarnessWithIssuer(
 ) *harness {
 	t.Helper()
 
+	return buildHarness(t, issuer, false, svcOpts, opts...)
+}
+
+// newRefreshHarness is newHarness with a live refresh token store behind the
+// service, which is what a consumer who adopted rotation has. The RPC that
+// exchanges one is unreachable without it.
+func newRefreshHarness(t *testing.T, svcOpts []signin.ServiceOption, opts ...signingrpc.Option) *harness {
+	t.Helper()
+
+	return buildHarness(t, &fakeIssuer{}, true, svcOpts, opts...)
+}
+
+// buildHarness is every constructor above. The refresh token store has to exist
+// after the client it is built over and before the service that is handed it,
+// which is the whole reason this is one function with a flag.
+func buildHarness(
+	t *testing.T,
+	issuer signin.TokenIssuer,
+	withRefresh bool,
+	svcOpts []signin.ServiceOption,
+	opts ...signingrpc.Option,
+) *harness {
+	t.Helper()
+
 	db, err := sqlite.NewDatabaseClient(t.Context(),
 		&testClientConfig{connectionString: filepath.Join(t.TempDir(), "signin.db")})
 	must.NoError(t, err)
@@ -197,6 +223,21 @@ func newHarnessWithIssuer(
 	authenticator := argon2.NewArgon2Authenticator()
 
 	svcOpts = append([]signin.ServiceOption{signin.WithTOTPIssuer("Example")}, svcOpts...)
+
+	if withRefresh {
+		refreshStmts, stmtErr := refreshmigrations.Statements(dialect.SQLite, prefix)
+		must.NoError(t, stmtErr)
+
+		for _, stmt := range refreshStmts {
+			_, execErr := db.Writer().ExecContext(t.Context(), stmt)
+			must.NoError(t, execErr)
+		}
+
+		refreshStore, storeErr := refreshtokens.NewSQLStore(&refreshtokens.Config{TablePrefix: prefix}, db)
+		must.NoError(t, storeErr)
+
+		svcOpts = append(svcOpts, signin.WithRefreshTokenStore(refreshStore))
+	}
 
 	svc, err := signin.NewService(db, store, authenticator, issuer, svcOpts...)
 	must.NoError(t, err)

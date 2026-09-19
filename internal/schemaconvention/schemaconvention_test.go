@@ -15,6 +15,7 @@ import (
 	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
 	oauth2serverstoremigrations "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
+	refreshtokensmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	webauthnmigrations "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/migrations"
 	billingmigrations "github.com/primandproper/platform-go/v14/billing/migrations"
 	commentsmigrations "github.com/primandproper/platform-go/v14/comments/migrations"
@@ -65,31 +66,32 @@ type renderer func(dialect.Dialect, string) ([]string, error)
 // long enough that action_links, password_reset_tokens and the four billing
 // tables were classified by nobody at all.
 var renderers = map[string]renderer{
-	"audit":                            auditmigrations.Statements,
-	"authentication/oauth2clients":     oauth2clientsmigrations.Statements,
-	"authentication/oauth2serverstore": oauth2serverstoremigrations.Statements,
-	"authentication/passwordreset":     passwordresetmigrations.Statements,
-	"authentication/webauthnsessions":  webauthnmigrations.Statements,
-	"billing":                          billingmigrations.Statements,
-	"comments":                         commentsmigrations.Statements,
-	"dataprivacy":                      dataprivacymigrations.Statements,
-	"identity":                         identitymigrations.Statements,
-	"issuereports":                     issuereportsmigrations.Statements,
-	"links/database":                   linksmigrations.Statements,
-	"mediaregistry":                    mediaregistrymigrations.Statements,
-	"metering":                         meteringmigrations.Statements,
-	"notifications":                    notificationsmigrations.Statements,
-	"operations":                       operationsmigrations.Statements,
-	"outbox":                           outboxmigrations.Statements,
-	"rbac":                             rbacmigrations.Statements,
-	"saga":                             sagamigrations.Statements,
-	"sessions/database":                sessionsmigrations.Statements,
-	"settings":                         settingsmigrations.Statements,
-	"shredding":                        shreddingmigrations.Statements,
-	"timers":                           timersmigrations.Statements,
-	"waitlists":                        waitlistsmigrations.Statements,
-	"webhooks":                         webhooksmigrations.Statements,
-	"workqueue":                        workqueuemigrations.Statements,
+	"audit":                               auditmigrations.Statements,
+	"authentication/oauth2clients":        oauth2clientsmigrations.Statements,
+	"authentication/oauth2serverstore":    oauth2serverstoremigrations.Statements,
+	"authentication/passwordreset":        passwordresetmigrations.Statements,
+	"authentication/signin/refreshtokens": refreshtokensmigrations.Statements,
+	"authentication/webauthnsessions":     webauthnmigrations.Statements,
+	"billing":                             billingmigrations.Statements,
+	"comments":                            commentsmigrations.Statements,
+	"dataprivacy":                         dataprivacymigrations.Statements,
+	"identity":                            identitymigrations.Statements,
+	"issuereports":                        issuereportsmigrations.Statements,
+	"links/database":                      linksmigrations.Statements,
+	"mediaregistry":                       mediaregistrymigrations.Statements,
+	"metering":                            meteringmigrations.Statements,
+	"notifications":                       notificationsmigrations.Statements,
+	"operations":                          operationsmigrations.Statements,
+	"outbox":                              outboxmigrations.Statements,
+	"rbac":                                rbacmigrations.Statements,
+	"saga":                                sagamigrations.Statements,
+	"sessions/database":                   sessionsmigrations.Statements,
+	"settings":                            settingsmigrations.Statements,
+	"shredding":                           shreddingmigrations.Statements,
+	"timers":                              timersmigrations.Statements,
+	"waitlists":                           waitlistsmigrations.Statements,
+	"webhooks":                            webhooksmigrations.Statements,
+	"workqueue":                           workqueuemigrations.Statements,
 }
 
 // conventional is every table in the module that stores consumer rows.
@@ -172,6 +174,16 @@ var exempt = map[string]exemption{
 		"minted, resolved once and collected by the sweeper on purge_after; created_at is the minter's clock, assigned on the insert"},
 	"password_reset_tokens": {passwordresetmigrations.Statements,
 		"issued, redeemed once and swept on expires_at; redeemed_at is the only mutation the row has"},
+
+	// signin_refresh_tokens is the third row of that shape and the one that
+	// takes it furthest: no id either, since the row is named by the digest of
+	// the credential it stores, and no created_at, since issued_at is the
+	// creation time under the name the mechanism actually uses. What it adds is
+	// a purge deadline later than the expiry — a row collected at its own
+	// deadline could no longer tell "already spent" from "no such token", which
+	// is the distinction refresh token reuse detection rests on.
+	"signin_refresh_tokens": {refreshtokensmigrations.Statements,
+		"minted, exchanged once and swept on purge_after; issued_at is the creation time and redeemed_at and revoked_at are the row's only mutations"},
 
 	// audit_log_entries is exempt for three reasons, the first fatal. recorded_at
 	// is folded into every entry's hash before the INSERT, so a database-assigned

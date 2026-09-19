@@ -93,6 +93,43 @@ func (s *Server) AdminLoginForToken(
 	return &signinpb.AdminLoginForTokenResponse{Token: IssuedTokenToProto(signedIn)}, nil
 }
 
+// ExchangeRefreshToken spends a refresh token and answers with a fresh pair: a
+// new access token, and the successor to the token that was presented.
+//
+// It is anonymous, like the two doors, and for the same reason: the credential
+// presented is the whole of the request's authority. Requiring a principal would
+// require a live access token to renew an expired one, which is the one moment a
+// client has none.
+//
+// Every refusal answers Unauthenticated with the same message a wrong password
+// gets, replayed tokens included. That is deliberate — see
+// signin.ErrRefreshTokenReused, which is mapped for this transport and left out
+// of the client-safe list precisely so that a client cannot tell a detected
+// theft from an ordinary refusal. What a caller does about any of them is the
+// same thing: sign in again.
+//
+// A service built without signin.WithRefreshTokenStore answers every call here
+// with Internal, because a consumer's client calling an RPC their own server
+// cannot serve is a wiring failure rather than a request to correct.
+func (s *Server) ExchangeRefreshToken(
+	ctx context.Context,
+	request *signinpb.ExchangeRefreshTokenRequest,
+) (*signinpb.ExchangeRefreshTokenResponse, error) {
+	ctx, req, done, err := s.anonymous(ctx, signinpb.SignInService_ExchangeRefreshToken_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	signedIn, err := s.svc.ExchangeRefreshToken(ctx, req.scope, request.GetRefreshToken())
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "exchanging a refresh token")
+	}
+
+	return &signinpb.ExchangeRefreshTokenResponse{Token: IssuedTokenToProto(signedIn)}, nil
+}
+
 // GetAuthStatus reports where the calling user stands, and is the one RPC here
 // that answers a request with no caller on it rather than refusing it.
 //

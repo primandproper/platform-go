@@ -6,6 +6,7 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
 	httperrors "github.com/primandproper/primitives-go/v2/errors/http"
 
 	"github.com/shoenig/test"
@@ -163,4 +164,61 @@ func TestClientSafeSentinels(T *testing.T) {
 
 		test.NotEq(T, "", err.Error())
 	}
+}
+
+// TestClientSafeMessage_refreshTokenReuse pins the words a gRPC client is told
+// for a replayed refresh token, which is the whole of what "it answers as
+// ErrInvalidCredentials does" means and is not something either mapper can be
+// asked about.
+//
+// A GRPCErrorMapper returns a code and nothing else. The message comes from
+// errors/grpc.ClientSafeMessage, which walks the chain outermost-first without
+// unwrapping at each node and quotes the first registered sentinel it lands on —
+// so what a client reads is decided by two things this package controls
+// separately: whether ErrRefreshTokenReused is in ClientSafeSentinels, and what
+// it wraps. Get either wrong and a replay reads differently from a wrong
+// password, which tells whoever is holding a stolen token that their theft was
+// noticed.
+//
+// It is asserted as an equality against ErrInvalidCredentials's own text rather
+// than as the absence of an incriminating word. "Does not contain 'already'" is
+// satisfied by every string that is not the right one, including the handler
+// description this used to fall through to.
+func TestClientSafeMessage_refreshTokenReuse(T *testing.T) {
+	T.Parallel()
+
+	// The registration this package's own sentinels get at a composition root,
+	// made directly rather than through errormappers.Register: what is under
+	// test is this list against this walk, and pulling in every other package's
+	// mappers to exercise it would make the test's subject the composition root.
+	grpcerrors.RegisterClientSafeSentinels(signin.ClientSafeSentinels...)
+
+	// As a handler returns them: the sentinel under the wrap a service's
+	// operation puts on it, which is the chain ClientSafeMessage actually walks.
+	reuse := platformerrors.Wrap(signin.ErrRefreshTokenReused, "exchanging a refresh token")
+	invalid := platformerrors.Wrap(signin.ErrInvalidCredentials, "exchanging a refresh token")
+
+	reuseMsg, ok := grpcerrors.ClientSafeMessage(reuse)
+	must.True(T, ok, must.Sprint("a replayed refresh token reaches no client-safe sentinel, so it answers with the handler's description"))
+
+	invalidMsg, ok := grpcerrors.ClientSafeMessage(invalid)
+	must.True(T, ok)
+
+	test.EqOp(T, invalidMsg, reuseMsg)
+	test.EqOp(T, signin.ErrInvalidCredentials.Error(), reuseMsg)
+
+	// The codes have to agree too, or the message being identical buys nothing.
+	reuseCode, ok := signin.GRPCMapper.Map(reuse)
+	must.True(T, ok)
+
+	invalidCode, ok := signin.GRPCMapper.Map(invalid)
+	must.True(T, ok)
+
+	test.EqOp(T, invalidCode, reuseCode)
+
+	// And the sentinel is still reachable on its own, for the operator's log and
+	// for a consumer that wants to alarm on a detected theft.
+	test.ErrorIs(T, reuse, signin.ErrRefreshTokenReused)
+	test.ErrorIs(T, reuse, signin.ErrInvalidCredentials)
+	test.False(T, platformerrors.Is(invalid, signin.ErrRefreshTokenReused))
 }

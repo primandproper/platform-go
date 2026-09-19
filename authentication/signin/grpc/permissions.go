@@ -10,7 +10,7 @@ import (
 // rather than a map of permissions.
 //
 // Nothing here is permissioned, and that is a conclusion rather than an
-// omission. Three of the seven RPCs are how a caller becomes somebody at all,
+// omission. Four of the eight RPCs are how a caller becomes somebody at all,
 // so there is no grant that could gate them: a permission check in front of
 // sign-in is a check against the caller's roles, and an anonymous caller has
 // none. The other four take their subject from the principal and have no field
@@ -20,7 +20,7 @@ import (
 //
 // So there is no Permissions map here, unlike identity/grpc, and a consumer
 // looking for one is looking for something that would be wrong to have. What
-// there is instead is [Require], which declares all seven to an authorization
+// there is instead is [Require], which declares all eight to an authorization
 // policy explicitly. The difference between "declared and requires nothing" and
 // "not declared" is the difference between a service that works and one whose
 // every method is denied by the enforcer's fail-closed rule, and nothing reports
@@ -29,14 +29,20 @@ import (
 
 // AnonymousMethods are the RPCs that require no caller at all.
 //
-// Two of them are the doors, and the third is GetAuthStatus, which answers "no"
-// rather than refusing — see its own documentation for why a whoami that
-// refuses anonymous callers makes every client treat its first question as an
-// error.
+// Two of them are the doors and a third is ExchangeRefreshToken, which is a door
+// as well: the credential it presents is the whole of its authority, and a caller
+// holding one has not been authenticated yet. Requiring a principal there would
+// require a live access token to renew an expired one, which is the one moment a
+// client has none.
+//
+// The fourth is GetAuthStatus, which answers "no" rather than refusing — see its
+// own documentation for why a whoami that refuses anonymous callers makes every
+// client treat its first question as an error.
 func AnonymousMethods() []string {
 	return []string{
 		signinpb.SignInService_LoginForToken_FullMethodName,
 		signinpb.SignInService_AdminLoginForToken_FullMethodName,
+		signinpb.SignInService_ExchangeRefreshToken_FullMethodName,
 		signinpb.SignInService_GetAuthStatus_FullMethodName,
 	}
 }
@@ -62,7 +68,7 @@ func SelfServiceMethods() []string {
 //
 // Public there means "no authorization check", not "no authentication": the
 // consumer's authentication interceptor still runs, and the four self-service
-// methods refuse a request with no principal on them. The three anonymous ones
+// methods refuse a request with no principal on them. The four anonymous ones
 // are the service working as intended.
 //
 // It takes and returns the builder rather than building it, so a consumer
