@@ -32,6 +32,38 @@ carries beyond its subject, are [WithTokenTTL] and [ClaimsBuilder]. Each is an
 option with a default, and the default is stated in the option's documentation
 rather than buried here.
 
+# The refresh flow, and the one schema this package has
+
+A short access token and a long sign-in are the two things every application
+wants and cannot have from one credential. Reconciling them is a second
+credential that mints the first again without a password, and the whole risk of
+that second credential is that it is worth stealing for as long as the sign-in
+lasts. Rotation is the answer: [Service.ExchangeRefreshToken] spends the token it
+was given and mints its successor in one transaction, so a copy somebody took
+stops working the moment either party uses theirs — and when the loser presents
+the spent one, [ErrRefreshTokenReused] ends the whole login. That is what turns a
+stolen token from a shared session nobody can see into a detected event that
+signs both parties out.
+
+Where those tokens live is
+[github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens],
+and it is a subpackage rather than a table this package holds because it is
+optional: a service built without [WithRefreshTokenStore] mints one token per
+sign-in and owns no schema at all, which is what this package was before rotation
+existed and is still the right shape for a consumer using [Service.Authenticate]
+as a credential check. The seam is [RefreshTokenStore] and the ruling it carries
+is that a store, not a caller, decides who spent a token.
+
+A family is one login: minted when the password was proven, inherited by every
+successor, revoked as a unit by a detected reuse or by
+[Service.RevokeRefreshTokenFamily]. It reaches a token as the "sid" claim —
+[ClaimFamilyID] — so a consumer's interceptor can check a token against a
+revocation, and it reaches [Hooks.AfterIssueToken] on the [SignIn], which is why
+the refresh mint happens inside the login transaction rather than beside it.
+
+[SignIn.FamilyID] is set whether or not a refresh token was stored, because it
+names a sign-in rather than a row.
+
 # The transaction, and what is outside it
 
 Verifying a password is expensive by design — that is what argon2 is for — and
@@ -63,11 +95,20 @@ Nothing here holds a write transaction open across a password hash.
 
 # What is not here
 
-No session. This package hands back a token; what a consumer does with it —
-a cookie through
-[github.com/primandproper/platform-go/v14/sessions], an Authorization header, a
-gRPC credential — is theirs, and the interceptor that turns one back into a
-caller is the consumer's too. Nothing in this package reads a request.
+No session. This package hands back tokens; what a consumer does with them — a
+cookie through [github.com/primandproper/platform-go/v14/sessions], an
+Authorization header, a gRPC credential — is theirs, and the interceptor that
+turns one back into a caller is the consumer's too. Nothing in this package reads
+a request.
+
+A family is not a counter-example to that, and the distinction is worth stating
+because the two are easy to confuse. A family is a group of credentials this
+package minted; a session is a record of a caller that something turns a request
+back into. [github.com/primandproper/platform-go/v14/sessions] has a store, an
+identifier and a revocation of its own, and it is a different mechanism for a
+different job — which is why the vocabulary here is "family" throughout, and why
+the one place the two spellings meet is [ClaimFamilyID], where a wire convention
+is translated once.
 
 No passkeys, no password reset, no email verification and no session management.
 Each is a flow of its own over an engine this module already ships —

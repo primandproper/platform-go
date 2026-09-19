@@ -39,6 +39,12 @@ const (
 
 	// adminKey records which door an attempt came through.
 	adminKey = "signin.administrative"
+
+	// familyKey records which continuous login an operation belongs to. It is
+	// the one identifier a refresh token's row carries that is safe to trace: it
+	// names a sign-in rather than a credential, which is exactly what following
+	// a rotation across several requests needs.
+	familyKey = "signin.family_id"
 )
 
 // The names this service labels its instruments with, one per operation. They
@@ -57,7 +63,15 @@ const (
 	opAdminAuthenticate = "admin_authenticate"
 	opGetAuthStatus     = "get_auth_status"
 	opGetSelf           = "get_self"
-	opUpdatePassword    = "update_password"
+
+	// The three refresh doors. Exchanging is a series of its own rather than a
+	// second kind of login, because the two answer different questions of a
+	// dashboard: how often somebody proves a password, and how long their
+	// sign-ins actually last.
+	opExchangeRefreshToken = "exchange_refresh_token"
+	opRevokeRefreshFamily  = "revoke_refresh_token_family"
+	opRevokeRefreshSubject = "revoke_refresh_tokens_for_subject"
+	opUpdatePassword       = "update_password"
 	//nolint:gosec // G101: these are instrument labels naming two operations, not credentials.
 	opRefreshTOTPSecret = "refresh_totp_secret"
 	//nolint:gosec // G101: as above.
@@ -172,10 +186,37 @@ type SignIn struct {
 	// that decision can be made.
 	Principal *identity.Principal `json:"principal"`
 
+	// RefreshTokenExpiresAt is when the refresh token stops being exchangeable,
+	// and the zero time when there is none. It is the deadline that actually
+	// bounds this sign-in: an idle client that lets it pass has to prove a
+	// password again.
+	RefreshTokenExpiresAt time.Time `json:"refreshTokenExpiresAt,omitzero"`
+
 	// Token is the credential itself. It is not redacted anywhere, because a
 	// sign-in that hides it has accomplished nothing — which is the reason it
 	// must not be logged, recorded by a hook, or put in an error message.
 	Token string `json:"token"`
+
+	// RefreshToken is the credential that mints the next Token without a
+	// password, and it is empty for a service built without
+	// [WithRefreshTokenStore].
+	//
+	// It is single-use: exchanging it spends it and mints its successor, and
+	// presenting a spent one ends the whole family. It is a credential like
+	// Token and is redacted nowhere for the same reason — and it is the longer
+	// lived of the two, so it is the one worth stealing and the one worth
+	// storing most carefully.
+	RefreshToken string `json:"refreshToken,omitempty"`
+
+	// FamilyID is which continuous login this is: minted here, inherited by
+	// every successor [Service.ExchangeRefreshToken] issues, and ended as a unit
+	// when a spent refresh token is presented again.
+	//
+	// It is set whether or not a refresh token was minted, because it identifies
+	// a sign-in rather than a row — which is what makes it the value
+	// [DefaultClaims] emits as "sid" and the value a hook records. See
+	// [RefreshToken.FamilyID] for why it is not called a session.
+	FamilyID string `json:"familyID"`
 
 	// TokenID is the issuer's "jti" for this token: the handle a revocation list
 	// names and the value a hook records.
@@ -284,6 +325,12 @@ type Service struct {
 	clk           clock.Clock
 	o11y          observability.Observer
 
+	// refreshTokens is nil until WithRefreshTokenStore names one, and nil is
+	// what "this service issues one token per sign-in" means: the two token
+	// doors mint no refresh token, and the three refresh doors refuse with
+	// ErrRefreshTokensNotConfigured.
+	refreshTokens RefreshTokenStore
+
 	// What the options wrote, kept only until the observer is built from it.
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
@@ -299,6 +346,9 @@ type Service struct {
 
 	tokenTTL      time.Duration
 	adminTokenTTL time.Duration
+
+	refreshTokenTTL      time.Duration
+	adminRefreshTokenTTL time.Duration
 
 	secondFactor SecondFactorPolicy
 }
@@ -372,12 +422,26 @@ func NewService(
 		tokenTTL:      DefaultTokenTTL,
 		adminTokenTTL: DefaultAdminTokenTTL,
 		secondFactor:  SecondFactorWhenEnrolled,
+
+		refreshTokenTTL:      DefaultRefreshTokenTTL,
+		adminRefreshTokenTTL: DefaultAdminRefreshTokenTTL,
 	}
 
 	for _, opt := range opts {
 		if opt != nil {
 			opt(s)
 		}
+	}
+
+	// The one relationship between the four lifetimes that is a mistake rather
+	// than a preference. A refresh token that dies before the access token it
+	// replaces is a sign-in that ends at a moment nothing chose: the client
+	// still holds a working access token, so nothing prompts it to refresh, and
+	// by the time it does the family is gone. Checked here rather than in the
+	// options, because it is a relationship between two of them and an option
+	// sees one.
+	if err := s.validateLifetimes(); err != nil {
+		return nil, err
 	}
 
 	s.o11y = observability.NewObserver(serviceName, s.logger, s.tracerProvider)
@@ -390,6 +454,33 @@ func NewService(
 	s.instruments = instruments
 
 	return s, nil
+}
+
+// validateLifetimes rejects a service whose refresh tokens are shorter lived
+// than the access tokens they mint.
+//
+// It is checked for both doors rather than only the ordinary one, because the
+// administrative pair is where the mistake is easy to make: shortening the
+// administrative access token is the obvious hardening, and shortening it past
+// the administrative refresh token is the version of that hardening which locks
+// operators out at an interval nobody configured.
+//
+// Equality is allowed. A refresh token exactly as long lived as its access token
+// still gives a client the whole of that window to use it, which is a
+// deployment's choice to make rather than an error.
+func (s *Service) validateLifetimes() error {
+	if s.refreshTokenTTL < s.tokenTTL {
+		return platformerrors.Wrapf(ErrRefreshTokenTTLTooShort,
+			"refresh token TTL %s is shorter than token TTL %s", s.refreshTokenTTL, s.tokenTTL)
+	}
+
+	if s.adminRefreshTokenTTL < s.adminTokenTTL {
+		return platformerrors.Wrapf(ErrRefreshTokenTTLTooShort,
+			"administrative refresh token TTL %s is shorter than administrative token TTL %s",
+			s.adminRefreshTokenTTL, s.adminTokenTTL)
+	}
+
+	return nil
 }
 
 // begin is the shape every operation here starts with: the span, the attempt

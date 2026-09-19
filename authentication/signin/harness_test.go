@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens"
+	refreshmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	"github.com/primandproper/platform-go/v14/identity"
 	identitymigrations "github.com/primandproper/platform-go/v14/identity/migrations"
 
@@ -65,17 +67,48 @@ var prefixCounter atomic.Uint64
 type env struct {
 	client    database.Client
 	store     *identity.SQLStore
+	refresh   *refreshtokens.SQLStore
 	svc       *signin.Service
 	issuer    *fakeIssuer
 	hooks     *recordingHooks
 	password  string
 	user      *identity.User
 	accountID string
+
+	// refreshPrefix is the namespace both schemas were rendered at, kept so the
+	// two assertions that count rows can name the table the store writes to.
+	refreshPrefix string
 }
 
 // newEnv builds the whole stack and registers one user with a password, which
 // is what almost every test here starts from.
+//
+// The service it builds names no refresh token store, which is the default shape
+// and the one every test that predates rotation was written against: one token
+// per sign-in, and no schema of this package's own.
 func newEnv(t *testing.T, opts ...signin.ServiceOption) *env {
+	t.Helper()
+
+	return buildEnv(t, false, opts...)
+}
+
+// newRefreshEnv is newEnv with a live refresh token store wired in, which is
+// what a consumer who adopted rotation has.
+//
+// It is a real refreshtokens.SQLStore over the same SQLite database rather than
+// a double, for the reason nothing here mocks the directory either: the
+// behavior under test is which rows are written and in what order, and a store
+// of stubs would assert that this package calls the methods it calls.
+func newRefreshEnv(t *testing.T, opts ...signin.ServiceOption) *env {
+	t.Helper()
+
+	return buildEnv(t, true, opts...)
+}
+
+// buildEnv is both constructors. The refresh token store has to exist before the
+// service that is handed it and after the client it is built over, which is the
+// whole reason this is one function with a flag rather than two.
+func buildEnv(t *testing.T, withRefresh bool, opts ...signin.ServiceOption) *env {
 	t.Helper()
 
 	client, err := sqlite.NewDatabaseClient(t.Context(),
@@ -108,6 +141,23 @@ func newEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 		signin.WithHooks(e.hooks),
 		signin.WithTOTPIssuer("Example"),
 	}, opts...)
+
+	if withRefresh {
+		refreshStmts, stmtErr := refreshmigrations.Statements(dialect.SQLite, prefix)
+		must.NoError(t, stmtErr)
+
+		for _, stmt := range refreshStmts {
+			_, execErr := client.Writer().ExecContext(t.Context(), stmt)
+			must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
+		}
+
+		e.refresh, err = refreshtokens.NewSQLStore(&refreshtokens.Config{TablePrefix: prefix}, client)
+		must.NoError(t, err)
+
+		e.refreshPrefix = prefix
+
+		opts = append(opts, signin.WithRefreshTokenStore(e.refresh))
+	}
 
 	e.svc, err = signin.NewService(client, store, argon2.NewArgon2Authenticator(), e.issuer, opts...)
 	must.NoError(t, err)
@@ -195,6 +245,39 @@ func (e *env) registerAccountless(t *testing.T, username string) *identity.User 
 	}))
 
 	return created
+}
+
+// addAccount puts the registered user in a second account and returns its ID,
+// for the case that proves an exchange keeps the account proven at sign-in
+// rather than re-resolving to whatever the default has become.
+func (e *env) addAccount(t *testing.T, name string) string {
+	t.Helper()
+
+	var account *identity.Account
+
+	must.NoError(t, e.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+		created, err := e.store.CreateAccount(t.Context(), tx, testScope,
+			&identity.Account{Name: name, Scope: testScope, OwnerUserID: e.user.ID})
+		if err != nil {
+			return err
+		}
+
+		account = created
+
+		// Not the default one: the case this exists for is a sign-in that named
+		// an account other than the user's default, so a second default would
+		// make the assertion pass for the wrong reason.
+		_, err = e.store.CreateMembership(t.Context(), tx, testScope, &identity.Membership{
+			BelongsToUser:    e.user.ID,
+			BelongsToAccount: created.ID,
+			Scope:            testScope,
+			Roles:            []string{"owner"},
+		})
+
+		return err
+	}))
+
+	return account.ID
 }
 
 // setStatus moves the registered user's account status.

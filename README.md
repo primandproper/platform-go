@@ -60,7 +60,8 @@ reasons behind the three exceptions.
 | Package                            | Purpose                                                                       | Implementations                  |
 |------------------------------------|-------------------------------------------------------------------------------|----------------------------------|
 | `identity`                         | Users, accounts, memberships and invitations, the lifecycle over them, and `identity/privacy`, the directory's contribution to a subject access request | postgres, mysql, sqlite (+ grpc) |
-| `authentication/signin`            | Sign-in: the order the engines and the directory are used in, owning no table | — (+ grpc)                       |
+| `authentication/signin`            | Sign-in: the order the engines and the directory are used in, owning no table of its own | — (+ grpc)                       |
+| `authentication/signin/refreshtokens` | The refresh tokens sign-in rotates: digest at rest, single use, grouped into one family per login | postgres, mysql, sqlite          |
 | `authentication/passwordreset`     | Password reset tokens: digest at rest, single use enforced by the store, and `authentication/passwordreset/privacy` | postgres, mysql, sqlite          |
 | `authentication/webauthnsessions`  | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
 | `authentication/oauth2clients`     | An administered OAuth2 client registry, and `authentication/oauth2clients/privacy` | postgres, mysql, sqlite (+ grpc) |
@@ -146,14 +147,24 @@ checking it.
 | the composition root that registers both tiers | `errormappers`, `privacyadapters`, `service`                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 The second row is the one the rule's own wording anticipates when it asks whether
-a package owns a table *or drives one*. `authentication/signin` owns no schema
-and never will: it is the order the engines and the directory are used in — read
-the handle, compare the hash, check the status, ask for the code, mint the token
-— and every row it touches is `identity`'s. It is still emphatically the domain
-tier, because an application with no users has nobody to sign in, and because the
-refusals it collapses are a product decision rather than a mechanism. A package
-like it is the shape to expect as more domains arrive: the flows over the nouns,
-after the nouns.
+a package owns a table *or drives one*. `authentication/signin` owns no schema:
+it is the order the engines and the directory are used in — read the handle,
+compare the hash, check the status, ask for the code, mint the token — and every
+row it touches is `identity`'s. It is still emphatically the domain tier, because
+an application with no users has nobody to sign in, and because the refusals it
+collapses are a product decision rather than a mechanism. A package like it is the
+shape to expect as more domains arrive: the flows over the nouns, after the nouns.
+
+It gained a table without becoming one, and the split is where the sentence
+stays true. Refresh-token rotation needs rows — a digest, a family, a deadline —
+so those live in `authentication/signin/refreshtokens`, which is a noun with a
+table like any other, while the flow above it holds the seam rather than the
+schema. The subpackage is not a row of its own here for the reason
+`links/database` and `sessions/database` are not: a nested package inherits its
+parent's tier by longest-prefix match, so it is classified by construction and a
+row would be a second answer with nothing checking it. A service that names no
+store still signs people in and still owns nothing, which is what keeps this
+row's claim about `signin` itself rather than about everything under its path.
 
 The third row is the newer shape and it arrives for a different reason. `callers`
 owns no table either, and it is not a flow: it is three names — the interface a
@@ -271,8 +282,9 @@ and whatever columns are genuinely its own, and does not keep a users table,
 the transaction-shaped code around one, or the service and converters over
 that.
 
-`authentication/signin` crosses differently: it owns no table at all. It is
-sign-in — the order `argon2`, `totp`, `tokens` and `identity` are used in,
+`authentication/signin` crosses differently: it owns no table itself, and the
+one it drives is optional. It is sign-in — the order `argon2`, `totp`, `tokens`
+and `identity` are used in,
 which is the code every application writes over those four and the code where
 their bugs live. The engines each do one thing and store nothing; the directory
 stores what they produce and never calls them; nothing joined them up. What it
@@ -280,10 +292,14 @@ decides is the refusals, and it collapses four of them into one sentinel on
 purpose, because telling an unknown handle from a wrong password is telling an
 attacker which half of the guess was right. What it refuses to decide is the
 rest: whether a second factor is mandatory, whether the administrative door
-exists, how long a token lives and what it carries are four options with four
-defaults. `authentication/signin/grpc` serves it, and is the one surface in the
-module that reads its tenant off the connection rather than off a caller —
-because a caller signing in has not become one yet.
+exists, whether a sign-in outlives its token, how long each of the two lives and
+what a token carries are options with defaults. The one that brings a schema is
+`WithRefreshTokenStore`: name one and a sign-in hands back a rotating pair,
+where a spent token presented a second time ends the login rather than sharing
+it; name none and the service is what it was before, one token per sign-in and
+no rows anywhere. `authentication/signin/grpc` serves all of it, and is the one
+surface in the module that reads its tenant off the connection rather than off a
+caller — because a caller signing in has not become one yet.
 
 `audit` crosses too, and it is the one that ships **strictly narrower than its
 own interface**. `audit/grpc` serves the `Reader` and nothing else:
@@ -550,33 +566,34 @@ against it. Everything unticked returns `dialect.ErrUnsupported` at
 construction, never a partial store or a migration that creates nothing.
 
 <!-- readmegen:dialects -->
-| Package                            | Postgres | MySQL | SQLite |
-|------------------------------------|----------|-------|--------|
-| `audit`                            | ✓        | ✓     | ✓      |
-| `authentication/oauth2clients`     | ✓        | ✓     | ✓      |
-| `authentication/oauth2serverstore` | ✓        | ✓     | ✓      |
-| `authentication/passwordreset`     | ✓        | ✓     | ✓      |
-| `authentication/webauthnsessions`  | ✓        | ✓     | ✓      |
-| `billing`                          | ✓        | ✓     | ✓      |
-| `comments`                         | ✓        | ✓     | ✓      |
-| `dataprivacy`                      | ✓        | ✓     | ✓      |
-| `identity`                         | ✓        | ✓     | ✓      |
-| `issuereports`                     | ✓        | ✓     | ✓      |
-| `links/database`                   | ✓        | ✓     | ✓      |
-| `mediaregistry`                    | ✓        | ✓     | ✓      |
-| `metering`                         | ✓        | ✓     | ✓      |
-| `notifications`                    | ✓        | ✓     | ✓      |
-| `operations`                       | ✓        | —     | —      |
-| `outbox`                           | ✓        | ✓     | ✓      |
-| `rbac`                             | ✓        | ✓     | ✓      |
-| `saga`                             | ✓        | ✓     | ✓      |
-| `sessions/database`                | ✓        | ✓     | ✓      |
-| `settings`                         | ✓        | ✓     | ✓      |
-| `shredding`                        | ✓        | ✓     | ✓      |
-| `timers`                           | ✓        | —     | —      |
-| `waitlists`                        | ✓        | ✓     | ✓      |
-| `webhooks`                         | ✓        | ✓     | ✓      |
-| `workqueue`                        | ✓        | —     | —      |
+| Package                               | Postgres | MySQL | SQLite |
+|---------------------------------------|----------|-------|--------|
+| `audit`                               | ✓        | ✓     | ✓      |
+| `authentication/oauth2clients`        | ✓        | ✓     | ✓      |
+| `authentication/oauth2serverstore`    | ✓        | ✓     | ✓      |
+| `authentication/passwordreset`        | ✓        | ✓     | ✓      |
+| `authentication/signin/refreshtokens` | ✓        | ✓     | ✓      |
+| `authentication/webauthnsessions`     | ✓        | ✓     | ✓      |
+| `billing`                             | ✓        | ✓     | ✓      |
+| `comments`                            | ✓        | ✓     | ✓      |
+| `dataprivacy`                         | ✓        | ✓     | ✓      |
+| `identity`                            | ✓        | ✓     | ✓      |
+| `issuereports`                        | ✓        | ✓     | ✓      |
+| `links/database`                      | ✓        | ✓     | ✓      |
+| `mediaregistry`                       | ✓        | ✓     | ✓      |
+| `metering`                            | ✓        | ✓     | ✓      |
+| `notifications`                       | ✓        | ✓     | ✓      |
+| `operations`                          | ✓        | —     | —      |
+| `outbox`                              | ✓        | ✓     | ✓      |
+| `rbac`                                | ✓        | ✓     | ✓      |
+| `saga`                                | ✓        | ✓     | ✓      |
+| `sessions/database`                   | ✓        | ✓     | ✓      |
+| `settings`                            | ✓        | ✓     | ✓      |
+| `shredding`                           | ✓        | ✓     | ✓      |
+| `timers`                              | ✓        | —     | —      |
+| `waitlists`                           | ✓        | ✓     | ✓      |
+| `webhooks`                            | ✓        | ✓     | ✓      |
+| `workqueue`                           | ✓        | —     | —      |
 <!-- /readmegen:dialects -->
 
 ### Why the three narrow

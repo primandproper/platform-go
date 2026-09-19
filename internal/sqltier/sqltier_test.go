@@ -84,6 +84,7 @@ var rulings = map[string]ruling{
 	"outbox/internal/outboxdb":                                    {tier: unison},
 	"metering/internal/meteringdb":                                {tier: unison},
 	"authentication/passwordreset/internal/passwordresetdb":       {tier: unison},
+	"authentication/signin/refreshtokens/internal/signindb":       {tier: unison},
 	"waitlists/internal/waitlistsdb":                              {tier: unison},
 	"billing/internal/billingdb":                                  {tier: unison},
 
@@ -110,15 +111,16 @@ var rulings = map[string]ruling{
 
 	// Ruled on for holding no SQL. Recorded rather than left absent, so a
 	// statement appearing here later is a failing test rather than a silence.
-	"rbac":                         {tier: none, why: "the resolver whose thirteen fmt.Sprintf builders a survey counted as zero: its statements are rendered by rbac/internal/queries and executed through the querier above, so the package that used to compose them holds none"},
-	"audit":                        {tier: none, why: "the hash-chained log, whose sixteen builders are rendered by audit/internal/queries and executed through the querier above; the recorder, the reader, the prune target and the erasure seam compose none"},
-	"dataprivacy/auditerasure":     {tier: none, why: "it owns no table, so it owns no corpus: its two deletes and its count address audit's schema and are rendered into audit's .sql, reached through audit.Erasure"},
-	"identity":                     {tier: none, why: "the store the tier was built for, and the first to finish: its statements are rendered by identity/internal/queries and executed through the querier above, so the package that used to compose them holds none"},
-	"authentication/passwordreset": {tier: none, why: "ported: the five fmt.Sprintf builders that composed its issuance, its lookup, its guarded redemption, its revocation and its sweep are rendered by authentication/passwordreset/internal/queries and executed through the querier above, so the package that used to compose them holds none"},
-	"metering":                     {tier: none, why: "the twelve builders that composed its SQL as Go strings are gone: its statements are rendered by metering/internal/queries and executed through the querier above, so the package that used to compose them holds none"},
-	"outbox":                       {tier: none, why: "ported: its statements are rendered by outbox/internal/queries and executed through the querier above, and the one line of SQL it still names is database/dialect's NOTIFY, which is addressed to a channel rather than to a table"},
-	"timers":                       {tier: none, why: "ported: its statements are rendered by timers/internal/queries and executed through the querier above, and the one line of SQL it still names is database/dialect's NOTIFY, which is addressed to a channel rather than to a table"},
-	"workqueue":                    {tier: none, why: "ported: the eight builders that composed its claim, its lock-ordering CTE and its bounded reaper are rendered by workqueue/internal/queries and executed through the querier above, and the one line of SQL it still names is database/dialect's NOTIFY, which is addressed to a channel rather than to a table"},
+	"rbac":                                {tier: none, why: "the resolver whose thirteen fmt.Sprintf builders a survey counted as zero: its statements are rendered by rbac/internal/queries and executed through the querier above, so the package that used to compose them holds none"},
+	"audit":                               {tier: none, why: "the hash-chained log, whose sixteen builders are rendered by audit/internal/queries and executed through the querier above; the recorder, the reader, the prune target and the erasure seam compose none"},
+	"dataprivacy/auditerasure":            {tier: none, why: "it owns no table, so it owns no corpus: its two deletes and its count address audit's schema and are rendered into audit's .sql, reached through audit.Erasure"},
+	"identity":                            {tier: none, why: "the store the tier was built for, and the first to finish: its statements are rendered by identity/internal/queries and executed through the querier above, so the package that used to compose them holds none"},
+	"authentication/signin/refreshtokens": {tier: none, why: "born on the tier: the six statements its store executes are rendered by authentication/signin/refreshtokens/internal/queries and reached through the querier above, so the package that would have composed them never did"},
+	"authentication/passwordreset":        {tier: none, why: "ported: the five fmt.Sprintf builders that composed its issuance, its lookup, its guarded redemption, its revocation and its sweep are rendered by authentication/passwordreset/internal/queries and executed through the querier above, so the package that used to compose them holds none"},
+	"metering":                            {tier: none, why: "the twelve builders that composed its SQL as Go strings are gone: its statements are rendered by metering/internal/queries and executed through the querier above, so the package that used to compose them holds none"},
+	"outbox":                              {tier: none, why: "ported: its statements are rendered by outbox/internal/queries and executed through the querier above, and the one line of SQL it still names is database/dialect's NOTIFY, which is addressed to a channel rather than to a table"},
+	"timers":                              {tier: none, why: "ported: its statements are rendered by timers/internal/queries and executed through the querier above, and the one line of SQL it still names is database/dialect's NOTIFY, which is addressed to a channel rather than to a table"},
+	"workqueue":                           {tier: none, why: "ported: the eight builders that composed its claim, its lock-ordering CTE and its bounded reaper are rendered by workqueue/internal/queries and executed through the querier above, and the one line of SQL it still names is database/dialect's NOTIFY, which is addressed to a channel rather than to a table"},
 }
 
 // TestEverySQLPackageIsClassified is the entry this file exists to make

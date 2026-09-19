@@ -108,7 +108,14 @@ func TestService_LoginForToken(T *testing.T) {
 		test.Eq(t, map[string]any{
 			signin.ClaimAccountID: e.accountID,
 			signin.ClaimScope:     testScope.String(),
+			signin.ClaimFamilyID:  signedIn.FamilyID,
 		}, e.issuer.claims)
+
+		// The login the token belongs to, minted here and carried by every
+		// successor an exchange issues. It is set for a service that stores no
+		// refresh tokens too, because it names a sign-in rather than a row.
+		test.NotEqOp(t, "", signedIn.FamilyID)
+		test.EqOp(t, "", signedIn.RefreshToken)
 
 		must.SliceLen(t, 1, e.hooks.signIns)
 		test.SliceEmpty(t, e.hooks.failures)
@@ -151,6 +158,7 @@ func TestService_LoginForToken(T *testing.T) {
 		test.Eq(t, map[string]any{
 			signin.ClaimAccountID: "",
 			signin.ClaimScope:     testScope.String(),
+			signin.ClaimFamilyID:  signedIn.FamilyID,
 		}, e.issuer.claims)
 
 		must.SliceLen(t, 1, e.hooks.signIns)
@@ -539,7 +547,7 @@ func TestService_LoginForToken(T *testing.T) {
 		claimsErr := errors.New("cannot resolve the tenant plan")
 
 		e := newEnv(t, signin.WithClaimsBuilder(
-			func(context.Context, *identity.Principal) (map[string]any, error) { return nil, claimsErr },
+			func(context.Context, *signin.ClaimsInput) (map[string]any, error) { return nil, claimsErr },
 		))
 
 		_, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
@@ -718,7 +726,7 @@ func TestService_Authenticate(T *testing.T) {
 		t.Parallel()
 
 		e := newEnv(t, signin.WithClaimsBuilder(
-			func(context.Context, *identity.Principal) (map[string]any, error) {
+			func(context.Context, *signin.ClaimsInput) (map[string]any, error) {
 				return nil, errors.New("the claims builder is unwell")
 			}))
 

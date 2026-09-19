@@ -68,11 +68,19 @@
 // than a recommendation -- see [RefreshTOTPSecretResponse] for what the second
 // one costs.
 //
-// No refresh token, and no session. This service issues one token with one
-// lifetime. Refreshing it is signing in again; keeping it in a cookie is
-// github.com/primandproper/platform-go/v14/sessions; turning it back into a
-// caller is the consumer's interceptor. None of the three is a decision a
-// schema should be making for everybody.
+// A refresh token, and still no session. [IssuedToken] carries a second
+// credential that mints the first again without a password, and a family
+// identifier naming the login both belong to. What it does not carry is a
+// session: keeping either token in a cookie is
+// github.com/primandproper/platform-go/v14/sessions, and turning one back into a
+// caller is the consumer's interceptor. Neither is a decision a schema should be
+// making for everybody.
+//
+// A service that stores no refresh tokens leaves both new fields empty, which is
+// the shape this file described before they existed and is still a valid one --
+// see signin.WithRefreshTokenStore. family_id is populated either way, because it
+// names a sign-in rather than a stored row, and it is the same value the access
+// token carries as its conventional "sid" claim.
 //
 // No passkeys, no password reset, no email verification and no session
 // management. Each is a flow of its own over an engine this module already
@@ -147,6 +155,39 @@ message IssuedToken {
   // administrative reports whether this token came through the administrative
   // door, which typically means a shorter lifetime.
   bool administrative = 5;
+
+  // refresh_token is the credential that mints the next token without a
+  // password, by way of ExchangeRefreshToken. It is empty for a service that
+  // stores no refresh tokens.
+  //
+  // It is single-use. Exchanging it spends it and returns its successor, and
+  // presenting one that was already spent ends the whole login -- every token
+  // that sign-in issued stops working, because a token presented twice means two
+  // parties hold one credential and which of them is asking cannot be told from
+  // the server's side. A client that retries an exchange must retry it with the
+  // successor it was given, never with the token it has already sent.
+  //
+  // It is longer lived than token and is therefore the one worth stealing. It
+  // belongs in whatever the client's most protected store is, and it belongs
+  // nowhere a log, a crash report or a URL can reach.
+  string refresh_token = 6;
+
+  // refresh_token_expires_at is when the refresh token stops being
+  // exchangeable, and is absent when there is none.
+  //
+  // It is the deadline that bounds the sign-in. Every exchange mints a successor
+  // with a fresh window, so a client that keeps refreshing keeps the login and
+  // one that stops loses it here.
+  google.protobuf.Timestamp refresh_token_expires_at = 7;
+
+  // family_id names the continuous login this token belongs to: the same value
+  // on the token a sign-in mints and on every successor an exchange mints after
+  // it.
+  //
+  // It is what the access token carries as its "sid" claim, so an interceptor
+  // that parses the token and a client that read this field are naming the same
+  // login. It is populated whether or not a refresh token was issued.
+  string family_id = 8 [json_name = "familyID"];
 }
 
 // AuthStatus is where a signed-in caller stands: who they are, which account
@@ -204,6 +245,24 @@ message AdminLoginForTokenRequest {
 }
 
 message AdminLoginForTokenResponse {
+  IssuedToken token = 1;
+}
+
+// ExchangeRefreshTokenRequest spends a refresh token for a fresh pair.
+//
+// It is anonymous, like the two doors, and for the same reason: the credential
+// presented is the whole of the request's authority, and a caller holding one has
+// not been authenticated yet. There is no field naming a user -- who the new
+// token is for is read off the row the presented token named, not off anything a
+// client sends.
+message ExchangeRefreshTokenRequest {
+  reserved "scope";
+
+  // refresh_token is the credential a previous IssuedToken carried.
+  string refresh_token = 1;
+}
+
+message ExchangeRefreshTokenResponse {
   IssuedToken token = 1;
 }
 
@@ -303,16 +362,18 @@ message VerifyTOTPSecretResponse {}
 
 // SignInService is sign-in.
 //
-// Three of its RPCs are anonymous by definition and four require a caller. What
+// Four of its RPCs are anonymous by definition and four require a caller. What
 // none of them requires is a permission: there is no grant that would make
 // "sign in" safer, and the four authenticated ones take their subject from the
 // caller and have no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an
 // authorization policy, which is not the same thing as being left out of one.
 service SignInService {
-  // The two doors.
+  // The two doors, and the one that keeps a sign-in alive without reopening
+  // either of them.
   rpc LoginForToken(LoginForTokenRequest) returns (LoginForTokenResponse);
   rpc AdminLoginForToken(AdminLoginForTokenRequest) returns (AdminLoginForTokenResponse);
+  rpc ExchangeRefreshToken(ExchangeRefreshTokenRequest) returns (ExchangeRefreshTokenResponse);
 
   // The two reads a client makes on load.
   rpc GetAuthStatus(GetAuthStatusRequest) returns (GetAuthStatusResponse);

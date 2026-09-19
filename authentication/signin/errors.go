@@ -89,6 +89,24 @@ var (
 	// because there the same sentence names a user to whoever guessed a handle.
 	ErrNoPasswordCredential = platformerrors.New("user holds no password credential")
 
+	// ErrRefreshTokenReused indicates a refresh token presented after it had
+	// already been exchanged, and it is the one refusal in this package that is
+	// also an alarm.
+	//
+	// A refresh token is single-use, so a second presentation means two parties
+	// hold one credential: whoever signed in, and whoever took a copy. Which of
+	// them is presenting it now cannot be told from here — a thief's replay and a
+	// client's retry are the same request — so the answer is to end the family,
+	// which signs both of them out. That is the standard response and the only
+	// one that does not leave the theft running.
+	//
+	// It is mapped for both transports and deliberately absent from
+	// ClientSafeSentinels. This package collapses its refusals on purpose, and
+	// "that token was already spent" tells a thief their theft was detected. The
+	// sentinel stays legible in the consumer's own logs, which is where it is
+	// useful.
+	ErrRefreshTokenReused = platformerrors.New("refresh token has already been exchanged")
+
 	// ErrTOTPIssuerNotConfigured indicates Service.RefreshTOTPSecret on a
 	// service built without WithTOTPIssuer.
 	//
@@ -97,6 +115,25 @@ var (
 	// It is a wiring failure and reads as one: no status is mapped for it, so it
 	// is a 500, which is what it is.
 	ErrTOTPIssuerNotConfigured = platformerrors.New("no TOTP issuer label is configured")
+
+	// ErrRefreshTokensNotConfigured indicates one of the three refresh doors on
+	// a service built without WithRefreshTokenStore.
+	//
+	// Such a service issues one token per sign-in and holds no table, which is
+	// what this package did before rotation existed and is still the right shape
+	// for a consumer using Service.Authenticate as a credential check. Reaching
+	// for a refresh door from one is a wiring failure and reads as one: no status
+	// is mapped for it, so it is a 500, which is what it is.
+	ErrRefreshTokensNotConfigured = platformerrors.New("no refresh token store is configured")
+
+	// ErrRefreshTokenTTLTooShort indicates a service whose refresh tokens would
+	// die before the access tokens they mint.
+	//
+	// It is refused at construction because it is not recoverable at a call: a
+	// client holding a working access token has no reason to refresh, so by the
+	// time it does the family is already gone, and the sign-in ends at a moment
+	// nothing chose. It is a wiring failure and no status is mapped for it.
+	ErrRefreshTokenTTLTooShort = platformerrors.New("refresh token lifetime is shorter than the token lifetime")
 )
 
 // The nil-argument and empty-argument refusals. Each wraps a platform sentinel,
@@ -150,4 +187,15 @@ var (
 	// both has a bug, and picking one for them makes it a bug that signs
 	// somebody in.
 	ErrAmbiguousHandle = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "credentials name both a username and an email address")
+
+	// ErrEmptyRefreshToken indicates an exchange that presented nothing.
+	//
+	// It is not ErrInvalidCredentials, for the reason ErrEmptyHandle is not: an
+	// empty request is a client that did not submit rather than a guess that
+	// missed, and answering it with a refusal would put a database round trip
+	// behind every empty request a bot sends.
+	ErrEmptyRefreshToken = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token")
+
+	// ErrEmptyFamilyID indicates a revocation that named no login.
+	ErrEmptyFamilyID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token family ID")
 )

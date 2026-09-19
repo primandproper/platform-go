@@ -495,6 +495,12 @@ var Matrix = map[string]map[string]Decision{
 		"ErrInvalidCredentials":   {Err: signin.ErrInvalidCredentials, Is: Mapped},
 		"ErrSecondFactorRequired": {Err: signin.ErrSecondFactorRequired, Is: Mapped},
 
+		// A refresh token presented after it was spent. It is Unauthenticated
+		// and 401 with ErrInvalidCredentials's own message, so a client cannot
+		// tell the two apart — which is why it is mapped and, alone among the
+		// nine this package maps, not client-safe. See errormappers.go.
+		"ErrRefreshTokenReused": {Err: signin.ErrRefreshTokenReused, Is: Mapped},
+
 		// Proven, and refused anyway. The four PermissionDenials: two statuses
 		// an operator set, and the two halves of the administrative door.
 		"ErrAdminLoginDisabled": {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
@@ -528,10 +534,24 @@ var Matrix = map[string]map[string]Decision{
 		// already answer as a bad request.
 		"ErrAmbiguousHandle": {Err: signin.ErrAmbiguousHandle, Is: Platform},
 
+		// The two refresh requests that arrived naming nothing. Both wrap
+		// errors.ErrEmptyInputParameter, and neither is collapsed into the
+		// refusal: an empty form is a client that did not submit rather than a
+		// guess that missed.
+		"ErrEmptyFamilyID":     {Err: signin.ErrEmptyFamilyID, Is: Platform},
+		"ErrEmptyRefreshToken": {Err: signin.ErrEmptyRefreshToken, Is: Platform},
+
 		// A consumer who never named the label an authenticator app shows. It is
 		// wiring rather than anything a caller sent, so a 500 is the honest
 		// answer and no mapper claims it.
 		"ErrTOTPIssuerNotConfigured": {Err: signin.ErrTOTPIssuerNotConfigured, Is: Unhandled},
+
+		// The two refresh wiring failures. One is a refresh door on a service
+		// that stores no refresh tokens, the other a pair of lifetimes that
+		// would end a sign-in at a moment nobody chose; neither is anything a
+		// caller sent, so a 500 is the honest answer and no mapper claims them.
+		"ErrRefreshTokenTTLTooShort":    {Err: signin.ErrRefreshTokenTTLTooShort, Is: Unhandled},
+		"ErrRefreshTokensNotConfigured": {Err: signin.ErrRefreshTokensNotConfigured, Is: Unhandled},
 	},
 	notificationsPkg: {
 		// The two reads' one answer. Absent, archived, and belonging to somebody

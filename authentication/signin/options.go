@@ -30,6 +30,34 @@ const DefaultTokenTTL = time.Hour
 // stealing in is the part a default can shrink without asking anybody.
 const DefaultAdminTokenTTL = 15 * time.Minute
 
+// DefaultRefreshTokenTTL is how long an ordinary sign-in's refresh token lives,
+// and therefore how long that sign-in lasts.
+//
+// Thirty days, and it is the deadline that actually bounds a session: the access
+// token above expires every hour and is replaced without a password, so what
+// ends a sign-in is this one lapsing. Every exchange mints a successor with a
+// fresh window of the same length, so the thirty days is an idle timeout rather
+// than an absolute one — a client that keeps refreshing keeps the login, and one
+// that stops loses it thirty days later.
+//
+// A consumer wanting an absolute bound as well enforces it above this package,
+// from RefreshToken.IssuedAt or from whatever their AfterIssueToken hook
+// recorded when the family was first minted. This package deliberately does not:
+// a maximum session age is policy that differs per deployment far more than a
+// default could guess, and a column holding one would be a second deadline
+// competing with the one in the row.
+const DefaultRefreshTokenTTL = 30 * 24 * time.Hour
+
+// DefaultAdminRefreshTokenTTL is how long an administrative sign-in lasts.
+//
+// Twelve hours, and shorter than DefaultRefreshTokenTTL for the reason
+// DefaultAdminTokenTTL is shorter than DefaultTokenTTL: the sign-in that can ban
+// a user is the one worth stealing, and an operator's working day is the window
+// a default can shrink it to without asking anybody. An operator who is still
+// working after twelve hours signs in again; an operator who went home is not
+// carrying a live administrative session for a month.
+const DefaultAdminRefreshTokenTTL = 12 * time.Hour
+
 // The claims DefaultClaims puts on a token beside the registered ones the
 // issuer owns. They are exported because a consumer's own interceptor reads
 // them back off a parsed token, and a claim key spelled twice is a claim read
@@ -44,6 +72,19 @@ const (
 	// tenancy.Scope.String renders it. It is the empty string for
 	// tenancy.Global, which is what a single-tenant deployment sees.
 	ClaimScope = "scope"
+
+	// ClaimFamilyID is which continuous login the token belongs to — SignIn's
+	// FamilyID, and the value every successor a refresh exchange mints carries
+	// too.
+	//
+	// Its wire spelling is "sid", which is the conventional key for this claim
+	// and what a consumer's interceptor already looks for. The Go vocabulary is
+	// "family" throughout this module because that is what the mechanism is, and
+	// the two are not coupled: a claim key is a string on a wire, chosen for the
+	// clients that read it, and a package's nouns are chosen for the people
+	// reading its code. Naming the constant after the mechanism is what keeps
+	// this one place the wire spelling appears.
+	ClaimFamilyID = "sid"
 )
 
 // SecondFactorPolicy is what this service does about a user who holds no proven
@@ -95,6 +136,32 @@ func (p SecondFactorPolicy) String() string {
 	}
 }
 
+// ClaimsInput is what a ClaimsBuilder is given: everything this service knows
+// about the token it is about to mint.
+//
+// It is a struct rather than a parameter list because the list was the problem.
+// The builder took a principal alone, so a claim naming the login it belonged to
+// was unreachable — and the login is exactly what an interceptor needs to check
+// a token against a revocation. Growing a second parameter would have fixed that
+// once; a struct fixes it for whatever the next claim needs, which is then
+// additive rather than a third break.
+type ClaimsInput struct {
+	_ struct{} `json:"-"`
+
+	// Principal is who the token is for — the user, redacted, their memberships,
+	// and the account it is against.
+	Principal *identity.Principal `json:"principal"`
+
+	// FamilyID is which continuous login this token belongs to. It is the same
+	// value on the token a sign-in mints and on every successor an exchange
+	// mints after it, which is what makes a claim built from it name a session
+	// rather than a request.
+	//
+	// It is set whether or not the service stores refresh tokens: a service that
+	// mints one token per sign-in still has a login to name.
+	FamilyID string `json:"familyID"`
+}
+
 // ClaimsBuilder produces the application-specific claims a token carries beside
 // the registered ones its issuer owns.
 //
@@ -109,22 +176,30 @@ func (p SecondFactorPolicy) String() string {
 //
 // The registered claim keys are the issuer's and are refused —
 // tokens.ReservedClaimKeys names them.
-type ClaimsBuilder func(ctx context.Context, principal *identity.Principal) (map[string]any, error)
+type ClaimsBuilder func(ctx context.Context, input *ClaimsInput) (map[string]any, error)
 
 // DefaultClaims is the ClaimsBuilder a service uses when none is named: the
-// account the token is for and the directory it was issued in.
+// account the token is for, the directory it was issued in, and the login it
+// belongs to.
 //
-// Both are there because both are needed to make sense of the subject. A user
-// ID alone does not say which account's data the request is against, and in a
-// multi-directory deployment it does not even identify a person.
-func DefaultClaims(_ context.Context, principal *identity.Principal) (map[string]any, error) {
-	if principal == nil {
+// The first two are there because both are needed to make sense of the subject.
+// A user ID alone does not say which account's data the request is against, and
+// in a multi-directory deployment it does not even identify a person.
+//
+// The third is there because a consumer's interceptor cannot do its half of
+// rotation without it. A token carries no reference to the sign-in it came from
+// otherwise, so "this login was signed out" is a fact nothing on the wire can be
+// checked against — and a detected refresh token reuse would revoke a family
+// whose access tokens no interceptor could recognize.
+func DefaultClaims(_ context.Context, input *ClaimsInput) (map[string]any, error) {
+	if input == nil || input.Principal == nil {
 		return nil, identity.ErrNilUser
 	}
 
 	return map[string]any{
-		ClaimAccountID: principal.ActiveAccountID,
-		ClaimScope:     principal.User.Scope.String(),
+		ClaimAccountID: input.Principal.ActiveAccountID,
+		ClaimScope:     input.Principal.User.Scope.String(),
+		ClaimFamilyID:  input.FamilyID,
 	}, nil
 }
 
@@ -205,6 +280,65 @@ func WithAdminTokenTTL(ttl time.Duration) ServiceOption {
 	return func(s *Service) {
 		if ttl > 0 {
 			s.adminTokenTTL = ttl
+		}
+	}
+}
+
+// WithRefreshTokenTTL sets how long an ordinary sign-in's refresh token lives,
+// which is how long that sign-in lasts. A non-positive duration is ignored,
+// leaving DefaultRefreshTokenTTL.
+//
+// It is a separate lifetime from WithTokenTTL rather than a multiple of it,
+// because the two answer different questions. The access token's lifetime is how
+// stale a permission check may be; this one is how long somebody stays signed
+// in. A deployment tightening the first almost never means to tighten the
+// second, and a single knob would make it do both.
+//
+// Shorter than WithTokenTTL is refused at construction — see
+// ErrRefreshTokenTTLTooShort.
+func WithRefreshTokenTTL(ttl time.Duration) ServiceOption {
+	return func(s *Service) {
+		if ttl > 0 {
+			s.refreshTokenTTL = ttl
+		}
+	}
+}
+
+// WithAdminRefreshTokenTTL sets how long an administrative sign-in lasts. A
+// non-positive duration is ignored, leaving DefaultAdminRefreshTokenTTL.
+//
+// Shorter than WithAdminTokenTTL is refused at construction — see
+// ErrRefreshTokenTTLTooShort.
+func WithAdminRefreshTokenTTL(ttl time.Duration) ServiceOption {
+	return func(s *Service) {
+		if ttl > 0 {
+			s.adminRefreshTokenTTL = ttl
+		}
+	}
+}
+
+// WithRefreshTokenStore attaches where this service's refresh tokens live, which
+// is what turns one token per sign-in into a rotating pair. A nil store is
+// ignored, leaving none.
+//
+// Naming none — which is the default — is what "this service issues one token
+// per sign-in" means: the two token doors mint no refresh token, SignIn.Token is
+// the whole credential, and the three refresh doors refuse with
+// ErrRefreshTokensNotConfigured. That shape is deliberate rather than
+// vestigial. A consumer using Service.Authenticate as a credential check owes no
+// table, and this package held no schema at all before rotation existed.
+//
+// What a service gains by naming one is the property the store's documentation
+// is about: a sign-in that outlives its access token without a password, and a
+// stolen refresh token that becomes a detected event rather than a shared
+// session. This module's implementation is
+// [github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens].
+//
+// SignIn.FamilyID is set either way, because it names a login rather than a row.
+func WithRefreshTokenStore(store RefreshTokenStore) ServiceOption {
+	return func(s *Service) {
+		if store != nil {
+			s.refreshTokens = store
 		}
 	}
 }

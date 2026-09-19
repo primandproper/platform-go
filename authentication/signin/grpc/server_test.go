@@ -371,3 +371,129 @@ func TestServer_CredentialWrites(T *testing.T) {
 		test.EqOp(t, codes.FailedPrecondition, status.Code(err))
 	})
 }
+
+func TestServer_ExchangeRefreshToken(T *testing.T) {
+	T.Parallel()
+
+	// The round trip, and the three fields the conversion added to IssuedToken.
+	T.Run("standard", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		first, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.NoError(t, err)
+		must.NotEqOp(t, "", first.GetToken().GetRefreshToken())
+		must.NotEqOp(t, "", first.GetToken().GetFamilyId())
+		must.NotNil(t, first.GetToken().GetRefreshTokenExpiresAt())
+
+		second, err := h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: first.GetToken().GetRefreshToken(),
+		})
+		must.NoError(t, err)
+
+		// One login, two credentials: the family carries and the secret does
+		// not.
+		test.EqOp(t, first.GetToken().GetFamilyId(), second.GetToken().GetFamilyId())
+		test.NotEqOp(t, first.GetToken().GetRefreshToken(), second.GetToken().GetRefreshToken())
+		test.EqOp(t, h.accountID, second.GetToken().GetActiveAccountId())
+	})
+
+	// It is a door: a caller whose access token has expired has no credential to
+	// present, so requiring one would make the RPC unreachable at exactly the
+	// moment it is needed.
+	T.Run("no principal is required", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		first, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.NoError(t, err)
+
+		// h.rootCtx carries no credential.
+		_, err = h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: first.GetToken().GetRefreshToken(),
+		})
+		test.NoError(t, err)
+	})
+
+	// A replay answers exactly as a wrong password does, message included. The
+	// sentinel survives the wire for the consumer's own logs, and the message
+	// does not tell whoever sent it that their theft was noticed.
+	T.Run("a replay is indistinguishable from any other refusal on the wire", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		first, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.NoError(t, err)
+
+		_, err = h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: first.GetToken().GetRefreshToken(),
+		})
+		must.NoError(t, err)
+
+		_, err = h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: first.GetToken().GetRefreshToken(),
+		})
+
+		test.ErrorIs(t, err, signin.ErrRefreshTokenReused)
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+
+		// Not the sentinel's own words: it is the one refusal this package maps
+		// and deliberately leaves out of ClientSafeSentinels, so what crosses is
+		// the code's name rather than "already exchanged".
+		test.StrNotContains(t, status.Convert(err).Message(), "already")
+	})
+
+	T.Run("an unknown token is the ordinary refusal", func(t *testing.T) {
+		t.Parallel()
+
+		h := newRefreshHarness(t, nil)
+
+		_, err := h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: "never-minted",
+		})
+
+		test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+	})
+
+	// A service that stores no refresh tokens has no such door, and a client
+	// calling it anyway is a wiring failure rather than a request to correct.
+	T.Run("a service with no store answers Internal", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, nil)
+
+		_, err := h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: "anything",
+		})
+
+		test.ErrorIs(t, err, signin.ErrRefreshTokensNotConfigured)
+		test.EqOp(t, codes.Internal, status.Code(err))
+	})
+
+	// The default shape on the wire: both new fields empty, and the family set
+	// anyway, because it names a sign-in rather than a stored row.
+	T.Run("a service with no store leaves the refresh fields empty", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, nil)
+
+		response, err := h.client.LoginForToken(h.rootCtx, &signinpb.LoginForTokenRequest{
+			Credentials: &signinpb.Credentials{Username: "jane", Password: h.password},
+		})
+		must.NoError(t, err)
+
+		test.EqOp(t, "", response.GetToken().GetRefreshToken())
+		test.Nil(t, response.GetToken().GetRefreshTokenExpiresAt())
+		test.NotEqOp(t, "", response.GetToken().GetFamilyId())
+	})
+}
