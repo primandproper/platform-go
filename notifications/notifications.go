@@ -27,6 +27,13 @@ const (
 // merely resembling them.
 const PrincipalAttributeKey = principalKey
 
+// ScopeAttributeKey is the same thing for the directory the work was done in,
+// and it is exported for the same reason with one more behind it: a trace that
+// leaves this package and comes back — a push fan-out resolving tokens here,
+// sending elsewhere, and pruning here again — is one trace only if both halves
+// name the tenant identically. notifications/push is the worked example.
+const ScopeAttributeKey = scopeKey
+
 // Platform is which push provider a device token is addressed through.
 //
 // It is a type rather than a string because it is half of a device's natural key
