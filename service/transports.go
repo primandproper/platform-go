@@ -1,0 +1,1004 @@
+package service
+
+import (
+	"context"
+
+	"github.com/primandproper/platform-go/v14/audit"
+	auditgrpc "github.com/primandproper/platform-go/v14/audit/grpc"
+	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
+	oauth2clientsgrpc "github.com/primandproper/platform-go/v14/authentication/oauth2clients/grpc"
+	"github.com/primandproper/platform-go/v14/authentication/signin"
+	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
+	"github.com/primandproper/platform-go/v14/billing"
+	billinggrpc "github.com/primandproper/platform-go/v14/billing/grpc"
+	"github.com/primandproper/platform-go/v14/callers"
+	"github.com/primandproper/platform-go/v14/comments"
+	commentsgrpc "github.com/primandproper/platform-go/v14/comments/grpc"
+	"github.com/primandproper/platform-go/v14/dataprivacy"
+	dataprivacyhttp "github.com/primandproper/platform-go/v14/dataprivacy/http"
+	"github.com/primandproper/platform-go/v14/identity"
+	identitygrpc "github.com/primandproper/platform-go/v14/identity/grpc"
+	"github.com/primandproper/platform-go/v14/issuereports"
+	issuereportsgrpc "github.com/primandproper/platform-go/v14/issuereports/grpc"
+	"github.com/primandproper/platform-go/v14/mediaregistry"
+	mediaregistryhttp "github.com/primandproper/platform-go/v14/mediaregistry/http"
+	"github.com/primandproper/platform-go/v14/notifications"
+	notificationsgrpc "github.com/primandproper/platform-go/v14/notifications/grpc"
+	"github.com/primandproper/platform-go/v14/operations"
+	operationshttp "github.com/primandproper/platform-go/v14/operations/http"
+	"github.com/primandproper/platform-go/v14/settings"
+	settingsgrpc "github.com/primandproper/platform-go/v14/settings/grpc"
+	"github.com/primandproper/platform-go/v14/waitlists"
+	waitlistsgrpc "github.com/primandproper/platform-go/v14/waitlists/grpc"
+	"github.com/primandproper/platform-go/v14/webhooks"
+	webhooksgrpc "github.com/primandproper/platform-go/v14/webhooks/grpc"
+
+	"github.com/primandproper/primitives-go/v2/config/injection"
+	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/routing"
+	grpcserver "github.com/primandproper/primitives-go/v2/server/grpc"
+	"github.com/primandproper/primitives-go/v2/tenancy"
+	"github.com/primandproper/primitives-go/v2/uploads"
+
+	"github.com/samber/do/v2"
+)
+
+// The refusals RegisterTransports raises for itself, as opposed to the ones the
+// surfaces raise for themselves.
+//
+// There are only three, and that is the measure of how little this file
+// decides: a surface that cannot be built refuses in its own words, under its
+// own sentinel, and these are the failures no surface is in a position to see.
+var (
+	// ErrNilPrincipalExtractor is a Transports with a surface to mount and no
+	// way to tell who is calling.
+	//
+	// It is refused here rather than passed along, unlike a nil authorizer,
+	// because four of the surfaces take a narrower seam than an extractor and
+	// this is where those are derived. Handing them a derivation over no
+	// extractor would mount four surfaces that refuse every request, which is
+	// the shape of hole this whole registration exists to close.
+	ErrNilPrincipalExtractor = platformerrors.Wrap(
+		platformerrors.ErrNilInputParameter,
+		"nil principal extractor for the mounted transport surfaces",
+	)
+
+	// ErrNoPrincipal is a request to one of the four surfaces whose seam is
+	// derived from the extractor, arriving with nobody on it.
+	//
+	// The surfaces that take the extractor directly answer this themselves, and
+	// each words it for the RPC it refused. This one is for the derivation:
+	// audit's scope, operations' owner, dataprivacy's subject and
+	// mediaregistry's caller are each a reading of a principal, and there is no
+	// reading of nobody.
+	ErrNoPrincipal = platformerrors.New(
+		"no principal on the request context a derived transport seam was reading",
+	)
+
+	// ErrGRPCRegistrationsAlreadyProvided is an injector that already holds the
+	// key RegisterTransports mounts the gRPC surfaces through.
+	//
+	// See RegisterTransports for why that key is this call's to own, and
+	// Transports.Registrations for the door an application's own services come
+	// through instead.
+	ErrGRPCRegistrationsAlreadyProvided = platformerrors.New(
+		"the gRPC registration functions are already registered; RegisterTransports owns them",
+	)
+)
+
+// Transports is what a mounted surface needs and a Config cannot carry.
+//
+// Two seams, and they are the whole of the "you keep the policy" bargain. Every
+// surface this module ships is otherwise deterministic from the config: the
+// store it reads, the client it reads on, the observability it reports through.
+// What is not deterministic is who is calling and which rows they may act on,
+// and those are values a caller constructs rather than anything an environment
+// variable can express — so they arrive here, as arguments, and nothing about
+// them is decided by this package.
+//
+// It is one struct rather than a variadic because the option slot on these
+// constructors already belongs to WithLogger, WithTracerProvider and
+// WithMetricsProvider, and because absent-means-noop is the wrong reading for
+// an authorizer: a surface with no rule about which rows a caller may touch is
+// a surface that mounts open, so a missing one is a startup error rather than a
+// default.
+type Transports struct {
+	// Extractor is how every mounted surface tells who is calling.
+	//
+	// One extractor for all of them, which is the argument callers' own
+	// documentation makes: a deployment has one authentication interceptor and
+	// one notion of a caller, so a surface that reads a narrower seam has that
+	// seam derived from this rather than asking for a second adapter that reads
+	// the same three facts.
+	Extractor callers.PrincipalExtractor
+
+	// Authorizers are the per-surface rules about which rows a caller who may
+	// make this call may make it against.
+	Authorizers Authorizers
+
+	// Registrations are the application's own gRPC services, mounted on the
+	// same server as the platform's.
+	//
+	// They arrive here rather than through the injector because
+	// RegisterTransports owns the []grpcserver.RegistrationFunc key — see the
+	// function. It is the same door WithRunners is for an application's own
+	// background loops, and for the same reason: a composition root that mounts
+	// the platform's surfaces has to leave somewhere for the surfaces it will
+	// never know about.
+	//
+	// They are appended after the platform's, so a service name declared on
+	// both fails on this one, which is the half the application can move.
+	Registrations []grpcserver.RegistrationFunc
+}
+
+// Authorizers is the second seam, one field per surface that takes one.
+//
+// Four are required: a surface configured without them does not mount open, it
+// fails the startup that configured it, under the surface's own sentinel rather
+// than one invented here. Three have a default their own package documents and
+// a nil field leaves that default in place, because the default is a decision
+// that package already made and this one has no standing to overrule.
+//
+// They are separate fields rather than one interface because the surfaces
+// declare them separately, and they declare them separately because they ask
+// different questions: whether a caller may act on an account is not the
+// question of whether they may act on a comment. What they share is the
+// currency — every method here takes a callers.Principal.
+type Authorizers struct {
+	// BillingAccounts decides which accounts a caller may read and write the
+	// ledger of. Required wherever billing.Store is registered.
+	BillingAccounts billinggrpc.AccountAuthorizer
+
+	// CommentAuthors decides which authors a caller may write as. Optional;
+	// comments/grpc defaults it to OwnCommentsOnly.
+	CommentAuthors commentsgrpc.AuthorAuthorizer
+
+	// IdentityTargets decides which users, accounts and invitations a caller
+	// may act on. Optional; identity/grpc defaults it to a membership
+	// authorizer built over the store it was given.
+	IdentityTargets identitygrpc.TargetAuthorizer
+
+	// IssueReports decides which reports and which reporters a caller may act
+	// on. Required wherever issuereports.Store is registered.
+	IssueReports issuereportsgrpc.ReportAuthorizer
+
+	// MediaObjects decides which stored objects a caller may fetch. Optional;
+	// mediaregistry/http defaults it to OwnerOnly.
+	MediaObjects mediaregistryhttp.Entitlement
+
+	// SettingsSubjects decides which subjects a caller may resolve and set
+	// values for. Required wherever settings.Store is registered.
+	SettingsSubjects settingsgrpc.SubjectAuthorizer
+
+	// WaitlistSignups decides which signups a caller may withdraw. Required
+	// wherever waitlists.Store is registered.
+	WaitlistSignups waitlistsgrpc.SignupAuthorizer
+}
+
+// RegisterTransports mounts every gRPC and HTTP surface this module ships whose
+// dependencies the injector can supply.
+//
+// It is a separate call from Register rather than a step inside it, for two
+// reasons that point the same way. A consumer wiring stores only — a worker, a
+// migration, a batch job — must not be made to supply authorizers it has no use
+// for. And the seams are values the caller constructs, which is exactly what a
+// Config is not: Register is a pure function of the configuration, and staying
+// that way is what makes a service's composition readable off the config it
+// booted with.
+//
+// # What mounts
+//
+// Eleven gRPC surfaces — audit, oauth2clients, signin, billing, comments,
+// identity, issuereports, notifications, settings, waitlists and webhooks — and
+// three HTTP ones — dataprivacy, mediaregistry and operations. sessions/http is
+// not among them; see the package documentation for why.
+//
+// A surface mounts when everything it is built from resolves, and the reading
+// of "resolves" is the one the rest of this package already uses: nobody
+// registered one is an absence and contributes nothing, while one that was
+// registered and cannot be built is an error naming the surface. That single
+// rule is what makes a Config naming no billing mount no billing surface, and
+// it is also what makes identity, oauth2clients and signin behave sensibly
+// without a special case — their servers are built over a service Register does
+// not register, so they mount for an application that registered one and stay
+// absent for an application that did not.
+//
+// # What it owns
+//
+// The []grpcserver.RegistrationFunc key, which grpcserver.RegisterGRPCServer
+// builds the server from. There is no way to mount a gRPC surface without it
+// and samber/do refuses a second provider for one type by panicking, so this
+// call takes the key rather than racing a consumer for it. An injector that
+// already holds one is reported as ErrGRPCRegistrationsAlreadyProvided at
+// startup rather than as a panic in a composition root, and an application's
+// own services join through Transports.Registrations.
+//
+// # What it does not do
+//
+// It registers no error mappers. errormappers.Register is the one door for
+// those and Register already calls it, which is why nothing here is conditional
+// on a surface having mounted. operations/http.New installs its own HTTP mapper
+// as it has always done — that is the module's single standing exception,
+// tripped by mounting the surface rather than added here, and nothing follows
+// it.
+//
+// It declares no authorization requirements. Every gRPC surface ships a
+// Require(*authzgrpc.RequirementsBuilder) naming the permission each of its
+// methods needs, and those are still the consumer's to install, beside the
+// interceptor that enforces them. This is the same thing
+// identitycfg.RegisterServer already says about the one surface it builds: a
+// mount is not a policy.
+//
+// Registration is lazy, as Register's is. Nothing here is built until something
+// invokes it, which for a service built through New is at startup.
+func RegisterTransports(i do.Injector, t *Transports) {
+	// A nil Transports is a caller who has named no seams, which is exactly
+	// what a zero one is. It is not an error on the way in: whether it is a
+	// mistake depends on whether anything was configured to mount, and that is
+	// not knowable until something invokes.
+	if t == nil {
+		t = &Transports{}
+	}
+
+	// Read before anything is registered, because what this reports on is the
+	// state of the injector as the caller handed it over. A consumer's own
+	// []grpcserver.RegistrationFunc registered afterwards panics on its own
+	// call, which is the right place for it to.
+	taken := providedNames(i)
+	_, contested := taken[do.NameOf[[]grpcserver.RegistrationFunc]()]
+
+	do.Provide(i, func(i do.Injector) (*mountedTransports, error) {
+		if contested {
+			return nil, ErrGRPCRegistrationsAlreadyProvided
+		}
+
+		return mountTransports(i, t)
+	})
+
+	if contested {
+		return
+	}
+
+	do.Provide(i, func(i do.Injector) ([]grpcserver.RegistrationFunc, error) {
+		mounted, err := do.Invoke[*mountedTransports](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return mounted.registrations, nil
+	})
+}
+
+// mountedTransports is what one RegisterTransports call mounted.
+//
+// It is a value rather than a slot on Service because the gRPC half has to be
+// available to grpcserver.RegisterGRPCServer's own provider, which resolves a
+// []grpcserver.RegistrationFunc and knows nothing about this package. The HTTP
+// half is already on the router by the time this exists — mounting is what
+// building it did — so the names are all there is left to hold.
+type mountedTransports struct {
+	// registrations is the platform's surfaces followed by the application's,
+	// in the order the gRPC server will register them.
+	registrations []grpcserver.RegistrationFunc
+
+	// names is what mounted, in mount order, for a startup log and for the
+	// tests that pin which surfaces a configuration produces.
+	names []string
+}
+
+// mountTransports builds every surface whose dependencies i can supply.
+//
+// The order is the two lanes, gRPC then HTTP, alphabetical within each. It
+// decides nothing — no surface here reads another — and it is fixed so that the
+// OpenAPI document the HTTP lane accumulates and the names a test asserts are
+// the same on every boot.
+func mountTransports(i do.Injector, t *Transports) (*mountedTransports, error) {
+	pillars, err := observability.InvokePillars(i)
+	if err != nil {
+		return nil, platformerrors.Wrap(err, "invoking the observability pillars for the transport surfaces")
+	}
+
+	m := &mount{i: i, pillars: pillars, t: t}
+
+	m.audit()
+	m.billing()
+	m.comments()
+	m.identity()
+	m.issueReports()
+	m.notifications()
+	m.oauth2Clients()
+	m.settings()
+	m.signIn()
+	m.waitlists()
+	m.webhooks()
+
+	m.dataPrivacy()
+	m.mediaRegistry()
+	m.operations()
+
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	// After the platform's, so that a service name declared on both ends fails
+	// on the application's — which is the one of the two its author can move.
+	m.registrations = append(m.registrations, t.Registrations...)
+
+	return &mountedTransports{registrations: m.registrations, names: m.names}, nil
+}
+
+// mount is one pass over the surfaces, carrying what they are all built from
+// and remembering the first failure — so each surface below reads as the list
+// of what it needs rather than as a stack of identical error checks. It is the
+// same shape resolver has, for the same reason.
+type mount struct {
+	i   do.Injector
+	err error
+
+	pillars *observability.Pillars
+
+	t *Transports
+
+	registrations []grpcserver.RegistrationFunc
+	names         []string
+}
+
+// need resolves T, reporting absence as false rather than as a failure.
+//
+// It is resolve's body against a value rather than a callback, because a
+// surface needs several of these before it can be built and a chain of
+// callbacks nested five deep is not a list of dependencies anybody can read.
+// The distinction it draws is the same one: nobody registered one is an
+// absence, and one that was registered and cannot be built is an error.
+func need[T any](m *mount) (T, bool) {
+	var zero T
+
+	if m.err != nil {
+		return zero, false
+	}
+
+	v, err := injection.InvokeOptional[T](m.i)
+	if err != nil {
+		m.err = platformerrors.Wrapf(err, "invoking %s", do.NameOf[T]())
+
+		return zero, false
+	}
+
+	if isAbsent(v) {
+		return zero, false
+	}
+
+	return v, true
+}
+
+// caller returns the extractor, refusing a surface that has arrived at the
+// point of needing one and has none.
+//
+// The check is here rather than at the top of mountTransports so that a
+// Transports with no extractor is only a failure for a service that configured
+// something to mount. A consumer who calls this and configures no surfaces has
+// said nothing wrong.
+func (m *mount) caller(surface string) (callers.PrincipalExtractor, bool) {
+	if m.t.Extractor == nil {
+		m.err = platformerrors.Wrapf(ErrNilPrincipalExtractor, "mounting the %s surface", surface)
+
+		return nil, false
+	}
+
+	return m.t.Extractor, true
+}
+
+// fail records a surface that could not be built, naming it.
+//
+// The surface's own sentinel is underneath, which is the whole intent of
+// passing a nil authorizer through rather than checking it here: a service that
+// configured billing and supplied no AccountAuthorizer is told so by
+// billing/grpc, in billing's words.
+func (m *mount) fail(surface string, err error) {
+	m.err = platformerrors.Wrapf(err, "building the %s transport surface", surface)
+}
+
+// mountedGRPC records a built gRPC surface and the registration that will put
+// it on the server.
+func (m *mount) mountedGRPC(surface string, register grpcserver.RegistrationFunc) {
+	m.registrations = append(m.registrations, register)
+	m.names = append(m.names, surface+" gRPC")
+}
+
+// mountedHTTP records a surface that has put its own routes on the router.
+func (m *mount) mountedHTTP(surface string) {
+	m.names = append(m.names, surface+" HTTP")
+}
+
+// routesLanded reports whether the routes a surface just put on the router were
+// accepted, and records the failure if they were not.
+//
+// routing.Router accumulates its registration failures rather than returning
+// them — a pattern that collides with one already there is a route that is
+// quietly not on the server — and its own documentation says to check before
+// serving. Nothing between here and Serve does, so this is that check, drawn
+// per surface so the failure names the one that caused it.
+//
+// clean is what Err said before the surface mounted. A router that arrived
+// already carrying somebody else's failure is left alone: Err joins them and
+// nothing here can tell the new one from the old, so blaming this surface for
+// an application's duplicate route would send the reader to the wrong file.
+func (m *mount) routesLanded(surface string, router *routing.Router, clean bool) bool {
+	if !clean {
+		return true
+	}
+
+	if err := router.Err(); err != nil {
+		m.fail(surface, err)
+
+		return false
+	}
+
+	return true
+}
+
+// deriveScope reads the caller's tenancy off the principal on the context.
+//
+// It serves audit's ScopeResolver and operations' OwnerResolver, which are the
+// same function type under two names because they ask the same question of the
+// same value. Neither package may say so — they are siblings, not a hierarchy —
+// so this is where the one answer is written.
+func deriveScope(extract callers.PrincipalExtractor) func(context.Context) (tenancy.Scope, error) {
+	return func(ctx context.Context) (tenancy.Scope, error) {
+		principal, ok := extract(ctx)
+		if !ok {
+			return tenancy.Global(), ErrNoPrincipal
+		}
+
+		return principal.Scope(), nil
+	}
+}
+
+// deriveSubject reads the person a privacy request is about off the principal.
+//
+// The type is SubjectUser because a principal is a person: every other
+// SubjectType names a thing this extractor has no way to be holding. An
+// application whose requests are about a third kind of subject resolves them
+// itself, which is what dataprivacy/http's own option is for.
+func deriveSubject(extract callers.PrincipalExtractor) func(context.Context) (dataprivacy.Subject, error) {
+	return func(ctx context.Context) (dataprivacy.Subject, error) {
+		principal, ok := extract(ctx)
+		if !ok {
+			return dataprivacy.Subject{}, ErrNoPrincipal
+		}
+
+		return dataprivacy.Subject{ID: principal.UserID(), Type: dataprivacy.SubjectUser}, nil
+	}
+}
+
+// deriveMediaCaller reads mediaregistry's two-field caller off the principal.
+func deriveMediaCaller(extract callers.PrincipalExtractor) func(context.Context) (mediaregistryhttp.Caller, error) {
+	return func(ctx context.Context) (mediaregistryhttp.Caller, error) {
+		principal, ok := extract(ctx)
+		if !ok {
+			return mediaregistryhttp.Caller{}, ErrNoPrincipal
+		}
+
+		return mediaregistryhttp.Caller{PrincipalID: principal.UserID(), Scope: principal.Scope()}, nil
+	}
+}
+
+// audit mounts the audit log's read surface.
+//
+// It is the one gRPC surface that takes no extractor: it reads a scope and
+// nothing else about a caller, so what it declares is a ScopeResolver, and that
+// resolver is derived from the extractor here.
+func (m *mount) audit() {
+	reader, ok := need[audit.Reader](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("audit")
+	if !ok {
+		return
+	}
+
+	srv, err := auditgrpc.NewServer(reader, client,
+		auditgrpc.WithPillars(m.pillars),
+		auditgrpc.WithScopeResolver(deriveScope(extract)),
+	)
+	if err != nil {
+		m.fail("audit", err)
+
+		return
+	}
+
+	m.mountedGRPC("audit", srv.RegisterOn)
+}
+
+// billing mounts the ledger surface. Its authorizer is required, and a nil one
+// travels to the constructor so the refusal is billing's own.
+func (m *mount) billing() {
+	store, ok := need[billing.Store](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("billing")
+	if !ok {
+		return
+	}
+
+	srv, err := billinggrpc.NewServer(store, client, extract, m.t.Authorizers.BillingAccounts,
+		billinggrpc.WithPillars(m.pillars),
+	)
+	if err != nil {
+		m.fail("billing", err)
+
+		return
+	}
+
+	m.mountedGRPC("billing", srv.RegisterOn)
+}
+
+// comments mounts the comment surface. Its authorizer is optional, so a nil one
+// is left out rather than passed, and comments/grpc's own default stands.
+func (m *mount) comments() {
+	store, ok := need[comments.Store](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("comments")
+	if !ok {
+		return
+	}
+
+	opts := []commentsgrpc.Option{commentsgrpc.WithPillars(m.pillars)}
+	if m.t.Authorizers.CommentAuthors != nil {
+		opts = append(opts, commentsgrpc.WithAuthorAuthorizer(m.t.Authorizers.CommentAuthors))
+	}
+
+	srv, err := commentsgrpc.NewServer(store, client, extract, opts...)
+	if err != nil {
+		m.fail("comments", err)
+
+		return
+	}
+
+	m.mountedGRPC("comments", srv.RegisterOn)
+}
+
+// identity mounts the directory surface.
+//
+// Its service is a dependency like any other here, and Register does not
+// register one — so a Config naming Identity mounts this surface only for an
+// application that built the service itself. That is the absence rule doing its
+// job rather than a gap in it: a surface over half a directory is not a surface.
+func (m *mount) identity() {
+	svc, ok := need[*identity.Service](m)
+	if !ok {
+		return
+	}
+
+	store, ok := need[identity.Store](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("identity")
+	if !ok {
+		return
+	}
+
+	opts := []identitygrpc.Option{identitygrpc.WithPillars(m.pillars)}
+	if m.t.Authorizers.IdentityTargets != nil {
+		opts = append(opts, identitygrpc.WithTargetAuthorizer(m.t.Authorizers.IdentityTargets))
+	}
+
+	srv, err := identitygrpc.NewServer(svc, store, client, extract, opts...)
+	if err != nil {
+		m.fail("identity", err)
+
+		return
+	}
+
+	m.mountedGRPC("identity", srv.RegisterOn)
+}
+
+// issueReports mounts the report surface. Its authorizer is required.
+func (m *mount) issueReports() {
+	store, ok := need[issuereports.Store](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("issue reports")
+	if !ok {
+		return
+	}
+
+	srv, err := issuereportsgrpc.NewServer(store, client, extract, m.t.Authorizers.IssueReports,
+		issuereportsgrpc.WithPillars(m.pillars),
+	)
+	if err != nil {
+		m.fail("issue reports", err)
+
+		return
+	}
+
+	m.mountedGRPC("issue reports", srv.RegisterOn)
+}
+
+// notifications mounts the inbox and device surface. It takes two seams, and
+// one registered store satisfies both — notificationscfg registers each as a
+// narrowing of the same value.
+func (m *mount) notifications() {
+	inbox, ok := need[notifications.Inbox](m)
+	if !ok {
+		return
+	}
+
+	registry, ok := need[notifications.Registry](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("notifications")
+	if !ok {
+		return
+	}
+
+	srv, err := notificationsgrpc.NewServer(inbox, registry, client, extract,
+		notificationsgrpc.WithPillars(m.pillars),
+	)
+	if err != nil {
+		m.fail("notifications", err)
+
+		return
+	}
+
+	m.mountedGRPC("notifications", srv.RegisterOn)
+}
+
+// oauth2Clients mounts the client registry surface.
+//
+// Neither its service nor its store is reachable from a Config — the package
+// ships no config subpackage — so this mounts for an application that
+// registered both and stays absent otherwise.
+func (m *mount) oauth2Clients() {
+	svc, ok := need[*oauth2clients.Service](m)
+	if !ok {
+		return
+	}
+
+	store, ok := need[oauth2clients.Store](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("oauth2 clients")
+	if !ok {
+		return
+	}
+
+	srv, err := oauth2clientsgrpc.NewServer(svc, store, client, extract,
+		oauth2clientsgrpc.WithPillars(m.pillars),
+	)
+	if err != nil {
+		m.fail("oauth2 clients", err)
+
+		return
+	}
+
+	m.mountedGRPC("oauth2 clients", srv.RegisterOn)
+}
+
+// settings mounts the settings surface. Its authorizer is required.
+func (m *mount) settings() {
+	store, ok := need[settings.Store](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("settings")
+	if !ok {
+		return
+	}
+
+	srv, err := settingsgrpc.NewServer(store, client, extract, m.t.Authorizers.SettingsSubjects,
+		settingsgrpc.WithPillars(m.pillars),
+	)
+	if err != nil {
+		m.fail("settings", err)
+
+		return
+	}
+
+	m.mountedGRPC("settings", srv.RegisterOn)
+}
+
+// signIn mounts the sign-in surface.
+//
+// Its scope resolver is left at signin/grpc's own default rather than derived:
+// three of its RPCs are the ones a caller reaches before there is anybody to
+// extract, so a resolver that refuses a request with no principal would refuse
+// the act of signing in.
+func (m *mount) signIn() {
+	svc, ok := need[*signin.Service](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("sign-in")
+	if !ok {
+		return
+	}
+
+	srv, err := signingrpc.NewServer(svc, extract, signingrpc.WithPillars(m.pillars))
+	if err != nil {
+		m.fail("sign-in", err)
+
+		return
+	}
+
+	m.mountedGRPC("sign-in", srv.RegisterOn)
+}
+
+// waitlists mounts the signup surface. Its authorizer is required, and its
+// scope resolver is left defaulted for the reason sign-in's is: the public
+// signup page is three RPCs that arrive with nobody on them by design.
+func (m *mount) waitlists() {
+	store, ok := need[waitlists.Store](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("waitlists")
+	if !ok {
+		return
+	}
+
+	srv, err := waitlistsgrpc.NewServer(store, client, extract, m.t.Authorizers.WaitlistSignups,
+		waitlistsgrpc.WithPillars(m.pillars),
+	)
+	if err != nil {
+		m.fail("waitlists", err)
+
+		return
+	}
+
+	m.mountedGRPC("waitlists", srv.RegisterOn)
+}
+
+// webhooks mounts the endpoint and subscription surface. It takes the
+// dispatcher and the store beneath it, both of which Register registers
+// together.
+func (m *mount) webhooks() {
+	dispatcher, ok := need[webhooks.Dispatcher](m)
+	if !ok {
+		return
+	}
+
+	store, ok := need[webhooks.Store](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("webhooks")
+	if !ok {
+		return
+	}
+
+	srv, err := webhooksgrpc.NewServer(dispatcher, store, client, extract,
+		webhooksgrpc.WithPillars(m.pillars),
+	)
+	if err != nil {
+		m.fail("webhooks", err)
+
+		return
+	}
+
+	m.mountedGRPC("webhooks", srv.RegisterOn)
+}
+
+// dataPrivacy mounts the subject access request surface.
+//
+// Its scope resolver is deliberately left at dataprivacy/http's default. A nil
+// scope there reads as every confinement the subject appears in, which is what
+// a person asking after their own data means; deriving one from the principal
+// would narrow every privacy request to the tenant the caller happens to be
+// acting in, which is a quieter answer than the one that was asked for.
+func (m *mount) dataPrivacy() {
+	svc, ok := need[dataprivacy.Service](m)
+	if !ok {
+		return
+	}
+
+	router, ok := need[*routing.Router](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("data privacy")
+	if !ok {
+		return
+	}
+
+	handlers, err := dataprivacyhttp.New(svc,
+		dataprivacyhttp.WithLogger(m.pillars.Logger),
+		dataprivacyhttp.WithTracerProvider(m.pillars.TracerProvider),
+		dataprivacyhttp.WithSubjectResolver(deriveSubject(extract)),
+	)
+	if err != nil {
+		m.fail("data privacy", err)
+
+		return
+	}
+
+	clean := router.Err() == nil
+
+	handlers.Mount(router)
+
+	if !m.routesLanded("data privacy", router, clean) {
+		return
+	}
+
+	m.mountedHTTP("data privacy")
+}
+
+// mediaRegistry mounts the object download surface. Its entitlement is
+// optional, so a nil one leaves mediaregistry/http's OwnerOnly in place.
+func (m *mount) mediaRegistry() {
+	store, ok := need[mediaregistry.Store](m)
+	if !ok {
+		return
+	}
+
+	client, ok := need[database.Client](m)
+	if !ok {
+		return
+	}
+
+	manager, ok := need[uploads.UploadManager](m)
+	if !ok {
+		return
+	}
+
+	router, ok := need[*routing.Router](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("media registry")
+	if !ok {
+		return
+	}
+
+	opts := []mediaregistryhttp.Option{
+		mediaregistryhttp.WithLogger(m.pillars.Logger),
+		mediaregistryhttp.WithTracerProvider(m.pillars.TracerProvider),
+		mediaregistryhttp.WithCallerResolver(deriveMediaCaller(extract)),
+	}
+	if m.t.Authorizers.MediaObjects != nil {
+		opts = append(opts, mediaregistryhttp.WithEntitlement(m.t.Authorizers.MediaObjects))
+	}
+
+	handler, err := mediaregistryhttp.New(store, client, manager, opts...)
+	if err != nil {
+		m.fail("media registry", err)
+
+		return
+	}
+
+	clean := router.Err() == nil
+
+	handler.Mount(router)
+
+	if !m.routesLanded("media registry", router, clean) {
+		return
+	}
+
+	m.mountedHTTP("media registry")
+}
+
+// operations mounts the long-running operation surface.
+//
+// The watcher is resolved optionally and passed when it is there, because it is
+// what gates the event stream: without one, operations/http mounts three routes
+// rather than four rather than mounting a subscription with nothing behind it.
+func (m *mount) operations() {
+	svc, ok := need[operations.Service](m)
+	if !ok {
+		return
+	}
+
+	router, ok := need[*routing.Router](m)
+	if !ok {
+		return
+	}
+
+	extract, ok := m.caller("operations")
+	if !ok {
+		return
+	}
+
+	opts := []operationshttp.Option{
+		operationshttp.WithLogger(m.pillars.Logger),
+		operationshttp.WithTracerProvider(m.pillars.TracerProvider),
+		operationshttp.WithOwnerResolver(deriveScope(extract)),
+	}
+
+	if watcher, watching := need[*operations.Watcher](m); watching {
+		opts = append(opts, operationshttp.WithWatcher(watcher))
+	}
+
+	if m.err != nil {
+		return
+	}
+
+	handlers, err := operationshttp.New(svc, opts...)
+	if err != nil {
+		m.fail("operations", err)
+
+		return
+	}
+
+	clean := router.Err() == nil
+
+	handlers.Mount(router)
+
+	if !m.routesLanded("operations", router, clean) {
+		return
+	}
+
+	m.mountedHTTP("operations")
+}

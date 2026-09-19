@@ -56,6 +56,12 @@ type Service struct {
 	flushes []named[func(context.Context) error]
 	servers []named[Server]
 
+	// surfaces is what RegisterTransports mounted, in mount order. It is not a
+	// lifecycle slot: a surface has nothing to start and nothing to close, and
+	// the server it is mounted on owns both. It is held because what a service
+	// serves is worth being able to read off the service.
+	surfaces []string
+
 	shutdownTimeout time.Duration
 
 	shutdownOnce sync.Once
@@ -345,7 +351,21 @@ func (s *Service) resolveOperationsQueue(r *resolver) {
 
 // resolveServers collects ingress last, so that by the time anything can accept
 // a request every client and loop it will reach already exists.
+//
+// The transports come first within it, and this is the one place they are
+// built. RegisterTransports runs after Register has recorded what it
+// registered, so the surfaces are not among the names resolveRegistered
+// replays; without this line a service would boot clean and discover a
+// misconfigured surface at the first request, which is the failure New exists
+// to move to startup.
+//
+// Before the servers, rather than after, so the routes are on the router before
+// the server is built over it. That ordering is for a determinate OpenAPI
+// document rather than for correctness — the HTTP server reads the router's
+// handler when it serves, not when it is built — but a document whose paths
+// depend on resolution order is a document that changes between boots.
 func (s *Service) resolveServers(r *resolver) {
+	resolve(r, func(mounted *mountedTransports) { s.surfaces = mounted.names })
 	resolve(r, func(srv httpserver.Server) { s.addServer("HTTP server", srv) })
 	resolve(r, func(srv *grpcserver.Server) { s.addServer("gRPC server", srv) })
 }
