@@ -70,6 +70,15 @@ webhooks — join the []grpcserver.RegistrationFunc the gRPC server is built fro
 Three HTTP — dataprivacy, mediaregistry and operations — put their routes on the
 router the HTTP server serves.
 
+That router is checked, which routing.Router leaves to whoever holds it: it
+accumulates registration failures rather than returning them, and nothing
+between mounting and Serve looks again, so a pattern that collided with one
+already there is a route quietly not on the server. Each HTTP surface is asked
+after it mounts, and the lane is asked once before any of them do — a router
+handed over already broken is ErrRouterAlreadyFailed, with the application's own
+failure underneath, because after the first surface mounts there is no telling
+the two apart.
+
 A surface mounts when everything it is built from resolves, and absence is
 absence: a config naming no billing registers no billing store, so no billing
 surface mounts, and that is not a failure. A component that was registered and

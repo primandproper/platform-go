@@ -77,6 +77,25 @@ var (
 		"no principal on the request context a derived transport seam was reading",
 	)
 
+	// ErrRouterAlreadyFailed is a routing.Router that arrived at the HTTP lane
+	// already carrying a registration failure.
+	//
+	// routing.Router accumulates its failures rather than returning them, and
+	// Err joins them, so a router handed over dirty cannot afterwards be asked
+	// which of its failures a surface here caused. Rather than blame the next
+	// surface to mount — which would send the reader to a file that did nothing
+	// wrong — the lane refuses before mounting any of them and reports what it
+	// found underneath.
+	//
+	// The failure it names is the application's: nothing in this package has
+	// touched the router yet when this is raised. Its usual cause is a route
+	// registered twice, which is a route quietly not on the server, and the
+	// reason the lane does not simply proceed is that nothing between here and
+	// Serve would ever look again.
+	ErrRouterAlreadyFailed = platformerrors.New(
+		"the router already carried a route registration failure before any transport surface mounted",
+	)
+
 	// ErrGRPCRegistrationsAlreadyProvided is an injector that already holds the
 	// key RegisterTransports mounts the gRPC surfaces through.
 	//
@@ -314,9 +333,7 @@ func mountTransports(i do.Injector, t *Transports) (*mountedTransports, error) {
 	m.waitlists()
 	m.webhooks()
 
-	m.dataPrivacy()
-	m.mediaRegistry()
-	m.operations()
+	m.httpLane()
 
 	if m.err != nil {
 		return nil, m.err
@@ -412,6 +429,50 @@ func (m *mount) mountedHTTP(surface string) {
 	m.names = append(m.names, surface+" HTTP")
 }
 
+// httpLane mounts the three HTTP surfaces, having first established that the
+// router they share is not already carrying somebody else's failure.
+//
+// The check is the lane's rather than each surface's because it is answerable
+// only once: routing.Router accumulates registration failures and Err joins
+// them, so after the first surface mounts there is no telling an application's
+// duplicate route from a platform surface's. Asking before any of them mount is
+// the only moment the answer is attributable, and refusing on it is what keeps
+// routesLanded below able to name the surface that caused what it finds.
+func (m *mount) httpLane() {
+	if !m.routerClean() {
+		return
+	}
+
+	m.dataPrivacy()
+	m.mediaRegistry()
+	m.operations()
+}
+
+// routerClean reports whether the router the HTTP surfaces will mount onto
+// arrived without a failure already recorded on it.
+//
+// A router nobody registered is not a failure: it is an absence, and each
+// surface below reports it as its own by resolving nothing. What is a failure
+// is a router that exists and is already broken, because routing.Router's own
+// documentation says to check Err before serving and nothing between here and
+// Serve does — so a lane that mounted over it would leave the process serving a
+// route that is quietly not there, with the reason recorded on a value nobody
+// reads again.
+func (m *mount) routerClean() bool {
+	router, ok := need[*routing.Router](m)
+	if !ok {
+		return m.err == nil
+	}
+
+	if err := router.Err(); err != nil {
+		m.err = platformerrors.Join(ErrRouterAlreadyFailed, err)
+
+		return false
+	}
+
+	return true
+}
+
 // routesLanded reports whether the routes a surface just put on the router were
 // accepted, and records the failure if they were not.
 //
@@ -421,15 +482,10 @@ func (m *mount) mountedHTTP(surface string) {
 // serving. Nothing between here and Serve does, so this is that check, drawn
 // per surface so the failure names the one that caused it.
 //
-// clean is what Err said before the surface mounted. A router that arrived
-// already carrying somebody else's failure is left alone: Err joins them and
-// nothing here can tell the new one from the old, so blaming this surface for
-// an application's duplicate route would send the reader to the wrong file.
-func (m *mount) routesLanded(surface string, router *routing.Router, clean bool) bool {
-	if !clean {
-		return true
-	}
-
+// It can name one because routerClean has already refused a router that arrived
+// dirty, and because the first surface to fail stops the lane: whatever Err
+// reports here was put there by the surface that just mounted.
+func (m *mount) routesLanded(surface string, router *routing.Router) bool {
 	if err := router.Err(); err != nil {
 		m.fail(surface, err)
 
@@ -884,11 +940,9 @@ func (m *mount) dataPrivacy() {
 		return
 	}
 
-	clean := router.Err() == nil
-
 	handlers.Mount(router)
 
-	if !m.routesLanded("data privacy", router, clean) {
+	if !m.routesLanded("data privacy", router) {
 		return
 	}
 
@@ -939,11 +993,9 @@ func (m *mount) mediaRegistry() {
 		return
 	}
 
-	clean := router.Err() == nil
-
 	handler.Mount(router)
 
-	if !m.routesLanded("media registry", router, clean) {
+	if !m.routesLanded("media registry", router) {
 		return
 	}
 
@@ -992,11 +1044,9 @@ func (m *mount) operations() {
 		return
 	}
 
-	clean := router.Err() == nil
-
 	handlers.Mount(router)
 
-	if !m.routesLanded("operations", router, clean) {
+	if !m.routesLanded("operations", router) {
 		return
 	}
 

@@ -394,6 +394,41 @@ func TestRegisterTransports(T *testing.T) {
 		test.StrContains(t, err.Error(), "operations")
 	})
 
+	// The other half of the same guarantee. Once a router is carrying a failure,
+	// Err joins everything after it, so no later surface can be told apart from
+	// whatever broke it first — and the honest answer is to refuse the lane
+	// rather than to name the next surface to mount or, worse, to stop looking.
+	T.Run("a router that arrives already broken refuses the lane rather than a surface", func(t *testing.T) {
+		t.Parallel()
+
+		i := newTransportInjector(t)
+
+		do.ProvideValue(i, newRouter())
+		do.ProvideValue[operations.Service](i, &operationsmock.ServiceMock{})
+
+		seams := &Transports{Extractor: withPrincipal, Authorizers: allAuthorizers()}
+
+		// One clean pass, then the pass that breaks the router and is told so.
+		_, err := mountTransports(i, seams)
+		must.NoError(t, err)
+
+		_, err = mountTransports(i, seams)
+		must.Error(t, err)
+
+		// The third arrives at a router that was already broken before it
+		// touched anything, which is the state that used to be skipped over.
+		_, err = mountTransports(i, seams)
+		must.Error(t, err)
+		test.ErrorIs(t, err, ErrRouterAlreadyFailed)
+
+		// The failure underneath is kept, because the reader needs the route
+		// rather than only the news that there was one.
+		test.StrContains(t, err.Error(), "operations")
+
+		// And no surface is blamed for it: nothing here had mounted yet.
+		test.StrNotContains(t, err.Error(), "building the")
+	})
+
 	T.Run("a registered store that cannot be built is an error naming it", func(t *testing.T) {
 		t.Parallel()
 
