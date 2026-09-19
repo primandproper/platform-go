@@ -6,13 +6,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/comments"
+	commentscfg "github.com/primandproper/platform-go/v14/comments/config"
+	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
+	mediaregistrycfg "github.com/primandproper/platform-go/v14/mediaregistry/config"
 	"github.com/primandproper/platform-go/v14/outbox"
 	outboxcfg "github.com/primandproper/platform-go/v14/outbox/config"
+	settingscfg "github.com/primandproper/platform-go/v14/settings/config"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	databasecfg "github.com/primandproper/primitives-go/v2/database/config"
 	distributedlockcfg "github.com/primandproper/primitives-go/v2/distributedlock/config"
+	emailcfg "github.com/primandproper/primitives-go/v2/email/config"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/httpclient"
 	"github.com/primandproper/primitives-go/v2/jobs"
 	jobscfg "github.com/primandproper/primitives-go/v2/jobs/config"
 	messagequeuecfg "github.com/primandproper/primitives-go/v2/messagequeue/config"
@@ -158,6 +165,62 @@ func TestNew(T *testing.T) {
 		test.Nil(t, svc)
 	})
 
+	T.Run("reports a provider that was registered, has no lifecycle, and cannot be built", func(t *testing.T) {
+		t.Parallel()
+
+		// EMAIL_PROVIDER=sendgird, the typo the README calls a production
+		// incident that looks like a healthy process. The emailer holds no
+		// connection and has no loop, so nothing in the lifecycle slots asks
+		// for one — which is how this used to boot clean, pass readiness, and
+		// fail at the first send.
+		//
+		// The config is assembled in code and not validated, which is the
+		// service this catches: Config.ValidateWithContext rejects an unknown
+		// provider too, and a caller who skipped it is exactly the caller whose
+		// process would otherwise have started.
+		cfg := &Config{
+			Name:       "example",
+			HTTPClient: &httpclient.Config{},
+			Email:      &emailcfg.Config{Provider: "sendgird"},
+		}
+
+		svc, err := New(newInjector(t, cfg))
+		must.Error(t, err)
+		test.ErrorIs(t, err, platformerrors.ErrUnknownProvider)
+		test.Nil(t, svc)
+	})
+
+	T.Run("builds every type the config named, lifecycle or not", func(t *testing.T) {
+		t.Parallel()
+
+		// The guarantee itself, read off the container rather than off a list
+		// written here: everything Register registered has been invoked by the
+		// time New returns, and most of it — the stores above all — is in none
+		// of the lifecycle slots.
+		cfg := &Config{
+			Name:          "example",
+			Database:      sqliteConfig(t),
+			Identity:      &identitycfg.Config{TablePrefix: storePrefix},
+			Comments:      &commentscfg.Config{TablePrefix: storePrefix},
+			Settings:      &settingscfg.Config{TablePrefix: storePrefix},
+			MediaRegistry: &mediaregistrycfg.Config{TablePrefix: storePrefix},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+		do.ProvideValue(i, comments.Targets{comments.TargetType("recipe"): {Description: "a recipe"}})
+
+		svc, err := New(i)
+		must.NoError(t, err)
+
+		// Nothing here has a shutdown obligation but the database client, which
+		// is the point: of the five subsystems this config names, the walk that
+		// orders shutdown reaches exactly one.
+		test.Eq(t, []string{"database client"}, names(svc.closers))
+
+		test.SliceEmpty(t, notInvoked(t, i), test.Sprint("every registered type is built by New"))
+	})
+
 	T.Run("reports observability that was registered and cannot be built", func(t *testing.T) {
 		t.Parallel()
 
@@ -212,4 +275,26 @@ func TestWithRunners(T *testing.T) {
 
 		test.SliceLen(t, 2, o.runners)
 	})
+}
+
+// notInvoked returns the names Register registered with i that nothing has
+// built, which after a successful New is what the guarantee says is empty.
+func notInvoked(t *testing.T, i do.Injector) []string {
+	t.Helper()
+
+	registered, err := do.Invoke[registrations](i)
+	must.NoError(t, err)
+	must.SliceNotEmpty(t, registered.names)
+
+	built := invoked(i)
+
+	var missing []string
+
+	for _, name := range registered.names {
+		if !built[name] {
+			missing = append(missing, name)
+		}
+	}
+
+	return missing
 }

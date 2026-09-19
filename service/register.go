@@ -1,6 +1,8 @@
 package service
 
 import (
+	"slices"
+
 	auditcfg "github.com/primandproper/platform-go/v14/audit/config"
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
@@ -75,7 +77,10 @@ import (
 // Registration is lazy — do.Provide stores a constructor and runs it on first
 // invoke — so registering a subsystem costs nothing until something asks for
 // it, and a subsystem whose application-supplied dependencies are missing fails
-// at that invoke rather than here.
+// at that invoke rather than here. For a service built through New, that invoke
+// is at startup: Register records what it registered and New builds all of it,
+// which is what makes a misconfigured store a boot failure rather than a
+// healthy-looking process that fails on its first request.
 //
 // The caller registers two things before anything is invoked:
 //
@@ -92,6 +97,8 @@ import (
 // releases the sub-configs `env:",init"` allocated and nobody filled in, and
 // until it has run every subsystem is present.
 func Register(i do.Injector, cfg *Config) {
+	before := providedNames(i)
+
 	do.ProvideValue(i, cfg)
 
 	registerObservability(i, cfg)
@@ -101,6 +108,64 @@ func Register(i do.Injector, cfg *Config) {
 	registerHealth(i)
 	registerServers(i, cfg)
 	registerErrorMappers()
+
+	do.ProvideValue(i, registrations{names: providedSince(i, before)})
+}
+
+// registrations is what one Register call added to an injector: the names of
+// the services it registered, in a stable order.
+//
+// It is how New builds everything the config named without a roster of its own.
+// What Register registered is a fact the walk above has and nothing else does —
+// fifty-odd names spread across two modules' config subpackages, several of
+// which register more than one key — so a second list written out beside New
+// would be a copy kept in step by whoever remembered, and the thing it would
+// silently omit is exactly the store whose provider string was a typo.
+//
+// The names rather than the services, because registration is lazy and there is
+// nothing built yet to hold; and the names alone, because do.InvokeNamed[any]
+// builds one from its name and New wants nothing else from it.
+//
+// The delta rather than everything the injector holds. The caller registers the
+// context and the application's own types before this runs, and those are the
+// caller's to build when the caller wants them — a composition root that
+// eagerly instantiated whatever it found would be deciding that for them.
+type registrations struct {
+	names []string
+}
+
+// providedNames is the set of service names i can already resolve.
+func providedNames(i do.Injector) map[string]struct{} {
+	described := i.ListProvidedServices()
+
+	names := make(map[string]struct{}, len(described))
+	for idx := range described {
+		names[described[idx].Service] = struct{}{}
+	}
+
+	return names
+}
+
+// providedSince returns the names i gained that before did not hold, sorted.
+//
+// Sorted because do lists a scope's services in map order, and a startup that
+// stops at the first failure has to stop at the same one every time: two
+// misconfigured subsystems that reported whichever lost the race would be a
+// process whose error message changes between restarts.
+func providedSince(i do.Injector, before map[string]struct{}) []string {
+	described := i.ListProvidedServices()
+
+	var names []string
+
+	for idx := range described {
+		if _, had := before[described[idx].Service]; !had {
+			names = append(names, described[idx].Service)
+		}
+	}
+
+	slices.Sort(names)
+
+	return names
 }
 
 // registerErrorMappers installs the transport mappings for this module's domain
