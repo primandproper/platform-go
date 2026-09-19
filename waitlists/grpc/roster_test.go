@@ -36,9 +36,14 @@ import (
 // form somebody submitted or a console somebody is looking at.
 //
 // The nearest thing to an entry is WithdrawSignupsForSubject, which is the
-// erasure path waitlists/privacy builds a dataprivacy.Eraser on. It is served
-// because its realistic caller is an operator honoring a request out of band,
-// and it is behind a grant of its own rather than behind the ordinary write.
+// erasure path waitlists/privacy builds a dataprivacy.Eraser on. comments,
+// issuereports and settings each rule their equivalent out, and what separates
+// this one is not its realistic caller — an operator honoring a request out of
+// band is theirs too — but that it is re-runnable where a hard delete committed
+// in a transaction of its own is not: it blanks the subject reference it matched
+// on, so a second call finds nothing the first left and answers zero. The
+// package documentation carries the argument, and it is served behind a grant of
+// its own rather than behind the ordinary write.
 var absent = map[string]string{}
 
 // storeMethods is every method on waitlists.Store, read off the interface rather

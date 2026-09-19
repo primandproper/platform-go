@@ -294,6 +294,57 @@ func runWithdrawalSuite(t *testing.T, env *storeEnv) {
 			test.EqOp(t, StatusWaiting, read.Status)
 		})
 
+		// A second run is the property waitlists/grpc rests its one near
+		// carve-out on: this erasure is the one a caller may re-drive from
+		// outside the transaction that removed the rest of the person, because
+		// the statement blanks the subject reference it matched on and so
+		// cannot reach the same row twice. A sibling's hard delete has no such
+		// property, and waitlists/grpc's documentation is where that comparison
+		// is made.
+		T.Run("a second run over the same subject finds nothing and answers zero", func(t *testing.T) {
+			t.Parallel()
+
+			c := newStubClock()
+			store := env.newStore(t, WithClock(c))
+
+			list := mustCreateList(t, env, store, testScope, openList("Launch"))
+			signup := mustJoin(t, env, store, testScope, list.ID, &Signup{
+				Contact: "ada@example.com",
+				Notes:   "met at the conference",
+				Subject: testSubject,
+			})
+
+			c.advance(time.Hour)
+
+			test.EqOp(t, int64(1), eraseSubject(t, env, store, testScope, testSubject))
+
+			first, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, signup.ID)
+			must.NoError(t, err)
+			must.NotNil(t, first.StatusChangedAt)
+
+			// Far enough that a restamp would be visible even where the driver
+			// keeps times to the second.
+			c.advance(24 * time.Hour)
+
+			test.EqOp(t, int64(0), eraseSubject(t, env, store, testScope, testSubject))
+
+			// Nothing moved: the second run is the same removal arriving after
+			// the work, not a second pass over the row.
+			again, err := store.GetSignup(t.Context(), env.reader(), testScope, list.ID, signup.ID)
+			must.NoError(t, err)
+			must.NotNil(t, again.StatusChangedAt)
+
+			test.EqOp(t, StatusWithdrawn, again.Status)
+			test.EqOp(t, *first.StatusChangedAt, *again.StatusChangedAt)
+			test.EqOp(t, first.ContactDigest, again.ContactDigest)
+			test.EqOp(t, "", again.Contact)
+			test.True(t, again.Subject.Anonymous())
+
+			// And the suppression the digest carries is still what it was.
+			_, err = env.join(t, store, testScope, list.ID, &Signup{Contact: "ada@example.com"})
+			test.ErrorIs(t, err, ErrContactWithdrawn)
+		})
+
 		T.Run("does not cross scopes", func(t *testing.T) {
 			t.Parallel()
 
