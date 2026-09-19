@@ -22,6 +22,15 @@ var _ PurchaseStore = (*SQLStore)(nil)
 // CreatePurchase records a sale in the scope, outstanding, through the caller's
 // transaction.
 //
+// Outstanding is not a default the caller can talk it out of: a CompletedAt on
+// the argument is dropped, and both the row written and the purchase answered
+// carry nil. [SQLStore.CompletePurchase] is the only writer of that column, and
+// it is guarded on the column being NULL, so a create that could stamp it is a
+// create that could walk a purchase past the statement that exists to make the
+// transition exactly-once. A comped order and an imported historical purchase
+// are recorded the same way anything settled is: create, then complete, in the
+// one transaction.
+//
 // Every statement runs on tx — including the product check the write is gated
 // on, so a product created through CreateProduct earlier in the same transaction
 // is one a sale can be recorded against. The attribution read on the losing path
@@ -49,7 +58,7 @@ func (s *SQLStore) CreatePurchase(
 
 	created := *purchase
 	created.Scope = scope
-	created.CompletedAt = utcPtr(created.CompletedAt)
+	created.CompletedAt = nil
 	created.normalize()
 
 	if err := created.validate(); err != nil {

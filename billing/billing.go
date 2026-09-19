@@ -393,7 +393,8 @@ type Purchase struct {
 
 	// CompletedAt is when the payment behind the purchase succeeded, or nil for
 	// one still outstanding. It is the whole lifecycle this type has, and
-	// [PurchaseStore.Complete] is the only thing that writes it.
+	// [PurchaseStore.CompletePurchase] is the only thing that writes it —
+	// [PurchaseStore.CreatePurchase] drops whatever it is handed.
 	CompletedAt *time.Time `json:"completedAt"`
 
 	// LastUpdatedAt is when the row last changed, or nil for one nothing has
