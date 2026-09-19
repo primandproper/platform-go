@@ -21,6 +21,7 @@ const serviceLayerName = serviceName + "_service"
 // missing half its traffic.
 const (
 	opRegister                 = "register"
+	opRegisterWithInvitation   = "register_with_invitation"
 	opInvite                   = "invite"
 	opAcceptInvitation         = "accept_invitation"
 	opRejectInvitation         = "reject_invitation"
@@ -72,6 +73,52 @@ type Registration struct {
 
 	// Membership puts the user in the account and is their default.
 	Membership *Membership `json:"membership"`
+}
+
+// InvitedRegistration is what a registration against an invitation produced:
+// the registrant, the invitation they answered, and the membership that answer
+// filed.
+//
+// There is no Account, and its absence is the shape rather than an omission.
+// Register mints an account for the registrant to own; a registration by
+// invitation joins one that already exists, so the account is the inviter's and
+// is named by Membership.BelongsToAccount. That membership is the registrant's
+// first anywhere and so is their default, which is the property
+// InvitationStore.AcceptInvitation documents as the one a registration by
+// invitation relies on.
+type InvitedRegistration struct {
+	_ struct{} `json:"-"`
+
+	// User is the registrant, as the row holds them: the id the write minted,
+	// the creation time the schema stamped. It is not redacted — a
+	// registration's own transaction is the one place the whole user is the
+	// honest answer — but no read fills in a verification token, which is why
+	// EmailAddressVerificationToken below is a field of its own.
+	User *User `json:"user"`
+
+	// Invitation is the invitation as it stands after the answer — status
+	// accepted, ToUser naming the registrant. Its token is cleared: it has been
+	// spent.
+	Invitation *Invitation `json:"invitation"`
+
+	// Membership is what answering the invitation minted, carrying the roles the
+	// invitation promised and standing as the registrant's default account.
+	Membership *Membership `json:"membership"`
+
+	// EmailAddressVerificationToken is the secret the registrant's verification
+	// link carries, echoed back from the User the caller assembled.
+	//
+	// It is here because it is the one thing about this registration that no
+	// read can hand back. The column holds a digest, User.Redacted clears even
+	// that, and CreateUser's read-back therefore carries neither — so a hook
+	// that wants to queue the verification mail on this transaction, which is
+	// where that outbox row belongs, has nowhere else to take the secret from.
+	// The digest and the row it sits on committed together, so the link this
+	// names is live for exactly as long as the registration is.
+	//
+	// It is empty when the caller minted none, which says there is no link
+	// outstanding rather than that one was lost.
+	EmailAddressVerificationToken string `json:"-"`
 }
 
 // Acceptance is what accepting an invitation produced: the answered invitation,
@@ -345,6 +392,110 @@ func (s *Service) Register(
 	})
 	if err != nil {
 		return nil, op.Error(err, "registering identity user")
+	}
+
+	return registration, nil
+}
+
+// RegisterWithInvitation creates a user, answers the invitation that brought
+// them, and files the membership that answer promised, in one transaction.
+//
+// It is a second method rather than an option on Register because it is a
+// second operation. The two write different row sets, call different hooks, and
+// fail differently: an invitation that no longer admits the caller fails the
+// whole registration here and is unreachable there. That is the difference a
+// reader should see at the call site rather than in an argument.
+//
+// What it writes is the user and the invitation's answer — no account. Register
+// mints an account for the registrant to own; somebody arriving on an
+// invitation is joining one that already exists, and the membership the answer
+// files is their first anywhere and so becomes their default. A registrant who
+// should also own an account of their own is a consumer's decision, taken after
+// this returns, and it is a registration they can survive not having: they
+// already belong somewhere.
+//
+// The order matters and is the whole point. The user is written first because
+// the invitation is answered in their name, and the answer runs on the same
+// transaction — so an invitation that has expired, been withdrawn, already been
+// answered, or that was presented with the wrong token takes the user down with
+// it. A consumer doing this in two calls has to decide what to do with the user
+// they just committed for an invitation that turned out to be dead, and there
+// is no good answer to that question.
+//
+// The invitation is answered by token, exactly as AcceptInvitation answers one:
+// whoever holds the link may answer it, and whether the address it was sent to
+// is the address being registered is the consumer's check, before the call.
+// This package decides who may do what no more here than anywhere else.
+//
+// The verification token the registrant's link will carry rides in on
+// User.EmailAddressVerificationToken, as it does for any registration —
+// Registrar.CreateUser digests it into the column on this transaction, so the
+// outstanding link and the row it proves commit together. What is new here is
+// that it comes back out, on InvitedRegistration, because no read can hand it
+// back and the hook that queues the verification mail has nowhere else to take
+// it from.
+//
+// Nothing here writes to the values it was handed, and the InvitedRegistration
+// carries the rows the writes wrote. The invitation on it is redacted; the user
+// is not, for the reason Register's is not.
+func (s *Service) RegisterWithInvitation(
+	ctx context.Context,
+	scope tenancy.Scope,
+	user *User,
+	invitationID, token, statusNote string,
+) (*InvitedRegistration, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(invitationIDKey, invitationID),
+	)
+	defer op.End()
+
+	if user == nil {
+		return nil, op.Error(ErrNilUser, "registering identity user against invitation %q", invitationID)
+	}
+
+	// Read off the caller's value rather than off the read-back, which cannot
+	// carry it: the column holds a digest and no read fills the secret in. It
+	// is set before the transaction so the hook sees it on the same value the
+	// caller is about to be handed.
+	registration := &InvitedRegistration{EmailAddressVerificationToken: user.EmailAddressVerificationToken}
+
+	err := s.run(ctx, op, opRegisterWithInvitation, func(tx database.Tx) error {
+		registered, err := s.store.CreateUser(ctx, tx, scope, user)
+		if err != nil {
+			return err
+		}
+
+		registration.User = registered
+
+		op.Set(userIDKey, registered.ID).Set(usernameKey, registered.Username)
+
+		// In the registrant's name, on the transaction that just created them:
+		// the store's read of the invitation, its pending predicate and its
+		// membership write all see a user who does not exist to anybody else
+		// yet. A refusal here — expired, withdrawn, already answered, wrong
+		// token — aborts the registration rather than leaving a user behind.
+		membership, err := s.store.AcceptInvitation(ctx, tx, scope, invitationID, token, registered.ID, statusNote)
+		if err != nil {
+			return err
+		}
+
+		// Read on the transaction that answered it, so what comes back is the
+		// accepted invitation rather than the pending row another connection
+		// would still be seeing. See AcceptInvitation.
+		invitation, err := s.store.GetInvitation(ctx, tx, scope, invitationID)
+		if err != nil {
+			return err
+		}
+
+		registration.Invitation, registration.Membership = invitation.Redacted(), membership
+
+		op.Set(accountIDKey, membership.BelongsToAccount)
+
+		return s.hooks.AfterRegisterWithInvitation(ctx, tx, scope, registration)
+	})
+	if err != nil {
+		return nil, op.Error(err, "registering identity user against invitation %q", invitationID)
 	}
 
 	return registration, nil

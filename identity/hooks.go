@@ -46,6 +46,31 @@ type Hooks interface {
 	// membership a registration minted, all three already written.
 	AfterRegister(ctx context.Context, tx database.Tx, scope tenancy.Scope, registration *Registration) error
 
+	// AfterRegisterWithInvitation is called with the user a registration
+	// against an invitation created, the invitation that registration answered,
+	// and the membership the answer filed.
+	//
+	// It is not AfterRegister, and a consumer that records both records them
+	// here twice over only if it wants to: the two operations write different
+	// row sets — there is no account, because the registrant joined one that
+	// already existed — and an entry that said "registered" without saying
+	// "on whose invitation" would lose the only thing that made this
+	// registration possible.
+	//
+	// It is the one hook that sees a verification token. The link the
+	// registrant will follow is minted by the caller, digested into the users
+	// row by this transaction, and unreadable afterwards, so
+	// InvitedRegistration.EmailAddressVerificationToken is where the outbox row
+	// that mails it takes the secret from. Mailing it from here rather than
+	// queueing it is the mistake this interface's documentation names: a mail
+	// provider being down would fail the registration.
+	AfterRegisterWithInvitation(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		registration *InvitedRegistration,
+	) error
+
 	// AfterInvite is called with the invitation that was issued, as the write
 	// wrote it: the row read back on this transaction, with the ID it minted
 	// and the creation time the database stamped, rather than the value the
@@ -393,13 +418,20 @@ var _ Hooks = NoopHooks{}
 //		return h.audit.Record(ctx, tx, scope, "user.registered", r.User.ID)
 //	}
 //
-// Embedding rather than implementing all twenty-two is what keeps a method added
+// Embedding rather than implementing all twenty-three is what keeps a method added
 // to Hooks later from breaking every consumer — a new operation arrives as a
 // no-op they can then choose to override.
 type NoopHooks struct{}
 
 // AfterRegister does nothing.
 func (NoopHooks) AfterRegister(context.Context, database.Tx, tenancy.Scope, *Registration) error {
+	return nil
+}
+
+// AfterRegisterWithInvitation does nothing.
+func (NoopHooks) AfterRegisterWithInvitation(
+	context.Context, database.Tx, tenancy.Scope, *InvitedRegistration,
+) error {
 	return nil
 }
 

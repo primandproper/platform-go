@@ -22,7 +22,7 @@ var errHookRefused = platformerrors.New("hook said no")
 
 // recordingHooks is the Hooks a case reads back: which hook ran, and with what.
 //
-// It embeds NoopHooks rather than implementing all twenty-two, which is the shape
+// It embeds NoopHooks rather than implementing all twenty-three, which is the shape
 // the documentation tells consumers to use — so the suite exercises that shape as
 // well as the hooks it overrides.
 type recordingHooks struct {
@@ -33,12 +33,13 @@ type recordingHooks struct {
 	// the operation's own transaction (by reading a row nothing has committed).
 	probe func(ctx context.Context, tx database.Tx) error
 
-	registration *Registration
-	invitation   *Invitation
-	acceptance   *Acceptance
-	account      *Account
-	membership   *Membership
-	user         *User
+	registration        *Registration
+	invitedRegistration *InvitedRegistration
+	invitation          *Invitation
+	acceptance          *Acceptance
+	account             *Account
+	membership          *Membership
+	user                *User
 
 	// What the credential hooks were told about the column their write cleared.
 	previousVerifiedAt *time.Time
@@ -95,6 +96,17 @@ func (h *recordingHooks) AfterRegister(
 	h.registration = registration
 
 	return h.record(ctx, tx, "register")
+}
+
+func (h *recordingHooks) AfterRegisterWithInvitation(
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, registration *InvitedRegistration,
+) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.invitedRegistration = registration
+
+	return h.record(ctx, tx, "register_with_invitation")
 }
 
 func (h *recordingHooks) AfterInvite(
@@ -514,6 +526,339 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 
 		_, err = service.Register(t.Context(), testScope, newUser("ada"), nil, []string{"r"})
 		must.ErrorIs(t, err, ErrNilAccount)
+	})
+
+	t.Run("registers against an invitation, answering it in the same transaction", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, store := env.newService(t, hooks)
+
+		sender := registerAda(t, service, "ada")
+
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User, sender.Account.ID,
+			"grace@example.com", "the-token", futureExpiry()))
+		must.NoError(t, err)
+
+		joiner := newUser("grace")
+		joiner.EmailAddress = "grace@example.com"
+		joiner.EmailAddressVerificationToken = "verify-me"
+
+		registration, err := service.RegisterWithInvitation(t.Context(), testScope,
+			joiner, issued.ID, "the-token", "glad to")
+		must.NoError(t, err)
+
+		test.NotEq(t, "", registration.User.ID)
+		test.EqOp(t, "grace", registration.User.Username)
+		test.False(t, registration.User.CreatedAt.IsZero())
+
+		// The invitation was answered in the name of the user this call
+		// created, which is the thing a consumer doing it in two transactions
+		// cannot have.
+		test.EqOp(t, InvitationAccepted, registration.Invitation.Status)
+		test.EqOp(t, "glad to", registration.Invitation.StatusNote)
+		must.NotNil(t, registration.Invitation.ToUser)
+		test.EqOp(t, registration.User.ID, *registration.Invitation.ToUser)
+
+		// Read back by the Service, and so redacted: the token accepted, and it
+		// has been spent.
+		test.EqOp(t, "", registration.Invitation.Token)
+		test.EqOp(t, "", registration.Invitation.TokenDigest)
+
+		// The account is the inviter's, the roles are the invitation's, and it
+		// is the only membership this user holds — so it is where they land.
+		test.EqOp(t, sender.Account.ID, registration.Membership.BelongsToAccount)
+		test.EqOp(t, registration.User.ID, registration.Membership.BelongsToUser)
+		test.Eq(t, []string{"account_member"}, registration.Membership.Roles)
+		test.True(t, registration.Membership.DefaultAccount)
+
+		// All of it committed, read outside the transaction that wrote it.
+		user, err := store.GetUser(t.Context(), env.reader(), testScope, registration.User.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "grace", user.Username)
+
+		read, err := store.GetInvitation(t.Context(), env.reader(), testScope, issued.ID)
+		must.NoError(t, err)
+		test.EqOp(t, InvitationAccepted, read.Status)
+
+		membership, err := store.GetMembership(t.Context(), env.reader(),
+			testScope, registration.User.ID, sender.Account.ID)
+		must.NoError(t, err)
+		test.True(t, membership.DefaultAccount)
+
+		// One hook, holding the value the caller got back. Neither of the two
+		// hooks this operation resembles ran: the register hook's single call
+		// is the sender's own registration above, and the accept hook did not
+		// run at all, because this is neither of those operations.
+		test.EqOp(t, 1, hooks.ran("register_with_invitation"))
+		test.EqOp(t, 1, hooks.ran("register"))
+		test.EqOp(t, 0, hooks.ran("accept"))
+		test.EqOp(t, registration, hooks.invitedRegistration)
+	})
+
+	t.Run("carries the verification token out and leaves a live link behind", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, store := env.newService(t, hooks)
+
+		sender := registerAda(t, service, "ada")
+
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User, sender.Account.ID,
+			"grace@example.com", "the-token", futureExpiry()))
+		must.NoError(t, err)
+
+		joiner := newUser("grace")
+		joiner.EmailAddressVerificationToken = "verify-me"
+
+		registration, err := service.RegisterWithInvitation(t.Context(), testScope,
+			joiner, issued.ID, "the-token", "")
+		must.NoError(t, err)
+
+		// The secret, back out where a mail queue can reach it. No read hands
+		// it back, so the user on the registration carries neither it nor its
+		// digest's secret — only the digest the column holds.
+		test.EqOp(t, "verify-me", registration.EmailAddressVerificationToken)
+		test.EqOp(t, "", registration.User.EmailAddressVerificationToken)
+		test.NotEq(t, "", registration.User.EmailAddressVerificationTokenDigest)
+
+		// The hook is handed the same value, which is the whole reason it is a
+		// field: the outbox row that mails the link is written on this
+		// transaction and has nowhere else to take the secret from.
+		must.NotNil(t, hooks.invitedRegistration)
+		test.EqOp(t, "verify-me", hooks.invitedRegistration.EmailAddressVerificationToken)
+
+		// And the link works, which is what "minted on the same transaction"
+		// buys: the digest committed with the row it proves.
+		found, err := store.GetUserByEmailVerificationToken(t.Context(), env.reader(), testScope, "verify-me")
+		must.NoError(t, err)
+		test.EqOp(t, registration.User.ID, found.ID)
+	})
+
+	t.Run("a registration by invitation minting no link says so", func(t *testing.T) {
+		t.Parallel()
+
+		service, store := env.newService(t, &recordingHooks{})
+
+		sender := registerAda(t, service, "ada")
+
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User, sender.Account.ID,
+			"grace@example.com", "the-token", futureExpiry()))
+		must.NoError(t, err)
+
+		// A consumer who treats the invitation itself as proof of the address
+		// mints no verification token, and the empty string is the honest
+		// answer rather than a value that went missing.
+		registration, err := service.RegisterWithInvitation(t.Context(), testScope,
+			newUser("grace"), issued.ID, "the-token", "")
+		must.NoError(t, err)
+
+		test.EqOp(t, "", registration.EmailAddressVerificationToken)
+		test.EqOp(t, "", registration.User.EmailAddressVerificationTokenDigest)
+
+		// The empty digest is how "no link outstanding" is stored, and it is
+		// reachable by nobody: the read refuses an empty token outright rather
+		// than matching every row that has none.
+		_, err = store.GetUserByEmailVerificationToken(t.Context(), env.reader(), testScope, "")
+		must.ErrorIs(t, err, platformerrors.ErrEmptyInputParameter)
+	})
+
+	t.Run("an invitation that cannot be answered leaves no user behind", func(t *testing.T) {
+		t.Parallel()
+
+		// The acceptance criterion this method exists for: the registration and
+		// the answer are one transaction, so a dead invitation takes the user
+		// with it rather than leaving somebody committed and unaffiliated.
+		//
+		// Four ways for an invitation not to admit the caller, and one
+		// assertion under all of them: nobody named grace is in the directory.
+		cases := []struct {
+			wants   error
+			prepare func(t *testing.T, service *Service, invitationID string)
+			expires time.Time
+			name    string
+			token   string
+		}{
+			{
+				name:    "wrong token",
+				token:   "not-the-token",
+				expires: futureExpiry(),
+				wants:   ErrInvitationNotFound,
+			},
+			{
+				name:    "no token at all",
+				token:   "",
+				expires: futureExpiry(),
+				wants:   ErrInvitationNotFound,
+			},
+			{
+				name:    "already withdrawn",
+				token:   "the-token",
+				expires: futureExpiry(),
+				prepare: func(t *testing.T, service *Service, invitationID string) {
+					t.Helper()
+
+					_, err := service.CancelInvitation(t.Context(), testScope, invitationID, "never mind")
+					must.NoError(t, err)
+				},
+				wants: ErrInvitationNotFound,
+			},
+			{
+				name: "expired",
+				// The service suite runs on the real clock, so an invitation
+				// that has expired is one issued with its window already shut.
+				token:   "the-token",
+				expires: time.Now().UTC().Add(-time.Hour),
+				wants:   ErrInvitationExpired,
+			},
+		}
+
+		for i := range cases {
+			testCase := &cases[i]
+
+			t.Run(testCase.name, func(t *testing.T) {
+				t.Parallel()
+
+				hooks := &recordingHooks{}
+				service, store := env.newService(t, hooks)
+
+				sender := registerAda(t, service, "ada")
+
+				issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User,
+					sender.Account.ID, "grace@example.com", "the-token", testCase.expires))
+				must.NoError(t, err)
+
+				if testCase.prepare != nil {
+					testCase.prepare(t, service, issued.ID)
+				}
+
+				joiner := newUser("grace")
+
+				registration, err := service.RegisterWithInvitation(t.Context(), testScope,
+					joiner, issued.ID, testCase.token, "")
+				must.ErrorIs(t, err, testCase.wants)
+				test.Nil(t, registration)
+
+				// No user row survives — looked for by the username and by the
+				// address, because the id the write minted landed on a copy.
+				_, err = store.GetUserByUsername(t.Context(), env.reader(), testScope, "grace")
+				must.ErrorIs(t, err, ErrUserNotFound)
+
+				_, err = store.GetUserByEmailAddress(t.Context(), env.reader(), testScope, joiner.EmailAddress)
+				must.ErrorIs(t, err, ErrUserNotFound)
+
+				test.EqOp(t, 0, hooks.ran("register_with_invitation"))
+			})
+		}
+	})
+
+	t.Run("a failing hook rolls the registration and the answer back together", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, store := env.newService(t, hooks)
+
+		sender := registerAda(t, service, "ada")
+
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User, sender.Account.ID,
+			"grace@example.com", "the-token", futureExpiry()))
+		must.NoError(t, err)
+
+		hooks.probe = func(context.Context, database.Tx) error { return errHookRefused }
+
+		registration, err := service.RegisterWithInvitation(t.Context(), testScope,
+			newUser("grace"), issued.ID, "the-token", "glad to")
+		must.ErrorIs(t, err, errHookRefused)
+		test.Nil(t, registration)
+
+		_, err = store.GetUserByUsername(t.Context(), env.reader(), testScope, "grace")
+		must.ErrorIs(t, err, ErrUserNotFound)
+
+		// The invitation is still answerable, which is the half a consumer
+		// doing this in two transactions would have spent.
+		read, err := store.GetInvitation(t.Context(), env.reader(), testScope, issued.ID)
+		must.NoError(t, err)
+		test.EqOp(t, InvitationPending, read.Status)
+	})
+
+	t.Run("the register-with-invitation hook reads the writes it is committing with", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, store := env.newService(t, hooks)
+
+		sender := registerAda(t, service, "ada")
+
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User, sender.Account.ID,
+			"grace@example.com", "the-token", futureExpiry()))
+		must.NoError(t, err)
+
+		var seen *Membership
+
+		hooks.probe = func(ctx context.Context, tx database.Tx) error {
+			// Uncommitted and readable, on the operation's own transaction.
+			membership, probeErr := store.GetMembership(ctx, tx, testScope,
+				hooks.invitedRegistration.User.ID, sender.Account.ID)
+			seen = membership
+
+			return probeErr
+		}
+
+		registration, err := service.RegisterWithInvitation(t.Context(), testScope,
+			newUser("grace"), issued.ID, "the-token", "")
+		must.NoError(t, err)
+
+		must.NotNil(t, seen)
+		test.EqOp(t, registration.Membership.ID, seen.ID)
+	})
+
+	t.Run("a registration by invitation leaves the caller's user alone", func(t *testing.T) {
+		t.Parallel()
+
+		service, _ := env.newService(t, &recordingHooks{})
+
+		sender := registerAda(t, service, "ada")
+
+		issued, err := service.Invite(t.Context(), testScope, newInvitation(sender.User, sender.Account.ID,
+			"grace@example.com", "the-token", futureExpiry()))
+		must.NoError(t, err)
+
+		joiner := newUser("grace")
+		joiner.ID = ""
+
+		registration, err := service.RegisterWithInvitation(t.Context(), testScope,
+			joiner, issued.ID, "the-token", "")
+		must.NoError(t, err)
+
+		test.NotEq(t, "", registration.User.ID)
+		test.EqOp(t, "", joiner.ID)
+		test.True(t, joiner.CreatedAt.IsZero())
+	})
+
+	t.Run("refuses a registration by invitation with no user", func(t *testing.T) {
+		t.Parallel()
+
+		service, _ := env.newService(t, &recordingHooks{})
+
+		_, err := service.RegisterWithInvitation(t.Context(), testScope, nil, "inv", "tok", "")
+		must.ErrorIs(t, err, ErrNilUser)
+	})
+
+	t.Run("refuses a registration against an invitation that is not there", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, store := env.newService(t, hooks)
+
+		joiner := newUser("grace")
+
+		_, err := service.RegisterWithInvitation(t.Context(), testScope, joiner, "nonesuch", "tok", "")
+		must.ErrorIs(t, err, ErrInvitationNotFound)
+
+		_, err = store.GetUserByUsername(t.Context(), env.reader(), testScope, "grace")
+		must.ErrorIs(t, err, ErrUserNotFound)
+
+		test.EqOp(t, 0, hooks.ran("register_with_invitation"))
 	})
 
 	t.Run("issues an invitation and hands the hook the token", func(t *testing.T) {
