@@ -28,12 +28,22 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore(ctx, cfg, client, WithPillars(pillars))
 	})
 }
 
@@ -68,14 +78,45 @@ func RegisterService(i do.Injector) {
 			return nil, err
 		}
 
-		do.MustInvoke[*dataprivacy.Fulfiller](i)
+		// Resolved for the ordering rather than for the value: the Fulfiller is
+		// what registers this package's kinds, and an operation's kind is
+		// resolved at submission. The blank is what says so — there is nothing
+		// to hold, only something that has to have happened first.
+		if _, err = do.Invoke[*dataprivacy.Fulfiller](i); err != nil {
+			return nil, err
+		}
+
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[dataprivacy.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		service, err := do.Invoke[operations.Service](i)
+		if err != nil {
+			return nil, err
+		}
 
 		return NewService(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[dataprivacy.Store](i),
-			do.MustInvoke[operations.Service](i),
+			ctx,
+			cfg,
+			client,
+			store,
+			service,
 			WithPillars(pillars),
 			WithCompressor(compressor),
 			WithEncryptor(encryptor),
@@ -122,14 +163,49 @@ func RegisterFulfiller(i do.Injector) {
 			fulfillerOpts = append(fulfillerOpts, dataprivacy.WithFulfillerShredder(keys))
 		}
 
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[dataprivacy.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		dataprivacyRegistry, err := do.Invoke[*dataprivacy.Registry](i)
+		if err != nil {
+			return nil, err
+		}
+
+		operationsRegistry, err := do.Invoke[*operations.Registry](i)
+		if err != nil {
+			return nil, err
+		}
+
+		uploadManager, err := do.Invoke[uploads.UploadManager](i)
+		if err != nil {
+			return nil, err
+		}
+
 		return NewFulfiller(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[dataprivacy.Store](i),
-			do.MustInvoke[*dataprivacy.Registry](i),
-			do.MustInvoke[*operations.Registry](i),
-			do.MustInvoke[uploads.UploadManager](i),
+			ctx,
+			cfg,
+			client,
+			store,
+			dataprivacyRegistry,
+			operationsRegistry,
+			uploadManager,
 			WithPillars(pillars),
 			WithCompressor(compressor),
 			WithEncryptor(encryptor),
@@ -150,13 +226,27 @@ func RegisterSweeper(i do.Injector) {
 			return nil, err
 		}
 
-		return NewSweeper(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[dataprivacy.Store](i),
-			do.MustInvoke[uploads.UploadManager](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[dataprivacy.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		uploadManager, err := do.Invoke[uploads.UploadManager](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewSweeper(ctx, cfg, store, uploadManager, WithPillars(pillars))
 	})
 }
 

@@ -30,12 +30,22 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore(ctx, cfg, client, WithPillars(pillars))
 	})
 }
 
@@ -61,8 +71,15 @@ func RegisterKeys(i do.Injector) {
 			return nil, err
 		}
 
-		ctx := do.MustInvoke[context.Context](i)
-		cfg := do.MustInvoke[*Config](i)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
 
 		opts := []Option{WithPillars(pillars)}
 
@@ -80,12 +97,16 @@ func RegisterKeys(i do.Injector) {
 			opts = append(opts, WithKeysOptions(shredding.WithBroadcaster(broadcaster)))
 		}
 
-		return NewKeys(
-			ctx,
-			cfg,
-			do.MustInvoke[shredding.Store](i),
-			do.MustInvoke[encryption.KeyWrapper](i),
-			opts...,
-		)
+		store, err := do.Invoke[shredding.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		keyWrapper, err := do.Invoke[encryption.KeyWrapper](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewKeys(ctx, cfg, store, keyWrapper, opts...)
 	})
 }

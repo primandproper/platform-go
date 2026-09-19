@@ -24,11 +24,17 @@ func RegisterRecorder(i do.Injector) {
 			return nil, err
 		}
 
-		return NewRecorder(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewRecorder(ctx, cfg, WithPillars(pillars))
 	})
 }
 
@@ -43,12 +49,22 @@ func RegisterReader(i do.Injector) {
 			return nil, err
 		}
 
-		return NewReader(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewReader(ctx, cfg, client, WithPillars(pillars))
 	})
 }
 
@@ -63,10 +79,17 @@ func RegisterReader(i do.Injector) {
 // So the wiring is a line in the provider for that slice:
 //
 //	do.Provide(i, func(i do.Injector) ([]retention.Policy, error) {
-//		auditPolicy, err := auditcfg.NewRetentionPolicy(
-//			do.MustInvoke[context.Context](i),
-//			do.MustInvoke[*auditcfg.Config](i),
-//		)
+//		ctx, err := do.Invoke[context.Context](i)
+//		if err != nil {
+//			return nil, err
+//		}
+//
+//		cfg, err := do.Invoke[*auditcfg.Config](i)
+//		if err != nil {
+//			return nil, err
+//		}
+//
+//		auditPolicy, err := auditcfg.NewRetentionPolicy(ctx, cfg)
 //		if err != nil {
 //			return nil, err
 //		}

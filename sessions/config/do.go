@@ -34,12 +34,17 @@ func RegisterStore[T any](i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore[T](
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			db,
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore[T](ctx, cfg, db, WithPillars(pillars))
 	})
 }
 
@@ -61,12 +66,21 @@ func RegisterManager[T any](i do.Injector) {
 			return nil, err
 		}
 
-		return NewManager[T](
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			db,
-			do.MustInvoke[cookies.Manager](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		manager, err := do.Invoke[cookies.Manager](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewManager[T](ctx, cfg, db, manager, WithPillars(pillars))
 	})
 }

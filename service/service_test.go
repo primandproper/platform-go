@@ -221,6 +221,36 @@ func TestNew(T *testing.T) {
 		test.SliceEmpty(t, notInvoked(t, i), test.Sprint("every registered type is built by New"))
 	})
 
+	T.Run("reports an application type the config named and nobody registered", func(t *testing.T) {
+		t.Parallel()
+
+		// The same config as above, less the one value that is genuinely the
+		// application's: comments.Targets is what the store resolves a comment's
+		// subject through, and no environment variable can express it.
+		//
+		// It is a characterization rather than a regression: do recovers a
+		// provider's panic into an error, so this was already an error when the
+		// config packages called do.MustInvoke. What it pins is the promise New
+		// makes rather than the mechanism underneath it — that the failure names
+		// both ends, the subsystem and the registration it wanted — so a later
+		// change to either one has to keep answering the question a consumer
+		// actually has, which is which line they did not write.
+		cfg := &Config{
+			Name:     "example",
+			Database: sqliteConfig(t),
+			Comments: &commentscfg.Config{TablePrefix: storePrefix},
+		}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		svc, err := New(newInjector(t, cfg))
+		must.Error(t, err)
+		test.Nil(t, svc)
+
+		// Both ends: the subsystem that could not be built, and what it wanted.
+		test.StrContains(t, err.Error(), do.NameOf[comments.Store]())
+		test.StrContains(t, err.Error(), do.NameOf[comments.Targets]())
+	})
+
 	T.Run("reports observability that was registered and cannot be built", func(t *testing.T) {
 		t.Parallel()
 

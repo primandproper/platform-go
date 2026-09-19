@@ -26,12 +26,22 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore(ctx, cfg, client, WithPillars(pillars))
 	})
 }
 
@@ -63,14 +73,32 @@ func RegisterRecorder(i do.Injector) {
 			opts = append(opts, WithRecorderAnalytics(reporter))
 		}
 
-		return NewRecorder(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[metering.Store](i),
-			do.MustInvoke[*metering.Registry](i),
-			do.MustInvoke[metering.PeriodResolver](i),
-			opts...,
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[metering.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		registry, err := do.Invoke[*metering.Registry](i)
+		if err != nil {
+			return nil, err
+		}
+
+		periodResolver, err := do.Invoke[metering.PeriodResolver](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewRecorder(ctx, cfg, store, registry, periodResolver, opts...)
 	})
 }
 
@@ -113,15 +141,37 @@ func RegisterEnforcer(i do.Injector) {
 		// NewEnforcer returns a *metering.QuotaEnforcer, and returning it
 		// straight through would register a non-nil metering.Enforcer wrapping a
 		// nil pointer whenever construction failed.
-		enforcer, err := NewEnforcer(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[metering.Store](i),
-			do.MustInvoke[*metering.Registry](i),
-			do.MustInvoke[metering.PeriodResolver](i),
-			opts...,
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[metering.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		registry, err := do.Invoke[*metering.Registry](i)
+		if err != nil {
+			return nil, err
+		}
+
+		periods, err := do.Invoke[metering.PeriodResolver](i)
+		if err != nil {
+			return nil, err
+		}
+
+		enforcer, err := NewEnforcer(ctx, cfg, client, store, registry, periods, opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -143,13 +193,31 @@ func RegisterFlusher(i do.Injector) {
 			return nil, err
 		}
 
-		return NewFlusher(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[metering.Store](i),
-			do.MustInvoke[metering.ProviderMapper](i),
-			do.MustInvoke[capitalism.UsageReporter](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[metering.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		providerMapper, err := do.Invoke[metering.ProviderMapper](i)
+		if err != nil {
+			return nil, err
+		}
+
+		usageReporter, err := do.Invoke[capitalism.UsageReporter](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewFlusher(ctx, cfg, store, providerMapper, usageReporter, WithPillars(pillars))
 	})
 }

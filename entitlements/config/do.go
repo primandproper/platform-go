@@ -22,11 +22,22 @@ import (
 // the package documentation on why they are code and plans are configuration.
 func RegisterCatalog(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*entitlements.Catalog, error) {
-		return NewCatalog(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[[]entitlements.Feature](i),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		features, err := do.Invoke[[]entitlements.Feature](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewCatalog(ctx, cfg, features)
 	})
 }
 
@@ -51,13 +62,32 @@ func RegisterCatalog(i do.Injector) {
 // QuotaSource is invoked.
 func RegisterQuotaSource(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*entitlements.QuotaSource, error) {
-		return NewQuotaSource(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[*entitlements.Catalog](i),
-			do.MustInvoke[entitlements.PlanSource](i),
-			do.MustInvoke[*metering.Registry](i),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		catalog, err := do.Invoke[*entitlements.Catalog](i)
+		if err != nil {
+			return nil, err
+		}
+
+		planSource, err := do.Invoke[entitlements.PlanSource](i)
+		if err != nil {
+			return nil, err
+		}
+
+		registry, err := do.Invoke[*metering.Registry](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewQuotaSource(ctx, cfg, catalog, planSource, registry)
 	})
 }
 
@@ -109,13 +139,27 @@ func RegisterChecker(i do.Injector) {
 		// wrapping a nil pointer whenever construction failed — which is
 		// exactly the "nobody registered one" / "the registered one failed to
 		// build" distinction the InvokePillars call above exists to keep.
-		checker, err := NewChecker(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[*entitlements.Catalog](i),
-			do.MustInvoke[entitlements.PlanSource](i),
-			opts...,
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		catalog, err := do.Invoke[*entitlements.Catalog](i)
+		if err != nil {
+			return nil, err
+		}
+
+		plans, err := do.Invoke[entitlements.PlanSource](i)
+		if err != nil {
+			return nil, err
+		}
+
+		checker, err := NewChecker(ctx, cfg, catalog, plans, opts...)
 		if err != nil {
 			return nil, err
 		}

@@ -28,12 +28,22 @@ func RegisterTimers[K comparable](i do.Injector) {
 			return nil, err
 		}
 
-		return NewTimers[K](
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewTimers[K](ctx, cfg, client, WithPillars(pillars))
 	})
 }
 
@@ -50,11 +60,26 @@ func RegisterTimers[K comparable](i do.Injector) {
 // it by cancelling that context.
 func RegisterWorker[K comparable](i do.Injector) {
 	do.Provide(i, func(i do.Injector) (*timers.Worker[K], error) {
-		return timers.NewWorker(
-			do.MustInvoke[context.Context](i),
-			&do.MustInvoke[*Config](i).Worker,
-			do.MustInvoke[*timers.Timers[K]](i),
-			do.MustInvoke[timers.Handler[K]](i),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		set, err := do.Invoke[*timers.Timers[K]](i)
+		if err != nil {
+			return nil, err
+		}
+
+		handler, err := do.Invoke[timers.Handler[K]](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return timers.NewWorker(ctx, &cfg.Worker, set, handler)
 	})
 }

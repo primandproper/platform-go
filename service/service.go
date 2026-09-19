@@ -97,7 +97,10 @@ type Service struct {
 // reads *Config from it, and must already carry the application's own types —
 // a gRPC server with no registered handlers is a wiring error New reports here
 // rather than at the first RPC, and so is a comments store configured with no
-// comments.Targets to resolve.
+// comments.Targets to resolve. Both come back as an error naming the subsystem
+// that could not be built and the registration it was missing, which is the pair
+// a consumer needs: the application-supplied types are the ones most likely to
+// be absent, and the name of the one that is absent is the whole fix.
 func New(i do.Injector, opts ...Option) (*Service, error) {
 	o := newOptions(opts)
 
@@ -365,12 +368,25 @@ func (s *Service) resolveServers(r *resolver) {
 // every type the config named and not the ones somebody remembered to list —
 // see registrations.
 //
-// One thing it does not convert: a registration whose provider reaches its own
-// dependencies through do.MustInvoke panics rather than returning an error, so a
-// config naming a subsystem whose application-supplied dependencies were never
-// registered panics here. That is the same panic the first request would have
-// taken, moved to startup along with everything else, and it is left as a panic
-// because the stack is the most useful thing about it.
+// What it reports, and what it cannot. A provider whose own dependencies are
+// missing returns them from here as an error naming both ends — the subsystem
+// being built, and the registration it wanted — because the config packages
+// resolve theirs with do.Invoke and hand the failure back.
+//
+// They did not always, and the difference is smaller than it looks: do recovers
+// any panic a provider raises and returns it as an error, so the do.MustInvoke
+// those packages used to call arrived here as an error too, and errors.Is still
+// matched do.ErrServiceNotFound through it. What the explicit invoke buys is
+// that the expected failure is a return rather than a recovered panic — the
+// error is the one the provider chose to give, on the path every other failure
+// in this walk takes.
+//
+// That recover is still underneath, and it is worth knowing what it does with
+// the failures nobody planned: a nil map write inside somebody's constructor
+// reaches this walk as the string "assignment to entry in nil map", with no
+// stack and no type, because do caught it three frames down. Nothing here can
+// improve on that from the outside, and nothing here adds a recover of its own
+// on top of it.
 func resolveRegistered(r *resolver) {
 	resolve(r, func(reg registrations) {
 		for _, name := range reg.names {

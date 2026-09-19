@@ -26,12 +26,22 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore(ctx, cfg, client, WithPillars(pillars))
 	})
 }
 
@@ -42,13 +52,19 @@ func RegisterStore(i do.Injector) {
 // must be registered in the injector before the publisher is invoked.
 func RegisterOutboxEventPublisher(i do.Injector) {
 	do.Provide(i, func(i do.Injector) (saga.EventPublisher, error) {
-		cfg := do.MustInvoke[*Config](i)
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
 		cfg.EnsureDefaults()
 
-		publisher, err := saga.NewOutboxPublisher(
-			do.MustInvoke[*outbox.Writer](i),
-			saga.WithEventTopic(cfg.EventTopic),
-		)
+		writer, err := do.Invoke[*outbox.Writer](i)
+		if err != nil {
+			return nil, err
+		}
+
+		publisher, err := saga.NewOutboxPublisher(writer, saga.WithEventTopic(cfg.EventTopic))
 		if err != nil {
 			return nil, err
 		}
@@ -95,14 +111,36 @@ func RegisterWorker(i do.Injector) {
 			opts = append(opts, WithWorkerEventPublisher(publisher))
 		}
 
-		return NewWorker(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[saga.Store](i),
-			do.MustInvoke[*saga.Registry](i),
-			do.MustInvoke[distributedlock.ScopedLocker](i),
-			opts...,
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[saga.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		registry, err := do.Invoke[*saga.Registry](i)
+		if err != nil {
+			return nil, err
+		}
+
+		scopedLocker, err := do.Invoke[distributedlock.ScopedLocker](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewWorker(ctx, cfg, client, store, registry, scopedLocker, opts...)
 	})
 }

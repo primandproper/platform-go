@@ -41,12 +41,26 @@ func RegisterSweeper(i do.Injector) {
 			opts = append(opts, WithSweeperOptions(retention.WithSweeperAuditRecorder(recorder)))
 		}
 
-		return NewSweeper(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[[]retention.Policy](i),
-			opts...,
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		policys, err := do.Invoke[[]retention.Policy](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewSweeper(ctx, cfg, client, policys, opts...)
 	})
 }

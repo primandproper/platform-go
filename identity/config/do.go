@@ -26,12 +26,22 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore(ctx, cfg, client, WithPillars(pillars))
 	})
 }
 
@@ -71,13 +81,27 @@ func RegisterService(i do.Injector) {
 			opts = append(opts, WithHooks(hooks))
 		}
 
-		return NewService(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[identity.Store](i),
-			opts...,
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[identity.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewService(ctx, cfg, client, store, opts...)
 	})
 }
 
@@ -104,14 +128,36 @@ func RegisterServer(i do.Injector) {
 			return nil, err
 		}
 
-		return NewServer(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[*identity.Service](i),
-			do.MustInvoke[identity.Store](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[callers.PrincipalExtractor](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		service, err := do.Invoke[*identity.Service](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[identity.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		principalExtractor, err := do.Invoke[callers.PrincipalExtractor](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewServer(ctx, cfg, service, store, client, principalExtractor, WithPillars(pillars))
 	})
 }

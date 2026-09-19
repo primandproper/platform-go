@@ -29,12 +29,22 @@ func RegisterQueue[K comparable](i do.Injector) {
 			return nil, err
 		}
 
-		return NewQueue[K](
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*workqueue.Config](i),
-			do.MustInvoke[database.Client](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		config, err := do.Invoke[*workqueue.Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewQueue[K](ctx, config, client, WithPillars(pillars))
 	})
 }
 
@@ -59,12 +69,26 @@ func RegisterRunner[K comparable](i do.Injector) {
 			return nil, err
 		}
 
-		return NewRunner[K](
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*workqueue.RunnerConfig](i),
-			do.MustInvoke[*workqueue.Queue[K]](i),
-			do.MustInvoke[workqueue.Handler[K]](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		runnerConfig, err := do.Invoke[*workqueue.RunnerConfig](i)
+		if err != nil {
+			return nil, err
+		}
+
+		queue, err := do.Invoke[*workqueue.Queue[K]](i)
+		if err != nil {
+			return nil, err
+		}
+
+		handler, err := do.Invoke[workqueue.Handler[K]](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewRunner[K](ctx, runnerConfig, queue, handler, WithPillars(pillars))
 	})
 }
