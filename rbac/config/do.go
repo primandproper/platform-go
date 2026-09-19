@@ -34,7 +34,10 @@ func RegisterPolicyResolver(i do.Injector) {
 			return nil, err
 		}
 
-		cfg := do.MustInvoke[*Config](i)
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
 
 		// The database resolver both reads and archives roles, so it gets the
 		// writer rather than a read replica that would reject its mutations.
@@ -52,12 +55,11 @@ func RegisterPolicyResolver(i do.Injector) {
 			return nil, err
 		}
 
-		return NewPolicyResolver(
-			do.MustInvoke[context.Context](i),
-			cfg,
-			db,
-			permissionSets,
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewPolicyResolver(ctx, cfg, db, permissionSets, WithPillars(pillars))
 	})
 }

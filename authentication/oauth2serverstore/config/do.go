@@ -33,12 +33,17 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			db,
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore(ctx, cfg, db, WithPillars(pillars))
 	})
 }
 
@@ -67,12 +72,21 @@ func RegisterServer(i do.Injector) {
 			return nil, err
 		}
 
-		return NewServer(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			db,
-			do.MustInvoke[oauth2server.SubjectAuthenticator](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		subjectAuthenticator, err := do.Invoke[oauth2server.SubjectAuthenticator](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewServer(ctx, cfg, db, subjectAuthenticator, WithPillars(pillars))
 	})
 }

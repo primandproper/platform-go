@@ -22,12 +22,22 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore(ctx, cfg, client, WithPillars(pillars))
 	})
 }
 
@@ -45,14 +55,32 @@ func RegisterDispatcher(i do.Injector) {
 			return nil, err
 		}
 
-		return NewDispatcher(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[webhooks.Store](i),
-			do.MustInvoke[webhooks.Catalog](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[webhooks.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		catalog, err := do.Invoke[webhooks.Catalog](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewDispatcher(ctx, cfg, client, store, catalog, WithPillars(pillars))
 	})
 }
 
@@ -67,11 +95,21 @@ func RegisterWorker(i do.Injector) {
 			return nil, err
 		}
 
-		return NewWorker(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[webhooks.Store](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[webhooks.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewWorker(ctx, cfg, store, WithPillars(pillars))
 	})
 }

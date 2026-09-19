@@ -5,11 +5,14 @@ import (
 	"net/http"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
 	oauth2serverstorecfg "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/config"
 	webauthnsessionscfg "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/config"
+	"github.com/primandproper/platform-go/v14/identity"
+	identitycfg "github.com/primandproper/platform-go/v14/identity/config"
 	"github.com/primandproper/platform-go/v14/operations"
 	operationscfg "github.com/primandproper/platform-go/v14/operations/config"
 	"github.com/primandproper/platform-go/v14/outbox"
@@ -118,6 +121,30 @@ func TestRegister(T *testing.T) {
 		writer, err := injection.InvokeOptional[*outbox.Writer](i)
 		must.NoError(t, err)
 		test.Nil(t, writer)
+	})
+
+	T.Run("records what it registered, and not what the caller registered first", func(t *testing.T) {
+		t.Parallel()
+
+		// The set New builds. What is in it is what a boot proves buildable;
+		// what is out of it is what a boot leaves alone, and the caller's own
+		// types are out — an application registers them for its own reasons and
+		// decides for itself when they are built.
+		cfg := &Config{Name: "example", Identity: &identitycfg.Config{TablePrefix: storePrefix}}
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		i := newInjector(t, cfg)
+
+		registered, err := do.Invoke[registrations](i)
+		must.NoError(t, err)
+
+		test.SliceContains(t, registered.names, do.NameOf[identity.Store]())
+		test.SliceContains(t, registered.names, do.NameOf[*Config]())
+		test.SliceNotContains(t, registered.names, do.NameOf[context.Context]())
+
+		// do lists a scope's services in map order, so the sort is what keeps a
+		// misconfigured service reporting the same failure on every restart.
+		test.True(t, slices.IsSorted(registered.names))
 	})
 
 	T.Run("registers the config it was given", func(t *testing.T) {

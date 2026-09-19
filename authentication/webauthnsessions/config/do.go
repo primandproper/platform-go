@@ -33,12 +33,17 @@ func RegisterSessionStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewSessionStore(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			db,
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewSessionStore(ctx, cfg, db, WithPillars(pillars))
 	})
 }
 
@@ -68,11 +73,16 @@ func RegisterRelyingParty(i do.Injector) {
 			return nil, err
 		}
 
-		return NewRelyingParty(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			db,
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewRelyingParty(ctx, cfg, db, WithPillars(pillars))
 	})
 }

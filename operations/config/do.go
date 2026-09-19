@@ -26,12 +26,22 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
-		return NewStore(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewStore(ctx, cfg, client, WithPillars(pillars))
 	})
 }
 
@@ -76,12 +86,22 @@ func RegisterQueue(i do.Injector) {
 			return nil, err
 		}
 
-		return NewQueue(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewQueue(ctx, cfg, client, WithPillars(pillars))
 	})
 }
 
@@ -134,15 +154,37 @@ func RegisterService(i do.Injector) {
 			return nil, err
 		}
 
-		return newServiceOver(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[operations.Store](i),
-			do.MustInvokeNamed[*workqueue.Queue[string]](i, QueueKey),
-			do.MustInvoke[*operations.Registry](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[operations.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		queue, err := do.InvokeNamed[*workqueue.Queue[string]](i, QueueKey)
+		if err != nil {
+			return nil, err
+		}
+
+		registry, err := do.Invoke[*operations.Registry](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return newServiceOver(ctx, cfg, client, store, queue, registry, WithPillars(pillars))
 	})
 }
 
@@ -160,14 +202,32 @@ func RegisterWorker(i do.Injector) {
 			return nil, err
 		}
 
-		return NewWorker(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[operations.Store](i),
-			do.MustInvokeNamed[*workqueue.Queue[string]](i, QueueKey),
-			do.MustInvoke[*operations.Registry](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[operations.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		queue, err := do.InvokeNamed[*workqueue.Queue[string]](i, QueueKey)
+		if err != nil {
+			return nil, err
+		}
+
+		registry, err := do.Invoke[*operations.Registry](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewWorker(ctx, cfg, store, queue, registry, WithPillars(pillars))
 	})
 }
 
@@ -214,12 +274,26 @@ func RegisterWatcher(i do.Injector) {
 			return nil, err
 		}
 
-		return NewWatcher(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[operations.Store](i),
-			WithPillars(pillars),
-		)
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		store, err := do.Invoke[operations.Store](i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewWatcher(ctx, cfg, client, store, WithPillars(pillars))
 	})
 }

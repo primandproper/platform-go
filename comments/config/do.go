@@ -25,11 +25,31 @@ func RegisterStore(i do.Injector) {
 			return nil, err
 		}
 
+		ctx, err := do.Invoke[context.Context](i)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg, err := do.Invoke[*Config](i)
+		if err != nil {
+			return nil, err
+		}
+
+		client, err := do.Invoke[database.Client](i)
+		if err != nil {
+			return nil, err
+		}
+
+		targets, err := do.Invoke[comments.Targets](i)
+		if err != nil {
+			return nil, err
+		}
+
 		return NewStore(
-			do.MustInvoke[context.Context](i),
-			do.MustInvoke[*Config](i),
-			do.MustInvoke[database.Client](i),
-			do.MustInvoke[comments.Targets](i),
+			ctx,
+			cfg,
+			client,
+			targets,
 			WithPillars(pillars),
 		)
 	})

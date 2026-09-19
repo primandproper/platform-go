@@ -63,24 +63,44 @@ type Service struct {
 
 // New assembles the lifecycle of the service registered with i.
 //
-// It builds, in the order a service has to come up: the infrastructure clients,
-// the platform clients that hold a connection, the background loops, and the
-// servers last — nothing binds a listener before what it will serve from
-// exists. Building here is eager on purpose. do.Provide is lazy, so without it
-// a database whose credentials are wrong is a process that starts, reports
-// healthy, and fails on its first request; here it is a startup error.
+// It builds everything Register registered, and it builds all of it here.
+// do.Provide is lazy, so without that a database whose credentials are wrong —
+// or an EMAIL_PROVIDER somebody spelled sendgird — is a process that starts,
+// reports ready, and fails on its first request. There is no list of exceptions:
+// a component with nothing to start and nothing to close is still built, because
+// the question this answers is whether it can be built at all.
+//
+// The lifecycle itself is the ordered part, and it is what the slots below
+// collect: the infrastructure clients, the platform clients that hold a
+// connection, the background loops, and the servers last — nothing binds a
+// listener before what it will serve from exists. Everything else is built
+// afterwards, in an order that decides nothing.
 //
 // Everything is resolved optionally, which keeps this a walk of what the config
 // named rather than a list of what a service must have: a subsystem nobody
 // configured was never registered and contributes nothing, while a subsystem
 // that was registered and cannot be built is returned as an error.
 //
+// Two consequences of building all of it, stated rather than discovered:
+//
+//   - Startup does more work. It is bounded — constructing providers and stores,
+//     and nothing beyond what each constructor already does — and it is paid
+//     once per process.
+//   - A component that cannot be built at the moment of startup for a transient
+//     reason fails the boot. That is the intended trade: a service that cannot
+//     reach its dependencies should fail its start rather than its first
+//     request.
+//
 // New starts nothing and blocks on nothing. Run does both.
 //
 // Prerequisites: the injector must be one Register has run against, since New
 // reads *Config from it, and must already carry the application's own types —
 // a gRPC server with no registered handlers is a wiring error New reports here
-// rather than at the first RPC.
+// rather than at the first RPC, and so is a comments store configured with no
+// comments.Targets to resolve. Both come back as an error naming the subsystem
+// that could not be built and the registration it was missing, which is the pair
+// a consumer needs: the application-supplied types are the ones most likely to
+// be absent, and the name of the one that is absent is the whole fix.
 func New(i do.Injector, opts ...Option) (*Service, error) {
 	o := newOptions(opts)
 
@@ -115,6 +135,7 @@ func New(i do.Injector, opts ...Option) (*Service, error) {
 	svc.resolveRunners(r)
 	svc.resolveFlushes(r)
 	svc.resolveServers(r)
+	resolveRegistered(r)
 
 	if r.err != nil {
 		return nil, r.err
@@ -327,6 +348,55 @@ func (s *Service) resolveOperationsQueue(r *resolver) {
 func (s *Service) resolveServers(r *resolver) {
 	resolve(r, func(srv httpserver.Server) { s.addServer("HTTP server", srv) })
 	resolve(r, func(srv *grpcserver.Server) { s.addServer("gRPC server", srv) })
+}
+
+// resolveRegistered builds everything else Register registered.
+//
+// The slots above collect what a lifecycle is made of, which is a third of what
+// a config names: the stores and the providers have nothing to start and nothing
+// to close, so none of them appear there — and until this ran, none of them were
+// built either. That is the whole of how EMAIL_PROVIDER=sendgird booted clean.
+//
+// It holds nothing and orders nothing. Everything with a shutdown obligation is
+// already held above, in the order it has to go down; what this adds is the
+// other half of the same guarantee, which is that the component exists at all.
+// It runs last for that reason: a component here that something above depends on
+// was built by that something and is cached, so the order within this set
+// decides nothing, while the order above decides how the service comes down.
+//
+// The names come from Register rather than from a roster kept here, so this is
+// every type the config named and not the ones somebody remembered to list —
+// see registrations.
+//
+// What it reports, and what it cannot. A provider whose own dependencies are
+// missing returns them from here as an error naming both ends — the subsystem
+// being built, and the registration it wanted — because the config packages
+// resolve theirs with do.Invoke and hand the failure back.
+//
+// They did not always, and the difference is smaller than it looks: do recovers
+// any panic a provider raises and returns it as an error, so the do.MustInvoke
+// those packages used to call arrived here as an error too, and errors.Is still
+// matched do.ErrServiceNotFound through it. What the explicit invoke buys is
+// that the expected failure is a return rather than a recovered panic — the
+// error is the one the provider chose to give, on the path every other failure
+// in this walk takes.
+//
+// That recover is still underneath, and it is worth knowing what it does with
+// the failures nobody planned: a nil map write inside somebody's constructor
+// reaches this walk as the string "assignment to entry in nil map", with no
+// stack and no type, because do caught it three frames down. Nothing here can
+// improve on that from the outside, and nothing here adds a recover of its own
+// on top of it.
+func resolveRegistered(r *resolver) {
+	resolve(r, func(reg registrations) {
+		for _, name := range reg.names {
+			if _, err := do.InvokeNamed[any](r.i, name); err != nil {
+				r.err = platformerrors.Wrapf(err, "invoking %s", name)
+
+				return
+			}
+		}
+	})
 }
 
 func (s *Service) addCloser(name string, release func(context.Context) error) {
