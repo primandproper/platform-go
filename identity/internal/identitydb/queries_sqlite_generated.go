@@ -1503,6 +1503,14 @@ WHERE archived_at IS NULL
 	AND id = ?2
 	AND scope = ?3`
 
+const markUserEmailAddressProvenSQLite = `UPDATE {{prefix}}identity_users SET
+	email_address_verified_at = ?1,
+	email_address_verification_token_digest = ?2,
+	last_updated_at = CURRENT_TIMESTAMP
+WHERE archived_at IS NULL
+	AND id = ?3
+	AND scope = ?4`
+
 const markUserEmailAddressUnverifiedSQLite = `UPDATE {{prefix}}identity_users SET
 	email_address_verified_at = ?1,
 	last_updated_at = CURRENT_TIMESTAMP
@@ -1788,6 +1796,7 @@ type sqliteQueries struct {
 	listUsersByIDs                           string
 	listUsersDescending                      string
 	markAccountBillingSynced                 string
+	markUserEmailAddressProven               string
 	markUserEmailAddressUnverified           string
 	markUserEmailAddressVerified             string
 	markUserTwoFactorSecretVerified          string
@@ -1873,6 +1882,7 @@ func newSQLite(prefix string) *sqliteQueries {
 		listUsersByIDs:                           strings.ReplaceAll(listUsersByIDsSQLite, prefixMarker, prefix),
 		listUsersDescending:                      strings.ReplaceAll(listUsersDescendingSQLite, prefixMarker, prefix),
 		markAccountBillingSynced:                 strings.ReplaceAll(markAccountBillingSyncedSQLite, prefixMarker, prefix),
+		markUserEmailAddressProven:               strings.ReplaceAll(markUserEmailAddressProvenSQLite, prefixMarker, prefix),
 		markUserEmailAddressUnverified:           strings.ReplaceAll(markUserEmailAddressUnverifiedSQLite, prefixMarker, prefix),
 		markUserEmailAddressVerified:             strings.ReplaceAll(markUserEmailAddressVerifiedSQLite, prefixMarker, prefix),
 		markUserTwoFactorSecretVerified:          strings.ReplaceAll(markUserTwoFactorSecretVerifiedSQLite, prefixMarker, prefix),
@@ -3800,6 +3810,21 @@ func (q *sqliteQueries) MarkAccountBillingSynced(ctx context.Context, db DBTX, a
 	return result.RowsAffected()
 }
 
+// MarkUserEmailAddressProven runs the :execrows query against sqlite.
+func (q *sqliteQueries) MarkUserEmailAddressProven(ctx context.Context, db DBTX, arg MarkUserEmailAddressProvenParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.markUserEmailAddressProven,
+		timeTextPtr(arg.EmailAddressVerifiedAt),
+		arg.EmailAddressVerificationTokenDigest,
+		arg.ID,
+		arg.Scope,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // MarkUserEmailAddressUnverified runs the :execrows query against sqlite.
 func (q *sqliteQueries) MarkUserEmailAddressUnverified(ctx context.Context, db DBTX, arg MarkUserEmailAddressUnverifiedParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.markUserEmailAddressUnverified,
@@ -5181,6 +5206,12 @@ var (
 		ID                          string
 		Scope                       tenancy.Scope
 	}(MarkAccountBillingSyncedParams{})
+	_ = struct {
+		EmailAddressVerifiedAt              *time.Time
+		EmailAddressVerificationTokenDigest string
+		ID                                  string
+		Scope                               tenancy.Scope
+	}(MarkUserEmailAddressProvenParams{})
 	_ = struct {
 		EmailAddressVerifiedAt *time.Time
 		ID                     string

@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	"github.com/primandproper/platform-go/v14/authentication/signin/magiclinks"
+	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens"
 	refreshmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	"github.com/primandproper/platform-go/v14/identity"
@@ -65,20 +68,27 @@ var prefixCounter atomic.Uint64
 // env is one live database, the identity store over it, and the sign-in service
 // over that.
 type env struct {
-	client    database.Client
-	store     *identity.SQLStore
-	refresh   *refreshtokens.SQLStore
-	svc       *signin.Service
-	issuer    *fakeIssuer
-	hooks     *recordingHooks
-	password  string
-	user      *identity.User
-	accountID string
+	client  database.Client
+	store   *identity.SQLStore
+	refresh *refreshtokens.SQLStore
+	svc     *signin.Service
+	issuer  *fakeIssuer
+	hooks   *recordingHooks
+	user    *identity.User
 
 	// directory is identity's Service over the same store, which is what this
 	// package registers through. The suite holds it because the registration
 	// tests also arrange rows with it.
 	directory *identity.Service
+
+	// magicLinks and mailer are wired only by newMagicLinkEnv. The store is a
+	// real one over the same database, for the reason the refresh store is: what
+	// is under test is which rows are written and in what order, and a store of
+	// stubs would assert that this package calls the methods it calls.
+	magicLinks *magiclinks.SQLStore
+	mailer     *recordingMailer
+	password   string
+	accountID  string
 
 	// refreshPrefix is the namespace both schemas were rendered at, kept so the
 	// two assertions that count rows can name the table the store writes to.
@@ -94,7 +104,7 @@ type env struct {
 func newEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 	t.Helper()
 
-	return buildEnv(t, false, nil, opts...)
+	return buildEnv(t, false, false, nil, opts...)
 }
 
 // newRefreshEnv is newEnv with a live refresh token store wired in, which is
@@ -107,7 +117,7 @@ func newEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 func newRefreshEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 	t.Helper()
 
-	return buildEnv(t, true, nil, opts...)
+	return buildEnv(t, true, false, nil, opts...)
 }
 
 // newPermissiveRefreshEnv is newRefreshEnv over a Directory that answers with a
@@ -120,9 +130,22 @@ func newRefreshEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 func newPermissiveRefreshEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 	t.Helper()
 
-	return buildEnv(t, true, func(d signin.Directory) signin.Directory {
+	return buildEnv(t, true, false, func(d signin.Directory) signin.Directory {
 		return permissiveDirectory{Directory: d}
 	}, opts...)
+}
+
+// newMagicLinkEnv is newRefreshEnv with the passwordless door wired in: a real
+// magiclinks.SQLStore over the same database, and a mailer that records what it
+// was handed.
+//
+// The refresh store comes with it rather than being a second builder, because a
+// redemption mints a refresh token where one is configured and that is the shape
+// a consumer who adopted either of these has.
+func newMagicLinkEnv(t *testing.T, opts ...signin.ServiceOption) *env {
+	t.Helper()
+
+	return buildEnv(t, true, true, nil, opts...)
 }
 
 // permissiveDirectory is that Directory. Everything but the principal read is
@@ -156,7 +179,7 @@ func (d permissiveDirectory) GetPrincipal(
 // the whole reason this is one function with a flag rather than two.
 func buildEnv(
 	t *testing.T,
-	withRefresh bool,
+	withRefresh, withMagicLinks bool,
 	wrapDirectory func(signin.Directory) signin.Directory,
 	opts ...signin.ServiceOption,
 ) *env {
@@ -218,6 +241,35 @@ func buildEnv(
 		e.refreshPrefix = prefix
 
 		opts = append(opts, signin.WithRefreshTokenStore(e.refresh))
+	}
+
+	if withMagicLinks {
+		linkStmts, stmtErr := magiclinkmigrations.Statements(dialect.SQLite, prefix)
+		must.NoError(t, stmtErr)
+
+		for _, stmt := range linkStmts {
+			_, execErr := client.Writer().ExecContext(t.Context(), stmt)
+			must.NoError(t, execErr, must.Sprintf("executing %q", stmt))
+		}
+
+		e.magicLinks, err = magiclinks.NewSQLStore(&magiclinks.Config{TablePrefix: prefix}, client)
+		must.NoError(t, err)
+
+		e.mailer = &recordingMailer{}
+
+		// The floor goes in front of everything, including the caller's own
+		// options, because it is the one default these tests cannot keep: it
+		// holds every request for half a second and the suite makes a lot of
+		// them. Prepending rather than appending is what leaves a test free to
+		// ask for a real floor — see TestRequestMagicLink_padsItsOwnTiming.
+		opts = append([]signin.ServiceOption{
+			signin.WithMagicLinkRequestFloor(time.Nanosecond),
+		}, opts...)
+
+		opts = append(opts,
+			signin.WithMagicLinkStore(e.magicLinks),
+			signin.WithMagicLinkMailer(e.mailer),
+		)
 	}
 
 	var directory signin.Directory = store
@@ -347,6 +399,32 @@ func (e *env) setStatus(t *testing.T, status identity.AccountStatus, explanation
 	must.NoError(t, e.client.WithTransaction(t.Context(), func(tx database.Tx) error {
 		return e.store.UpdateUserAccountStatus(t.Context(), tx, testScope, e.user.ID, status, explanation)
 	}))
+}
+
+// changeEmailAddress moves a user to another address the way a profile update
+// does, and answers with the row it left behind.
+//
+// It goes through identity.Store.UpdateUser rather than writing the column,
+// because what the tests using it turn on is the pair of columns that write
+// moves with the address: a changed address is an unproven address with no
+// outstanding token, and a test that set the address alone would be asserting
+// against a row this module cannot produce.
+func (e *env) changeEmailAddress(t *testing.T, user *identity.User, address string) *identity.User {
+	t.Helper()
+
+	var updated *identity.User
+
+	must.NoError(t, e.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+		moved := *user
+		moved.EmailAddress = address
+
+		var err error
+		updated, err = e.store.UpdateUser(t.Context(), tx, testScope, &moved)
+
+		return err
+	}))
+
+	return updated
 }
 
 // enrollTOTP gives the registered user a proven second factor and returns its
@@ -552,4 +630,87 @@ func (s *stubAuthenticator) PasswordMatches(context.Context, string, string) (bo
 	s.matches++
 
 	return s.result, s.matchErr
+}
+
+// recordingMailer is the MagicLinkMailer these tests wire in: it keeps what it
+// was handed, and can be told to fail.
+//
+// It records the whole Mail rather than the secret alone, because two of the
+// assertions are about who the mail was addressed to and one is about the
+// secret never being the digest the row holds.
+type recordingMailer struct {
+	err  error
+	sent []*signin.MagicLinkMail
+	mu   sync.Mutex
+}
+
+var _ signin.MagicLinkMailer = (*recordingMailer)(nil)
+
+func (m *recordingMailer) SendMagicLink(_ context.Context, mail *signin.MagicLinkMail) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.err != nil {
+		return m.err
+	}
+
+	m.sent = append(m.sent, mail)
+
+	return nil
+}
+
+// count is how many mails were sent, which for the enumeration assertions is the
+// whole answer: a request that found nobody must send none, and must say so to
+// nobody.
+func (m *recordingMailer) count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return len(m.sent)
+}
+
+// last is the most recent mail, for the assertions about what it carried.
+func (m *recordingMailer) last(tb testing.TB) *signin.MagicLinkMail {
+	tb.Helper()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	must.SliceNotEmpty(tb, m.sent)
+
+	return m.sent[len(m.sent)-1]
+}
+
+// fail makes every subsequent send report err, for the one path where a
+// committed row and an undelivered mail are the honest outcome.
+func (m *recordingMailer) fail(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.err = err
+}
+
+// registerUnverified registers somebody through this package's own door, naming
+// no password, which is the arrival the passwordless sign-in exists for.
+//
+// It goes through signin.Service.Register rather than identity's registrar
+// because what it needs is the standing that door produces: a registrant lands
+// in StatusUnverified, which admits no sign-in, and that is the state the magic
+// link promotes them out of.
+func (e *env) registerUnverified(t *testing.T, username string) *identity.User {
+	t.Helper()
+
+	registered, err := e.svc.Register(t.Context(), testScope, &signin.Registration{
+		User: &identity.User{
+			Username:     username,
+			EmailAddress: username + "@example.com",
+			Scope:        testScope,
+		},
+		Account:    &identity.Account{Name: username, Scope: testScope},
+		Credential: signin.NoPassword(),
+		OwnerRoles: []string{"owner"},
+	})
+	must.NoError(t, err)
+
+	return registered.User
 }

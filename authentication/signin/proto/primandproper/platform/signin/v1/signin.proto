@@ -528,9 +528,80 @@ message VerifyEmailAddressRequest {
 // VerifyEmailAddressResponse is empty -- see UpdatePasswordResponse.
 message VerifyEmailAddressResponse {}
 
+// RequestMagicLinkRequest asks for a link that signs the holder of an address
+// in, which is the half of passwordless that makes it a product decision rather
+// than an unfinished account.
+//
+// There is no field naming a user, for AttachPasswordRequest's reason: the
+// address is the whole of what this names, and who it belongs to is read off
+// the directory rather than supplied by the caller.
+message RequestMagicLinkRequest {
+  reserved "scope";
+
+  // email_address is who to mail. It is folded the way the directory folds a
+  // handle, so it reads the row the password door would have read.
+  string email_address = 1;
+}
+
+// RequestMagicLinkResponse is empty, and its emptiness is load-bearing rather
+// than incidental.
+//
+// It carries no token, no "we sent it" flag, and no field that could differ
+// between an address somebody holds and one nobody does. The service answers
+// identically for both and pads its own timing so the two cannot be told apart
+// by a stopwatch either; a response that said more would rebuild the account
+// enumerator that padding exists to prevent.
+//
+// A consumer's own handler owes the same silence. Answering a known address with
+// a 200 and an unknown one with a 404 puts the oracle back in their transport,
+// where nothing in this module can reach it.
+message RequestMagicLinkResponse {}
+
+// RedeemMagicLinkRequest answers a sign-in link.
+//
+// It spends the link, proves the address it was mailed to, promotes a registrant
+// who was waiting on exactly that, and issues a token -- the same token, family
+// and refresh token a password sign-in issues. A suspended, banned or terminated
+// user is refused and left where an operator put them.
+//
+// There is no administrative counterpart and there will not be one. A service
+// role able to ban a user is the one credential a password alone does not answer
+// for, and a mailed link is strictly weaker than a password.
+message RedeemMagicLinkRequest {
+  reserved "scope";
+
+  // token is the secret the link carried, and is the whole of this request's
+  // authority. Expired, already followed, withdrawn and simply wrong are one
+  // answer, for the reason a wrong password and an unknown handle are one
+  // answer.
+  string token = 1;
+
+  // totp_code is the second-factor code, required from a user who holds a proven
+  // secret and ignored from one who does not.
+  //
+  // It is not optional for an enrolled user and cannot be made optional: a door
+  // that let a mailed link stand in for an enrolled second factor would be a way
+  // around it reachable by whoever controls the inbox.
+  string totp_code = 2;
+
+  // active_account_id is which account the minted token is for. Empty takes the
+  // subject's default, which is what a link followed out of an inbox almost
+  // always wants -- the request that asked for the mail named an address and
+  // nothing else. An account the subject is not a live member of is refused by
+  // the directory rather than honored.
+  string active_account_id = 3 [json_name = "activeAccountID"];
+}
+
+// RedeemMagicLinkResponse carries what a completed sign-in carries, which is the
+// same IssuedToken LoginForTokenResponse carries. The two doors differ in what
+// was proven, not in what they produce.
+message RedeemMagicLinkResponse {
+  IssuedToken token = 1;
+}
+
 // SignInService is sign-in.
 //
-// Six of its RPCs are anonymous by definition and five require a caller. What
+// Eight of its RPCs are anonymous by definition and five require a caller. What
 // none of them requires is a permission: there is no grant that would make
 // "sign in" safer, and the four authenticated ones take their subject from the
 // caller and have no field that could name anybody else. See
@@ -546,6 +617,16 @@ service SignInService {
   rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc AttachPassword(AttachPasswordRequest) returns (AttachPasswordResponse);
   rpc VerifyEmailAddress(VerifyEmailAddressRequest) returns (VerifyEmailAddressResponse);
+
+  // The passwordless door, both halves anonymous. Requesting a link names an
+  // address and is answered the same way whoever holds it; redeeming one carries
+  // the token that was mailed, which is the whole of its authority. Neither can
+  // name a user, so neither is a way to ask about one.
+  //
+  // Rate limiting is the consumer's, in front of RequestMagicLink, and it is not
+  // optional: this is the one RPC in this service that sends mail on request.
+  rpc RequestMagicLink(RequestMagicLinkRequest) returns (RequestMagicLinkResponse);
+  rpc RedeemMagicLink(RedeemMagicLinkRequest) returns (RedeemMagicLinkResponse);
 
   // The two doors, and the one that keeps a sign-in alive without reopening
   // either of them.

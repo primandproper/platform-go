@@ -327,6 +327,39 @@ type CredentialStore interface {
 		userID, token string,
 	) error
 
+	// MarkUserEmailAddressProven stamps the address as proven for a caller who
+	// proved it without holding the link that was mailed for it, and clears any
+	// outstanding token the way the method above does.
+	//
+	// It exists for a door whose own credential proved the same fact. A sign-in
+	// link answered out of the registrant's own inbox proves reachability
+	// exactly as a verification link does, and cannot satisfy the guard above:
+	// that predicate compares the digest this row carries, and this caller is
+	// holding a token from another table.
+	//
+	// It names no value the row must still hold, and that is the honest shape
+	// rather than a relaxation. The single-use property the guarded stamp buys
+	// from its predicate is held here by the other table's own guarded spend,
+	// which has already decided that this caller and no other may be here; a
+	// guard invented for this statement would be a second answer to a question
+	// something else has already answered, free to disagree with it.
+	//
+	// It clears the outstanding digest for the reason every write touching these
+	// two columns moves the pair: they are one state, and a row carrying a proof
+	// and a live link at once is a row whose verification status depends on
+	// which column a reader happened to look at. The link mailed at registration
+	// therefore stops working here, having nothing left to prove.
+	//
+	// It does not move the user's standing. Promoting out of StatusUnverified is
+	// UpdateUserAccountStatus, on the same transaction, which is how
+	// authentication/signin's doors already do it.
+	MarkUserEmailAddressProven(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		userID string,
+	) error
+
 	// MarkUserEmailAddressUnverified withdraws the proof from an address the
 	// user keeps — an administrator acting on a bounce, a support decision, a
 	// deliverability sweep.

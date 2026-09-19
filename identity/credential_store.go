@@ -354,6 +354,58 @@ func (s *SQLStore) MarkUserEmailAddressVerified(
 	return nil
 }
 
+// MarkUserEmailAddressProven stamps the address as proven for a caller holding
+// no verification token, and clears any outstanding one.
+//
+// It is MarkUserEmailAddressVerified without the predicate, for a door that
+// proved the address some other way — see the interface, where the reason the
+// guard is absent rather than replaced is written out.
+//
+// Zero rows is ErrUserNotFound and nothing else. The statement above can report
+// zero for two reasons, a missing user and a digest that no longer matches, and
+// collapsing them is why its caller reads the refusal as an invalid token; this
+// one has a single reason, so the count means what guardCount says it means.
+func (s *SQLStore) MarkUserEmailAddressProven(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID string,
+) error {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+	)
+	defer op.End()
+
+	if err := requireExecutor(tx); err != nil {
+		return op.Error(err, "marking identity email address proven")
+	}
+
+	if err := scope.Validate(); err != nil {
+		return op.Error(err, "marking identity email address proven")
+	}
+
+	if userID == "" {
+		return op.Error(
+			platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty user ID"),
+			"marking identity email address proven",
+		)
+	}
+
+	count, err := s.q.MarkUserEmailAddressProven(ctx, tx,
+		identitydb.MarkUserEmailAddressProvenParams{
+			ID:                                  userID,
+			Scope:                               scope,
+			EmailAddressVerifiedAt:              pointer.To(s.now()),
+			EmailAddressVerificationTokenDigest: "",
+		})
+	if err = s.guardCount(ctx, count, err, ErrUserNotFound, "marking identity email address proven"); err != nil {
+		return op.Error(err, "marking identity email address proven")
+	}
+
+	return nil
+}
+
 // MarkUserEmailAddressUnverified withdraws the proof without touching the
 // address it was given for, and answers with the user it moved.
 //

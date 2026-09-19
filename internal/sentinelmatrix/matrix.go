@@ -528,6 +528,13 @@ var Matrix = map[string]map[string]Decision{
 		// fail are one answer, and quoting its own words would say which.
 		"ErrInvalidVerificationToken": {Err: signin.ErrInvalidVerificationToken, Is: Mapped},
 
+		// A sign-in link that named nobody — expired, already followed,
+		// withdrawn, wrong, or mailed to an address its subject has left. Same
+		// construction and same reading as the row above: it wraps
+		// ErrInvalidCredentials, and it is not client-safe because quoting its
+		// own words would say which of the five happened.
+		"ErrInvalidMagicLink": {Err: signin.ErrInvalidMagicLink, Is: Mapped},
+
 		// Proven, and refused anyway. The four PermissionDenials: two statuses
 		// an operator set, and the two halves of the administrative door.
 		"ErrAdminLoginDisabled": {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
@@ -575,6 +582,11 @@ var Matrix = map[string]map[string]Decision{
 		// an empty request is a client that did not submit.
 		"ErrEmptyVerificationToken": {Err: signin.ErrEmptyVerificationToken, Is: Platform},
 
+		// A redemption presenting no token at all, which is that reading once
+		// more: it is a client that did not submit rather than a guess that
+		// missed, so it is not collapsed into ErrInvalidMagicLink.
+		"ErrEmptyMagicLinkToken": {Err: signin.ErrEmptyMagicLinkToken, Is: Platform},
+
 		// A registration that named no credential. It is a caller's mistake
 		// rather than a refusal or a wiring failure, and it is the one row here
 		// that is deliberately not collapsed into anything: the remedy is to say
@@ -599,6 +611,14 @@ var Matrix = map[string]map[string]Decision{
 		"ErrRegistrationIncomplete":     {Err: signin.ErrRegistrationIncomplete, Is: Unhandled},
 		"ErrRegistrationNotConfigured":  {Err: signin.ErrRegistrationNotConfigured, Is: Unhandled},
 		"ErrVerificationsNotConfigured": {Err: signin.ErrVerificationsNotConfigured, Is: Unhandled},
+
+		// A passwordless door on a service that was given no link store — or, for
+		// the request half, no mailer. It is wiring rather than anything a caller
+		// sent, so a 500 is the honest answer and no mapper claims it. The
+		// alternative would be answering with the silence that door gives an
+		// address nobody holds, which is a misconfiguration that looks exactly
+		// like working.
+		"ErrMagicLinksNotConfigured": {Err: signin.ErrMagicLinksNotConfigured, Is: Unhandled},
 	},
 	notificationsPkg: {
 		// The two reads' one answer. Absent, archived, and belonging to somebody

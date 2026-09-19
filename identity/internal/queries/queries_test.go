@@ -129,7 +129,7 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 		"UpdateUserPassword", "SetUserRequiresPasswordChange", "UpdateUserTwoFactorSecret",
 		"MarkUserTwoFactorSecretVerified",
 		"SetUserEmailAddressVerificationToken", "MarkUserEmailAddressVerified",
-		"MarkUserEmailAddressUnverified",
+		"MarkUserEmailAddressProven", "MarkUserEmailAddressUnverified",
 		"UpdateUserAccountStatus", "TransferAccountOwnership",
 		"RecordAccountSubscription", "SetAccountBillingStatus",
 		"SetAccountPaymentProcessorCustomerID", "MarkAccountBillingSynced",
@@ -766,6 +766,7 @@ func TestRender_VerificationColumnsMoveTogether(T *testing.T) {
 		"UpdateUser":                           true,
 		"SetUserEmailAddressVerificationToken": true,
 		"MarkUserEmailAddressVerified":         true,
+		"MarkUserEmailAddressProven":           true,
 		"MarkUserEmailAddressUnverified":       false,
 	}
 
@@ -961,7 +962,7 @@ func TestFieldWrites_StampLastUpdatedAt(T *testing.T) {
 	written := []string{
 		"UpdateUserPassword", "SetUserRequiresPasswordChange", "UpdateUserTwoFactorSecret",
 		"SetUserEmailAddressVerificationToken", "MarkUserEmailAddressVerified",
-		"MarkUserEmailAddressUnverified",
+		"MarkUserEmailAddressProven", "MarkUserEmailAddressUnverified",
 		"UpdateUserAccountStatus", "TransferAccountOwnership",
 		"RecordAccountSubscription", "SetAccountBillingStatus",
 		"SetAccountPaymentProcessorCustomerID", "MarkAccountBillingSynced",
