@@ -43,6 +43,25 @@ var (
 	// somebody; there is no anonymous one.
 	ErrEmptySubjectID = platformerrors.New("empty shredding subject ID")
 
+	// ErrSubjectValueTooLong indicates a Subject whose id or type is longer than
+	// the column that holds it — see MaxSubjectIDLength and MaxSubjectTypeLength,
+	// and the wrapped message for which one it was.
+	//
+	// It wraps errors.ErrUnrecognizedInputValue, so the platform mapper answers
+	// it as a bad request rather than a case of this package's own.
+	//
+	// The bound is in Go because the mint is an insert-ignore and MySQL's IGNORE
+	// downgrades a value too long for its column to a warning that truncates and
+	// stores it. On this table that is worse than wrong data. The pair is the
+	// primary key, so two subjects sharing a 255-byte id prefix collapse onto one
+	// row: the second mint reports zero affected, reads back the first subject's
+	// key, and encrypts under it. Shredding either of them then destroys the key
+	// the other's ciphertext depends on — the one guarantee this package exists
+	// to make. Postgres and SQLite store the columns as TEXT and would have kept
+	// the two subjects apart, so the bound is also what keeps a deployment from
+	// depending on which dialect it runs.
+	ErrSubjectValueTooLong = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "shredding subject value is too long")
+
 	// ErrSubjectShredded indicates a subject whose data key has been destroyed.
 	//
 	// It is reported by Decrypt, where it is the feature working — the
@@ -62,6 +81,24 @@ var (
 	ErrKeyMaterialMissing = platformerrors.New("shredding key row holds no wrapped key")
 )
 
+// The widths of the two columns the keys table is keyed on, and the bounds a
+// Subject is checked against before it reaches one.
+//
+// They are MySQL's numbers, because MySQL is the one that had to pick them: the
+// pair is this table's primary key, and a primary key cannot be spelled TEXT
+// there without a prefix length — which would key the table on a prefix, which
+// is the collapse the bound exists to prevent. See shredding/migrations and
+// ErrSubjectValueTooLong.
+const (
+	// MaxSubjectIDLength bounds a subject's id.
+	MaxSubjectIDLength = 255
+
+	// MaxSubjectTypeLength bounds a subject's type. It is the shorter of the two
+	// because a type is a namespace an application names a handful of, not a
+	// value it carries per subject.
+	MaxSubjectTypeLength = 64
+)
+
 type (
 	// Subject names whose data a key protects.
 	//
@@ -74,9 +111,10 @@ type (
 		// Type says what kind of principal this is — "user", "account", or
 		// whatever an application's third kind of principal is called. It may be
 		// empty, which is its own consistent namespace, but it has to be
-		// consistent.
+		// consistent. Bounded by MaxSubjectTypeLength.
 		Type string `json:"type,omitempty"`
-		// ID identifies the subject within its type. Required.
+		// ID identifies the subject within its type. Required, and bounded by
+		// MaxSubjectIDLength.
 		ID string `json:"id"`
 	}
 
@@ -171,10 +209,21 @@ type (
 	}
 )
 
-// validate reports whether the subject names anybody.
+// validate reports whether the subject names anybody, and whether what it names
+// fits the columns that hold it.
 func (s Subject) validate() error {
 	if s.ID == "" {
 		return ErrEmptySubjectID
+	}
+
+	if len(s.ID) > MaxSubjectIDLength {
+		return platformerrors.Wrapf(ErrSubjectValueTooLong,
+			"id is %d bytes, over the %d-byte limit", len(s.ID), MaxSubjectIDLength)
+	}
+
+	if len(s.Type) > MaxSubjectTypeLength {
+		return platformerrors.Wrapf(ErrSubjectValueTooLong,
+			"type is %d bytes, over the %d-byte limit", len(s.Type), MaxSubjectTypeLength)
 	}
 
 	return nil

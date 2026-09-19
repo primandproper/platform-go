@@ -157,6 +157,7 @@ func TestMappersDeclineWhatIsNotTheirs(T *testing.T) {
 			oauth2clients.ErrNilStore,
 			oauth2clients.ErrEmptyID,
 			oauth2clients.ErrEmptyClientID,
+			oauth2clients.ErrDescriptionTooLong,
 		} {
 			_, _, ok := oauth2clients.HTTPMapper.Map(err)
 			test.False(t, ok, test.Sprintf("%v is claimed here as well as by the platform", err))

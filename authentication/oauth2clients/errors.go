@@ -55,6 +55,23 @@ var (
 	// grant access to nothing they can identify.
 	ErrEmptyName = platformerrors.New("oauth2 client name is required")
 
+	// ErrDescriptionTooLong is a registration whose description is longer than
+	// MaxDescriptionLength, which is the width of the column that stores it.
+	//
+	// It wraps errors.ErrUnrecognizedInputValue, so it is answered as a bad
+	// request by the platform mapper rather than by a case of this package's
+	// own — the same reading settings takes of its own bound.
+	//
+	// The limit is enforced here rather than left to the column because the
+	// create is an insert-ignore, and MySQL's IGNORE downgrades a value too long
+	// for its column to a warning that truncates and stores it: the write
+	// reports a row affected, and the registry holds a description nobody wrote.
+	// name is TEXT on all three dialects and needs no bound; description is the
+	// exception among this table's TEXT candidates, because it takes a DEFAULT
+	// and MySQL takes no literal default on a TEXT column. See
+	// authentication/oauth2clients/migrations.
+	ErrDescriptionTooLong = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "oauth2 client description is too long")
+
 	// ErrNoRedirectURIs is a registration naming no redirect URI.
 	//
 	// At least one is required, and the reason is that the authorization server

@@ -207,6 +207,13 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyPeriod":          {Err: billing.ErrEmptyPeriod, Is: Platform},
 		"ErrEmptyProduct":         {Err: billing.ErrEmptyProduct, Is: Platform},
 		"ErrEmptyProductName":     {Err: billing.ErrEmptyProductName, Is: Platform},
+
+		// A string too long for the column that holds it. It wraps
+		// errors.ErrUnrecognizedInputValue, which errors/http already answers as
+		// a bad request and errors/grpc as InvalidArgument — and the platform
+		// mapper is asked first, so a case here would be unreachable. It is the
+		// same reading settings takes of its own bound.
+		"ErrProductValueTooLong": {Err: billing.ErrProductValueTooLong, Is: Platform},
 	},
 	dataPrivacyPkg: {
 		// A subject asking after their own export or erasure is a client. These six
@@ -438,6 +445,13 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilService":        {Err: oauth2clients.ErrNilService, Is: Platform},
 		"ErrNilStore":          {Err: oauth2clients.ErrNilStore, Is: Platform},
 		"ErrNilTransaction":    {Err: oauth2clients.ErrNilTransaction, Is: Platform},
+
+		// A description too long for the column that holds it. It is a field a
+		// caller can correct, like the four this package maps itself, and it is
+		// not among them because it wraps errors.ErrUnrecognizedInputValue and
+		// the platform mapper is asked first — a case here would be unreachable.
+		// See ErrDescriptionTooLong.
+		"ErrDescriptionTooLong": {Err: oauth2clients.ErrDescriptionTooLong, Is: Platform},
 
 		// This process's own randomness failing. There is nothing the caller did
 		// and nothing they can change, so a 500 is the honest answer and the
@@ -807,11 +821,12 @@ var Matrix = map[string]map[string]Decision{
 	},
 
 	meteringPkg: {
-		// The ingest path, which is the only path here a client is on. Five are
-		// what Usage.validate refuses a record for and the sixth is a meter the
-		// registry does not hold; all six are the caller's record being wrong
+		// The ingest path, which is the only path here a client is on. Six are
+		// what Usage.validate refuses a record for and the seventh is a meter the
+		// registry does not hold; all seven are the caller's record being wrong
 		// rather than the service being unwell.
 		"ErrEmptySubject":          {Err: metering.ErrEmptySubject, Is: Mapped},
+		"ErrSubjectTooLong":        {Err: metering.ErrSubjectTooLong, Is: Mapped},
 		"ErrEmptyIdempotencyKey":   {Err: metering.ErrEmptyIdempotencyKey, Is: Mapped},
 		"ErrIdempotencyKeyTooLong": {Err: metering.ErrIdempotencyKeyTooLong, Is: Mapped},
 		"ErrInvalidMeterName":      {Err: metering.ErrInvalidMeterName, Is: Mapped},
@@ -904,6 +919,11 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilKeyWrapper":     {Err: shredding.ErrNilKeyWrapper, Is: Platform},
 		"ErrNilPublisher":      {Err: shredding.ErrNilPublisher, Is: Platform},
 		"ErrNilStore":          {Err: shredding.ErrNilStore, Is: Platform},
+
+		// A subject id or type too long for the column the keys table is keyed
+		// on. It wraps errors.ErrUnrecognizedInputValue, so the platform mapper
+		// answers it — which is asked first, making a case here unreachable.
+		"ErrSubjectValueTooLong": {Err: shredding.ErrSubjectValueTooLong, Is: Platform},
 
 		// The two that are evidence rather than answers. A ciphertext for a
 		// subject with no key means the data and the keys table disagree —

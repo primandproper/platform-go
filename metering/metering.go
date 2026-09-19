@@ -124,6 +124,14 @@ var (
 	// boundary rather than accumulating under the empty string.
 	ErrEmptySubject = platformerrors.New("empty metering subject")
 
+	// ErrSubjectTooLong indicates usage whose subject exceeds MaxSubjectLength.
+	//
+	// Distinct from ErrEmptySubject for the reason ErrIdempotencyKeyTooLong is
+	// distinct from ErrEmptyIdempotencyKey: one caller named nobody, and the
+	// other is deriving a subject from something too long to store and needs to
+	// name the account rather than describe it.
+	ErrSubjectTooLong = platformerrors.New("metering subject too long")
+
 	// ErrEmptyIdempotencyKey indicates usage with no idempotency key.
 	//
 	// It is required, not optional. Every ingest path this package has — an HTTP
@@ -360,7 +368,8 @@ type Usage struct {
 	// once; see the package documentation on choosing one.
 	IdempotencyKey string
 
-	// Subject is the account or tenant being billed. Required.
+	// Subject is the account or tenant being billed. Required, and bounded by
+	// MaxSubjectLength.
 	Subject string
 
 	// Meter names the registered meter this record belongs to. Required.
@@ -376,6 +385,10 @@ type Usage struct {
 func (u *Usage) validate() error {
 	if u.Subject == "" {
 		return ErrEmptySubject
+	}
+
+	if len(u.Subject) > MaxSubjectLength {
+		return platformerrors.Wrapf(ErrSubjectTooLong, "subject exceeds %d bytes", MaxSubjectLength)
 	}
 
 	if u.Meter == "" {

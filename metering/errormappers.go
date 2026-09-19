@@ -61,12 +61,14 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	}
 
 	switch {
-	// The five a usage record is refused for, each message naming the field to
+	// The six a usage record is refused for, each message naming the field to
 	// go back to. They share one code because they are one thing — the record
 	// this caller sent cannot be ingested as written — and a client that wants
 	// to branch matches the sentinel, which survives the wire either way.
 	case errors.Is(err, ErrEmptySubject):
 		return httperrors.ErrValidatingRequestInput, "usage must name the subject it belongs to", true
+	case errors.Is(err, ErrSubjectTooLong):
+		return httperrors.ErrValidatingRequestInput, "usage subject is too long", true
 	case errors.Is(err, ErrInvalidMeterName):
 		return httperrors.ErrValidatingRequestInput, "usage must name a meter, and the name must be a plain identifier", true
 	case errors.Is(err, ErrEmptyIdempotencyKey):
@@ -100,12 +102,13 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	}
 
 	switch {
-	// InvalidArgument for all six, which is gRPC's own line: an argument that is
-	// bad regardless of the system's state. Every one of them is — a record with
-	// no subject, no key, a key too long, a negative quantity, a meter name that
-	// is not an identifier, or a meter name nothing declares — and none of them
-	// becomes valid by waiting or by retrying.
+	// InvalidArgument for all seven, which is gRPC's own line: an argument that
+	// is bad regardless of the system's state. Every one of them is — a record
+	// with no subject, a subject too long, no key, a key too long, a negative
+	// quantity, a meter name that is not an identifier, or a meter name nothing
+	// declares — and none of them becomes valid by waiting or by retrying.
 	case errors.Is(err, ErrEmptySubject),
+		errors.Is(err, ErrSubjectTooLong),
 		errors.Is(err, ErrInvalidMeterName),
 		errors.Is(err, ErrEmptyIdempotencyKey),
 		errors.Is(err, ErrIdempotencyKeyTooLong),

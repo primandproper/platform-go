@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/primandproper/primitives-go/v2/authentication/oauth2server"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -62,6 +63,71 @@ func TestValidateClientRefusesARowNothingCouldUse(T *testing.T) {
 		client.SecretHash = ""
 
 		test.Error(t, validateClient(client))
+	})
+}
+
+// TestValidateClientBoundsTheDescription pins the one bound this table needs in
+// Go.
+//
+// The create is an insert-ignore, and MySQL's IGNORE downgrades a value too long
+// for its column to a warning that truncates and stores it — a registration that
+// reports success and holds a description nobody wrote. description is the only
+// VARCHAR here carrying caller-supplied prose, because it takes a DEFAULT and
+// MySQL takes no literal default on a TEXT column; name and the two lists are
+// TEXT on all three dialects.
+func TestValidateClientBoundsTheDescription(T *testing.T) {
+	T.Parallel()
+
+	whole := func() *Client {
+		return &Client{
+			ID:           "row_1",
+			ClientID:     "cid_1",
+			SecretHash:   hashSecret("s3cret"),
+			Name:         "test client",
+			RedirectURIs: []string{testRedirect},
+		}
+	}
+
+	// One byte over, because one byte over is the case a limit written down as
+	// the wrong number still passes.
+	T.Run("refuses a description one byte over the column", func(t *testing.T) {
+		t.Parallel()
+
+		client := whole()
+		client.Description = strings.Repeat("d", MaxDescriptionLength+1)
+
+		err := validateClient(client)
+
+		test.ErrorIs(t, err, ErrDescriptionTooLong)
+
+		// Answered as a bad request by the platform mapper rather than by a case
+		// of this package's own — see internal/sentinelmatrix.
+		test.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
+	})
+
+	T.Run("admits a description exactly at the column", func(t *testing.T) {
+		t.Parallel()
+
+		client := whole()
+		client.Description = strings.Repeat("d", MaxDescriptionLength)
+
+		must.NoError(t, validateClient(client))
+	})
+
+	// The same bound reached through the other caller. An update supplies the
+	// descriptive fields too, and a registry that refused an over-long
+	// description at create and took one at update would be bounded by whichever
+	// call arrived.
+	T.Run("bounds an update's description as well", func(t *testing.T) {
+		t.Parallel()
+
+		over := validateDescriptive("test client",
+			strings.Repeat("d", MaxDescriptionLength+1), []string{testRedirect})
+		test.ErrorIs(t, over, ErrDescriptionTooLong)
+
+		at := validateDescriptive("test client",
+			strings.Repeat("d", MaxDescriptionLength), []string{testRedirect})
+		must.NoError(t, at)
 	})
 }
 

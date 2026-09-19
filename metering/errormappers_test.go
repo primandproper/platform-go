@@ -32,6 +32,12 @@ func TestMappers(T *testing.T) {
 			httpMsg:  "usage must name the subject it belongs to",
 			grpcCode: codes.InvalidArgument,
 		},
+		"usage whose subject is too long": {
+			err:      metering.ErrSubjectTooLong,
+			httpCode: httperrors.ErrValidatingRequestInput,
+			httpMsg:  "usage subject is too long",
+			grpcCode: codes.InvalidArgument,
+		},
 		"usage naming no meter": {
 			err:      metering.ErrInvalidMeterName,
 			httpCode: httperrors.ErrValidatingRequestInput,
@@ -185,6 +191,7 @@ func TestMappersDeclineWhatIsNotTheirs(T *testing.T) {
 func everySentinel() []error {
 	return []error{
 		metering.ErrEmptySubject,
+		metering.ErrSubjectTooLong,
 		metering.ErrInvalidMeterName,
 		metering.ErrEmptyIdempotencyKey,
 		metering.ErrIdempotencyKeyTooLong,

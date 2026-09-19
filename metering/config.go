@@ -14,8 +14,20 @@ const (
 	// MaxIdempotencyKeyLength bounds an ingest idempotency key, matching the
 	// limit Stripe publishes for the same header and the one the idempotency
 	// package uses. It is the width of the key column, so raising it here without
-	// a migration produces a truncation error rather than a longer key.
+	// a migration does not buy a longer key — it buys MySQL truncating one.
 	MaxIdempotencyKeyLength = 255
+
+	// MaxSubjectLength bounds the subject usage is recorded against, and is the
+	// width of the column that holds it on both tables.
+	//
+	// It is checked in Go for the reason the key above is, and the consequence
+	// here is the sharper of the two: both inserts are insert-ignores, and
+	// MySQL's IGNORE downgrades a value too long for its column to a warning
+	// that truncates and stores it. The totals table is keyed on the subject, so
+	// two subjects sharing a 255-byte prefix would fold into one row and one
+	// customer would be invoiced for the other's usage. See
+	// metering/migrations and ErrSubjectTooLong.
+	MaxSubjectLength = 255
 
 	// DefaultStaleness is how far behind Enforcer.Check may be when a meter names
 	// no budget of its own.

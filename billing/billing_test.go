@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -107,6 +108,87 @@ func TestProduct_validate(T *testing.T) {
 		t.Parallel()
 
 		test.ErrorIs(t, (*Product)(nil).validate(), platformerrors.ErrNilInputParameter)
+	})
+}
+
+// TestProduct_withinBounds pins the four bounds that keep MySQL's INSERT IGNORE
+// from storing a truncated product and reporting a row affected.
+//
+// Each refusal case is one byte over its column, because one byte over is the
+// case a limit written down as the wrong number still passes.
+func TestProduct_withinBounds(T *testing.T) {
+	T.Parallel()
+
+	valid := func() *Product {
+		return &Product{
+			Name:                  "pro",
+			Kind:                  KindRecurring,
+			Currency:              "USD",
+			AmountCents:           2_500,
+			BillingIntervalMonths: 1,
+		}
+	}
+
+	T.Run("each stored string is bounded by its column", func(T *testing.T) {
+		T.Parallel()
+
+		cases := []struct {
+			mutate func(*Product)
+			name   string
+		}{
+			{
+				name:   "id",
+				mutate: func(p *Product) { p.ID = strings.Repeat("i", MaxProductIDLength+1) },
+			},
+			{
+				name:   "name",
+				mutate: func(p *Product) { p.Name = strings.Repeat("n", MaxProductNameLength+1) },
+			},
+			{
+				name:   "description",
+				mutate: func(p *Product) { p.Description = strings.Repeat("d", MaxProductDescriptionLength+1) },
+			},
+			{
+				name: "external product id",
+				mutate: func(p *Product) {
+					p.ExternalProductID = strings.Repeat("x", MaxExternalProductIDLength+1)
+				},
+			},
+		}
+
+		for _, tc := range cases {
+			T.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				product := valid()
+				tc.mutate(product)
+
+				err := product.validate()
+
+				test.ErrorIs(t, err, ErrProductValueTooLong)
+
+				// Answered as a bad request by the platform mapper rather than
+				// by a case of this package's own, which is the whole reason it
+				// wraps this sentinel — see internal/sentinelmatrix.
+				test.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
+
+				// The message says which string it was, because "too long" with
+				// four candidates is a refusal the caller has to guess at.
+				test.StrContains(t, err.Error(), tc.name)
+			})
+		}
+	})
+
+	T.Run("a product exactly at each limit is admitted", func(t *testing.T) {
+		t.Parallel()
+
+		product := valid()
+		product.ID = strings.Repeat("i", MaxProductIDLength)
+		product.Name = strings.Repeat("n", MaxProductNameLength)
+		product.Description = strings.Repeat("d", MaxProductDescriptionLength)
+		product.ExternalProductID = strings.Repeat("x", MaxExternalProductIDLength)
+
+		must.NoError(t, product.validate())
 	})
 }
 

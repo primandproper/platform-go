@@ -296,7 +296,7 @@ func (s *SQLStore) UpdateClient(
 		return nil, op.Error(err, "updating oauth2 client")
 	}
 
-	if err := validateDescriptive(input.Name, input.RedirectURIs); err != nil {
+	if err := validateDescriptive(input.Name, input.Description, input.RedirectURIs); err != nil {
 		return nil, op.Error(err, "updating oauth2 client %q", id)
 	}
 
