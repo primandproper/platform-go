@@ -92,7 +92,7 @@ type Directory interface {
 // keeps that a compile-time fact rather than a sentence in the doc comment
 // above it. Nothing in this package imports identity's store otherwise, so a
 // signature that drifted would be found by the consumer who passed theirs in.
-var _ Directory = (identity.Store)(nil)
+var _ Directory = identity.Store(nil)
 
 // Mail is what a Mailer is handed once a reset has been issued and committed.
 //
