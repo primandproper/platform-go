@@ -250,7 +250,7 @@ func UserToProto(u *identity.User) *identitypb.User {
 	return &identitypb.User{
 		Id:                         u.ID,
 		Username:                   u.Username,
-		UsernameDisplay:            u.UsernameDisplay,
+		DisplayName:                u.DisplayName,
 		EmailAddress:               u.EmailAddress,
 		FirstName:                  u.FirstName,
 		LastName:                   u.LastName,
@@ -294,7 +294,7 @@ func UserFromProto(u *identitypb.User) *identity.User {
 	return &identity.User{
 		ID:                         u.GetId(),
 		Username:                   u.GetUsername(),
-		UsernameDisplay:            u.GetUsernameDisplay(),
+		DisplayName:                u.GetDisplayName(),
 		EmailAddress:               u.GetEmailAddress(),
 		FirstName:                  u.GetFirstName(),
 		LastName:                   u.GetLastName(),
@@ -672,6 +672,7 @@ func profileUpdateFromProto(in *identitypb.ProfileUpdateInput) *identity.Profile
 
 	return &identity.ProfileUpdate{
 		Username:     optionalString(in.Username),
+		DisplayName:  optionalString(in.DisplayName),
 		EmailAddress: optionalString(in.EmailAddress),
 		FirstName:    optionalString(in.FirstName),
 		LastName:     optionalString(in.LastName),

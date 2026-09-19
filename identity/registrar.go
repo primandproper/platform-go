@@ -59,8 +59,8 @@ func (s *SQLStore) CreateUser(
 	// Folded before the validation rather than after it, so the address the
 	// rule parses is the address the column receives, and before the two
 	// collision checks below, so what they ask about is what the write is
-	// about to store. A registration naming no display spelling adopts the one
-	// it submitted, which is every registration. See foldUserHandles.
+	// about to store. A registration naming no display name adopts the pre-fold
+	// spelling it submitted, which is every registration. See foldUserHandles.
 	if err := foldUserHandles(&written); err != nil {
 		return nil, op.Error(err, "creating identity user")
 	}

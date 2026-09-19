@@ -186,15 +186,18 @@ message User {
   // 18 is reserved for the avatar the file comment explains is absent.
   reserved 18;
 
-  // username_display is the same handle as the person spelled it -- "Ada" where
-  // username is "ada". Nothing is keyed on it and nothing is looked up by it;
-  // it is what a page shows. It is never empty on a user this service returns.
+  // display_name is what the person is shown as. It is free-form and unrelated
+  // to username: an accented spelling, a nickname and an emoji are all display
+  // names on a user whose handle is "renee", nothing is keyed on it, and a
+  // rename of the handle leaves it where it is. It is never empty on a user
+  // this service returns.
   //
-  // There is no input field beside it, in this message's two inputs or
-  // anywhere else: the spelling a registration or a profile save submits in
-  // their own username field is the spelling that lands here, so a client
-  // sends a handle once and the directory keeps both readings of it.
-  string username_display = 19;
+  // A registration names none and is shown under the spelling it submitted in
+  // its own username field, which is the default this column was born as.
+  // Moving it afterwards is ProfileUpdateInput.display_name, which travels
+  // separately from the username field beside it for the reason above: the two
+  // are unrelated, so sending one is not sending the other.
+  string display_name = 19;
 }
 
 // BillingAddress is where an account's invoices go.
@@ -423,6 +426,13 @@ message ProfileUpdateInput {
   optional string first_name = 3;
 
   optional string last_name = 4;
+
+  // display_name is the name the person is shown under, and it moves on its
+  // own: it is not a spelling of username, so a request carrying one and not
+  // the other changes exactly the one it named. Sent empty it clears, and a
+  // cleared display name reads back as the handle rather than as a blank --
+  // see User.display_name.
+  optional string display_name = 5;
 }
 
 // AccountUpdateInput is what an account holder may change. Neither the billing

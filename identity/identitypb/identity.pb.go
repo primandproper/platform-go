@@ -364,17 +364,20 @@ type User struct {
 	// on the 3rd", which a boolean cannot answer.
 	LastAcceptedTermsOfService *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=last_accepted_terms_of_service,json=lastAcceptedTermsOfService,proto3" json:"last_accepted_terms_of_service,omitempty"`
 	LastAcceptedPrivacyPolicy  *timestamppb.Timestamp `protobuf:"bytes,17,opt,name=last_accepted_privacy_policy,json=lastAcceptedPrivacyPolicy,proto3" json:"last_accepted_privacy_policy,omitempty"`
-	// username_display is the same handle as the person spelled it -- "Ada" where
-	// username is "ada". Nothing is keyed on it and nothing is looked up by it;
-	// it is what a page shows. It is never empty on a user this service returns.
+	// display_name is what the person is shown as. It is free-form and unrelated
+	// to username: an accented spelling, a nickname and an emoji are all display
+	// names on a user whose handle is "renee", nothing is keyed on it, and a
+	// rename of the handle leaves it where it is. It is never empty on a user
+	// this service returns.
 	//
-	// There is no input field beside it, in this message's two inputs or
-	// anywhere else: the spelling a registration or a profile save submits in
-	// their own username field is the spelling that lands here, so a client
-	// sends a handle once and the directory keeps both readings of it.
-	UsernameDisplay string `protobuf:"bytes,19,opt,name=username_display,json=usernameDisplay,proto3" json:"username_display,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// A registration names none and is shown under the spelling it submitted in
+	// its own username field, which is the default this column was born as.
+	// Moving it afterwards is ProfileUpdateInput.display_name, which travels
+	// separately from the username field beside it for the reason above: the two
+	// are unrelated, so sending one is not sending the other.
+	DisplayName   string `protobuf:"bytes,19,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *User) Reset() {
@@ -526,9 +529,9 @@ func (x *User) GetLastAcceptedPrivacyPolicy() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *User) GetUsernameDisplay() string {
+func (x *User) GetDisplayName() string {
 	if x != nil {
-		return x.UsernameDisplay
+		return x.DisplayName
 	}
 	return ""
 }
@@ -1421,11 +1424,17 @@ func (x *AccountCreationInput) GetBillingAddress() *BillingAddress {
 // that read absent as "make it empty" would have wiped every field a client
 // did not think to repeat.
 type ProfileUpdateInput struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Username      *string                `protobuf:"bytes,1,opt,name=username,proto3,oneof" json:"username,omitempty"`
-	EmailAddress  *string                `protobuf:"bytes,2,opt,name=email_address,json=emailAddress,proto3,oneof" json:"email_address,omitempty"`
-	FirstName     *string                `protobuf:"bytes,3,opt,name=first_name,json=firstName,proto3,oneof" json:"first_name,omitempty"`
-	LastName      *string                `protobuf:"bytes,4,opt,name=last_name,json=lastName,proto3,oneof" json:"last_name,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Username     *string                `protobuf:"bytes,1,opt,name=username,proto3,oneof" json:"username,omitempty"`
+	EmailAddress *string                `protobuf:"bytes,2,opt,name=email_address,json=emailAddress,proto3,oneof" json:"email_address,omitempty"`
+	FirstName    *string                `protobuf:"bytes,3,opt,name=first_name,json=firstName,proto3,oneof" json:"first_name,omitempty"`
+	LastName     *string                `protobuf:"bytes,4,opt,name=last_name,json=lastName,proto3,oneof" json:"last_name,omitempty"`
+	// display_name is the name the person is shown under, and it moves on its
+	// own: it is not a spelling of username, so a request carrying one and not
+	// the other changes exactly the one it named. Sent empty it clears, and a
+	// cleared display name reads back as the handle rather than as a blank --
+	// see User.display_name.
+	DisplayName   *string `protobuf:"bytes,5,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1484,6 +1493,13 @@ func (x *ProfileUpdateInput) GetFirstName() string {
 func (x *ProfileUpdateInput) GetLastName() string {
 	if x != nil && x.LastName != nil {
 		return *x.LastName
+	}
+	return ""
+}
+
+func (x *ProfileUpdateInput) GetDisplayName() string {
+	if x != nil && x.DisplayName != nil {
+		return *x.DisplayName
 	}
 	return ""
 }
@@ -4317,7 +4333,7 @@ var File_primandproper_platform_identity_v1_identity_proto protoreflect.FileDesc
 
 const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\n" +
-	"1primandproper/platform/identity/v1/identity.proto\x12\"primandproper.platform.identity.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\"\xc5\b\n" +
+	"1primandproper/platform/identity/v1/identity.proto\x12\"primandproper.platform.identity.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\"\xbd\b\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12#\n" +
@@ -4339,8 +4355,8 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x18password_last_changed_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\x15passwordLastChangedAt\x12\\\n" +
 	"\x1dtwo_factor_secret_verified_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\x19twoFactorSecretVerifiedAt\x12^\n" +
 	"\x1elast_accepted_terms_of_service\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\x1alastAcceptedTermsOfService\x12[\n" +
-	"\x1clast_accepted_privacy_policy\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\x19lastAcceptedPrivacyPolicy\x12)\n" +
-	"\x10username_display\x18\x13 \x01(\tR\x0fusernameDisplayJ\x04\b\x12\x10\x13R\x05scope\"\xbe\x01\n" +
+	"\x1clast_accepted_privacy_policy\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\x19lastAcceptedPrivacyPolicy\x12!\n" +
+	"\fdisplay_name\x18\x13 \x01(\tR\vdisplayNameJ\x04\b\x12\x10\x13R\x05scope\"\xbe\x01\n" +
 	"\x0eBillingAddress\x12\x14\n" +
 	"\x05line1\x18\x01 \x01(\tR\x05line1\x12\x14\n" +
 	"\x05line2\x18\x02 \x01(\tR\x05line2\x12\x12\n" +
@@ -4434,18 +4450,20 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x14AccountCreationInput\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
 	"\ttime_zone\x18\x02 \x01(\tR\btimeZone\x12[\n" +
-	"\x0fbilling_address\x18\x03 \x01(\v22.primandproper.platform.identity.v1.BillingAddressR\x0ebillingAddressR\x05scope\"\xe8\x01\n" +
+	"\x0fbilling_address\x18\x03 \x01(\v22.primandproper.platform.identity.v1.BillingAddressR\x0ebillingAddressR\x05scope\"\xa1\x02\n" +
 	"\x12ProfileUpdateInput\x12\x1f\n" +
 	"\busername\x18\x01 \x01(\tH\x00R\busername\x88\x01\x01\x12(\n" +
 	"\remail_address\x18\x02 \x01(\tH\x01R\femailAddress\x88\x01\x01\x12\"\n" +
 	"\n" +
 	"first_name\x18\x03 \x01(\tH\x02R\tfirstName\x88\x01\x01\x12 \n" +
-	"\tlast_name\x18\x04 \x01(\tH\x03R\blastName\x88\x01\x01B\v\n" +
+	"\tlast_name\x18\x04 \x01(\tH\x03R\blastName\x88\x01\x01\x12&\n" +
+	"\fdisplay_name\x18\x05 \x01(\tH\x04R\vdisplayName\x88\x01\x01B\v\n" +
 	"\t_usernameB\x10\n" +
 	"\x0e_email_addressB\r\n" +
 	"\v_first_nameB\f\n" +
 	"\n" +
-	"_last_nameR\x05scope\"\xca\x01\n" +
+	"_last_nameB\x0f\n" +
+	"\r_display_nameR\x05scope\"\xca\x01\n" +
 	"\x12AccountUpdateInput\x12\x17\n" +
 	"\x04name\x18\x01 \x01(\tH\x00R\x04name\x88\x01\x01\x12 \n" +
 	"\ttime_zone\x18\x02 \x01(\tH\x01R\btimeZone\x88\x01\x01\x12[\n" +

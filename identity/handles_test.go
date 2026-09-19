@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -34,16 +35,16 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 		registered := seedUser(t, env, store, mixed)
 
 		// The row answers with what the columns hold: the folded handle, the
-		// spelling the registration submitted beside it, and an address with
-		// no display companion at all.
+		// pre-fold spelling adopted as the display name beside it, and an
+		// address with no companion at all.
 		test.EqOp(t, "ada", registered.Username)
-		test.EqOp(t, "Ada", registered.UsernameDisplay)
+		test.EqOp(t, "Ada", registered.DisplayName)
 		test.EqOp(t, "ada@example.com", registered.EmailAddress)
 
 		read, err := store.GetUser(t.Context(), env.reader(), testScope, registered.ID)
 		must.NoError(t, err)
 		test.EqOp(t, "ada", read.Username)
-		test.EqOp(t, "Ada", read.UsernameDisplay)
+		test.EqOp(t, "Ada", read.DisplayName)
 		test.EqOp(t, "ada@example.com", read.EmailAddress)
 
 		// And every read of a user carries it, not just the keyed one: the
@@ -52,57 +53,197 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 		page, err := store.SearchUsersByUsername(t.Context(), env.reader(), testScope, "ada", nil)
 		must.NoError(t, err)
 		must.SliceLen(t, 1, page.Data)
-		test.EqOp(t, "Ada", page.Data[0].UsernameDisplay)
+		test.EqOp(t, "Ada", page.Data[0].DisplayName)
 	})
 
-	t.Run("a display spelling naming another handle is refused", func(t *testing.T) {
+	t.Run("a display name is not a spelling of the handle", func(t *testing.T) {
 		t.Parallel()
 
-		// The two are one handle in two cases, so a display that folds to some
-		// other handle is a caller writing back a value they did not finish
-		// changing — refused rather than corrected, as a mismatched scope is.
+		// The whole of the column's rule, which is that it has none. A name is
+		// decoration rather than a credential: nothing is keyed on it, nothing
+		// is looked up by it, and nothing compares it — so the accented name a
+		// person actually answers to, a word their handle does not contain,
+		// and a name with no letters in it at all are three display names
+		// rather than three mistakes.
 		store := env.newStore(t)
 
-		wrong := newUser("ada")
-		wrong.UsernameDisplay = "Grace"
-		must.ErrorIs(t, env.createUserErr(t, store, testScope, wrong), ErrUsernameDisplayMismatch)
+		// Registered under one of them, and the handle is renee throughout:
+		// what changes below is what the person is shown as, and it is never a
+		// spelling of what they sign in with.
+		renee := newUser("renee")
+		renee.DisplayName = "Renée"
 
-		ada := seedUser(t, env, store, newUser("ada"))
+		written := seedUser(t, env, store, renee)
+		test.EqOp(t, "renee", written.Username)
+		test.EqOp(t, "Renée", written.DisplayName)
 
-		stale := *ada
-		stale.Username = "grace"
-		must.ErrorIs(t, env.updateUserErr(t, store, testScope, &stale), ErrUsernameDisplayMismatch)
+		for _, name := range []string{"Fart", "🎉🎉", "Renée"} {
+			renamed := *written
+			renamed.DisplayName = name
+
+			saved, err := env.updateUser(t, store, testScope, &renamed)
+			must.NoError(t, err, must.Sprintf("display name %q", name))
+			test.EqOp(t, "renee", saved.Username)
+			test.EqOp(t, name, saved.DisplayName)
+
+			read, err := store.GetUser(t.Context(), env.reader(), testScope, written.ID)
+			must.NoError(t, err)
+			test.EqOp(t, name, read.DisplayName)
+		}
 	})
 
-	t.Run("a profile save moves the spelling without moving the handle", func(t *testing.T) {
+	t.Run("a display name survives a rename of the handle", func(t *testing.T) {
 		t.Parallel()
 
-		// What the display column is for: the person capitalised their own
-		// name, and the directory is keyed on the handle it was keyed on
-		// before. The service is the caller here because ProfileUpdate carries
-		// one username field for the two columns, and which of them a save
-		// counts as a change is its reading.
+		// The argument the old invariant made for itself, inverted. A display
+		// spelling went stale on a rename only because it was defined as a
+		// spelling of the handle; a name was never one, so renee becoming
+		// renee2 leaves Renée being shown.
+		store := env.newStore(t)
+
+		user := newUser("renee")
+		user.DisplayName = "Renée"
+		written := seedUser(t, env, store, user)
+
+		renamed := *written
+		renamed.Username = "renee2"
+
+		saved, err := env.updateUser(t, store, testScope, &renamed)
+		must.NoError(t, err)
+		test.EqOp(t, "renee2", saved.Username)
+		test.EqOp(t, "Renée", saved.DisplayName)
+	})
+
+	t.Run("a display name is refused only for being too long", func(t *testing.T) {
+		t.Parallel()
+
+		// The one rule, and it is the column's width rather than anything
+		// about names: MySQL truncates a value too long for its column where
+		// the other two store it whole, so a bound checked in Go is what keeps
+		// the three dialects answering alike. See MaxDisplayNameLength.
+		store := env.newStore(t)
+
+		tooLong := newUser("ada")
+		tooLong.DisplayName = strings.Repeat("a", MaxDisplayNameLength+1)
+		must.ErrorIs(t, env.createUserErr(t, store, testScope, tooLong), ErrDisplayNameTooLong)
+
+		atTheLimit := newUser("grace")
+		atTheLimit.DisplayName = strings.Repeat("g", MaxDisplayNameLength)
+
+		written := seedUser(t, env, store, atTheLimit)
+		test.EqOp(t, atTheLimit.DisplayName, written.DisplayName)
+
+		overOnSave := *written
+		overOnSave.DisplayName += "g"
+		must.ErrorIs(t, env.updateUserErr(t, store, testScope, &overOnSave), ErrDisplayNameTooLong)
+	})
+
+	t.Run("a profile save moves the handle and leaves the name alone", func(t *testing.T) {
+		t.Parallel()
+
+		// ProfileUpdate carries a handle and not a name. What the form submits
+		// is a spelling of the username, the column receives its fold, and the
+		// display name is the person's own — so re-capitalising a handle is no
+		// longer a change to anything, and a real rename moves one column.
 		hooks := &recordingHooks{}
 		service, _ := env.newService(t, hooks)
 
 		registration := registerAda(t, service, "ada")
-		test.EqOp(t, "ada", registration.User.UsernameDisplay)
+		test.EqOp(t, "ada", registration.User.DisplayName)
 
 		saved, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
 			&ProfileUpdate{Username: pointer.To("Ada")})
 		must.NoError(t, err)
 		test.EqOp(t, "ada", saved.Username)
-		test.EqOp(t, "Ada", saved.UsernameDisplay)
-		test.Eq(t, []string{"username"}, hooks.changed)
+		test.EqOp(t, "ada", saved.DisplayName)
+		test.SliceEmpty(t, hooks.changed)
+		test.EqOp(t, 0, hooks.ran("profile"))
 
-		// Submitted again unedited, the same form writes nothing: the
-		// comparison behind "which fields moved" folds the handle and compares
-		// the spelling as it stands.
-		again, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
-			&ProfileUpdate{Username: pointer.To("Ada")})
+		renamed, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{Username: pointer.To("Ada2")})
 		must.NoError(t, err)
-		test.EqOp(t, "Ada", again.UsernameDisplay)
+		test.EqOp(t, "ada2", renamed.Username)
+		test.EqOp(t, "ada", renamed.DisplayName)
+		test.Eq(t, []string{"username"}, hooks.changed)
+	})
+
+	t.Run("a profile save moves the name on its own", func(t *testing.T) {
+		t.Parallel()
+
+		// The other half of the same form, and the reason the two fields are
+		// two: the person is shown differently without their handle moving,
+		// and the handle moves without changing what they are shown as. A
+		// request naming both moves both, which is a request that said so
+		// rather than one field doing duty for two.
+		hooks := &recordingHooks{}
+		service, _ := env.newService(t, hooks)
+
+		registration := registerAda(t, service, "ada")
+
+		shown, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{DisplayName: pointer.To("Renée")})
+		must.NoError(t, err)
+		test.EqOp(t, "ada", shown.Username)
+		test.EqOp(t, "Renée", shown.DisplayName)
+		test.Eq(t, []string{"displayName"}, hooks.changed)
+
+		// Unedited, it writes nothing: the comparison is on the name as it
+		// stands, because nothing folds this column. The hook not running
+		// again is the assertion, rather than the change set being empty —
+		// nothing clears that between saves, so a save that writes nothing
+		// leaves the previous one's list where it was.
 		test.EqOp(t, 1, hooks.ran("profile"))
+
+		again, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{DisplayName: pointer.To("Renée")})
+		must.NoError(t, err)
+		test.EqOp(t, "Renée", again.DisplayName)
+		test.EqOp(t, 1, hooks.ran("profile"))
+
+		both, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{Username: pointer.To("Renee2"), DisplayName: pointer.To("Renée H.")})
+		must.NoError(t, err)
+		test.EqOp(t, "renee2", both.Username)
+		test.EqOp(t, "Renée H.", both.DisplayName)
+		test.Eq(t, []string{"username", "displayName"}, hooks.changed)
+	})
+
+	t.Run("a cleared display name reads back as the handle", func(t *testing.T) {
+		t.Parallel()
+
+		// Present-and-empty clears, as it does for the names beside it — but
+		// this column's read is never blank, so what a cleared one comes back
+		// as is the handle. That is the write adopting it, which is the same
+		// branch a registration naming no name takes.
+		service, _ := env.newService(t, &recordingHooks{})
+
+		registration := registerAda(t, service, "ada")
+
+		named, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{DisplayName: pointer.To("Renée")})
+		must.NoError(t, err)
+		test.EqOp(t, "Renée", named.DisplayName)
+
+		cleared, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{DisplayName: pointer.To("")})
+		must.NoError(t, err)
+		test.EqOp(t, "ada", cleared.DisplayName)
+		test.EqOp(t, "ada", cleared.Username)
+	})
+
+	t.Run("a display name over the bound is refused through the service too", func(t *testing.T) {
+		t.Parallel()
+
+		// The bound lives on the write rather than on this type, so the
+		// refusal a store caller gets is the refusal a form gets — one sentinel
+		// for the one rule, whichever door the name arrived through.
+		service, _ := env.newService(t, &recordingHooks{})
+
+		registration := registerAda(t, service, "ada")
+
+		_, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{DisplayName: pointer.To(strings.Repeat("r", MaxDisplayNameLength+1))})
+		must.ErrorIs(t, err, ErrDisplayNameTooLong)
 	})
 
 	t.Run("a handle differing only in case is taken", func(t *testing.T) {
@@ -222,17 +363,17 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 		test.NotNil(t, saved.EmailAddressVerifiedAt)
 
 		// The display column is the field's and not the Username argument's,
-		// so this caller — who shouted the handle and left the spelling alone
-		// — re-spelled nothing. A store caller who means to move it says so.
-		test.EqOp(t, "ada", saved.UsernameDisplay)
+		// so this caller — who shouted the handle and left the name alone —
+		// renamed nothing. A store caller who means to move it says so.
+		test.EqOp(t, "ada", saved.DisplayName)
 
-		respelled := *saved
-		respelled.UsernameDisplay = "ADA"
+		renamed := *saved
+		renamed.DisplayName = "ADA"
 
-		shown, err := env.updateUser(t, store, testScope, &respelled)
+		shown, err := env.updateUser(t, store, testScope, &renamed)
 		must.NoError(t, err)
 		test.EqOp(t, "ada", shown.Username)
-		test.EqOp(t, "ADA", shown.UsernameDisplay)
+		test.EqOp(t, "ADA", shown.DisplayName)
 	})
 
 	t.Run("a profile save cannot take another user's handle by re-casing it", func(t *testing.T) {
@@ -244,7 +385,7 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 
 		byUsername := *grace
 		byUsername.Username = "Ada"
-		byUsername.UsernameDisplay = "Ada"
+		byUsername.DisplayName = "Ada"
 		must.ErrorIs(t, env.updateUserErr(t, store, testScope, &byUsername), ErrUsernameTaken)
 
 		byEmail := *grace
