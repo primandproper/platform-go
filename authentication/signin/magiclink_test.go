@@ -1,6 +1,9 @@
 package signin_test
 
 import (
+	"context"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -8,6 +11,7 @@ import (
 	"github.com/primandproper/platform-go/v14/identity"
 
 	"github.com/primandproper/primitives-go/v2/authentication/argon2"
+	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
@@ -620,4 +624,199 @@ func TestMagicLinkTTL_reachesTheStore(t *testing.T) {
 	link := e.mailer.last(t).Issuance.Link
 
 	test.EqOp(t, ttl, link.ExpiresAt.Sub(link.IssuedAt))
+}
+
+// TestRedeemMagicLink_refusesALinkTheAddressMovedAwayFrom is the whole of what
+// binds a redemption's proof to a fact.
+//
+// A link demonstrates control of the inbox it was mailed to. If the subject has
+// moved to another address in the minutes it is live, that demonstration says
+// nothing about where they are now — so the link is refused rather than spent,
+// and the new address is left unproven for the mail that will actually reach it.
+// The refusal is the one every other way of failing to spend a link gets.
+func TestRedeemMagicLink_refusesALinkTheAddressMovedAwayFrom(t *testing.T) {
+	t.Parallel()
+
+	e := newMagicLinkEnv(t)
+
+	must.NoError(t, e.svc.RequestMagicLink(t.Context(), testScope, e.user.EmailAddress))
+	token := redeemToken(t, e)
+
+	moved := e.changeEmailAddress(t, e.user, "jane.elsewhere@example.com")
+	must.EqOp(t, "jane.elsewhere@example.com", moved.EmailAddress)
+
+	_, err := e.svc.RedeemMagicLink(t.Context(), testScope,
+		&signin.MagicLinkCredentials{Token: token})
+
+	test.ErrorIs(t, err, signin.ErrInvalidMagicLink)
+	test.ErrorIs(t, err, signin.ErrInvalidCredentials)
+
+	// And the address the mail never reached is still unproven, which is the
+	// direction this check exists for: the other one marks an inbox nobody has
+	// opened as reachable.
+	after, err := e.store.GetUser(t.Context(), e.client.Reader(), testScope, e.user.ID)
+	must.NoError(t, err)
+
+	test.Nil(t, after.EmailAddressVerifiedAt)
+}
+
+// TestRedeemMagicLink_admitsALinkForTheSameAddressSpelledOtherwise is the other
+// half of that check, and the reason the comparison is made on the folded form.
+//
+// A request naming the address in another case is the same address, so the link
+// it mints redeems.
+func TestRedeemMagicLink_admitsALinkForTheSameAddressSpelledOtherwise(t *testing.T) {
+	t.Parallel()
+
+	e := newMagicLinkEnv(t)
+
+	must.NoError(t, e.svc.RequestMagicLink(t.Context(), testScope,
+		strings.ToUpper(e.user.EmailAddress)))
+
+	signedIn, err := e.svc.RedeemMagicLink(t.Context(), testScope,
+		&signin.MagicLinkCredentials{Token: redeemToken(t, e)})
+
+	must.NoError(t, err)
+	test.EqOp(t, e.user.ID, signedIn.Principal.User.ID)
+}
+
+// countingVerifications is a Verifications that records how often the proof
+// write was reached.
+//
+// The assertion it serves cannot be made on the column: this module's stores
+// read a real clock, SQLite renders a stamp to whole seconds, and two writes a
+// millisecond apart would leave a value that had moved and did not look like it.
+// Counting the call says what the column cannot.
+type countingVerifications struct {
+	signin.Verifications
+
+	proven atomic.Int64
+}
+
+func (v *countingVerifications) MarkUserEmailAddressProven(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID string,
+) error {
+	v.proven.Add(1)
+
+	return v.Verifications.MarkUserEmailAddressProven(ctx, tx, scope, userID)
+}
+
+// TestRedeemMagicLink_leavesAProvenAddressAlone pins what the proof column
+// means.
+//
+// It records when the address was proven, not when somebody last followed a
+// link. So the write is made where there is something to prove and skipped where
+// there is not: the registrant's first redemption stamps the address, and the
+// second one — by which time they are verified and in good standing — writes
+// nothing, leaving an operator reading that column the answer to the question
+// its name asks.
+func TestRedeemMagicLink_leavesAProvenAddressAlone(t *testing.T) {
+	t.Parallel()
+
+	counting := &countingVerifications{}
+
+	e := newMagicLinkEnv(t, signin.WithVerifications(counting))
+	counting.Verifications = e.store
+
+	registrant := e.registerUnverified(t, "newcomer")
+
+	// The first redemption is the one the door exists for, and it proves.
+	must.NoError(t, e.svc.RequestMagicLink(t.Context(), testScope, registrant.EmailAddress))
+
+	_, err := e.svc.RedeemMagicLink(t.Context(), testScope,
+		&signin.MagicLinkCredentials{Token: redeemToken(t, e)})
+	must.NoError(t, err)
+
+	must.EqOp(t, int64(1), counting.proven.Load())
+
+	proven, err := e.store.GetUser(t.Context(), e.client.Reader(), testScope, registrant.ID)
+	must.NoError(t, err)
+	must.NotNil(t, proven.EmailAddressVerifiedAt)
+
+	// The second finds the address already proven and writes nothing.
+	must.NoError(t, e.svc.RequestMagicLink(t.Context(), testScope, registrant.EmailAddress))
+
+	_, err = e.svc.RedeemMagicLink(t.Context(), testScope,
+		&signin.MagicLinkCredentials{Token: redeemToken(t, e)})
+	must.NoError(t, err)
+
+	test.EqOp(t, int64(1), counting.proven.Load())
+
+	after, err := e.store.GetUser(t.Context(), e.client.Reader(), testScope, registrant.ID)
+	must.NoError(t, err)
+
+	must.NotNil(t, after.EmailAddressVerifiedAt)
+	test.True(t, proven.EmailAddressVerifiedAt.Equal(*after.EmailAddressVerifiedAt),
+		test.Sprintf("proof moved from %v to %v", proven.EmailAddressVerifiedAt, after.EmailAddressVerifiedAt))
+}
+
+// TestRevokeMagicLinksForSubject_withdrawsWhatIsOutstanding is the door an
+// operator disabling an account runs and an erasure calls.
+//
+// Both outstanding links stop working, and the count says how many there were.
+func TestRevokeMagicLinksForSubject_withdrawsWhatIsOutstanding(t *testing.T) {
+	t.Parallel()
+
+	e := newMagicLinkEnv(t)
+
+	must.NoError(t, e.svc.RequestMagicLink(t.Context(), testScope, e.user.EmailAddress))
+	first := redeemToken(t, e)
+
+	must.NoError(t, e.svc.RequestMagicLink(t.Context(), testScope, e.user.EmailAddress))
+	second := redeemToken(t, e)
+
+	revoked, err := e.svc.RevokeMagicLinksForSubject(t.Context(), testScope, e.user.ID)
+	must.NoError(t, err)
+	test.EqOp(t, int64(2), revoked)
+
+	for _, token := range []string{first, second} {
+		_, err = e.svc.RedeemMagicLink(t.Context(), testScope,
+			&signin.MagicLinkCredentials{Token: token})
+
+		test.ErrorIs(t, err, signin.ErrInvalidMagicLink)
+	}
+}
+
+// TestRevokeMagicLinksForSubject_refusals covers the three answers that are not
+// a count: a service with no store, a scope that will not validate, and a
+// revocation naming nobody.
+//
+// A subject who never asked for a link is deliberately not among them — it is
+// zero and no error, because there is nothing wrong with a person holding none.
+func TestRevokeMagicLinksForSubject_refusals(T *testing.T) {
+	T.Parallel()
+
+	T.Run("no store configured", func(t *testing.T) {
+		t.Parallel()
+
+		e := newEnv(t)
+
+		_, err := e.svc.RevokeMagicLinksForSubject(t.Context(), testScope, e.user.ID)
+
+		test.ErrorIs(t, err, signin.ErrMagicLinksNotConfigured)
+	})
+
+	T.Run("no user", func(t *testing.T) {
+		t.Parallel()
+
+		e := newMagicLinkEnv(t)
+
+		_, err := e.svc.RevokeMagicLinksForSubject(t.Context(), testScope, "")
+
+		test.ErrorIs(t, err, signin.ErrEmptyUserID)
+	})
+
+	T.Run("a subject holding none", func(t *testing.T) {
+		t.Parallel()
+
+		e := newMagicLinkEnv(t)
+
+		revoked, err := e.svc.RevokeMagicLinksForSubject(t.Context(), testScope, e.user.ID)
+
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), revoked)
+	})
 }

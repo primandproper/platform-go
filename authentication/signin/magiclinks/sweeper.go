@@ -22,11 +22,12 @@ const backgroundSweepFailure = "background sweep of collectable sign-in link row
 // Sweep removes every row past its purge deadline, reporting how many it
 // removed.
 //
-// It is not what makes a sign-in link stop working — the exchange's own guard
+// It is not what makes a sign-in link stop working — the redemption's own guard
 // decides that against the deadline in the row, so a row this has not reached yet
 // is already refused. What it does is stop the table growing by a row for every
-// exchange ever made, which under rotation is a row per refresh rather than a row
-// per sign-in.
+// link ever mailed, which is a row per request rather than a row per sign-in:
+// asking again mints another one and leaves the first standing, so the rows
+// outnumber the arrivals.
 //
 // The purge deadline is later than the expiry, and the gap is load-bearing rather
 // than tidy: a row collected at its own expiry can no longer be told from a row

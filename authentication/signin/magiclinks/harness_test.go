@@ -23,8 +23,14 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// The person most of these tests mail a link to.
-const testSubject = "user_01"
+// The person most of these tests mail a link to, and the address the mail goes
+// to. The address is folded, as signin folds it before minting: this column is
+// compared for equality a layer up, so a test that stored an unfolded one would
+// be exercising a row the service never writes.
+const (
+	testSubject = "user_01"
+	testAddress = "jane@example.com"
+)
 
 // testTTL is the lifetime a mint asks for unless a test wants another.
 //
@@ -186,8 +192,9 @@ func issue(tb testing.TB, store *SQLStore) *signin.MagicLinkIssuance {
 	tb.Helper()
 
 	issuance, err := issueFor(tb, store, testScope(), &signin.MagicLinkRequest{
-		TTL:       testTTL,
-		SubjectID: testSubject,
+		TTL:          testTTL,
+		SubjectID:    testSubject,
+		EmailAddress: testAddress,
 	})
 	must.NoError(tb, err)
 	must.NotNil(tb, issuance)

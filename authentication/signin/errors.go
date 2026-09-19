@@ -222,12 +222,15 @@ var (
 	ErrMagicLinksNotConfigured = platformerrors.New("no sign-in link store is configured")
 
 	// ErrInvalidMagicLink indicates a sign-in link that named nobody: expired,
-	// already followed, withdrawn, or simply wrong.
+	// already followed, withdrawn, simply wrong, or mailed to an address its
+	// subject has since moved away from.
 	//
-	// The four are one answer, for the reason ErrInvalidVerificationToken
+	// The five are one answer, for the reason ErrInvalidVerificationToken
 	// collapses its four — the remedy is the same in every case, which is to ask
 	// for another mail, and telling them apart tells whoever is guessing which
-	// guesses are getting warm. What is told apart reaches the span.
+	// guesses are getting warm. The last of them would say more than the rest:
+	// told apart, it says a token was real and names a person who has moved. What
+	// is told apart reaches the span.
 	//
 	// It wraps ErrInvalidCredentials, so it reads on both transports exactly as a
 	// wrong password does.

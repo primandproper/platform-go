@@ -145,8 +145,9 @@ func WithSecretBytes(count int) Option {
 // it, and the split is the same one every retention window in this module makes:
 // how long a credential works is policy, and how long the evidence that it
 // existed is kept is storage. What this one buys is stated on DefaultRetention —
-// shortening it to zero would not shorten any sign-in, it would switch reuse
-// detection off.
+// shortening it to zero would not shorten any sign-in, it would take away the
+// only thing that can still tell "that link was already used" from "no such
+// link".
 func WithRetention(retention time.Duration) Option {
 	return func(o *options) {
 		if retention > 0 {
@@ -159,13 +160,14 @@ func WithRetention(retention time.Duration) Option {
 // deadline, every interval, until ctx is done.
 //
 // Unlike a cache, a table does not reclaim its own expired rows, and without a
-// sweep this one grows by a row for every token ever minted — which, under
-// rotation, is a row per refresh rather than a row per sign-in. Running it is not
-// optional in any long-lived deployment; what is optional is running it here
-// rather than from a scheduler that calls Sweep, which is the better answer for a
-// fleet — one sweeper, not one per replica.
+// sweep this one grows by a row for every link ever mailed — which is a row per
+// request rather than a row per sign-in, since asking again mints another one
+// and leaves the first standing. Running it is not optional in any long-lived
+// deployment; what is optional is running it here rather than from a scheduler
+// that calls Sweep, which is the better answer for a fleet — one sweeper, not
+// one per replica.
 //
-// It is not what makes a token stop working. That is the exchange's own guard,
+// It is not what makes a link stop working. That is the redemption's own guard,
 // so a row this has not reached yet is already refused.
 //
 // The context bounds the goroutine's life. Passing a nil context or a

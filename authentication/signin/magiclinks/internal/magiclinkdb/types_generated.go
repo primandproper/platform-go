@@ -19,23 +19,25 @@ type GetMagicLinkParams struct {
 
 // GetMagicLinkRow is one row of GetMagicLink's result.
 type GetMagicLinkRow struct {
-	Scope      tenancy.Scope
-	SubjectID  string
-	IssuedAt   time.Time
-	ExpiresAt  time.Time
-	PurgeAfter time.Time
-	RedeemedAt *time.Time
-	RevokedAt  *time.Time
+	Scope        tenancy.Scope
+	SubjectID    string
+	EmailAddress string
+	IssuedAt     time.Time
+	ExpiresAt    time.Time
+	PurgeAfter   time.Time
+	RedeemedAt   *time.Time
+	RevokedAt    *time.Time
 }
 
 // InsertMagicLinkParams are the arguments to InsertMagicLink.
 type InsertMagicLinkParams struct {
-	Hash       string
-	Scope      tenancy.Scope
-	SubjectID  string
-	IssuedAt   time.Time
-	ExpiresAt  time.Time
-	PurgeAfter time.Time
+	Hash         string
+	Scope        tenancy.Scope
+	SubjectID    string
+	EmailAddress string
+	IssuedAt     time.Time
+	ExpiresAt    time.Time
+	PurgeAfter   time.Time
 }
 
 // RedeemMagicLinkParams are the arguments to RedeemMagicLink.

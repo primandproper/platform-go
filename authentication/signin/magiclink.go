@@ -70,7 +70,9 @@ type MagicLinkStore interface {
 	// secret exactly once.
 	//
 	// It does not check that the subject exists — this store reads no user table
-	// — and it does not send anything. Both are the service's.
+	// — and it does not send anything. Both are the service's. The address on the
+	// request is written down and never read by the store: it is the record of
+	// where the mail went, which is what Redeem's caller compares against.
 	//
 	// Issuing again does not withdraw what is outstanding. Somebody who asks for
 	// a link twice and then opens the first message has a link that works, which
@@ -89,7 +91,7 @@ type MagicLinkStore interface {
 	) (*MagicLinkIssuance, error)
 
 	// Redeem spends a secret, atomically, and answers with the link it spent,
-	// carrying the subject the sign-in is for.
+	// carrying the subject the sign-in is for and the address it was mailed to.
 	//
 	// A nil error is a decision rather than an observation: it means this caller,
 	// and no other, holds the right to sign that subject in. Do it in the same
@@ -111,13 +113,14 @@ type MagicLinkStore interface {
 	// reports how many it withdrew.
 	//
 	// It is what an account being disabled wants, what somebody saying "that
-	// wasn't me" needs, and what an erasure is built on. It is deliberately not
-	// what a successful redemption calls: a link that is still outstanding is
-	// exposed exactly as much after somebody signs in as it was before, and
-	// burning it would cost a person the second mail they asked for without
-	// closing anything. The flow that does withdraw on completion is
-	// passwordreset's, and it withdraws because the password it was mailed for
-	// has changed underneath it.
+	// wasn't me" needs, and what an erasure is built on;
+	// [Service.RevokeMagicLinksForSubject] is the door those callers reach it
+	// through. It is deliberately not what a successful redemption calls: a link
+	// that is still outstanding is exposed exactly as much after somebody signs
+	// in as it was before, and burning it would cost a person the second mail
+	// they asked for without closing anything. The flow that does withdraw on
+	// completion is passwordreset's, and it withdraws because the password it
+	// was mailed for has changed underneath it.
 	//
 	// Zero is not an error: somebody who never asked for a link holds none.
 	RevokeForSubject(
@@ -133,8 +136,9 @@ type (
 	//
 	// The token itself is not on it, and there is no field it could go in: what
 	// is stored is a digest, and the secret exists once, in the MagicLinkIssuance
-	// that produced it. A MagicLink read back from the store is therefore safe to
-	// log and to keep.
+	// that produced it. A MagicLink read back from the store carries nothing that
+	// redeems anything — what it does carry is the address the mail went to, so
+	// it is a record to keep rather than a line to log.
 	MagicLink struct {
 		_ struct{} `json:"-"`
 
@@ -161,6 +165,23 @@ type (
 		// outside identity uses it unchanged.
 		SubjectID string `json:"belongsToUser"`
 
+		// EmailAddress is where the mail went, folded the way the directory folds
+		// a handle.
+		//
+		// It is what makes the proof a redemption writes a proof of something:
+		// this link demonstrates control of this inbox and of no other, so
+		// [Service.RedeemMagicLink] compares it against the address the subject
+		// holds at redemption and refuses a link they have since moved away
+		// from. Without it a redemption would stamp whichever address the
+		// directory row happens to carry by then, which is not the one anybody
+		// reached.
+		//
+		// It is in plain rather than digested, for the reason the store's own
+		// column documentation gives: a digest is worth something against the
+		// token's thirty-two bytes and nothing against an address somebody can
+		// enumerate.
+		EmailAddress string `json:"emailAddress"`
+
 		// Scope is whose directory the link was minted in.
 		Scope tenancy.Scope `json:"scope"`
 	}
@@ -172,6 +193,12 @@ type (
 
 		// SubjectID is the person the link will sign in.
 		SubjectID string `json:"belongsToUser"`
+
+		// EmailAddress is where the mail is going, and the store writes it down
+		// exactly as it is given. Hand it the same form the redemption will
+		// compare against — for this service, the directory's folded handle —
+		// because a second normalization is one free to disagree with the first.
+		EmailAddress string `json:"emailAddress"`
 
 		// TTL is how long the link stays redeemable. It arrives on the request
 		// rather than being a store default for the reason the refresh token's
@@ -284,10 +311,11 @@ func (f MagicLinkMailerFunc) SendMagicLink(ctx context.Context, mail *MagicLinkM
 // account enumerator built out of a feature meant to protect accounts, and the
 // consumer's own response must not undo that by saying more than this did.
 //
-// The floor is why this returns before its own deadline only when something
-// actually broke. A store that will not write and a mailer that will not send
-// are this service's failures rather than facts about the address, so they are
-// reported as themselves.
+// Every path is held to the floor, the ones that report an error included. What
+// distinguishes those is what comes back rather than when: a store that will not
+// write and a mailer that will not send are this service's failures rather than
+// facts about the address, so they are reported as themselves — and padded all
+// the same, because an error returned early is as good a signal as a nil one.
 //
 // # Who gets one
 //
@@ -382,7 +410,13 @@ func (s *Service) RequestMagicLink(
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
 		issuance, err = s.magicLinks.Issue(ctx, tx, scope, &MagicLinkRequest{
 			SubjectID: user.ID,
-			TTL:       s.magicLinkTTL,
+			// The row's address comes off the user rather than off the argument,
+			// so that what is recorded is where the mail is actually going: the
+			// mailer below is handed this user, and a caller who typed an
+			// equivalent-but-differently-spelled address would otherwise leave a
+			// row the redemption's comparison could not match.
+			EmailAddress: identity.FoldHandle(user.EmailAddress),
+			TTL:          s.magicLinkTTL,
 		})
 
 		return err
@@ -406,12 +440,26 @@ func (s *Service) RequestMagicLink(
 //
 // # What it proves, and what follows from it
 //
-// Control of the inbox the account was registered with, which is the same fact
+// Control of the inbox the link was mailed to, which is the same fact
 // [Service.VerifyEmailAddress] exists to establish. So this door establishes it:
-// a redemption stamps the address proven and promotes a user out of
+// a redemption stamps that address proven, where it was not already, and
+// promotes a user out of
 // [github.com/primandproper/platform-go/v14/identity.StatusUnverified], through
 // the same [Service.promote] the verification door uses and in the transaction
 // that signs them in.
+//
+// "The inbox the link was mailed to" is the whole of what it proves, so the
+// redemption checks that it is still the subject's address and refuses the link
+// otherwise. A subject who changed address in the minutes a link is live is a
+// subject whose outstanding links proved something about an inbox that is no
+// longer theirs, and a redemption that skipped the check would stamp the new
+// address proven on the strength of a mail sent to the old one — the one
+// direction a verification flow must not fail in. [MagicLink.EmailAddress] is
+// the recorded half of that comparison.
+//
+// An address already proven is not stamped again. The column says when it was
+// proven, and a write on every redemption would quietly turn it into when
+// somebody last followed a link.
 //
 // The alternative was two mails proving one thing. A passwordless registrant
 // would have had to answer the registration link and then ask for a sign-in
@@ -436,8 +484,9 @@ func (s *Service) RequestMagicLink(
 // enrolled against.
 //
 // The refusals, collapsed. Every way of failing to spend a link is
-// [ErrInvalidMagicLink]; a wrong second-factor code is [ErrInvalidCredentials],
-// exactly as it is at the password door. What is told apart is on the span.
+// [ErrInvalidMagicLink] — the store's four, and the address that moved — and
+// a wrong second-factor code is [ErrInvalidCredentials], exactly as it is at
+// the password door. What is told apart is on the span.
 //
 // The minting, whole. The same family is minted, the same refresh token where a
 // store is configured, the same [Hooks.AfterAuthenticate] and
@@ -563,6 +612,22 @@ func (s *Service) redeem(
 		return nil, refusal(op, attempt, statusRefusal(user))
 	}
 
+	// The address the link was mailed to, against the one the subject holds now.
+	// A link demonstrates control of one inbox, so a subject who has changed
+	// address since it was minted is somebody this link can no longer speak for
+	// — and the proof below would otherwise stamp an address nobody has reached.
+	//
+	// Refusing the whole redemption rather than only the proof is the stronger of
+	// the two readings and the one the flow can state: a person whose address
+	// changed because the old inbox was lost is a person whose old links should
+	// stop working, and a sign-in granted on an inbox they have walked away from
+	// is the thing they walked away from it to prevent. What it costs is a mail
+	// asked for and then superseded, which is one more request at the new
+	// address.
+	if link.EmailAddress != identity.FoldHandle(user.EmailAddress) {
+		return nil, refusal(op, attempt, errMagicLinkAddressChanged)
+	}
+
 	if err = s.verifySecondFactor(ctx, user, credentials.TOTPCode, false); err != nil {
 		return nil, refusal(op, attempt, err)
 	}
@@ -570,8 +635,18 @@ func (s *Service) redeem(
 	// The proof and the promotion, and the order matters: the principal below is
 	// resolved after them, so a registrant signs in as somebody in good standing
 	// rather than as somebody the directory would refuse.
-	if err = s.verifications.MarkUserEmailAddressProven(ctx, tx, scope, user.ID); err != nil {
-		return nil, err
+	//
+	// The proof is written only where there is something to prove. An address
+	// already stamped is not stamped again, because the column records when it
+	// was proven rather than when somebody last followed a link, and a write on
+	// every redemption would turn the one into the other for anybody who signs
+	// in this way twice. It would also clear the outstanding registration token
+	// of a user who by definition holds none — identity moves the stamp and the
+	// digest together, so a proven address has nothing outstanding to clear.
+	if !user.EmailAddressVerified() {
+		if err = s.verifications.MarkUserEmailAddressProven(ctx, tx, scope, user.ID); err != nil {
+			return nil, err
+		}
 	}
 
 	if err = s.promote(ctx, tx, scope, user.ID, true); err != nil {
@@ -607,6 +682,17 @@ func (s *Service) redeem(
 
 	return signIn, s.hooks.AfterIssueToken(ctx, tx, scope, signIn)
 }
+
+// errMagicLinkAddressChanged is why a redemption is refused when the link was
+// mailed to an address its subject no longer holds.
+//
+// It is unexported and wraps [ErrInvalidMagicLink] because it is the fifth way
+// of failing to spend a link and the caller is told what the other four are
+// told: a refusal spelled apart here would say, to whoever is presenting
+// guesses, that a token was real and its owner has moved. What tells it apart is
+// the span, which is where the other four are told apart too.
+var errMagicLinkAddressChanged = platformerrors.Wrap(ErrInvalidMagicLink,
+	"sign-in link was mailed to an address its subject no longer holds")
 
 // refusal records why a redemption was refused and returns what the caller is
 // told.
@@ -695,4 +781,64 @@ func (s *Service) padTo(ctx context.Context, op observability.Operation, deadlin
 	if err := s.clk.Sleep(ctx, remaining); err != nil {
 		op.SpanOnly(padKey, false)
 	}
+}
+
+// RevokeMagicLinksForSubject withdraws every outstanding sign-in link one person
+// holds, and reports how many it withdrew.
+//
+// It is what an operator disabling an account runs and what a data erasure
+// calls, which is the pair [Service.RevokeRefreshTokensForSubject] serves for
+// the other credential a sign-in leaves behind. The two are separate doors
+// because they withdraw different things and a consumer may hold a store for one
+// and not the other; a deployment doing both calls both.
+//
+// It is deliberately not called by a successful redemption. A link still in an
+// inbox is exposed exactly as much after somebody signs in as it was before, and
+// burning the rest would cost them the second mail they asked for while closing
+// nothing — see [MagicLinkStore.RevokeForSubject], where that reading is argued
+// against passwordreset's opposite one.
+//
+// What it does not do is end the sign-ins those links already produced. A link
+// that has been followed is spent, and the session it minted is a refresh token
+// family — so "stop this person signing in with what was mailed to them" and
+// "sign this person out" are two calls, in that order, and an operator who makes
+// only this one has closed the door without emptying the room.
+//
+// A person who never asked for a link is zero and no error. It requires
+// [WithMagicLinkStore] and refuses with [ErrMagicLinksNotConfigured] until it has
+// one — a mailer is not needed, because withdrawing sends nothing.
+func (s *Service) RevokeMagicLinksForSubject(
+	ctx context.Context,
+	scope tenancy.Scope,
+	userID string,
+) (revoked int64, err error) {
+	ctx, op, done := s.begin(ctx, opRevokeMagicLinksSubject,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, userID),
+	)
+	defer func() { done(err) }()
+
+	if s.magicLinks == nil {
+		return 0, op.Error(ErrMagicLinksNotConfigured, "revoking a subject's sign-in links")
+	}
+
+	if err = scope.Validate(); err != nil {
+		return 0, op.Error(err, "checking the scope a subject's sign-in links were revoked in")
+	}
+
+	if userID == "" {
+		return 0, op.Error(ErrEmptyUserID, "reading the subject whose sign-in links are revoked")
+	}
+
+	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
+		var txErr error
+
+		revoked, txErr = s.magicLinks.RevokeForSubject(ctx, tx, scope, userID)
+
+		return txErr
+	}); err != nil {
+		return 0, op.Error(err, "revoking a subject's sign-in links")
+	}
+
+	return revoked, nil
 }

@@ -401,6 +401,32 @@ func (e *env) setStatus(t *testing.T, status identity.AccountStatus, explanation
 	}))
 }
 
+// changeEmailAddress moves a user to another address the way a profile update
+// does, and answers with the row it left behind.
+//
+// It goes through identity.Store.UpdateUser rather than writing the column,
+// because what the tests using it turn on is the pair of columns that write
+// moves with the address: a changed address is an unproven address with no
+// outstanding token, and a test that set the address alone would be asserting
+// against a row this module cannot produce.
+func (e *env) changeEmailAddress(t *testing.T, user *identity.User, address string) *identity.User {
+	t.Helper()
+
+	var updated *identity.User
+
+	must.NoError(t, e.client.WithTransaction(t.Context(), func(tx database.Tx) error {
+		moved := *user
+		moved.EmailAddress = address
+
+		var err error
+		updated, err = e.store.UpdateUser(t.Context(), tx, testScope, &moved)
+
+		return err
+	}))
+
+	return updated
+}
+
 // enrollTOTP gives the registered user a proven second factor and returns its
 // secret.
 func (e *env) enrollTOTP(t *testing.T) string {

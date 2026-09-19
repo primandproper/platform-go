@@ -122,12 +122,24 @@ func TestIssue_refusals(T *testing.T) {
 		test.ErrorIs(t, err, ErrEmptySubjectID)
 	})
 
+	T.Run("no address", func(t *testing.T) {
+		t.Parallel()
+
+		store, _ := newTestStore(t)
+
+		_, err := issueFor(t, store, testScope(),
+			&signin.MagicLinkRequest{SubjectID: testSubject, TTL: testTTL})
+
+		test.ErrorIs(t, err, ErrEmptyEmailAddress)
+	})
+
 	T.Run("no lifetime", func(t *testing.T) {
 		t.Parallel()
 
 		store, _ := newTestStore(t)
 
-		_, err := issueFor(t, store, testScope(), &signin.MagicLinkRequest{SubjectID: testSubject})
+		_, err := issueFor(t, store, testScope(),
+			&signin.MagicLinkRequest{SubjectID: testSubject, EmailAddress: testAddress})
 
 		test.ErrorIs(t, err, ErrNonPositiveLifetime)
 	})
@@ -511,7 +523,7 @@ func TestSweep_crossesEveryScope(t *testing.T) {
 	store, clk := newTestStore(t, WithRetention(time.Minute))
 
 	for _, scope := range []tenancy.Scope{testScope(), tenancy.Of("tenant_b"), tenancy.Global()} {
-		_, err := issueFor(t, store, scope, &signin.MagicLinkRequest{TTL: testTTL, SubjectID: testSubject})
+		_, err := issueFor(t, store, scope, &signin.MagicLinkRequest{TTL: testTTL, SubjectID: testSubject, EmailAddress: testAddress})
 		must.NoError(t, err)
 	}
 
@@ -636,4 +648,26 @@ func (g *constantGenerator) GenerateBase64EncodedString(context.Context, int) (s
 
 func (g *constantGenerator) GenerateRawBytes(context.Context, int) ([]byte, error) {
 	return []byte(g.secret), nil
+}
+
+// TestIssue_recordsTheAddressTheMailWentTo pins the column a redemption's proof
+// rests on.
+//
+// The store neither folds the address nor reads anything from it — it is the
+// caller's record of where the mail went, and it comes back off the redemption
+// exactly as it was written, because the comparison a layer up is an equality
+// against a value the service normalized before it got here.
+func TestIssue_recordsTheAddressTheMailWentTo(t *testing.T) {
+	t.Parallel()
+
+	store, _ := newTestStore(t)
+
+	issuance := issue(t, store)
+	must.EqOp(t, testAddress, issuance.Link.EmailAddress)
+
+	link, err := redeem(t, store, testScope(), issuance.Secret)
+
+	must.NoError(t, err)
+	test.EqOp(t, testAddress, link.EmailAddress)
+	test.EqOp(t, testSubject, link.SubjectID)
 }

@@ -60,6 +60,13 @@ prove an address sets somebody's password.
 
 # Two identifier columns, where the refresh token store has four
 
+The address beside them is not a third. It names no row and resolves nothing: it
+is where the mail went, recorded because a link proves control of one inbox and
+of no other, so a redemption can be refused when its subject has moved to
+another address. [signin.Service.RedeemMagicLink] is where that comparison is
+made and where what it prevents is argued; this store writes the value down and
+hands it back without reading anything out of it.
+
 There is no family_id: a link is not a login, it is the thing that begins one,
 and the family is minted by the service at redemption exactly as it is for a
 password sign-in. There is no active_account_id: a password sign-in names the
@@ -71,8 +78,11 @@ administrative sign-in link — see [signin.Service.RedeemMagicLink].
 # What this store does not do
 
 It reads no user table, so it does not check that a subject exists, does not
-check their standing, and does not know whether they hold a second factor. All
-three are the service's, on the transaction this store's spend runs in.
+check their standing, does not know whether they hold a second factor, and does
+not compare the address it recorded against the one that subject holds now. All
+four are the service's, on the transaction this store's spend runs in — the
+last of them necessarily so, since the other side of that comparison is in a
+table this package cannot see.
 
 It sends nothing. What a link's URL looks like, where it points, what the mail
 says and who it comes from are the consumer's, through

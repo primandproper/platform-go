@@ -94,6 +94,11 @@ const (
 	// anybody signs in.
 	opRequestMagicLink = "request_magic_link"
 	opRedeemMagicLink  = "redeem_magic_link"
+	// Withdrawing somebody's outstanding links is not part of that series: it is
+	// what disabling an account and erasing a subject do, so it answers the
+	// question the refresh token revocation beside it answers rather than the
+	// one the two doors above do.
+	opRevokeMagicLinksSubject = "revoke_magic_links_for_subject"
 
 	//nolint:gosec // G101: these are instrument labels naming two operations, not credentials.
 	opRefreshTOTPSecret = "refresh_totp_secret"

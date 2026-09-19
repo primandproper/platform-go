@@ -15,11 +15,11 @@ import (
 // disagrees with the client it is paired with produces syntactically valid SQL
 // the server rejects at runtime.
 //
-// It carries no token lifetime either. How long a refresh token lives is
-// signin's WithMagicLinkTTL and arrives on each mint, and a second copy of it
-// here would be the value nobody passed competing with the value somebody chose.
-// The retention window past that deadline is an option rather than a field for
-// the reason WithRetention gives.
+// It carries no token lifetime either. How long a sign-in link lives is signin's
+// WithMagicLinkTTL and arrives on each mint, and a second copy of it here would
+// be the value nobody passed competing with the value somebody chose. The
+// retention window past that deadline is an option rather than a field for the
+// reason WithRetention gives.
 type Config struct {
 	_ struct{} `json:"-" yaml:"-"`
 

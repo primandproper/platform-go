@@ -32,7 +32,9 @@ var TableNames = []string{LinksTable}
 //
 // There are two identifier columns where the refresh token corpus beside this
 // one has four, and the DDL is where each absence is argued — see the migrations
-// package.
+// package. The address beside them is not a third: it names no row and resolves
+// nothing, it is what the link was mailed to, and it is here so that a
+// redemption can be refused when the subject no longer holds it.
 const (
 	// HashColumn is the hex digest a token is stored under, and the primary key.
 	// It is the whole of what makes a dump of this table unredeemable: the token
@@ -49,6 +51,22 @@ const (
 	// — see the migrations package — so it is an identifier this table cannot
 	// resolve rather than a foreign key.
 	SubjectIDColumn = "subject_id"
+	// EmailAddressColumn is the address the link was mailed to, folded the way
+	// the directory folds a handle.
+	//
+	// It is bound by the insert and projected by the read, and no statement here
+	// compares against it. The comparison that matters is made a layer up,
+	// against the address the subject holds at the moment of redemption — see
+	// signin.Service.RedeemMagicLink, where what a disagreement means is argued.
+	// A predicate here could only ask the question the store has no second side
+	// to: this package reads no user table.
+	//
+	// It is stored as it is rather than digested, and the distinction is one this
+	// table already makes about hash. A digest is worth something against
+	// thirty-two bytes from a CSPRNG and nothing against an address, which comes
+	// from a set somebody can enumerate; digesting it would buy the appearance of
+	// protection and the loss of a column an operator can read.
+	EmailAddressColumn = "email_address"
 	// IssuedAtColumn is when the link was minted.
 	IssuedAtColumn = "issued_at"
 	// ExpiresAtColumn is the deadline the link stops being redeemable at. It is
@@ -102,6 +120,7 @@ var Columns = []string{
 	HashColumn,
 	ScopeColumn,
 	SubjectIDColumn,
+	EmailAddressColumn,
 	IssuedAtColumn,
 	ExpiresAtColumn,
 	PurgeAfterColumn,
@@ -120,6 +139,7 @@ var Columns = []string{
 var RecordColumns = []string{
 	ScopeColumn,
 	SubjectIDColumn,
+	EmailAddressColumn,
 	IssuedAtColumn,
 	ExpiresAtColumn,
 	PurgeAfterColumn,
@@ -138,6 +158,7 @@ var InsertColumns = []string{
 	HashColumn,
 	ScopeColumn,
 	SubjectIDColumn,
+	EmailAddressColumn,
 	IssuedAtColumn,
 	ExpiresAtColumn,
 	PurgeAfterColumn,

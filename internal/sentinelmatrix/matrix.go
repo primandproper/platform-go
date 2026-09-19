@@ -529,9 +529,10 @@ var Matrix = map[string]map[string]Decision{
 		"ErrInvalidVerificationToken": {Err: signin.ErrInvalidVerificationToken, Is: Mapped},
 
 		// A sign-in link that named nobody — expired, already followed,
-		// withdrawn, or wrong. Same construction and same reading as the row
-		// above: it wraps ErrInvalidCredentials, and it is not client-safe
-		// because quoting its own words would say which of the four happened.
+		// withdrawn, wrong, or mailed to an address its subject has left. Same
+		// construction and same reading as the row above: it wraps
+		// ErrInvalidCredentials, and it is not client-safe because quoting its
+		// own words would say which of the five happened.
 		"ErrInvalidMagicLink": {Err: signin.ErrInvalidMagicLink, Is: Mapped},
 
 		// Proven, and refused anyway. The four PermissionDenials: two statuses

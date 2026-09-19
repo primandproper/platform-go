@@ -27,6 +27,22 @@
 -- usable by an application whose directory is not identity's, and a foreign key
 -- would make adopting an email-link door mean adopting identity too.
 --
+-- email_address is not a third identifier: it names no row and resolves nothing.
+-- It is the address the mail actually went to, recorded because a link proves
+-- control of one inbox and of no other. A redemption that stamped the subject's
+-- address proven without it would prove whichever address the row happens to
+-- hold at redemption — which is not the one anybody reached — so the service
+-- compares the two and refuses a link the subject has since moved away from. It
+-- is folded the way the directory folds a handle, so the comparison is an
+-- equality rather than a second normalization free to disagree with the first.
+--
+-- It is stored as it is rather than digested. A digest is worth something
+-- against thirty-two bytes from a CSPRNG and nothing against an address, which
+-- is drawn from a set somebody can enumerate; digesting it would buy the
+-- appearance of protection and the loss of a column an operator can read. The
+-- row already carries subject_id, so a reader who can reach this table and the
+-- directory could join to the same address anyway.
+--
 -- There is no family_id, because a link is not a login. It is the thing that
 -- begins one: redeeming it mints an access token and a refresh token, and the
 -- family those belong to is minted by the service at that moment, exactly as a
@@ -50,11 +66,12 @@
 -- last_updated_at would be a third copy of redeemed_at and revoked_at, which are
 -- the only mutations this row has.
 CREATE TABLE IF NOT EXISTS {{PREFIX}}signin_magic_links (
-    hash        TEXT PRIMARY KEY,
-    scope       TEXT NOT NULL,
-    subject_id  TEXT NOT NULL,
-    issued_at   TIMESTAMPTZ NOT NULL,
-    expires_at  TIMESTAMPTZ NOT NULL,
+    hash          TEXT PRIMARY KEY,
+    scope         TEXT NOT NULL,
+    subject_id    TEXT NOT NULL,
+    email_address TEXT NOT NULL,
+    issued_at     TIMESTAMPTZ NOT NULL,
+    expires_at    TIMESTAMPTZ NOT NULL,
     -- When the row may be deleted, which is past expires_at by the store's
     -- retention window. It is what the sweep is keyed on, and it is deliberately
     -- not expires_at: a row collected at its own deadline could no longer tell
@@ -62,16 +79,17 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}signin_magic_links (
     -- a sentence a person can act on. The refusal a caller is given collapses
     -- them either way — see internal/queries — but what an operator reads off a
     -- span does not.
-    purge_after TIMESTAMPTZ NOT NULL,
+    purge_after   TIMESTAMPTZ NOT NULL,
     -- NULL until the link is followed. The redemption's predicate is
     -- `redeemed_at IS NULL AND revoked_at IS NULL AND expires_at > $now`, which is
     -- what makes one-time use, revocation and expiry a single atomic decision
     -- rather than a read followed by a write another request can interleave with.
-    redeemed_at TIMESTAMPTZ,
+    redeemed_at   TIMESTAMPTZ,
     -- NULL until the link is revoked. Every outstanding link a person holds is
-    -- revoked as a unit — by a completed sign-in through another door, by an
-    -- account being disabled, or by an erasure.
-    revoked_at  TIMESTAMPTZ
+    -- revoked as a unit — by an account being disabled, or by an erasure. A
+    -- completed sign-in is deliberately not among them: see the store's Redeem,
+    -- where what burning the rest would cost is argued.
+    revoked_at    TIMESTAMPTZ
 );
 
 -- Serves the subject-wide revocation, which is the only way these rows are

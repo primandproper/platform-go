@@ -209,6 +209,12 @@ func (s *SQLStore) Digest(secret string) string {
 // inside the callback: a link mailed for a transaction that then rolled back is
 // a URL in somebody's inbox that will never redeem, and this store has no way to
 // take it back.
+//
+// The address on the request is written down as it is given, and this package
+// neither folds it nor reads anything from it — it is the caller's record of
+// where the mail went, kept so that a redemption can be refused when the subject
+// no longer holds it. Give it the same form the comparison at redemption will
+// use, which for signin means the directory's folded handle.
 func (s *SQLStore) Issue(
 	ctx context.Context,
 	tx database.Tx,
@@ -235,20 +241,22 @@ func (s *SQLStore) Issue(
 	now := s.clock.Now().UTC()
 
 	link := &signin.MagicLink{
-		Scope:      scope,
-		SubjectID:  request.SubjectID,
-		IssuedAt:   now,
-		ExpiresAt:  now.Add(request.TTL),
-		PurgeAfter: now.Add(request.TTL).Add(s.retention),
+		Scope:        scope,
+		SubjectID:    request.SubjectID,
+		EmailAddress: request.EmailAddress,
+		IssuedAt:     now,
+		ExpiresAt:    now.Add(request.TTL),
+		PurgeAfter:   now.Add(request.TTL).Add(s.retention),
 	}
 
 	if err = s.q.InsertMagicLink(ctx, tx, magiclinkdb.InsertMagicLinkParams{
-		Hash:       s.Digest(secret),
-		Scope:      link.Scope,
-		SubjectID:  link.SubjectID,
-		IssuedAt:   link.IssuedAt,
-		ExpiresAt:  link.ExpiresAt,
-		PurgeAfter: link.PurgeAfter,
+		Hash:         s.Digest(secret),
+		Scope:        link.Scope,
+		SubjectID:    link.SubjectID,
+		EmailAddress: link.EmailAddress,
+		IssuedAt:     link.IssuedAt,
+		ExpiresAt:    link.ExpiresAt,
+		PurgeAfter:   link.PurgeAfter,
 	}); err != nil {
 		return nil, op.Error(err, "storing sign-in link row")
 	}
@@ -269,8 +277,9 @@ func (s *SQLStore) Issue(
 //
 // The second is a read of the row on the same transaction, and it runs on both
 // paths for two different reasons. On the winning path it is the only way the
-// subject is learned at all — the row is what says who is signing in, and MySQL
-// has no RETURNING to hand it back from the write. On the losing path it is what
+// subject and the address are learned at all — the row is what says who is
+// signing in and where the mail went, and MySQL has no RETURNING to hand either
+// back from the write. On the losing path it is what
 // turns an ambiguous zero into something an operator can read: expired, already
 // followed, withdrawn, or no such row, four facts behind one number.
 //
@@ -448,6 +457,10 @@ func (s *SQLStore) validateMint(scope tenancy.Scope, request *signin.MagicLinkRe
 		return ErrEmptySubjectID
 	}
 
+	if request.EmailAddress == "" {
+		return ErrEmptyEmailAddress
+	}
+
 	if request.TTL <= 0 {
 		return ErrNonPositiveLifetime
 	}
@@ -479,13 +492,14 @@ func (s *SQLStore) validateLookup(scope tenancy.Scope, secret string) error {
 // digest leaves this package.
 func linkFromRow(row *magiclinkdb.GetMagicLinkRow) *signin.MagicLink {
 	return &signin.MagicLink{
-		Scope:      row.Scope,
-		SubjectID:  row.SubjectID,
-		IssuedAt:   row.IssuedAt.UTC(),
-		ExpiresAt:  row.ExpiresAt.UTC(),
-		PurgeAfter: row.PurgeAfter.UTC(),
-		RedeemedAt: utcPtr(row.RedeemedAt),
-		RevokedAt:  utcPtr(row.RevokedAt),
+		Scope:        row.Scope,
+		SubjectID:    row.SubjectID,
+		EmailAddress: row.EmailAddress,
+		IssuedAt:     row.IssuedAt.UTC(),
+		ExpiresAt:    row.ExpiresAt.UTC(),
+		PurgeAfter:   row.PurgeAfter.UTC(),
+		RedeemedAt:   utcPtr(row.RedeemedAt),
+		RevokedAt:    utcPtr(row.RevokedAt),
 	}
 }
 

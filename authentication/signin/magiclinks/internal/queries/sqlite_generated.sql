@@ -5,6 +5,7 @@ INSERT INTO signin_magic_links (
 	hash,
 	scope,
 	subject_id,
+	email_address,
 	issued_at,
 	expires_at,
 	purge_after
@@ -12,6 +13,7 @@ INSERT INTO signin_magic_links (
 	sqlc.arg(hash),
 	sqlc.arg(scope),
 	sqlc.arg(subject_id),
+	sqlc.arg(email_address),
 	sqlc.arg(issued_at),
 	sqlc.arg(expires_at),
 	sqlc.arg(purge_after)
@@ -21,6 +23,7 @@ INSERT INTO signin_magic_links (
 SELECT
 	signin_magic_links.scope,
 	signin_magic_links.subject_id,
+	signin_magic_links.email_address,
 	signin_magic_links.issued_at,
 	signin_magic_links.expires_at,
 	signin_magic_links.purge_after,

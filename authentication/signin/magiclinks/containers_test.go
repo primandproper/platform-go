@@ -72,8 +72,9 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		tb.Helper()
 
 		issuance, issueErr := issueFor(tb, store, testScope(), &signin.MagicLinkRequest{
-			TTL:       ttl,
-			SubjectID: subjectID,
+			TTL:          ttl,
+			SubjectID:    subjectID,
+			EmailAddress: testAddress,
 		})
 		must.NoError(tb, issueErr)
 
@@ -161,12 +162,12 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		must.NoError(t, storeErr)
 
 		_, issueErr := issueFor(t, repeating, testScope(), &signin.MagicLinkRequest{
-			TTL: time.Hour, SubjectID: "user_collision",
+			TTL: time.Hour, SubjectID: "user_collision", EmailAddress: testAddress,
 		})
 		must.NoError(t, issueErr)
 
 		_, issueErr = issueFor(t, repeating, testScope(), &signin.MagicLinkRequest{
-			TTL: time.Hour, SubjectID: "user_collision",
+			TTL: time.Hour, SubjectID: "user_collision", EmailAddress: testAddress,
 		})
 		test.Error(t, issueErr)
 	})
@@ -175,7 +176,7 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 	// tenant's row if the statement let it.
 	t.Run("keeps one tenant's link out of another's reach", func(t *testing.T) {
 		issuance, issueErr := issueFor(t, store, tenancy.Of("tenant_scoped"), &signin.MagicLinkRequest{
-			TTL: time.Hour, SubjectID: "user_scoped",
+			TTL: time.Hour, SubjectID: "user_scoped", EmailAddress: testAddress,
 		})
 		must.NoError(t, issueErr)
 
@@ -256,7 +257,7 @@ func runDialectSuite(t *testing.T, client database.Client, d dialect.Dialect) {
 		must.NoError(t, storeErr)
 
 		issuance, issueErr := issueFor(t, namespaced, testScope(), &signin.MagicLinkRequest{
-			TTL: time.Hour, SubjectID: "user_namespaced",
+			TTL: time.Hour, SubjectID: "user_namespaced", EmailAddress: testAddress,
 		})
 		must.NoError(t, issueErr)
 

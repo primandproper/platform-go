@@ -27,6 +27,16 @@ var (
 	// ErrEmptySubjectID indicates a mint or a revocation naming nobody.
 	ErrEmptySubjectID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty subject ID for a sign-in link")
 
+	// ErrEmptyEmailAddress indicates a mint that did not say where the mail is
+	// going.
+	//
+	// It is refused rather than stored empty, because the column is what a
+	// redemption's address comparison is made against — see
+	// signin.Service.RedeemMagicLink — and a row holding nothing there would
+	// compare equal to nothing and refuse every redemption of a link that was
+	// perfectly good. A mint whose address is unknown is a mail nobody can send.
+	ErrEmptyEmailAddress = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty email address for a sign-in link")
+
 	// ErrEmptySecret indicates a redemption presenting nothing.
 	//
 	// It is this store's own refusal rather than signin.ErrInvalidMagicLink,

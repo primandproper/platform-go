@@ -16,6 +16,7 @@ import (
 const getMagicLinkMySQL = `SELECT
 	{{prefix}}signin_magic_links.scope,
 	{{prefix}}signin_magic_links.subject_id,
+	{{prefix}}signin_magic_links.email_address,
 	{{prefix}}signin_magic_links.issued_at,
 	{{prefix}}signin_magic_links.expires_at,
 	{{prefix}}signin_magic_links.purge_after,
@@ -30,10 +31,12 @@ INSERT INTO {{prefix}}signin_magic_links (
 	hash,
 	scope,
 	subject_id,
+	email_address,
 	issued_at,
 	expires_at,
 	purge_after
 ) VALUES (
+	?,
 	?,
 	?,
 	?,
@@ -92,6 +95,7 @@ func (q *mysqlQueries) GetMagicLink(ctx context.Context, db DBTX, arg GetMagicLi
 	err := row.Scan(
 		&i.Scope,
 		&i.SubjectID,
+		&i.EmailAddress,
 		&i.IssuedAt,
 		&i.ExpiresAt,
 		&i.PurgeAfter,
@@ -108,6 +112,7 @@ func (q *mysqlQueries) InsertMagicLink(ctx context.Context, db DBTX, arg InsertM
 		arg.Hash,
 		arg.Scope,
 		arg.SubjectID,
+		arg.EmailAddress,
 		arg.IssuedAt,
 		arg.ExpiresAt,
 		arg.PurgeAfter,
@@ -169,21 +174,23 @@ var (
 		Scope tenancy.Scope
 	}(GetMagicLinkParams{})
 	_ = struct {
-		Scope      tenancy.Scope
-		SubjectID  string
-		IssuedAt   time.Time
-		ExpiresAt  time.Time
-		PurgeAfter time.Time
-		RedeemedAt *time.Time
-		RevokedAt  *time.Time
+		Scope        tenancy.Scope
+		SubjectID    string
+		EmailAddress string
+		IssuedAt     time.Time
+		ExpiresAt    time.Time
+		PurgeAfter   time.Time
+		RedeemedAt   *time.Time
+		RevokedAt    *time.Time
 	}(GetMagicLinkRow{})
 	_ = struct {
-		Hash       string
-		Scope      tenancy.Scope
-		SubjectID  string
-		IssuedAt   time.Time
-		ExpiresAt  time.Time
-		PurgeAfter time.Time
+		Hash         string
+		Scope        tenancy.Scope
+		SubjectID    string
+		EmailAddress string
+		IssuedAt     time.Time
+		ExpiresAt    time.Time
+		PurgeAfter   time.Time
 	}(InsertMagicLinkParams{})
 	_ = struct {
 		RedeemedAt *time.Time
