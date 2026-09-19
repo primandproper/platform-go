@@ -29,8 +29,8 @@ import (
 // operator forcing a change is not the subject, and a verification link is
 // itself the proof. Those flows cannot go through signin, so they were reaching
 // the store directly — which is exactly where the hook was missing, and why the
-// seam belongs on this Service, beside the fifteen operations a consumer's audit
-// layer already hangs off.
+// seam belongs on this Service, beside the seventeen operations a consumer's
+// audit layer already hangs off.
 //
 // The three that overlap are not a second implementation of signin's. signin
 // asks for the password, hashes, verifies a code, and then writes; the write and

@@ -101,7 +101,7 @@ var (
 //
 // # What it is
 //
-// Twenty-eight RPCs. Fifteen are writes, and each is exactly one call into
+// Twenty-nine RPCs. Sixteen are writes, and each is exactly one call into
 // identity.Service — which means each is one transaction with the consumer's
 // own Hooks running inside it. Thirteen are reads on identity.Store, on the
 // client's reader, and twelve of them are one call; the thirteenth,
