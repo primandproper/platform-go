@@ -84,6 +84,14 @@ type Message struct {
 	// Key groups messages that must be published in order relative to one
 	// another. Empty means unordered. At most one message per key is ever in
 	// flight, so per-key order holds even with several relays running.
+	//
+	// It holds until a message on that key quarantines. A quarantined row is
+	// invisible to the claim's ordering predicate as well as to the claim, so
+	// the messages behind it publish without it — the key's stream continues,
+	// one message short, rather than stopping forever behind a message no
+	// future claim will take. A consumer whose reader cannot survive that has
+	// outbox_messages_quarantined as the signal to stop it; see the Failure
+	// section of this package's documentation.
 	Key string
 }
 

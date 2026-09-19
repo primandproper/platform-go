@@ -323,8 +323,18 @@ func createInsert() *querygen.Query {
 // The ordering guarantee lives in this predicate. A row with a partition key is
 // claimable only when no earlier unpublished row shares that key, so at most one
 // row per key is ever in flight across every relay in the fleet — keyed messages
-// are strictly ordered even under concurrent skip-locked relays. Unkeyed rows
-// skip the check entirely and claim freely.
+// are strictly ordered even under concurrent skip-locked relays, up to the
+// quarantine. Unkeyed rows skip the check entirely and claim freely.
+//
+// The quarantine is where the guarantee ends, and it ends here rather than
+// anywhere else: the subquery tests quarantined_at IS NULL alongside
+// published_at IS NULL, so an earlier row that has been given up on stops
+// blocking its key and the rows behind it publish without it. Dropping that
+// condition would turn one poison message into a permanent block on its key,
+// which is the failure the quarantine exists to end, so the predicate is
+// deliberate — it is stated on outbox.Message.Key and in the package
+// documentation's Failure section because it is an edge a consumer that picked
+// a key has to know it has.
 //
 // "Earlier" is (created_at, id), not created_at alone, and the tuple is what
 // makes the guarantee hold. One Enqueue stamps every row with a single instant,
