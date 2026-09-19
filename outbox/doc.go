@@ -140,6 +140,10 @@ with that key is still pending: at most one message per key is ever in flight
 across the whole fleet, so its successor cannot be published until it lands.
 Unkeyed messages skip that check and claim freely.
 
+"Still pending" ends at the quarantine, so per-key ordering holds until a
+message on that key is quarantined and no longer after it. See "Failure" below
+for what that costs and why it is the trade this package makes.
+
 What the mode decides is how the fleet divides the backlog, not whether it
 divides it. ClaimSkipLocked locks the batch as it selects it, so a second relay
 selecting at the same instant skips past to a batch of its own. ClaimLease
@@ -254,6 +258,18 @@ quarantined: skipped by every future claim and counted by
 outbox_messages_quarantined. Without that terminal state a single
 permanently-failing message blocks the head of the queue forever, which is the
 failure this package is most likely to actually meet.
+
+Per-key ordering is what that buys the queue with. The claim's ordering
+predicate counts an earlier message as blocking only while it is still pending,
+and a quarantined message is not, so the successors of a quarantined message
+publish without it: the key's stream resumes at the message after the one that
+was abandoned, one message short and out of order by exactly that gap. The
+alternative is the head-of-line block above narrowed to one key and left there
+forever, which is a worse answer to the same event and not one this package will
+pick on a consumer's behalf. A consumer that chose Key because its downstream
+cannot reorder therefore has to treat outbox_messages_quarantined as a stop
+signal rather than as a number to review on Monday — releasing the message from
+the quarantine republishes it, but by then its successors have gone.
 
 Published rows are marked rather than deleted, so a duplicate or a gap can be
 investigated after the fact, and a reaper deletes them once they age past
