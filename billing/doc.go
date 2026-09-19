@@ -214,11 +214,23 @@ means.
 
 Concretely: the handler that creates a payment intent through capitalism and then
 writes the [Purchase] it will settle into; the webhook endpoint that verifies a
-signature through webhooks/inbound, maps the payload through a capitalism adapter,
-and calls one method here; the function billing/plans takes, saying which
-statuses leave an account entitled; and the mapping onto identity.BillingStatus,
-which is the coarse standing an application gates on and includes a suspension no
+signature through webhooks/inbound and maps the payload through a capitalism
+adapter; the function billing/plans takes, saying which statuses leave an account
+entitled; and the one billing/standing takes, saying what a status means for the
+coarse standing an application gates on — which includes a suspension no
 processor reports.
+
+What that endpoint then does with the mapped event is no longer yours.
+[github.com/primandproper/platform-go/v14/billing/sync] is the reconciliation
+itself: the agreement looked up by the provider's identifier, opened if nobody
+holds it, moved if its status or its paid period changed, acknowledged if the
+delivery is a redelivery, and the account's standing written beside it — all on
+the transaction the handler is already in. It is here rather than in each
+consumer because the hand-written version is a couple of hundred lines carrying
+two readings this module can settle: a paid period invented because nothing
+carried one, and a status no adapter could place read as the most permissive
+standing there is. The judgements above are still yours, and that package takes
+them as arguments; the order these methods are called in is not.
 
 # Subject access, and the erasure that is deliberately absent
 

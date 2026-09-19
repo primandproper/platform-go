@@ -392,7 +392,12 @@ packages beside the store are where it lives: `billing/plans` turns a set of
 subscriptions into the plan a caller is on, and `billing/standing` turns a
 status a processor reported into the standing `identity` stores. Each ships the
 strict reading as a value you pass rather than a default you inherit, so taking
-it is a deployment agreeing with it.
+it is a deployment agreeing with it. `billing/sync` is the third package beside
+the store and the only one that writes: it is the order those store methods are
+called in when a processor delivery arrives — look the agreement up by the
+provider's identifier, open it or move its status and paid period, acknowledge a
+redelivery — on the handler's own transaction, taking the other two packages'
+readings as arguments rather than making either of them itself.
 
 `issuereports` is the one whose interesting half is a single method. Ten of its
 store's eleven are on the wire — the filing, the reads, the four queue
