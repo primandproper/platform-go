@@ -64,6 +64,7 @@ reasons behind the three exceptions.
 | `authentication/signin/refreshtokens` | The refresh tokens sign-in rotates: digest at rest, single use, grouped into one family per login | postgres, mysql, sqlite          |
 | `authentication/passwordreset`     | Password reset tokens: digest at rest, single use enforced by the store, and `authentication/passwordreset/privacy` | postgres, mysql, sqlite          |
 | `authentication/webauthnsessions`  | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
+| `authentication/passkeys`          | The credentials a passkey registration produces, and the sign count clone detection compares against | postgres, mysql, sqlite          |
 | `authentication/oauth2clients`     | An administered OAuth2 client registry, and `authentication/oauth2clients/privacy` | postgres, mysql, sqlite (+ grpc) |
 | `authentication/oauth2serverstore` | The OAuth2 server's client and token tables                                   | postgres, mysql, sqlite          |
 | `rbac`                             | Roles and permissions as rows, behind the policy interface                    | postgres, mysql, sqlite          |
@@ -141,7 +142,7 @@ checking it.
 
 | What it is                                     | Packages                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 |------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| a noun with a table, and what it owes          | `audit`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passwordreset`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
+| a noun with a table, and what it owes          | `audit`, `authentication/oauth2clients`, `authentication/oauth2serverstore`, `authentication/passkeys`, `authentication/passwordreset`, `authentication/webauthnsessions`, `billing`, `comments`, `dataprivacy`, `entitlements`, `identity`, `issuereports`, `links`, `mediaregistry`, `metering`, `notifications`, `operations`, `outbox`, `rbac`, `retention`, `saga`, `searchsync`, `sessions`, `settings`, `shredding`, `timers`, `waitlists`, `webhooks`, `workqueue` |
 | a domain flow over another domain's tables     | `authentication/signin`                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | the vocabulary a domain transport shares       | `callers`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | the composition root that registers both tiers | `errormappers`, `privacyadapters`, `service`                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -181,18 +182,20 @@ than this paragraph: `callers` imports nothing else in this module, and the only
 gRPC surface here that still reaches `identity` is `authentication/signin/grpc`,
 which renders a signed-in user and says so where the test can read it.
 
-Five of the paths above sit under a directory this module does not own the root
-of, and every one of them is under `authentication/`. Four are a primitive with a
+Six of the paths above sit under a directory this module does not own the root
+of, and every one of them is under `authentication/`. Five are a primitive with a
 store nested inside it — `authentication` hashes passwords and issues tokens in
 primitives-go, and `authentication/passwordreset` owns a table of them;
-`authentication/oauth2clients`, `authentication/oauth2serverstore` and
-`authentication/webauthnsessions` split the same way. The fifth is
-`authentication/signin`, which is neither: it is a domain flow under a
-primitive's path, there because sign-in is what those engines are for and a
-`signin` at the root would hide that.
+`authentication/oauth2clients`, `authentication/oauth2serverstore`,
+`authentication/webauthnsessions` and `authentication/passkeys` split the same
+way, the last two against one engine: the ceremony a login runs and the
+credential that ceremony produced are two tables, and the protocol between them
+is a primitive. The sixth is `authentication/signin`, which is neither: it is a
+domain flow under a primitive's path, there because sign-in is what those engines
+are for and a `signin` at the root would hide that.
 
 `authentication/` is the one straddle parent that groups rather than indirects —
-five related domain packages under a name a reader wants — which is why it is the
+six related domain packages under a name a reader wants — which is why it is the
 one that stayed. Go is content with a parent directory holding no `.go` files,
 and six of them were exactly that: `uploads/`, `authorization/`, `cryptography/`
 and `search/` each held one child and no source, as did
@@ -571,6 +574,7 @@ construction, never a partial store or a migration that creates nothing.
 | `audit`                               | ✓        | ✓     | ✓      |
 | `authentication/oauth2clients`        | ✓        | ✓     | ✓      |
 | `authentication/oauth2serverstore`    | ✓        | ✓     | ✓      |
+| `authentication/passkeys`             | ✓        | ✓     | ✓      |
 | `authentication/passwordreset`        | ✓        | ✓     | ✓      |
 | `authentication/signin/refreshtokens` | ✓        | ✓     | ✓      |
 | `authentication/webauthnsessions`     | ✓        | ✓     | ✓      |

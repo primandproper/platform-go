@@ -1,0 +1,80 @@
+/*
+Package migrations supplies the registered-passkey table's DDL, rendered for a
+dialect and table prefix.
+
+The platform deliberately does not ship a numbered migration file. Migration
+files are numbered globally per consumer, so a platform-owned number would
+collide with the consumer's own the moment either side added one. The version is
+therefore always the consumer's to choose.
+
+If you already run database/migrate, hand SQL to WithGeneratedMigration and the
+table is created by your normal migration run — no DDL copied into your
+repository, nothing to keep in sync as this package evolves:
+
+	ddl, err := migrations.SQL(dialect.Postgres, passkeys.DefaultTablePrefix)
+	// ...
+	m, err := migrate.New(dialect.Postgres, myMigrations,
+		migrate.WithGeneratedMigration(43, "create_webauthn_credentials_table", ddl),
+	)
+
+Statements is the same DDL split into individually executable statements, for
+callers running it some other way — a different migration tool, or a test that
+just wants the table.
+
+The rendering and prefix vetting live in database/ddl, shared with every other
+schema-shipping package in this module.
+
+# The index that is the point
+
+The uniqueness on credential_id covers live rows only, on all three dialects.
+Postgres and SQLite spell it as a partial index; MySQL has none, so the
+predicate moves into a generated column the unique key is declared over — see
+mysql.sql, which is the one file here worth reading for something other than
+column widths.
+*/
+package migrations
+
+import (
+	_ "embed"
+
+	"github.com/primandproper/primitives-go/v2/database/ddl"
+	"github.com/primandproper/primitives-go/v2/database/dialect"
+)
+
+//go:embed postgres.sql
+var postgresDDL string
+
+//go:embed mysql.sql
+var mysqlDDL string
+
+//go:embed sqlite.sql
+var sqliteDDL string
+
+// schema is this package's DDL in each supported dialect.
+var schema = ddl.Schema{
+	Component: "passkeys",
+	Postgres:  postgresDDL,
+	MySQL:     mysqlDDL,
+	SQLite:    sqliteDDL,
+}
+
+// Statements renders the DDL for the dialect against the given table prefix and
+// splits it into individually executable statements, the table before its
+// indexes.
+func Statements(d dialect.Dialect, prefix string) ([]string, error) {
+	return schema.Statements(d, prefix)
+}
+
+// ValidatePrefix reports whether prefix yields legal SQL identifiers for the
+// table and indexes this package creates.
+func ValidatePrefix(prefix string) error {
+	return schema.ValidatePrefix(prefix)
+}
+
+// SQL renders the same DDL as Statements, joined back into one migration body.
+// It is what you hand to database/migrate's WithGeneratedMigration, so the
+// credential table is created by the consumer's own migration run instead of
+// being copied into their repository.
+func SQL(d dialect.Dialect, prefix string) (string, error) {
+	return schema.SQL(d, prefix)
+}

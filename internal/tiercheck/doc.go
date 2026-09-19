@@ -46,7 +46,7 @@ answer. That is what makes a new subpackage classified by construction —
 `links/database/internal/linksdb` is a domain because the store it belongs to is
 one, without anybody having to add a row for it.
 
-Five entries name a path whose parent is not in this module at all, and all five
+Six entries name a path whose parent is not in this module at all, and all six
 are under `authentication`. `authentication/passwordreset` is one:
 `authentication` hashes passwords and issues tokens in primitives-go, and the
 table of reset tokens under it is a product's. Those are the straddles the split

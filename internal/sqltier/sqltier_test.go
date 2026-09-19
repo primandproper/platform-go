@@ -83,6 +83,7 @@ var rulings = map[string]ruling{
 	"workqueue/internal/workqueuedb":                              {tier: unison},
 	"outbox/internal/outboxdb":                                    {tier: unison},
 	"metering/internal/meteringdb":                                {tier: unison},
+	"authentication/passkeys/internal/passkeysdb":                 {tier: unison},
 	"authentication/passwordreset/internal/passwordresetdb":       {tier: unison},
 	"authentication/signin/refreshtokens/internal/signindb":       {tier: unison},
 	"waitlists/internal/waitlistsdb":                              {tier: unison},

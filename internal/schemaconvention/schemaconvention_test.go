@@ -14,6 +14,7 @@ import (
 	auditmigrations "github.com/primandproper/platform-go/v14/audit/migrations"
 	oauth2clientsmigrations "github.com/primandproper/platform-go/v14/authentication/oauth2clients/migrations"
 	oauth2serverstoremigrations "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
+	passkeysmigrations "github.com/primandproper/platform-go/v14/authentication/passkeys/migrations"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
 	refreshtokensmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	webauthnmigrations "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/migrations"
@@ -69,6 +70,7 @@ var renderers = map[string]renderer{
 	"audit":                               auditmigrations.Statements,
 	"authentication/oauth2clients":        oauth2clientsmigrations.Statements,
 	"authentication/oauth2serverstore":    oauth2serverstoremigrations.Statements,
+	"authentication/passkeys":             passkeysmigrations.Statements,
 	"authentication/passwordreset":        passwordresetmigrations.Statements,
 	"authentication/signin/refreshtokens": refreshtokensmigrations.Statements,
 	"authentication/webauthnsessions":     webauthnmigrations.Statements,
@@ -131,6 +133,7 @@ var conventional = map[string]renderer{
 	"waitlists":                 waitlistsmigrations.Statements,
 	"waitlist_signups":          waitlistsmigrations.Statements,
 	"oauth2_registered_clients": oauth2clientsmigrations.Statements,
+	"webauthn_credentials":      passkeysmigrations.Statements,
 }
 
 // exemption is a table that deliberately carries none of the triple, and the
