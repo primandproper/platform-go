@@ -125,7 +125,7 @@ func Example_registration() {
 // auditHooks is what a consumer hangs off the service's operations: a write of
 // its own, on the transaction the operation is running in.
 //
-// Embedding NoopHooks is what lets it implement one method out of twenty-three —
+// Embedding NoopHooks is what lets it implement one method out of twenty-four —
 // and what keeps an operation added to identity.Hooks later from breaking it.
 type auditHooks struct {
 	identity.NoopHooks

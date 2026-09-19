@@ -4,7 +4,7 @@ Package client is a typed client for identity's gRPC service.
 It is the generated stub plus the two interceptors a caller of this module's
 services would otherwise wire by hand, and it is deliberately thin: every RPC
 reaches it by embedding, so this file adds no method of its own beyond
-construction and shutdown. A client that wrapped each RPC would be twenty-eight
+construction and shutdown. A client that wrapped each RPC would be twenty-nine
 functions that can drift from the schema, to gain nothing.
 
 It is imported as identityclient.

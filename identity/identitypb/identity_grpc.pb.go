@@ -40,7 +40,7 @@
 // Reserving the name rather than only saying so is audit.proto's pattern:
 // `reserved "scope";` is a schema protoc refuses to accept a scope field into,
 // in this repository and in a consumer's fork of the file alike, whereas a
-// comment is a request to the next author. It is reserved on all twenty-eight
+// comment is a request to the next author. It is reserved on all twenty-nine
 // request messages, on the four inputs they are built from, and on the nine
 // messages a response is built from -- a scope on one of those would be
 // answering a client with something the client supplied. The response wrappers
@@ -100,6 +100,7 @@ const (
 	IdentityService_SetMembershipRoles_FullMethodName             = "/primandproper.platform.identity.v1.IdentityService/SetMembershipRoles"
 	IdentityService_RemoveMembership_FullMethodName               = "/primandproper.platform.identity.v1.IdentityService/RemoveMembership"
 	IdentityService_ArchiveUser_FullMethodName                    = "/primandproper.platform.identity.v1.IdentityService/ArchiveUser"
+	IdentityService_ArchiveAccount_FullMethodName                 = "/primandproper.platform.identity.v1.IdentityService/ArchiveAccount"
 	IdentityService_UpdateUserAccountStatus_FullMethodName        = "/primandproper.platform.identity.v1.IdentityService/UpdateUserAccountStatus"
 	IdentityService_SetUserServiceRoles_FullMethodName            = "/primandproper.platform.identity.v1.IdentityService/SetUserServiceRoles"
 	IdentityService_GetPrincipal_FullMethodName                   = "/primandproper.platform.identity.v1.IdentityService/GetPrincipal"
@@ -148,6 +149,7 @@ type IdentityServiceClient interface {
 	SetMembershipRoles(ctx context.Context, in *SetMembershipRolesRequest, opts ...grpc.CallOption) (*SetMembershipRolesResponse, error)
 	RemoveMembership(ctx context.Context, in *RemoveMembershipRequest, opts ...grpc.CallOption) (*RemoveMembershipResponse, error)
 	ArchiveUser(ctx context.Context, in *ArchiveUserRequest, opts ...grpc.CallOption) (*ArchiveUserResponse, error)
+	ArchiveAccount(ctx context.Context, in *ArchiveAccountRequest, opts ...grpc.CallOption) (*ArchiveAccountResponse, error)
 	UpdateUserAccountStatus(ctx context.Context, in *UpdateUserAccountStatusRequest, opts ...grpc.CallOption) (*UpdateUserAccountStatusResponse, error)
 	SetUserServiceRoles(ctx context.Context, in *SetUserServiceRolesRequest, opts ...grpc.CallOption) (*SetUserServiceRolesResponse, error)
 	// The reads.
@@ -298,6 +300,16 @@ func (c *identityServiceClient) ArchiveUser(ctx context.Context, in *ArchiveUser
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ArchiveUserResponse)
 	err := c.cc.Invoke(ctx, IdentityService_ArchiveUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *identityServiceClient) ArchiveAccount(ctx context.Context, in *ArchiveAccountRequest, opts ...grpc.CallOption) (*ArchiveAccountResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ArchiveAccountResponse)
+	err := c.cc.Invoke(ctx, IdentityService_ArchiveAccount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -485,6 +497,7 @@ type IdentityServiceServer interface {
 	SetMembershipRoles(context.Context, *SetMembershipRolesRequest) (*SetMembershipRolesResponse, error)
 	RemoveMembership(context.Context, *RemoveMembershipRequest) (*RemoveMembershipResponse, error)
 	ArchiveUser(context.Context, *ArchiveUserRequest) (*ArchiveUserResponse, error)
+	ArchiveAccount(context.Context, *ArchiveAccountRequest) (*ArchiveAccountResponse, error)
 	UpdateUserAccountStatus(context.Context, *UpdateUserAccountStatusRequest) (*UpdateUserAccountStatusResponse, error)
 	SetUserServiceRoles(context.Context, *SetUserServiceRolesRequest) (*SetUserServiceRolesResponse, error)
 	// The reads.
@@ -549,6 +562,9 @@ func (UnimplementedIdentityServiceServer) RemoveMembership(context.Context, *Rem
 }
 func (UnimplementedIdentityServiceServer) ArchiveUser(context.Context, *ArchiveUserRequest) (*ArchiveUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ArchiveUser not implemented")
+}
+func (UnimplementedIdentityServiceServer) ArchiveAccount(context.Context, *ArchiveAccountRequest) (*ArchiveAccountResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ArchiveAccount not implemented")
 }
 func (UnimplementedIdentityServiceServer) UpdateUserAccountStatus(context.Context, *UpdateUserAccountStatusRequest) (*UpdateUserAccountStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateUserAccountStatus not implemented")
@@ -846,6 +862,24 @@ func _IdentityService_ArchiveUser_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(IdentityServiceServer).ArchiveUser(ctx, req.(*ArchiveUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IdentityService_ArchiveAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ArchiveAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IdentityServiceServer).ArchiveAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IdentityService_ArchiveAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IdentityServiceServer).ArchiveAccount(ctx, req.(*ArchiveAccountRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1178,6 +1212,10 @@ var IdentityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ArchiveUser",
 			Handler:    _IdentityService_ArchiveUser_Handler,
+		},
+		{
+			MethodName: "ArchiveAccount",
+			Handler:    _IdentityService_ArchiveAccount_Handler,
 		},
 		{
 			MethodName: "UpdateUserAccountStatus",

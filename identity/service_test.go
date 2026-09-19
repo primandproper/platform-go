@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"sync"
 	"testing"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
+	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/pointer"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
@@ -22,7 +25,7 @@ var errHookRefused = platformerrors.New("hook said no")
 
 // recordingHooks is the Hooks a case reads back: which hook ran, and with what.
 //
-// It embeds NoopHooks rather than implementing all twenty-three, which is the shape
+// It embeds NoopHooks rather than implementing all twenty-four, which is the shape
 // the documentation tells consumers to use — so the suite exercises that shape as
 // well as the hooks it overrides.
 type recordingHooks struct {
@@ -184,6 +187,17 @@ func (h *recordingHooks) AfterArchiveUser(
 	h.user, h.endedMemberships = user, endedMemberships
 
 	return h.record(ctx, tx, "archive")
+}
+
+func (h *recordingHooks) AfterArchiveAccount(
+	ctx context.Context, tx database.Tx, _ tenancy.Scope, account *Account, endedMemberships []*Membership,
+) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	h.account, h.endedMemberships = account, endedMemberships
+
+	return h.record(ctx, tx, "archive_account")
 }
 
 func (h *recordingHooks) AfterUpdateUserAccountStatus(
@@ -1192,6 +1206,159 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 
 		_, err = store.GetUser(t.Context(), env.reader(), testScope, owner.User.ID)
 		must.NoError(t, err)
+	})
+
+	t.Run("archives an account with the memberships the archival ended", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, store := env.newService(t, hooks)
+
+		owner := registerAda(t, service, "ada")
+		member := seedUserInto(t, env, store, newUser("grace"), owner.Account.ID)
+
+		// The member belongs somewhere else too, and this account is where they
+		// land — so the archival has a default to move as well as memberships to
+		// end.
+		elsewhere := seedAccountFor(t, env, store, member, "grace's own account")
+
+		archived, err := service.ArchiveAccount(t.Context(), testScope, owner.Account.ID)
+		must.NoError(t, err)
+
+		// The row the store's archival answered with, stamped — which is what a
+		// read before the write could not have said. It is the same value the
+		// hook is handed.
+		test.EqOp(t, owner.Account.ID, archived.ID)
+		test.True(t, archived.Archived())
+		test.EqOp(t, archived, hooks.account)
+
+		// Both members, as they stood before the write: the owner and the
+		// member, the latter still carrying the default flag this account held
+		// for them. A hook told only about the account cannot strike either from
+		// a roster it keeps of its own.
+		test.EqOp(t, 1, hooks.ran("archive_account"))
+		must.SliceLen(t, 2, hooks.endedMemberships)
+
+		members := make([]string, 0, len(hooks.endedMemberships))
+		for _, m := range hooks.endedMemberships {
+			members = append(members, m.BelongsToUser)
+
+			test.EqOp(t, owner.Account.ID, m.BelongsToAccount)
+		}
+
+		test.SliceContains(t, members, owner.User.ID)
+		test.SliceContains(t, members, member.ID)
+
+		// Committed: the account is gone, its memberships with it, and the
+		// member who landed here now lands on the account they still have.
+		_, err = store.GetAccount(t.Context(), env.reader(), testScope, owner.Account.ID)
+		must.ErrorIs(t, err, ErrAccountNotFound)
+
+		_, err = store.GetMembership(t.Context(), env.reader(), testScope, member.ID, owner.Account.ID)
+		must.ErrorIs(t, err, ErrMembershipNotFound)
+
+		remaining, err := store.ListMembershipsForUser(t.Context(), env.reader(), testScope, member.ID)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, remaining)
+		test.EqOp(t, elsewhere.ID, remaining[0].BelongsToAccount)
+		test.True(t, remaining[0].DefaultAccount,
+			test.Sprint("a member stranded by an archival was left with nowhere to land"))
+	})
+
+	t.Run("hands the archival hook a roster larger than one page", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, store := env.newService(t, hooks)
+
+		owner := registerAda(t, service, "ada")
+
+		// One more member than a single page holds, so the roster the hook is
+		// handed can only be right if the read was drained rather than taken.
+		// The page size is the filter's ceiling rather than its default, which
+		// is what the archival asks for.
+		perPage := int(filtering.MaxQueryFilterLimit)
+
+		// One transaction for the lot rather than one each: two hundred and
+		// fifty round trips to a real server is the difference between a case
+		// that runs and a case somebody deletes.
+		must.NoError(t, env.inTx(t, func(tx database.Tx) error {
+			for i := range perPage {
+				member, err := store.CreateUser(t.Context(), tx, testScope, newUser(fmt.Sprintf("member_%d", i)))
+				if err != nil {
+					return err
+				}
+
+				if _, err = store.CreateMembership(t.Context(), tx, testScope, &Membership{
+					BelongsToUser:    member.ID,
+					BelongsToAccount: owner.Account.ID,
+					Roles:            []string{"account_member"},
+				}); err != nil {
+					return err
+				}
+			}
+
+			return nil
+		}))
+
+		_, err := service.ArchiveAccount(t.Context(), testScope, owner.Account.ID)
+		must.NoError(t, err)
+
+		test.EqOp(t, 1, hooks.ran("archive_account"))
+		must.SliceLen(t, perPage+1, hooks.endedMemberships)
+
+		// Every one of them distinct, which is the other way a drain goes
+		// wrong: a cursor that does not advance reads the first page forever.
+		seen := make(map[string]struct{}, len(hooks.endedMemberships))
+		for _, m := range hooks.endedMemberships {
+			seen[m.ID] = struct{}{}
+		}
+
+		test.MapLen(t, perPage+1, seen)
+	})
+
+	t.Run("refuses to archive an account that is not there", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, _ := env.newService(t, hooks)
+
+		registration := registerAda(t, service, "ada")
+
+		_, err := service.ArchiveAccount(t.Context(), testScope, identifiers.New())
+		must.ErrorIs(t, err, ErrAccountNotFound)
+		test.EqOp(t, 0, hooks.ran("archive_account"))
+
+		// And an account in the neighboring directory is absent by the same
+		// answer, rather than being archived across the boundary.
+		_, err = service.ArchiveAccount(t.Context(), otherScope, registration.Account.ID)
+		must.ErrorIs(t, err, ErrAccountNotFound)
+		test.EqOp(t, 0, hooks.ran("archive_account"))
+	})
+
+	t.Run("a failing account archival hook rolls the archival back", func(t *testing.T) {
+		t.Parallel()
+
+		hooks := &recordingHooks{}
+		service, store := env.newService(t, hooks)
+
+		owner := registerAda(t, service, "ada")
+		member := seedUserInto(t, env, store, newUser("grace"), owner.Account.ID)
+
+		hooks.probe = func(context.Context, database.Tx) error { return errHookRefused }
+
+		_, err := service.ArchiveAccount(t.Context(), testScope, owner.Account.ID)
+		must.ErrorIs(t, err, errHookRefused)
+
+		// The account, its memberships and the moved default all came back: the
+		// fan-out and the row it belongs to are one fact.
+		account, err := store.GetAccount(t.Context(), env.reader(), testScope, owner.Account.ID)
+		must.NoError(t, err)
+		test.False(t, account.Archived())
+
+		membership, err := store.GetMembership(t.Context(), env.reader(), testScope, member.ID, owner.Account.ID)
+		must.NoError(t, err)
+		test.True(t, membership.DefaultAccount)
 	})
 
 	t.Run("moves a user between statuses and names the one before", func(t *testing.T) {

@@ -71,6 +71,15 @@ const (
 	// owner.
 	PermissionTransferAccountOwnership authorization.Permission = "identity.accounts.transfer_ownership"
 
+	// PermissionArchiveAccounts covers closing an account: hiding it and ending
+	// every membership in it.
+	//
+	// Separate from PermissionUpdateAccounts, and deliberately: renaming an
+	// account is a thing a member does and closing one takes every other member
+	// offline, so a role that can do the first must not thereby be able to do
+	// the second. It is the account's counterpart to PermissionArchiveUsers.
+	PermissionArchiveAccounts authorization.Permission = "identity.accounts.archive"
+
 	// PermissionManageMembers covers the roster writes: setting a member's roles
 	// and removing them.
 	PermissionManageMembers authorization.Permission = "identity.members.manage"
@@ -102,7 +111,7 @@ const (
 // the entry — the map is theirs once they have it, and authorization/grpc's
 // builder takes whatever they hand it.
 //
-// It is also only half of what gates this service. Eleven of these methods take
+// It is also only half of what gates this service. Twelve of these methods take
 // their target from the request body, and a grant on the method cannot say which
 // account, user or invitation the caller may name — that is [TargetAuthorizer],
 // asked inside the handler, and it is not overridable through this map. See
@@ -144,6 +153,7 @@ func Permissions() map[string][]authorization.Permission {
 		identitypb.IdentityService_ListAccounts_FullMethodName:             {PermissionListAllAccounts},
 		identitypb.IdentityService_UpdateAccount_FullMethodName:            {PermissionUpdateAccounts},
 		identitypb.IdentityService_TransferAccountOwnership_FullMethodName: {PermissionTransferAccountOwnership},
+		identitypb.IdentityService_ArchiveAccount_FullMethodName:           {PermissionArchiveAccounts},
 		identitypb.IdentityService_SetMembershipRoles_FullMethodName:       {PermissionManageMembers},
 		identitypb.IdentityService_RemoveMembership_FullMethodName:         {PermissionManageMembers},
 

@@ -40,7 +40,7 @@
 // Reserving the name rather than only saying so is audit.proto's pattern:
 // `reserved "scope";` is a schema protoc refuses to accept a scope field into,
 // in this repository and in a consumer's fork of the file alike, whereas a
-// comment is a request to the next author. It is reserved on all twenty-eight
+// comment is a request to the next author. It is reserved on all twenty-nine
 // request messages, on the four inputs they are built from, and on the nine
 // messages a response is built from -- a scope on one of those would be
 // answering a client with something the client supplied. The response wrappers
@@ -648,6 +648,21 @@ message ArchiveUserResponse {
   User user = 1;
 }
 
+message ArchiveAccountRequest {
+  reserved "scope";
+
+  string account_id = 1 [json_name = "accountID"];
+}
+
+message ArchiveAccountResponse {
+  // account is the one that was hidden, as the archival left it. The
+  // memberships it ended are deliberately not here: they are the consumer's
+  // hook's, which runs inside the operation's transaction, and a roster of
+  // unbounded size does not belong on a response whose caller asked to close an
+  // account.
+  Account account = 1;
+}
+
 message UpdateUserAccountStatusRequest {
   reserved "scope";
 
@@ -867,6 +882,7 @@ service IdentityService {
   rpc SetMembershipRoles(SetMembershipRolesRequest) returns (SetMembershipRolesResponse);
   rpc RemoveMembership(RemoveMembershipRequest) returns (RemoveMembershipResponse);
   rpc ArchiveUser(ArchiveUserRequest) returns (ArchiveUserResponse);
+  rpc ArchiveAccount(ArchiveAccountRequest) returns (ArchiveAccountResponse);
   rpc UpdateUserAccountStatus(UpdateUserAccountStatusRequest) returns (UpdateUserAccountStatusResponse);
   rpc SetUserServiceRoles(SetUserServiceRolesRequest) returns (SetUserServiceRolesResponse);
 

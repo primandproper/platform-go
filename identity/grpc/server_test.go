@@ -78,7 +78,7 @@ func TestNewServerRefusesItsMissingDependencies(T *testing.T) {
 	}
 }
 
-// TestEveryRPCRefusesAnAnonymousCaller is one test rather than twenty-eight
+// TestEveryRPCRefusesAnAnonymousCaller is one test rather than twenty-nine
 // because it is one property, and the property is the reason the extractor is
 // not optional: there is no anonymous read here, since a read with no principal
 // has no scope to filter on.

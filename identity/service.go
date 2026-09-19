@@ -5,6 +5,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
+	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/observability"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
@@ -29,6 +30,7 @@ const (
 	opTransferAccountOwnership = "transfer_account_ownership"
 	opSetDefaultAccount        = "set_default_account"
 	opArchiveUser              = "archive_user"
+	opArchiveAccount           = "archive_account"
 	opUpdateUserAccountStatus  = "update_user_account_status"
 	opSetUserServiceRoles      = "set_user_service_roles"
 	opUpdateProfile            = "update_profile"
@@ -852,6 +854,121 @@ func (s *Service) ArchiveUser(ctx context.Context, scope tenancy.Scope, userID s
 	}
 
 	return archived, nil
+}
+
+// ArchiveAccount soft-deletes an account, ends every membership in it, and
+// hands the hook both — the account as the archival left it, and the members it
+// took offline.
+//
+// This is how an account is closed: a household deleted, a workspace wound up,
+// a customer who has gone. The store performs the fan-out — the memberships are
+// archived with the account, and a member whose landing account this was has
+// their default moved to another live membership of theirs, because a member
+// with memberships and nowhere to land cannot build a Principal. What this adds
+// is the transaction the consumer's own writes join, and the roster the hook
+// needs.
+//
+// The roster is read before the archival because it cannot be read after it:
+// the memberships are archived with the account, and a consumer keeping
+// rosters, switchers, search documents or per-account derived state of its own
+// needs the members it just took offline. It is the whole roster rather than a
+// page, walked page by page — which is worth knowing before writing a row per
+// member in the hook, and Hooks.AfterArchiveAccount says what to do instead
+// when the roster is large.
+//
+// Each membership is as it stood before the write, default flag included, so a
+// consumer can tell which members were landing here. The account is the row the
+// store hid, read through the one statement that can see an archived row, so
+// what the hook records is the account as the write left it — archived_at
+// included.
+//
+// Archiving an account nothing archives is ErrAccountNotFound. Nothing else
+// refuses it: unlike ArchiveUser there is no ownership to strand, since the
+// thing being archived is what ownership resolves through.
+func (s *Service) ArchiveAccount(ctx context.Context, scope tenancy.Scope, accountID string) (*Account, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(accountIDKey, accountID),
+	)
+	defer op.End()
+
+	var archived *Account
+
+	err := s.run(ctx, op, opArchiveAccount, func(tx database.Tx) error {
+		memberships, err := s.accountRoster(ctx, tx, scope, accountID)
+		if err != nil {
+			return err
+		}
+
+		account, err := s.store.ArchiveAccount(ctx, tx, scope, accountID)
+		if err != nil {
+			return err
+		}
+
+		archived = account
+
+		return s.hooks.AfterArchiveAccount(ctx, tx, scope, archived, memberships)
+	})
+	if err != nil {
+		return nil, op.Error(err, "archiving identity account %q", accountID)
+	}
+
+	return archived, nil
+}
+
+// accountRoster is every live membership in an account, drained from the paged
+// read that answers a roster.
+//
+// It walks rather than reading one page, and the distinction is the reason this
+// exists instead of a call at the site above. A user's memberships are a
+// handful and Store.ListMembershipsForUser hands over all of them; an account's
+// members are not bounded by anything, which is why the roster is paged in the
+// first place — so an archival that asked for one page would end memberships it
+// never told the hook about, and the members missing from that list are the
+// ones a consumer's roster would keep forever.
+//
+// It runs on the archival's own transaction, so what it reads is what the write
+// beside it is about to end.
+//
+// The pages are asked for at the largest size the filter allows rather than at
+// the default fifty, since the caller is draining rather than rendering.
+func (s *Service) accountRoster(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	accountID string,
+) ([]*Membership, error) {
+	filter := filtering.DefaultQueryFilter()
+	filter.MaxResponseSize = new(filtering.MaxQueryFilterLimit)
+
+	var (
+		roster []*Membership
+		cursor string
+	)
+
+	for {
+		page, err := s.store.ListAccountMembers(ctx, tx, scope, accountID, filter)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, member := range page.Data {
+			roster = append(roster, &member.Membership)
+		}
+
+		// A page shorter than the one asked for is the last one. The second
+		// test is the guard beside it rather than a restatement of it: a page
+		// whose cursor has not moved reaches nothing new, which is what ends the
+		// walk against a result that reports no page size — including the first
+		// page, where an empty roster answers with the empty cursor this starts
+		// from.
+		if len(page.Data) < int(page.MaxResponseSize) || page.Cursor == cursor {
+			return roster, nil
+		}
+
+		cursor = page.Cursor
+		filter.Cursor = &cursor
+	}
 }
 
 // UpdateUserAccountStatus moves a user between statuses and reports what they

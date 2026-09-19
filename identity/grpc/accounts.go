@@ -97,6 +97,44 @@ func (s *Server) TransferAccountOwnership(
 	return &identitypb.TransferAccountOwnershipResponse{Account: AccountToProto(account)}, nil
 }
 
+// ArchiveAccount closes an account: it is hidden, every membership in it is
+// ended, and a member who landed here lands on another account of theirs.
+//
+// The account has to be one the caller may act on. [TargetAuthorizer] is asked
+// before the write, and by default that means an account the caller holds a live
+// membership in — identity.accounts.archive says this caller may close an
+// account, and this says which one. A closure is the one write here where the
+// two halves matter most: the permission alone would let a holder close any
+// account in the directory whose id they knew.
+//
+// The response carries the account and not the memberships the archival ended.
+// Those go to the consumer's hook, inside the transaction, where a roster of any
+// size can be dealt with without being serialized onto a reply.
+func (s *Server) ArchiveAccount(
+	ctx context.Context,
+	request *identitypb.ArchiveAccountRequest,
+) (*identitypb.ArchiveAccountResponse, error) {
+	ctx, op, principal, done, err := s.caller(ctx, identitypb.IdentityService_ArchiveAccount_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	op.Set(accountIDKey, request.GetAccountId())
+
+	if err = s.authorizeAccount(ctx, op, principal, request.GetAccountId()); err != nil {
+		return nil, err
+	}
+
+	account, err := s.svc.ArchiveAccount(ctx, scopeOf(principal), request.GetAccountId())
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(), codes.Internal, "archiving account %q", request.GetAccountId())
+	}
+
+	return &identitypb.ArchiveAccountResponse{Account: AccountToProto(account)}, nil
+}
+
 // GetAccount reads one account.
 //
 // The account has to be one the caller may act on, checked before the read.
