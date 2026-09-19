@@ -89,9 +89,17 @@ const (
 	GetCredentialByCredentialIDQuery = "GetCredentialByCredentialID"
 	GetArchivedCredentialQuery       = "GetArchivedCredential"
 	ListCredentialsForUserQuery      = "ListCredentialsForUser"
+	ListCredentialsForUsersQuery     = "ListCredentialsForUsers"
 	RecordCredentialUseQuery         = "RecordCredentialUse"
 	ArchiveCredentialForUserQuery    = "ArchiveCredentialForUser"
+	DeleteCredentialsForUserQuery    = "DeleteCredentialsForUser"
 )
+
+// UsersArg is the argument the set-keyed read binds its batch of owners
+// through. It is named rather than left at querygen's conventional ids, because
+// the set is of user ids and a params field called IDs beside a row id column
+// would read as the one thing it is not.
+const UsersArg = "users"
 
 // InsertColumns is what the create supplies values for: everything but the
 // columns the database owns, and last_used_at.
@@ -133,7 +141,30 @@ func keyedColumns() []string {
 	return kept
 }
 
-// Render returns the canonical sqlc input for d: the seven statements this store
+// subjectKeyedColumns is the table's shape as the two statements keyed on a
+// person rather than on a row see it: every column but the id and archived_at.
+//
+// The id is out for the reason [keyedColumns] drops it — these statements name
+// every passkey somebody holds rather than one of them. archived_at is out
+// because that is how a statement in this corpus says it must see revoked rows:
+// querygen renders the liveness predicate when the column list carries the
+// column, exactly as it renders the id predicate when the list carries the id.
+// Both statements below have to see them. An export that omitted a passkey the
+// subject revoked would answer a subject access request with the rows that
+// happen to still work, and an erasure that skipped them would leave the
+// person's own name for an authenticator on a row nothing will ever collect.
+func subjectKeyedColumns() []string {
+	kept := make([]string, 0, len(CredentialColumns))
+	for _, column := range CredentialColumns {
+		if column != querygen.IDColumn && column != querygen.ArchivedAtColumn {
+			kept = append(kept, column)
+		}
+	}
+
+	return kept
+}
+
+// Render returns the canonical sqlc input for d: the nine statements this store
 // executes, in one file's worth of text.
 //
 // It is what authentication/passkeys/internal/queriesgen writes to the .sql
@@ -163,8 +194,10 @@ func Render(d dialect.Dialect) string {
 		lookup(g),
 		archivedRead(g),
 		listForUser(g),
+		listForSubjects(g),
 		recordUse(g),
 		archiveForUser(g),
+		eraseForSubject(g),
 	})
 }
 
@@ -264,6 +297,42 @@ func listForUser(g *querygen.Generator) *querygen.Query {
 	)
 }
 
+// listForSubjects is every passkey a batch of people hold, revoked ones
+// included, which is what authentication/passkeys/privacy's
+// dataprivacy.Collector is built on.
+//
+// It is a second read rather than an argument on [listForUser], and the reason
+// is the one [querygen.Generator.JunctionListAllQuery] states on itself: an
+// unpaged list takes no filtering.QueryFilter, so it has no include_archived to
+// read, and archived rows are excluded outright. A subject access request is
+// exactly the caller that wants them — a passkey somebody enrolled, named and
+// later revoked is a thing this deployment knows about them — so the export
+// cannot go through the ceremony's read.
+//
+// It is [querygen.Generator.SetReadQuery], which is the only many-row statement
+// in that package that projects a column list of its own rather than the one it
+// derives its predicates from. That is what makes the combination this read
+// needs expressible at all: a column list without archived_at, so no liveness
+// predicate is rendered, and a projection with archived_at in it, so the export
+// can say when each revocation happened. The set is the shape that read has, and
+// binding one subject into it is [passkeys.SQLStore.ListAllCredentialsForUser]'s
+// business rather than this file's — the statement is the batched form because
+// that is the form that exists, not because anything here batches.
+//
+// The order is the keyed column and then created_at, which is
+// [querygen.Read].Order's contract for a batched read: one person's passkeys
+// arrive together, in the order they enrolled them. Two enrolled in the same
+// instant are the one pair this statement does not order, since a batched read
+// takes a single tie-break column; an export is a set rather than a page, so
+// nothing downstream holds a position that ordering would have to be stable for.
+func listForSubjects(g *querygen.Generator) *querygen.Query {
+	return g.SetReadQuery(ListCredentialsForUsersQuery, CredentialsTable, subjectKeyedColumns(),
+		querygen.Read{Order: querygen.CreatedAtColumn, Projection: CredentialColumns},
+		querygen.SetKey{Column: UserColumn, Arg: UsersArg},
+		querygen.Match{Column: ScopeColumn},
+	)
+}
+
 // recordUse is the sign-count write-back, which is the statement this whole
 // table is here for.
 //
@@ -292,6 +361,34 @@ func recordUse(g *querygen.Generator) *querygen.Query {
 // another scope, moves nothing and reports zero.
 func archiveForUser(g *querygen.Generator) *querygen.Query {
 	return g.ArchiveQuery(ArchiveCredentialForUserQuery, CredentialsTable, CredentialColumns,
+		querygen.Match{Column: ScopeColumn},
+		querygen.Match{Column: UserColumn},
+	)
+}
+
+// eraseForSubject is the hard delete of every passkey one person holds, which is
+// what authentication/passkeys/privacy's dataprivacy.Eraser is built on.
+//
+// It is the only statement here that destroys a row, and it is a delete rather
+// than an archive because an archive is what this table already does to a
+// revoked passkey. A revocation keeps the row so a person can be told which
+// authenticator was removed and when; an erasure is the case where the person
+// that record is about has asked not to be described at all, so the two cannot
+// be the same write.
+//
+// It names revoked rows as well as live ones — see [subjectKeyedColumns]. An
+// erasure that spared them would leave behind the row a revocation had already
+// decided was nobody's business, which is the one row in this table nothing will
+// ever come back for.
+//
+// There is no sweeper to wait for. Nothing in this package expires a credential:
+// a passkey is good until somebody revokes it, so a row this does not take is a
+// row that stays under the subject's identifier for the life of the deployment.
+//
+// Its count is the answer, as every guarded write's here is: how many passkeys
+// the subject held in this scope, which is what the erasure reports as deleted.
+func eraseForSubject(g *querygen.Generator) *querygen.Query {
+	return g.DeleteQuery(DeleteCredentialsForUserQuery, CredentialsTable, subjectKeyedColumns(),
 		querygen.Match{Column: ScopeColumn},
 		querygen.Match{Column: UserColumn},
 	)

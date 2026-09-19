@@ -62,8 +62,10 @@ func TestRender_EmitsEveryStatementTheStoreNames(T *testing.T) {
 		GetCredentialByCredentialIDQuery,
 		GetArchivedCredentialQuery,
 		ListCredentialsForUserQuery,
+		ListCredentialsForUsersQuery,
 		RecordCredentialUseQuery,
 		ArchiveCredentialForUserQuery,
+		DeleteCredentialsForUserQuery,
 	}
 
 	for _, d := range everyDialect {
@@ -233,6 +235,61 @@ func TestArchivedRead_AssertsTheComplement(T *testing.T) {
 
 			test.StrContains(t, statement, "archived_at IS NOT NULL")
 			test.StrNotContains(t, statement, "archived_at IS NULL")
+		})
+	}
+}
+
+// TestSubjectStatements_SeeRevokedRows is the property the privacy pair is built
+// on, asserted against the rendered corpus rather than against a reading of the
+// column lists that produce it.
+//
+// Both statements name a person rather than a row, and both have to reach the
+// passkeys that person revoked: an export that omitted them would answer a
+// subject access request with the rows that happen to still work, and an erasure
+// that skipped them would leave the name somebody gave an authenticator on a row
+// nothing in this package ever collects. querygen renders the liveness predicate
+// from the column list, so the whole of that decision is subjectKeyedColumns —
+// which is exactly the kind of thing that is corrected once and undone twice.
+func TestSubjectStatements_SeeRevokedRows(T *testing.T) {
+	T.Parallel()
+
+	for _, name := range []string{ListCredentialsForUsersQuery, DeleteCredentialsForUserQuery} {
+		T.Run(name, func(T *testing.T) {
+			T.Parallel()
+
+			for _, d := range everyDialect {
+				T.Run(string(d), func(t *testing.T) {
+					t.Parallel()
+
+					statement := statementNamed(t, Render(d), name)
+
+					test.StrNotContains(t, statement, querygen.ArchivedAtColumn+" IS NULL")
+					test.StrContains(t, statement, UserColumn)
+				})
+			}
+		})
+	}
+}
+
+// TestListForSubjects_ProjectsTheRevocation is the other half of that pair, and
+// it is a separate assertion because the two are separate decisions: one column
+// list decides which rows come back and another decides which columns do.
+//
+// An export that reached a revoked passkey and could not say when it was revoked
+// would report a credential that looks live, which is worse than omitting it.
+func TestListForSubjects_ProjectsTheRevocation(T *testing.T) {
+	T.Parallel()
+
+	for _, d := range everyDialect {
+		T.Run(string(d), func(t *testing.T) {
+			t.Parallel()
+
+			statement := statementNamed(t, Render(d), ListCredentialsForUsersQuery)
+
+			projection, _, found := strings.Cut(statement, "\nFROM ")
+			must.True(t, found, must.Sprint("the read has no FROM clause"))
+
+			test.StrContains(t, projection, querygen.Qualify(CredentialsTable, querygen.ArchivedAtColumn))
 		})
 	}
 }

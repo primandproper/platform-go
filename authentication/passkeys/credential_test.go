@@ -1,8 +1,12 @@
 package passkeys
 
 import (
+	"bytes"
 	"math"
+	"strings"
 	"testing"
+
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 
 	"github.com/shoenig/test"
 	"github.com/shoenig/test/must"
@@ -127,6 +131,101 @@ func TestCredentialValidation(T *testing.T) {
 		noKey := newCredential("user_1", []byte{0x01})
 		noKey.PublicKey = nil
 		must.ErrorIs(t, noKey.ValidateWithContext(t.Context()), ErrEmptyPublicKey)
+	})
+}
+
+// TestCredentialBounds pins the widths that keep one registration meaning one
+// thing on three dialects.
+//
+// Each refusal case is one byte over its column, because one byte over is the
+// case a limit written down as the wrong number still passes.
+func TestCredentialBounds(T *testing.T) {
+	T.Parallel()
+
+	T.Run("each stored value is bounded by its column", func(T *testing.T) {
+		T.Parallel()
+
+		cases := []struct {
+			mutate func(*Credential)
+			name   string
+		}{
+			{
+				name:   "id",
+				mutate: func(c *Credential) { c.ID = strings.Repeat("i", MaxCredentialRowIDLength+1) },
+			},
+			{
+				name:   "user id",
+				mutate: func(c *Credential) { c.BelongsToUser = strings.Repeat("u", MaxUserIDLength+1) },
+			},
+			{
+				name:   "credential id",
+				mutate: func(c *Credential) { c.CredentialID = bytes.Repeat([]byte{0x01}, MaxCredentialIDLength+1) },
+			},
+			{
+				name:   "public key",
+				mutate: func(c *Credential) { c.PublicKey = bytes.Repeat([]byte{0x02}, MaxPublicKeyLength+1) },
+			},
+			{
+				name:   "friendly name",
+				mutate: func(c *Credential) { c.FriendlyName = strings.Repeat("n", MaxFriendlyNameLength+1) },
+			},
+		}
+
+		for _, tc := range cases {
+			T.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				credential := newCredential("user_1", []byte{0x01})
+				tc.mutate(credential)
+
+				err := credential.ValidateWithContext(t.Context())
+
+				test.ErrorIs(t, err, ErrCredentialValueTooLong)
+
+				// Answered as a bad request by the platform mapper, which is why
+				// a package that ships no mappers of its own can refuse this at
+				// all — see ErrCredentialValueTooLong.
+				test.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
+
+				// The message says which value it was, because "too long" with
+				// five candidates is a refusal the caller has to guess at.
+				test.StrContains(t, err.Error(), tc.name)
+			})
+		}
+	})
+
+	T.Run("a credential exactly at each limit is admitted", func(t *testing.T) {
+		t.Parallel()
+
+		credential := &Credential{
+			ID:            strings.Repeat("i", MaxCredentialRowIDLength),
+			BelongsToUser: strings.Repeat("u", MaxUserIDLength),
+			CredentialID:  bytes.Repeat([]byte{0x01}, MaxCredentialIDLength),
+			PublicKey:     bytes.Repeat([]byte{0x02}, MaxPublicKeyLength),
+			FriendlyName:  strings.Repeat("n", MaxFriendlyNameLength),
+		}
+
+		must.NoError(t, credential.ValidateWithContext(t.Context()))
+	})
+
+	// The transports bound is on the encoding rather than on the list, because
+	// the encoding is what the column holds.
+	T.Run("the encoded transports are bounded too", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := encodeTransports(t.Context(), []string{strings.Repeat("t", MaxTransportsLength)})
+
+		test.ErrorIs(t, err, ErrCredentialValueTooLong)
+		test.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
+	})
+
+	T.Run("the transports a real authenticator reports are well inside it", func(t *testing.T) {
+		t.Parallel()
+
+		encoded, err := encodeTransports(t.Context(), []string{"usb", "nfc", "ble", "internal", "hybrid"})
+		must.NoError(t, err)
+
+		test.Less(t, MaxTransportsLength, len(encoded))
 	})
 }
 

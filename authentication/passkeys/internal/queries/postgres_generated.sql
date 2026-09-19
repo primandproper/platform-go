@@ -98,6 +98,25 @@ WHERE webauthn_credentials.archived_at IS NULL
 	AND webauthn_credentials.belongs_to_user = sqlc.arg(belongs_to_user)
 ORDER BY webauthn_credentials.created_at ASC, webauthn_credentials.id ASC;
 
+-- name: ListCredentialsForUsers :many
+SELECT
+	webauthn_credentials.id,
+	webauthn_credentials.scope,
+	webauthn_credentials.belongs_to_user,
+	webauthn_credentials.credential_id,
+	webauthn_credentials.public_key,
+	webauthn_credentials.transports,
+	webauthn_credentials.friendly_name,
+	webauthn_credentials.sign_count,
+	webauthn_credentials.created_at,
+	webauthn_credentials.last_updated_at,
+	webauthn_credentials.last_used_at,
+	webauthn_credentials.archived_at
+FROM webauthn_credentials
+WHERE webauthn_credentials.scope = sqlc.arg(scope)
+	AND webauthn_credentials.belongs_to_user = ANY(sqlc.arg(users)::text[])
+ORDER BY webauthn_credentials.belongs_to_user ASC, webauthn_credentials.created_at ASC;
+
 -- name: RecordCredentialUse :execrows
 UPDATE webauthn_credentials SET
 	sign_count = sqlc.arg(sign_count),
@@ -113,4 +132,9 @@ UPDATE webauthn_credentials SET
 WHERE archived_at IS NULL
 	AND id = sqlc.arg(id)
 	AND scope = sqlc.arg(scope)
+	AND belongs_to_user = sqlc.arg(belongs_to_user);
+
+-- name: DeleteCredentialsForUser :execrows
+DELETE FROM webauthn_credentials
+WHERE scope = sqlc.arg(scope)
 	AND belongs_to_user = sqlc.arg(belongs_to_user);

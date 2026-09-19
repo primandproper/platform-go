@@ -26,6 +26,21 @@ import (
 // correct on two engines and wrong on the third. Either give it a predicate
 // that discriminates, or set clientFoundRows=true in the MySQL DSN, which
 // switches MySQL to matched semantics.
+//
+// # A note on empty lists
+//
+// A list parameter that is empty matches nothing, on every dialect: Postgres
+// binds an empty array to `= ANY`, and the other two expand to `IN (NULL)` because
+// `IN ()` is a syntax error there. Asking for the rows whose key is in an empty
+// set gets no rows back, which is what the empty set says, so a caller does not
+// have to guard the call.
+//
+// The negation is where they part company, and nothing below can warn you. An
+// empty list makes `NOT IN (NULL)` never true, so it matches nothing, while
+// Postgres's empty `<> ALL` is true and matches everything. Both readings are
+// defensible and no shared signature can say which was meant — so test
+// membership rather than its negation, and let the caller decide what an empty
+// set means before it calls.
 type Querier interface {
 	// ArchiveCredentialForUser runs the :execrows query.
 	//
@@ -34,6 +49,11 @@ type Querier interface {
 	ArchiveCredentialForUser(ctx context.Context, db DBTX, arg ArchiveCredentialForUserParams) (int64, error)
 	// CreateCredential runs the :exec query.
 	CreateCredential(ctx context.Context, db DBTX, arg CreateCredentialParams) error
+	// DeleteCredentialsForUser runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	DeleteCredentialsForUser(ctx context.Context, db DBTX, arg DeleteCredentialsForUserParams) (int64, error)
 	// GetArchivedCredential runs the :one query.
 	GetArchivedCredential(ctx context.Context, db DBTX, arg GetArchivedCredentialParams) (GetArchivedCredentialRow, error)
 	// GetCredential runs the :one query.
@@ -42,6 +62,8 @@ type Querier interface {
 	GetCredentialByCredentialID(ctx context.Context, db DBTX, arg GetCredentialByCredentialIDParams) (GetCredentialByCredentialIDRow, error)
 	// ListCredentialsForUser runs the :many query.
 	ListCredentialsForUser(ctx context.Context, db DBTX, arg ListCredentialsForUserParams) ([]ListCredentialsForUserRow, error)
+	// ListCredentialsForUsers runs the :many query.
+	ListCredentialsForUsers(ctx context.Context, db DBTX, arg ListCredentialsForUsersParams) ([]ListCredentialsForUsersRow, error)
 	// RecordCredentialUse runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note

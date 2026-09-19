@@ -30,6 +30,12 @@ type CreateCredentialParams struct {
 	SignCount     int64
 }
 
+// DeleteCredentialsForUserParams are the arguments to DeleteCredentialsForUser.
+type DeleteCredentialsForUserParams struct {
+	Scope         tenancy.Scope
+	BelongsToUser string
+}
+
 // GetArchivedCredentialParams are the arguments to GetArchivedCredential.
 type GetArchivedCredentialParams struct {
 	ID    string
@@ -104,6 +110,28 @@ type ListCredentialsForUserParams struct {
 
 // ListCredentialsForUserRow is one row of ListCredentialsForUser's result.
 type ListCredentialsForUserRow struct {
+	ID            string
+	Scope         tenancy.Scope
+	BelongsToUser string
+	CredentialID  []byte
+	PublicKey     []byte
+	Transports    string
+	FriendlyName  string
+	SignCount     int64
+	CreatedAt     time.Time
+	LastUpdatedAt *time.Time
+	LastUsedAt    *time.Time
+	ArchivedAt    *time.Time
+}
+
+// ListCredentialsForUsersParams are the arguments to ListCredentialsForUsers.
+type ListCredentialsForUsersParams struct {
+	Scope tenancy.Scope
+	Users []string
+}
+
+// ListCredentialsForUsersRow is one row of ListCredentialsForUsers's result.
+type ListCredentialsForUsersRow struct {
 	ID            string
 	Scope         tenancy.Scope
 	BelongsToUser string

@@ -64,7 +64,7 @@ reasons behind the three exceptions.
 | `authentication/signin/refreshtokens` | The refresh tokens sign-in rotates: digest at rest, single use, grouped into one family per login | postgres, mysql, sqlite          |
 | `authentication/passwordreset`     | Password reset tokens: digest at rest, single use enforced by the store, and `authentication/passwordreset/privacy` | postgres, mysql, sqlite          |
 | `authentication/webauthnsessions`  | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
-| `authentication/passkeys`          | The credentials a passkey registration produces, and the sign count clone detection compares against | postgres, mysql, sqlite          |
+| `authentication/passkeys`          | The credentials a passkey registration produces, the sign count clone detection compares against, and `authentication/passkeys/privacy` | postgres, mysql, sqlite          |
 | `authentication/oauth2clients`     | An administered OAuth2 client registry, and `authentication/oauth2clients/privacy` | postgres, mysql, sqlite (+ grpc) |
 | `authentication/oauth2serverstore` | The OAuth2 server's client and token tables                                   | postgres, mysql, sqlite          |
 | `rbac`                             | Roles and permissions as rows, behind the policy interface                    | postgres, mysql, sqlite          |

@@ -41,6 +41,10 @@ INSERT INTO {{prefix}}webauthn_credentials (
 	$8
 )`
 
+const deleteCredentialsForUserPostgreSQL = `DELETE FROM {{prefix}}webauthn_credentials
+WHERE scope = $1
+	AND belongs_to_user = $2`
+
 const getArchivedCredentialPostgreSQL = `SELECT
 	{{prefix}}webauthn_credentials.id,
 	{{prefix}}webauthn_credentials.scope,
@@ -114,6 +118,24 @@ WHERE {{prefix}}webauthn_credentials.archived_at IS NULL
 	AND {{prefix}}webauthn_credentials.belongs_to_user = $2
 ORDER BY {{prefix}}webauthn_credentials.created_at ASC, {{prefix}}webauthn_credentials.id ASC`
 
+const listCredentialsForUsersPostgreSQL = `SELECT
+	{{prefix}}webauthn_credentials.id,
+	{{prefix}}webauthn_credentials.scope,
+	{{prefix}}webauthn_credentials.belongs_to_user,
+	{{prefix}}webauthn_credentials.credential_id,
+	{{prefix}}webauthn_credentials.public_key,
+	{{prefix}}webauthn_credentials.transports,
+	{{prefix}}webauthn_credentials.friendly_name,
+	{{prefix}}webauthn_credentials.sign_count,
+	{{prefix}}webauthn_credentials.created_at,
+	{{prefix}}webauthn_credentials.last_updated_at,
+	{{prefix}}webauthn_credentials.last_used_at,
+	{{prefix}}webauthn_credentials.archived_at
+FROM {{prefix}}webauthn_credentials
+WHERE {{prefix}}webauthn_credentials.scope = $1
+	AND {{prefix}}webauthn_credentials.belongs_to_user = ANY($2::text[])
+ORDER BY {{prefix}}webauthn_credentials.belongs_to_user ASC, {{prefix}}webauthn_credentials.created_at ASC`
+
 const recordCredentialUsePostgreSQL = `UPDATE {{prefix}}webauthn_credentials SET
 	sign_count = $1,
 	last_used_at = $2,
@@ -126,10 +148,12 @@ WHERE archived_at IS NULL
 type postgresqlQueries struct {
 	archiveCredentialForUser    string
 	createCredential            string
+	deleteCredentialsForUser    string
 	getArchivedCredential       string
 	getCredential               string
 	getCredentialByCredentialID string
 	listCredentialsForUser      string
+	listCredentialsForUsers     string
 	recordCredentialUse         string
 }
 
@@ -139,10 +163,12 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 	return &postgresqlQueries{
 		archiveCredentialForUser:    strings.ReplaceAll(archiveCredentialForUserPostgreSQL, prefixMarker, prefix),
 		createCredential:            strings.ReplaceAll(createCredentialPostgreSQL, prefixMarker, prefix),
+		deleteCredentialsForUser:    strings.ReplaceAll(deleteCredentialsForUserPostgreSQL, prefixMarker, prefix),
 		getArchivedCredential:       strings.ReplaceAll(getArchivedCredentialPostgreSQL, prefixMarker, prefix),
 		getCredential:               strings.ReplaceAll(getCredentialPostgreSQL, prefixMarker, prefix),
 		getCredentialByCredentialID: strings.ReplaceAll(getCredentialByCredentialIDPostgreSQL, prefixMarker, prefix),
 		listCredentialsForUser:      strings.ReplaceAll(listCredentialsForUserPostgreSQL, prefixMarker, prefix),
+		listCredentialsForUsers:     strings.ReplaceAll(listCredentialsForUsersPostgreSQL, prefixMarker, prefix),
 		recordCredentialUse:         strings.ReplaceAll(recordCredentialUsePostgreSQL, prefixMarker, prefix),
 	}
 }
@@ -175,6 +201,19 @@ func (q *postgresqlQueries) CreateCredential(ctx context.Context, db DBTX, arg C
 	)
 
 	return err
+}
+
+// DeleteCredentialsForUser runs the :execrows query against postgresql.
+func (q *postgresqlQueries) DeleteCredentialsForUser(ctx context.Context, db DBTX, arg DeleteCredentialsForUserParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.deleteCredentialsForUser,
+		arg.Scope,
+		arg.BelongsToUser,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
 }
 
 // GetArchivedCredential runs the :one query against postgresql.
@@ -302,6 +341,50 @@ func (q *postgresqlQueries) ListCredentialsForUser(ctx context.Context, db DBTX,
 	return items, nil
 }
 
+// ListCredentialsForUsers runs the :many query against postgresql.
+func (q *postgresqlQueries) ListCredentialsForUsers(ctx context.Context, db DBTX, arg ListCredentialsForUsersParams) ([]ListCredentialsForUsersRow, error) {
+	rows, err := db.QueryContext(ctx, q.listCredentialsForUsers,
+		arg.Scope,
+		arg.Users,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ListCredentialsForUsersRow
+
+	for rows.Next() {
+		var i ListCredentialsForUsersRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Scope,
+			&i.BelongsToUser,
+			&i.CredentialID,
+			&i.PublicKey,
+			&i.Transports,
+			&i.FriendlyName,
+			&i.SignCount,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.LastUsedAt,
+			&i.ArchivedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 // RecordCredentialUse runs the :execrows query against postgresql.
 func (q *postgresqlQueries) RecordCredentialUse(ctx context.Context, db DBTX, arg RecordCredentialUseParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordCredentialUse,
@@ -339,6 +422,10 @@ var (
 		FriendlyName  string
 		SignCount     int64
 	}(CreateCredentialParams{})
+	_ = struct {
+		Scope         tenancy.Scope
+		BelongsToUser string
+	}(DeleteCredentialsForUserParams{})
 	_ = struct {
 		ID    string
 		Scope tenancy.Scope
@@ -411,6 +498,24 @@ var (
 		LastUsedAt    *time.Time
 		ArchivedAt    *time.Time
 	}(ListCredentialsForUserRow{})
+	_ = struct {
+		Scope tenancy.Scope
+		Users []string
+	}(ListCredentialsForUsersParams{})
+	_ = struct {
+		ID            string
+		Scope         tenancy.Scope
+		BelongsToUser string
+		CredentialID  []byte
+		PublicKey     []byte
+		Transports    string
+		FriendlyName  string
+		SignCount     int64
+		CreatedAt     time.Time
+		LastUpdatedAt *time.Time
+		LastUsedAt    *time.Time
+		ArchivedAt    *time.Time
+	}(ListCredentialsForUsersRow{})
 	_ = struct {
 		SignCount  int64
 		LastUsedAt *time.Time

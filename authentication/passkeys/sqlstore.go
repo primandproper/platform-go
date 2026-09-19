@@ -370,6 +370,66 @@ func (s *SQLStore) GetCredentialsForUser(
 	return credentials, nil
 }
 
+// ListAllCredentialsForUser reads every passkey one user has registered in the
+// scope, revoked ones included. See Store.ListAllCredentialsForUser for why it
+// is a second method rather than an argument on the live read.
+//
+// The statement behind it is the set-keyed read, and this binds a set of one.
+// That is the shape querygen renders a many-row read with a projection of its
+// own in — which is what this read needs, since the archived column has to be
+// out of the predicate list and in the answer — and nothing here batches; see
+// authentication/passkeys/internal/queries.
+func (s *SQLStore) ListAllCredentialsForUser(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	userID string,
+) ([]*Credential, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userKey, userID),
+	)
+	defer op.End()
+	defer op.Time(ctx, nil, s.instruments.Latency)()
+
+	s.instruments.Attempt(ctx)
+
+	if q == nil {
+		return nil, s.failed(ctx, op.Error(ErrNilExecutor, "listing every passkey a user has registered"))
+	}
+
+	if userID == "" {
+		return nil, s.failed(ctx, op.Error(ErrEmptyUserID, "listing every passkey a user has registered"))
+	}
+
+	if err := scope.Validate(); err != nil {
+		return nil, s.failed(ctx, op.Error(err, "listing every passkey a user has registered"))
+	}
+
+	rows, err := s.q.ListCredentialsForUsers(ctx, q, passkeysdb.ListCredentialsForUsersParams{
+		Scope: scope,
+		Users: []string{userID},
+	})
+	if err != nil {
+		return nil, s.failed(ctx, op.Error(err, "listing every passkey a user has registered"))
+	}
+
+	credentials := make([]*Credential, 0, len(rows))
+
+	for i := range rows {
+		credential, convErr := credentialFromSubjectListRow(ctx, &rows[i])
+		if convErr != nil {
+			return nil, s.failed(ctx, op.Error(convErr, "listing every passkey a user has registered"))
+		}
+
+		credentials = append(credentials, credential)
+	}
+
+	op.SpanOnly(countKey, len(credentials))
+
+	return credentials, nil
+}
+
 // RecordUse writes the authenticator's signature counter back and answers with
 // the row it left. See Store.RecordUse for why its error is the caller's to
 // surface.
@@ -491,6 +551,55 @@ func (s *SQLStore) ArchiveCredentialForUser(
 	}
 
 	return credential, nil
+}
+
+// DeleteCredentialsForUser destroys every passkey one user holds in the scope,
+// revoked ones included, and answers with how many rows went. See
+// Store.DeleteCredentialsForUser for why an erasure deletes where a revocation
+// archives.
+//
+// The count is not guarded. Every other write here reports ErrCredentialNotFound
+// for a statement that moved nothing, because every other write names a row
+// somebody is holding; this one names a person, and a person with no passkeys is
+// the ordinary case an erasure runs into rather than a failure to report.
+func (s *SQLStore) DeleteCredentialsForUser(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID string,
+) (int64, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userKey, userID),
+	)
+	defer op.End()
+	defer op.Time(ctx, nil, s.instruments.Latency)()
+
+	s.instruments.Attempt(ctx)
+
+	if tx == nil {
+		return 0, s.failed(ctx, op.Error(ErrNilExecutor, "erasing a user's passkeys"))
+	}
+
+	if userID == "" {
+		return 0, s.failed(ctx, op.Error(ErrEmptyUserID, "erasing a user's passkeys"))
+	}
+
+	if err := scope.Validate(); err != nil {
+		return 0, s.failed(ctx, op.Error(err, "erasing a user's passkeys"))
+	}
+
+	deleted, err := s.q.DeleteCredentialsForUser(ctx, tx, passkeysdb.DeleteCredentialsForUserParams{
+		Scope:         scope,
+		BelongsToUser: userID,
+	})
+	if err != nil {
+		return 0, s.failed(ctx, op.Error(err, "erasing a user's passkeys"))
+	}
+
+	op.Set(countKey, deleted)
+
+	return deleted, nil
 }
 
 // checkScope settles which tenant a write is for.

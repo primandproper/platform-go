@@ -228,6 +228,124 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 		test.SliceEmpty(t, found)
 	})
 
+	// The export's read is the one that must see what the ceremony's must not.
+	t.Run("the export sees the passkeys a revocation removed", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		live := env.mustCreate(t, store, testScope, newCredential("user_1", []byte{0x70}))
+		revoked := env.mustCreate(t, store, testScope, newCredential("user_1", []byte{0x71}))
+		env.mustArchive(t, store, testScope, revoked.ID, "user_1")
+
+		// The live read is the control: the revocation really did take it out of
+		// the set every other caller sees.
+		living, err := store.GetCredentialsForUser(t.Context(), env.reader(), testScope, "user_1")
+		must.NoError(t, err)
+		must.SliceLen(t, 1, living)
+
+		found, err := store.ListAllCredentialsForUser(t.Context(), env.reader(), testScope, "user_1")
+		must.NoError(t, err)
+		must.SliceLen(t, 2, found)
+
+		ids := []string{found[0].ID, found[1].ID}
+		test.SliceContains(t, ids, live.ID)
+		test.SliceContains(t, ids, revoked.ID)
+
+		// And it carries the instant, which is the whole reason the read
+		// projects the column rather than merely admitting the row: an export
+		// that reported a revoked passkey as live would be worse than one that
+		// left it out.
+		for _, credential := range found {
+			if credential.ID == revoked.ID {
+				test.NotNil(t, credential.ArchivedAt)
+			}
+		}
+	})
+
+	t.Run("the export is scoped and keyed on its subject", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		env.mustCreate(t, store, testScope, newCredential("user_1", []byte{0x72}))
+		env.mustCreate(t, store, testScope, newCredential("user_2", []byte{0x73}))
+		env.mustCreate(t, store, otherScope, newCredential("user_1", []byte{0x74}))
+
+		found, err := store.ListAllCredentialsForUser(t.Context(), env.reader(), testScope, "user_1")
+		must.NoError(t, err)
+		must.SliceLen(t, 1, found)
+		test.EqOp(t, "user_1", found[0].BelongsToUser)
+		test.EqOp(t, testScope, found[0].Scope)
+
+		none, err := store.ListAllCredentialsForUser(t.Context(), env.reader(), testScope, "nobody")
+		must.NoError(t, err)
+		test.SliceEmpty(t, none)
+	})
+
+	t.Run("the erasure takes the revoked rows as well as the live ones", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		live := env.mustCreate(t, store, testScope, newCredential("user_1", []byte{0x75}))
+		revoked := env.mustCreate(t, store, testScope, newCredential("user_1", []byte{0x76}))
+		env.mustArchive(t, store, testScope, revoked.ID, "user_1")
+
+		// Another subject in this scope and the same subject in another, both of
+		// which the erasure must leave exactly where they are.
+		bystander := env.mustCreate(t, store, testScope, newCredential("user_2", []byte{0x77}))
+		elsewhere := env.mustCreate(t, store, otherScope, newCredential("user_1", []byte{0x78}))
+
+		deleted, err := env.erase(t, store, testScope, "user_1")
+		must.NoError(t, err)
+		test.EqOp(t, int64(2), deleted)
+
+		gone, err := store.ListAllCredentialsForUser(t.Context(), env.reader(), testScope, "user_1")
+		must.NoError(t, err)
+		test.SliceEmpty(t, gone, test.Sprintf("the erased subject still holds %s", live.ID))
+
+		survivors, err := store.ListAllCredentialsForUser(t.Context(), env.reader(), testScope, "user_2")
+		must.NoError(t, err)
+		must.SliceLen(t, 1, survivors)
+		test.EqOp(t, bystander.ID, survivors[0].ID)
+
+		other, err := store.ListAllCredentialsForUser(t.Context(), env.reader(), otherScope, "user_1")
+		must.NoError(t, err)
+		must.SliceLen(t, 1, other)
+		test.EqOp(t, elsewhere.ID, other[0].ID)
+	})
+
+	// An erasure runs for every subject a request names, most of whom never
+	// registered a passkey. A zero count is that answer rather than a refusal.
+	t.Run("erasing a subject with no passkeys is not an error", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		deleted, err := env.erase(t, store, testScope, "nobody")
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), deleted)
+	})
+
+	// The erased rows free the authenticator the way an archive does, which is
+	// what says the delete really took the archived row too: the live-rows
+	// unique index would still be holding the slot if it had not.
+	t.Run("an erased credential id can be registered again", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		env.mustCreate(t, store, testScope, newCredential("user_1", []byte{0x79}))
+
+		deleted, err := env.erase(t, store, testScope, "user_1")
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), deleted)
+
+		again := env.mustCreate(t, store, testScope, newCredential("user_1", []byte{0x79}))
+		test.NotEq(t, "", again.ID)
+	})
+
 	t.Run("the sign count is written back and answered with", func(t *testing.T) {
 		t.Parallel()
 
@@ -382,6 +500,12 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		_, archive := store.ArchiveCredentialForUser(ctx, nil, testScope, "row", "user_1")
 		must.ErrorIs(t, archive, ErrNilExecutor)
+
+		_, export := store.ListAllCredentialsForUser(ctx, nil, testScope, "user_1")
+		must.ErrorIs(t, export, ErrNilExecutor)
+
+		_, erase := store.DeleteCredentialsForUser(ctx, nil, testScope, "user_1")
+		must.ErrorIs(t, erase, ErrNilExecutor)
 	})
 
 	t.Run("the arguments a write cannot do without", func(t *testing.T) {
@@ -412,6 +536,12 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		_, emptyOwner := env.archive(t, store, testScope, "row", "")
 		must.ErrorIs(t, emptyOwner, ErrEmptyUserID)
+
+		_, emptyExport := store.ListAllCredentialsForUser(t.Context(), env.reader(), testScope, "")
+		must.ErrorIs(t, emptyExport, ErrEmptyUserID)
+
+		_, emptyErasure := env.erase(t, store, testScope, "")
+		must.ErrorIs(t, emptyErasure, ErrEmptyUserID)
 	})
 
 	t.Run("an unset scope is refused rather than widened", func(t *testing.T) {
@@ -426,5 +556,11 @@ func runStoreSuite(t *testing.T, env *storeEnv) {
 
 		_, list := store.GetCredentialsForUser(t.Context(), env.reader(), unset, "user_1")
 		must.Error(t, list)
+
+		_, export := store.ListAllCredentialsForUser(t.Context(), env.reader(), unset, "user_1")
+		must.Error(t, export)
+
+		_, erase := env.erase(t, store, unset, "user_1")
+		must.Error(t, erase)
 	})
 }

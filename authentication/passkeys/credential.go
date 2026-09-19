@@ -23,46 +23,109 @@ import (
 // revoked.
 //
 // [Credential.WebAuthnCredential] converts one back.
+//
+// The json tags are load-bearing rather than decorative: a subject access
+// request carries these rows verbatim, so the field names are what somebody
+// reads off their own export — see authentication/passkeys/privacy. Nothing
+// secret is among them. A passkey's private half never leaves the
+// authenticator, and the credential ID travels in the clear on every login.
 type Credential struct {
 	// CreatedAt is when the registration was stored, from the database's clock.
-	CreatedAt time.Time
+	CreatedAt time.Time `json:"createdAt"`
 	// LastUpdatedAt is when the row last changed, from the database's clock.
-	LastUpdatedAt *time.Time
+	LastUpdatedAt *time.Time `json:"lastUpdatedAt,omitempty"`
 	// LastUsedAt is when the assertion that last moved SignCount happened, from
 	// the clock the caller passed to Store.RecordUse. It is nil until this
 	// passkey has signed somebody in, which is what makes "enrolled and never
 	// used" answerable from the row.
-	LastUsedAt *time.Time
+	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
 	// ArchivedAt is when the passkey was revoked. A revoked credential is absent
 	// from every read on Store.
-	ArchivedAt *time.Time
+	ArchivedAt *time.Time `json:"archivedAt,omitempty"`
 	// ID is the row's identifier, minted by the store where a create supplies
 	// none. It is not the credential ID.
-	ID string
+	ID string `json:"id"`
 	// Scope is the tenant the passkey belongs to.
-	Scope tenancy.Scope
+	Scope tenancy.Scope `json:"scope"`
 	// BelongsToUser is the consumer's own user id — not the WebAuthn user
 	// handle. Resolving a handle to a user is the consumer's directory's job;
 	// see NewUserSource.
-	BelongsToUser string
+	BelongsToUser string `json:"belongsToUser"`
 	// FriendlyName is whatever the person called this passkey, for a settings
 	// page to render. It means nothing to the protocol.
-	FriendlyName string
+	FriendlyName string `json:"friendlyName"`
 	// Transports is the authenticator's transport hints, as the registration
 	// reported them. They are a hint the browser uses to decide which
 	// authenticators to offer, so a round trip that lost them would make a
 	// second login slower rather than impossible.
-	Transports []string
+	Transports []string `json:"transports,omitempty"`
 	// CredentialID is the authenticator's credential ID, the value a login
 	// arrives holding and the one the live-rows unique index covers.
-	CredentialID []byte
+	CredentialID []byte `json:"credentialID"`
 	// PublicKey is the COSE public key an assertion is verified against.
-	PublicKey []byte
+	PublicKey []byte `json:"publicKey"`
 	// SignCount is the authenticator's signature counter as of the last
 	// assertion this credential verified. See Store.RecordUse for why it is the
 	// field this table exists for.
-	SignCount uint32
+	SignCount uint32 `json:"signCount"`
 }
+
+// The widths of the columns this table stores a caller's values in, and the
+// bounds a Credential is checked against before one is written.
+//
+// They are checked in Go rather than left to the database because the three
+// dialects disagree about what happens when a value does not fit, and every one
+// of the disagreements is somebody else's to discover. MySQL is the engine that
+// had to pick numbers — an index needs a width, and this table's unique key
+// covers the credential id — so it spells these columns VARCHAR and VARBINARY
+// where Postgres and SQLite spell them TEXT and BYTEA and store whatever
+// arrives. Without a bound here, the same registration succeeds on two engines
+// and fails on the third, as a driver error naming a column that means nothing
+// to whoever typed the name.
+//
+// The writes here are plain inserts, so nothing truncates: MySQL's strict mode
+// refuses the row rather than storing part of it, which is the one mercy the
+// insert-ignore paths elsewhere in this module do not get. What the bounds buy
+// is therefore the refusal's wording and its timing — see
+// ErrCredentialValueTooLong — rather than the difference between a stored value
+// and a stored prefix.
+//
+// The scope is deliberately not among them. It is a deployment's own identifier
+// rather than anything a person supplies, it is decided once, and it is bounded
+// nowhere else in this module either.
+const (
+	// MaxCredentialRowIDLength bounds the row's own identifier. It is only
+	// reachable from a caller that supplies one; a minted id is well inside it.
+	MaxCredentialRowIDLength = 64
+
+	// MaxUserIDLength bounds the consumer's user id. It is the width identity's
+	// own ids are minted at, and a directory whose ids are longer is a directory
+	// this table cannot key on.
+	MaxUserIDLength = 64
+
+	// MaxCredentialIDLength bounds the authenticator's credential ID. The number
+	// is WebAuthn's own rather than this schema's invention: the specification
+	// caps a credential ID at 1023 bytes, which is why the column is the width
+	// it is.
+	MaxCredentialIDLength = 1023
+
+	// MaxPublicKeyLength bounds the COSE public key. A key is a few hundred
+	// bytes and the column holds sixty-four kilobytes, so nothing a real
+	// authenticator produces comes near it — what the bound refuses is a caller
+	// storing something else in the field.
+	MaxPublicKeyLength = 65535
+
+	// MaxTransportsLength bounds the encoded transport hints, which is what the
+	// column holds. It is checked on the encoding rather than on the list,
+	// because a list of three short hints and a list of one long one are the
+	// same column — see encodeTransports.
+	MaxTransportsLength = 512
+
+	// MaxFriendlyNameLength bounds the name the person gave this passkey. It is
+	// the one value here somebody types, so it is the one a bound is actually
+	// for.
+	MaxFriendlyNameLength = 255
+)
 
 // transportCodec is how the transports column round-trips.
 //
@@ -94,6 +157,15 @@ func encodeTransports(ctx context.Context, transports []string) (string, error) 
 	encoded, err := transportCodec.Marshal(ctx, transports)
 	if err != nil {
 		return "", platformerrors.Wrap(err, "encoding passkey transports")
+	}
+
+	// The bound is on the encoding because the encoding is what the column
+	// holds. A hint an authenticator reported is a handful of characters, so
+	// this refuses a caller storing something else in the field rather than a
+	// real registration.
+	if len(encoded) > MaxTransportsLength {
+		return "", platformerrors.Wrapf(ErrCredentialValueTooLong,
+			"encoded transports are %d bytes, over the %d-byte limit", len(encoded), MaxTransportsLength)
 	}
 
 	return string(encoded), nil
@@ -156,6 +228,37 @@ func (c *Credential) ValidateWithContext(_ context.Context) error {
 
 	if len(c.PublicKey) == 0 {
 		return ErrEmptyPublicKey
+	}
+
+	return c.withinBounds()
+}
+
+// withinBounds reports the first of the credential's stored values that is
+// longer than the column holding it.
+//
+// The order is the order the columns are declared in, which is the order a
+// reader of the schema meets them. Nothing depends on which one is reported
+// first: a credential over two bounds is over both however it is fixed.
+func (c *Credential) withinBounds() error {
+	bounds := []struct {
+		what  string
+		limit int
+		size  int
+	}{
+		{what: "id", size: len(c.ID), limit: MaxCredentialRowIDLength},
+		{what: "user id", size: len(c.BelongsToUser), limit: MaxUserIDLength},
+		{what: "credential id", size: len(c.CredentialID), limit: MaxCredentialIDLength},
+		{what: "public key", size: len(c.PublicKey), limit: MaxPublicKeyLength},
+		{what: "friendly name", size: len(c.FriendlyName), limit: MaxFriendlyNameLength},
+	}
+
+	for i := range bounds {
+		bound := &bounds[i]
+
+		if bound.size > bound.limit {
+			return platformerrors.Wrapf(ErrCredentialValueTooLong,
+				"%s is %d bytes, over the %d-byte limit", bound.what, bound.size, bound.limit)
+		}
 	}
 
 	return nil

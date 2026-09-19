@@ -42,6 +42,25 @@ var (
 	// ErrEmptyCredentialID indicates a read or write that named no credential.
 	ErrEmptyCredentialID = platformerrors.New("passkey credential id is required")
 
+	// ErrCredentialValueTooLong indicates a registration carrying a value longer
+	// than the column that stores it — see MaxCredentialRowIDLength and the five
+	// bounds beside it, and the wrapped message for which value it was.
+	//
+	// It wraps errors.ErrUnrecognizedInputValue, so the platform mapper answers
+	// it as a bad request. This package ships no mappers of its own, which is
+	// the same arrangement settings and billing reached for their own bounds by
+	// a different route: the platform mapper is asked first, so a case here
+	// would be unreachable even if there were one.
+	//
+	// The refusal is here rather than left to the database because the three
+	// dialects disagree about the value. MySQL sizes these columns and refuses
+	// an over-long row under strict mode, naming a column; Postgres and SQLite
+	// store the whole thing and say nothing. Without this, the same registration
+	// is a stored credential on two engines and a driver error on the third, and
+	// a deployment finds out which kind it has when somebody with a long name
+	// for their security key tries to register it.
+	ErrCredentialValueTooLong = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "passkey credential value is too long")
+
 	// ErrEmptyPublicKey indicates a registration with no public key. A
 	// credential whose key is absent verifies nothing, and storing one would
 	// make every later assertion against it fail inside the protocol engine

@@ -127,3 +127,15 @@ func credentialFromListRow(ctx context.Context, r *passkeysdb.ListCredentialsFor
 
 	return credentialFromRow(ctx, &row)
 }
+
+// credentialFromSubjectListRow restates one row of the export's read.
+//
+// It is a second converter over the same projection because the row types are
+// nominal per statement: ListCredentialsForUsers projects CredentialColumns in
+// the same order ListCredentialsForUser does, and differs only in which rows it
+// will look at, so the conversion is where that agreement is asserted.
+func credentialFromSubjectListRow(ctx context.Context, r *passkeysdb.ListCredentialsForUsersRow) (*Credential, error) {
+	row := passkeysdb.GetCredentialRow(*r)
+
+	return credentialFromRow(ctx, &row)
+}

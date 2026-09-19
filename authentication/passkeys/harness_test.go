@@ -176,6 +176,27 @@ func (e *storeEnv) archive(
 	return archived, err
 }
 
+// erase destroys every passkey a subject holds, in a transaction of its own.
+func (e *storeEnv) erase(
+	tb testing.TB,
+	store *SQLStore,
+	scope tenancy.Scope,
+	userID string,
+) (int64, error) {
+	tb.Helper()
+
+	var deleted int64
+
+	err := e.inTx(tb, func(tx database.Tx) error {
+		var txErr error
+		deleted, txErr = store.DeleteCredentialsForUser(tb.Context(), tx, scope, userID)
+
+		return txErr
+	})
+
+	return deleted, err
+}
+
 // mustCreate, mustRecordUse and mustArchive are the three above for the cases
 // whose subject is what happens after the write rather than the write itself:
 // they fail the test on a refusal and hand back the row, so a fixture reads as

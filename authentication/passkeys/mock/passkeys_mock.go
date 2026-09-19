@@ -30,11 +30,17 @@ var _ passkeys.Store = &StoreMock{}
 //			CreateCredentialFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, credential *passkeys.Credential) (*passkeys.Credential, error) {
 //				panic("mock out the CreateCredential method")
 //			},
+//			DeleteCredentialsForUserFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error) {
+//				panic("mock out the DeleteCredentialsForUser method")
+//			},
 //			GetCredentialByCredentialIDFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, credentialID []byte) (*passkeys.Credential, error) {
 //				panic("mock out the GetCredentialByCredentialID method")
 //			},
 //			GetCredentialsForUserFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*passkeys.Credential, error) {
 //				panic("mock out the GetCredentialsForUser method")
+//			},
+//			ListAllCredentialsForUserFunc: func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*passkeys.Credential, error) {
+//				panic("mock out the ListAllCredentialsForUser method")
 //			},
 //			RecordUseFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, credentialRowID string, signCount uint32, at time.Time) (*passkeys.Credential, error) {
 //				panic("mock out the RecordUse method")
@@ -52,11 +58,17 @@ type StoreMock struct {
 	// CreateCredentialFunc mocks the CreateCredential method.
 	CreateCredentialFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, credential *passkeys.Credential) (*passkeys.Credential, error)
 
+	// DeleteCredentialsForUserFunc mocks the DeleteCredentialsForUser method.
+	DeleteCredentialsForUserFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
+
 	// GetCredentialByCredentialIDFunc mocks the GetCredentialByCredentialID method.
 	GetCredentialByCredentialIDFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, credentialID []byte) (*passkeys.Credential, error)
 
 	// GetCredentialsForUserFunc mocks the GetCredentialsForUser method.
 	GetCredentialsForUserFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*passkeys.Credential, error)
+
+	// ListAllCredentialsForUserFunc mocks the ListAllCredentialsForUser method.
+	ListAllCredentialsForUserFunc func(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*passkeys.Credential, error)
 
 	// RecordUseFunc mocks the RecordUse method.
 	RecordUseFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, credentialRowID string, signCount uint32, at time.Time) (*passkeys.Credential, error)
@@ -87,6 +99,17 @@ type StoreMock struct {
 			// Credential is the credential argument value.
 			Credential *passkeys.Credential
 		}
+		// DeleteCredentialsForUser holds details about calls to the DeleteCredentialsForUser method.
+		DeleteCredentialsForUser []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// UserID is the userID argument value.
+			UserID string
+		}
 		// GetCredentialByCredentialID holds details about calls to the GetCredentialByCredentialID method.
 		GetCredentialByCredentialID []struct {
 			// Ctx is the ctx argument value.
@@ -100,6 +123,17 @@ type StoreMock struct {
 		}
 		// GetCredentialsForUser holds details about calls to the GetCredentialsForUser method.
 		GetCredentialsForUser []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Q is the q argument value.
+			Q database.SQLQueryExecutor
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// UserID is the userID argument value.
+			UserID string
+		}
+		// ListAllCredentialsForUser holds details about calls to the ListAllCredentialsForUser method.
+		ListAllCredentialsForUser []struct {
 			// Ctx is the ctx argument value.
 			Ctx context.Context
 			// Q is the q argument value.
@@ -127,8 +161,10 @@ type StoreMock struct {
 	}
 	lockArchiveCredentialForUser    sync.RWMutex
 	lockCreateCredential            sync.RWMutex
+	lockDeleteCredentialsForUser    sync.RWMutex
 	lockGetCredentialByCredentialID sync.RWMutex
 	lockGetCredentialsForUser       sync.RWMutex
+	lockListAllCredentialsForUser   sync.RWMutex
 	lockRecordUse                   sync.RWMutex
 }
 
@@ -224,6 +260,50 @@ func (mock *StoreMock) CreateCredentialCalls() []struct {
 	return calls
 }
 
+// DeleteCredentialsForUser calls DeleteCredentialsForUserFunc.
+func (mock *StoreMock) DeleteCredentialsForUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error) {
+	if mock.DeleteCredentialsForUserFunc == nil {
+		panic("StoreMock.DeleteCredentialsForUserFunc: method is nil but Store.DeleteCredentialsForUser was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		UserID string
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		UserID: userID,
+	}
+	mock.lockDeleteCredentialsForUser.Lock()
+	mock.calls.DeleteCredentialsForUser = append(mock.calls.DeleteCredentialsForUser, callInfo)
+	mock.lockDeleteCredentialsForUser.Unlock()
+	return mock.DeleteCredentialsForUserFunc(ctx, tx, scope, userID)
+}
+
+// DeleteCredentialsForUserCalls gets all the calls that were made to DeleteCredentialsForUser.
+// Check the length with:
+//
+//	len(mockedStore.DeleteCredentialsForUserCalls())
+func (mock *StoreMock) DeleteCredentialsForUserCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	UserID string
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		UserID string
+	}
+	mock.lockDeleteCredentialsForUser.RLock()
+	calls = mock.calls.DeleteCredentialsForUser
+	mock.lockDeleteCredentialsForUser.RUnlock()
+	return calls
+}
+
 // GetCredentialByCredentialID calls GetCredentialByCredentialIDFunc.
 func (mock *StoreMock) GetCredentialByCredentialID(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, credentialID []byte) (*passkeys.Credential, error) {
 	if mock.GetCredentialByCredentialIDFunc == nil {
@@ -309,6 +389,50 @@ func (mock *StoreMock) GetCredentialsForUserCalls() []struct {
 	mock.lockGetCredentialsForUser.RLock()
 	calls = mock.calls.GetCredentialsForUser
 	mock.lockGetCredentialsForUser.RUnlock()
+	return calls
+}
+
+// ListAllCredentialsForUser calls ListAllCredentialsForUserFunc.
+func (mock *StoreMock) ListAllCredentialsForUser(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*passkeys.Credential, error) {
+	if mock.ListAllCredentialsForUserFunc == nil {
+		panic("StoreMock.ListAllCredentialsForUserFunc: method is nil but Store.ListAllCredentialsForUser was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Scope  tenancy.Scope
+		UserID string
+	}{
+		Ctx:    ctx,
+		Q:      q,
+		Scope:  scope,
+		UserID: userID,
+	}
+	mock.lockListAllCredentialsForUser.Lock()
+	mock.calls.ListAllCredentialsForUser = append(mock.calls.ListAllCredentialsForUser, callInfo)
+	mock.lockListAllCredentialsForUser.Unlock()
+	return mock.ListAllCredentialsForUserFunc(ctx, q, scope, userID)
+}
+
+// ListAllCredentialsForUserCalls gets all the calls that were made to ListAllCredentialsForUser.
+// Check the length with:
+//
+//	len(mockedStore.ListAllCredentialsForUserCalls())
+func (mock *StoreMock) ListAllCredentialsForUserCalls() []struct {
+	Ctx    context.Context
+	Q      database.SQLQueryExecutor
+	Scope  tenancy.Scope
+	UserID string
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Q      database.SQLQueryExecutor
+		Scope  tenancy.Scope
+		UserID string
+	}
+	mock.lockListAllCredentialsForUser.RLock()
+	calls = mock.calls.ListAllCredentialsForUser
+	mock.lockListAllCredentialsForUser.RUnlock()
 	return calls
 }
 

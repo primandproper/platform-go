@@ -97,6 +97,30 @@ type Store interface {
 	// error. A nil q is an error wrapping ErrNilExecutor.
 	GetCredentialsForUser(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*Credential, error)
 
+	// ListAllCredentialsForUser reads every passkey one user has ever
+	// registered in the scope, the revoked ones included, oldest first.
+	//
+	// It is GetCredentialsForUser's companion and deliberately not a flag on it.
+	// Every caller inside this module's own story — a ceremony, a settings page,
+	// a login — wants the passkeys that work, and a boolean would put the
+	// question "did you mean the revoked ones too" in front of all of them, in
+	// the one place where the wrong answer is a login refused for a credential
+	// the person is holding. What wants the revoked rows is a subject access
+	// request, which is one caller with one reason, and it says so by calling a
+	// method that says so.
+	//
+	// authentication/passkeys/privacy is that caller. A passkey somebody
+	// enrolled, gave a name to and later revoked is something this deployment
+	// knows about them, and nothing in this package ever removes the row, so an
+	// export built on the live read would be an export whose completeness
+	// depended on what the subject had got around to revoking.
+	//
+	// It is unpaged for the reason GetCredentialsForUser is, with one more of
+	// its own: the bound here is every authenticator a person has ever enrolled
+	// rather than every one they currently hold, which is the same handful plus
+	// the ones they have replaced. A nil q is an error wrapping ErrNilExecutor.
+	ListAllCredentialsForUser(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, userID string) ([]*Credential, error)
+
 	// RecordUse writes the authenticator's signature counter back, through the
 	// caller's transaction, and answers with the row it left.
 	//
@@ -142,4 +166,27 @@ type Store interface {
 	// nothing — the same authenticator can be enrolled again. A nil tx is an
 	// error wrapping ErrNilExecutor.
 	ArchiveCredentialForUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, credentialRowID, userID string) (*Credential, error)
+
+	// DeleteCredentialsForUser destroys every passkey one user holds in the
+	// scope, revoked ones included, and answers with how many rows went.
+	//
+	// It is the erasure, and it is the one method here that deletes. Archiving
+	// is what this table does to a revoked passkey, and the archived row is the
+	// record a security review reads — which makes it exactly the wrong write
+	// for a subject who has asked not to be described: an erasure that archived
+	// would leave the person's own name for an authenticator under their
+	// identifier forever.
+	//
+	// It is not a revocation with a wider reach, either. Revoking somebody's
+	// passkeys and forgetting them are different requests with different
+	// answers, and a deployment that wants the first calls
+	// ArchiveCredentialForUser for each of them.
+	//
+	// A subject who registered none deletes nothing and is not an error, which
+	// is what makes it safe to run for every subject an erasure names. A nil tx
+	// is an error wrapping ErrNilExecutor.
+	//
+	// authentication/passkeys/privacy is what a consumer registers rather than
+	// what it calls; this is the write beneath it.
+	DeleteCredentialsForUser(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (int64, error)
 }

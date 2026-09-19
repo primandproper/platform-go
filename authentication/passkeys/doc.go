@@ -52,6 +52,29 @@ keychain reports flags that differ from whatever the registration saw. So the
 flags are an argument to [Credential.WebAuthnCredential] and to [UserSource.User]
 rather than a column: replaying stored ones fails logins that are perfectly valid.
 
+# Privacy
+
+A row here says a named person enrolled an authenticator, what they called it,
+when, and whether they have taken it off their account. That is data held about
+somebody, so this package is in a subject access request through
+authentication/passkeys/privacy — a dataprivacy.Collector over
+[Store.ListAllCredentialsForUser] and a dataprivacy.Eraser over
+[Store.DeleteCredentialsForUser].
+
+Both are methods the privacy pair needed and the ceremonies did not, and each
+absence was the point. [Store.GetCredentialsForUser] excludes revoked passkeys,
+which is right for a login and wrong for an export: nothing here ever removes an
+archived row, so an export built on that read would be one whose completeness
+depended on what the subject had got around to revoking. And
+[Store.ArchiveCredentialForUser] keeps the row, because the row is what answers
+"this person had an authenticator here and removed it on this date" — which is
+exactly the sentence a forgotten subject has asked nobody to be able to write.
+
+The export carries no secret and cannot. A passkey's private half is generated
+inside the authenticator and never leaves it; what this table holds is the public
+key an assertion is checked against and the credential ID every login sends in
+the clear.
+
 # The table is yours to create
 
 authentication/passkeys/migrations renders the DDL for a dialect and prefix.
