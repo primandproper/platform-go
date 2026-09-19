@@ -146,6 +146,7 @@ func TestMappersDeclineWhatIsNotTheirs(T *testing.T) {
 			shredding.ErrNilDatabaseClient,
 			shredding.ErrNilPublisher,
 			shredding.ErrNilInvalidator,
+			shredding.ErrSubjectValueTooLong,
 		} {
 			_, _, ok := shredding.HTTPMapper.Map(err)
 			test.False(t, ok, test.Sprintf("%v is claimed here as well as by the platform", err))
@@ -180,6 +181,7 @@ func everySentinel() []error {
 		shredding.ErrSubjectShredded,
 		shredding.ErrShredContended,
 		shredding.ErrEmptySubjectID,
+		shredding.ErrSubjectValueTooLong,
 		shredding.ErrNoKey,
 		shredding.ErrKeyMaterialMissing,
 		shredding.ErrNilStore,

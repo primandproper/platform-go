@@ -92,8 +92,20 @@ func validateClient(client *Client) error {
 		return platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty oauth2 client secret hash")
 	}
 
-	return validateDescriptive(client.Name, client.RedirectURIs)
+	return validateDescriptive(client.Name, client.Description, client.RedirectURIs)
 }
+
+// MaxDescriptionLength bounds a registration's description, and is the width of
+// the column that holds it.
+//
+// It is the only string on this table that needs a bound in Go. name, the
+// redirect URIs and the two scope lists are TEXT on all three dialects, so
+// MySQL stores them whole; description is a VARCHAR there because it carries a
+// DEFAULT and MySQL takes no literal default on a TEXT column. The create is an
+// insert-ignore, and MySQL's IGNORE turns a value too long for its column into
+// a warning that truncates it and reports success — see ErrDescriptionTooLong
+// and authentication/oauth2clients/migrations.
+const MaxDescriptionLength = 1024
 
 // validateDescriptive checks the fields a create and an update both supply.
 //
@@ -101,9 +113,14 @@ func validateClient(client *Client) error {
 // function the authorization server applies at /authorize — so this registry
 // cannot accept a URI that server would later refuse. Checking it here is the
 // only place the failure is legible: later it is a client that "does not work".
-func validateDescriptive(name string, redirectURIs []string) error {
+func validateDescriptive(name, description string, redirectURIs []string) error {
 	if name == "" {
 		return ErrEmptyName
+	}
+
+	if len(description) > MaxDescriptionLength {
+		return platformerrors.Wrapf(ErrDescriptionTooLong,
+			"description is %d bytes, over the %d-byte limit", len(description), MaxDescriptionLength)
 	}
 
 	if len(redirectURIs) == 0 {

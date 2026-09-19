@@ -33,6 +33,26 @@ var (
 	// can name is a product nobody can put on an invoice.
 	ErrEmptyProductName = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty product name")
 
+	// ErrProductValueTooLong indicates a product carrying a string longer than
+	// the column that stores it — see MaxProductIDLength and the three bounds
+	// beside it, and the wrapped message for which one it was.
+	//
+	// It wraps errors.ErrUnrecognizedInputValue, so it is answered as a bad
+	// request by the platform mapper rather than by a case of this package's
+	// own, which is where a currency of the wrong length and a kind outside the
+	// enumeration are already answered.
+	//
+	// The limit is enforced in Go rather than left to the column, because the
+	// create is an insert-ignore and MySQL's IGNORE downgrades a too-long value
+	// to a warning that truncates it and stores what is left. The write reports
+	// a row affected, so no attribution of a zero count can catch it. A product
+	// whose name was silently cut to 255 bytes is a different product from the
+	// one the caller declared, and a description cut at 1024 is what a customer
+	// reads on a checkout page. Postgres and SQLite spell these columns TEXT and
+	// would have stored the whole value, so the bound is also what keeps one
+	// catalog from meaning different things on different dialects.
+	ErrProductValueTooLong = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "billing product value is too long")
+
 	// ErrEmptyAccount indicates a write or a read that named no account.
 	//
 	// It is refused rather than treated as "every account", which is what an

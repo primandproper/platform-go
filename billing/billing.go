@@ -107,6 +107,44 @@ func (s TransactionStatus) Valid() bool {
 // String renders the status as it is stored.
 func (s TransactionStatus) String() string { return string(s) }
 
+// The widths the product table's string columns hold, and the bounds this
+// package checks a product against before writing one.
+//
+// They are checked in Go rather than left to the database because the create is
+// an insert-ignore, and MySQL's IGNORE downgrades a value too long for its
+// column to a warning that truncates and stores it. The write reports a row
+// affected, so nothing on the write path can see it happen. Postgres and SQLite
+// spell these columns TEXT and would have stored the whole value, so without
+// the bound one catalog means three things on three dialects.
+//
+// The widths are MySQL's, because MySQL is the one that had to pick a number: a
+// VARCHAR is indexable and carries a DEFAULT where a TEXT does not. Three of the
+// four columns could not be anything else — id is the primary key,
+// external_product_id carries the (scope, external id) unique key, and
+// description takes a DEFAULT — and moving name alone would leave this table
+// with one free-text column bounded by the schema and one bounded here, for no
+// reason a reader could recover. See billing/migrations, and
+// ErrProductValueTooLong for which string it was.
+const (
+	// MaxProductIDLength bounds a product id. It is only reachable from a caller
+	// that supplies its own; a minted one is well inside it.
+	MaxProductIDLength = 64
+
+	// MaxProductNameLength bounds a product's name. The name is what goes on an
+	// invoice, so a truncated one is a product the customer was never sold.
+	MaxProductNameLength = 255
+
+	// MaxProductDescriptionLength bounds a product's description, which is the
+	// prose a checkout page shows.
+	MaxProductDescriptionLength = 1024
+
+	// MaxExternalProductIDLength bounds the payment provider's identifier for
+	// the same product. It is half of the uniqueness this catalog is keyed on,
+	// so two provider ids that differ only past the limit would be one row
+	// rather than two — and the second product would be attributed to the first.
+	MaxExternalProductIDLength = 255
+)
+
 // Product is something a deployment sells.
 //
 // The catalog is scope-wide and carries no account, which is what separates a
@@ -131,13 +169,16 @@ type Product struct {
 	// been sold.
 	ArchivedAt *time.Time `json:"archivedAt"`
 
-	// ID identifies the product. Minted on write when empty.
+	// ID identifies the product. Minted on write when empty, and bounded by
+	// MaxProductIDLength when supplied.
 	ID string `json:"id"`
 
-	// Name is what the product is called. Required.
+	// Name is what the product is called. Required, and bounded by
+	// MaxProductNameLength.
 	Name string `json:"name"`
 
-	// Description is prose about what is being sold.
+	// Description is prose about what is being sold. Bounded by
+	// MaxProductDescriptionLength.
 	Description string `json:"description"`
 
 	// Kind says how it is sold. Required, and one of the two [Kind] values.
@@ -154,6 +195,8 @@ type Product struct {
 	// ExternalProductID is the payment provider's identifier for the same
 	// product, or empty for one that was never mirrored to a provider — a free
 	// tier, or a plan that only exists to be comped.
+	//
+	// It is bounded by MaxExternalProductIDLength.
 	//
 	// Empty is stored as NULL, which is what lets the unique index over this
 	// column mean something: every provider-backed product is unique within its
@@ -206,8 +249,38 @@ func (p *Product) validate() error {
 	case !p.Recurring() && p.BillingIntervalMonths != 0:
 		return ErrUnexpectedBillingInterval
 	default:
-		return nil
+		return p.withinBounds()
 	}
+}
+
+// withinBounds reports the first of the product's stored strings that is longer
+// than the column holding it.
+//
+// The order is the order the columns are declared in, which is also the order a
+// reader of the schema meets them; nothing depends on which one is reported
+// first, because a product over two bounds is over both however it is fixed.
+func (p *Product) withinBounds() error {
+	bounds := []struct {
+		value string
+		what  string
+		limit int
+	}{
+		{value: p.ID, what: "id", limit: MaxProductIDLength},
+		{value: p.Name, what: "name", limit: MaxProductNameLength},
+		{value: p.Description, what: "description", limit: MaxProductDescriptionLength},
+		{value: p.ExternalProductID, what: "external product id", limit: MaxExternalProductIDLength},
+	}
+
+	for i := range bounds {
+		bound := &bounds[i]
+
+		if len(bound.value) > bound.limit {
+			return platformerrors.Wrapf(ErrProductValueTooLong,
+				"%s is %d bytes, over the %d-byte limit", bound.what, len(bound.value), bound.limit)
+		}
+	}
+
+	return nil
 }
 
 // Subscription is a recurring agreement: one account, one product, for as long

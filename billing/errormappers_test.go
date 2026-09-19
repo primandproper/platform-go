@@ -237,6 +237,7 @@ func TestMappersDeclineWhatIsNotTheirs(T *testing.T) {
 			billing.ErrEmptyExternalID,
 			billing.ErrEmptyPeriod,
 			billing.ErrEmptyBillingInterval,
+			billing.ErrProductValueTooLong,
 		} {
 			_, _, ok := billing.HTTPMapper.Map(err)
 			test.False(t, ok, test.Sprintf("%v is claimed here as well as by the platform", err))

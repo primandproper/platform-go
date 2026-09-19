@@ -142,6 +142,33 @@ func TestUsage_validate(T *testing.T) {
 		test.ErrorIs(t, u.validate(), ErrEmptySubject)
 	})
 
+	T.Run("bounds the subject", func(t *testing.T) {
+		t.Parallel()
+
+		u := valid
+		u.Subject = strings.Repeat("s", MaxSubjectLength+1)
+
+		// Both inserts on this path are insert-ignores, and MySQL's IGNORE
+		// truncates an over-long value and reports a row affected. The totals
+		// table is keyed on the subject, so a truncated one folds into whichever
+		// subject shares its prefix and invoices that customer for this usage.
+		//
+		// Its own sentinel rather than the empty one, for the reason the key's
+		// bound has one: a caller told "usage must name a subject" about a
+		// subject it did name looks for the bug in the wrong place.
+		test.ErrorIs(t, u.validate(), ErrSubjectTooLong)
+		test.False(t, errors.Is(u.validate(), ErrEmptySubject))
+	})
+
+	T.Run("accepts a subject of exactly the bound", func(t *testing.T) {
+		t.Parallel()
+
+		u := valid
+		u.Subject = strings.Repeat("s", MaxSubjectLength)
+
+		test.NoError(t, u.validate())
+	})
+
 	T.Run("requires a meter", func(t *testing.T) {
 		t.Parallel()
 
