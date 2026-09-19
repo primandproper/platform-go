@@ -257,11 +257,36 @@ func TestService_ExchangeRefreshToken(T *testing.T) {
 	})
 
 	// The re-resolution is the point: a family must not outlive a ban, or a
-	// suspension takes effect whenever the access token happens to expire.
+	// suspension takes effect whenever the access token happens to expire. The
+	// sentinel is the directory's rather than this package's, because
+	// identity.Store.GetPrincipal refuses a banned user instead of answering with
+	// a Principal for this package to inspect — so the check inside the exchange
+	// is reached only by a Directory that does not enforce status of its own.
 	T.Run("refuses a subject the directory will no longer admit", func(t *testing.T) {
 		t.Parallel()
 
 		e := newRefreshEnv(t)
+
+		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
+		must.NoError(t, err)
+
+		e.setStatus(t, identity.StatusBanned, "spam")
+
+		rotated, err := e.svc.ExchangeRefreshToken(t.Context(), testScope, signedIn.RefreshToken)
+		test.Nil(t, rotated)
+		test.ErrorIs(t, err, identity.ErrSignInNotAdmitted)
+	})
+
+	// A Directory that hands back a Principal for somebody the operator suspended
+	// must not get them a token because this package assumed identity refused
+	// first. The seam is an interface, so the check after the re-read is not
+	// dead code — it is the half that answers for a directory that is not
+	// identity.Store, and it is the half that still names which of the three
+	// statuses it was.
+	T.Run("refuses a directory that admits a banned subject itself", func(t *testing.T) {
+		t.Parallel()
+
+		e := newPermissiveRefreshEnv(t)
 
 		signedIn, err := e.svc.LoginForToken(t.Context(), testScope, e.credentials())
 		must.NoError(t, err)

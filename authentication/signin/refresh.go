@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/identity"
+
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability"
@@ -308,7 +310,13 @@ type RefreshTokenStore interface {
 // The principal is re-resolved against the directory rather than taken off the
 // row, so a user banned, terminated or removed from the account since they
 // signed in is refused here rather than carried by a family for as long as it
-// lives. What is *not* re-resolved is which account the token is for — that is
+// lives. On this module's directory that refusal is
+// [github.com/primandproper/platform-go/v14/identity.ErrSignInNotAdmitted], which
+// identity.Store.GetPrincipal returns instead of a Principal; [ErrUserBanned],
+// [ErrUserTerminated] and [ErrUserUnverified] are what a [Directory] that does not
+// enforce status of its own produces here. Either way the exchange refuses and
+// the presented token is left unspent, since the refusal rolls the transaction
+// back. What is *not* re-resolved is which account the token is for — that is
 // the row's, for the reason [RefreshToken.ActiveAccountID] gives.
 //
 // [Hooks.AfterIssueToken] runs in the same transaction, with the new token's
@@ -368,6 +376,14 @@ func (s *Service) ExchangeRefreshToken(
 		//
 		// It reads on tx rather than on the reader, so the transaction that just
 		// spent the token sees a directory consistent with it.
+		//
+		// identity.Store answers a suspended user with
+		// identity.ErrSignInNotAdmitted here rather than with a Principal, so that
+		// is the refusal a consumer on this module's directory sees. The check
+		// below is kept for the Directory that is not it — the seam is an
+		// interface, and a consumer's own directory that returns a Principal for a
+		// banned user must not mint them a token because this package assumed
+		// somebody else refused.
 		principal, txErr := s.directory.GetPrincipal(ctx, tx, scope, spent.SubjectID, spent.ActiveAccountID)
 		if txErr != nil {
 			return txErr
@@ -552,9 +568,18 @@ func (s *Service) mintRefreshToken(
 // refresh token is the flow working, and the directory's absence sentinel is not:
 // a refresh token naming a user the directory has since archived is a fact
 // somebody should look at.
+//
+// identity.ErrSignInNotAdmitted is the fourth status refusal and is the one a
+// consumer will actually see, because identity.Store.GetPrincipal refuses a
+// banned user before it has a Principal to hand back — so the re-read below
+// answers with the directory's sentinel and this package's three are reached only
+// by a Directory that does not enforce status of its own. It is listed for the
+// same reason the other three are: a suspension arriving here is the suspension
+// working.
 func isRefreshRefusal(err error) bool {
 	return platformerrors.Is(err, ErrRefreshTokenReused) ||
 		platformerrors.Is(err, ErrInvalidCredentials) ||
+		platformerrors.Is(err, identity.ErrSignInNotAdmitted) ||
 		platformerrors.Is(err, ErrUserBanned) ||
 		platformerrors.Is(err, ErrUserTerminated) ||
 		platformerrors.Is(err, ErrUserUnverified)

@@ -416,6 +416,16 @@ func (s *Service) verifyPassword(ctx context.Context, user *identity.User, passw
 // replacing it, so a caller matches ErrUserBanned and a person reads why. It is
 // the operator's own prose and is meant to be shown to them — identity says so
 // on the column.
+//
+// This is the door, and the door is the one place the three refusing statuses are
+// told apart. identity.Store.GetPrincipal refuses all three as
+// identity.ErrSignInNotAdmitted, which is what a per-request read owes somebody
+// already holding a credential; a password just typed at a login form deserves
+// the remedy, and the remedy differs — a suspension is something to appeal, a
+// termination is not, and an unverified account needs a link clicked. So the
+// check here runs before the principal is resolved rather than being left to it,
+// and it is not a duplicate of identity's: it is the half that has the user row,
+// the explanation on it, and a FailedSignIn to record.
 func statusRefusal(user *identity.User) error {
 	switch user.AccountStatus {
 	case identity.StatusBanned:

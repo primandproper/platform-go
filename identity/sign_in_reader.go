@@ -67,6 +67,11 @@ func (s *SQLStore) GetUserByEmailAddress(
 // user and their service roles, then the memberships and the roles on those.
 // The interface's doc carries what that means for a caller — and a caller
 // passing a database.Tx gets the one shared snapshot the four otherwise lack.
+//
+// A user whose AccountStatus does not admit sign-in is refused here with
+// ErrSignInNotAdmitted, after the first two of the four statements and before
+// the other two: there is no principal to assemble for somebody who may not be
+// making the request, so their memberships are not read at all.
 func (s *SQLStore) GetPrincipal(
 	ctx context.Context,
 	q database.SQLQueryExecutor,
@@ -90,6 +95,18 @@ func (s *SQLStore) GetPrincipal(
 	user, err := s.readUser(ctx, q, scope, userID)
 	if err != nil {
 		return nil, op.Error(err, "reading identity principal")
+	}
+
+	// The status gate, and the reason it is here rather than only at the sign-in
+	// door: this is the read every authenticated request makes, so a ban an
+	// operator applied is effective on the next one whatever minted the token or
+	// the session the request arrived with. See ErrSignInNotAdmitted for why the
+	// three refusing statuses collapse into one sentinel.
+	if !user.AccountStatus.AdmitsSignIn() {
+		return nil, op.Error(
+			platformerrors.Wrapf(ErrSignInNotAdmitted, "account status %q", user.AccountStatus),
+			"reading identity principal",
+		)
 	}
 
 	memberships, err := s.readMembershipsForUser(ctx, q, scope, userID)

@@ -118,4 +118,61 @@ func runSignInReaderSuite(t *testing.T, env *storeEnv) {
 		_, err := store.GetPrincipal(t.Context(), env.reader(), testScope, user.ID, account.ID)
 		must.ErrorIs(t, err, ErrMembershipNotFound)
 	})
+
+	// A ban that took effect at token expiry was a ban the operator believed they
+	// had applied. This is the read every authenticated request makes, so this is
+	// where it becomes true.
+	t.Run("refuses a principal for a status that admits no sign-in", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		user := seedUser(t, env, store, newUser("ada"))
+		account := seedAccountFor(t, env, store, user, "Acme")
+
+		// Good standing first, so the refusal below is the status changing rather
+		// than anything else about the row.
+		principal, err := store.GetPrincipal(t.Context(), env.reader(), testScope, user.ID, account.ID)
+		must.NoError(t, err)
+		test.EqOp(t, account.ID, principal.ActiveAccountID)
+
+		must.NoError(t, env.updateUserAccountStatus(t, store, testScope, user.ID, StatusBanned, "spam"))
+
+		refused, err := store.GetPrincipal(t.Context(), env.reader(), testScope, user.ID, account.ID)
+		test.Nil(t, refused)
+		must.ErrorIs(t, err, ErrSignInNotAdmitted)
+
+		// Named in the wrapped message and not in the sentinel: the door tells the
+		// three statuses apart, a log can, and a client is told one thing.
+		test.StrContains(t, err.Error(), string(StatusBanned))
+
+		// A reinstatement is effective on the next read, the same way.
+		must.NoError(t, env.updateUserAccountStatus(t, store, testScope, user.ID, StatusGood, ""))
+
+		readmitted, err := store.GetPrincipal(t.Context(), env.reader(), testScope, user.ID, account.ID)
+		must.NoError(t, err)
+		test.EqOp(t, account.ID, readmitted.ActiveAccountID)
+	})
+
+	// The other two refusing statuses, and the point of the loop is that the
+	// answer is one sentinel rather than three. StatusUnverified is in it because
+	// it is the status CreateUser assigns by default, so a directory whose
+	// registrations never move to StatusGood answers no principal at all.
+	t.Run("refuses every status but good", func(t *testing.T) {
+		t.Parallel()
+
+		for _, status := range []AccountStatus{StatusUnverified, StatusTerminated} {
+			t.Run(status.String(), func(t *testing.T) {
+				t.Parallel()
+
+				store := env.newStore(t)
+				user := seedUser(t, env, store, newUser("ada_"+status.String()))
+				seedAccountFor(t, env, store, user, "Acme "+status.String())
+
+				must.NoError(t, env.updateUserAccountStatus(t, store, testScope, user.ID, status, ""))
+
+				_, err := store.GetPrincipal(t.Context(), env.reader(), testScope, user.ID, "")
+				must.ErrorIs(t, err, ErrSignInNotAdmitted)
+			})
+		}
+	})
 }

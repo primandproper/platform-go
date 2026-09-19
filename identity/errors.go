@@ -119,6 +119,27 @@ var (
 	// something else.
 	ErrNoDefaultAccount = platformerrors.New("user has no default account")
 
+	// ErrSignInNotAdmitted indicates a user whose AccountStatus does not admit
+	// sign-in — unverified, banned or terminated. GetPrincipal returns it rather
+	// than the Principal it was asked for, which is what makes a suspension take
+	// effect on the next request against every surface at once instead of
+	// whenever an access token or a session row happens to expire.
+	//
+	// It names the refusal and not which of the three statuses caused it, on
+	// purpose. The sign-in door is where they are told apart, because the door is
+	// where the remedy is: authentication/signin checks
+	// AccountStatus.AdmitsSignIn before it resolves a Principal and answers with
+	// its own ErrUserUnverified, ErrUserBanned or ErrUserTerminated, and a ban's
+	// explanation — the one an operator wrote to be shown — goes out wrapped
+	// around the second of those. A caller already holding a credential has had
+	// that conversation; what this read owes them is no, everywhere, now. The
+	// wrapped message names the status for whoever reads a log.
+	//
+	// It is deliberately not ErrUserNotFound. The row is there and the caller is
+	// who they say they are, and a consumer that cannot tell the two apart
+	// answers a 404 on a page somebody is signed in to.
+	ErrSignInNotAdmitted = platformerrors.New("account status does not admit sign-in")
+
 	// ErrLastAccountOwner indicates an act that would leave an account without
 	// an owner: removing the owner's membership, or archiving the owner
 	// themselves. An ownerless account is unreachable by every permission check

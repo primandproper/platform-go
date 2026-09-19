@@ -13,8 +13,9 @@ import (
 )
 
 // mappedSentinels is every sentinel both mappers are expected to have an answer
-// for: the four absences, the two collisions, the two refusals, the expired
-// invitation and the two self-contradicting writes.
+// for: the four absences, the two collisions, the two states an act is refused
+// from, the expired invitation, the two self-contradicting writes and the one
+// refusal on authority.
 //
 // One list rather than one per transport, deliberately. A service exposing both
 // would otherwise answer a taken username with a considered 409 on one and
@@ -32,6 +33,7 @@ var mappedSentinels = []error{
 	ErrInvitationExpired,
 	ErrScopeMismatch,
 	ErrUsernameDisplayMismatch,
+	ErrSignInNotAdmitted,
 }
 
 func TestMappers_coverTheSameSentinels(T *testing.T) {
@@ -177,6 +179,37 @@ func TestMappers_aScopeMismatchIsABadRequest(T *testing.T) {
 	grpcCode, grpcOK := GRPCMapper.Map(ErrScopeMismatch)
 	must.True(T, grpcOK)
 	test.EqOp(T, codes.InvalidArgument, grpcCode)
+}
+
+// TestMappers_aStatusThatAdmitsNoSignInIsForbidden: the caller is somebody the
+// directory knows and will not answer for, which is a 403 and not a 404 — an
+// absence code would send a signed-in client to a "no such page" screen for an
+// account that was suspended — and PermissionDenied and not Unauthenticated,
+// because a client told to authenticate again would loop on a credential that
+// keeps working.
+func TestMappers_aStatusThatAdmitsNoSignInIsForbidden(T *testing.T) {
+	T.Parallel()
+
+	code, msg, ok := HTTPMapper.Map(ErrSignInNotAdmitted)
+	must.True(T, ok)
+	test.EqOp(T, httperrors.ErrUserIsBanned, code)
+	test.EqOp(T, http.StatusForbidden, httperrors.HTTPStatusForCode(code))
+	test.EqOp(T, "account is not permitted to sign in", msg)
+
+	grpcCode, grpcOK := GRPCMapper.Map(ErrSignInNotAdmitted)
+	must.True(T, grpcOK)
+	test.EqOp(T, codes.PermissionDenied, grpcCode)
+
+	// The wrap GetPrincipal puts the status in still matches, and still maps: a
+	// consumer's handler sees the wrapped error, not the bare sentinel.
+	wrapped := platformerrors.Wrapf(ErrSignInNotAdmitted, "account status %q", StatusBanned)
+
+	_, _, wrappedOK := HTTPMapper.Map(wrapped)
+	test.True(T, wrappedOK)
+
+	wrappedCode, wrappedGRPCOK := GRPCMapper.Map(wrapped)
+	test.True(T, wrappedGRPCOK)
+	test.EqOp(T, codes.PermissionDenied, wrappedCode)
 }
 
 // TestMappers_leaveThePlatformSentinelsToThePlatform is the absence the file's

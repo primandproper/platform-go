@@ -356,6 +356,11 @@ var Matrix = map[string]map[string]Decision{
 		"ErrScopeMismatch":           {Err: identity.ErrScopeMismatch, Is: Mapped},
 		"ErrUsernameDisplayMismatch": {Err: identity.ErrUsernameDisplayMismatch, Is: Mapped},
 
+		// The one refusal on authority. GetPrincipal will not answer for a user
+		// whose account status does not admit sign-in, and a 403 rather than a 404
+		// is what tells a signed-in client they were suspended.
+		"ErrSignInNotAdmitted": {Err: identity.ErrSignInNotAdmitted, Is: Mapped},
+
 		// Wrap errors.ErrNilInputParameter, so the platform mappers answer them.
 		// They are wiring failures rather than anything a client sent.
 		"ErrNilAccount":        {Err: identity.ErrNilAccount, Is: Platform},
