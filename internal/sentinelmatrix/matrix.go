@@ -768,13 +768,14 @@ var Matrix = map[string]map[string]Decision{
 		"ErrStrandedValues":            {Err: settings.ErrStrandedValues, Is: Mapped},
 		"ErrValueNotFound":             {Err: settings.ErrValueNotFound, Is: Mapped},
 
-		// The twelve that are somebody else's sentinel, answered by the platform
+		// The thirteen that are somebody else's sentinel, answered by the platform
 		// mappers because that is the tier those sentinels belong to.
 		//
-		// The last four are the ones worth pausing on, because they are refusals
+		// The last five are the ones worth pausing on, because they are refusals
 		// a client reads and are still not this package's to map. A value that is
 		// not of its setting's kind, a value outside the enumeration, a kind
-		// nothing implements and a string too long for its column all wrap
+		// nothing implements, a definition string too long for its column and a
+		// subject too long for the key it is part of all wrap
 		// errors.ErrUnrecognizedInputValue, which
 		// errors/http already answers as a bad request and errors/grpc as
 		// InvalidArgument — and the platform mapper is asked first, so a case here
@@ -793,6 +794,7 @@ var Matrix = map[string]map[string]Decision{
 		"ErrNilStore":               {Err: settings.ErrNilStore, Is: Platform},
 		"ErrMalformedValue":         {Err: settings.ErrMalformedValue, Is: Platform},
 		"ErrNotEnumerated":          {Err: settings.ErrNotEnumerated, Is: Platform},
+		"ErrSubjectValueTooLong":    {Err: settings.ErrSubjectValueTooLong, Is: Platform},
 		"ErrUnknownKind":            {Err: settings.ErrUnknownKind, Is: Platform},
 
 		// The two nobody answers, both of which describe the deployment to

@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS issue_reports (
     subject_type    VARCHAR(255) NOT NULL DEFAULT '',
     subject_id      VARCHAR(64) NOT NULL DEFAULT '',
     status          VARCHAR(32) NOT NULL,
-    resolution      VARCHAR(2048) NOT NULL DEFAULT '',
+    resolution      TEXT NOT NULL,
     closed_at       DATETIME(6),
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),

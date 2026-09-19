@@ -28,6 +28,28 @@
 -- are not part of a key would leave a value a non-enumerated setting accepts
 -- and an enumerated one cannot store — the same setting failing on the
 -- definition of its own legal values.
+--
+-- That same 3072-byte budget is what decides subject_type and subject_id below,
+-- and it is why neither is the 255 the rest of this schema reaches for. All
+-- four columns of the subject uniqueness are in one key: 255 for the scope and
+-- 64 for the definition id leave 449 characters between the two subject
+-- columns, and a key over the budget is not a slow index — MySQL refuses the
+-- CREATE TABLE outright, and MariaDB silently rewrites the unique key USING
+-- HASH, so the same DDL means two things on two servers that both answer to
+-- this dialect. 128 and 255 spend 383 of the 449 and leave the rest, because a
+-- key sized to the limit is a key that breaks the next time any column in it
+-- moves.
+--
+-- The subject type gets the narrower of the two on purpose. It is a vocabulary
+-- word — user, account, device, api_client — where the id is whatever an
+-- application identifies its principals by, which is the one of the two anybody
+-- has seen run long. Neither truncates: settings.MaxSubjectTypeLength and
+-- settings.MaxSubjectIDLength are these numbers, checked before any statement
+-- is issued, and a subject over either is refused with
+-- settings.ErrSubjectValueTooLong. The bound is in Go rather than left to the
+-- column because a server not in strict mode truncates instead of refusing,
+-- and a truncated subject does not lose a tail here — it collides on the
+-- uniqueness below, so one principal's answer silently overwrites another's.
 CREATE TABLE IF NOT EXISTS {{PREFIX}}settings_definitions (
     id              VARCHAR(64) NOT NULL PRIMARY KEY,
     scope           VARCHAR(255) NOT NULL,
@@ -77,8 +99,8 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}settings_values (
     id              VARCHAR(64) NOT NULL PRIMARY KEY,
     scope           VARCHAR(255) NOT NULL,
     definition_id   VARCHAR(64) NOT NULL,
-    subject_type    VARCHAR(64) NOT NULL,
-    subject_id      VARCHAR(64) NOT NULL,
+    subject_type    VARCHAR(128) NOT NULL,
+    subject_id      VARCHAR(255) NOT NULL,
     value           VARCHAR(512) NOT NULL,
     created_at      DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at DATETIME(6),

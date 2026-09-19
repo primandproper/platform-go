@@ -108,6 +108,24 @@ var (
 	// dialects.
 	ErrDefinitionValueTooLong = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "setting definition value is too long")
 
+	// ErrSubjectValueTooLong indicates a Subject whose type or id is longer than
+	// the column that stores it — see MaxSubjectTypeLength and
+	// MaxSubjectIDLength, and the wrapped message for which one it was.
+	//
+	// It wraps errors.ErrUnrecognizedInputValue for the reason the definition's
+	// bound does, and it is a second sentinel rather than the same one because
+	// the two are corrected by different people: a definition too long for its
+	// columns is a catalog somebody administers, and a subject too long is the
+	// identifier a request arrived with.
+	//
+	// Both bounds are enforced in Go rather than left to the columns, and this
+	// is the one where a server not in strict mode does something worse than
+	// lose the tail. Two of the four columns a stored value is unique on are the
+	// subject, so a truncated subject does not store a shortened name — it
+	// collides with whatever principal shares its prefix and overwrites their
+	// answer, with the write reporting success.
+	ErrSubjectValueTooLong = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "setting subject value is too long")
+
 	// ErrUnknownKind indicates a Kind this package cannot parse.
 	ErrUnknownKind = platformerrors.Wrap(platformerrors.ErrUnrecognizedInputValue, "unknown setting kind")
 
