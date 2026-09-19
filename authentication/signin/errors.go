@@ -210,6 +210,29 @@ var (
 	// failure, and is a 500 for the reason above.
 	ErrVerificationsNotConfigured = platformerrors.New("no verifications directory is configured")
 
+	// ErrMagicLinksNotConfigured indicates one of the two sign-in link doors on a
+	// service built without WithMagicLinkStore — or, for the request door,
+	// without WithMagicLinkMailer, since a link that is minted and never sent is
+	// a sign-in nobody can complete.
+	//
+	// It is a wiring failure and reads as one: no status is mapped for it, so it
+	// is a 500. The alternative would be answering a request for a passwordless
+	// door with the silence that door gives an address nobody holds, which is a
+	// misconfiguration indistinguishable from working.
+	ErrMagicLinksNotConfigured = platformerrors.New("no sign-in link store is configured")
+
+	// ErrInvalidMagicLink indicates a sign-in link that named nobody: expired,
+	// already followed, withdrawn, or simply wrong.
+	//
+	// The four are one answer, for the reason ErrInvalidVerificationToken
+	// collapses its four — the remedy is the same in every case, which is to ask
+	// for another mail, and telling them apart tells whoever is guessing which
+	// guesses are getting warm. What is told apart reaches the span.
+	//
+	// It wraps ErrInvalidCredentials, so it reads on both transports exactly as a
+	// wrong password does.
+	ErrInvalidMagicLink = platformerrors.Wrap(ErrInvalidCredentials, "invalid sign-in link token")
+
 	// ErrRefreshTokenTTLTooShort indicates a service whose refresh tokens would
 	// die before the access tokens they mint.
 	//
@@ -296,4 +319,12 @@ var (
 
 	// ErrEmptyFamilyID indicates a revocation that named no login.
 	ErrEmptyFamilyID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token family ID")
+
+	// ErrEmptyMagicLinkToken indicates a redemption presenting no token at all.
+	//
+	// It is not ErrInvalidMagicLink, for the reason ErrEmptyVerificationToken is
+	// not ErrInvalidVerificationToken: an empty request is a client that did not
+	// submit rather than a guess that missed, and answering it with a refusal
+	// would put a database round trip behind every empty request a bot sends.
+	ErrEmptyMagicLinkToken = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty sign-in link token")
 )

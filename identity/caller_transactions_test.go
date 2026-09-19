@@ -290,6 +290,9 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 			{name: "MarkUserEmailAddressVerified", run: func() error {
 				return store.MarkUserEmailAddressVerified(t.Context(), nil, testScope, "u", "tok")
 			}},
+			{name: "MarkUserEmailAddressProven", run: func() error {
+				return store.MarkUserEmailAddressProven(t.Context(), nil, testScope, "u")
+			}},
 			{name: "MarkUserEmailAddressUnverified", run: func() error {
 				_, err := store.MarkUserEmailAddressUnverified(t.Context(), nil, testScope, "u")
 

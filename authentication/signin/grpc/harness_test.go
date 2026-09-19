@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"github.com/primandproper/platform-go/v14/authentication/signin"
 	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	signinclient "github.com/primandproper/platform-go/v14/authentication/signin/grpc/client"
+	"github.com/primandproper/platform-go/v14/authentication/signin/magiclinks"
+	magiclinkmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	"github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens"
 	refreshmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	"github.com/primandproper/platform-go/v14/callers"
@@ -145,19 +148,26 @@ func extractPrincipal(ctx context.Context) (callers.Principal, bool) {
 
 // harness is one database, one service and one connected client.
 type harness struct {
-	db        database.Client
-	store     identity.Store
-	svc       *signin.Service
-	directory *identity.Service
-	client    *signinclient.Client
+	db    database.Client
+	store identity.Store
 
 	// rootCtx carries no credential. Every request context is built from it
 	// rather than from the last one, because metadata appends: a context derived
 	// from one that already names a caller ends up naming two.
 	rootCtx context.Context
 
+	svc       *signin.Service
+	directory *identity.Service
+	client    *signinclient.Client
+
+	user *identity.User
+
+	// mailer is what the passwordless door was handed, and is the only way to
+	// reach the secret it mailed. It is wired for every harness and fed by none
+	// but newMagicLinkHarness's.
+	mailer *recordingMailer
+
 	password  string
-	user      *identity.User
 	accountID string
 }
 
@@ -180,7 +190,7 @@ func newHarnessWithIssuer(
 ) *harness {
 	t.Helper()
 
-	return buildHarness(t, issuer, false, svcOpts, opts...)
+	return buildHarness(t, issuer, false, false, svcOpts, opts...)
 }
 
 // newRefreshHarness is newHarness with a live refresh token store behind the
@@ -189,7 +199,19 @@ func newHarnessWithIssuer(
 func newRefreshHarness(t *testing.T, svcOpts []signin.ServiceOption, opts ...signingrpc.Option) *harness {
 	t.Helper()
 
-	return buildHarness(t, &fakeIssuer{}, true, svcOpts, opts...)
+	return buildHarness(t, &fakeIssuer{}, true, false, svcOpts, opts...)
+}
+
+// newMagicLinkHarness is newRefreshHarness with the passwordless door wired in:
+// a live magiclinks store and a mailer the test reads the secret out of.
+//
+// The mailer is the only way to get at that secret, which is the point: it goes
+// to the person the account is about and never into a response, so a test plays
+// the mail client exactly as TestRegisterThenVerifyThenSignIn does.
+func newMagicLinkHarness(t *testing.T, svcOpts []signin.ServiceOption, opts ...signingrpc.Option) *harness {
+	t.Helper()
+
+	return buildHarness(t, &fakeIssuer{}, true, true, svcOpts, opts...)
 }
 
 // buildHarness is every constructor above. The refresh token store has to exist
@@ -198,7 +220,7 @@ func newRefreshHarness(t *testing.T, svcOpts []signin.ServiceOption, opts ...sig
 func buildHarness(
 	t *testing.T,
 	issuer signin.TokenIssuer,
-	withRefresh bool,
+	withRefresh, withMagicLinks bool,
 	svcOpts []signin.ServiceOption,
 	opts ...signingrpc.Option,
 ) *harness {
@@ -248,6 +270,30 @@ func buildHarness(
 		svcOpts = append(svcOpts, signin.WithRefreshTokenStore(refreshStore))
 	}
 
+	mailer := &recordingMailer{}
+
+	if withMagicLinks {
+		linkStmts, stmtErr := magiclinkmigrations.Statements(dialect.SQLite, prefix)
+		must.NoError(t, stmtErr)
+
+		for _, stmt := range linkStmts {
+			_, execErr := db.Writer().ExecContext(t.Context(), stmt)
+			must.NoError(t, execErr)
+		}
+
+		linkStore, storeErr := magiclinks.NewSQLStore(&magiclinks.Config{TablePrefix: prefix}, db)
+		must.NoError(t, storeErr)
+
+		svcOpts = append(svcOpts,
+			signin.WithMagicLinkStore(linkStore),
+			signin.WithMagicLinkMailer(mailer),
+			// The floor holds every request for half a second, which this suite
+			// cannot afford across a bufconn round trip. What it protects is
+			// asserted in the service's own tests.
+			signin.WithMagicLinkRequestFloor(time.Nanosecond),
+		)
+	}
+
 	svc, err := signin.NewService(db, store, authenticator, issuer, svcOpts...)
 	must.NoError(t, err)
 
@@ -286,6 +332,7 @@ func buildHarness(
 	t.Cleanup(func() { _ = conn.Close() })
 
 	h := &harness{
+		mailer:    mailer,
 		db:        db,
 		store:     store,
 		svc:       svc,
@@ -426,4 +473,43 @@ func (m *mailedSecrets) GenerateBase32EncodedString(context.Context, int) (strin
 
 func (m *mailedSecrets) GenerateRawBytes(context.Context, int) ([]byte, error) {
 	return []byte(m.secret), nil
+}
+
+// recordingMailer keeps what the passwordless door handed it, so a test can play
+// the mail client. The secret is never in a response, which is the property the
+// door exists under.
+type recordingMailer struct {
+	sent []*signin.MagicLinkMail
+	mu   sync.Mutex
+}
+
+var _ signin.MagicLinkMailer = (*recordingMailer)(nil)
+
+func (m *recordingMailer) SendMagicLink(_ context.Context, mail *signin.MagicLinkMail) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.sent = append(m.sent, mail)
+
+	return nil
+}
+
+func (m *recordingMailer) count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return len(m.sent)
+}
+
+// secret is the token most recently mailed, which is what a person clicking a
+// link is holding.
+func (m *recordingMailer) secret(tb testing.TB) string {
+	tb.Helper()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	must.SliceNotEmpty(tb, m.sent)
+
+	return m.sent[len(m.sent)-1].Issuance.Secret
 }

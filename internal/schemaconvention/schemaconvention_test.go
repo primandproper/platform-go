@@ -16,6 +16,7 @@ import (
 	oauth2serverstoremigrations "github.com/primandproper/platform-go/v14/authentication/oauth2serverstore/migrations"
 	passkeysmigrations "github.com/primandproper/platform-go/v14/authentication/passkeys/migrations"
 	passwordresetmigrations "github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
+	magiclinksmigrations "github.com/primandproper/platform-go/v14/authentication/signin/magiclinks/migrations"
 	refreshtokensmigrations "github.com/primandproper/platform-go/v14/authentication/signin/refreshtokens/migrations"
 	webauthnmigrations "github.com/primandproper/platform-go/v14/authentication/webauthnsessions/migrations"
 	billingmigrations "github.com/primandproper/platform-go/v14/billing/migrations"
@@ -72,6 +73,7 @@ var renderers = map[string]renderer{
 	"authentication/oauth2serverstore":    oauth2serverstoremigrations.Statements,
 	"authentication/passkeys":             passkeysmigrations.Statements,
 	"authentication/passwordreset":        passwordresetmigrations.Statements,
+	"authentication/signin/magiclinks":    magiclinksmigrations.Statements,
 	"authentication/signin/refreshtokens": refreshtokensmigrations.Statements,
 	"authentication/webauthnsessions":     webauthnmigrations.Statements,
 	"billing":                             billingmigrations.Statements,
@@ -187,6 +189,16 @@ var exempt = map[string]exemption{
 	// is the distinction refresh token reuse detection rests on.
 	"signin_refresh_tokens": {refreshtokensmigrations.Statements,
 		"minted, exchanged once and swept on purge_after; issued_at is the creation time and redeemed_at and revoked_at are the row's only mutations"},
+
+	// signin_magic_links is the fourth, and it is signin_refresh_tokens' shape
+	// with two identifier columns instead of four: a link is not a login, so it
+	// carries no family, and it arrives out of an inbox naming no account, so it
+	// carries none of those either. The purge deadline is here for a weaker
+	// reason than next door — nothing detects reuse on these — and it earns the
+	// column anyway, because "that link was already used" and "no such link" are
+	// two different stories an operator reconstructs an incident from.
+	"signin_magic_links": {magiclinksmigrations.Statements,
+		"mailed, followed once and swept on purge_after; issued_at is the creation time and redeemed_at and revoked_at are the row's only mutations"},
 
 	// audit_log_entries is exempt for three reasons, the first fatal. recorded_at
 	// is folded into every entry's hash before the INSERT, so a database-assigned

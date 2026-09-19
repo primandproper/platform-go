@@ -46,12 +46,19 @@ import (
 // own documentation for why a whoami that refuses anonymous callers makes every
 // client treat its first question as an error.
 //
-// The last two are the doors that finish a registration, and they are anonymous
+// The next two are the doors that finish a registration, and they are anonymous
 // for the reason the first three are: the token mailed to the person they are
 // about is the whole of the request's authority, and requiring a principal would
 // require a sign-in from somebody who cannot sign in yet — which is the dead end
 // both of them exist to open. Neither has a field naming a user; who they are
 // about is read off the row the token named.
+//
+// The last two are the passwordless door, and they are the same argument twice
+// over. Redeeming carries a mailed token exactly as those two do. Requesting
+// carries nothing at all — it names an address and is answered identically
+// whoever holds it — so there is no principal it could require and nothing a
+// permission could protect: the thing that must not be abused there is the rate
+// it is called at, which is the consumer's to bound in front of it.
 func AnonymousMethods() []string {
 	return []string{
 		signinpb.SignInService_LoginForToken_FullMethodName,
@@ -60,6 +67,8 @@ func AnonymousMethods() []string {
 		signinpb.SignInService_GetAuthStatus_FullMethodName,
 		signinpb.SignInService_AttachPassword_FullMethodName,
 		signinpb.SignInService_VerifyEmailAddress_FullMethodName,
+		signinpb.SignInService_RequestMagicLink_FullMethodName,
+		signinpb.SignInService_RedeemMagicLink_FullMethodName,
 	}
 }
 

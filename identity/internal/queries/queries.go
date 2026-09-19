@@ -715,6 +715,32 @@ func fieldWrites(g *querygen.Generator) []*querygen.Query {
 			scope,
 			querygen.Match{Column: UserEmailVerificationTokenDigestColumn, Arg: currentEmailVerificationTokenDigestArg}),
 
+		// The same stamp for a door that proved the address without holding the
+		// link that was mailed for it. A sign-in link answered from the
+		// registrant's own inbox proves exactly what the verification link
+		// proves, and the two doors cannot share a statement: this caller holds
+		// a token from another table, and the guard above compares the one this
+		// row carries.
+		//
+		// It is unguarded rather than guarded on something else, and that is the
+		// honest shape. The single-use property this write used to get from the
+		// predicate is held by the other table's own guarded spend, which has
+		// already decided that this caller and no other may be here; a second
+		// guard invented for this statement would be a second answer to a
+		// question already answered, free to disagree with it.
+		//
+		// It assigns the pair, for the reason every other statement touching
+		// these two columns assigns the pair: they are one state, and a row
+		// holding a proof and an outstanding link at once is a row whose
+		// verification status depends on which column a reader looked at. So
+		// the link mailed at registration stops working here — it has nothing
+		// left to prove, and leaving it live is the window
+		// SetUserEmailAddressVerificationToken's comment is about, entered from
+		// the other side.
+		g.UpdateQuery("MarkUserEmailAddressProven", UsersTable, Users.Columns,
+			[]string{EmailAddressVerifiedAtColumn, UserEmailVerificationTokenDigestColumn}, Users.Nullable,
+			scope),
+
 		// The other direction, and the one nothing else can express: the proof
 		// comes off an address the user keeps. Unguarded on purpose — it is the
 		// safe direction, so an unverify that lost a race to another unverify

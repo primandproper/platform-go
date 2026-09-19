@@ -1191,6 +1191,14 @@ type MarkAccountBillingSyncedParams struct {
 	Scope                       tenancy.Scope
 }
 
+// MarkUserEmailAddressProvenParams are the arguments to MarkUserEmailAddressProven.
+type MarkUserEmailAddressProvenParams struct {
+	EmailAddressVerifiedAt              *time.Time
+	EmailAddressVerificationTokenDigest string
+	ID                                  string
+	Scope                               tenancy.Scope
+}
+
 // MarkUserEmailAddressUnverifiedParams are the arguments to MarkUserEmailAddressUnverified.
 type MarkUserEmailAddressUnverifiedParams struct {
 	EmailAddressVerifiedAt *time.Time

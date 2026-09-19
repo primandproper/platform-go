@@ -108,6 +108,9 @@ var _ identity.Store = &StoreMock{}
 //			MarkAccountBillingSyncedFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*identity.Account, error) {
 //				panic("mock out the MarkAccountBillingSynced method")
 //			},
+//			MarkUserEmailAddressProvenFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error {
+//				panic("mock out the MarkUserEmailAddressProven method")
+//			},
 //			MarkUserEmailAddressUnverifiedFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error) {
 //				panic("mock out the MarkUserEmailAddressUnverified method")
 //			},
@@ -264,6 +267,9 @@ type StoreMock struct {
 
 	// MarkAccountBillingSyncedFunc mocks the MarkAccountBillingSynced method.
 	MarkAccountBillingSyncedFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, accountID string) (*identity.Account, error)
+
+	// MarkUserEmailAddressProvenFunc mocks the MarkUserEmailAddressProven method.
+	MarkUserEmailAddressProvenFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error
 
 	// MarkUserEmailAddressUnverifiedFunc mocks the MarkUserEmailAddressUnverified method.
 	MarkUserEmailAddressUnverifiedFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) (*identity.User, error)
@@ -665,6 +671,17 @@ type StoreMock struct {
 			// AccountID is the accountID argument value.
 			AccountID string
 		}
+		// MarkUserEmailAddressProven holds details about calls to the MarkUserEmailAddressProven method.
+		MarkUserEmailAddressProven []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Scope is the scope argument value.
+			Scope tenancy.Scope
+			// UserID is the userID argument value.
+			UserID string
+		}
 		// MarkUserEmailAddressUnverified holds details about calls to the MarkUserEmailAddressUnverified method.
 		MarkUserEmailAddressUnverified []struct {
 			// Ctx is the ctx argument value.
@@ -980,6 +997,7 @@ type StoreMock struct {
 	lockListUsers                            sync.RWMutex
 	lockListUsersByIDs                       sync.RWMutex
 	lockMarkAccountBillingSynced             sync.RWMutex
+	lockMarkUserEmailAddressProven           sync.RWMutex
 	lockMarkUserEmailAddressUnverified       sync.RWMutex
 	lockMarkUserEmailAddressVerified         sync.RWMutex
 	lockMarkUserTwoFactorSecretVerified      sync.RWMutex
@@ -2281,6 +2299,50 @@ func (mock *StoreMock) MarkAccountBillingSyncedCalls() []struct {
 	mock.lockMarkAccountBillingSynced.RLock()
 	calls = mock.calls.MarkAccountBillingSynced
 	mock.lockMarkAccountBillingSynced.RUnlock()
+	return calls
+}
+
+// MarkUserEmailAddressProven calls MarkUserEmailAddressProvenFunc.
+func (mock *StoreMock) MarkUserEmailAddressProven(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string) error {
+	if mock.MarkUserEmailAddressProvenFunc == nil {
+		panic("StoreMock.MarkUserEmailAddressProvenFunc: method is nil but Store.MarkUserEmailAddressProven was just called")
+	}
+	callInfo := struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		UserID string
+	}{
+		Ctx:    ctx,
+		Tx:     tx,
+		Scope:  scope,
+		UserID: userID,
+	}
+	mock.lockMarkUserEmailAddressProven.Lock()
+	mock.calls.MarkUserEmailAddressProven = append(mock.calls.MarkUserEmailAddressProven, callInfo)
+	mock.lockMarkUserEmailAddressProven.Unlock()
+	return mock.MarkUserEmailAddressProvenFunc(ctx, tx, scope, userID)
+}
+
+// MarkUserEmailAddressProvenCalls gets all the calls that were made to MarkUserEmailAddressProven.
+// Check the length with:
+//
+//	len(mockedStore.MarkUserEmailAddressProvenCalls())
+func (mock *StoreMock) MarkUserEmailAddressProvenCalls() []struct {
+	Ctx    context.Context
+	Tx     database.Tx
+	Scope  tenancy.Scope
+	UserID string
+} {
+	var calls []struct {
+		Ctx    context.Context
+		Tx     database.Tx
+		Scope  tenancy.Scope
+		UserID string
+	}
+	mock.lockMarkUserEmailAddressProven.RLock()
+	calls = mock.calls.MarkUserEmailAddressProven
+	mock.lockMarkUserEmailAddressProven.RUnlock()
 	return calls
 }
 

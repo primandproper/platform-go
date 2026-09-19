@@ -1574,6 +1574,15 @@ WHERE archived_at IS NULL
 	AND scope = sqlc.arg(scope)
 	AND email_address_verification_token_digest = sqlc.arg(current_email_address_verification_token_digest);
 
+-- name: MarkUserEmailAddressProven :execrows
+UPDATE identity_users SET
+	email_address_verified_at = sqlc.narg(email_address_verified_at),
+	email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest),
+	last_updated_at = CURRENT_TIMESTAMP
+WHERE archived_at IS NULL
+	AND id = sqlc.arg(id)
+	AND scope = sqlc.arg(scope);
+
 -- name: MarkUserEmailAddressUnverified :execrows
 UPDATE identity_users SET
 	email_address_verified_at = sqlc.narg(email_address_verified_at),

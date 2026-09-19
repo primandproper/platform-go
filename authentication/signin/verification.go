@@ -50,6 +50,22 @@ type Verifications interface {
 		userID, token string,
 	) error
 
+	// MarkUserEmailAddressProven stamps the address as proven for a caller
+	// holding no verification token, and clears any outstanding one.
+	//
+	// It is what [Service.RedeemMagicLink] calls. A sign-in link answered out of
+	// the registrant's own inbox proves reachability exactly as a verification
+	// link does, and cannot satisfy the method above: that statement compares
+	// the digest the row carries, and this caller holds a token from another
+	// table. The single-use property the guard buys is held there instead, by
+	// the sign-in link store's own guarded spend.
+	MarkUserEmailAddressProven(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		userID string,
+	) error
+
 	// UpdateUserAccountStatus moves a user between statuses. This package calls
 	// it for exactly one move — StatusUnverified to StatusGood — and never to
 	// suspend, terminate or reinstate anybody.

@@ -137,6 +137,8 @@ const (
 	SignInService_Register_FullMethodName             = "/primandproper.platform.signin.v1.SignInService/Register"
 	SignInService_AttachPassword_FullMethodName       = "/primandproper.platform.signin.v1.SignInService/AttachPassword"
 	SignInService_VerifyEmailAddress_FullMethodName   = "/primandproper.platform.signin.v1.SignInService/VerifyEmailAddress"
+	SignInService_RequestMagicLink_FullMethodName     = "/primandproper.platform.signin.v1.SignInService/RequestMagicLink"
+	SignInService_RedeemMagicLink_FullMethodName      = "/primandproper.platform.signin.v1.SignInService/RedeemMagicLink"
 	SignInService_LoginForToken_FullMethodName        = "/primandproper.platform.signin.v1.SignInService/LoginForToken"
 	SignInService_AdminLoginForToken_FullMethodName   = "/primandproper.platform.signin.v1.SignInService/AdminLoginForToken"
 	SignInService_ExchangeRefreshToken_FullMethodName = "/primandproper.platform.signin.v1.SignInService/ExchangeRefreshToken"
@@ -153,7 +155,7 @@ const (
 //
 // SignInService is sign-in.
 //
-// Six of its RPCs are anonymous by definition and five require a caller. What
+// Eight of its RPCs are anonymous by definition and five require a caller. What
 // none of them requires is a permission: there is no grant that would make
 // "sign in" safer, and the four authenticated ones take their subject from the
 // caller and have no field that could name anybody else. See
@@ -169,6 +171,15 @@ type SignInServiceClient interface {
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	AttachPassword(ctx context.Context, in *AttachPasswordRequest, opts ...grpc.CallOption) (*AttachPasswordResponse, error)
 	VerifyEmailAddress(ctx context.Context, in *VerifyEmailAddressRequest, opts ...grpc.CallOption) (*VerifyEmailAddressResponse, error)
+	// The passwordless door, both halves anonymous. Requesting a link names an
+	// address and is answered the same way whoever holds it; redeeming one carries
+	// the token that was mailed, which is the whole of its authority. Neither can
+	// name a user, so neither is a way to ask about one.
+	//
+	// Rate limiting is the consumer's, in front of RequestMagicLink, and it is not
+	// optional: this is the one RPC in this service that sends mail on request.
+	RequestMagicLink(ctx context.Context, in *RequestMagicLinkRequest, opts ...grpc.CallOption) (*RequestMagicLinkResponse, error)
+	RedeemMagicLink(ctx context.Context, in *RedeemMagicLinkRequest, opts ...grpc.CallOption) (*RedeemMagicLinkResponse, error)
 	// The two doors, and the one that keeps a sign-in alive without reopening
 	// either of them.
 	LoginForToken(ctx context.Context, in *LoginForTokenRequest, opts ...grpc.CallOption) (*LoginForTokenResponse, error)
@@ -215,6 +226,26 @@ func (c *signInServiceClient) VerifyEmailAddress(ctx context.Context, in *Verify
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(VerifyEmailAddressResponse)
 	err := c.cc.Invoke(ctx, SignInService_VerifyEmailAddress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *signInServiceClient) RequestMagicLink(ctx context.Context, in *RequestMagicLinkRequest, opts ...grpc.CallOption) (*RequestMagicLinkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RequestMagicLinkResponse)
+	err := c.cc.Invoke(ctx, SignInService_RequestMagicLink_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *signInServiceClient) RedeemMagicLink(ctx context.Context, in *RedeemMagicLinkRequest, opts ...grpc.CallOption) (*RedeemMagicLinkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RedeemMagicLinkResponse)
+	err := c.cc.Invoke(ctx, SignInService_RedeemMagicLink_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +338,7 @@ func (c *signInServiceClient) VerifyTOTPSecret(ctx context.Context, in *VerifyTO
 //
 // SignInService is sign-in.
 //
-// Six of its RPCs are anonymous by definition and five require a caller. What
+// Eight of its RPCs are anonymous by definition and five require a caller. What
 // none of them requires is a permission: there is no grant that would make
 // "sign in" safer, and the four authenticated ones take their subject from the
 // caller and have no field that could name anybody else. See
@@ -323,6 +354,15 @@ type SignInServiceServer interface {
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	AttachPassword(context.Context, *AttachPasswordRequest) (*AttachPasswordResponse, error)
 	VerifyEmailAddress(context.Context, *VerifyEmailAddressRequest) (*VerifyEmailAddressResponse, error)
+	// The passwordless door, both halves anonymous. Requesting a link names an
+	// address and is answered the same way whoever holds it; redeeming one carries
+	// the token that was mailed, which is the whole of its authority. Neither can
+	// name a user, so neither is a way to ask about one.
+	//
+	// Rate limiting is the consumer's, in front of RequestMagicLink, and it is not
+	// optional: this is the one RPC in this service that sends mail on request.
+	RequestMagicLink(context.Context, *RequestMagicLinkRequest) (*RequestMagicLinkResponse, error)
+	RedeemMagicLink(context.Context, *RedeemMagicLinkRequest) (*RedeemMagicLinkResponse, error)
 	// The two doors, and the one that keeps a sign-in alive without reopening
 	// either of them.
 	LoginForToken(context.Context, *LoginForTokenRequest) (*LoginForTokenResponse, error)
@@ -353,6 +393,12 @@ func (UnimplementedSignInServiceServer) AttachPassword(context.Context, *AttachP
 }
 func (UnimplementedSignInServiceServer) VerifyEmailAddress(context.Context, *VerifyEmailAddressRequest) (*VerifyEmailAddressResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method VerifyEmailAddress not implemented")
+}
+func (UnimplementedSignInServiceServer) RequestMagicLink(context.Context, *RequestMagicLinkRequest) (*RequestMagicLinkResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RequestMagicLink not implemented")
+}
+func (UnimplementedSignInServiceServer) RedeemMagicLink(context.Context, *RedeemMagicLinkRequest) (*RedeemMagicLinkResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RedeemMagicLink not implemented")
 }
 func (UnimplementedSignInServiceServer) LoginForToken(context.Context, *LoginForTokenRequest) (*LoginForTokenResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LoginForToken not implemented")
@@ -449,6 +495,42 @@ func _SignInService_VerifyEmailAddress_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SignInServiceServer).VerifyEmailAddress(ctx, req.(*VerifyEmailAddressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SignInService_RequestMagicLink_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RequestMagicLinkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).RequestMagicLink(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_RequestMagicLink_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).RequestMagicLink(ctx, req.(*RequestMagicLinkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SignInService_RedeemMagicLink_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RedeemMagicLinkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SignInServiceServer).RedeemMagicLink(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SignInService_RedeemMagicLink_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SignInServiceServer).RedeemMagicLink(ctx, req.(*RedeemMagicLinkRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -615,6 +697,14 @@ var SignInService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "VerifyEmailAddress",
 			Handler:    _SignInService_VerifyEmailAddress_Handler,
+		},
+		{
+			MethodName: "RequestMagicLink",
+			Handler:    _SignInService_RequestMagicLink_Handler,
+		},
+		{
+			MethodName: "RedeemMagicLink",
+			Handler:    _SignInService_RedeemMagicLink_Handler,
 		},
 		{
 			MethodName: "LoginForToken",

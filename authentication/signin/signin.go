@@ -41,6 +41,12 @@ const (
 	// adminKey records which door an attempt came through.
 	adminKey = "signin.administrative"
 
+	// padKey records whether a timing floor was held to in full. It is false only
+	// where the caller's context ended first, which makes a short answer a fact
+	// about that request rather than a silent hole in the enumeration defense.
+	// See Service.padTo.
+	padKey = "signin.padded"
+
 	// familyKey records which continuous login an operation belongs to. It is
 	// the one identifier a refresh token's row carries that is safe to trace: it
 	// names a sign-in rather than a credential, which is exactly what following
@@ -82,6 +88,13 @@ const (
 	opAttachPassword       = "attach_password"
 	opVerifyEmailAddress   = "verify_email_address"
 	opCompleteVerification = "complete_verification"
+	// The passwordless door, both halves. It is a series of its own for the
+	// reason registering is: what a dashboard asks of it is how many people
+	// arrive without a password, which is a different question from how often
+	// anybody signs in.
+	opRequestMagicLink = "request_magic_link"
+	opRedeemMagicLink  = "redeem_magic_link"
+
 	//nolint:gosec // G101: these are instrument labels naming two operations, not credentials.
 	opRefreshTOTPSecret = "refresh_totp_secret"
 	//nolint:gosec // G101: as above.
@@ -357,6 +370,17 @@ type Service struct {
 	// ErrRefreshTokensNotConfigured.
 	refreshTokens RefreshTokenStore
 
+	// magicLinks is nil until WithMagicLinkStore names one, and nil is what
+	// "this service has no passwordless door" means: both magic link doors
+	// refuse with ErrMagicLinksNotConfigured.
+	magicLinks MagicLinkStore
+
+	// magicLinkMailer is nil until WithMagicLinkMailer names one. The request
+	// door needs both it and the store, because a link that is minted and not
+	// sent is a sign-in nobody can complete; the redemption door needs only the
+	// store.
+	magicLinkMailer MagicLinkMailer
+
 	// What the options wrote, kept only until the observer is built from it.
 	logger          logging.Logger
 	tracerProvider  tracing.Provider
@@ -375,6 +399,9 @@ type Service struct {
 
 	refreshTokenTTL      time.Duration
 	adminRefreshTokenTTL time.Duration
+
+	magicLinkTTL   time.Duration
+	magicLinkFloor time.Duration
 
 	secondFactor SecondFactorPolicy
 }
@@ -452,6 +479,9 @@ func NewService(
 
 		refreshTokenTTL:      DefaultRefreshTokenTTL,
 		adminRefreshTokenTTL: DefaultAdminRefreshTokenTTL,
+
+		magicLinkTTL:   DefaultMagicLinkTTL,
+		magicLinkFloor: DefaultMagicLinkRequestFloor,
 	}
 
 	for _, opt := range opts {

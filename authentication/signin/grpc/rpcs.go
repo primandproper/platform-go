@@ -397,3 +397,87 @@ func (s *Server) VerifyEmailAddress(
 
 	return &signinpb.VerifyEmailAddressResponse{}, nil
 }
+
+// RequestMagicLink mails somebody a link that signs them in, and answers the
+// same way whatever it found.
+//
+// An address nobody holds, an address whose owner is banned, an address whose
+// owner is terminated and an address that got a mail are one answer: an empty
+// response and no error. The service pads its own timing so the four cannot be
+// told apart by a stopwatch either, and this handler adds nothing that could
+// tell them apart by shape — which is the whole of the enumeration defense, and
+// the reason there is nothing to put in the response.
+//
+// A consumer building their own transport over this service owes the same
+// silence. Answering a known address with a 200 and an unknown one with a 404
+// rebuilds the oracle one layer up, where neither the padding nor this handler
+// reaches.
+//
+// What is reported is this service failing rather than a fact about the address:
+// a store that will not write and a mailer that will not send are Internal, and
+// they are the only non-empty answers this RPC has.
+//
+// It is anonymous for the reason the two registration doors are: the person
+// asking cannot sign in yet, which is the dead end it exists to open. Rate
+// limiting is the consumer's, in front of this call — it is the one RPC in this
+// service that sends mail on request, so a deployment without a limit in front
+// of it is a way to send mail through their own domain at somebody else's
+// direction.
+func (s *Server) RequestMagicLink(
+	ctx context.Context,
+	request *signinpb.RequestMagicLinkRequest,
+) (*signinpb.RequestMagicLinkResponse, error) {
+	ctx, req, done, err := s.anonymous(ctx, signinpb.SignInService_RequestMagicLink_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	if err = s.svc.RequestMagicLink(ctx, req.scope, request.GetEmailAddress()); err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "requesting a sign-in link")
+	}
+
+	return &signinpb.RequestMagicLinkResponse{}, nil
+}
+
+// RedeemMagicLink answers a sign-in link: it spends the link, proves the address
+// it was mailed to, promotes a registrant who was waiting on exactly that, and
+// issues a token.
+//
+// It is anonymous for the reason AttachPassword and VerifyEmailAddress are: the
+// token mailed to the person it is about is the whole of the request's
+// authority, and requiring a principal would require a sign-in from somebody
+// who cannot sign in yet. It has no field naming a user; who it is about is read
+// off the row the token named.
+//
+// Every way of failing to spend the link is one answer, Unauthenticated with the
+// message a wrong password gets. A wrong second-factor code is the same answer,
+// and a user who holds a proven secret and sent no code is told to send one —
+// which is the same disclosure the password door makes, in the same place, for
+// the same reason.
+//
+// What it produces is what LoginForToken produces. The two doors differ in what
+// was proven, not in what they mint.
+func (s *Server) RedeemMagicLink(
+	ctx context.Context,
+	request *signinpb.RedeemMagicLinkRequest,
+) (*signinpb.RedeemMagicLinkResponse, error) {
+	ctx, req, done, err := s.anonymous(ctx, signinpb.SignInService_RedeemMagicLink_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	signedIn, err := s.svc.RedeemMagicLink(ctx, req.scope, &signin.MagicLinkCredentials{
+		Token:           request.GetToken(),
+		TOTPCode:        request.GetTotpCode(),
+		ActiveAccountID: request.GetActiveAccountId(),
+	})
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "redeeming a sign-in link")
+	}
+
+	return &signinpb.RedeemMagicLinkResponse{Token: IssuedTokenToProto(signedIn)}, nil
+}

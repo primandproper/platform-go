@@ -488,3 +488,113 @@ func WithSecretGenerator(generator random.Generator) ServiceOption {
 		}
 	}
 }
+
+// DefaultMagicLinkTTL is how long a sign-in link stays redeemable when
+// WithMagicLinkTTL names nothing.
+//
+// Fifteen minutes. It is the shortest lifetime in this package by a wide margin,
+// and deliberately: a sign-in link is a bearer credential sitting in an inbox,
+// which is a place a great many people other than its owner can reach — a
+// forwarded thread, a shared mailbox, a synced device, a mail server's logs. It
+// is long enough to survive a slow delivery and somebody switching to their
+// phone, and short enough that a link found later is almost always already dead.
+//
+// It is shorter than passwordreset's window on purpose, though the two
+// mechanisms look alike. A reset link is answered by somebody who then types a
+// new password, so the flow tolerates and expects a gap; this one is answered by
+// somebody who wanted to be signed in when they asked.
+const DefaultMagicLinkTTL = 15 * time.Minute
+
+// DefaultMagicLinkRequestFloor is how long Service.RequestMagicLink takes at the
+// least, whatever it found.
+//
+// Five hundred milliseconds. The floor is the whole of the timing half of the
+// enumeration defense: the door answers identically for an address nobody holds
+// and one somebody does, and without a floor the difference between them is a
+// directory read, a token mint, a commit and an SMTP conversation — which is not
+// a subtle signal, it is most of a second.
+//
+// The value matters less than its being greater than the slowest path it covers.
+// It is measured from the moment the call begins rather than from the read, so a
+// deployment whose mail send is slower than this should raise it — see
+// WithMagicLinkRequestFloor, which is also where the reason this cannot be
+// defended in Go alone is written down.
+const DefaultMagicLinkRequestFloor = 500 * time.Millisecond
+
+// WithMagicLinkStore attaches where this service's sign-in links live, which is
+// what turns the passwordless door on.
+//
+// Absent, Service.RequestMagicLink and Service.RedeemMagicLink both refuse with
+// ErrMagicLinksNotConfigured, and that is the right default: a service built as
+// a credential check over somebody else's directory mails nothing, and a door
+// that quietly did nothing would be worse than one that says it is not
+// configured.
+//
+// github.com/primandproper/platform-go/v14/authentication/signin/magiclinks is
+// the SQL implementation this module ships, with the DDL it needs.
+func WithMagicLinkStore(store MagicLinkStore) ServiceOption {
+	return func(s *Service) {
+		if store != nil {
+			s.magicLinks = store
+		}
+	}
+}
+
+// WithMagicLinkMailer attaches what delivers a sign-in link.
+//
+// It is required by Service.RequestMagicLink and not by Service.RedeemMagicLink,
+// which is the split a consumer who mints links somewhere else — a queue, a
+// separate mailer service — depends on: they can configure a store and redeem
+// what somebody else sent.
+//
+// The service mails rather than handing the secret back, and that is not a
+// preference. An answer that carried a secret for a known address and nothing
+// for an unknown one would be an enumeration oracle in the shape of a response
+// body, and no amount of timing padding fixes a response shape. Registration
+// takes the opposite reading — Register hands its verification token back on
+// Registered — because a registration has already told the caller the account
+// exists.
+func WithMagicLinkMailer(mailer MagicLinkMailer) ServiceOption {
+	return func(s *Service) {
+		if mailer != nil {
+			s.magicLinkMailer = mailer
+		}
+	}
+}
+
+// WithMagicLinkTTL sets how long a sign-in link stays redeemable. A non-positive
+// duration is ignored, leaving DefaultMagicLinkTTL.
+//
+// It is the service's rather than the store's, for the reason WithTokenTTL and
+// WithRefreshTokenTTL are: how long a credential works is policy, and a store
+// holding a default for it would be the value nobody passed competing with the
+// value somebody chose. What the store does hold is the retention window past
+// that deadline, which is storage's own business.
+func WithMagicLinkTTL(ttl time.Duration) ServiceOption {
+	return func(s *Service) {
+		if ttl > 0 {
+			s.magicLinkTTL = ttl
+		}
+	}
+}
+
+// WithMagicLinkRequestFloor sets how long Service.RequestMagicLink takes at the
+// least. A non-positive duration is ignored, leaving
+// DefaultMagicLinkRequestFloor.
+//
+// Raise it above the slowest thing that call does in your deployment, which is
+// almost always the mail send. A floor shorter than the work it covers is a
+// floor that only pads the fast path, and the fast path is the one that found
+// nobody — so it would make the difference easier to measure rather than harder.
+//
+// What it cannot cover is what happens after this call returns. A consumer whose
+// handler answers a known address with a 200 and an unknown one with a 404 has
+// rebuilt the oracle in their own transport, and no value here reaches it. The
+// answer is the same either way, and Service.RequestMagicLink says so.
+func WithMagicLinkRequestFloor(floor time.Duration) ServiceOption {
+	return func(s *Service) {
+		if floor > 0 {
+			s.magicLinkFloor = floor
+		}
+	}
+}

@@ -1503,6 +1503,14 @@ WHERE archived_at IS NULL
 	AND id = ?
 	AND scope = ?`
 
+const markUserEmailAddressProvenMySQL = `UPDATE {{prefix}}identity_users SET
+	email_address_verified_at = ?,
+	email_address_verification_token_digest = ?,
+	last_updated_at = CURRENT_TIMESTAMP(6)
+WHERE archived_at IS NULL
+	AND id = ?
+	AND scope = ?`
+
 const markUserEmailAddressUnverifiedMySQL = `UPDATE {{prefix}}identity_users SET
 	email_address_verified_at = ?,
 	last_updated_at = CURRENT_TIMESTAMP(6)
@@ -1788,6 +1796,7 @@ type mysqlQueries struct {
 	listUsersByIDs                           string
 	listUsersDescending                      string
 	markAccountBillingSynced                 string
+	markUserEmailAddressProven               string
 	markUserEmailAddressUnverified           string
 	markUserEmailAddressVerified             string
 	markUserTwoFactorSecretVerified          string
@@ -1873,6 +1882,7 @@ func newMySQL(prefix string) *mysqlQueries {
 		listUsersByIDs:                           strings.ReplaceAll(listUsersByIDsMySQL, prefixMarker, prefix),
 		listUsersDescending:                      strings.ReplaceAll(listUsersDescendingMySQL, prefixMarker, prefix),
 		markAccountBillingSynced:                 strings.ReplaceAll(markAccountBillingSyncedMySQL, prefixMarker, prefix),
+		markUserEmailAddressProven:               strings.ReplaceAll(markUserEmailAddressProvenMySQL, prefixMarker, prefix),
 		markUserEmailAddressUnverified:           strings.ReplaceAll(markUserEmailAddressUnverifiedMySQL, prefixMarker, prefix),
 		markUserEmailAddressVerified:             strings.ReplaceAll(markUserEmailAddressVerifiedMySQL, prefixMarker, prefix),
 		markUserTwoFactorSecretVerified:          strings.ReplaceAll(markUserTwoFactorSecretVerifiedMySQL, prefixMarker, prefix),
@@ -3915,6 +3925,21 @@ func (q *mysqlQueries) MarkAccountBillingSynced(ctx context.Context, db DBTX, ar
 	return result.RowsAffected()
 }
 
+// MarkUserEmailAddressProven runs the :execrows query against mysql.
+func (q *mysqlQueries) MarkUserEmailAddressProven(ctx context.Context, db DBTX, arg MarkUserEmailAddressProvenParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.markUserEmailAddressProven,
+		arg.EmailAddressVerifiedAt,
+		arg.EmailAddressVerificationTokenDigest,
+		arg.ID,
+		arg.Scope,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // MarkUserEmailAddressUnverified runs the :execrows query against mysql.
 func (q *mysqlQueries) MarkUserEmailAddressUnverified(ctx context.Context, db DBTX, arg MarkUserEmailAddressUnverifiedParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.markUserEmailAddressUnverified,
@@ -5297,6 +5322,12 @@ var (
 		ID                          string
 		Scope                       tenancy.Scope
 	}(MarkAccountBillingSyncedParams{})
+	_ = struct {
+		EmailAddressVerifiedAt              *time.Time
+		EmailAddressVerificationTokenDigest string
+		ID                                  string
+		Scope                               tenancy.Scope
+	}(MarkUserEmailAddressProvenParams{})
 	_ = struct {
 		EmailAddressVerifiedAt *time.Time
 		ID                     string
