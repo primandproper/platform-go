@@ -100,12 +100,31 @@ var (
 	// which signs both of them out. That is the standard response and the only
 	// one that does not leave the theft running.
 	//
-	// It is mapped for both transports and deliberately absent from
-	// ClientSafeSentinels. This package collapses its refusals on purpose, and
-	// "that token was already spent" tells a thief their theft was detected. The
-	// sentinel stays legible in the consumer's own logs, which is where it is
-	// useful.
-	ErrRefreshTokenReused = platformerrors.New("refresh token has already been exchanged")
+	// It wraps ErrInvalidCredentials, and that is what makes the collapse real
+	// rather than asserted. The two transports answer differently by
+	// construction: an HTTPErrorMapper returns the words it wants a client to
+	// read, so mapping this case to "invalid credentials" is one line there,
+	// while a GRPCErrorMapper returns only a code and the message comes from
+	// errors/grpc.ClientSafeMessage — which walks the chain and quotes the first
+	// registered sentinel it reaches. A sentinel that is registered says its own
+	// words; one that is not falls through to the handler's description, which
+	// is a different string from "invalid credentials" and therefore an oracle
+	// for exactly the question this sentinel must not answer. Wrapping puts
+	// ErrInvalidCredentials in the chain, so the walk reaches it and a replay
+	// reads identically to a wrong password on both transports.
+	//
+	// It is itself deliberately absent from ClientSafeSentinels, which is the
+	// other half: registered, it would speak these words, and "that token was
+	// already spent" tells a thief their theft was detected. Absent, the walk
+	// passes over it and quotes what it wraps. The sentinel stays legible in the
+	// consumer's own logs and to errors.Is, which is where it is useful.
+	//
+	// A caller matching ErrInvalidCredentials therefore matches this too, and
+	// that is the intent rather than a side effect: a replayed refresh token is
+	// an invalid credential, and a consumer branching on the refusal wants the
+	// same branch. Reuse is still reachable on its own for whoever wants to
+	// alarm on it.
+	ErrRefreshTokenReused = platformerrors.Wrap(ErrInvalidCredentials, "refresh token has already been exchanged")
 
 	// ErrTOTPIssuerNotConfigured indicates Service.RefreshTOTPSecret on a
 	// service built without WithTOTPIssuer.

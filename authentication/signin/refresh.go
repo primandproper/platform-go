@@ -236,9 +236,13 @@ type RefreshTokenStore interface {
 	// why that method captures this one sentinel rather than returning it.
 	//
 	// Every other refusal — an unknown digest, a wrong directory, a revoked
-	// token, an expired one — is ErrInvalidCredentials. They are collapsed for
-	// the reason the password door collapses its four: told apart, they are an
-	// oracle for whoever is presenting guesses.
+	// token, an expired one — is ErrInvalidCredentials bare. They are collapsed
+	// for the reason the password door collapses its four: told apart, they are
+	// an oracle for whoever is presenting guesses. ErrRefreshTokenReused wraps
+	// ErrInvalidCredentials rather than standing beside it, so the collapse is
+	// what a caller matching the ordinary refusal actually sees, and so the two
+	// carry one set of words onto the wire; what the reuse adds is a node
+	// errors.Is can still find, for the log and the alarm.
 	Redeem(
 		ctx context.Context,
 		tx database.Tx,
@@ -296,7 +300,10 @@ type RefreshTokenStore interface {
 // ending both is the answer that does not leave the thief signed in.
 //
 // Every other refusal is [ErrInvalidCredentials]: an unknown token, one from
-// another directory, one whose family was revoked, one past its deadline.
+// another directory, one whose family was revoked, one past its deadline. A
+// replay answers as one of those to anybody reading the response — the sentinel
+// wraps it, and both transports send its words — so the branch a client takes is
+// the same one, and only a log records which it was.
 //
 // The principal is re-resolved against the directory rather than taken off the
 // row, so a user banned, terminated or removed from the account since they

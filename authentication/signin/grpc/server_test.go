@@ -444,12 +444,23 @@ func TestServer_ExchangeRefreshToken(T *testing.T) {
 		})
 
 		test.ErrorIs(t, err, signin.ErrRefreshTokenReused)
-		test.EqOp(t, codes.Unauthenticated, status.Code(err))
 
-		// Not the sentinel's own words: it is the one refusal this package maps
-		// and deliberately leaves out of ClientSafeSentinels, so what crosses is
-		// the code's name rather than "already exchanged".
-		test.StrNotContains(t, status.Convert(err).Message(), "already")
+		// Against the refusal it has to be indistinguishable from, rather than
+		// against a word it must not contain. "Does not say 'already'" is
+		// satisfied by every string that is not the right one — the handler's
+		// own description among them — so it passes for a message that names
+		// this endpoint and lets a thief tell a detected replay from a token
+		// that was simply wrong.
+		_, unknownErr := h.client.ExchangeRefreshToken(h.rootCtx, &signinpb.ExchangeRefreshTokenRequest{
+			RefreshToken: "a-token-this-service-never-minted",
+		})
+		must.Error(t, unknownErr)
+
+		test.EqOp(t, status.Code(unknownErr), status.Code(err))
+		test.EqOp(t, status.Convert(unknownErr).Message(), status.Convert(err).Message())
+
+		test.EqOp(t, codes.Unauthenticated, status.Code(err))
+		test.EqOp(t, signin.ErrInvalidCredentials.Error(), status.Convert(err).Message())
 	})
 
 	T.Run("an unknown token is the ordinary refusal", func(t *testing.T) {

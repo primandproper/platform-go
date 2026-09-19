@@ -60,10 +60,17 @@ var (
 // ErrRefreshTokenReused is mapped by both switches above and is deliberately not
 // here. The rest of this list is sentinels whose own words are the remedy; that
 // one's words are "we noticed", which is a sentence to write in an operator's
-// log and not one to hand whoever is holding the stolen credential. It answers
-// on the wire as ErrInvalidCredentials does, message included, so a client
-// cannot tell a replay from a wrong password — and the family is already revoked
-// by the time either is sent.
+// log and not one to hand whoever is holding the stolen credential.
+//
+// Leaving it out is only half of what makes it read as ErrInvalidCredentials
+// does, and the half that does nothing on its own. This list is what
+// ClientSafeMessage quotes from, and a sentinel it cannot find falls through to
+// the handler's description — a different string from "invalid credentials",
+// and so an oracle for the one question this sentinel exists not to answer. The
+// other half is on the sentinel: it wraps ErrInvalidCredentials, so the chain
+// walk passes over the unregistered node and quotes the registered one inside
+// it. Absent from this list and wrapping a member of it is the pair, and
+// neither works alone. See the sentinel, and TestClientSafeMessage_refreshTokenReuse.
 //
 // ErrUserBanned is the one whose wire message is less than what the error
 // carries. A banned user's own explanation is wrapped around the sentinel, and
