@@ -75,6 +75,31 @@ type Entry[K comparable] struct {
 // therefore likely to land anyway, which is the right outcome — the work was
 // still worth doing.
 //
+// What an Enqueue is not is transactional with the caller's own database work,
+// and it cannot become so. The batch belongs to the process rather than to any
+// caller in it, so the upsert commits on the batcher's own connection at a
+// moment none of its waiters chose: there is no variant taking a database.Tx,
+// and a batch shared between callers could not be handed to any one of their
+// transactions if there were. An enqueue inside client.WithTransaction is
+// therefore durable whether or not that transaction commits — the key outlives
+// its rollback, and a worker can claim it before the row it names is visible, or
+// when that row was never written at all.
+//
+// So enqueue after the transaction commits, or write the intent into the
+// transaction itself — an outbox message, or a state on the row — and let
+// whatever consumes that do the enqueueing. The second is what outbox exists
+// for and is the one to reach for when the work must not be lost, because the
+// first has the opposite gap: an enqueue that fails after the row committed
+// leaves work nobody is coming for, which only a sweep over the rows can find.
+//
+// Either way a worker has to tolerate a key whose subject does not exist. The
+// queue stores a name and nothing else, and the thing that name refers to lives
+// in another table this write neither waits for nor rolls back with, so
+// claiming a key with nothing behind it is an ordinary outcome rather than a
+// fault: Complete it and move on. operations.Worker is the worked example, from
+// both ends — it completes the item on ErrOperationNotFound, and its Recover
+// sweep re-offers the operations whose enqueue never landed.
+//
 // Keys are validated before they join a batch, so a malformed key fails its own
 // Enqueue rather than poisoning everybody else's.
 func (q *Queue[K]) Enqueue(ctx context.Context, entries ...Entry[K]) error {

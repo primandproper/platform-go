@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/timers"
 	"github.com/primandproper/platform-go/v14/timers/migrations"
 
@@ -19,6 +20,12 @@ import (
 // A timer set is Postgres-only, so an example with an Output comment would need
 // a live server to produce it — which is what the container-backed suite is for.
 // These exist to show the shape of the calls, not to verify them.
+
+// exampleClient stands in for the database.Client a consumer builds through
+// database/config. It is a package-level value because the examples below call
+// methods on it rather than only handing it to a constructor, and nothing here
+// is run — see the note above.
+var exampleClient database.Client
 
 // A key is whatever names a timer in the consumer's domain. It is comparable, so
 // its JSON rendering is stable — see timers.DefaultKeyCodec.
@@ -61,6 +68,74 @@ func Example() {
 	// Run blocks until the context is done.
 	if err = worker.Run(ctx); err != nil {
 		log.Print(err)
+	}
+}
+
+// Schedule does not join the caller's transaction, so the subject commits first
+// and its timer is written afterwards.
+//
+//nolint:testableexamples // Postgres-only, as above.
+func ExampleTimers_Schedule_afterCommit() {
+	ctx := context.Background()
+
+	var set *timers.Timers[trialID]
+
+	trial := trialID("trial-9f1c")
+
+	err := exampleClient.WithTransaction(ctx, func(tx database.Tx) error {
+		return startTrial(ctx, tx, trial)
+	})
+	if err != nil {
+		log.Print(err)
+
+		return
+	}
+
+	// Only now. A Schedule inside that callback would outlive the transaction's
+	// rollback and fire for a trial that was never created.
+	if err = set.ScheduleIn(ctx, trial, 14*24*time.Hour, nil); err != nil {
+		// The trial is committed and now has no expiry, which nothing
+		// downstream will notice on its own — hence the route below when that
+		// matters.
+		log.Print(err)
+	}
+}
+
+// The route for a schedule that must not be lost: the fact goes into the
+// transaction that created the subject, and the timer is written from whatever
+// consumes it.
+//
+//nolint:testableexamples // Postgres-only, as above.
+func ExampleTimers_Schedule_outbox() {
+	ctx := context.Background()
+
+	var (
+		writer *outbox.Writer
+		set    *timers.Timers[trialID]
+	)
+
+	trial := trialID("trial-9f1c")
+
+	// outbox.Writer.Enqueue takes the caller's transaction, so the message
+	// lives or dies with the trial row.
+	err := exampleClient.WithTransaction(ctx, func(tx database.Tx) error {
+		if err := startTrial(ctx, tx, trial); err != nil {
+			return err
+		}
+
+		return writer.Enqueue(ctx, tx, outbox.Message{Topic: "trials", Payload: trial})
+	})
+	if err != nil {
+		log.Print(err)
+
+		return
+	}
+
+	// The consumer schedules, and is retried until the row lands. Scheduling a
+	// key that already has a timer for the same instant is not a move, so a
+	// redelivered message costs nothing.
+	_ = func(ctx context.Context, id trialID, expiry time.Time) error {
+		return set.ScheduleAt(ctx, id, expiry, nil)
 	}
 }
 
@@ -206,3 +281,5 @@ func ExampleSQL() {
 }
 
 func expireTrial(context.Context, trialID) error { return nil }
+
+func startTrial(context.Context, database.Tx, trialID) error { return nil }

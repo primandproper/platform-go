@@ -97,6 +97,38 @@ connection.
 
 The batcher owns a goroutine, which is why a Queue has to be Closed.
 
+# Enqueue is not in your transaction
+
+The group commit above is also the reason an enqueue cannot join the caller's
+database work. The batch belongs to the process, so its upsert commits on the
+batcher's connection at an instant none of its waiters picked; there is no
+Enqueue taking a database.Tx, and a batch shared across callers could not be
+handed to one of their transactions anyway.
+
+That is a position rather than an oversight, and it has consequences in both
+directions. A key enqueued inside client.WithTransaction survives that
+transaction's rollback, so a worker can claim a name whose row was never
+committed — or claim it before the commit, which looks the same to the worker.
+An enqueue that fails after the row committed loses the other half: durable
+state with nothing coming for it, which no amount of retrying the enqueue will
+notice once the process that was doing it is gone.
+
+Two ways to close each. Enqueue after the transaction commits and add a sweep
+over the rows that should have been enqueued — operations.Recover is that sweep,
+re-offering operations whose process died between the two writes. Or write the
+intent into the transaction and let something else enqueue from it: that is what
+outbox is for, and it is the one to reach for when the work must not be lost,
+because there the message lives or dies with the row and the enqueue is retried
+until it lands.
+
+Neither removes the last obligation, and it is the one to design for rather than
+to defend against: a worker must tolerate a key whose subject does not exist. The
+queue stores a name, the thing named lives in a table this write neither waits
+for nor rolls back with, and a claim that finds nothing behind the key is an
+ordinary outcome — Complete it. operations.Worker does exactly that on
+ErrOperationNotFound, and completing rather than failing is what keeps the item
+from being claimed again on the next pass to reach the same conclusion.
+
 # Driving it
 
 Claim, work, Complete. Release hands work back early with a delay and a reason;

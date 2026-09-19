@@ -2,9 +2,11 @@ package workqueue_test
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/workqueue"
 	"github.com/primandproper/platform-go/v14/workqueue/migrations"
 
@@ -17,6 +19,12 @@ import (
 // The queue is Postgres-only, so an example with an Output comment would need a
 // live server to produce it — which is what the container-backed suite is for.
 // These exist to show the shape of the calls, not to verify them.
+
+// exampleClient stands in for the database.Client a consumer builds through
+// database/config. It is a package-level value because the examples below call
+// methods on it rather than only handing it to a constructor, and nothing here
+// is run — see the note above.
+var exampleClient database.Client
 
 // A key is whatever names a unit of work in the consumer's domain. It is
 // comparable, so its JSON rendering is stable — see workqueue.DefaultKeyCodec.
@@ -103,6 +111,75 @@ func ExampleQueue_Enqueue() {
 	}
 }
 
+// An enqueue never joins the caller's transaction, so the row commits first and
+// the key is offered afterwards.
+//
+//nolint:testableexamples // Postgres-only, as above.
+func ExampleQueue_Enqueue_afterCommit() {
+	ctx := context.Background()
+
+	var queue *workqueue.Queue[tileKey]
+
+	key := tileKey{Layer: "roads", X: 1, Y: 2}
+
+	// The row, and everything that has to live or die with it.
+	err := exampleClient.WithTransaction(ctx, func(tx database.Tx) error {
+		return recordTile(ctx, tx, key)
+	})
+	if err != nil {
+		log.Print(err)
+
+		return
+	}
+
+	// Only now. An Enqueue inside that callback would leave the key durably
+	// queued even when the transaction rolled back, and a worker could claim a
+	// name whose row is not there.
+	if err = queue.EnqueueKeys(ctx, key); err != nil {
+		// The row is committed, so this is not the caller's failure to report:
+		// what is lost is the offer, and a sweep over rows with nothing queued
+		// is what finds it — operations.Recover is that sweep.
+		log.Print(err)
+	}
+}
+
+// The other route, for work that must not be lost: the intent goes into the
+// transaction and something else does the enqueueing.
+//
+//nolint:testableexamples // Postgres-only, as above.
+func ExampleQueue_Enqueue_outbox() {
+	ctx := context.Background()
+
+	var (
+		writer *outbox.Writer
+		queue  *workqueue.Queue[tileKey]
+	)
+
+	key := tileKey{Layer: "roads", X: 1, Y: 2}
+
+	// outbox.Writer.Enqueue takes the caller's transaction, so the message
+	// lives or dies with the row — which is the half a work queue cannot offer.
+	err := exampleClient.WithTransaction(ctx, func(tx database.Tx) error {
+		if err := recordTile(ctx, tx, key); err != nil {
+			return err
+		}
+
+		return writer.Enqueue(ctx, tx, outbox.Message{Topic: "tiles", Payload: key})
+	})
+	if err != nil {
+		log.Print(err)
+
+		return
+	}
+
+	// Whatever consumes that topic offers the key to the queue, and is retried
+	// until it lands. A rolled-back transaction publishes nothing, so the queue
+	// never learns a name that was never written.
+	_ = func(ctx context.Context, tile tileKey) error {
+		return queue.EnqueueKeys(ctx, tile)
+	}
+}
+
 // A worker loop is just claim, work, complete, repeat. Competing claimers do not
 // shrink each other's batches — a locked row is skipped and replaced rather than
 // counted — so an empty claim is the only signal that there is nothing to do.
@@ -135,6 +212,46 @@ func ExampleQueue_Claim() {
 				log.Printf("retrying %v (attempt %d)", item.Key, item.Attempts)
 			}
 		}
+	}
+}
+
+// Whichever route enqueued it, a claimed key may name a row that is not there:
+// the queue stores a name, and the thing named lives in a table this queue's
+// write neither waited for nor rolled back with.
+//
+//nolint:testableexamples // Postgres-only, as above.
+func ExampleQueue_Claim_missingSubject() {
+	ctx := context.Background()
+
+	var queue *workqueue.Queue[tileKey]
+
+	items, err := queue.Claim(ctx, 100, 30*time.Second)
+	if err != nil {
+		log.Print(err)
+
+		return
+	}
+
+	done := make([]workqueue.Item[tileKey], 0, len(items))
+
+	for _, item := range items {
+		switch err = render(ctx, item.Key); {
+		case errors.Is(err, errNoSuchTile):
+			// Completed rather than released. Nothing is coming to create the
+			// row, so leaving the lease to lapse would only have us claim the
+			// key again on the next pass and reach the same conclusion.
+			done = append(done, item)
+
+		case err != nil:
+			_ = queue.Release(ctx, time.Minute, err, item)
+
+		default:
+			done = append(done, item)
+		}
+	}
+
+	if err = queue.Complete(ctx, done...); err != nil {
+		log.Print(err)
 	}
 }
 
@@ -224,4 +341,10 @@ func ExampleQueue_migrations() {
 	_ = m
 }
 
+// errNoSuchTile is what a handler returns for a key whose row is not there —
+// the ordinary outcome of the two writes an enqueue cannot make one.
+var errNoSuchTile = errors.New("no such tile")
+
 func render(context.Context, tileKey) error { return nil }
+
+func recordTile(context.Context, database.Tx, tileKey) error { return nil }
