@@ -67,6 +67,22 @@ another address. [signin.Service.RedeemMagicLink] is where that comparison is
 made and where what it prevents is argued; this store writes the value down and
 hands it back without reading anything out of it.
 
+What becomes of that address when its subject is erased is the sweeper, and this
+package ships no dataprivacy adapter of its own. The value is a copy of the one
+identity holds — [SQLStore.Issue] is handed it folded off the user the service
+read — so an erasure that reaches identity removes the record, and what is left
+here is a derived copy that a link's lifetime plus [WithRetention] deletes
+without anybody asking. An adapter would be a second eraser racing a delete that
+is going to happen anyway, and the refresh token store beside this one takes the
+same reading for the same reason.
+
+That bound is a consumer's rather than a constant, which is the part worth
+knowing before lengthening it. A deployment keeping rows for a day is keeping an
+erased subject's address for a day; one keeping them for a quarter is keeping it
+for a quarter, and at some length the copy stops being incidental and wants an
+eraser of its own beside identity's. Nothing here decides where that length is —
+[WithRetention] is the knob that moves it, and this is the cost it moves.
+
 There is no family_id: a link is not a login, it is the thing that begins one,
 and the family is minted by the service at redemption exactly as it is for a
 password sign-in. There is no active_account_id: a password sign-in names the

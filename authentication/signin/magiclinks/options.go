@@ -148,6 +148,11 @@ func WithSecretBytes(count int) Option {
 // shortening it to zero would not shorten any sign-in, it would take away the
 // only thing that can still tell "that link was already used" from "no such
 // link".
+//
+// Lengthening it lengthens one thing beside that window: how long an erased
+// subject's email address stays in this table. The package documentation rules
+// that the sweeper is this column's erasure, and says at what length that ruling
+// stops holding.
 func WithRetention(retention time.Duration) Option {
 	return func(o *options) {
 		if retention > 0 {
