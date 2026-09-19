@@ -267,9 +267,9 @@ func (s *Service) Register(
 	// the shape every credential write here has: argon2 is expensive by design,
 	// and holding a write transaction open across it is the mistake this
 	// package exists to stop a consumer making.
-	hashed, err := s.hashRegistrationCredential(ctx, registration.Credential)
+	hashed, err := s.hashRegistrationCredential(ctx, op, registration.Credential)
 	if err != nil {
-		return nil, op.Error(err, "hashing a registering user's password")
+		return nil, err
 	}
 
 	// Minted here rather than taken from the caller. The column holds a digest,
@@ -309,16 +309,27 @@ func (s *Service) Register(
 //
 // A registration naming no credential is refused here rather than defaulted,
 // which is the whole point of the type: see [Credential].
-func (s *Service) hashRegistrationCredential(ctx context.Context, credential Credential) (string, error) {
+//
+// It reports its own refusals, the way userByVerificationToken does, because
+// the descriptions differ and only one of them is about hashing: a credential
+// that named no arm and a password arm that named no password are both the
+// registration being read, and filing either under a hash that was never
+// attempted tells whoever is holding the error the wrong thing about where it
+// came from.
+func (s *Service) hashRegistrationCredential(
+	ctx context.Context,
+	op observability.Operation,
+	credential Credential,
+) (string, error) {
 	switch c := credential.(type) {
 	case passwordCredential:
 		if c.plaintext == "" {
-			return "", ErrEmptyPassword
+			return "", op.Error(ErrEmptyPassword, "reading a registration's credential")
 		}
 
 		hashed, err := s.authenticator.HashPassword(ctx, c.plaintext)
 		if err != nil {
-			return "", platformerrors.Wrap(err, "hashing a registering user's password")
+			return "", op.Error(err, "hashing a registering user's password")
 		}
 
 		return hashed, nil
@@ -327,7 +338,7 @@ func (s *Service) hashRegistrationCredential(ctx context.Context, credential Cre
 	default:
 		// nil lands here, which is the case this exists for. So does a type from
 		// outside this package, which the sealing method makes unconstructable.
-		return "", ErrNoCredentialNamed
+		return "", op.Error(ErrNoCredentialNamed, "reading a registration's credential")
 	}
 }
 

@@ -276,7 +276,7 @@ func (s *Service) VerifyEmailAddress(
 			return txErr
 		}
 
-		return s.promote(ctx, tx, scope, user, true)
+		return s.promote(ctx, tx, scope, user.ID, true)
 	}); err != nil {
 		return op.Error(err, "recording a verified email address")
 	}
@@ -337,13 +337,12 @@ func (s *Service) CompleteVerification(
 		return op.Error(ErrVerificationsNotConfigured, "completing a verification")
 	}
 
-	user, err := s.directory.GetUser(ctx, s.client.Reader(), scope, userID)
-	if err != nil {
-		return op.Error(err, "reading the user being verified")
-	}
-
+	// No read out here. The standing this promotion turns on is read by promote
+	// on the transaction that writes it, and a copy read before that one opened
+	// would be a second answer to the same question with a gap in between.
+	// Resolving a user ID nobody holds is that read's refusal, unchanged.
 	if err = s.client.WithTransaction(ctx, func(tx database.Tx) error {
-		return s.promote(ctx, tx, scope, user, false)
+		return s.promote(ctx, tx, scope, userID, false)
 	}); err != nil {
 		return op.Error(err, "completing a verification")
 	}
@@ -351,38 +350,57 @@ func (s *Service) CompleteVerification(
 	return nil
 }
 
-// promote is the write both verification doors share: the status move, the
-// read-back, and the hook.
+// promote is the write both verification doors share: the standing read, the
+// status move, and the hook.
 //
 // It is one function rather than two copies because the condition is the part
 // that can be got wrong twice — a copy that promoted from any status would
 // reinstate a banned user, and which of the two doors grew that copy would be
 // whichever one was written second.
+//
+// It takes a user ID rather than a user, because the standing it turns on is
+// the one thing it may not accept from its caller: both doors resolved their
+// user before this transaction existed, and this is the read that has to be
+// inside it.
 func (s *Service) promote(
 	ctx context.Context,
 	tx database.Tx,
 	scope tenancy.Scope,
-	user *identity.User,
+	userID string,
 	emailAddressProven bool,
 ) error {
-	promoted := user.AccountStatus == identity.StatusUnverified
+	// The standing is read on the transaction that is about to write, not taken
+	// from the copy the caller resolved. That copy came off the reader, before
+	// this transaction opened — so "this user is still unverified" was
+	// established at a moment that has since passed, and an operator's
+	// suspension landing in the gap is exactly the decision this test exists to
+	// leave standing. A write that does not repeat the row-state test its own
+	// select made is a write acting on a state nobody is still asserting.
+	current, err := s.directory.GetUser(ctx, tx, scope, userID)
+	if err != nil {
+		return err
+	}
+
+	promoted := current.AccountStatus == identity.StatusUnverified
+	after := current
 
 	if promoted {
 		// No explanation. The column is prose meant for a user who is being
 		// refused something, and there is nothing to explain about somebody
 		// having done what was asked of them.
-		if err := s.verifications.UpdateUserAccountStatus(
-			ctx, tx, scope, user.ID, identity.StatusGood, "",
+		if err = s.verifications.UpdateUserAccountStatus(
+			ctx, tx, scope, userID, identity.StatusGood, "",
 		); err != nil {
 			return err
 		}
-	}
 
-	// Read on the transaction that made the writes, so what the hook is handed
-	// carries this operation's own stamps rather than the copy read before it.
-	after, err := s.directory.GetUser(ctx, tx, scope, user.ID)
-	if err != nil {
-		return err
+		// Read again, after the write this one made, so the hook is handed the
+		// standing this operation produced rather than the one it found. The
+		// promotion is the only write here that moves a column a redacted user
+		// carries, which is why the other path hands on what it already read.
+		if after, err = s.directory.GetUser(ctx, tx, scope, userID); err != nil {
+			return err
+		}
 	}
 
 	return s.hooks.AfterVerify(ctx, tx, scope, &Verification{

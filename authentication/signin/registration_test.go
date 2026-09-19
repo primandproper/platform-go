@@ -710,3 +710,83 @@ func TestNoopHooks_finishesARegistration(T *testing.T) {
 	test.NoError(T, hooks.AfterAttachPassword(T.Context(), nil, testScope, nil))
 	test.NoError(T, hooks.AfterVerify(T.Context(), nil, testScope, nil))
 }
+
+// staleStandingVerifications is identity's store with one lie in it: the read
+// that resolves a verification link reports the standing the row had a moment
+// ago rather than the standing it has now.
+//
+// It stands in for the gap the live store cannot be made to open — an operator
+// suspending somebody between the read that resolves their link and the
+// transaction that acts on it — and every other method is the real one, so the
+// write the promotion would make is the write it really makes.
+type staleStandingVerifications struct {
+	*identity.SQLStore
+
+	stale identity.AccountStatus
+}
+
+var _ signin.Verifications = (*staleStandingVerifications)(nil)
+
+func (v *staleStandingVerifications) GetUserByEmailVerificationToken(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	token string,
+) (*identity.User, error) {
+	user, err := v.SQLStore.GetUserByEmailVerificationToken(ctx, q, scope, token)
+	if err != nil {
+		return nil, err
+	}
+
+	stale := *user
+	stale.AccountStatus = v.stale
+
+	return &stale, nil
+}
+
+// TestService_VerifyEmailAddress_readsTheStandingInTheTransaction pins that the
+// promotion turns on the row as the writing transaction finds it, not on the
+// copy the caller resolved the link with.
+//
+// The two reads are a gap, and what fits in it is an operator's decision: a
+// suspension landing there would be overturned by a promotion that trusted the
+// earlier answer, which is precisely the thing VerifyEmailAddress documents it
+// will not do. TestService_VerifyEmailAddress_doesNotReinstate asserts the rule;
+// this one asserts that the rule is tested against the row rather than against
+// something read before the transaction existed.
+func TestService_VerifyEmailAddress_readsTheStandingInTheTransaction(T *testing.T) {
+	T.Parallel()
+
+	e := newEnv(T)
+
+	registered, err := e.svc.Register(T.Context(), testScope, newRegistration("ada", signin.Password("hunter2 hunter2")))
+	must.NoError(T, err)
+
+	must.NoError(T, e.client.WithTransaction(T.Context(), func(tx database.Tx) error {
+		return e.store.UpdateUserAccountStatus(T.Context(), tx, testScope, registered.User.ID,
+			identity.StatusBanned, "for cause")
+	}))
+
+	// The resolving read answers with the standing from before the suspension,
+	// which is what a read that ran before it would have seen.
+	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+		signin.WithHooks(e.hooks),
+		signin.WithVerifications(&staleStandingVerifications{
+			SQLStore: e.store,
+			stale:    identity.StatusUnverified,
+		}),
+	)
+	must.NoError(T, err)
+
+	must.NoError(T, svc.VerifyEmailAddress(T.Context(), testScope, registered.EmailAddressVerificationToken))
+
+	stored, err := e.store.GetUser(T.Context(), e.client.Reader(), testScope, registered.User.ID)
+	must.NoError(T, err)
+	test.EqOp(T, identity.StatusBanned, stored.AccountStatus)
+
+	// The address is still proven — the link does that much whatever the
+	// standing — and the hook says nobody was promoted.
+	test.True(T, stored.EmailAddressVerified())
+	must.SliceLen(T, 1, e.hooks.verifieds)
+	test.False(T, e.hooks.verifieds[0].Promoted)
+}
