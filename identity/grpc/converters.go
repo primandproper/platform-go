@@ -672,6 +672,7 @@ func profileUpdateFromProto(in *identitypb.ProfileUpdateInput) *identity.Profile
 
 	return &identity.ProfileUpdate{
 		Username:     optionalString(in.Username),
+		DisplayName:  optionalString(in.DisplayName),
 		EmailAddress: optionalString(in.EmailAddress),
 		FirstName:    optionalString(in.FirstName),
 		LastName:     optionalString(in.LastName),

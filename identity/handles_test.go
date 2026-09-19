@@ -167,6 +167,85 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 		test.Eq(t, []string{"username"}, hooks.changed)
 	})
 
+	t.Run("a profile save moves the name on its own", func(t *testing.T) {
+		t.Parallel()
+
+		// The other half of the same form, and the reason the two fields are
+		// two: the person is shown differently without their handle moving,
+		// and the handle moves without changing what they are shown as. A
+		// request naming both moves both, which is a request that said so
+		// rather than one field doing duty for two.
+		hooks := &recordingHooks{}
+		service, _ := env.newService(t, hooks)
+
+		registration := registerAda(t, service, "ada")
+
+		shown, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{DisplayName: pointer.To("Renée")})
+		must.NoError(t, err)
+		test.EqOp(t, "ada", shown.Username)
+		test.EqOp(t, "Renée", shown.DisplayName)
+		test.Eq(t, []string{"displayName"}, hooks.changed)
+
+		// Unedited, it writes nothing: the comparison is on the name as it
+		// stands, because nothing folds this column. The hook not running
+		// again is the assertion, rather than the change set being empty —
+		// nothing clears that between saves, so a save that writes nothing
+		// leaves the previous one's list where it was.
+		test.EqOp(t, 1, hooks.ran("profile"))
+
+		again, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{DisplayName: pointer.To("Renée")})
+		must.NoError(t, err)
+		test.EqOp(t, "Renée", again.DisplayName)
+		test.EqOp(t, 1, hooks.ran("profile"))
+
+		both, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{Username: pointer.To("Renee2"), DisplayName: pointer.To("Renée H.")})
+		must.NoError(t, err)
+		test.EqOp(t, "renee2", both.Username)
+		test.EqOp(t, "Renée H.", both.DisplayName)
+		test.Eq(t, []string{"username", "displayName"}, hooks.changed)
+	})
+
+	t.Run("a cleared display name reads back as the handle", func(t *testing.T) {
+		t.Parallel()
+
+		// Present-and-empty clears, as it does for the names beside it — but
+		// this column's read is never blank, so what a cleared one comes back
+		// as is the handle. That is the write adopting it, which is the same
+		// branch a registration naming no name takes.
+		service, _ := env.newService(t, &recordingHooks{})
+
+		registration := registerAda(t, service, "ada")
+
+		named, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{DisplayName: pointer.To("Renée")})
+		must.NoError(t, err)
+		test.EqOp(t, "Renée", named.DisplayName)
+
+		cleared, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{DisplayName: pointer.To("")})
+		must.NoError(t, err)
+		test.EqOp(t, "ada", cleared.DisplayName)
+		test.EqOp(t, "ada", cleared.Username)
+	})
+
+	t.Run("a display name over the bound is refused through the service too", func(t *testing.T) {
+		t.Parallel()
+
+		// The bound lives on the write rather than on this type, so the
+		// refusal a store caller gets is the refusal a form gets — one sentinel
+		// for the one rule, whichever door the name arrived through.
+		service, _ := env.newService(t, &recordingHooks{})
+
+		registration := registerAda(t, service, "ada")
+
+		_, err := service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{DisplayName: pointer.To(strings.Repeat("r", MaxDisplayNameLength+1))})
+		must.ErrorIs(t, err, ErrDisplayNameTooLong)
+	})
+
 	t.Run("a handle differing only in case is taken", func(t *testing.T) {
 		t.Parallel()
 

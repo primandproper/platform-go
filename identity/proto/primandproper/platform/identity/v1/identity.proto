@@ -192,10 +192,11 @@ message User {
   // rename of the handle leaves it where it is. It is never empty on a user
   // this service returns.
   //
-  // There is no input field beside it, in this message's two inputs or
-  // anywhere else. A registration that names none is shown under the spelling
-  // it submitted in its own username field, which is the default this column
-  // was born as; moving it afterwards is a store write.
+  // A registration names none and is shown under the spelling it submitted in
+  // its own username field, which is the default this column was born as.
+  // Moving it afterwards is ProfileUpdateInput.display_name, which travels
+  // separately from the username field beside it for the reason above: the two
+  // are unrelated, so sending one is not sending the other.
   string display_name = 19;
 }
 
@@ -425,6 +426,13 @@ message ProfileUpdateInput {
   optional string first_name = 3;
 
   optional string last_name = 4;
+
+  // display_name is the name the person is shown under, and it moves on its
+  // own: it is not a spelling of username, so a request carrying one and not
+  // the other changes exactly the one it named. Sent empty it clears, and a
+  // cleared display name reads back as the handle rather than as a blank --
+  // see User.display_name.
+  optional string display_name = 5;
 }
 
 // AccountUpdateInput is what an account holder may change. Neither the billing
