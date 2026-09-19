@@ -23,7 +23,12 @@ import (
 
 var _ Enforcer = (*QuotaEnforcer)(nil)
 
-// CachedTotal is what the enforcer keeps in cache for a subject's period.
+// CachedTotal is what the enforcer keeps in cache for a subject's period: the
+// durable total, and the quota that total is decided against.
+//
+// It keeps the total's name because the total is what the entry is keyed by and
+// what the staleness budget was written for; the quota rides both rather than
+// bringing its own. See the Quota field.
 //
 // It is the derived read cache and never the source of truth, which is the whole
 // design of the read path. The alternative — buffering increments in the cache
@@ -32,6 +37,32 @@ var _ Enforcer = (*QuotaEnforcer)(nil)
 // that was never billed. Here a lost cache costs latency and nothing else: the
 // next Check reads the durable total and repopulates.
 type CachedTotal struct {
+	// Quota is the quota that was resolved for this subject and meter when the
+	// entry was written, cached beside the total rather than in an entry of its
+	// own.
+	//
+	// It is here because a QuotaSource is not necessarily cheap. The wiring this
+	// module recommends is entitlements.QuotaSource, which resolves the subject's
+	// plan and reads a subscription row to answer QuotaFor, and a Check that
+	// resolved a quota per call put that read on every request path a quota
+	// guards — which is the opposite of what Check is for. Beside the total is
+	// where it can live: the entry's key already names the scope, the subject, the
+	// meter and the period, which is everything a quota is resolved from.
+	//
+	// One entry rather than two, so there is one expiry and one eviction. A second
+	// entry would be a second staleness budget for somebody to reason about and a
+	// Consume that has to remember to drop both; here the budget that bounds the
+	// total bounds the quota, and the eviction that drops the total drops it.
+	//
+	// It is a pointer because its absence has to be distinguishable from a zero
+	// value. An entry written before this field existed decodes through the
+	// cache's codec with no error and no quota, and a zero Quota is a limit of
+	// zero under an empty behavior — every request refused for the rest of the
+	// budget, from a cache nobody can see into. So a nil quota is not a hit: the
+	// Check that finds one resolves the quota, reads the durable total and
+	// rewrites the entry, which is the cost a cold key already pays.
+	Quota *Quota
+
 	// PeriodEnd is when the window closes, carried so a cache hit can answer
 	// Decision.ResetsAt without re-resolving the period.
 	PeriodEnd time.Time
@@ -218,14 +249,27 @@ func (e *QuotaEnforcer) Check(
 
 	e.checkCounter.Add(ctx, 1, meterAttr(meter))
 
-	m, quota, bounds, err := e.resolve(ctx, subject, meter)
+	m, bounds, err := e.window(ctx, subject, meter, time.Time{})
 	if err != nil {
 		return nil, op.Error(err, "resolving metering quota")
 	}
 
 	annotatePeriod(op, m.Aggregation, bounds)
 
-	used, stale, err := e.usage(ctx, op, m, scope, subject, bounds)
+	// The cache first, and before the quota source rather than after it. An entry
+	// carries both halves of a decision — the total and the quota it was resolved
+	// against — so a Check inside the staleness budget consults neither the source
+	// nor the store, and issues no statement at all. See CachedTotal.Quota.
+	if entry := e.cached(ctx, op, m, scope, subject, bounds); entry != nil {
+		return e.decide(ctx, op, m, *entry.Quota, entry.Quantity, quantity, bounds, true), nil
+	}
+
+	quota, err := e.quotaFor(ctx, m, subject)
+	if err != nil {
+		return nil, op.Error(err, "resolving metering quota")
+	}
+
+	total, err := e.store.Total(ctx, e.reader, scope, subject, m.Name, bounds)
 	if err != nil {
 		if !e.cfg.FailOpen {
 			return nil, op.Error(err, "reading metering usage")
@@ -243,18 +287,41 @@ func (e *QuotaEnforcer) Check(
 		return decision, nil
 	}
 
+	e.writeThrough(ctx, op, m, scope, subject, bounds, quota, total.Quantity)
+
+	// Not stale: both halves came from their own sources this instant. The
+	// staleness budget starts now, for whoever reads the entry next.
+	return e.decide(ctx, op, m, quota, total.Quantity, quantity, bounds, false), nil
+}
+
+// decide folds the caller's quantity into a period's total, answers with it, and
+// records what it answered.
+//
+// Both of Check's paths end here, which is what keeps the cheap one honest: an
+// answer served from cache moves the same instruments and carries the same
+// Decision.Stale as one that was read, rather than being a second decision shape
+// nobody watches.
+func (e *QuotaEnforcer) decide(
+	ctx context.Context,
+	op observability.Operation,
+	m Meter,
+	quota Quota,
+	used, quantity int64,
+	bounds Bounds,
+	stale bool,
+) *Decision {
 	newer := true
-	decision := newDecision(meter, quota.Behavior, m.Aggregation.Fold(used, quantity, newer), quota.Limit, bounds.End)
+	decision := newDecision(m.Name, quota.Behavior, m.Aggregation.Fold(used, quantity, newer), quota.Limit, bounds.End)
 	decision.Stale = stale
 
 	if stale {
-		e.staleCounter.Add(ctx, 1, meterAttr(meter))
+		e.staleCounter.Add(ctx, 1, meterAttr(m.Name))
 	}
 
 	e.observeDecision(ctx, decision)
 	e.annotate(op, decision)
 
-	return decision, nil
+	return decision
 }
 
 // Consume implements Enforcer.
@@ -351,31 +418,20 @@ func (e *QuotaEnforcer) ConsumeUsage(
 	return decision, nil
 }
 
-// resolve looks up the meter, its quota, and the current period.
-func (e *QuotaEnforcer) resolve(ctx context.Context, subject, meter string) (Meter, Quota, Bounds, error) {
-	return e.resolveAt(ctx, subject, meter, time.Time{})
-}
-
-// resolveAt is resolve for a given instant, defaulting to the clock's now.
-func (e *QuotaEnforcer) resolveAt(ctx context.Context, subject, meter string, at time.Time) (Meter, Quota, Bounds, error) {
+// window resolves the meter and the period an instant falls in — everything a
+// cache key is rendered from, and nothing a quota source is consulted for.
+//
+// It is separate from the quota deliberately. The key names the scope, the
+// subject, the meter and the period, so a Check can look for a cached entry, and
+// for the quota inside it, before it has resolved a quota at all. Resolving one
+// first is what put entitlements' plan lookup and subscription read on every
+// Check that the cache could have answered.
+//
+// at of the zero time means now.
+func (e *QuotaEnforcer) window(ctx context.Context, subject, meter string, at time.Time) (Meter, Bounds, error) {
 	m, ok := e.registry.Meter(meter)
 	if !ok {
-		return Meter{}, Quota{}, Bounds{}, platformerrors.Wrapf(ErrUnknownMeter, "meter %q", meter)
-	}
-
-	quota, err := e.quotas.QuotaFor(ctx, subject, meter)
-	if err != nil {
-		return Meter{}, Quota{}, Bounds{}, err
-	}
-
-	if quota.Period != m.Period {
-		// A QuotaSource is application code and the Registry cannot vet what it
-		// returns at wiring time, so the check that RegisterQuota runs once has
-		// to run again here. A quota over the wrong window would read a total
-		// nothing writes to, which presents as a limit that never fills.
-		return Meter{}, Quota{}, Bounds{}, platformerrors.Wrapf(
-			ErrPeriodMismatch, "meter %q has period %q, quota has %q", m.Name, m.Period, quota.Period,
-		)
+		return Meter{}, Bounds{}, platformerrors.Wrapf(ErrUnknownMeter, "meter %q", meter)
 	}
 
 	if at.IsZero() {
@@ -384,56 +440,98 @@ func (e *QuotaEnforcer) resolveAt(ctx context.Context, subject, meter string, at
 
 	bounds, err := e.resolver.Resolve(ctx, subject, m.Period, at)
 	if err != nil {
+		return Meter{}, Bounds{}, err
+	}
+
+	return m, bounds, nil
+}
+
+// quotaFor asks the source what a subject may consume of a meter, and vets the
+// answer against the meter it is about.
+func (e *QuotaEnforcer) quotaFor(ctx context.Context, m Meter, subject string) (Quota, error) {
+	quota, err := e.quotas.QuotaFor(ctx, subject, m.Name)
+	if err != nil {
+		return Quota{}, err
+	}
+
+	if quota.Period != m.Period {
+		// A QuotaSource is application code and the Registry cannot vet what it
+		// returns at wiring time, so the check that RegisterQuota runs once has
+		// to run again here. A quota over the wrong window would read a total
+		// nothing writes to, which presents as a limit that never fills.
+		return Quota{}, platformerrors.Wrapf(
+			ErrPeriodMismatch, "meter %q has period %q, quota has %q", m.Name, m.Period, quota.Period,
+		)
+	}
+
+	return quota, nil
+}
+
+// resolveAt looks up the meter, the period an instant falls in, and a freshly
+// read quota.
+//
+// It is Consume's resolve and deliberately not Check's. Consume's whole promise
+// is that the answer is exact, and an exact answer cannot be made against a quota
+// this process cached a staleness budget ago — so this path reads the source
+// every time, which it can afford next to the durable write it is already making.
+func (e *QuotaEnforcer) resolveAt(ctx context.Context, subject, meter string, at time.Time) (Meter, Quota, Bounds, error) {
+	m, bounds, err := e.window(ctx, subject, meter, at)
+	if err != nil {
+		return Meter{}, Quota{}, Bounds{}, err
+	}
+
+	quota, err := e.quotaFor(ctx, m, subject)
+	if err != nil {
 		return Meter{}, Quota{}, Bounds{}, err
 	}
 
 	return m, quota, bounds, nil
 }
 
-// usage reads the period's total, preferring the cache and falling back to the
-// durable store.
-func (e *QuotaEnforcer) usage(
+// cached reads the entry for a scope, subject, meter and period, or reports nil
+// for one that cannot answer a Check on its own.
+//
+// Three things are nil, and they are one instruction to the caller: resolve the
+// quota and read the durable total. A miss is the ordinary one. A cache that
+// cannot be reached is counted on the way past, for the reason in the comment
+// below. And an entry carrying no quota was written before the quota was cached
+// beside the total, which is half of what a decision needs — see
+// CachedTotal.Quota.
+func (e *QuotaEnforcer) cached(
 	ctx context.Context,
 	op observability.Operation,
 	m Meter,
 	scope tenancy.Scope,
 	subject string,
 	bounds Bounds,
-) (used int64, stale bool, err error) {
-	key := e.cacheKey(scope, subject, m.Name, bounds)
-
+) *CachedTotal {
 	if e.totals != nil {
-		cached, cacheErr := e.totals.Get(ctx, key)
+		entry, err := e.totals.Get(ctx, e.cacheKey(scope, subject, m.Name, bounds))
 		switch {
-		case cacheErr == nil && cached != nil:
+		case err == nil && entry != nil && entry.Quota != nil:
 			op.Set(cacheHitKey, true)
 
-			return cached.Quantity, true, nil
-		case cacheErr != nil && !errors.Is(cacheErr, cache.ErrNotFound):
+			return entry
+		case err != nil && !errors.Is(err, cache.ErrNotFound):
 			// Counted and carried on. A cache that is down turns Check into a
 			// durable read, which is slow and correct — the wrong response to a
 			// degraded cache is to stop answering.
 			e.cacheErrCounter.Add(ctx, 1, meterAttr(m.Name))
-			op.Acknowledge(cacheErr, "reading metering total from cache")
+			op.Acknowledge(err, "reading metering total from cache")
 		}
 	}
 
 	op.Set(cacheHitKey, false)
 
-	total, err := e.store.Total(ctx, e.reader, scope, subject, m.Name, bounds)
-	if err != nil {
-		return 0, false, err
-	}
-
-	e.writeThrough(ctx, op, scope, subject, m.Name, bounds, total.Quantity)
-
-	// Not stale: this came from the durable store this instant. The staleness
-	// budget starts now, for whoever reads the cache entry next.
-	return total.Quantity, false, nil
+	return nil
 }
 
-// evict drops a subject's cached total for the period, so the next Check reads
-// the durable one.
+// evict drops a subject's cached entry for the period, so the next Check reads
+// the durable total and resolves a quota again.
+//
+// Both, because it is one entry: the eviction that keeps a rolled-back Consume
+// from publishing a total nobody incurred is the same eviction that lets a plan
+// change reach Check before its staleness budget is up. See CachedTotal.Quota.
 //
 // A cache error is counted and swallowed, as it is on every other path here: a
 // cache that cannot be reached leaves a stale entry that expires on its own
@@ -456,27 +554,31 @@ func (e *QuotaEnforcer) evict(
 	}
 }
 
-// writeThrough stores a total in the cache under the meter's staleness budget.
+// writeThrough stores a total, and the quota it was decided against, under the
+// meter's staleness budget.
 //
 // The budget is the cache TTL and nothing else. There is no background
 // reconciliation, no invalidation fan-out, and no versioning, because an entry
 // that expires is an entry that gets re-read from the durable total — which
 // bounds staleness by construction rather than by everybody remembering to
 // invalidate.
+//
+// The quota rides that same budget and that same key, so it gets no expiry knob
+// of its own and no invalidation of its own. What it costs is stated rather than
+// left to be found: a plan change reaches Check one staleness budget after it
+// lands, and reaches Consume immediately, because Consume resolves the quota
+// itself and evicts this entry on its way out.
 func (e *QuotaEnforcer) writeThrough(
 	ctx context.Context,
 	op observability.Operation,
+	m Meter,
 	scope tenancy.Scope,
-	subject, meter string,
+	subject string,
 	bounds Bounds,
+	quota Quota,
 	quantity int64,
 ) {
 	if e.totals == nil {
-		return
-	}
-
-	m, ok := e.registry.Meter(meter)
-	if !ok {
 		return
 	}
 
@@ -500,10 +602,10 @@ func (e *QuotaEnforcer) writeThrough(
 
 	staleness = min(staleness, remaining)
 
-	entry := &CachedTotal{Quantity: quantity, PeriodEnd: bounds.End.UTC()}
+	entry := &CachedTotal{Quota: &quota, Quantity: quantity, PeriodEnd: bounds.End.UTC()}
 
-	if err := e.totals.Set(ctx, e.cacheKey(scope, subject, meter, bounds), entry, cache.WithExpiry(staleness)); err != nil {
-		e.cacheErrCounter.Add(ctx, 1, meterAttr(meter))
+	if err := e.totals.Set(ctx, e.cacheKey(scope, subject, m.Name, bounds), entry, cache.WithExpiry(staleness)); err != nil {
+		e.cacheErrCounter.Add(ctx, 1, meterAttr(m.Name))
 		op.Acknowledge(err, "caching metering total")
 	}
 }

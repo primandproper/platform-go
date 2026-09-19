@@ -94,10 +94,18 @@ func NewQuotaSource(catalog *Catalog, plans PlanSource, registry *metering.Regis
 // unlimited, and which is the correct answer to "what may this subject consume
 // of something their plan does not include".
 //
-// It does not cache. The Checker's cache sits in front of the request path this
-// shares a PlanSource with, and metering consults this one only from Consume,
-// which is already paying for a durable write — a cached plan there would save
-// nothing measurable and would let an exact path be decided by a stale number.
+// It does not cache, and does not need to. metering caches the quota it resolves
+// here beside the total it already caches, under the same key and the same
+// staleness budget, so Check consults this source only when that entry cannot
+// answer — see metering.CachedTotal.Quota. Consume consults it every time, and
+// should: it is already paying for a durable write, and an exact path decided by a
+// stale limit is a durable write against a plan the customer may no longer be on.
+//
+// So the caching that matters is one package's rather than two, which is why this
+// source is not given the Checker's assignment cache either. That would couple the
+// two caches' lifetimes to each other for nothing a consumer can observe, and
+// would leave the limit metering enforces expiring on a budget set where nobody
+// reasoning about metering's staleness would look for it.
 func (q *QuotaSource) QuotaFor(ctx context.Context, subject, meter string) (metering.Quota, error) {
 	m, ok := q.registry.Meter(meter)
 	if !ok {
