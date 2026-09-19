@@ -16,7 +16,7 @@ const claimOutboxMessagesPostgreSQL = `UPDATE {{prefix}}outbox_messages SET
 	claimed_by = $2,
 	attempts = attempts + 1
 WHERE published_at IS NULL
-	AND quarantined = FALSE
+	AND quarantined_at IS NULL
 	AND next_attempt <= $3
 	AND (claimed_until IS NULL OR claimed_until <= $4)
 	AND id = ANY($5::text[])`
@@ -63,14 +63,14 @@ const outboxBacklogPostgreSQL = `SELECT
 		SELECT queued.created_at
 		FROM {{prefix}}outbox_messages AS queued
 		WHERE queued.published_at IS NULL
-			AND queued.quarantined = FALSE
+			AND queued.quarantined_at IS NULL
 		ORDER BY queued.created_at ASC
 		LIMIT 1
 	) AS oldest
 FROM {{prefix}}outbox_messages
 WHERE {{prefix}}outbox_messages.published_at IS NULL
-	AND {{prefix}}outbox_messages.quarantined = FALSE
-GROUP BY {{prefix}}outbox_messages.quarantined`
+	AND {{prefix}}outbox_messages.quarantined_at IS NULL
+GROUP BY {{prefix}}outbox_messages.quarantined_at`
 
 const reapPublishedOutboxMessagesPostgreSQL = `DELETE FROM {{prefix}}outbox_messages
 WHERE id IN (
@@ -83,19 +83,36 @@ WHERE id IN (
 	FOR UPDATE SKIP LOCKED
 )`
 
+const reapQuarantinedOutboxMessagesPostgreSQL = `DELETE FROM {{prefix}}outbox_messages
+WHERE id IN (
+	SELECT doomed.id
+	FROM {{prefix}}outbox_messages AS doomed
+	WHERE doomed.quarantined_at IS NOT NULL
+		AND doomed.quarantined_at <= $1
+	ORDER BY doomed.quarantined_at ASC, doomed.id ASC
+	LIMIT $2
+	FOR UPDATE SKIP LOCKED
+)`
+
 const recordOutboxMessageFailurePostgreSQL = `UPDATE {{prefix}}outbox_messages SET
 	claimed_until = $1,
 	claimed_by = $2,
 	next_attempt = $3,
 	last_error = $4,
-	quarantined = $5
+	quarantined_at = $5
 WHERE id = $6
 	AND claimed_by = $7`
+
+const releaseQuarantinedOutboxMessagesPostgreSQL = `UPDATE {{prefix}}outbox_messages SET
+	quarantined_at = NULL,
+	next_attempt = $1
+WHERE quarantined_at IS NOT NULL
+	AND id = ANY($2::text[])`
 
 const selectClaimableOutboxMessagesPostgreSQL = `SELECT m.id
 FROM {{prefix}}outbox_messages AS m
 WHERE m.published_at IS NULL
-	AND m.quarantined = FALSE
+	AND m.quarantined_at IS NULL
 	AND m.next_attempt <= $1
 	AND (m.claimed_until IS NULL OR m.claimed_until <= $2)
 	AND (m.partition_key = '' OR NOT EXISTS (
@@ -103,7 +120,7 @@ WHERE m.published_at IS NULL
 		FROM {{prefix}}outbox_messages AS prior
 		WHERE prior.partition_key = m.partition_key
 			AND prior.published_at IS NULL
-			AND prior.quarantined = FALSE
+			AND prior.quarantined_at IS NULL
 			AND (prior.created_at < m.created_at
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
@@ -113,7 +130,7 @@ LIMIT COALESCE($3, 50)`
 const selectClaimableOutboxMessagesSkipLockedPostgreSQL = `SELECT m.id
 FROM {{prefix}}outbox_messages AS m
 WHERE m.published_at IS NULL
-	AND m.quarantined = FALSE
+	AND m.quarantined_at IS NULL
 	AND m.next_attempt <= $1
 	AND (m.claimed_until IS NULL OR m.claimed_until <= $2)
 	AND (m.partition_key = '' OR NOT EXISTS (
@@ -121,13 +138,35 @@ WHERE m.published_at IS NULL
 		FROM {{prefix}}outbox_messages AS prior
 		WHERE prior.partition_key = m.partition_key
 			AND prior.published_at IS NULL
-			AND prior.quarantined = FALSE
+			AND prior.quarantined_at IS NULL
 			AND (prior.created_at < m.created_at
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
 ORDER BY m.created_at, m.id
 LIMIT COALESCE($3, 50)
 FOR UPDATE SKIP LOCKED`
+
+const selectQuarantinedOutboxMessagesPostgreSQL = `SELECT
+	{{prefix}}outbox_messages.id,
+	{{prefix}}outbox_messages.topic,
+	{{prefix}}outbox_messages.partition_key,
+	{{prefix}}outbox_messages.created_at,
+	{{prefix}}outbox_messages.quarantined_at,
+	{{prefix}}outbox_messages.attempts,
+	{{prefix}}outbox_messages.last_error
+FROM {{prefix}}outbox_messages
+WHERE {{prefix}}outbox_messages.quarantined_at IS NOT NULL
+ORDER BY {{prefix}}outbox_messages.quarantined_at ASC, {{prefix}}outbox_messages.id ASC
+LIMIT COALESCE($1, 50)`
+
+const selectReapableQuarantinedOutboxMessagesPostgreSQL = `SELECT
+	{{prefix}}outbox_messages.id,
+	{{prefix}}outbox_messages.last_error
+FROM {{prefix}}outbox_messages
+WHERE {{prefix}}outbox_messages.quarantined_at IS NOT NULL
+	AND {{prefix}}outbox_messages.quarantined_at <= $1
+ORDER BY {{prefix}}outbox_messages.quarantined_at ASC, {{prefix}}outbox_messages.id ASC
+LIMIT COALESCE($2, 50)`
 
 // postgresqlQueries answers every query in Querier against postgresql.
 type postgresqlQueries struct {
@@ -137,9 +176,13 @@ type postgresqlQueries struct {
 	markOutboxMessagesPublished             string
 	outboxBacklog                           string
 	reapPublishedOutboxMessages             string
+	reapQuarantinedOutboxMessages           string
 	recordOutboxMessageFailure              string
+	releaseQuarantinedOutboxMessages        string
 	selectClaimableOutboxMessages           string
 	selectClaimableOutboxMessagesSkipLocked string
+	selectQuarantinedOutboxMessages         string
+	selectReapableQuarantinedOutboxMessages string
 }
 
 // newPostgreSQL returns the postgresql querier with prefix substituted into every
@@ -152,9 +195,13 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		markOutboxMessagesPublished:             strings.ReplaceAll(markOutboxMessagesPublishedPostgreSQL, prefixMarker, prefix),
 		outboxBacklog:                           strings.ReplaceAll(outboxBacklogPostgreSQL, prefixMarker, prefix),
 		reapPublishedOutboxMessages:             strings.ReplaceAll(reapPublishedOutboxMessagesPostgreSQL, prefixMarker, prefix),
+		reapQuarantinedOutboxMessages:           strings.ReplaceAll(reapQuarantinedOutboxMessagesPostgreSQL, prefixMarker, prefix),
 		recordOutboxMessageFailure:              strings.ReplaceAll(recordOutboxMessageFailurePostgreSQL, prefixMarker, prefix),
+		releaseQuarantinedOutboxMessages:        strings.ReplaceAll(releaseQuarantinedOutboxMessagesPostgreSQL, prefixMarker, prefix),
 		selectClaimableOutboxMessages:           strings.ReplaceAll(selectClaimableOutboxMessagesPostgreSQL, prefixMarker, prefix),
 		selectClaimableOutboxMessagesSkipLocked: strings.ReplaceAll(selectClaimableOutboxMessagesSkipLockedPostgreSQL, prefixMarker, prefix),
+		selectQuarantinedOutboxMessages:         strings.ReplaceAll(selectQuarantinedOutboxMessagesPostgreSQL, prefixMarker, prefix),
+		selectReapableQuarantinedOutboxMessages: strings.ReplaceAll(selectReapableQuarantinedOutboxMessagesPostgreSQL, prefixMarker, prefix),
 	}
 }
 
@@ -262,6 +309,19 @@ func (q *postgresqlQueries) ReapPublishedOutboxMessages(ctx context.Context, db 
 	return result.RowsAffected()
 }
 
+// ReapQuarantinedOutboxMessages runs the :execrows query against postgresql.
+func (q *postgresqlQueries) ReapQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg ReapQuarantinedOutboxMessagesParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.reapQuarantinedOutboxMessages,
+		arg.Before,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // RecordOutboxMessageFailure runs the :execrows query against postgresql.
 func (q *postgresqlQueries) RecordOutboxMessageFailure(ctx context.Context, db DBTX, arg RecordOutboxMessageFailureParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordOutboxMessageFailure,
@@ -269,9 +329,22 @@ func (q *postgresqlQueries) RecordOutboxMessageFailure(ctx context.Context, db D
 		arg.ClaimedBy,
 		arg.NextAttempt,
 		arg.LastError,
-		arg.Quarantined,
+		arg.QuarantinedAt,
 		arg.ID,
 		arg.HeldBy,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// ReleaseQuarantinedOutboxMessages runs the :execrows query against postgresql.
+func (q *postgresqlQueries) ReleaseQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg ReleaseQuarantinedOutboxMessagesParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.releaseQuarantinedOutboxMessages,
+		arg.NextAttempt,
+		arg.IDs,
 	)
 	if err != nil {
 		return 0, err
@@ -348,6 +421,78 @@ func (q *postgresqlQueries) SelectClaimableOutboxMessagesSkipLocked(ctx context.
 	return items, nil
 }
 
+// SelectQuarantinedOutboxMessages runs the :many query against postgresql.
+func (q *postgresqlQueries) SelectQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg SelectQuarantinedOutboxMessagesParams) ([]SelectQuarantinedOutboxMessagesRow, error) {
+	rows, err := db.QueryContext(ctx, q.selectQuarantinedOutboxMessages,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []SelectQuarantinedOutboxMessagesRow
+
+	for rows.Next() {
+		var i SelectQuarantinedOutboxMessagesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.Topic,
+			&i.PartitionKey,
+			&i.CreatedAt,
+			&i.QuarantinedAt,
+			&i.Attempts,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+// SelectReapableQuarantinedOutboxMessages runs the :many query against postgresql.
+func (q *postgresqlQueries) SelectReapableQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg SelectReapableQuarantinedOutboxMessagesParams) ([]SelectReapableQuarantinedOutboxMessagesRow, error) {
+	rows, err := db.QueryContext(ctx, q.selectReapableQuarantinedOutboxMessages,
+		arg.Before,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []SelectReapableQuarantinedOutboxMessagesRow
+
+	for rows.Next() {
+		var i SelectReapableQuarantinedOutboxMessagesRow
+
+		if err := rows.Scan(
+			&i.ID,
+			&i.LastError,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 // Shape assertions.
 //
 // Each conversion below compiles only if the shared type still has exactly
@@ -394,14 +539,22 @@ var (
 		ResultLimit int64
 	}(ReapPublishedOutboxMessagesParams{})
 	_ = struct {
-		ClaimedUntil *time.Time
-		ClaimedBy    *string
-		NextAttempt  time.Time
-		LastError    *string
-		Quarantined  bool
-		ID           string
-		HeldBy       *string
+		Before      *time.Time
+		ResultLimit int64
+	}(ReapQuarantinedOutboxMessagesParams{})
+	_ = struct {
+		ClaimedUntil  *time.Time
+		ClaimedBy     *string
+		NextAttempt   time.Time
+		LastError     *string
+		QuarantinedAt *time.Time
+		ID            string
+		HeldBy        *string
 	}(RecordOutboxMessageFailureParams{})
+	_ = struct {
+		NextAttempt time.Time
+		IDs         []string
+	}(ReleaseQuarantinedOutboxMessagesParams{})
 	_ = struct {
 		Now            time.Time
 		LeaseExpiredBy *time.Time
@@ -418,4 +571,24 @@ var (
 	_ = struct {
 		ID string
 	}(SelectClaimableOutboxMessagesSkipLockedRow{})
+	_ = struct {
+		ResultLimit int64
+	}(SelectQuarantinedOutboxMessagesParams{})
+	_ = struct {
+		ID            string
+		Topic         string
+		PartitionKey  string
+		CreatedAt     time.Time
+		QuarantinedAt *time.Time
+		Attempts      int64
+		LastError     *string
+	}(SelectQuarantinedOutboxMessagesRow{})
+	_ = struct {
+		Before      *time.Time
+		ResultLimit int64
+	}(SelectReapableQuarantinedOutboxMessagesParams{})
+	_ = struct {
+		ID        string
+		LastError *string
+	}(SelectReapableQuarantinedOutboxMessagesRow{})
 )

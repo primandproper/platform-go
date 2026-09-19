@@ -51,6 +51,9 @@ const (
 	backlogAgeKey      = "outbox.backlog_age_seconds"
 	retentionCutoffKey = "outbox.retention_cutoff"
 	reapedKey          = "outbox.reaped"
+	lastErrorKey       = "outbox.last_error"
+	limitKey           = "outbox.limit"
+	releasedKey        = "outbox.released"
 	notifyChannelKey   = "outbox.notify_channel"
 	sideEffectsKey     = "outbox.side_effects"
 )
@@ -68,6 +71,41 @@ type claimedMessage struct {
 	claimToken string
 	payload    []byte
 	attempts   int
+}
+
+// QuarantinedMessage is one message the relay has given up on, as an operator
+// reading the quarantine sees it.
+//
+// It is a separate type from Message rather than the same one in another state,
+// because they answer different questions. A Message is something to publish
+// and carries the payload that will be published; this is something to decide
+// about, and what it carries is why the decision is needed — the error that
+// abandoned it, the topic and key it was holding up, and how long it has been
+// sitting there. Release takes the ids.
+type QuarantinedMessage struct {
+	// CreatedAt is when the transaction that emitted the event chose, which is
+	// the age the backlog gauges would have been reporting until this message
+	// left the claimable set.
+	CreatedAt time.Time
+	// QuarantinedAt is when the fleet gave up, and the instant
+	// RelayConfig.QuarantineRetention is measured from — so the difference
+	// between it and now is how much of the window is left.
+	QuarantinedAt time.Time
+	// ID is the handle Release takes.
+	ID string
+	// Topic is where the message was going. A quarantine that is all one topic
+	// is a broken publisher rather than a broken message.
+	Topic string
+	// Key is the partition key, empty for an unordered message. A keyed message
+	// that quarantines was holding up every later message for its key until it
+	// did, which is the one thing here that was affecting other traffic.
+	Key string
+	// LastError is the truncated reason the final attempt failed. It is the
+	// column this whole read exists for.
+	LastError string
+	// Attempts is how many claims the message consumed before it was abandoned,
+	// which is the count Release deliberately does not reset.
+	Attempts int
 }
 
 // Relay moves committed outbox rows onto the broker. It owns a goroutine
@@ -102,12 +140,17 @@ type Relay struct {
 	quarantinedCounter metrics.Int64Counter
 	fencedCounter      metrics.Int64Counter
 	reapedCounter      metrics.Int64Counter
-	claimErrCounter    metrics.Int64Counter
-	backlogGauge       metrics.Int64Gauge
-	backlogAgeGauge    metrics.Int64Gauge
-	batchHist          metrics.Float64Histogram
-	cycleHist          metrics.Float64Histogram
-	publishHist        metrics.Float64Histogram
+	// quarantineReapedCounter is separate from reapedCounter because the two
+	// count opposite things. A published row reaped is housekeeping; a
+	// quarantined one reaped is an event discarded for good, and summed into
+	// one number it would be invisible beside the millions of the other.
+	quarantineReapedCounter metrics.Int64Counter
+	claimErrCounter         metrics.Int64Counter
+	backlogGauge            metrics.Int64Gauge
+	backlogAgeGauge         metrics.Int64Gauge
+	batchHist               metrics.Float64Histogram
+	cycleHist               metrics.Float64Histogram
+	publishHist             metrics.Float64Histogram
 
 	// What the options wrote, kept only until the observer is built from it.
 	// Read r.o11y.Logger() for the logger this relay actually uses; this one may
@@ -202,6 +245,9 @@ func NewRelay(ctx context.Context, cfg *RelayConfig, client database.Client, pro
 	}
 	if r.reapedCounter, err = mp.NewInt64Counter(fmt.Sprintf("%s_messages_reaped", serviceName)); err != nil {
 		return nil, platformerrors.Wrap(err, "creating messages reaped counter")
+	}
+	if r.quarantineReapedCounter, err = mp.NewInt64Counter(fmt.Sprintf("%s_quarantined_messages_reaped", serviceName)); err != nil {
+		return nil, platformerrors.Wrap(err, "creating quarantined messages reaped counter")
 	}
 	if r.claimErrCounter, err = mp.NewInt64Counter(fmt.Sprintf("%s_claim_errors", serviceName)); err != nil {
 		return nil, platformerrors.Wrap(err, "creating claim error counter")
@@ -580,9 +626,18 @@ func (r *Relay) markPublished(ctx context.Context, claimToken string, ids []stri
 func (r *Relay) recordFailure(ctx context.Context, msg *claimedMessage, cause error) {
 	r.failedCounter.Add(ctx, 1, topicAttr(msg.topic))
 
-	quarantine := uint(msg.attempts) >= r.cfg.Backoff.MaxAttempts
+	now := r.clock.Now().UTC()
 
-	nextAttempt := r.clock.Now().UTC().Add(retrycfg.ScheduledDelayFor(r.cfg.Backoff, msg.attempts))
+	nextAttempt := now.Add(retrycfg.ScheduledDelayFor(r.cfg.Backoff, msg.attempts))
+
+	// The stamp is the instant the fleet gave up, and it is what the quarantine
+	// reap measures its window from. A message still inside its attempts leaves
+	// the column alone, which is what binding nil does: the write assigns it on
+	// every pass, so a row that is not being abandoned has to be told so.
+	var quarantinedAt *time.Time
+	if uint(msg.attempts) >= r.cfg.Backoff.MaxAttempts {
+		quarantinedAt = &now
+	}
 
 	lastErr := truncateError(cause)
 
@@ -606,13 +661,13 @@ func (r *Relay) recordFailure(ctx context.Context, msg *claimedMessage, cause er
 	// lease of, or quarantine a message a second relay has since taken and may
 	// be about to publish successfully.
 	affected, err := r.q.RecordOutboxMessageFailure(ctx, r.client.Writer(), outboxdb.RecordOutboxMessageFailureParams{
-		ID:           msg.id,
-		ClaimedUntil: nil,
-		ClaimedBy:    nil,
-		HeldBy:       &msg.claimToken,
-		NextAttempt:  nextAttempt,
-		LastError:    &lastErr,
-		Quarantined:  quarantine,
+		ID:            msg.id,
+		ClaimedUntil:  nil,
+		ClaimedBy:     nil,
+		HeldBy:        &msg.claimToken,
+		NextAttempt:   nextAttempt,
+		LastError:     &lastErr,
+		QuarantinedAt: quarantinedAt,
 	})
 	if err != nil {
 		// The lease still expires on its own, so the message is retried
@@ -632,7 +687,7 @@ func (r *Relay) recordFailure(ctx context.Context, msg *claimedMessage, cause er
 		return
 	}
 
-	if quarantine {
+	if quarantinedAt != nil {
 		r.quarantinedCounter.Add(ctx, 1, topicAttr(msg.topic))
 		logger.Error("quarantining outbox message after exhausting attempts", cause)
 
@@ -696,8 +751,21 @@ func (r *Relay) backlog(ctx context.Context) (depth int64, age time.Duration, er
 	return row.Depth, age, nil
 }
 
-// reap deletes published rows past the retention window.
+// reap collects what has aged out, in two passes: the published rows past
+// Retention, and the quarantined ones past QuarantineRetention.
+//
+// They are two passes rather than one because they are keeping different things
+// for different reasons, and a single horizon would make the longer window
+// govern both — see RelayConfig.QuarantineRetention. Each reports its own
+// errors and neither stops the other; a quarantine the operator cannot reach is
+// no reason to stop collecting delivered rows.
 func (r *Relay) reap(ctx context.Context) {
+	r.reapPublished(ctx)
+	r.reapQuarantined(ctx)
+}
+
+// reapPublished deletes published rows past the retention window.
+func (r *Relay) reapPublished(ctx context.Context) {
 	ctx, op := r.o11y.Begin(ctx)
 	defer op.End()
 
@@ -723,6 +791,162 @@ func (r *Relay) reap(ctx context.Context) {
 	}
 }
 
+// reapQuarantined deletes quarantined rows past the quarantine retention
+// window, and says out loud what each of them was.
+//
+// It reads before it deletes, which the published reap does not, because the
+// two passes are destroying different things. A published row that goes was
+// delivered and the count is the whole story; a quarantined one that goes is an
+// event nobody ever received, and the Warn line naming its id and its last
+// error is the last record that it existed at all. There is nothing to read it
+// back from afterwards, which is why the read comes first.
+//
+// Both statements run on the writer rather than the reader, for that same
+// reason: a replica a few seconds behind would hand this pass a set of rows
+// that is not the set the delete takes, and the row missing from the log is
+// exactly the one the log was for.
+//
+// The log follows the delete, so no line claims an event was discarded that is
+// in fact still there. What it does not claim is that this relay was the one
+// that discarded it: two reapers can name the same batch, in which case the
+// second's delete takes fewer rows than it read and the line appears twice.
+// Saying a dropped event was dropped twice is the safe direction for a record
+// that is the only one there will be.
+func (r *Relay) reapQuarantined(ctx context.Context) {
+	ctx, op := r.o11y.Begin(ctx)
+	defer op.End()
+
+	before := r.clock.Now().UTC().Add(-r.cfg.QuarantineRetention)
+	limit := int64(r.cfg.ReapBatchSize)
+
+	op.Set(retentionCutoffKey, before)
+
+	doomed, err := r.q.SelectReapableQuarantinedOutboxMessages(ctx, r.client.Writer(), outboxdb.SelectReapableQuarantinedOutboxMessagesParams{
+		Before:      &before,
+		ResultLimit: limit,
+	})
+	if err != nil {
+		op.Acknowledge(err, "reading reapable quarantined outbox messages")
+
+		return
+	}
+
+	if len(doomed) == 0 {
+		return
+	}
+
+	affected, err := r.q.ReapQuarantinedOutboxMessages(ctx, r.client.Writer(), outboxdb.ReapQuarantinedOutboxMessagesParams{
+		Before:      &before,
+		ResultLimit: limit,
+	})
+	if err != nil {
+		op.Acknowledge(err, "reaping quarantined outbox messages")
+
+		return
+	}
+
+	op.Set(reapedKey, affected)
+	r.quarantineReapedCounter.Add(ctx, affected)
+
+	for i := range doomed {
+		r.o11y.Logger().WithValues(map[string]any{
+			messageIDKey: doomed[i].ID,
+			lastErrorKey: stringValue(doomed[i].LastError),
+		}).Warn("reaped a quarantined outbox message; the event is permanently discarded")
+	}
+}
+
+// Quarantined reads the messages the relay has given up on, the ones abandoned
+// longest ago first, with the error that abandoned each of them.
+//
+// It is the surface the quarantine metric sends an operator to.
+// outbox_messages_quarantined is an alarm on any increase, and an alarm whose
+// answer is a SQL client is an alarm nobody can act on from where they were
+// paged; this is what the increase was about, and Release is what to do with
+// it. A limit of zero or less is DefaultQuarantineLimit.
+//
+// The payload is deliberately not among the fields — see the corpus's
+// QuarantinedColumns. What replays a message is its id.
+//
+// It reads through the writer rather than a replica: the two calls an operator
+// makes are this one and Release, and a list read from a lagging replica offers
+// ids that the write then reports as no longer quarantined.
+func (r *Relay) Quarantined(ctx context.Context, limit int) ([]QuarantinedMessage, error) {
+	if limit <= 0 {
+		limit = DefaultQuarantineLimit
+	}
+
+	ctx, op := r.o11y.Begin(ctx, observability.WithValue(limitKey, limit))
+	defer op.End()
+
+	rows, err := r.q.SelectQuarantinedOutboxMessages(ctx, r.client.Writer(), outboxdb.SelectQuarantinedOutboxMessagesParams{
+		ResultLimit: int64(limit),
+	})
+	if err != nil {
+		return nil, op.Error(err, "reading quarantined outbox messages")
+	}
+
+	quarantined := make([]QuarantinedMessage, 0, len(rows))
+	for i := range rows {
+		quarantined = append(quarantined, QuarantinedMessage{
+			ID:            rows[i].ID,
+			Topic:         rows[i].Topic,
+			Key:           rows[i].PartitionKey,
+			CreatedAt:     rows[i].CreatedAt.UTC(),
+			QuarantinedAt: timeValue(rows[i].QuarantinedAt),
+			Attempts:      int(rows[i].Attempts),
+			LastError:     stringValue(rows[i].LastError),
+		})
+	}
+
+	op.Set(messageCountKey, len(quarantined))
+
+	return quarantined, nil
+}
+
+// Release returns quarantined messages to the claimable set, due immediately,
+// and reports how many of the named ids were actually in the quarantine.
+//
+// It is the other half of Quarantined, and the half that does something: an
+// operator who has fixed the broken topic, the missing subscription or the
+// consumer that was rejecting a payload releases the messages that failed
+// because of it, and the next cycle publishes them.
+//
+// A short count is an id that was not quarantined — already released, already
+// published, or never in this table — rather than a failure. That is the one
+// fact a later Quarantined cannot recover, because a message released and
+// published in between is absent from both answers.
+//
+// The attempt count is left where it was, so a released message gets one more
+// publish and returns to the quarantine if that one fails too. It is not a
+// reset: the count is the record that this message has already exhausted a
+// budget, and an operator who releases a message that is still broken should
+// see it come straight back rather than watch it work through its attempts
+// again.
+func (r *Relay) Release(ctx context.Context, ids ...string) (int64, error) {
+	ctx, op := r.o11y.Begin(ctx, observability.WithValue(messageCountKey, len(ids)))
+	defer op.End()
+
+	// No ids is no work rather than a statement: a set predicate over an empty
+	// set is a marker list with nothing in it on the two dialects that expand
+	// one, which is a syntax error rather than a write that matches nothing.
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	released, err := r.q.ReleaseQuarantinedOutboxMessages(ctx, r.client.Writer(), outboxdb.ReleaseQuarantinedOutboxMessagesParams{
+		NextAttempt: r.clock.Now().UTC(),
+		IDs:         ids,
+	})
+	if err != nil {
+		return 0, op.Error(err, "releasing quarantined outbox messages")
+	}
+
+	op.Set(releasedKey, released)
+
+	return released, nil
+}
+
 // topicAttr labels a measurement with its topic. One Relay serves every topic,
 // so without this the counters collapse into a single number and a topic whose
 // publisher is broken is invisible beside the ones that are fine. Topics are
@@ -739,6 +963,32 @@ const maxStoredErrorLength = 1024
 // truncateError renders a cause for the last_error column, bounded.
 func truncateError(err error) string {
 	return platformerrors.TruncateError(err, maxStoredErrorLength)
+}
+
+// stringValue reads a nullable text column. The columns it is used on are
+// last_error, which is absent on a message that has never failed and present on
+// every message the quarantine read returns — so the absence is the zero value
+// rather than anything a caller has to branch on.
+func stringValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+
+	return *s
+}
+
+// timeValue reads a nullable instant into the UTC value this package reports.
+//
+// The one column it is used on is quarantined_at, which the read that projects
+// it has already required to be NOT NULL — the pointer is the schema's
+// nullability rather than a value that can be missing here, and the zero time
+// is what a row that somehow had none would report.
+func timeValue(t *time.Time) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+
+	return t.UTC()
 }
 
 // selectClaimable picks the batch of ids this cycle will lease, through

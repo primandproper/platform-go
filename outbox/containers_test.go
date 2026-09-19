@@ -205,9 +205,10 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 			c.advance(time.Hour)
 		}
 
-		// Native boolean handling differs per dialect; this is the assertion
-		// that catches a TINYINT(1) mismatch.
-		test.EqOp(t, 1, countIn(t, env.client, table, "quarantined = TRUE"))
+		// Three spellings of a nullable instant, and three drivers' idea of
+		// what comes back through one; this is the assertion that catches a
+		// stamp the server took and the predicate cannot see.
+		test.EqOp(t, 1, countIn(t, env.client, table, "quarantined_at IS NOT NULL"))
 
 		rec.fail(nil)
 
@@ -218,7 +219,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		relay.cycle(t.Context())
 
 		test.SliceLen(t, 1, rec.payloads())
-		test.EqOp(t, 1, countIn(t, env.client, table, "quarantined = TRUE"))
+		test.EqOp(t, 1, countIn(t, env.client, table, "quarantined_at IS NOT NULL"))
 	})
 
 	t.Run("holds a lease against a second claim", func(t *testing.T) {
@@ -653,7 +654,7 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 		// Untouched on every count: not retired, not quarantined, and still
 		// leased to the relay that is publishing it.
 		test.EqOp(t, 1, countIn(t, env.client, table, "published_at IS NULL"))
-		test.EqOp(t, 0, countIn(t, env.client, table, "quarantined = TRUE"))
+		test.EqOp(t, 0, countIn(t, env.client, table, "quarantined_at IS NOT NULL"))
 		test.EqOp(t, 1, countIn(t, env.client, table, "claimed_by IS NOT NULL"))
 
 		// The holder's own retirement lands, so what the guard refused was the
@@ -728,6 +729,70 @@ func runDialectSuite(t *testing.T, env *dialectEnv) {
 
 		test.EqOp(t, 0, countIn(t, env.client, table, "published_at IS NOT NULL"))
 		test.EqOp(t, 1, countIn(t, env.client, table, "published_at IS NULL"))
+	})
+
+	t.Run("lists, releases and finally reaps the quarantine", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		table := env.newTable(t)
+		w := env.writer(t, c, table)
+		relay, rec := env.relay(t, c, table)
+
+		rec.fail(platformerrors.New("poison"))
+
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return w.Enqueue(t.Context(), q, Message{Topic: "orders", Key: "acct-1", Payload: map[string]any{"id": "a"}})
+		}))
+
+		for range 3 {
+			relay.cycle(t.Context())
+			c.advance(time.Hour)
+		}
+
+		quarantined, err := relay.Quarantined(t.Context(), 0)
+		must.NoError(t, err)
+		must.SliceLen(t, 1, quarantined)
+		test.EqOp(t, "orders", quarantined[0].Topic)
+		test.EqOp(t, "acct-1", quarantined[0].Key)
+		test.StrContains(t, quarantined[0].LastError, "poison")
+
+		// A set predicate against a set of one, on three placeholder grammars.
+		rec.fail(nil)
+
+		released, err := relay.Release(t.Context(), quarantined[0].ID)
+		must.NoError(t, err)
+		must.EqOp(t, int64(1), released)
+
+		relay.cycle(t.Context())
+
+		test.SliceLen(t, 1, rec.payloads())
+		test.EqOp(t, 0, countIn(t, env.client, table, "quarantined_at IS NOT NULL"))
+
+		// And back in, so the reap has something to collect. The second window
+		// is the one an untouched quarantine ages out on.
+		rec.fail(platformerrors.New("poison"))
+
+		must.NoError(t, env.client.WithTransaction(t.Context(), func(q database.Tx) error {
+			return w.Enqueue(t.Context(), q, Message{Topic: "orders", Payload: map[string]any{"id": "b"}})
+		}))
+
+		for range 3 {
+			relay.cycle(t.Context())
+			c.advance(time.Hour)
+		}
+
+		must.EqOp(t, 1, countIn(t, env.client, table, "quarantined_at IS NOT NULL"))
+
+		c.advance(DefaultRetention + time.Hour)
+
+		relay.reap(t.Context())
+		test.EqOp(t, 1, countIn(t, env.client, table, "quarantined_at IS NOT NULL"))
+
+		c.advance(DefaultQuarantineRetention)
+
+		relay.reap(t.Context())
+		test.EqOp(t, 0, countIn(t, env.client, table, "quarantined_at IS NOT NULL"))
 	})
 }
 

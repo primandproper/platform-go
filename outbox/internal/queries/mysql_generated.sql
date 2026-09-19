@@ -21,7 +21,7 @@ INSERT INTO outbox_messages (
 SELECT m.id
 FROM outbox_messages AS m
 WHERE m.published_at IS NULL
-	AND m.quarantined = FALSE
+	AND m.quarantined_at IS NULL
 	AND m.next_attempt <= sqlc.arg(now)
 	AND (m.claimed_until IS NULL OR m.claimed_until <= sqlc.arg(lease_expired_by))
 	AND (m.partition_key = '' OR NOT EXISTS (
@@ -29,7 +29,7 @@ WHERE m.published_at IS NULL
 		FROM outbox_messages AS prior
 		WHERE prior.partition_key = m.partition_key
 			AND prior.published_at IS NULL
-			AND prior.quarantined = FALSE
+			AND prior.quarantined_at IS NULL
 			AND (prior.created_at < m.created_at
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
@@ -40,7 +40,7 @@ LIMIT ?;
 SELECT m.id
 FROM outbox_messages AS m
 WHERE m.published_at IS NULL
-	AND m.quarantined = FALSE
+	AND m.quarantined_at IS NULL
 	AND m.next_attempt <= sqlc.arg(now)
 	AND (m.claimed_until IS NULL OR m.claimed_until <= sqlc.arg(lease_expired_by))
 	AND (m.partition_key = '' OR NOT EXISTS (
@@ -48,7 +48,7 @@ WHERE m.published_at IS NULL
 		FROM outbox_messages AS prior
 		WHERE prior.partition_key = m.partition_key
 			AND prior.published_at IS NULL
-			AND prior.quarantined = FALSE
+			AND prior.quarantined_at IS NULL
 			AND (prior.created_at < m.created_at
 				OR (prior.created_at = m.created_at AND prior.id < m.id))
 	))
@@ -62,7 +62,7 @@ UPDATE outbox_messages SET
 	claimed_by = sqlc.arg(claimed_by),
 	attempts = attempts + 1
 WHERE published_at IS NULL
-	AND quarantined = FALSE
+	AND quarantined_at IS NULL
 	AND next_attempt <= sqlc.arg(now)
 	AND (claimed_until IS NULL OR claimed_until <= sqlc.arg(lease_expired_by))
 	AND id IN (sqlc.slice(ids));
@@ -94,9 +94,30 @@ UPDATE outbox_messages SET
 	claimed_by = sqlc.narg(claimed_by),
 	next_attempt = sqlc.arg(next_attempt),
 	last_error = sqlc.narg(last_error),
-	quarantined = sqlc.arg(quarantined)
+	quarantined_at = sqlc.narg(quarantined_at)
 WHERE id = sqlc.arg(id)
 	AND claimed_by = sqlc.arg(held_by);
+
+-- name: SelectQuarantinedOutboxMessages :many
+SELECT
+	outbox_messages.id,
+	outbox_messages.topic,
+	outbox_messages.partition_key,
+	outbox_messages.created_at,
+	outbox_messages.quarantined_at,
+	outbox_messages.attempts,
+	outbox_messages.last_error
+FROM outbox_messages
+WHERE outbox_messages.quarantined_at IS NOT NULL
+ORDER BY outbox_messages.quarantined_at ASC, outbox_messages.id ASC
+LIMIT ?;
+
+-- name: ReleaseQuarantinedOutboxMessages :execrows
+UPDATE outbox_messages SET
+	quarantined_at = NULL,
+	next_attempt = sqlc.arg(next_attempt)
+WHERE quarantined_at IS NOT NULL
+	AND id IN (sqlc.slice(ids));
 
 -- name: OutboxBacklog :one
 SELECT
@@ -105,18 +126,35 @@ SELECT
 		SELECT queued.created_at
 		FROM outbox_messages AS queued
 		WHERE queued.published_at IS NULL
-			AND queued.quarantined = FALSE
+			AND queued.quarantined_at IS NULL
 		ORDER BY queued.created_at ASC
 		LIMIT 1
 	) AS oldest
 FROM outbox_messages
 WHERE outbox_messages.published_at IS NULL
-	AND outbox_messages.quarantined = FALSE
-GROUP BY outbox_messages.quarantined;
+	AND outbox_messages.quarantined_at IS NULL
+GROUP BY outbox_messages.quarantined_at;
 
 -- name: ReapPublishedOutboxMessages :execrows
 DELETE FROM outbox_messages
 WHERE published_at IS NOT NULL
 	AND published_at <= sqlc.arg(before)
 ORDER BY published_at ASC
+LIMIT ?;
+
+-- name: SelectReapableQuarantinedOutboxMessages :many
+SELECT
+	outbox_messages.id,
+	outbox_messages.last_error
+FROM outbox_messages
+WHERE outbox_messages.quarantined_at IS NOT NULL
+	AND outbox_messages.quarantined_at <= sqlc.arg(before)
+ORDER BY outbox_messages.quarantined_at ASC, outbox_messages.id ASC
+LIMIT ?;
+
+-- name: ReapQuarantinedOutboxMessages :execrows
+DELETE FROM outbox_messages
+WHERE quarantined_at IS NOT NULL
+	AND quarantined_at <= sqlc.arg(before)
+ORDER BY quarantined_at ASC, id ASC
 LIMIT ?;

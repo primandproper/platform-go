@@ -60,13 +60,27 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	ReapPublishedOutboxMessages(ctx context.Context, db DBTX, arg ReapPublishedOutboxMessagesParams) (int64, error)
+	// ReapQuarantinedOutboxMessages runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	ReapQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg ReapQuarantinedOutboxMessagesParams) (int64, error)
 	// RecordOutboxMessageFailure runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note
 	// on Querier.
 	RecordOutboxMessageFailure(ctx context.Context, db DBTX, arg RecordOutboxMessageFailureParams) (int64, error)
+	// ReleaseQuarantinedOutboxMessages runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	ReleaseQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg ReleaseQuarantinedOutboxMessagesParams) (int64, error)
 	// SelectClaimableOutboxMessages runs the :many query.
 	SelectClaimableOutboxMessages(ctx context.Context, db DBTX, arg SelectClaimableOutboxMessagesParams) ([]SelectClaimableOutboxMessagesRow, error)
 	// SelectClaimableOutboxMessagesSkipLocked runs the :many query.
 	SelectClaimableOutboxMessagesSkipLocked(ctx context.Context, db DBTX, arg SelectClaimableOutboxMessagesSkipLockedParams) ([]SelectClaimableOutboxMessagesSkipLockedRow, error)
+	// SelectQuarantinedOutboxMessages runs the :many query.
+	SelectQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg SelectQuarantinedOutboxMessagesParams) ([]SelectQuarantinedOutboxMessagesRow, error)
+	// SelectReapableQuarantinedOutboxMessages runs the :many query.
+	SelectReapableQuarantinedOutboxMessages(ctx context.Context, db DBTX, arg SelectReapableQuarantinedOutboxMessagesParams) ([]SelectReapableQuarantinedOutboxMessagesRow, error)
 }
