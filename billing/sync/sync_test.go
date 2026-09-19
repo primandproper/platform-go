@@ -400,6 +400,41 @@ func TestSyncer_Apply_acknowledges(T *testing.T) {
 		test.SliceLen(t, 0, store.UpdateSubscriptionCalls())
 	})
 
+	// The same delivery arriving twice, seen through a column that did not keep
+	// the whole instant. SQLite holds these to the second, so the row a
+	// redelivery is compared against differs from the event in the fraction the
+	// column dropped — and an exact comparison would call that a renewal, write
+	// the row, and re-stamp the standing that the unchanged reading exists to
+	// leave alone.
+	T.Run("a redelivery whose period lost its fraction in the column is unchanged", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			store    = holding(capitalism.SubscriptionStatusActive)
+			accounts = &identitymock.StoreMock{}
+		)
+
+		// What the provider sent; what the row kept is periodStart, truncated.
+		var (
+			sentStart = periodStart.Add(789 * time.Millisecond)
+			sentEnd   = periodEnd.Add(123 * time.Millisecond)
+		)
+
+		result, err := newTestSyncer(t, store, WithStanding(accounts, standing.Strict)).
+			Apply(t.Context(), testTx(), testScope,
+				delivery(capitalism.SubscriptionStatusActive, &sentStart, &sentEnd))
+		must.NoError(t, err)
+		must.NotNil(t, result)
+		test.EqOp(t, OutcomeUnchanged, result.Outcome)
+		test.SliceLen(t, 0, store.UpdateSubscriptionCalls())
+		test.SliceLen(t, 0, store.SetSubscriptionStatusCalls())
+
+		// The half the exact comparison would have got wrong quietly.
+		test.Nil(t, result.Standing)
+		test.SliceLen(t, 0, accounts.RecordAccountSubscriptionCalls())
+		test.SliceLen(t, 0, accounts.RecordAccountSubscriptionEndedCalls())
+	})
+
 	// The store's own guard, reached when a concurrent delivery moved the status
 	// between this sync's read and its write. ErrStatusUnchanged is the
 	// acknowledgement it is spelled as an error.
@@ -724,6 +759,38 @@ func TestSyncer_Apply_moves(T *testing.T) {
 		// leaves a window in which the row says the new period at the old
 		// status.
 		test.SliceLen(t, 0, store.SetSubscriptionStatusCalls())
+	})
+
+	// The counterweight to the redelivery the acknowledgements pin: the
+	// comparison is coarsened to what a column can hold, not softened into a
+	// tolerance, so the smallest move any dialect can store is still a move.
+	T.Run("advances a period that moved by the smallest storable step", func(t *testing.T) {
+		t.Parallel()
+
+		store := holding(capitalism.SubscriptionStatusActive)
+		store.UpdateSubscriptionFunc = func(
+			_ context.Context, _ database.Tx, _ tenancy.Scope, subscription *billing.Subscription,
+		) (*billing.Subscription, error) {
+			return subscription, nil
+		}
+
+		var (
+			movedStart = periodStart.Add(time.Second)
+			movedEnd   = periodEnd.Add(time.Second)
+		)
+
+		result, err := newTestSyncer(t, store).Apply(t.Context(), testTx(), testScope,
+			delivery(capitalism.SubscriptionStatusActive, &movedStart, &movedEnd))
+		must.NoError(t, err)
+		must.NotNil(t, result)
+		test.EqOp(t, OutcomeUpdated, result.Outcome)
+
+		// Written as it arrived. The truncation decides whether the row moved,
+		// never what is stored in it.
+		must.SliceLen(t, 1, store.UpdateSubscriptionCalls())
+		written := store.UpdateSubscriptionCalls()[0].Subscription
+		test.True(t, movedStart.Equal(written.CurrentPeriodStart))
+		test.True(t, movedEnd.Equal(written.CurrentPeriodEnd))
 	})
 
 	T.Run("carries a status move into the period write", func(t *testing.T) {

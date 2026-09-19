@@ -426,7 +426,7 @@ func (s *Syncer) move(
 	// because a renewal moves both and two statements would leave a window in
 	// which the row says the new period at the old status. UpdateSubscription
 	// answers with the row it wrote, so no read follows it.
-	if bounded && (!existing.CurrentPeriodStart.Equal(start) || !existing.CurrentPeriodEnd.Equal(end)) {
+	if bounded && movedPeriod(existing, start, end) {
 		desired := *existing
 		desired.Status = state.Status
 		desired.CurrentPeriodStart = start
@@ -526,6 +526,34 @@ func (s *Syncer) acknowledged(ctx context.Context, op observability.Operation, o
 	s.deliveries.Add(ctx, 1, outcomeAttr(outcome))
 
 	return &Result{Outcome: outcome}
+}
+
+// periodPrecision is the granularity a stored paid period is compared at, and
+// it is the coarsest any dialect this module ships a schema for keeps.
+//
+// MySQL and Postgres hold these columns to the microsecond; SQLite holds them
+// to the second. So a period read back is not necessarily the period written,
+// and comparing a delivery's instants against it exactly asks a question the
+// storage cannot answer — on SQLite every redelivery of an unchanged agreement
+// would differ in the discarded fraction, take the renewal branch, and report
+// OutcomeUpdated for news nobody sent. The account standing would be rewritten
+// with it, which is the write record exists to skip for a redelivery.
+//
+// A second is the right coarseness rather than merely the safe one. A paid
+// period is a billing boundary a provider names to the second at best, so two
+// periods that differ by less than one are not two periods.
+const periodPrecision = time.Second
+
+// movedPeriod reports whether the delivery's paid period is a different period
+// from the one the row holds, at the precision the row is stored to.
+//
+// Both sides are truncated, not just the stored one: the value that came off
+// the wire carries whatever precision the provider sent, and comparing a
+// truncated column against an untruncated instant is the same mistake in one
+// direction only. See periodPrecision.
+func movedPeriod(existing *billing.Subscription, start, end time.Time) bool {
+	return !existing.CurrentPeriodStart.Truncate(periodPrecision).Equal(start.Truncate(periodPrecision)) ||
+		!existing.CurrentPeriodEnd.Truncate(periodPrecision).Equal(end.Truncate(periodPrecision))
 }
 
 // paidPeriod is the window a delivery reported, and whether it reported one at

@@ -101,7 +101,11 @@ answered 500 to it would be asking the provider to send it again forever:
     an adapter's table rather than a bisect through provider JSON.
   - A redelivery of an event already applied. [OutcomeUnchanged]. The store
     answers billing.ErrStatusUnchanged, which this treats as the acknowledgement
-    it is rather than as the error it is spelled as.
+    it is rather than as the error it is spelled as, and whether the paid period
+    moved is decided to the second — the coarsest any dialect here keeps those
+    columns, so that a redelivery is not a renewal on SQLite and a no-op on the
+    other two. Full precision is still what gets stored; the coarsening decides
+    whether there was news, never what to record.
 
 Refused, because a delivery this cannot store is a fact the deployment has to
 see:
