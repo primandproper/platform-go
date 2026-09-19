@@ -32,6 +32,27 @@ var _ Target = Table{}
 // cannot be aged out, and a policy that guessed would be deleting on the basis
 // of a missing field.
 //
+// # It wants an index on Column
+//
+// Every statement this target renders filters on Column, and both arms of the
+// delete order by it. An index whose leading column is Column makes each of
+// them a range scan over the oldest rows that the LIMIT stops. Without one,
+// each is a full scan of the table plus a sort of everything it matched — paid
+// once per batch, up to Policy.MaxBatches times per sweep, each inside its own
+// transaction. That is the long hold on a table people are still reading that
+// this package exists to prevent, arrived at by the declaration that was meant
+// to prevent it, and nothing here can detect it: an unindexed sweep returns the
+// same row counts as an indexed one and differs only in what it cost.
+//
+// On Postgres and SQLite the statement that reads is a separate SELECT whose
+// only projection is KeyColumn, so a composite index on (Column, KeyColumn)
+// answers that half from the index alone. It is worth the second column on a
+// table large enough to be under policy for a reason other than tidiness, and
+// the plain index on Column is what the other statements want either way.
+//
+// KeyColumn carries an obligation of its own, and that one is correctness
+// rather than cost. It is on the field.
+//
 // # There is no predicate field
 //
 // The obvious next field is a WHERE fragment, and it is deliberately absent.
@@ -56,7 +77,19 @@ type Table struct {
 	//
 	// It exists because a bounded DELETE is not portable: Postgres has no
 	// DELETE ... LIMIT, so a batch there is a DELETE against the keys a bounded
-	// SELECT chose. Any column that uniquely identifies a row will do.
+	// SELECT chose. Any column that uniquely identifies a row will do — and
+	// uniqueness is required rather than recommended, because the outer DELETE
+	// removes every row carrying a key the inner SELECT returned. A column with
+	// duplicates therefore deletes rows that batch did not choose, including
+	// rows on the safe side of the cutoff, and Policy.BatchSize stops bounding
+	// anything: it bounds the read, and the write is only as bounded as the key
+	// is unique. The primary key is the column that is already both unique and
+	// indexed, which is why it is the one to name.
+	//
+	// MySQL takes the native bounded write and never names this column, so a
+	// duplicated key column is harmless on one of the three dialects and
+	// over-deletes on the other two. A policy set that is correct where it was
+	// developed is the shape this is worth stating for.
 	KeyColumn string
 }
 

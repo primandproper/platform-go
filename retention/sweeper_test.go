@@ -212,6 +212,43 @@ func TestSweeper_Sweep(T *testing.T) {
 		test.EqOp(t, int64(0), countWidgets(t, client))
 	})
 
+	T.Run("a row ages out at its stamp plus Age and not before", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+
+		// Two clocks decide this row. The stamp in the column came from the
+		// writer — here the test, in a deployment the server or another
+		// process — and the cutoff comes from the sweeper's. Age is the
+		// distance the policy asks for between them, so the boundary is where a
+		// disagreement between the two clocks first changes an answer, and it
+		// is the reading worth pinning rather than the forty-eight-hour jump.
+		insertWidgets(t, client, "widget", baseTime, 1)
+
+		sweeper, stub := newTestSweeper(t, client, []Policy{{
+			Name:   "widgets",
+			Scope:  tenancy.Global(),
+			Target: Table{Name: widgetsTable, Column: "created_at"},
+			Age:    24 * time.Hour,
+		}})
+
+		stub.advance(24*time.Hour - time.Second)
+
+		result, err := sweeper.Sweep(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(0), result.Removed)
+
+		stub.advance(time.Second)
+
+		// Inclusive on the doomed side: at the instant the row turns Age old it
+		// goes, which leaves no instant at which it is neither past the horizon
+		// nor short of it.
+		result, err = sweeper.Sweep(t.Context())
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), result.Removed)
+		test.EqOp(t, int64(0), countWidgets(t, client))
+	})
+
 	T.Run("drains a backlog in bounded batches, pausing between them", func(t *testing.T) {
 		t.Parallel()
 

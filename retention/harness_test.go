@@ -175,6 +175,17 @@ func countWidgets(t *testing.T, client database.Client) int64 {
 	return n
 }
 
+// countGadgets reports how many rows survive in the gadgets table, which a test
+// creates for itself when it needs a key column the widgets table cannot offer.
+func countGadgets(t *testing.T, client database.Client) int64 {
+	t.Helper()
+
+	var n int64
+	must.NoError(t, client.Reader().QueryRowContext(t.Context(), "SELECT COUNT(*) FROM gadgets").Scan(&n))
+
+	return n
+}
+
 // widgetIDs reports the surviving rows in insertion order, so a test can assert
 // which cohort a batch took.
 func widgetIDs(t *testing.T, client database.Client) []string {
