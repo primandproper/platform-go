@@ -2,6 +2,7 @@ package metering
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"maps"
 	"net/http"
@@ -382,6 +383,76 @@ func newTestRegistry(tb testing.TB, behavior QuotaBehavior, limit int64) *Regist
 	}))
 
 	return registry
+}
+
+// testMeterOf reads back the Meter this suite registers, for the helpers that
+// take the Meter its caller in the package already holds.
+func testMeterOf(tb testing.TB, enforcer *QuotaEnforcer) Meter {
+	tb.Helper()
+
+	m, ok := enforcer.registry.Meter(testMeter)
+	must.True(tb, ok, must.Sprint("test registry has no meter"))
+
+	return m
+}
+
+// testQuota is the quota newTestRegistry registers, for the helpers that take one
+// rather than resolving it.
+func testQuota(limit int64) Quota {
+	return Quota{Meter: testMeter, Limit: limit, Behavior: BehaviorBlock, Period: PeriodMonth}
+}
+
+// countingQuotaSource counts how often a quota was resolved, so "Check consults
+// the source only when the cache cannot answer" is asserted rather than assumed.
+type countingQuotaSource struct {
+	quota Quota
+	calls atomic.Int64
+}
+
+var _ QuotaSource = (*countingQuotaSource)(nil)
+
+func (q *countingQuotaSource) QuotaFor(context.Context, string, string) (Quota, error) {
+	q.calls.Add(1)
+
+	return q.quota, nil
+}
+
+// countingExecutor counts the statements run on it, so the promise that a Check
+// inside the staleness budget reaches no database is asserted rather than assumed.
+//
+// It implements database.SQLQueryExecutor rather than embedding one: an embedded
+// executor would carry any method this one forgot to override straight through to
+// the database uncounted, which is a count that is silently short.
+type countingExecutor struct {
+	q database.SQLQueryExecutor
+
+	statements atomic.Int64
+}
+
+var _ database.SQLQueryExecutor = (*countingExecutor)(nil)
+
+func (e *countingExecutor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	e.statements.Add(1)
+
+	return e.q.ExecContext(ctx, query, args...)
+}
+
+func (e *countingExecutor) PrepareContext(ctx context.Context, query string) (*sql.Stmt, error) {
+	e.statements.Add(1)
+
+	return e.q.PrepareContext(ctx, query)
+}
+
+func (e *countingExecutor) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	e.statements.Add(1)
+
+	return e.q.QueryContext(ctx, query, args...)
+}
+
+func (e *countingExecutor) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	e.statements.Add(1)
+
+	return e.q.QueryRowContext(ctx, query, args...)
 }
 
 // newEntry builds an entry for the calendar month baseTime falls in.

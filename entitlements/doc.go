@@ -27,8 +27,8 @@ this gates.
 One call, whatever kind of feature it is. A boolean feature — SSO, an export
 button, a support tier — is answered from the plan and from feature flags, with
 no I/O beyond a cached plan lookup. A quota feature — seats, API calls, tokens —
-adds metering's cached read and comes back with Used, Limit, Remaining, and
-ResetsAt.
+is answered from metering's cached read, which carries the limit as well as the
+usage, and comes back with Used, Limit, Remaining, and ResetsAt.
 
 	decision, err := checker.CheckQuantity(ctx, scope, accountID, "llm_tokens", estimated)
 
@@ -199,18 +199,23 @@ disclose to a caller who just failed to reach one.
 # What is cached, and what is not
 
 Only the account-to-plan assignment, with a thirty-second default TTL. It is the
-one lookup on the path that touches a database, and the row it reads changes a
-few times a year.
+one lookup this package makes that touches a database, and the row it reads
+changes a few times a year.
 
 Feature flags are not cached. Every provider here evaluates locally against
 rules it already holds, so a cache would add staleness to something already
 fast, and would freeze a percentage rollout's answer for an account the provider
 means to re-evaluate.
 
-Usage totals are not cached here either. metering caches its own, with a
-staleness budget set per meter by whoever knows what that meter is worth — see
-metering's documentation on Check and Consume. Caching them a second time would
-compound two staleness budgets into one nobody has reasoned about.
+Usage totals are not cached here either, and neither are the quota limits this
+package serves metering. metering caches both, in one entry under a staleness
+budget set per meter by whoever knows what that meter is worth — see metering's
+documentation on Check and Consume. Caching them a second time would compound two
+staleness budgets into one nobody has reasoned about, which is also why the
+assignment cache above is this package's and not QuotaSource's: a quota feature
+is answered out of metering's own entry, so the plan lookup behind
+QuotaSource.QuotaFor is on the path of a cold entry and of every Consume, not of
+every request.
 
 The TTL is short because the trade is not symmetric. Long, and a customer who
 has just paid keeps being told they have not, which is the worst half-minute in

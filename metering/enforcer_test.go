@@ -181,6 +181,95 @@ func TestQuotaEnforcer_Check(T *testing.T) {
 		test.EqOp(t, int64(41), decision.Used)
 	})
 
+	// The quota is cached beside the total, under the same key and the same
+	// budget, because the source behind it is not necessarily cheap: the wiring
+	// this module recommends resolves a plan and reads a subscription row to
+	// answer QuotaFor, and a Check that asked per call put that on every request
+	// path a quota guards.
+	T.Run("resolves no quota on a read the cache answers", func(t *testing.T) {
+		t.Parallel()
+
+		quotas := &countingQuotaSource{quota: testQuota(100)}
+		env := newTestEnforcer(t, BehaviorBlock, 100, WithEnforcerQuotaSource(quotas))
+
+		first, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
+		must.NoError(t, err)
+		test.EqOp(t, int64(1), quotas.calls.Load())
+
+		second, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
+		must.NoError(t, err)
+
+		// Still one. And the limit the cached quota carries is the one the
+		// decision is made against, rather than the zero a missing quota would
+		// have made it — which would refuse every request for the whole budget.
+		test.EqOp(t, int64(1), quotas.calls.Load())
+		test.EqOp(t, first.Limit, second.Limit)
+		test.EqOp(t, int64(100), second.Limit)
+		test.True(t, second.Allowed)
+		test.True(t, second.Stale)
+	})
+
+	T.Run("issues no statement on a read the cache answers", func(t *testing.T) {
+		t.Parallel()
+
+		db := newSQLiteEnv(t)
+		store := db.newStore(t)
+		c := newStubClock()
+
+		// The reader both halves would go through: metering's own total read, and
+		// — wired as entitlements.QuotaSource is — the quota source's plan lookup.
+		counter := &countingExecutor{q: db.client.Reader()}
+
+		enforcer, err := NewQuotaEnforcer(t.Context(), &EnforcerConfig{}, store,
+			newTestRegistry(t, BehaviorBlock, 100), counter,
+			WithEnforcerClock(c), WithEnforcerCache(newStubCache(c)))
+		must.NoError(t, err)
+
+		_, err = enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
+		must.NoError(t, err)
+		test.Greater(t, int64(0), counter.statements.Load())
+
+		counter.statements.Store(0)
+
+		_, err = enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
+		must.NoError(t, err)
+
+		// None at all. This is the promise "Check is fast and slightly stale"
+		// makes, and it is a promise about the database rather than about one
+		// store's querier: a source that reached for a row of its own would show
+		// up here.
+		test.EqOp(t, int64(0), counter.statements.Load())
+	})
+
+	// An entry written before the quota was cached beside the total decodes with
+	// no error and no quota, and a zero Quota is a limit of zero under an empty
+	// behavior — every request refused for the rest of the budget.
+	T.Run("treats an entry carrying no quota as a miss", func(t *testing.T) {
+		t.Parallel()
+
+		env := newTestEnforcer(t, BehaviorBlock, 100)
+
+		must.NoError(t, mustRecord(t, env.db, env.store, newEntry("seed", 40, AggregationSum)))
+		must.NoError(t, env.totals.Set(t.Context(),
+			env.enforcer.cacheKey(testScope, testSubject, testMeter, monthBounds),
+			&CachedTotal{Quantity: 9_000, PeriodEnd: monthBounds.End}))
+
+		decision, err := env.enforcer.Check(t.Context(), testScope, testSubject, testMeter, 1)
+		must.NoError(t, err)
+
+		// Read afresh, not answered from the half-entry: the total is the durable
+		// one and the limit is the source's.
+		test.EqOp(t, int64(41), decision.Used)
+		test.EqOp(t, int64(100), decision.Limit)
+		test.False(t, decision.Stale)
+
+		// And rewritten whole, so the next Check pays nothing.
+		entry, err := env.totals.Get(t.Context(),
+			env.enforcer.cacheKey(testScope, testSubject, testMeter, monthBounds))
+		must.NoError(t, err)
+		must.NotNil(t, entry.Quota)
+	})
+
 	T.Run("re-reads once the staleness budget expires", func(t *testing.T) {
 		t.Parallel()
 
@@ -770,6 +859,32 @@ func TestQuotaEnforcer_Consume(T *testing.T) {
 	})
 }
 
+// The quota Check caches is not Consume's to use. Consume's whole promise is
+// that the answer is exact, and an exact answer made against a limit resolved a
+// staleness budget ago is a durable write against a plan the customer may no
+// longer be on.
+func TestQuotaEnforcer_Consume_resolvesAFreshQuota(T *testing.T) {
+	T.Parallel()
+
+	quotas := &countingQuotaSource{quota: testQuota(100)}
+	env := newTestEnforcer(T, BehaviorBlock, 100, WithEnforcerQuotaSource(quotas))
+
+	_, err := env.enforcer.Check(T.Context(), testScope, testSubject, testMeter, 1)
+	must.NoError(T, err)
+	test.EqOp(T, int64(1), quotas.calls.Load())
+
+	// The entry a Check just wrote is sitting there, and Consume reads the source
+	// anyway.
+	_, err = env.consume(T, testSubject, testMeter, 1)
+	must.NoError(T, err)
+	test.EqOp(T, int64(2), quotas.calls.Load())
+
+	// And evicted it on the way out, so the next Check resolves both again rather
+	// than deciding against a total a rolled-back transaction never wrote.
+	_, err = env.totals.Get(T.Context(), env.enforcer.cacheKey(testScope, testSubject, testMeter, monthBounds))
+	test.ErrorIs(T, err, cache.ErrNotFound)
+}
+
 func TestQuotaEnforcer_ConsumeUsage(T *testing.T) {
 	T.Parallel()
 
@@ -884,10 +999,11 @@ func TestQuotaEnforcer_writeThrough(T *testing.T) {
 		_, op := enforcer.o11y.Begin(t.Context())
 		defer op.End()
 
-		enforcer.writeThrough(t.Context(), op, testScope, testSubject, testMeter, monthBounds, 5)
+		enforcer.writeThrough(t.Context(), op, testMeterOf(t, enforcer), testScope, testSubject,
+			monthBounds, testQuota(100), 5)
 	})
 
-	T.Run("does nothing for a meter that is not registered", func(t *testing.T) {
+	T.Run("stores the quota beside the total", func(t *testing.T) {
 		t.Parallel()
 
 		env := newTestEnforcer(t, BehaviorBlock, 100)
@@ -895,10 +1011,19 @@ func TestQuotaEnforcer_writeThrough(T *testing.T) {
 		_, op := env.enforcer.o11y.Begin(t.Context())
 		defer op.End()
 
-		env.enforcer.writeThrough(t.Context(), op, testScope, testSubject, "not_registered", monthBounds, 5)
+		env.enforcer.writeThrough(t.Context(), op, testMeterOf(t, env.enforcer), testScope, testSubject,
+			monthBounds, testQuota(100), 5)
 
-		_, err := env.totals.Get(t.Context(), env.enforcer.cacheKey(testScope, testSubject, "not_registered", monthBounds))
-		test.ErrorIs(t, err, cache.ErrNotFound)
+		entry, err := env.totals.Get(t.Context(), env.enforcer.cacheKey(testScope, testSubject, testMeter, monthBounds))
+		must.NoError(t, err)
+		must.NotNil(t, entry)
+
+		// One entry holding both halves of a decision, so there is one expiry
+		// and one eviction rather than two of each.
+		test.EqOp(t, int64(5), entry.Quantity)
+		must.NotNil(t, entry.Quota)
+		test.EqOp(t, int64(100), entry.Quota.Limit)
+		test.EqOp(t, BehaviorBlock, entry.Quota.Behavior)
 	})
 
 	T.Run("does nothing for a period that has already ended", func(t *testing.T) {
@@ -913,7 +1038,8 @@ func TestQuotaEnforcer_writeThrough(T *testing.T) {
 		_, op := env.enforcer.o11y.Begin(t.Context())
 		defer op.End()
 
-		env.enforcer.writeThrough(t.Context(), op, testScope, testSubject, testMeter, monthBounds, 5)
+		env.enforcer.writeThrough(t.Context(), op, testMeterOf(t, env.enforcer), testScope, testSubject,
+			monthBounds, testQuota(100), 5)
 
 		_, err := env.totals.Get(t.Context(), env.enforcer.cacheKey(testScope, testSubject, testMeter, monthBounds))
 		test.ErrorIs(t, err, cache.ErrNotFound)

@@ -178,7 +178,8 @@ Losing the cache costs latency until it repopulates and nothing else.
 
 # Check is fast and slightly stale; Consume is exact
 
-	// on a cheap path — a cached read, no write, no transaction
+	// on a cheap path — a cached read, no write, no transaction, and inside the
+	// staleness budget no statement and no quota source at all
 	decision, err := enforcer.Check(ctx, scope, accountID, "api_requests", 1)
 
 	// on an expensive one — locks the total, decides, and records the usage in
@@ -212,6 +213,17 @@ staleness budget, which is bounded by whatever one subject can push through in t
 seconds. For an API request quota that is a rounding error. For a meter whose unit
 is worth real money, set Staleness lower, or use Consume, which has no staleness
 at all.
+
+A cache entry carries the quota as well as the total, so what the budget bounds is
+the limit as well as the usage. That is deliberate, and it is what makes the
+sentence above true of the recommended wiring: a QuotaSource is application code
+and need not be cheap — entitlements.QuotaSource resolves the subject's plan,
+which reaches a database — so an enforcer that asked one per Check would put that
+read on every request path a quota guards. Beside the total is where it can live,
+under one key, one expiry and one eviction; see CachedTotal.Quota. What it costs is
+that a plan change reaches Check one staleness budget after it lands. It reaches
+Consume immediately, because Consume resolves the quota itself and drops the entry
+on its way out.
 
 Consume's signature on the Enforcer interface generates its own idempotency key,
 which makes a retried Consume count twice. That is unavoidable — the signature has
