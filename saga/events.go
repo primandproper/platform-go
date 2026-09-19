@@ -121,6 +121,15 @@ var _ EventPublisher = (*OutboxPublisher)(nil)
 // subscriber never sees "completed" before "step completed". Events for
 // different instances are unordered with respect to each other, which is what
 // lets the relay make progress on a thousand sagas without serializing them.
+//
+// That ordering holds until one of the instance's events quarantines in the
+// outbox, which happens when the broker refuses it past the relay's
+// MaxAttempts. A quarantined message no longer blocks its key, so the rest of
+// the instance's lifecycle publishes without it and a subscriber sees the
+// remainder with a hole in it rather than nothing at all — "completed" can
+// arrive with the step completion before it missing. outbox_messages_quarantined
+// is the signal; see outbox's documentation for the trade and what to do when
+// it fires.
 func NewOutboxPublisher(writer *outbox.Writer, opts ...OutboxPublisherOption) (*OutboxPublisher, error) {
 	if writer == nil {
 		return nil, platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil saga outbox writer")
