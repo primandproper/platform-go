@@ -62,7 +62,7 @@ reasons behind the three exceptions.
 | `identity`                         | Users, accounts, memberships and invitations, the lifecycle over them, and `identity/privacy`, the directory's contribution to a subject access request | postgres, mysql, sqlite (+ grpc) |
 | `authentication/signin`            | Sign-in: the order the engines and the directory are used in, owning no table of its own | — (+ grpc)                       |
 | `authentication/signin/refreshtokens` | The refresh tokens sign-in rotates: digest at rest, single use, grouped into one family per login | postgres, mysql, sqlite          |
-| `authentication/passwordreset`     | Password reset tokens: digest at rest, single use enforced by the store, and `authentication/passwordreset/privacy` | postgres, mysql, sqlite          |
+| `authentication/passwordreset`     | Password reset tokens and the flow that spends them: digest at rest, single use enforced by the store, redemption and password change in one transaction, and `authentication/passwordreset/privacy` | postgres, mysql, sqlite          |
 | `authentication/webauthnsessions`  | Passkey ceremony state that outlives one replica                              | postgres, mysql, sqlite          |
 | `authentication/passkeys`          | The credentials a passkey registration produces, the sign count clone detection compares against, and `authentication/passkeys/privacy` | postgres, mysql, sqlite          |
 | `authentication/oauth2clients`     | An administered OAuth2 client registry, and `authentication/oauth2clients/privacy` | postgres, mysql, sqlite (+ grpc) |
@@ -482,10 +482,13 @@ expiring `DownloadURL`. A gRPC surface would put submit, confirm and cancel on
 one protocol while the confirm click, the progress stream and the download all
 lived on another.
 
-The flows over those nouns are the other half of the same list, and sign-in is
-the first of them. Passkeys, session management, password reset and email
-verification are each their own addition over an engine this module already
-ships, rather than a branch inside the password flow.
+The flows over those nouns are the other half of the same list, and sign-in was
+the first of them. Password reset is the second: `authentication/passwordreset`
+ships a `Service` beside its `Store`, which mails the link after the commit
+rather than inside it and spends it with the password change and the revocation
+in one transaction. Passkeys, session management and email verification are each
+their own addition over an engine this module already ships, rather than a
+branch inside the password flow.
 
 The line the primitives are held to went with them. It read: *a module ships a
 transport for a primitive only where the shape of the request is decided by

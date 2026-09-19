@@ -826,6 +826,19 @@ var Matrix = map[string]map[string]Decision{
 		// A TTL of zero is an unset configuration field read at issuance. It
 		// reaches a client only through a service that shipped broken.
 		"ErrNonPositiveLifetime": {Err: passwordreset.ErrNonPositiveLifetime, Is: Unhandled},
+
+		// The flow over the store adds four nil arguments and two empty ones,
+		// answered by the platform mappers for the same reason the store's are:
+		// they are the tier those sentinels belong to. Four of the six are
+		// NewService refusing to be built at all, so no request path reaches
+		// them; the two empty ones are a handler that forwarded a form field it
+		// never checked.
+		"ErrNilStore":          {Err: passwordreset.ErrNilStore, Is: Platform},
+		"ErrNilDirectory":      {Err: passwordreset.ErrNilDirectory, Is: Platform},
+		"ErrNilAuthenticator":  {Err: passwordreset.ErrNilAuthenticator, Is: Platform},
+		"ErrNilMailer":         {Err: passwordreset.ErrNilMailer, Is: Platform},
+		"ErrEmptyEmailAddress": {Err: passwordreset.ErrEmptyEmailAddress, Is: Platform},
+		"ErrEmptyNewPassword":  {Err: passwordreset.ErrEmptyNewPassword, Is: Platform},
 	},
 
 	meteringPkg: {

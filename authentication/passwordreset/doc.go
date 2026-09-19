@@ -1,6 +1,7 @@
 /*
 Package passwordreset stores the token that lets somebody who cannot sign in
-prove they own the address the account was registered with.
+prove they own the address the account was registered with, and ships the flow
+that spends it.
 
 This module already ships every other piece of the flow: argon2 hashes the
 password that replaces the old one, email sends the link, identity holds the
@@ -77,6 +78,47 @@ another email, and a password write that commits over a redemption that then
 fails leaves a live reset link for an account whose password has just changed.
 The second is a vulnerability rather than a bookkeeping error, and no ordering of
 two commits avoids both. One commit does.
+
+# The flow over the store
+
+The paragraph above says what a correct caller does, and [Service] is that
+caller. It is the store's sibling rather than a package of its own — the package
+that owns the tokens is the one that should own the sequence that spends them —
+and it mirrors [github.com/primandproper/platform-go/v14/authentication/signin]'s
+Service-beside-Store split, which is the shape the README promises password
+reset in.
+
+Three operations, and each of them is somewhere a hand-written version goes
+wrong.
+
+[Service.Request] resolves an address to a user, issues a token, commits, and
+mails the secret afterwards. The commit-then-mail order is not a preference: a
+send from inside the callback is a link delivered for a reset that then rolled
+back, and nothing can take it back. An address nobody holds is answered with
+success, after the same delay a known one takes — see [DefaultRequestFloor],
+because two identical responses a stopwatch can tell apart are not identical.
+
+[Service.Verify] is the page load, on the write pool rather than a replica.
+
+[Service.Complete] is the submit, and it is the whole reason the Service exists.
+The redemption, the password write and the revocation of every other outstanding
+link are one transaction, so a revoke that fails takes the password change with
+it. The version this replaces logs that failure and reports success, which
+leaves live reset links for an account whose password has just changed — the
+vulnerability the paragraph above names, reached by the one route that paragraph
+does not close.
+
+What it needs from the directory is two methods, [Directory], and one of them is
+[github.com/primandproper/platform-go/v14/identity.CredentialStore]'s. It is
+reached as a store rather than through identity's Service because that Service
+opens a transaction of its own, which is the one thing this sequence cannot
+afford.
+
+What it holds no opinion about is everything else: which engine hashes the
+password, whether the password is acceptable, and what the mail says. The first
+is an [github.com/primandproper/primitives-go/v2/authentication.Authenticator]
+the consumer passes, the second is a rule applied before [Service.Complete] is
+called, and the third is a [Mailer].
 
 # This is not links, and the difference is the table
 

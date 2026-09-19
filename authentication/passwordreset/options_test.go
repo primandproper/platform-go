@@ -6,6 +6,7 @@ import (
 
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/cryptography/hashing/sha512"
+	"github.com/primandproper/primitives-go/v2/observability"
 	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
 	metricsnoop "github.com/primandproper/primitives-go/v2/observability/metrics/noop"
 	tracingnoop "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
@@ -170,5 +171,88 @@ func TestObservabilityOptions(T *testing.T) {
 		must.NoError(t, err)
 		must.NotNil(t, store.o11y)
 		must.NotNil(t, store.sweptCounter)
+	})
+}
+
+func TestServiceOptions(T *testing.T) {
+	T.Parallel()
+
+	T.Run("skips nil options", func(t *testing.T) {
+		t.Parallel()
+
+		// A nil in each position, since the loop that applies them is where one
+		// would panic.
+		opts := []ServiceOption{nil, WithTokenLifetime(time.Minute), nil}
+
+		env := newTestService(t, opts...)
+
+		test.EqOp(t, time.Minute, env.service.lifetime)
+	})
+
+	T.Run("clock", func(t *testing.T) {
+		t.Parallel()
+
+		c := newFakeClock()
+		env := newTestService(t, WithServiceClock(c))
+		test.EqOp(t, clock.Clock(c), env.service.clk)
+
+		// A nil clock leaves the one the service was built with, so a caller
+		// passing a value it failed to resolve does not get a service that
+		// panics on its first request.
+		env = newTestService(t, WithServiceClock(nil))
+		must.NotNil(t, env.service.clk)
+	})
+
+	T.Run("observability", func(t *testing.T) {
+		t.Parallel()
+
+		env := newTestService(t,
+			WithServiceLogger(loggingnoop.NewLogger()),
+			WithServiceTracerProvider(tracingnoop.NewTracerProvider()),
+			WithServiceMetricsProvider(metricsnoop.NewMetricsProvider()),
+		)
+
+		must.NotNil(t, env.service.logger)
+		must.NotNil(t, env.service.tracerProvider)
+		must.NotNil(t, env.service.metricsProvider)
+		must.NotNil(t, env.service.o11y)
+		must.NotNil(t, env.service.instruments)
+	})
+
+	T.Run("pillars", func(t *testing.T) {
+		t.Parallel()
+
+		pillars := &observability.Pillars{
+			Logger:          loggingnoop.NewLogger(),
+			TracerProvider:  tracingnoop.NewTracerProvider(),
+			MetricsProvider: metricsnoop.NewMetricsProvider(),
+		}
+
+		env := newTestService(t, WithServicePillars(pillars))
+
+		must.NotNil(t, env.service.logger)
+		must.NotNil(t, env.service.tracerProvider)
+		must.NotNil(t, env.service.metricsProvider)
+
+		// Options apply in order, so one of the three can be taken back.
+		env = newTestService(t, WithServicePillars(pillars), WithServiceMetricsProvider(nil))
+
+		must.NotNil(t, env.service.logger)
+		test.Nil(t, env.service.metricsProvider)
+	})
+
+	// Absent means noop: a flow given none of the three still builds.
+	T.Run("with none of them", func(t *testing.T) {
+		t.Parallel()
+
+		client := newTestClient(t)
+
+		store, err := NewSQLStore(&Config{}, client)
+		must.NoError(t, err)
+
+		service, err := NewService(client, store, &testDirectory{}, &fakeAuthenticator{}, &recordingMailer{})
+		must.NoError(t, err)
+		must.NotNil(t, service.o11y)
+		must.NotNil(t, service.instruments)
 	})
 }
