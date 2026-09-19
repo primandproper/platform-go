@@ -48,6 +48,7 @@ func (c *column) qualified() string { return c.table + "." + c.name }
 var tenancyColumns = map[string][]string{
 	"audit":                        {"audit_log_chains.scope", "audit_log_entries.scope"},
 	"authentication/oauth2clients": {"oauth2_registered_clients.scope"},
+	"authentication/passkeys":      {"webauthn_credentials.scope"},
 	"authentication/passwordreset": {"password_reset_tokens.scope"},
 	// signin owns no table; the refresh tokens its rotation mints live in a
 	// subpackage of their own, which is where the column is.

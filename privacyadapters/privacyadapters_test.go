@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	oauth2clientsmock "github.com/primandproper/platform-go/v14/authentication/oauth2clients/mock"
+	passkeysmock "github.com/primandproper/platform-go/v14/authentication/passkeys/mock"
 	passwordresetmock "github.com/primandproper/platform-go/v14/authentication/passwordreset/mock"
 	billingmock "github.com/primandproper/platform-go/v14/billing/mock"
 	billingprivacy "github.com/primandproper/platform-go/v14/billing/privacy"
@@ -60,6 +61,7 @@ func everything() *privacyadapters.Adapters {
 		Waitlists:     &privacyadapters.WaitlistsAdapter{Store: &waitlistsmock.SignupStoreMock{}, Resolve: resolve},
 		MediaRegistry: &privacyadapters.MediaRegistryAdapter{Store: &mediaregistrymock.StoreMock{}, Resolve: resolve},
 		OAuth2Clients: &privacyadapters.OAuth2ClientsAdapter{Store: &oauth2clientsmock.StoreMock{}, Resolve: resolve},
+		Passkeys:      &privacyadapters.PasskeysAdapter{Store: &passkeysmock.StoreMock{}, Resolve: resolve},
 		PasswordReset: &privacyadapters.PasswordResetAdapter{Store: &passwordresetmock.StoreMock{}, Resolve: resolve},
 		Identity:      &privacyadapters.IdentityAdapter{Store: &identitymock.StoreMock{}, Resolve: resolve},
 		Notifications: &privacyadapters.NotificationsAdapter{
@@ -81,7 +83,7 @@ func TestRegisterCoversEveryShippedAdapter(T *testing.T) {
 	// The roster check, and the reason this package exists. The keys come from
 	// the module's own source — every directory declaring a dataprivacy.Collector
 	// or dataprivacy.Eraser, and the Default*Key constants it ships — so a
-	// twelfth adapter landing unlisted fails here rather than as a section
+	// thirteenth adapter landing unlisted fails here rather than as a section
 	// missing from somebody's subject access request.
 	shipped := shippedAdapters(T)
 	must.MapNotEmpty(T, shipped, must.Sprintf("the tree walk found no adapters, which is the walk failing rather than the tree"))
@@ -488,6 +490,7 @@ func TestWalkFindsEveryAdapterDirectory(T *testing.T) {
 
 	for _, dir := range []string{
 		"authentication/oauth2clients/privacy",
+		"authentication/passkeys/privacy",
 		"authentication/passwordreset/privacy",
 		"billing/privacy",
 		"comments/privacy",
@@ -503,5 +506,5 @@ func TestWalkFindsEveryAdapterDirectory(T *testing.T) {
 		test.True(T, ok, test.Sprintf("the walk did not find %s, so nothing in this file asserted about it", dir))
 	}
 
-	test.MapLen(T, 11, found)
+	test.MapLen(T, 12, found)
 }

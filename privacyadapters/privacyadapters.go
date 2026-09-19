@@ -5,6 +5,8 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/oauth2clients"
 	oauth2clientsprivacy "github.com/primandproper/platform-go/v14/authentication/oauth2clients/privacy"
+	"github.com/primandproper/platform-go/v14/authentication/passkeys"
+	passkeysprivacy "github.com/primandproper/platform-go/v14/authentication/passkeys/privacy"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	passwordresetprivacy "github.com/primandproper/platform-go/v14/authentication/passwordreset/privacy"
 	"github.com/primandproper/platform-go/v14/billing"
@@ -71,6 +73,7 @@ type Adapters struct {
 	Waitlists     *WaitlistsAdapter
 	MediaRegistry *MediaRegistryAdapter
 	OAuth2Clients *OAuth2ClientsAdapter
+	Passkeys      *PasskeysAdapter
 	PasswordReset *PasswordResetAdapter
 	Identity      *IdentityAdapter
 	Notifications *NotificationsAdapter
@@ -127,6 +130,17 @@ type OAuth2ClientsAdapter struct {
 	_ struct{} `json:"-" yaml:"-"`
 
 	Store   oauth2clients.Store
+	Resolve dataprivacy.ScopeResolver
+}
+
+// PasskeysAdapter registers authentication/passkeys/privacy's collector and
+// eraser. That eraser deletes, revoked rows included, which is what takes a
+// forgotten subject's authenticators off a deployment rather than merely off
+// their account.
+type PasskeysAdapter struct {
+	_ struct{} `json:"-" yaml:"-"`
+
+	Store   passkeys.Store
 	Resolve dataprivacy.ScopeResolver
 }
 
@@ -366,6 +380,14 @@ func (a *Adapters) build() ([]registration, error) {
 
 		built = append(built, registration{key: oauth2clientsprivacy.DefaultKey, collector: collector, eraser: eraser})
 	}
+	if a.Passkeys != nil {
+		collector, eraser, err := a.Passkeys.build(a.Reader)
+		if err != nil {
+			return nil, platformerrors.Wrapf(err, "building the %s privacy adapter", passkeysprivacy.DefaultKey)
+		}
+
+		built = append(built, registration{key: passkeysprivacy.DefaultKey, collector: collector, eraser: eraser})
+	}
 	if a.PasswordReset != nil {
 		collector, eraser, err := a.PasswordReset.build(a.Reader)
 		if err != nil {
@@ -518,6 +540,22 @@ func (c *OAuth2ClientsAdapter) build(
 	}
 
 	eraser, err := oauth2clientsprivacy.NewEraser(c.Store, c.Resolve)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return collector, eraser, nil
+}
+
+func (c *PasskeysAdapter) build(
+	reader database.SQLQueryExecutor,
+) (dataprivacy.Collector, dataprivacy.Eraser, error) {
+	collector, err := passkeysprivacy.NewCollector(c.Store, reader, c.Resolve)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	eraser, err := passkeysprivacy.NewEraser(c.Store, c.Resolve)
 	if err != nil {
 		return nil, nil, err
 	}
