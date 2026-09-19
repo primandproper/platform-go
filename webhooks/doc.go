@@ -49,6 +49,42 @@ Worker is the delivery side. It claims due dispatches, signs and sends them,
 records every attempt, and schedules retries. It runs in its own process or
 goroutine and is started by Run, stopped by Close.
 
+# Emitting the event and dispatching it together
+
+Most applications publish a domain event to a broker as well as fanning it out
+to subscribers, and the two are one fact about one row. Emitter is that
+composition, over an outbox writer and a Dispatcher:
+
+	err := client.WithTransaction(ctx, func(tx database.Tx) error {
+		if err := updateOrder(ctx, tx, order); err != nil {
+			return err
+		}
+
+		return emitter.Emit(ctx, tx, tenancy.Of(order.AccountID), &webhooks.Event{
+			EventType:   OrderUpdated,
+			OrderingKey: order.ID,
+			Payload:     order,
+		})
+	})
+
+The row, the outbox message and the dispatch rows commit together or not at all.
+It ships here rather than being assembled per consumer because the halves are
+only worth anything together — an event published with no webhook dispatched, or
+a webhook dispatched for an event that never published, is the split a
+hand-rolled version keeps producing — and because the direction is a decision:
+outbox is a transport for domain events and must not learn what a webhook is,
+while this package already knows it is dispatching one. webhooks.Enqueuer is the
+half of outbox.Writer it uses.
+
+The payload is marshaled once and both halves get the same bytes, so a queue
+consumer and a webhook subscriber read byte-identical bodies. The ordering key
+is one key for both, defaulting to the scope's own identifier, so the broker and
+the subscribers are told one order rather than two configured separately.
+
+An event type outside the catalog is published and not dispatched, rather than
+refused — see Emitter.Emit, where the gate is argued out. An application with no
+webhooks at all wires no Emitter and calls outbox.Enqueue.
+
 # Why dispatches are rows and not queue messages
 
 The unit of retry is one endpoint's copy of one event, and no broker can express
@@ -372,6 +408,12 @@ increase in the last, since a dead dispatch is an event a subscriber will never
 see — plus webhooks_claim_errors, webhooks_dispatches_reaped, and the
 webhooks_delivery_latency_ms, webhooks_cycle_latency_ms, and
 webhooks_claimed_batch_size distributions.
+
+webhooks_events_emitted and webhooks_events_unsubscribable are Emitter's, and
+the second is the one to look at: it counts the events an application published
+that no subscriber may receive. Some of those are deliberate exclusions, and the
+number climbing for an event type nobody meant to exclude is the only signal
+that a constant has fallen out of the catalog.
 
 webhooks_secrets_rotated is the odd one, because what it is worth watching for
 is silence. A key nobody rolls is the key a leak is still good against months

@@ -194,3 +194,31 @@ func WithCircuitBreakerFactory(factory CircuitBreakerFactory) WorkerOption {
 		}
 	}
 }
+
+// EmitterOption configures an Emitter.
+type EmitterOption func(*Emitter)
+
+// WithEmitterLogger attaches a logger.
+func WithEmitterLogger(logger logging.Logger) EmitterOption {
+	return func(e *Emitter) {
+		e.logger = logger
+	}
+}
+
+// WithEmitterTracerProvider attaches a tracer provider, so one Emit shows up as
+// a single span with the enqueue and the fan-out beneath it — which is where a
+// write that got slower turns out to have grown a subscriber.
+func WithEmitterTracerProvider(tracerProvider tracing.Provider) EmitterOption {
+	return func(e *Emitter) {
+		e.tracerProvider = tracerProvider
+	}
+}
+
+// WithEmitterMetricsProvider attaches a metrics provider. Worth setting for
+// webhooks_events_unsubscribable alone: it is the only reading of how many of an
+// application's events no subscriber may ever receive.
+func WithEmitterMetricsProvider(metricsProvider metrics.Provider) EmitterOption {
+	return func(e *Emitter) {
+		e.metricsProvider = metricsProvider
+	}
+}
