@@ -1,6 +1,7 @@
 package signin_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
@@ -153,16 +154,42 @@ func TestMappersDeclineWhatIsNotTheirs(T *testing.T) {
 func TestClientSafeSentinels(T *testing.T) {
 	T.Parallel()
 
-	// Every sentinel the mappers claim is one whose own words a client may be
-	// told, and the two lists are the same nine on purpose — see the list's own
-	// documentation for why the collisions make that necessary here.
-	must.SliceLen(T, 9, signin.ClientSafeSentinels)
+	// Nearly every sentinel the mappers claim is one whose own words a client may
+	// be told — see the list's own documentation for why the collisions make that
+	// necessary here. The count is pinned because a sentinel added to the package
+	// and left out of this list is one a gRPC client is told the code's name for,
+	// and nothing else reports that.
+	must.SliceLen(T, 11, signin.ClientSafeSentinels)
 
 	for _, err := range signin.ClientSafeSentinels {
 		_, _, ok := signin.HTTPMapper.Map(err)
 		test.True(T, ok, test.Sprintf("%v is client-safe but unmapped", err))
 
 		test.NotEq(T, "", err.Error())
+	}
+
+	// The two the mappers claim and this list deliberately does not. Both wrap
+	// ErrInvalidCredentials, which is what makes their absence read as that
+	// sentinel rather than as the handler's description — the pair is the whole
+	// mechanism, and neither half works alone.
+	for _, err := range []error{signin.ErrRefreshTokenReused, signin.ErrInvalidVerificationToken} {
+		// Compared by message rather than by identity or by errors.Is. The first
+		// deep-compares, which cannot walk a cockroachdb error's unexported
+		// stack; the second is true by construction here, since both of these
+		// wrap a sentinel that is on the list, and would assert the opposite of
+		// what this is about. Messages are unique across the module, which is
+		// what makes the comparison an identity check.
+		listed := slices.ContainsFunc(signin.ClientSafeSentinels, func(candidate error) bool {
+			return candidate.Error() == err.Error()
+		})
+
+		test.False(T, listed,
+			test.Sprintf("%v would speak its own words to whoever presented the credential", err))
+
+		test.ErrorIs(T, err, signin.ErrInvalidCredentials)
+
+		_, _, ok := signin.HTTPMapper.Map(err)
+		test.True(T, ok, test.Sprintf("%v is unmapped, so it is a 500 rather than a refusal", err))
 	}
 }
 

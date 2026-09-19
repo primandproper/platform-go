@@ -520,6 +520,12 @@ var Matrix = map[string]map[string]Decision{
 		// nine this package maps, not client-safe. See errormappers.go.
 		"ErrRefreshTokenReused": {Err: signin.ErrRefreshTokenReused, Is: Mapped},
 
+		// A verification link that named nobody — expired, already answered,
+		// never issued, or wrong. It wraps ErrInvalidCredentials and is not
+		// client-safe, for the reason the row above is not: the four ways to
+		// fail are one answer, and quoting its own words would say which.
+		"ErrInvalidVerificationToken": {Err: signin.ErrInvalidVerificationToken, Is: Mapped},
+
 		// Proven, and refused anyway. The four PermissionDenials: two statuses
 		// an operator set, and the two halves of the administrative door.
 		"ErrAdminLoginDisabled": {Err: signin.ErrAdminLoginDisabled, Is: Mapped},
@@ -532,22 +538,25 @@ var Matrix = map[string]map[string]Decision{
 		// transports read differently on purpose — FailedPrecondition on one
 		// side, a conflict with a specific message on the other.
 		"ErrNoPasswordCredential":    {Err: signin.ErrNoPasswordCredential, Is: Mapped},
+		"ErrPasswordAlreadySet":      {Err: signin.ErrPasswordAlreadySet, Is: Mapped},
 		"ErrSecondFactorNotEnrolled": {Err: signin.ErrSecondFactorNotEnrolled, Is: Mapped},
 		"ErrUserUnverified":          {Err: signin.ErrUserUnverified, Is: Mapped},
 
 		// Wrap errors.ErrNilInputParameter and errors.ErrEmptyInputParameter, so
 		// the platform mappers answer them. Four are wiring failures and four are
 		// a request that arrived incomplete.
-		"ErrEmptyHandle":       {Err: signin.ErrEmptyHandle, Is: Platform},
-		"ErrEmptyPassword":     {Err: signin.ErrEmptyPassword, Is: Platform},
-		"ErrEmptyUserID":       {Err: signin.ErrEmptyUserID, Is: Platform},
-		"ErrNilAuthenticator":  {Err: signin.ErrNilAuthenticator, Is: Platform},
-		"ErrNilCredentials":    {Err: signin.ErrNilCredentials, Is: Platform},
-		"ErrNilDatabaseClient": {Err: signin.ErrNilDatabaseClient, Is: Platform},
-		"ErrNilDirectory":      {Err: signin.ErrNilDirectory, Is: Platform},
-		"ErrNilPasswordUpdate": {Err: signin.ErrNilPasswordUpdate, Is: Platform},
-		"ErrNilSecretRefresh":  {Err: signin.ErrNilSecretRefresh, Is: Platform},
-		"ErrNilTokenIssuer":    {Err: signin.ErrNilTokenIssuer, Is: Platform},
+		"ErrEmptyHandle":           {Err: signin.ErrEmptyHandle, Is: Platform},
+		"ErrEmptyPassword":         {Err: signin.ErrEmptyPassword, Is: Platform},
+		"ErrEmptyUserID":           {Err: signin.ErrEmptyUserID, Is: Platform},
+		"ErrNilAuthenticator":      {Err: signin.ErrNilAuthenticator, Is: Platform},
+		"ErrNilCredentials":        {Err: signin.ErrNilCredentials, Is: Platform},
+		"ErrNilDatabaseClient":     {Err: signin.ErrNilDatabaseClient, Is: Platform},
+		"ErrNilDirectory":          {Err: signin.ErrNilDirectory, Is: Platform},
+		"ErrNilPasswordAttachment": {Err: signin.ErrNilPasswordAttachment, Is: Platform},
+		"ErrNilPasswordUpdate":     {Err: signin.ErrNilPasswordUpdate, Is: Platform},
+		"ErrNilRegistration":       {Err: signin.ErrNilRegistration, Is: Platform},
+		"ErrNilSecretRefresh":      {Err: signin.ErrNilSecretRefresh, Is: Platform},
+		"ErrNilTokenIssuer":        {Err: signin.ErrNilTokenIssuer, Is: Platform},
 
 		// Wraps errors.ErrUnrecognizedInputValue, which the platform mappers
 		// already answer as a bad request.
@@ -560,6 +569,16 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyFamilyID":     {Err: signin.ErrEmptyFamilyID, Is: Platform},
 		"ErrEmptyRefreshToken": {Err: signin.ErrEmptyRefreshToken, Is: Platform},
 
+		// A door answered with no token at all, which is the same reading again:
+		// an empty request is a client that did not submit.
+		"ErrEmptyVerificationToken": {Err: signin.ErrEmptyVerificationToken, Is: Platform},
+
+		// A registration that named no credential. It is a caller's mistake
+		// rather than a refusal or a wiring failure, and it is the one row here
+		// that is deliberately not collapsed into anything: the remedy is to say
+		// Password or NoPassword, and a 500 would hide a fixable request.
+		"ErrNoCredentialNamed": {Err: signin.ErrNoCredentialNamed, Is: Mapped},
+
 		// A consumer who never named the label an authenticator app shows. It is
 		// wiring rather than anything a caller sent, so a 500 is the honest
 		// answer and no mapper claims it.
@@ -571,6 +590,13 @@ var Matrix = map[string]map[string]Decision{
 		// caller sent, so a 500 is the honest answer and no mapper claims them.
 		"ErrRefreshTokenTTLTooShort":    {Err: signin.ErrRefreshTokenTTLTooShort, Is: Unhandled},
 		"ErrRefreshTokensNotConfigured": {Err: signin.ErrRefreshTokensNotConfigured, Is: Unhandled},
+
+		// The two registration wiring failures: a service that was given nothing
+		// to register through, and one that was given nothing to finish a
+		// registration with. Neither is anything a caller sent.
+		"ErrRegistrationIncomplete":     {Err: signin.ErrRegistrationIncomplete, Is: Unhandled},
+		"ErrRegistrationNotConfigured":  {Err: signin.ErrRegistrationNotConfigured, Is: Unhandled},
+		"ErrVerificationsNotConfigured": {Err: signin.ErrVerificationsNotConfigured, Is: Unhandled},
 	},
 	notificationsPkg: {
 		// The two reads' one answer. Absent, archived, and belonging to somebody

@@ -280,3 +280,120 @@ func (s *Server) VerifyTOTPSecret(
 
 	return &signinpb.VerifyTOTPSecretResponse{}, nil
 }
+
+// Register creates somebody who can then sign in: the user, what they own, and
+// the credential they chose.
+//
+// It is the one RPC here whose caller is not the subject, and the principal it
+// requires is the registrar's — the same reading identity/grpc.Register takes of
+// the same question. An unauthenticated public sign-up is a flow with policy in
+// it, a captcha, a rate limit, an invitation, an email domain rule, and this
+// service holds none of that. A consumer building open registration puts that
+// policy in front of this call and gives the request a principal of its own.
+//
+// The scope is still the resolver's rather than that principal's, which is the
+// one place this surface differs from identity's: one wiring decision governs
+// every RPC here, including the ones with nobody on them.
+//
+// A request naming neither credential arm is refused with InvalidArgument. It is
+// not read as no_password — see signin.Credential for why that inference is the
+// one this schema exists to prevent.
+//
+// What comes back carries no verification token. The secret that promotes this
+// registrant out of the unverified standing travels to them in mail the consumer
+// sends from inside the transaction that wrote their row, and never back to
+// whoever called this.
+func (s *Server) Register(
+	ctx context.Context,
+	request *signinpb.RegisterRequest,
+) (*signinpb.RegisterResponse, error) {
+	ctx, req, done, err := s.caller(ctx, signinpb.SignInService_Register_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	registration := registrationFromProto(request)
+	if registration == nil {
+		err = grpcerrors.PrepareAndLogGRPCStatus(signin.ErrNilRegistration, req.op.Logger(), req.op.Span(), codes.InvalidArgument, "registering a user")
+
+		return nil, err
+	}
+
+	registered, err := s.svc.Register(ctx, req.scope, registration)
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "registering a user")
+	}
+
+	return &signinpb.RegisterResponse{Registration: RegisteredToProto(registered)}, nil
+}
+
+// AttachPassword gives a password to somebody who holds none, answered with the
+// verification link that was mailed to them.
+//
+// It is anonymous, and the token is the whole of its authority. The subject
+// cannot be signed in — they hold no password, and an unverified standing admits
+// no sign-in — so the two proofs UpdatePassword rests on are both unavailable,
+// and the mail sent to the address the account was registered with is the only
+// thing that reaches the person it is about. There is no field naming a user:
+// who this is about is read off the row the token named.
+//
+// An account that already holds a password is refused, which is what keeps the
+// capability narrow: an outstanding link furnishes an account that has none,
+// once, and can do nothing to one that has. Somebody who has forgotten a
+// password they hold goes through the password reset flow.
+func (s *Server) AttachPassword(
+	ctx context.Context,
+	request *signinpb.AttachPasswordRequest,
+) (*signinpb.AttachPasswordResponse, error) {
+	ctx, req, done, err := s.anonymous(ctx, signinpb.SignInService_AttachPassword_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	attachment := &signin.PasswordAttachment{
+		Token:       request.GetToken(),
+		NewPassword: request.GetNewPassword(),
+	}
+
+	if err = s.svc.AttachPassword(ctx, req.scope, attachment); err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "attaching a password")
+	}
+
+	return &signinpb.AttachPasswordResponse{}, nil
+}
+
+// VerifyEmailAddress answers a verification link: it proves the address, spends
+// the link, and promotes the registrant out of the unverified standing that
+// admits no sign-in.
+//
+// It is anonymous for the reason AttachPassword is, and it is the RPC that makes
+// a registration usable at all — without it a registrant proved their address
+// and stayed exactly as unable to sign in as before, because the only other
+// thing that moves that standing is an operator's write behind an operator's
+// permission.
+//
+// Every way of failing to resolve the link is one answer, Unauthenticated with
+// the message a wrong password gets. Expired, already answered, never issued and
+// simply wrong share a remedy, and telling them apart tells whoever is guessing
+// which guesses are getting warm.
+func (s *Server) VerifyEmailAddress(
+	ctx context.Context,
+	request *signinpb.VerifyEmailAddressRequest,
+) (*signinpb.VerifyEmailAddressResponse, error) {
+	ctx, req, done, err := s.anonymous(ctx, signinpb.SignInService_VerifyEmailAddress_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	if err = s.svc.VerifyEmailAddress(ctx, req.scope, request.GetToken()); err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "verifying an email address")
+	}
+
+	return &signinpb.VerifyEmailAddressResponse{}, nil
+}

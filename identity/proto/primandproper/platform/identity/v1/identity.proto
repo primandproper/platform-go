@@ -58,8 +58,15 @@
 // and RegisterRequest carries no password for the same reason. The identity
 // package never hashes -- it stores what an engine produced -- so a plaintext
 // password on this wire would put the choice of hashing engine in the
-// transport. Registration here mints the passwordless user that package already
-// treats as first-class, and a credential is attached afterwards.
+// transport.
+//
+// Registration here therefore mints the passwordless user that package already
+// treats as first-class. A registration that carries a credential is
+// SignInService.Register, in signin.proto: that service holds the authenticator,
+// hashes what arrives, and comes back through this package's own registration on
+// one transaction. Which of the two a consumer calls is the question of whether
+// the registrant is choosing a password at that moment -- a directory being
+// filled from elsewhere is this one, and somebody signing up is that one.
 //
 // No avatar. The media registry is this module's, but identity has no avatar
 // column and joining one is a contract between two packages that has not been

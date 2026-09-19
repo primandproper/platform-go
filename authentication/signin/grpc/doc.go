@@ -1,17 +1,19 @@
 /*
 Package grpc serves the sign-in service over gRPC.
 
-It is imported as signingrpc, and it is seven RPCs over
-[github.com/primandproper/primitives-go/v2/authentication/signin.Service]: two
-doors, two reads and three credential writes. Each method converts, calls one
-thing, and converts back. There is no orchestration here — anything that had to
-happen in a transaction happened one layer down, where the transaction is.
+It is imported as signingrpc, and it is eleven RPCs over
+[github.com/primandproper/primitives-go/v2/authentication/signin.Service]: a
+registration, two doors, the two that finish a registration, two reads and four
+credential writes. Each method converts, calls one thing, and converts back.
+There is no orchestration here — anything that had to happen in a transaction
+happened one layer down, where the transaction is.
 
 # The two seams, and why there are two
 
 Every other resource surface in this module reads who is calling off one seam,
-because every request to it arrives with somebody on it. This one has three RPCs
-that by definition do not: a caller signing in has not signed in yet.
+because every request to it arrives with somebody on it. This one has six RPCs
+that by definition do not: a caller signing in has not signed in yet, and
+neither has the registrant answering the link that was mailed to them.
 
 So the scope — whose directory this is — comes off a [ScopeResolver] the
 consumer supplies, which reads it from the connection: a host header, a piece of
@@ -21,7 +23,7 @@ a single-tenant deployment wants and is a directory with no users in it for a
 multi-tenant one that forgot — a sign-in that refuses everybody rather than one
 that signs them into somebody else's tenant.
 
-The four authenticated RPCs read the caller off a
+The five authenticated RPCs read the caller off a
 [github.com/primandproper/platform-go/v14/callers.PrincipalExtractor], which
 resolves a [github.com/primandproper/platform-go/v14/callers.Principal]. Those
 are one package for the whole module rather than an interface per surface: a
@@ -58,9 +60,9 @@ means a client cannot tell "wrong password" from "the database is down".
 
 # What a consumer still owes
 
-Transport security. Two of these RPCs carry a plaintext password and one answers
-with a live second-factor secret; the schema's own documentation says so at
-greater length. Nothing here checks that the connection is encrypted, because
+Transport security. Four of these RPCs carry a plaintext password and one
+answers with a live second-factor secret; the schema's own documentation says so
+at greater length. Nothing here checks that the connection is encrypted, because
 nothing here can.
 
 A rate limit. This package counts sign-in attempts and refuses none of them:

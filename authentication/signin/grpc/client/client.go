@@ -4,8 +4,8 @@ Package client is a typed client for the sign-in gRPC service.
 It is the generated stub plus the interceptor a caller of this module's services
 would otherwise wire by hand, and it is deliberately thin: every RPC reaches it
 by embedding, so this file adds no method of its own beyond construction and
-shutdown. A client that wrapped each RPC would be seven functions that can drift
-from the schema, to gain nothing.
+shutdown. A client that wrapped each RPC would be eleven functions that can
+drift from the schema, to gain nothing.
 
 It is imported as signinclient.
 
@@ -38,7 +38,9 @@ same bytes back a second time.
 The writes here are safe to retry anyway. Signing in twice mints a second token
 rather than a second account, and setting the same password twice is the state
 the first attempt was aiming at — which is not true of the RPCs identity's
-interceptor exists for.
+interceptor exists for. A retried registration is the one that would write twice,
+and the directory refuses it: the username and the address are unique within a
+scope, so the second attempt is a collision rather than a duplicate account.
 */
 package client
 

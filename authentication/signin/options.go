@@ -12,6 +12,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	"github.com/primandproper/primitives-go/v2/observability/metrics"
 	"github.com/primandproper/primitives-go/v2/observability/tracing"
+	"github.com/primandproper/primitives-go/v2/random"
 )
 
 // DefaultTokenTTL is how long an ordinary sign-in's token lives.
@@ -432,6 +433,58 @@ func WithClock(c clock.Clock) ServiceOption {
 	return func(s *Service) {
 		if c != nil {
 			s.clk = c
+		}
+	}
+}
+
+// WithRegistrar attaches what this service registers people through, which is
+// what turns it from a door into a way in.
+//
+// A nil registrar is ignored, leaving none, and naming none is what "this
+// service registers nobody" means: [Service.Register] refuses with
+// ErrRegistrationNotConfigured, which is the right shape for a consumer using
+// this service as a credential check over a directory something else fills.
+//
+// identity's Service satisfies it. That is the layer rather than the store
+// because both registrations there write three rows, assign an owner, mint a
+// default membership and call a consumer's hook, all on one transaction — see
+// Registrar.
+func WithRegistrar(registrar Registrar) ServiceOption {
+	return func(s *Service) {
+		if registrar != nil {
+			s.registrar = registrar
+		}
+	}
+}
+
+// WithVerifications attaches the reads and writes the three doors that finish a
+// registration need — Service.AttachPassword, Service.VerifyEmailAddress and
+// Service.CompleteVerification. A nil value is ignored, leaving none, and each
+// of the three then refuses with ErrVerificationsNotConfigured.
+//
+// identity's Store satisfies it. It is a second option rather than three more
+// methods on Directory because Directory is the interface the component holding
+// everybody's passwords depends on, and because a consumer implementing that
+// one themselves should not have to grow it for a flow they do not run.
+func WithVerifications(verifications Verifications) ServiceOption {
+	return func(s *Service) {
+		if verifications != nil {
+			s.verifications = verifications
+		}
+	}
+}
+
+// WithSecretGenerator replaces the source a verification link's token is drawn
+// from. A nil generator is ignored, leaving random.NewGenerator, which reads
+// crypto/rand.
+//
+// The seam is for a test that needs a token it can predict. Nothing else should
+// name one: the secret this mints is the whole authority of the mail it travels
+// in.
+func WithSecretGenerator(generator random.Generator) ServiceOption {
+	return func(s *Service) {
+		if generator != nil {
+			s.secrets = generator
 		}
 	}
 }

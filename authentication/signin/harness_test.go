@@ -75,6 +75,11 @@ type env struct {
 	user      *identity.User
 	accountID string
 
+	// directory is identity's Service over the same store, which is what this
+	// package registers through. The suite holds it because the registration
+	// tests also arrange rows with it.
+	directory *identity.Service
+
 	// refreshPrefix is the namespace both schemas were rendered at, kept so the
 	// two assertions that count rows can name the table the store writes to.
 	refreshPrefix string
@@ -183,9 +188,19 @@ func buildEnv(
 		password: "correct horse battery staple",
 	}
 
+	e.directory, err = identity.NewService(client, store)
+	must.NoError(t, err)
+
+	// The registrar and the verifications directory are wired for every env
+	// rather than only the registration suite's, because the alternative is two
+	// shapes of service in one file and a test that reaches the wrong one
+	// failing with "not configured" rather than with what it was asserting. The
+	// two tests that want a service without them build one of their own.
 	opts = append([]signin.ServiceOption{
 		signin.WithHooks(e.hooks),
 		signin.WithTOTPIssuer("Example"),
+		signin.WithRegistrar(e.directory),
+		signin.WithVerifications(store),
 	}, opts...)
 
 	if withRefresh {
@@ -236,10 +251,7 @@ func (e *env) register(t *testing.T) {
 
 	account := &identity.Account{Name: "Jane's", Scope: testScope}
 
-	svc, err := identity.NewService(e.client, e.store)
-	must.NoError(t, err)
-
-	registration, err := svc.Register(t.Context(), testScope, user, account, []string{"owner"})
+	registration, err := e.directory.Register(t.Context(), testScope, user, account, []string{"owner"})
 	must.NoError(t, err)
 
 	e.user, e.accountID = registration.User, registration.Account.ID
@@ -250,10 +262,7 @@ func (e *env) register(t *testing.T) {
 func (e *env) registerPasswordless(t *testing.T, username string) *identity.User {
 	t.Helper()
 
-	svc, err := identity.NewService(e.client, e.store)
-	must.NoError(t, err)
-
-	registration, err := svc.Register(t.Context(), testScope,
+	registration, err := e.directory.Register(t.Context(), testScope,
 		&identity.User{
 			Username:      username,
 			EmailAddress:  username + "@example.com",
@@ -426,6 +435,8 @@ type recordingHooks struct {
 	authErr   error
 	issueErr  error
 	failedErr error
+	attachErr error
+	verifyErr error
 
 	// verified is the user the second-factor hook was handed: the row the
 	// directory's write answered with, rather than the copy read before it.
@@ -435,6 +446,8 @@ type recordingHooks struct {
 	authentications []*signin.Authentication
 	signIns         []*signin.SignIn
 	failures        []*signin.FailedSignIn
+	attached        []*identity.User
+	verifieds       []*signin.Verification
 
 	signin.NoopHooks
 
@@ -477,6 +490,25 @@ func (h *recordingHooks) AfterUpdatePassword(_ context.Context, _ database.Tx, _
 	h.passwords++
 
 	return nil
+}
+
+func (h *recordingHooks) AfterAttachPassword(_ context.Context, _ database.Tx, _ tenancy.Scope, user *identity.User) error {
+	h.calls = append(h.calls, "attach")
+	h.attached = append(h.attached, user)
+
+	return h.attachErr
+}
+
+func (h *recordingHooks) AfterVerify(
+	_ context.Context,
+	_ database.Tx,
+	_ tenancy.Scope,
+	verification *signin.Verification,
+) error {
+	h.calls = append(h.calls, "verify")
+	h.verifieds = append(h.verifieds, verification)
+
+	return h.verifyErr
 }
 
 func (h *recordingHooks) AfterRefreshTOTPSecret(_ context.Context, _ database.Tx, _ tenancy.Scope, _ *identity.User) error {

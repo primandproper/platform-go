@@ -114,3 +114,71 @@ func AuthStatusToProto(s *signin.AuthStatus) *signinpb.AuthStatus {
 		EmailAddressVerified:   s.EmailAddressVerified,
 	}
 }
+
+// registrationFromProto reads a registration request into what the service
+// takes.
+//
+// The credential is the one field that can be absent in a way this converter
+// must not paper over: an unset oneof becomes a nil signin.Credential, and the
+// service refuses it. Defaulting it to signin.NoPassword here would be this
+// package deciding that a client which forgot to populate the field meant to
+// create an account nobody can sign into.
+//
+// A nil message is a nil result, for the reason credentialsFromProto's is.
+func registrationFromProto(r *signinpb.RegisterRequest) *signin.Registration {
+	if r == nil {
+		return nil
+	}
+
+	registration := &signin.Registration{
+		User:       identitygrpc.UserFromRegistrationInput(r.GetUser()),
+		Account:    identitygrpc.AccountFromCreationInput(r.GetAccount()),
+		Credential: credentialFromProto(r),
+		OwnerRoles: r.GetOwnerRoles(),
+	}
+
+	if invitation := r.GetInvitation(); invitation != nil {
+		registration.InvitationID = invitation.GetInvitationId()
+		registration.InvitationToken = invitation.GetToken()
+		registration.InvitationStatusNote = invitation.GetStatusNote()
+	}
+
+	return registration
+}
+
+// credentialFromProto reads the arm a registration named, and answers nil for a
+// request that named neither.
+//
+// nil is the honest reading of an unset oneof and is what the service refuses.
+// The alternative — treating "the client sent nothing" as "the client chose no
+// password" — is the inference the Credential type exists to prevent.
+func credentialFromProto(r *signinpb.RegisterRequest) signin.Credential {
+	switch credential := r.GetCredential().(type) {
+	case *signinpb.RegisterRequest_Password:
+		return signin.Password(credential.Password)
+	case *signinpb.RegisterRequest_NoPassword:
+		return signin.NoPassword()
+	default:
+		return nil
+	}
+}
+
+// RegisteredToProto renders what a registration produced.
+//
+// The verification token is deliberately not carried across. It is on the Go
+// value because the consumer's hook has nowhere else to take it from; it is
+// absent from the message because whoever called this RPC is a client rather
+// than the person the secret is about, and the schema has no field for it to
+// land in — see the proto's own documentation.
+func RegisteredToProto(r *signin.Registered) *signinpb.Registered {
+	if r == nil {
+		return nil
+	}
+
+	return &signinpb.Registered{
+		User:       identitygrpc.UserToProto(r.User),
+		Account:    identitygrpc.AccountToProto(r.Account),
+		Membership: identitygrpc.MembershipToProto(r.Membership),
+		Invitation: identitygrpc.InvitationToProto(r.Invitation),
+	}
+}

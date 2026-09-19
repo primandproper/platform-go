@@ -73,6 +73,20 @@ type Registration struct {
 
 	// Membership puts the user in the account and is their default.
 	Membership *Membership `json:"membership"`
+
+	// EmailAddressVerificationToken is the secret the registrant's verification
+	// link carries, echoed back from the User the caller assembled.
+	//
+	// It is here for the reason InvitedRegistration carries one, and the two
+	// say the same thing: it is the one fact about a registration that no read
+	// can hand back, because the column holds a digest and User.Redacted clears
+	// even that. A hook queueing the verification mail on this transaction —
+	// which is where that outbox row belongs, so the link and the row it proves
+	// commit together — has nowhere else to take the secret from.
+	//
+	// It is empty when the caller minted none, which says there is no link
+	// outstanding rather than that one was lost.
+	EmailAddressVerificationToken string `json:"-"`
 }
 
 // InvitedRegistration is what a registration against an invitation produced:
@@ -332,7 +346,11 @@ func (s *Service) Register(
 		return nil, op.Error(ErrNilAccount, "registering identity account")
 	}
 
-	registration := &Registration{}
+	// Read off the caller's value rather than off the read-back, which cannot
+	// carry it: the column holds a digest and no read fills the secret in. It is
+	// set before the transaction so the hook sees it on the same value the
+	// caller is about to be handed, exactly as RegisterWithInvitation does.
+	registration := &Registration{EmailAddressVerificationToken: user.EmailAddressVerificationToken}
 
 	err := s.run(ctx, op, opRegister, func(tx database.Tx) error {
 		registered, err := s.store.CreateUser(ctx, tx, scope, user)
