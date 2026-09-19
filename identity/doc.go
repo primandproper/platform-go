@@ -440,23 +440,34 @@ failed attempt under, which is the key a lockout counter counts against — and
 so should a consumer that reaches these columns through an index of their own.
 A second copy of a normalisation is a copy that can disagree with the rows.
 
-The spelling somebody submitted is not lost. A username has two columns: the
-folded handle the directory is keyed on, in User.Username, and the spelling as
-given beside it, in User.UsernameDisplay, which nothing looks up and nothing
-is unique on. Show people the second and compare the first. A write that names
-no display spelling adopts the username's, which is what a registration does,
-and one that names a spelling of some other handle is refused — see
-ErrUsernameDisplayMismatch.
+The spelling somebody submitted is not lost, and the column that keeps it is
+not a second spelling of the handle. User.DisplayName is free-form: nothing
+looks it up, nothing is unique on it, nothing folds it, and it bears no
+relation to User.Username at all. "Renée" is a display name on a user whose
+handle is renee, and so is an emoji, and so is a name that outlives a rename
+from renee to renee2 — the handle moved and the person did not. The only rule
+is MaxDisplayNameLength, which is the width of the column rather than anything
+about names.
 
-An email address gets no such companion. Nobody renders the case of their own
+What it does keep of its origin is a default. A write naming no display name
+adopts the pre-fold spelling of the username it submitted, so a registration as
+"Ada" is shown as "Ada" without anybody typing it twice. That is a default and
+not a definition — the next write moves it wherever the person likes.
+
+Show a display name where a name is what is wanted, and the handle where it
+matters which user this is. The handle is the unique one, and a display string
+that decided anything would be deciding it on a value anybody may set to
+anything.
+
+An email address gets no companion at all. Nobody renders the case of their own
 address, and a second column is a second thing to keep in step.
 
 What this costs a directory that already has rows: they were written in
 whatever case was submitted, so fold the username and email_address columns in
-the same migration that adds username_display, or a lookup will not find the
-rows that were not already lower case. Backfilling the display column itself is
-optional — a row with none reads its folded handle back in UsernameDisplay, so
-a page rendering that field never renders a blank. On MySQL the same migration
+the same migration that adds display_name, or a lookup will not find the rows
+that were not already lower case. Backfilling the display column itself is
+optional — a row with none reads its folded handle back in DisplayName, so a
+page rendering that field never renders a blank. On MySQL the same migration
 carries the collation across, with an ALTER per column; it rebuilds the unique
 index, and it cannot newly conflict, because utf8mb4_bin makes rows more
 distinct than the default did rather than less.

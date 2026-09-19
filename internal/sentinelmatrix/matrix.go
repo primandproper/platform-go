@@ -349,12 +349,12 @@ var Matrix = map[string]map[string]Decision{
 		"ErrLastAccountOwner":  {Err: identity.ErrLastAccountOwner, Is: Mapped},
 		"ErrNoDefaultAccount":  {Err: identity.ErrNoDefaultAccount, Is: Mapped},
 
-		// The two writes whose halves disagree with each other. One names a
-		// different tenant than the call did and the other a different username
-		// than the display spelling beside it, and both are a bad request rather
-		// than a refusal on authority.
-		"ErrScopeMismatch":           {Err: identity.ErrScopeMismatch, Is: Mapped},
-		"ErrUsernameDisplayMismatch": {Err: identity.ErrUsernameDisplayMismatch, Is: Mapped},
+		// The two a client sent that the directory will not store as written. One
+		// names a different tenant than the call did and the other is longer than
+		// the column that holds it, and both are a bad request rather than a
+		// refusal on authority.
+		"ErrScopeMismatch":      {Err: identity.ErrScopeMismatch, Is: Mapped},
+		"ErrDisplayNameTooLong": {Err: identity.ErrDisplayNameTooLong, Is: Mapped},
 
 		// The one refusal on authority. GetPrincipal will not answer for a user
 		// whose account status does not admit sign-in, and a 403 rather than a 404

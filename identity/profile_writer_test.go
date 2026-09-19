@@ -244,7 +244,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 		grace := seedUser(t, env, store, newUser("grace"))
 
 		grace.Username = "ada"
-		grace.UsernameDisplay = "ada"
+		grace.DisplayName = "ada"
 		must.ErrorIs(t, env.updateUserErr(t, store, grace.Scope, grace), ErrUsernameTaken)
 	})
 
@@ -437,7 +437,7 @@ func runProfileWriterSuite(t *testing.T, env *storeEnv) {
 
 		colliding := *grace
 		colliding.Username = "ada"
-		colliding.UsernameDisplay = "ada"
+		colliding.DisplayName = "ada"
 
 		updated, err := env.updateUser(t, store, testScope, &colliding)
 		must.ErrorIs(t, err, ErrUsernameTaken)

@@ -186,15 +186,17 @@ message User {
   // 18 is reserved for the avatar the file comment explains is absent.
   reserved 18;
 
-  // username_display is the same handle as the person spelled it -- "Ada" where
-  // username is "ada". Nothing is keyed on it and nothing is looked up by it;
-  // it is what a page shows. It is never empty on a user this service returns.
+  // display_name is what the person is shown as. It is free-form and unrelated
+  // to username: an accented spelling, a nickname and an emoji are all display
+  // names on a user whose handle is "renee", nothing is keyed on it, and a
+  // rename of the handle leaves it where it is. It is never empty on a user
+  // this service returns.
   //
   // There is no input field beside it, in this message's two inputs or
-  // anywhere else: the spelling a registration or a profile save submits in
-  // their own username field is the spelling that lands here, so a client
-  // sends a handle once and the directory keeps both readings of it.
-  string username_display = 19;
+  // anywhere else. A registration that names none is shown under the spelling
+  // it submitted in its own username field, which is the default this column
+  // was born as; moving it afterwards is a store write.
+  string display_name = 19;
 }
 
 // BillingAddress is where an account's invoices go.

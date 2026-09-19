@@ -538,7 +538,7 @@ func TestTable_UpdateColumns(t *testing.T) {
 	// address being moved to.
 	test.SliceEqFunc(t,
 		[]string{
-			"username", "username_display", "email_address", "first_name", "last_name",
+			"username", "display_name", "email_address", "first_name", "last_name",
 			"email_address_verified_at", "email_address_verification_token_digest",
 		},
 		Users.UpdateColumns(),

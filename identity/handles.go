@@ -33,48 +33,58 @@ import (
 // got wrong twice" case exactly — a second copy of a normalisation is a copy
 // that can disagree with the rows.
 //
-// The spelling a person submitted is not lost: User.UsernameDisplay keeps it,
-// beside the handle rather than instead of it. An email address gets no such
-// companion — see that field.
+// The spelling a person submitted is not lost: a user who names no
+// User.DisplayName adopts it there. That is where the column came from, and it
+// is no longer what the column is for — a display name is free-form and the
+// adoption is only its default. An email address gets no companion at all —
+// see that field.
 func FoldHandle(handle string) string { return strings.ToLower(handle) }
 
-// foldUserHandles settles the three handle columns a user write assigns: the
-// folded username the directory is keyed on, the spelling it is shown in, and
-// the folded address.
+// foldUserHandles settles the three columns a user write does not store
+// verbatim: the folded username the directory is keyed on, the folded address,
+// and the display name, which is folded by nothing and may be adopted from the
+// first.
 //
-// The display spelling is the caller's, and the two readings are the ones
-// adoptScope already takes of a scope: one that names nothing adopts what the
-// write submitted, and one that names a different handle is refused rather than
-// corrected. There is no third reading, because a display that folds to some
-// other handle is not a spelling of this one — it is the handle from before a
-// rename, written back by a caller who changed one field of a value they read.
+// The display name is the caller's, and the only reading taken of it is the one
+// adoptScope takes of a scope that names nothing: it adopts what the write
+// submitted. It adopts the *pre-fold* spelling, which is the whole of the
+// adoption's value — a registration as "Ada" is shown as "Ada" — and it adopts
+// it only when the caller named none. A caller who named one is naming a
+// display name rather than a spelling of the handle, so there is nothing here
+// to agree or disagree with: "Renée" beside the handle renee is what this
+// column is for.
+//
+// The bound is the one rule the column has, and it is checked here rather than
+// in validateProfile because this is where the stored value is settled: the
+// name a write stores may be one nobody named, and a rule upstream of the
+// adoption would bound what a caller sent while leaving what the column
+// receives unbounded. See MaxDisplayNameLength.
 func foldUserHandles(u *User) error {
-	display := u.UsernameDisplay
+	display := u.DisplayName
 	if display == "" {
 		display = u.Username
 	}
 
-	u.Username = FoldHandle(u.Username)
-	u.EmailAddress = FoldHandle(u.EmailAddress)
-
-	if FoldHandle(display) != u.Username {
-		return platformerrors.Wrapf(ErrUsernameDisplayMismatch,
-			"display %q is not a spelling of username %q", display, u.Username)
+	if len(display) > MaxDisplayNameLength {
+		return platformerrors.Wrapf(ErrDisplayNameTooLong,
+			"display name is %d bytes, over the %d-byte limit", len(display), MaxDisplayNameLength)
 	}
 
-	u.UsernameDisplay = display
+	u.Username = FoldHandle(u.Username)
+	u.EmailAddress = FoldHandle(u.EmailAddress)
+	u.DisplayName = display
 
 	return nil
 }
 
-// displayedUsername is what a read hands back in User.UsernameDisplay: the
-// stored spelling, or the folded handle where a row has none.
+// displayedName is what a read hands back in User.DisplayName: the stored name,
+// or the folded handle where a row has none.
 //
 // A row has none only if it was written before the directory had the column, so
 // the fallback is what keeps this field's "never empty on a read" promise true
-// of a consumer who has not backfilled — and a folded handle is a correct
-// spelling of the handle, merely not the one anybody typed.
-func displayedUsername(username, display string) string {
+// of a consumer who has not backfilled — and the handle is a name the person
+// answers to, merely not one they chose.
+func displayedName(username, display string) string {
 	if display == "" {
 		return username
 	}

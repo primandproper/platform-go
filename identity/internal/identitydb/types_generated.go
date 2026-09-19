@@ -127,7 +127,7 @@ type CreateUserParams struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -246,7 +246,7 @@ type GetArchivedUserRow struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -367,7 +367,7 @@ type GetUserRow struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -398,7 +398,7 @@ type GetUserByEmailAddressRow struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -429,7 +429,7 @@ type GetUserByEmailVerificationTokenDigestRow struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -460,7 +460,7 @@ type GetUserByUsernameRow struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -515,7 +515,7 @@ type GetUserIncludingArchivedRow struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -579,7 +579,7 @@ type ListAccountMembersRow struct {
 	UserID                                  string
 	UserScope                               tenancy.Scope
 	UserUsername                            string
-	UserUsernameDisplay                     string
+	UserDisplayName                         string
 	UserEmailAddress                        string
 	UserFirstName                           string
 	UserLastName                            string
@@ -627,7 +627,7 @@ type ListAccountMembersDescendingRow struct {
 	UserID                                  string
 	UserScope                               tenancy.Scope
 	UserUsername                            string
-	UserUsernameDisplay                     string
+	UserDisplayName                         string
 	UserEmailAddress                        string
 	UserFirstName                           string
 	UserLastName                            string
@@ -1092,7 +1092,7 @@ type ListUsersRow struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -1125,7 +1125,7 @@ type ListUsersByIDsRow struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -1162,7 +1162,7 @@ type ListUsersDescendingRow struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -1250,7 +1250,7 @@ type SearchUsersByUsernameRow struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -1283,7 +1283,7 @@ type SearchUsersByUsernameDescendingRow struct {
 	ID                                  string
 	Scope                               tenancy.Scope
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string
@@ -1366,7 +1366,7 @@ type UpdateAccountParams struct {
 // UpdateUserParams are the arguments to UpdateUser.
 type UpdateUserParams struct {
 	Username                            string
-	UsernameDisplay                     string
+	DisplayName                         string
 	EmailAddress                        string
 	FirstName                           string
 	LastName                            string

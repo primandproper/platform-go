@@ -817,10 +817,10 @@ func (s *Service) SetUserServiceRoles(
 type ProfileUpdate struct {
 	_ struct{} `json:"-"`
 
-	// Username is the handle as the person spelled it. There is deliberately no
-	// second field for the display spelling: the two columns behind it are the
-	// fold of this value and this value, and a client that sent them
-	// separately could send two handles.
+	// Username is the handle as the person spelled it; what the column receives
+	// is its fold. It does not move User.DisplayName — that name is the
+	// person's own and is not a spelling of this one, so a rename leaves it
+	// where it was.
 	Username     *string `json:"username"`
 	EmailAddress *string `json:"emailAddress"`
 	FirstName    *string `json:"firstName"`
@@ -839,16 +839,14 @@ func (u *ProfileUpdate) apply(user *User) []string {
 
 	var changed []string
 
-	// The username is two columns and so is not one of the four below: what the
-	// form submits is a spelling, the row holds the folded handle and the
-	// spelling beside it, and both move together. The comparison folds for the
-	// same reason — re-capitalising a handle is not a rename, and a form saved
-	// unedited must still write nothing — while a change to the spelling alone
-	// is a change, because it is what the user will be shown.
-	if u.Username != nil &&
-		(*u.Username != user.UsernameDisplay || FoldHandle(*u.Username) != user.Username) {
+	// The username is not one of the three below because what the form submits
+	// is a spelling and what the column holds is its fold, so the comparison
+	// folds too: re-capitalising a handle is not a rename, and a form saved
+	// unedited must write nothing. It reaches one column — the display name is
+	// the user's own and is unrelated to this one, so a rename from renee to
+	// renee2 leaves Renée being shown.
+	if u.Username != nil && FoldHandle(*u.Username) != user.Username {
 		user.Username = FoldHandle(*u.Username)
-		user.UsernameDisplay = *u.Username
 		changed = append(changed, "username")
 	}
 

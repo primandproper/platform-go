@@ -30,7 +30,8 @@
 --
 --
 -- username is the lookup column, folded to lower case by the store on write and
--- on every lookup; username_display is the spelling as given, read by nothing.
+-- on every lookup; display_name is what a person is shown as, free-form and
+-- read by nothing.
 -- See postgres.sql for why, and identity's package documentation under
 -- "Handles are folded".
 -- email_address_verification_token_digest holds the digest of the token a
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_users (
     id                                      VARCHAR(64) NOT NULL PRIMARY KEY,
     scope                                   VARCHAR(255) NOT NULL,
     username                                VARCHAR(255) COLLATE utf8mb4_bin NOT NULL,
-    username_display                        VARCHAR(255) NOT NULL DEFAULT '',
+    display_name                            VARCHAR(255) NOT NULL DEFAULT '',
     email_address                           VARCHAR(320) COLLATE utf8mb4_bin NOT NULL,
     first_name                              VARCHAR(255) NOT NULL DEFAULT '',
     last_name                               VARCHAR(255) NOT NULL DEFAULT '',

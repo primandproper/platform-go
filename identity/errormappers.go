@@ -77,7 +77,7 @@ var ClientSafeSentinels = []error{
 	ErrNoDefaultAccount,
 	ErrInvitationExpired,
 	ErrScopeMismatch,
-	ErrUsernameDisplayMismatch,
+	ErrDisplayNameTooLong,
 	ErrSignInNotAdmitted,
 }
 
@@ -148,12 +148,13 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrScopeMismatch):
 		return httperrors.ErrValidatingRequestInput, "entity does not belong to the named tenant", true
 
-	// The other write whose two halves disagree, and it reads the same way: the
-	// display spelling and the username are one handle, so a value that is a
-	// spelling of some other handle is a request contradicting itself rather
-	// than anything the directory refused.
-	case errors.Is(err, ErrUsernameDisplayMismatch):
-		return httperrors.ErrValidatingRequestInput, "display spelling is not a spelling of the username", true
+	// The one rule a display name has. It is bad input rather than a conflict:
+	// nothing was taken and nothing was refused on authority, the value is
+	// simply longer than the column that holds it. The sentinel's own wrapping
+	// carries the limit and the length for whoever reads a log; what a client
+	// needs here is which field to shorten.
+	case errors.Is(err, ErrDisplayNameTooLong):
+		return httperrors.ErrValidatingRequestInput, "display name is too long", true
 	default:
 		return httperrors.ErrNothingSpecific, "", false
 	}
@@ -195,7 +196,7 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 		return codes.PermissionDenied, true
 
 	case errors.Is(err, ErrScopeMismatch),
-		errors.Is(err, ErrUsernameDisplayMismatch):
+		errors.Is(err, ErrDisplayNameTooLong):
 		return codes.InvalidArgument, true
 	default:
 		return codes.Unknown, false

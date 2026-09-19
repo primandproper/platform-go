@@ -63,6 +63,22 @@ func (s AccountStatus) String() string { return string(s) }
 // twice, and the second copy is the one that admits a banned user.
 func (s AccountStatus) AdmitsSignIn() bool { return s == StatusGood }
 
+// MaxDisplayNameLength bounds User.DisplayName, and is the width of the column
+// that holds it: VARCHAR(255) on MySQL against TEXT on the other two.
+//
+// It is checked in Go because the column is the only thing that would otherwise
+// check it, and only on one dialect — MySQL truncates a value too long for its
+// column where Postgres and SQLite store it whole, so without a bound here the
+// same registration reads back differently depending on what is underneath.
+// That is the divergence FoldHandle exists to remove, arrived at through a
+// column nothing folds.
+//
+// It counts bytes rather than characters, which is the stricter of the two
+// readings: MySQL's VARCHAR(255) holds 255 characters, so a name this accepts
+// fits on every dialect whatever it is spelled in. A name at the limit is 255
+// ASCII letters or 85 CJK characters, and the only rule a display name has.
+const MaxDisplayNameLength = 255
+
 // User is somebody who can sign in.
 //
 // The credential fields are here rather than in a table of their own — see the
@@ -122,30 +138,36 @@ type User struct {
 	// lookup, so what a read returns is the handle the directory is keyed on
 	// rather than the case a registration submitted, and two users cannot
 	// differ by case alone. Compare handles with this field. Show people
-	// UsernameDisplay. See "Handles are folded" in the package documentation.
+	// DisplayName where a name is what is wanted and this one where the handle
+	// is. See "Handles are folded" in the package documentation.
 	Username string `json:"username"`
 
-	// UsernameDisplay is the same handle as the person spelled it — "Ada" where
-	// Username is "ada". Nothing is keyed on it, nothing is looked up by it,
-	// and it exists because people capitalise their own names and expect to see
-	// it back.
+	// DisplayName is what the person is shown as, and it is theirs: free-form,
+	// unrelated to Username, and the only rule on it is MaxDisplayNameLength.
+	// "Renée" on a user whose handle is renee is a display name, and so is an
+	// emoji, and so is a name they will keep through a rename of the handle.
+	//
+	// It is not a credential and so gets none of a credential's rules. Nothing
+	// is keyed on it, nothing is looked up by it, and nothing decides anything
+	// by comparing it — a surface where it matters who somebody is shows
+	// Username, which is the handle the directory is keyed on and the one thing
+	// here that is unique.
 	//
 	// On a write it may be left empty, and then it adopts the spelling of the
-	// Username the write submitted, which is what a registration wants. A value
-	// that folds to a different handle than Username is refused with
-	// ErrUsernameDisplayMismatch rather than corrected: the two are one handle
-	// in two spellings, so a disagreement between them is a caller writing back
-	// a display they forgot to change.
+	// Username the write submitted — pre-fold, so a registration as "Ada" is
+	// shown as "Ada" without anybody typing it twice. That is a default and not
+	// a definition: a later write moves it wherever it likes, and moving
+	// Username does not move it.
 	//
 	// On a read it is never empty. A row written before the directory had this
 	// column reads its folded handle back here, so a template rendering this
 	// field is never rendering a blank.
-	UsernameDisplay string `json:"usernameDisplay"`
+	DisplayName string `json:"displayName"`
 
 	// EmailAddress is the address the user is reachable at, unique within Scope.
-	// It is folded the way Username is, and gets no display companion: nobody
-	// renders the case of their own address, and a second column is a second
-	// thing to keep in step.
+	// It is folded the way Username is, and gets no companion of its own:
+	// nobody renders the case of their own address, and a second column is a
+	// second thing to keep in step.
 	EmailAddress string `json:"emailAddress"`
 
 	// FirstName and LastName are the user's name as they gave it. Both are

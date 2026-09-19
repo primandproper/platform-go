@@ -14,13 +14,13 @@
 -- username is the lookup column and holds one spelling: the store folds it to
 -- lower case on write and on every lookup, so which case a registration
 -- submitted, and which collation a server happens to default to, decide
--- nothing. username_display is the spelling as given, written beside it and
--- read by nothing — there is no index on it and no statement predicates on it,
--- because a display spelling that anything looked up would be the second
--- answer this column pair exists to remove. email_address gets no such
--- companion: nobody renders the case of their own address, and a second column
--- is a second thing to keep in step. See identity's package documentation,
--- under "Handles are folded".
+-- nothing. display_name is what a person is shown as, written beside it and
+-- related to it by nothing — free-form, folded by nothing, and read by nothing:
+-- there is no index on it and no statement predicates on it, because a name
+-- anybody may set to anything is not an answer to "which user is this".
+-- email_address gets no companion at all: nobody renders the case of their own
+-- address, and a second column is a second thing to keep in step. See
+-- identity's package documentation, under "Handles are folded".
 -- email_address_verification_token_digest holds the digest of the token a
 -- verification link carries, never the token. That link is a bearer credential
 -- for the address it proves: a database copy — a backup, a replica, a support
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_users (
     id                                      TEXT PRIMARY KEY,
     scope                                   TEXT NOT NULL,
     username                                TEXT NOT NULL,
-    username_display                        TEXT NOT NULL DEFAULT '',
+    display_name                            TEXT NOT NULL DEFAULT '',
     email_address                           TEXT NOT NULL,
     first_name                              TEXT NOT NULL DEFAULT '',
     last_name                               TEXT NOT NULL DEFAULT '',

@@ -364,17 +364,19 @@ type User struct {
 	// on the 3rd", which a boolean cannot answer.
 	LastAcceptedTermsOfService *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=last_accepted_terms_of_service,json=lastAcceptedTermsOfService,proto3" json:"last_accepted_terms_of_service,omitempty"`
 	LastAcceptedPrivacyPolicy  *timestamppb.Timestamp `protobuf:"bytes,17,opt,name=last_accepted_privacy_policy,json=lastAcceptedPrivacyPolicy,proto3" json:"last_accepted_privacy_policy,omitempty"`
-	// username_display is the same handle as the person spelled it -- "Ada" where
-	// username is "ada". Nothing is keyed on it and nothing is looked up by it;
-	// it is what a page shows. It is never empty on a user this service returns.
+	// display_name is what the person is shown as. It is free-form and unrelated
+	// to username: an accented spelling, a nickname and an emoji are all display
+	// names on a user whose handle is "renee", nothing is keyed on it, and a
+	// rename of the handle leaves it where it is. It is never empty on a user
+	// this service returns.
 	//
 	// There is no input field beside it, in this message's two inputs or
-	// anywhere else: the spelling a registration or a profile save submits in
-	// their own username field is the spelling that lands here, so a client
-	// sends a handle once and the directory keeps both readings of it.
-	UsernameDisplay string `protobuf:"bytes,19,opt,name=username_display,json=usernameDisplay,proto3" json:"username_display,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// anywhere else. A registration that names none is shown under the spelling
+	// it submitted in its own username field, which is the default this column
+	// was born as; moving it afterwards is a store write.
+	DisplayName   string `protobuf:"bytes,19,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *User) Reset() {
@@ -526,9 +528,9 @@ func (x *User) GetLastAcceptedPrivacyPolicy() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *User) GetUsernameDisplay() string {
+func (x *User) GetDisplayName() string {
 	if x != nil {
-		return x.UsernameDisplay
+		return x.DisplayName
 	}
 	return ""
 }
@@ -4317,7 +4319,7 @@ var File_primandproper_platform_identity_v1_identity_proto protoreflect.FileDesc
 
 const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\n" +
-	"1primandproper/platform/identity/v1/identity.proto\x12\"primandproper.platform.identity.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\"\xc5\b\n" +
+	"1primandproper/platform/identity/v1/identity.proto\x12\"primandproper.platform.identity.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a3primandproper/platform/filtering/v1/filtering.proto\"\xbd\b\n" +
 	"\x04User\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12#\n" +
@@ -4339,8 +4341,8 @@ const file_primandproper_platform_identity_v1_identity_proto_rawDesc = "" +
 	"\x18password_last_changed_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\x15passwordLastChangedAt\x12\\\n" +
 	"\x1dtwo_factor_secret_verified_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\x19twoFactorSecretVerifiedAt\x12^\n" +
 	"\x1elast_accepted_terms_of_service\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\x1alastAcceptedTermsOfService\x12[\n" +
-	"\x1clast_accepted_privacy_policy\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\x19lastAcceptedPrivacyPolicy\x12)\n" +
-	"\x10username_display\x18\x13 \x01(\tR\x0fusernameDisplayJ\x04\b\x12\x10\x13R\x05scope\"\xbe\x01\n" +
+	"\x1clast_accepted_privacy_policy\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\x19lastAcceptedPrivacyPolicy\x12!\n" +
+	"\fdisplay_name\x18\x13 \x01(\tR\vdisplayNameJ\x04\b\x12\x10\x13R\x05scope\"\xbe\x01\n" +
 	"\x0eBillingAddress\x12\x14\n" +
 	"\x05line1\x18\x01 \x01(\tR\x05line1\x12\x14\n" +
 	"\x05line2\x18\x02 \x01(\tR\x05line2\x12\x12\n" +

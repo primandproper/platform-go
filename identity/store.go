@@ -172,9 +172,9 @@ type Registrar interface {
 	//
 	// Both handles are folded to lower case before they are checked and before
 	// they are written, so "Ada" and "ada" are one registration on every
-	// dialect. The spelling submitted is kept: a registration naming no
-	// User.UsernameDisplay adopts the one its Username carried, which is what
-	// the row comes back with. See "Handles are folded" in the package
+	// dialect. The spelling submitted is not lost: a registration naming no
+	// User.DisplayName adopts the one its Username carried, which is what the
+	// row comes back with. See "Handles are folded" in the package
 	// documentation.
 	//
 	// The user handed back is the row, read on the caller's transaction after
@@ -597,11 +597,10 @@ type ProfileWriter interface {
 	// scope returns ErrUsernameTaken or ErrEmailAddressTaken. Both are folded
 	// first, as they are at registration, so re-casing a handle is not a change
 	// to it — not a collision with the row's own value, and not a move that
-	// clears the verification below. Re-casing the username does move
-	// User.UsernameDisplay, which is what re-casing a handle is for; a write
-	// carrying a display spelling of some *other* handle is
-	// ErrUsernameDisplayMismatch, because the two are one handle and a caller
-	// who changed one field of a value they read has left the other behind.
+	// clears the verification below. Re-casing the username does not move
+	// User.DisplayName: that name is the person's own rather than a spelling of
+	// the handle, and this write assigns it from the field of the same name,
+	// bounded by MaxDisplayNameLength and by nothing else.
 	// Changing the email address to a different one clears its verification:
 	// the new address has not been proven. The
 	// outstanding verification token goes with it, in the same statement — the

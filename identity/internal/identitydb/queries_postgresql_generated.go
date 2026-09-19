@@ -153,7 +153,7 @@ INSERT INTO {{prefix}}identity_users (
 	id,
 	scope,
 	username,
-	username_display,
+	display_name,
 	email_address,
 	first_name,
 	last_name,
@@ -264,7 +264,7 @@ const getArchivedUserPostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
-	{{prefix}}identity_users.username_display,
+	{{prefix}}identity_users.display_name,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -363,7 +363,7 @@ const getUserPostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
-	{{prefix}}identity_users.username_display,
+	{{prefix}}identity_users.display_name,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -390,7 +390,7 @@ const getUserByEmailAddressPostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
-	{{prefix}}identity_users.username_display,
+	{{prefix}}identity_users.display_name,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -417,7 +417,7 @@ const getUserByEmailVerificationTokenDigestPostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
-	{{prefix}}identity_users.username_display,
+	{{prefix}}identity_users.display_name,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -444,7 +444,7 @@ const getUserByUsernamePostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
-	{{prefix}}identity_users.username_display,
+	{{prefix}}identity_users.display_name,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -485,7 +485,7 @@ const getUserIncludingArchivedPostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
-	{{prefix}}identity_users.username_display,
+	{{prefix}}identity_users.display_name,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -543,7 +543,7 @@ const listAccountMembersPostgreSQL = `SELECT
 	{{prefix}}identity_users.id AS user_id,
 	{{prefix}}identity_users.scope AS user_scope,
 	{{prefix}}identity_users.username AS user_username,
-	{{prefix}}identity_users.username_display AS user_username_display,
+	{{prefix}}identity_users.display_name AS user_display_name,
 	{{prefix}}identity_users.email_address AS user_email_address,
 	{{prefix}}identity_users.first_name AS user_first_name,
 	{{prefix}}identity_users.last_name AS user_last_name,
@@ -621,7 +621,7 @@ const listAccountMembersDescendingPostgreSQL = `SELECT
 	{{prefix}}identity_users.id AS user_id,
 	{{prefix}}identity_users.scope AS user_scope,
 	{{prefix}}identity_users.username AS user_username,
-	{{prefix}}identity_users.username_display AS user_username_display,
+	{{prefix}}identity_users.display_name AS user_display_name,
 	{{prefix}}identity_users.email_address AS user_email_address,
 	{{prefix}}identity_users.first_name AS user_first_name,
 	{{prefix}}identity_users.last_name AS user_last_name,
@@ -1351,7 +1351,7 @@ const listUsersPostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
-	{{prefix}}identity_users.username_display,
+	{{prefix}}identity_users.display_name,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -1412,7 +1412,7 @@ const listUsersByIDsPostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
-	{{prefix}}identity_users.username_display,
+	{{prefix}}identity_users.display_name,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -1439,7 +1439,7 @@ const listUsersDescendingPostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
-	{{prefix}}identity_users.username_display,
+	{{prefix}}identity_users.display_name,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -1555,7 +1555,7 @@ const searchUsersByUsernamePostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
-	{{prefix}}identity_users.username_display,
+	{{prefix}}identity_users.display_name,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -1585,7 +1585,7 @@ const searchUsersByUsernameDescendingPostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
 	{{prefix}}identity_users.username,
-	{{prefix}}identity_users.username_display,
+	{{prefix}}identity_users.display_name,
 	{{prefix}}identity_users.email_address,
 	{{prefix}}identity_users.first_name,
 	{{prefix}}identity_users.last_name,
@@ -1673,7 +1673,7 @@ WHERE archived_at IS NULL
 
 const updateUserPostgreSQL = `UPDATE {{prefix}}identity_users SET
 	username = $1,
-	username_display = $2,
+	display_name = $2,
 	email_address = $3,
 	first_name = $4,
 	last_name = $5,
@@ -2089,7 +2089,7 @@ func (q *postgresqlQueries) CreateUser(ctx context.Context, db DBTX, arg CreateU
 		arg.ID,
 		arg.Scope,
 		arg.Username,
-		arg.UsernameDisplay,
+		arg.DisplayName,
 		arg.EmailAddress,
 		arg.FirstName,
 		arg.LastName,
@@ -2265,7 +2265,7 @@ func (q *postgresqlQueries) GetArchivedUser(ctx context.Context, db DBTX, arg Ge
 		&i.ID,
 		&i.Scope,
 		&i.Username,
-		&i.UsernameDisplay,
+		&i.DisplayName,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2421,7 +2421,7 @@ func (q *postgresqlQueries) GetUser(ctx context.Context, db DBTX, arg GetUserPar
 		&i.ID,
 		&i.Scope,
 		&i.Username,
-		&i.UsernameDisplay,
+		&i.DisplayName,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2457,7 +2457,7 @@ func (q *postgresqlQueries) GetUserByEmailAddress(ctx context.Context, db DBTX, 
 		&i.ID,
 		&i.Scope,
 		&i.Username,
-		&i.UsernameDisplay,
+		&i.DisplayName,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2493,7 +2493,7 @@ func (q *postgresqlQueries) GetUserByEmailVerificationTokenDigest(ctx context.Co
 		&i.ID,
 		&i.Scope,
 		&i.Username,
-		&i.UsernameDisplay,
+		&i.DisplayName,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2529,7 +2529,7 @@ func (q *postgresqlQueries) GetUserByUsername(ctx context.Context, db DBTX, arg 
 		&i.ID,
 		&i.Scope,
 		&i.Username,
-		&i.UsernameDisplay,
+		&i.DisplayName,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2599,7 +2599,7 @@ func (q *postgresqlQueries) GetUserIncludingArchived(ctx context.Context, db DBT
 		&i.ID,
 		&i.Scope,
 		&i.Username,
-		&i.UsernameDisplay,
+		&i.DisplayName,
 		&i.EmailAddress,
 		&i.FirstName,
 		&i.LastName,
@@ -2688,7 +2688,7 @@ func (q *postgresqlQueries) ListAccountMembers(ctx context.Context, db DBTX, arg
 			&i.UserID,
 			&i.UserScope,
 			&i.UserUsername,
-			&i.UserUsernameDisplay,
+			&i.UserDisplayName,
 			&i.UserEmailAddress,
 			&i.UserFirstName,
 			&i.UserLastName,
@@ -2758,7 +2758,7 @@ func (q *postgresqlQueries) ListAccountMembersDescending(ctx context.Context, db
 			&i.UserID,
 			&i.UserScope,
 			&i.UserUsername,
-			&i.UserUsernameDisplay,
+			&i.UserDisplayName,
 			&i.UserEmailAddress,
 			&i.UserFirstName,
 			&i.UserLastName,
@@ -3575,7 +3575,7 @@ func (q *postgresqlQueries) ListUsers(ctx context.Context, db DBTX, arg ListUser
 			&i.ID,
 			&i.Scope,
 			&i.Username,
-			&i.UsernameDisplay,
+			&i.DisplayName,
 			&i.EmailAddress,
 			&i.FirstName,
 			&i.LastName,
@@ -3630,7 +3630,7 @@ func (q *postgresqlQueries) ListUsersByIDs(ctx context.Context, db DBTX, arg Lis
 			&i.ID,
 			&i.Scope,
 			&i.Username,
-			&i.UsernameDisplay,
+			&i.DisplayName,
 			&i.EmailAddress,
 			&i.FirstName,
 			&i.LastName,
@@ -3689,7 +3689,7 @@ func (q *postgresqlQueries) ListUsersDescending(ctx context.Context, db DBTX, ar
 			&i.ID,
 			&i.Scope,
 			&i.Username,
-			&i.UsernameDisplay,
+			&i.DisplayName,
 			&i.EmailAddress,
 			&i.FirstName,
 			&i.LastName,
@@ -3848,7 +3848,7 @@ func (q *postgresqlQueries) SearchUsersByUsername(ctx context.Context, db DBTX, 
 			&i.ID,
 			&i.Scope,
 			&i.Username,
-			&i.UsernameDisplay,
+			&i.DisplayName,
 			&i.EmailAddress,
 			&i.FirstName,
 			&i.LastName,
@@ -3903,7 +3903,7 @@ func (q *postgresqlQueries) SearchUsersByUsernameDescending(ctx context.Context,
 			&i.ID,
 			&i.Scope,
 			&i.Username,
-			&i.UsernameDisplay,
+			&i.DisplayName,
 			&i.EmailAddress,
 			&i.FirstName,
 			&i.LastName,
@@ -4048,7 +4048,7 @@ func (q *postgresqlQueries) UpdateAccount(ctx context.Context, db DBTX, arg Upda
 func (q *postgresqlQueries) UpdateUser(ctx context.Context, db DBTX, arg UpdateUserParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.updateUser,
 		arg.Username,
-		arg.UsernameDisplay,
+		arg.DisplayName,
 		arg.EmailAddress,
 		arg.FirstName,
 		arg.LastName,
@@ -4219,7 +4219,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4314,7 +4314,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4407,7 +4407,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4434,7 +4434,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4461,7 +4461,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4488,7 +4488,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4531,7 +4531,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -4585,7 +4585,7 @@ var (
 		UserID                                  string
 		UserScope                               tenancy.Scope
 		UserUsername                            string
-		UserUsernameDisplay                     string
+		UserDisplayName                         string
 		UserEmailAddress                        string
 		UserFirstName                           string
 		UserLastName                            string
@@ -4629,7 +4629,7 @@ var (
 		UserID                                  string
 		UserScope                               tenancy.Scope
 		UserUsername                            string
-		UserUsernameDisplay                     string
+		UserDisplayName                         string
 		UserEmailAddress                        string
 		UserFirstName                           string
 		UserLastName                            string
@@ -5030,7 +5030,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -5059,7 +5059,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -5092,7 +5092,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -5162,7 +5162,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -5191,7 +5191,7 @@ var (
 		ID                                  string
 		Scope                               tenancy.Scope
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string
@@ -5258,7 +5258,7 @@ var (
 	}(UpdateAccountParams{})
 	_ = struct {
 		Username                            string
-		UsernameDisplay                     string
+		DisplayName                         string
 		EmailAddress                        string
 		FirstName                           string
 		LastName                            string

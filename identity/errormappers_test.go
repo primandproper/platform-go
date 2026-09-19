@@ -32,7 +32,7 @@ var mappedSentinels = []error{
 	ErrNoDefaultAccount,
 	ErrInvitationExpired,
 	ErrScopeMismatch,
-	ErrUsernameDisplayMismatch,
+	ErrDisplayNameTooLong,
 	ErrSignInNotAdmitted,
 }
 
