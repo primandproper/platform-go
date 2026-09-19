@@ -214,8 +214,8 @@ means.
 
 Concretely: the handler that creates a payment intent through capitalism and then
 writes the [Purchase] it will settle into; the webhook endpoint that verifies a
-signature through webhooks/inbound and maps the payload through a capitalism
-adapter; the function billing/plans takes, saying which statuses leave an account
+signature through [github.com/primandproper/primitives-go/v2/webhooks/inbound]
+and maps the payload through a capitalism adapter; the function billing/plans takes, saying which statuses leave an account
 entitled; and the one billing/standing takes, saying what a status means for the
 coarse standing an application gates on — which includes a suspension no
 processor reports.

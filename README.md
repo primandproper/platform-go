@@ -81,7 +81,7 @@ reasons behind the three exceptions.
 | `comments`     | Threaded comments on consumer-declared targets                                                   | postgres, mysql, sqlite |
 | `issuereports` | User-submitted issue reports with a triage lifecycle                                             | postgres, mysql, sqlite |
 | `waitlists`    | Pre-launch waitlists: signup lifecycle, and an unsubscribe that outlives the address             | postgres, mysql, sqlite |
-| `links`        | Signed, expiring, single-use action links                                                        | postgres, mysql, sqlite |
+| `links`        | Opaque, expiring, single-use action links                                                        | postgres, mysql, sqlite |
 
 ### Records, privacy & retention
 | Package         | Purpose                                     | Implementations                  |

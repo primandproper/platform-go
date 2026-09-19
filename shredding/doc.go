@@ -72,12 +72,13 @@ The keys, and the erasure path that destroys them:
 	// ...
 	keys, err := shredding.NewKeys(store, wrapper)
 	// ...
-	worker, err := dataprivacy.NewWorker(ctx, &dataprivacy.WorkerConfig{}, requestStore, registry,
-	    dataprivacy.WithWorkerShredder(keys),
+	fulfiller, err := dataprivacy.NewFulfiller(ctx, &dataprivacy.FulfillerConfig{},
+	    requestClient, requestStore, registry,
+	    dataprivacy.WithFulfillerShredder(keys),
 	)
 
-keysClient is deliberately spelled separately from the client the erasers delete
-rows through. The shred is not a substitute for those erasers: they delete rows,
+keysClient is deliberately spelled separately from requestClient, the client the
+erasers delete rows through. The shred is not a substitute for those erasers: they delete rows,
 and this makes whatever was encrypted per subject unreadable everywhere,
 including where deletion cannot reach.
 

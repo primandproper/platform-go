@@ -35,6 +35,20 @@ const (
 	expiresAtKey = "links.expires_at"
 	stateKey     = "links.state"
 	outcomeKey   = "outcome"
+	operationKey = "operation"
+)
+
+// Operations reported on links_latency_ms. Every public method records under
+// exactly one of these, which is what makes the histogram readable: a mint is
+// a hash and an insert, a redeem is a read and a guarded write, and a
+// subject-wide revocation is an unbounded UPDATE. Aggregated together they
+// describe nothing that happens.
+const (
+	operationMint             = "mint"
+	operationInspect          = "inspect"
+	operationRedeem           = "redeem"
+	operationRevoke           = "revoke"
+	operationRevokeForSubject = "revoke_for_subject"
 )
 
 // Outcomes reported on links_redemptions. Every call to Redeem that resolves
@@ -52,8 +66,8 @@ const (
 // Minter mints, inspects, redeems, and revokes action links.
 //
 // It is a concrete type rather than an interface: there is one implementation,
-// and the seams worth swapping — the store, the locker, the hasher, the
-// randomness — are already interfaces with their own mocks.
+// and the seams worth swapping — the store, the hasher, the randomness — are
+// already interfaces with their own mocks.
 type Minter struct {
 	store     Store
 	hasher    hashing.Hasher
@@ -197,7 +211,7 @@ func (m *Minter) Mint(
 		subjectKey: string(subject),
 	}))
 	defer op.End()
-	defer m.observeLatency(ctx, m.clock.Now())
+	defer m.observeLatency(ctx, operationMint, m.clock.Now())
 
 	policy, ok := m.actions[action]
 	if !ok {
@@ -273,7 +287,7 @@ func (m *Minter) Mint(
 func (m *Minter) Inspect(ctx context.Context, token Token) (*Claims, error) {
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()
-	defer m.observeLatency(ctx, m.clock.Now())
+	defer m.observeLatency(ctx, operationInspect, m.clock.Now())
 
 	id, err := m.identify(token)
 	if err != nil {
@@ -300,8 +314,11 @@ func (m *Minter) Inspect(ctx context.Context, token Token) (*Claims, error) {
 // Redeem consumes a token and returns what it was bound to.
 //
 // A second call with the same token reports ErrLinkAlreadyRedeemed, and so does
-// a concurrent one: the read and the consuming write happen under a lock on the
-// link, so two simultaneous redemptions of one token cannot both see it active.
+// a concurrent one — but not because anything here serializes the two. This
+// method reads and then asks the store to consume, and single use is the
+// store's guarantee across that pair: Store.Resolve is handed the state to move
+// the record to and reports whether this caller is the one who moved it. See
+// the package documentation's "Single use, and what enforces it".
 //
 // It fails closed on the store, without a policy knob. Idempotency offers one
 // because a duplicate charge can be cheaper than an outage; nothing comparable
@@ -311,7 +328,7 @@ func (m *Minter) Inspect(ctx context.Context, token Token) (*Claims, error) {
 func (m *Minter) Redeem(ctx context.Context, token Token) (*Claims, error) {
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()
-	defer m.observeLatency(ctx, m.clock.Now())
+	defer m.observeLatency(ctx, operationRedeem, m.clock.Now())
 
 	id, err := m.identify(token)
 	if err != nil {
@@ -360,7 +377,7 @@ func (m *Minter) Redeem(ctx context.Context, token Token) (*Claims, error) {
 func (m *Minter) Revoke(ctx context.Context, id ID) error {
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()
-	defer m.observeLatency(ctx, m.clock.Now())
+	defer m.observeLatency(ctx, operationRevoke, m.clock.Now())
 
 	if id == "" {
 		return op.Error(ErrInvalidID, "checking action link ID")
@@ -410,7 +427,7 @@ func (m *Minter) Revoke(ctx context.Context, id ID) error {
 func (m *Minter) RevokeForSubject(ctx context.Context, subject Subject) (int64, error) {
 	ctx, op := m.o11y.Begin(ctx)
 	defer op.End()
-	defer m.observeLatency(ctx, m.clock.Now())
+	defer m.observeLatency(ctx, operationRevokeForSubject, m.clock.Now())
 
 	if subject == "" {
 		return 0, op.Error(ErrEmptySubject, "checking action link subject")
@@ -575,8 +592,8 @@ func (m *Minter) load(
 //
 // The length bound is the only shape this checks. Everything else is handled by
 // the digest: whatever bytes arrive, the store is addressed by a hex digest of
-// them, so a hostile token never reaches the store, the locker, or a log line
-// as itself.
+// them, so a hostile token never reaches the store, a span attribute, or a log
+// line as itself.
 func (m *Minter) identify(token Token) (ID, error) {
 	if token == "" {
 		return "", platformerrors.Wrap(ErrInvalidToken, "empty token")
@@ -621,6 +638,12 @@ func (m *Minter) countRedemption(ctx context.Context, action Action, outcome str
 
 // observeLatency records how long an operation took. It is deferred with the
 // start time evaluated at the call, so each public method is one line.
-func (m *Minter) observeLatency(ctx context.Context, start time.Time) {
-	m.latencyHist.Record(ctx, float64(m.clock.Since(start).Milliseconds()))
+//
+// The operation is a label because the set above is closed and declared here;
+// the subject and the action are not, for the reason countRedemption gives.
+func (m *Minter) observeLatency(ctx context.Context, operation string, start time.Time) {
+	m.latencyHist.Record(ctx,
+		float64(m.clock.Since(start).Milliseconds()),
+		metric.WithAttributes(attribute.String(operationKey, operation)),
+	)
 }

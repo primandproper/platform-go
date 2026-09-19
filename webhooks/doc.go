@@ -2,8 +2,10 @@
 Package webhooks delivers outbound webhooks: signed, retried, ordered, and
 replayable.
 
-Its mirror is webhooks/inbound, which receives them: verify the provider's
-signature, publish, ack.
+Its mirror is [github.com/primandproper/primitives-go/v2/webhooks/inbound],
+which receives them: verify the provider's signature, publish, ack. It is a
+primitive and lives in that module, because the shape of an arriving callback
+is decided by whoever sends it.
 
 Everything here is a guarantee rather than an opinion. What an event means, when
 it fires, and what its payload contains are the application's; that a subscriber
@@ -471,9 +473,9 @@ from another process is describing an RPC of their own, with
 What is still an application's own is the policy — who is calling, and what each
 method requires — and webhooks/grpc's own documentation is where the surface's
 rulings are recorded. Receiving somebody else's callbacks is the other case
-entirely, and webhooks/inbound does ship an http.Handler for it — the shape of a
-Stripe or GitHub payload is Stripe's or GitHub's, and no application has a say in
-it. The module README's "Stores and Transports" section is where that
+entirely, and [github.com/primandproper/primitives-go/v2/webhooks/inbound] does
+ship an http.Handler for it — the shape of a Stripe or GitHub payload is
+Stripe's or GitHub's, and no application has a say in it. The module README's "Stores and Transports" section is where that
 distinction is drawn for the module as a whole.
 */
 package webhooks

@@ -226,12 +226,29 @@ at that moment to stop working.
 	links_stale_records  records ignored for carrying another version; expected
 	                     to spike once after a shape change and then return to
 	                     zero.
-	links_latency_ms     per operation.
+	links_latency_ms     by operation: mint, inspect, redeem, revoke,
+	                     revoke_for_subject. The five are not one distribution
+	                     — a mint is a hash and an insert, a redeem is a read
+	                     and a guarded write, a subject-wide revocation is an
+	                     unbounded UPDATE — so an unlabeled p99 over them
+	                     describes nothing that happens.
 
 already_redeemed is the row to watch and the one most often misread. A steady
 low rate is people clicking twice. A rate that tracks minting is a mail scanner
 consuming links on GET, which means a handler is redeeming where it should be
 inspecting. A spike against one subject is somebody else's mailbox.
+
+On MySQL, some of that rate is neither. A redemption that loses its race is
+told which outcome it lost to by a re-read of the row, and under InnoDB's
+REPEATABLE READ that re-read returns the snapshot the transaction opened with
+— the winner's write is not in it. So a redemption beaten by a concurrent
+revocation counts as already_redeemed there, where Postgres's READ COMMITTED
+counts it as revoked. Both refuse the link, which is the part that matters;
+what is lost is the sentence, and with it a little of the revoked row's
+meaning. Sizing the effect is worth doing before alarming on either: it needs
+a revocation and a redemption of the same link inside one another's
+transactions, so on most deployments it is zero. links/database's Resolve is
+where the re-read lives and says the same thing at the code.
 
 No metric is labeled by subject. Nothing bounds that cardinality, and the
 question it would answer is the audit log's.
