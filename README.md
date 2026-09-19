@@ -275,7 +275,7 @@ So the line moves, one domain at a time, and `identity` is the first across it.
 The paragraphs that follow are in the order they landed, and each names what
 its own crossing decided rather than its place in the queue: a domain that
 crosses next is a paragraph appended, not ten ordinals re-counted.
-`identity/grpc` serves the directory: twenty-eight RPCs, the `.proto` they are
+`identity/grpc` serves the directory: twenty-nine RPCs, the `.proto` they are
 described by, a typed client, and the permissions each one wants. What it still
 does not ship is the policy — who is calling is an interface the consumer's own
 authentication interceptor satisfies, and what each method requires is a

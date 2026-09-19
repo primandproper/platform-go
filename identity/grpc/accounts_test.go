@@ -162,6 +162,74 @@ func TestTransferAccountOwnershipRefusesAStrangerToTheDirectory(T *testing.T) {
 	test.True(T, errors.Is(err, identity.ErrUserNotFound))
 }
 
+// TestArchiveAccountClosesItAndItsRoster is the wire half of the closure: the
+// account goes, and so does every membership in it — which is what makes
+// "delete this household" one call rather than a client looping over a roster.
+func TestArchiveAccountClosesItAndItsRoster(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T)
+
+	owner := h.seedAccount(T, testScope, "owner")
+	member := h.seedAccount(T, testScope, "member")
+	h.seedMembership(T, testScope, member.User.ID, owner.Account.ID, "member")
+
+	ctx := h.as(&testPrincipal{userID: owner.User.ID, scope: testScope})
+
+	response, err := h.client.ArchiveAccount(ctx,
+		&identitypb.ArchiveAccountRequest{AccountId: owner.Account.ID})
+	must.NoError(T, err)
+	test.EqOp(T, owner.Account.ID, response.GetAccount().GetId())
+	test.NotNil(T, response.GetAccount().GetArchivedAt(),
+		test.Sprint("an archived account came back with no archival stamp"))
+
+	// Gone from the directory: the owner can no longer read it, and the member
+	// no longer belongs to it. The refusal is PermissionDenied rather than
+	// NotFound because the row check runs first and an archived account is one
+	// nobody holds a live membership in.
+	_, err = h.client.GetAccount(ctx, &identitypb.GetAccountRequest{AccountId: owner.Account.ID})
+	must.Error(T, err)
+	test.EqOp(T, codes.PermissionDenied, status.Code(err))
+
+	memberships, err := h.client.ListMembershipsForUser(
+		h.as(&testPrincipal{userID: member.User.ID, scope: testScope}),
+		&identitypb.ListMembershipsForUserRequest{UserId: member.User.ID})
+	must.NoError(T, err)
+
+	for _, m := range memberships.GetResults() {
+		test.NotEqOp(T, owner.Account.ID, m.GetBelongsToAccount(),
+			test.Sprint("a membership in an archived account survived the closure"))
+	}
+}
+
+// TestArchiveAccountRefusesAnAccountTheCallerIsNotIn is the half the permission
+// cannot carry. identity.accounts.archive says this caller may close an account;
+// without the row check behind it, a holder could close any account in the
+// directory whose id they knew.
+func TestArchiveAccountRefusesAnAccountTheCallerIsNotIn(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T)
+
+	mine := h.seedAccount(T, testScope, "mine")
+	theirs := h.seedAccount(T, testScope, "theirs")
+
+	ctx := h.as(&testPrincipal{userID: mine.User.ID, scope: testScope})
+
+	_, err := h.client.ArchiveAccount(ctx,
+		&identitypb.ArchiveAccountRequest{AccountId: theirs.Account.ID})
+	must.Error(T, err)
+	test.EqOp(T, codes.PermissionDenied, status.Code(err))
+	test.True(T, errors.Is(err, callers.ErrTargetNotPermitted))
+
+	// And it is still there, which is the point of checking before the write.
+	found, err := h.client.GetAccount(
+		h.as(&testPrincipal{userID: theirs.User.ID, scope: testScope}),
+		&identitypb.GetAccountRequest{AccountId: theirs.Account.ID})
+	must.NoError(T, err)
+	test.Nil(T, found.GetAccount().GetArchivedAt())
+}
+
 // TestUpdateAccountRefusesAnAbsentInput is the branch that separates "the client
 // sent an empty form" from "the client sent no form": the first clears nothing,
 // because every field is optional, and the second is a request that named an

@@ -142,6 +142,33 @@ type Hooks interface {
 		endedMemberships []*Membership,
 	) error
 
+	// AfterArchiveAccount is called with the account as the archival left it
+	// and every membership that archival ended.
+	//
+	// The account is the row Store.ArchiveAccount answered with, read through
+	// the one statement that can see an archived row, so what a consumer records
+	// is the account as the write left it — archived_at included — rather than
+	// as it stood a statement earlier.
+	//
+	// The memberships are pre-state and could not be otherwise, for the reason
+	// AfterArchiveUser's are: they are archived with the account, and a consumer
+	// striking the account from the rosters, switchers and per-account
+	// projections it keeps of its own needs the members it just took offline.
+	// This is the last call that can name them.
+	//
+	// They are the whole roster rather than a page of it, which is the one thing
+	// worth knowing before a consumer writes a row per member here: an account
+	// with ten thousand members hands this hook ten thousand memberships, inside
+	// the transaction that archived it. A consumer for whom that is too much
+	// writes one outbox row naming the account and fans out after the commit.
+	AfterArchiveAccount(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		account *Account,
+		endedMemberships []*Membership,
+	) error
+
 	// AfterUpdateUserAccountStatus is called with the user under their new
 	// status and the status they held before it.
 	//
@@ -418,7 +445,7 @@ var _ Hooks = NoopHooks{}
 //		return h.audit.Record(ctx, tx, scope, "user.registered", r.User.ID)
 //	}
 //
-// Embedding rather than implementing all twenty-three is what keeps a method added
+// Embedding rather than implementing all twenty-four is what keeps a method added
 // to Hooks later from breaking every consumer — a new operation arrives as a
 // no-op they can then choose to override.
 type NoopHooks struct{}
@@ -472,6 +499,13 @@ func (NoopHooks) AfterSetDefaultAccount(
 // AfterArchiveUser does nothing.
 func (NoopHooks) AfterArchiveUser(
 	context.Context, database.Tx, tenancy.Scope, *User, []*Membership,
+) error {
+	return nil
+}
+
+// AfterArchiveAccount does nothing.
+func (NoopHooks) AfterArchiveAccount(
+	context.Context, database.Tx, tenancy.Scope, *Account, []*Membership,
 ) error {
 	return nil
 }

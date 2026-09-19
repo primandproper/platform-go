@@ -81,7 +81,7 @@ particular.
 
 # The shape
 
-Twenty-eight RPCs. Fifteen writes, each exactly one call into identity.Service,
+Twenty-nine RPCs. Sixteen writes, each exactly one call into identity.Service,
 which is one transaction with the consumer's hooks inside it. Thirteen reads on
 identity.Store, on the client's reader — twelve of them one call, and the one
 that lists what the caller has been sent reading the caller's row first for the

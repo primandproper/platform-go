@@ -18,7 +18,7 @@ dialects, and a mock. Over that it owns [Service], the operations that are more
 than one write — a registration, an invitation answered, an ownership
 transferred — each in one transaction with the consumer's own writes joining it
 through [Hooks]. Over that again, [github.com/primandproper/platform-go/v14/identity/grpc]
-serves it: twenty-eight RPCs, the .proto they are described by, a typed client,
+serves it: twenty-nine RPCs, the .proto they are described by, a typed client,
 and the permissions each one wants. A consumer keeps its policy, its
 authentication, and whatever columns are genuinely its own; it does not keep a
 users table, it no longer keeps the transaction-shaped code around one, and it
@@ -248,12 +248,13 @@ rather than off the struct that was passed to it.
 A user without an account, or an account without an owner, is the failure mode
 every application discovers in production rather than in a test, and the shape
 above is what rules it out — which is why [Service] ships it rather than this
-documentation showing it. [Service.Register] is that block, and its twenty-two
+documentation showing it. [Service.Register] is that block, and its twenty-three
 siblings are the rest of what the block-writing turned out to be: the same
 registration answering an invitation, where the account joined is the inviter's
 and a dead invitation takes the user down with it, the rest of the invitation
-lifecycle, an ownership transfer, a default-account switch, an archival with
-its membership fan-out, the two administrative status changes,
+lifecycle, an ownership transfer, a default-account switch, the two archivals
+and their membership fan-outs — the user's, and the account's, which is how an
+account is closed — the two administrative status changes,
 the profile and account saves, an agreement, the two roster writes, and the
 seven credential writes. Measured in the consumer this package was extracted from, the layer
 those replace is a little over two thousand lines.
