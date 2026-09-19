@@ -75,7 +75,10 @@ its transaction and pushes after it commits, which is the order that does not
 announce an order that was refused.
 
 It also holds no executor. The read takes the caller's, like every other read in
-this module, so a fan-out run inside the transaction that registered a handset
-moments earlier sees it.
+this module — and unlike every other read in this module, what follows the read
+inside the same call is a sequence of provider round trips. So the executor to
+hand it is Client.Reader(), and a transaction only where the device set is small
+and was written by that transaction. The general shape is the one above:
+resolve, commit, then push. [Fanout.Push] says it on itself.
 */
 package push

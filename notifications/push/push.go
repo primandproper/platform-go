@@ -188,12 +188,28 @@ func NewFanout(
 // scope, sends the message to each, and prunes the tokens the provider calls
 // permanently dead.
 //
-// The read runs on the executor it is handed, so a fan-out passed the
-// transaction a registration was written in reaches the handset registered
-// moments earlier in the same request; a fan-out with nothing to join passes
-// Client.Reader(). An empty set of principals resolves to no devices without a
-// query — see [notifications.Registry.ListDevicesByPrincipals] — and answers
-// with an empty [Result] and no error.
+// Pass Client.Reader(). The executor is the module's read shape and a
+// transaction satisfies it, so a fan-out handed one does reach a handset
+// registered moments earlier in the same request — but the read is the first
+// thing this call does and every provider round trip happens after it, inside
+// the same scope. A transaction handed to a fan-out over thirty handsets is a
+// transaction held open across thirty sequential calls to somebody else's
+// network, and the sends are the part with no bound on how long they take.
+// That is the long hold this module's other machinery is written to avoid,
+// arrived at through an affordance that reads like a convenience.
+//
+// What that convenience is for is narrow and worth naming, because the wider
+// type is deliberate rather than accidental: a caller that has just written a
+// registration and wants to push to it, with a device set it knows is small.
+// Anything else resolves inside its transaction through
+// [notifications.Registry.ListDevicesByPrincipals], commits, and pushes after —
+// which is the order the package documentation already gives for inbox rows,
+// for the same reason. It does not announce something that was refused, and it
+// does not hold a table open while an announcement is delivered.
+//
+// An empty set of principals resolves to no devices without a query — see
+// [notifications.Registry.ListDevicesByPrincipals] — and answers with an empty
+// [Result] and no error.
 //
 // A resolve that fails is the one failure that stops everything, and it answers
 // with a nil Result: nothing was sent, and there is nothing to describe. After
