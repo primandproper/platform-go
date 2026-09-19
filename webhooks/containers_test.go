@@ -55,39 +55,6 @@ func TestSQLStore_RealServers(T *testing.T) {
 	})
 }
 
-// TestSchemaUpgrade_RealServers runs the schema-upgrade suite against real
-// servers.
-//
-// It matters more here than most of this file, because the upgrade is the one
-// piece of DDL in this package that is not CREATE: ADD COLUMN's spelling, what a
-// dialect will accept as a default on it, and whether a cross-table backfill can
-// be written as one UPDATE all differ between the three, and SQLite agrees with
-// neither of the others on any of them.
-func TestSchemaUpgrade_RealServers(T *testing.T) {
-	T.Parallel()
-
-	T.Run("postgres", func(t *testing.T) {
-		t.Parallel()
-
-		pgtest.Run(t, func(_ context.Context, pg *pgtest.Instance) {
-			client, err := postgres.NewDatabaseClient(t.Context(),
-				&testClientConfig{connectionString: pg.ConnectionString})
-			must.NoError(t, err)
-			t.Cleanup(func() { _ = client.Close() })
-
-			runUpgradeSuite(t, &storeEnv{client: client, dialect: dialect.Postgres})
-		})
-	})
-
-	T.Run("mysql", func(t *testing.T) {
-		t.Parallel()
-
-		runWithMySQL(t, func(_ context.Context, client database.Client) {
-			runUpgradeSuite(t, &storeEnv{client: client, dialect: dialect.MySQL})
-		})
-	})
-}
-
 // TestMigrations_RealServers proves the shipped DDL is accepted verbatim by
 // each server, independent of whether the store then exercises every column.
 func TestMigrations_RealServers(T *testing.T) {

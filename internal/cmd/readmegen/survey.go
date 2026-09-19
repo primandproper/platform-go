@@ -286,9 +286,10 @@ func cellSafe(pkg, directive, text string) error {
 
 // shippedDialects is the dialects a migrations directory embeds a schema for.
 //
-// Names outside the three are ignored rather than reported: webhooks ships
-// upgrade_<dialect>.sql beside its schema, which is a migration for an existing
-// table rather than a dialect the package supports.
+// Names outside the three are ignored rather than reported. No package ships
+// one today, and the matrix this feeds is a claim about which dialects a
+// package supports — a .sql file that is not one of the three is not an answer
+// to that question, whatever else it may be.
 func shippedDialects(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
