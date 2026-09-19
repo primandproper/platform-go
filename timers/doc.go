@@ -20,6 +20,38 @@ So the schedule is a row before Schedule returns. A notification is only ever
 the news that a row exists; losing one costs latency and nothing else, which is
 what makes it safe to build on at all.
 
+# Whose transaction that row is in
+
+Not the caller's. Schedule writes on this set's own handle, and there is no
+variant taking a database.Tx — so the trial and the timer that expires it are
+two commits, and either can happen without the other.
+
+Both directions are real. A schedule written inside client.WithTransaction
+outlives that transaction's rollback, leaving a timer that fires for a subject
+never created. A schedule that fails after the subject's transaction committed
+leaves a trial nothing will ever expire, and that is the expensive one: a firing
+that never comes raises nothing, holds nobody, and looks exactly like a quiet
+week. Stats.OldestDueLateness cannot see it either — a timer that was never
+scheduled is not late.
+
+The reason is not workqueue's. There a shared batch makes a transactional
+enqueue impossible; here the statement would bind a caller's executor perfectly
+well, and what stops it is that Schedule retries. It runs under pgretry, which
+re-runs the write on the two class 40 conditions Postgres resolves by asking for
+the statement to be run again — and inside somebody else's transaction there is
+nothing to re-run, because the failure has already aborted it and only its owner
+can open another. A transactional Schedule would therefore hand a deadlock back
+as an error, on a table whose ordered locking exists precisely because
+concurrent writers meet there. That is a choice, and the paragraph above is what
+it costs.
+
+Where a schedule must not be lost, put the fact in the transaction that created
+the subject and schedule from whatever consumes it — an outbox message, the way
+searchsync carries an index event, so the message lives or dies with the row and
+the consumer retries until the schedule lands. Otherwise schedule after the
+commit, and keep the handler tolerant of a key whose subject is gone; it has to
+be regardless, because Cancel and the subject's own deletion are two writes too.
+
 # The clock, and the one place a caller's clock counts
 
 A timer names an absolute instant. That is the whole distinction from a work

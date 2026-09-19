@@ -55,6 +55,33 @@ type encodedTimer struct {
 // created when a trial starts, not on every read of it — so the contention that
 // makes merging worth its complexity does not arise. If you find yourself
 // scheduling on every request, you want a work queue.
+//
+// What that statement does not join is the caller's transaction. Schedule writes
+// on this set's own handle and there is no variant taking a database.Tx. Unlike
+// a work queue's enqueue, where a batch shared between callers makes one
+// impossible, that is a choice with a reason rather than a constraint: the write
+// runs under pgretry, which re-runs it when Postgres reports one of the two
+// class 40 conditions it resolves by asking for the statement to be run again.
+// Inside somebody else's transaction there is nothing to re-run — the failure
+// has already aborted that transaction, and only its owner can open another — so
+// a transactional Schedule would hand a deadlock back as an error on a table
+// whose ordered locking exists precisely because concurrent writers meet there.
+//
+// A choice costs something, and the cost belongs in the open. A trial and the
+// timer that expires it commit separately, in both directions: a schedule
+// written inside client.WithTransaction outlives that transaction's rollback and
+// fires for a subject that was never created, and a schedule that fails after
+// the subject's transaction committed leaves a trial nothing will ever expire.
+// The second is the expensive direction, because a firing that never comes is
+// not an error anybody is holding — it is silence.
+//
+// So where the schedule must not be lost, write the fact into the transaction
+// that created the subject — an outbox message is the shape — and Schedule from
+// whatever consumes it: the message lives or dies with the row, and the consumer
+// retries until the schedule lands. Otherwise schedule after the commit, and
+// keep the handler tolerant of a key whose subject is gone, which it has to be
+// regardless: Cancel and the subject's own deletion are two writes, so a firing
+// that finds nothing to do is done rather than failed.
 func (t *Timers[K]) Schedule(ctx context.Context, scheduled ...Timer[K]) error {
 	ctx, op := t.o11y.Begin(ctx, observability.WithValue(timerCountKey, len(scheduled)))
 	defer op.End()
