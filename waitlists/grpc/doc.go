@@ -44,10 +44,33 @@ submitted or a console somebody is looking at, and roster_test.go is where a
 store method added later has to be classified rather than reflexively published.
 
 The nearest thing to a carve-out is WithdrawSignupsForSubject, which is the
-erasure path waitlists/privacy builds a dataprivacy.Eraser on. It is on the wire
-because its realistic caller is an operator honoring a request out of band, and
-it is behind a grant of its own — [PermissionEraseSignups] — because a holder
-can take a named person off every list in the deployment in one call.
+erasure path waitlists/privacy builds a dataprivacy.Eraser on. It is on the wire,
+and comments, issuereports and settings each keep their equivalent off it, so the
+reason this one crosses has to be the thing that is not true of them. It is not
+the realistic caller: an operator honoring a request out of band is the realistic
+caller of all four. It is that this erasure is re-runnable and theirs are not.
+
+Theirs is a hard delete of everything matching, and it exists to commit inside
+the transaction that removes the rest of the person. An RPC moves it into a
+transaction of its own, at a moment the caller does not choose, so what a
+half-done run leaves is a subject gone from one table and present in the others
+— and an RPC over it is a second route into the same removal, which whoever
+re-drove that run would take instead of the one the erasure walks. This one has
+no such divergence to publish. It blanks the subject reference it matched on, so
+a second call naming the same subject finds nothing the first left, restamps
+nothing and answers zero: the two routes converge on one row state, and the
+later arrival does nothing at all. waitlists' own withdrawal_test.go pins that,
+because the argument for this RPC is that property rather than a sentence about
+it.
+
+That is what makes both callers safe, and there are two. waitlists/privacy still
+reaches this method inside the erasure transaction, on the database.Tx
+dataprivacy.Eraser.Erase is handed, while a handler here opens one of its own —
+which from the store's side is the same call, since a Tx does not say who opened
+it. That is why the distinction cannot be drawn down there and is drawn here
+instead. The RPC is behind a grant of its own — [PermissionEraseSignups] —
+because a holder can take a named person off every list in the deployment in one
+call.
 
 # Two audiences, and that is the interesting half
 
