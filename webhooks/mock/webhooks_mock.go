@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/webhooks"
 
 	"github.com/primandproper/primitives-go/v2/database"
@@ -1225,6 +1226,9 @@ var _ webhooks.Dispatcher = &DispatcherMock{}
 //
 //		// make and configure a mocked webhooks.Dispatcher
 //		mockedDispatcher := &DispatcherMock{
+//			CatalogFunc: func() webhooks.Catalog {
+//				panic("mock out the Catalog method")
+//			},
 //			DispatchFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, delivery *webhooks.Delivery) error {
 //				panic("mock out the Dispatch method")
 //			},
@@ -1250,6 +1254,9 @@ var _ webhooks.Dispatcher = &DispatcherMock{}
 //
 //	}
 type DispatcherMock struct {
+	// CatalogFunc mocks the Catalog method.
+	CatalogFunc func() webhooks.Catalog
+
 	// DispatchFunc mocks the Dispatch method.
 	DispatchFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, delivery *webhooks.Delivery) error
 
@@ -1270,6 +1277,9 @@ type DispatcherMock struct {
 
 	// calls tracks calls to the methods.
 	calls struct {
+		// Catalog holds details about calls to the Catalog method.
+		Catalog []struct {
+		}
 		// Dispatch holds details about calls to the Dispatch method.
 		Dispatch []struct {
 			// Ctx is the ctx argument value.
@@ -1341,12 +1351,40 @@ type DispatcherMock struct {
 			SubscriptionID string
 		}
 	}
+	lockCatalog      sync.RWMutex
 	lockDispatch     sync.RWMutex
 	lockRegister     sync.RWMutex
 	lockReplay       sync.RWMutex
 	lockRotateSecret sync.RWMutex
 	lockSubscribe    sync.RWMutex
 	lockUnsubscribe  sync.RWMutex
+}
+
+// Catalog calls CatalogFunc.
+func (mock *DispatcherMock) Catalog() webhooks.Catalog {
+	if mock.CatalogFunc == nil {
+		panic("DispatcherMock.CatalogFunc: method is nil but Dispatcher.Catalog was just called")
+	}
+	callInfo := struct {
+	}{}
+	mock.lockCatalog.Lock()
+	mock.calls.Catalog = append(mock.calls.Catalog, callInfo)
+	mock.lockCatalog.Unlock()
+	return mock.CatalogFunc()
+}
+
+// CatalogCalls gets all the calls that were made to Catalog.
+// Check the length with:
+//
+//	len(mockedDispatcher.CatalogCalls())
+func (mock *DispatcherMock) CatalogCalls() []struct {
+} {
+	var calls []struct {
+	}
+	mock.lockCatalog.RLock()
+	calls = mock.calls.Catalog
+	mock.lockCatalog.RUnlock()
+	return calls
 }
 
 // Dispatch calls DispatchFunc.
@@ -1618,5 +1656,83 @@ func (mock *DispatcherMock) UnsubscribeCalls() []struct {
 	mock.lockUnsubscribe.RLock()
 	calls = mock.calls.Unsubscribe
 	mock.lockUnsubscribe.RUnlock()
+	return calls
+}
+
+// Ensure, that EnqueuerMock does implement webhooks.Enqueuer.
+// If this is not the case, regenerate this file with moq.
+var _ webhooks.Enqueuer = &EnqueuerMock{}
+
+// EnqueuerMock is a mock implementation of webhooks.Enqueuer.
+//
+//	func TestSomethingThatUsesEnqueuer(t *testing.T) {
+//
+//		// make and configure a mocked webhooks.Enqueuer
+//		mockedEnqueuer := &EnqueuerMock{
+//			EnqueueFunc: func(ctx context.Context, tx database.Tx, msgs ...outbox.Message) error {
+//				panic("mock out the Enqueue method")
+//			},
+//		}
+//
+//		// use mockedEnqueuer in code that requires webhooks.Enqueuer
+//		// and then make assertions.
+//
+//	}
+type EnqueuerMock struct {
+	// EnqueueFunc mocks the Enqueue method.
+	EnqueueFunc func(ctx context.Context, tx database.Tx, msgs ...outbox.Message) error
+
+	// calls tracks calls to the methods.
+	calls struct {
+		// Enqueue holds details about calls to the Enqueue method.
+		Enqueue []struct {
+			// Ctx is the ctx argument value.
+			Ctx context.Context
+			// Tx is the tx argument value.
+			Tx database.Tx
+			// Msgs is the msgs argument value.
+			Msgs []outbox.Message
+		}
+	}
+	lockEnqueue sync.RWMutex
+}
+
+// Enqueue calls EnqueueFunc.
+func (mock *EnqueuerMock) Enqueue(ctx context.Context, tx database.Tx, msgs ...outbox.Message) error {
+	if mock.EnqueueFunc == nil {
+		panic("EnqueuerMock.EnqueueFunc: method is nil but Enqueuer.Enqueue was just called")
+	}
+	callInfo := struct {
+		Ctx  context.Context
+		Tx   database.Tx
+		Msgs []outbox.Message
+	}{
+		Ctx:  ctx,
+		Tx:   tx,
+		Msgs: msgs,
+	}
+	mock.lockEnqueue.Lock()
+	mock.calls.Enqueue = append(mock.calls.Enqueue, callInfo)
+	mock.lockEnqueue.Unlock()
+	return mock.EnqueueFunc(ctx, tx, msgs...)
+}
+
+// EnqueueCalls gets all the calls that were made to Enqueue.
+// Check the length with:
+//
+//	len(mockedEnqueuer.EnqueueCalls())
+func (mock *EnqueuerMock) EnqueueCalls() []struct {
+	Ctx  context.Context
+	Tx   database.Tx
+	Msgs []outbox.Message
+} {
+	var calls []struct {
+		Ctx  context.Context
+		Tx   database.Tx
+		Msgs []outbox.Message
+	}
+	mock.lockEnqueue.RLock()
+	calls = mock.calls.Enqueue
+	mock.lockEnqueue.RUnlock()
 	return calls
 }

@@ -674,7 +674,7 @@ var Matrix = map[string]map[string]Decision{
 		// The ones that are somebody else's sentinel, answered by the platform
 		// mappers because that is the tier those sentinels belong to.
 		//
-		// Four wrap errors.ErrNilInputParameter and one wraps
+		// Seven wrap errors.ErrNilInputParameter and one wraps
 		// errors.ErrEmptyInputParameter. ErrNoScope is tenancy's own and wraps the
 		// empty-parameter sentinel too, which is why a scopeless call resolves the
 		// same way whether it was caught at registration, at dispatch, or by the
@@ -686,7 +686,10 @@ var Matrix = map[string]map[string]Decision{
 		"ErrEmptyEventType":    {Err: webhooks.ErrEmptyEventType, Is: Platform},
 		"ErrNilDatabaseClient": {Err: webhooks.ErrNilDatabaseClient, Is: Platform},
 		"ErrNilDelivery":       {Err: webhooks.ErrNilDelivery, Is: Platform},
+		"ErrNilDispatcher":     {Err: webhooks.ErrNilDispatcher, Is: Platform},
 		"ErrNilEndpoint":       {Err: webhooks.ErrNilEndpoint, Is: Platform},
+		"ErrNilEnqueuer":       {Err: webhooks.ErrNilEnqueuer, Is: Platform},
+		"ErrNilEvent":          {Err: webhooks.ErrNilEvent, Is: Platform},
 		"ErrNilExecutor":       {Err: webhooks.ErrNilExecutor, Is: Platform},
 		"ErrNilStore":          {Err: webhooks.ErrNilStore, Is: Platform},
 		"ErrNoScope":           {Err: webhooks.ErrNoScope, Is: Platform},

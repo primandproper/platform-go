@@ -62,6 +62,15 @@ type Dispatcher interface {
 	// endpoints, demoting the key it replaces, through the caller's transaction.
 	// It answers with nothing but an error; see StoreDispatcher.RotateSecret.
 	RotateSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, endpointID string, next []byte) error
+	// Catalog reports the event types this dispatcher will accept, which is the
+	// gate Dispatch, Register and Subscribe all consult.
+	//
+	// It is on the interface rather than on the implementation because the gate
+	// has a caller: Emitter publishes an event type outside the catalog to the
+	// outbox and does not dispatch it, and a gate reading a second copy of the
+	// catalog could disagree with the one Dispatch enforces. A reader is what
+	// keeps that one fact in one place.
+	Catalog() Catalog
 }
 
 var _ Dispatcher = (*StoreDispatcher)(nil)
@@ -507,6 +516,17 @@ func (d *StoreDispatcher) Dispatch(ctx context.Context, tx database.Tx, scope te
 	d.dispatchedCounter.Add(ctx, int64(len(endpointIDs)), eventTypeAttr(delivery.EventType))
 
 	return nil
+}
+
+// Catalog reports the event types this dispatcher accepts.
+//
+// It hands back the map itself rather than a copy. The catalog is supplied once
+// at construction and read on every dispatch, and copying it per read would put
+// an allocation proportional to an application's vocabulary on the write path
+// to buy a guarantee nothing here needs — WithCatalog already took the caller's
+// map, so a caller determined to mutate it never needed this method.
+func (d *StoreDispatcher) Catalog() Catalog {
+	return d.catalog
 }
 
 // Replay makes one past delivery to one endpoint claimable again.

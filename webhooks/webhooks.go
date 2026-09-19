@@ -56,6 +56,12 @@ const (
 	backlogDepthKey = "webhooks.backlog_depth"
 	backlogAgeKey   = "webhooks.backlog_age_seconds"
 	reapedKey       = "webhooks.reaped"
+	// topicKey names the outbox topic an emitted event was published under.
+	topicKey = "webhooks.topic"
+	// subscribableKey records the catalog gate's answer, which is what says
+	// whether an emitted event reached the outbox alone or the outbox and its
+	// subscribers.
+	subscribableKey = "webhooks.subscribable"
 	replayedKey     = "webhooks.replayed"
 	rotatedKey      = "webhooks.secret_rotated"
 	deadKey         = "webhooks.dead"
@@ -146,6 +152,25 @@ var (
 
 	// ErrNilEndpoint indicates a nil Endpoint was passed for registration.
 	ErrNilEndpoint = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhook endpoint")
+
+	// ErrNilEvent indicates Emitter.Emit was called with no Event.
+	ErrNilEvent = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhook domain event")
+
+	// ErrNilEnqueuer indicates NewEmitter was handed no outbox writer. An
+	// emitter with nowhere to publish is half the composition, which is the
+	// thing it exists to stop a consumer from assembling. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilEnqueuer = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhooks outbox enqueuer")
+
+	// ErrNilDispatcher indicates NewEmitter was handed no Dispatcher, which is
+	// the other half. It wraps errors.ErrNilInputParameter, so a caller may
+	// check either.
+	//
+	// It is worded for the event rather than for the type, because webhooks/grpc
+	// already refuses a serverless one as "nil webhooks dispatcher" — and two
+	// sentinels sharing a wording share a cockroachdb mark, which is what a
+	// client matches on after a round trip.
+	ErrNilDispatcher = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil webhook event dispatcher")
 )
 
 // EventType names one kind of event an application publishes. It is the string

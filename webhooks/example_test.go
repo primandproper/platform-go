@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/primandproper/platform-go/v14/outbox"
+	outboxmigrations "github.com/primandproper/platform-go/v14/outbox/migrations"
 	"github.com/primandproper/platform-go/v14/webhooks"
 	"github.com/primandproper/platform-go/v14/webhooks/migrations"
 
@@ -70,6 +72,60 @@ func ExampleDispatcher_Dispatch() {
 
 	fmt.Println(err)
 	// Output: <nil>
+}
+
+// Emitter is the pair: the domain event goes to the outbox for the broker and
+// the same bytes fan out to the account's subscribers, both in the caller's
+// transaction, so the row and everything it owes commit together.
+func ExampleEmitter_Emit() {
+	ctx := context.Background()
+
+	client, emitter := exampleEmitterWiring()
+
+	order := struct {
+		ID        string `json:"id"`
+		AccountID string `json:"accountID"`
+	}{ID: "order-7", AccountID: "acct_01HZY0000000000000"}
+
+	err := client.WithTransaction(ctx, func(tx database.Tx) error {
+		// ... the state change that produced the event ...
+
+		return emitter.Emit(ctx, tx, tenancy.Of(order.AccountID), &webhooks.Event{
+			EventType: OrderUpdated,
+			// One key for both halves: the broker and the subscribers are told
+			// the same order rather than two configured separately.
+			OrderingKey: order.ID,
+			// Marshaled once, so a queue consumer and a webhook subscriber read
+			// byte-identical bodies.
+			Payload: order,
+		})
+	})
+
+	fmt.Println(err)
+
+	// An event type the catalog does not carry still reaches the broker. It is
+	// not dispatched, and it is not an error — refusing it here would fail the
+	// order rather than the webhook.
+	err = client.WithTransaction(ctx, func(tx database.Tx) error {
+		return emitter.Emit(ctx, tx, tenancy.Of(order.AccountID), &webhooks.Event{
+			EventType: "order.audited",
+			Payload:   order,
+		})
+	})
+
+	fmt.Println(err)
+
+	var published int
+	if err = client.Reader().QueryRowContext(ctx, "SELECT COUNT(*) FROM outbox_messages").Scan(&published); err != nil {
+		panic(err)
+	}
+
+	fmt.Println(published, "published")
+
+	// Output:
+	// <nil>
+	// <nil>
+	// 2 published
 }
 
 // An endpoint belongs to somebody, and fan-out is bounded by whose event it is:
@@ -241,6 +297,39 @@ func exampleWiring() (database.Client, webhooks.Store, webhooks.Dispatcher) {
 	}
 
 	return client, store, dispatcher
+}
+
+// exampleEmitterWiring adds an outbox to the dispatcher exampleWiring builds,
+// in the same database — which is the point: one transaction reaches both.
+func exampleEmitterWiring() (database.Client, *webhooks.Emitter) {
+	ctx := context.Background()
+
+	client, _, dispatcher := exampleWiring()
+
+	stmts, err := outboxmigrations.Statements(dialect.SQLite, outbox.DefaultTablePrefix)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, stmt := range stmts {
+		if _, err = client.Writer().ExecContext(ctx, stmt); err != nil {
+			panic(err)
+		}
+	}
+
+	writer, err := outbox.NewWriter(dialect.SQLite)
+	if err != nil {
+		panic(err)
+	}
+
+	// The topic is the deployment's wiring and is fixed here rather than named
+	// per call, so no call site can publish to the wrong one.
+	emitter, err := webhooks.NewEmitter(writer, dispatcher, "domain.events")
+	if err != nil {
+		panic(err)
+	}
+
+	return client, emitter
 }
 
 type exampleClientConfig struct {
