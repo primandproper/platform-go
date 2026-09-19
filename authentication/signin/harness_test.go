@@ -138,7 +138,7 @@ func (d permissiveDirectory) GetPrincipal(
 	scope tenancy.Scope,
 	userID, activeAccountID string,
 ) (*identity.Principal, error) {
-	user, err := d.Directory.GetUser(ctx, q, scope, userID)
+	user, err := d.GetUser(ctx, q, scope, userID)
 	if err != nil {
 		return nil, err
 	}

@@ -65,7 +65,7 @@ tier — errormappers.Register, which service.Register makes for a service built
 from a service.Config and a service assembling itself by hand makes once, at
 startup.
 
-# A session is not a licence
+# A session is not a license
 
 The middleware answers "is there a session and whose is it". It does not answer
 "may that person still be here", and a handler should not add a
