@@ -129,7 +129,7 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 		errors.Is(err, ErrTargetNotFound):
 		return codes.NotFound, true
 
-	// InvalidArgument rather than FailedPrecondition for all seven, including
+	// InvalidArgument rather than FailedPrecondition for all nine, including
 	// the nested reply. FailedPrecondition is gRPC's code for a well-formed
 	// request the system's state refuses, which a client fixes by changing that
 	// state and retrying; none of these is that. A reply to a reply is fixed by
