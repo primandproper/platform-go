@@ -17,9 +17,10 @@ import (
 // nothing. Requiring them positionally made a caller that wanted none of the
 // three name all three anyway, usually as noops.
 //
-// WithQueueOptions passes options through to the queue itself. It cannot be a
-// second variadic on the constructor: Go allows one per function, and that slot
-// is what makes the observability optional.
+// WithQueueOptions and WithRunnerOptions pass options through to what these
+// constructors build. Neither can be a second variadic on a constructor: Go
+// allows one per function, and that slot is what makes the observability
+// optional.
 type Option func(*options)
 
 // options collects what the options set.
@@ -28,7 +29,8 @@ type options struct {
 	tracerProvider  tracing.Provider
 	metricsProvider metrics.Provider
 
-	queue []workqueue.Option
+	queue  []workqueue.Option
+	runner []workqueue.RunnerOption
 }
 
 // newOptions applies opts, ignoring nil entries.
@@ -77,4 +79,13 @@ func WithPillars(p *observability.Pillars) Option {
 // a Go value the environment cannot name.
 func WithQueueOptions(opts ...workqueue.Option) Option {
 	return func(o *options) { o.queue = append(o.queue, opts...) }
+}
+
+// WithRunnerOptions passes opts to NewRunner, which applies them after the
+// options it derives from configuration. It is the runner's half of
+// WithQueueOptions, and separate for the reason the two constructors are: one
+// wiring site commonly builds both, and an option meant for the loop must not
+// land on the queue it drains.
+func WithRunnerOptions(opts ...workqueue.RunnerOption) Option {
+	return func(o *options) { o.runner = append(o.runner, opts...) }
 }

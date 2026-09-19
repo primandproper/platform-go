@@ -110,3 +110,55 @@ func WithKeyCodec[K comparable](codec KeyCodec[K]) Option {
 		}
 	}
 }
+
+type (
+	// RunnerOption configures a Runner at construction.
+	//
+	// It is a type of its own rather than the Queue's Option because the two
+	// configure different components that a process usually builds together: a
+	// runner gets its own logger, spans and instruments, scoped to the work it
+	// does rather than to the handing out of it.
+	//
+	// It is not parameterized on the Runner's K, for Option's reason.
+	RunnerOption func(*runnerOptions)
+
+	// runnerOptions accumulates what the options set.
+	runnerOptions struct {
+		logger          logging.Logger
+		tracerProvider  tracing.Provider
+		metricsProvider metrics.Provider
+	}
+)
+
+// newRunnerOptions applies opts, ignoring nil entries.
+func newRunnerOptions(opts []RunnerOption) *runnerOptions {
+	o := &runnerOptions{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(o)
+		}
+	}
+
+	return o
+}
+
+// WithRunnerLogger attaches a logger to the runner. A handler that fails, a
+// batch that could not be retired, and an extension that arrived too late are
+// all logged and none of them are returned, so without one they are visible
+// only in metrics.
+func WithRunnerLogger(logger logging.Logger) RunnerOption {
+	return func(o *runnerOptions) { o.logger = logger }
+}
+
+// WithRunnerTracerProvider attaches a tracer provider to the runner. Each
+// handled item gets a span of its own; a pass that claimed nothing gets none.
+func WithRunnerTracerProvider(tracerProvider tracing.Provider) RunnerOption {
+	return func(o *runnerOptions) { o.tracerProvider = tracerProvider }
+}
+
+// WithRunnerMetricsProvider attaches a metrics provider to the runner. An absent
+// provider records nothing — including the lost-lease counter, which is the only
+// way to see that handlers are outliving their leases.
+func WithRunnerMetricsProvider(metricsProvider metrics.Provider) RunnerOption {
+	return func(o *runnerOptions) { o.metricsProvider = metricsProvider }
+}

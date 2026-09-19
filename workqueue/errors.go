@@ -14,6 +14,30 @@ var (
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilConfig = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil work queue config")
 
+	// ErrNilQueue indicates a nil *Queue was passed to NewRunner. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilQueue = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil work queue")
+
+	// ErrNilHandler indicates a nil Handler was passed to NewRunner. A runner
+	// with nothing to call would claim every item and complete it, which looks
+	// exactly like a working deployment right up until somebody asks why none of
+	// the work was done.
+	ErrNilHandler = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil work queue handler")
+
+	// ErrHandlerPanicked is what a Runner records for an item whose handler
+	// panicked. The panic is contained and the item is held back like any other
+	// failure — one poisonous key must not take the loop down with it — and the
+	// panic value is wrapped into this so the row says what happened rather than
+	// only that something did.
+	ErrHandlerPanicked = platformerrors.New("work queue handler panicked")
+
+	// ErrRunnerStopped is what a Runner records for an item it claimed and never
+	// started, because a shutdown arrived first. Those items are handed straight
+	// back rather than left to lapse, and this is the cause the row carries: the
+	// claim already spent an attempt on them, so a reader chasing an attempt
+	// count that rose without the work running needs to see why.
+	ErrRunnerStopped = platformerrors.New("work queue runner stopped before the item was started")
+
 	// ErrEmptyQueueName indicates a Config with no Name. There is no default:
 	// one table holds every logical queue, and an unnamed queue would silently
 	// share rows with every other unnamed queue in the database.

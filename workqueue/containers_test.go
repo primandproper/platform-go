@@ -905,6 +905,237 @@ func runQueueSuite(t *testing.T, client database.Client) {
 	})
 }
 
+// The lease extension, against the clock that actually governs it. Every
+// property below is the server's answer rather than this process's: whether an
+// extended lease is still held after the original would have lapsed, whether an
+// extension from a claim the row no longer names moves anything, and whether a
+// shorter extension can pull a longer lease in.
+func TestWorkQueue_ExtendKeepsAClaimPastItsLease(T *testing.T) {
+	T.Parallel()
+
+	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
+		client, clientErr := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
+		must.NoError(T, clientErr)
+		T.Cleanup(func() { _ = client.Close() })
+
+		createTable(T, client, DefaultTablePrefix)
+
+		T.Run("an extended lease outlives the one it was claimed under", func(t *testing.T) {
+			t.Parallel()
+
+			q := newQueue(t, client, nil)
+			must.NoError(t, q.EnqueueKeys(t.Context(), "slow"))
+
+			claimed, err := q.Claim(t.Context(), 10, 300*time.Millisecond)
+			must.NoError(t, err)
+			must.SliceLen(t, 1, claimed)
+
+			held, err := q.Extend(t.Context(), time.Hour, claimed...)
+			must.NoError(t, err)
+			test.EqOp(t, int64(1), held)
+
+			// Well past the lease the claim was taken under. Without the
+			// extension this is exactly the sleep that hands the item to
+			// somebody else.
+			time.Sleep(600 * time.Millisecond)
+
+			competitor, err := q.Claim(t.Context(), 10, time.Minute)
+			must.NoError(t, err)
+			test.SliceEmpty(t, competitor)
+
+			// And the claim that extended still owns the item, so its completion
+			// lands.
+			must.NoError(t, q.Complete(t.Context(), claimed...))
+
+			stats, err := q.Stats(t.Context())
+			must.NoError(t, err)
+			test.EqOp(t, int64(1), stats.Completed)
+		})
+
+		// The fence, read a third way: a straggler pushing out a horizon it no
+		// longer holds would pin the item to a claim nobody is working under.
+		T.Run("a straggler extends nothing", func(t *testing.T) {
+			t.Parallel()
+
+			q := newQueue(t, client, nil)
+			must.NoError(t, q.EnqueueKeys(t.Context(), "taken"))
+
+			straggler, err := q.Claim(t.Context(), 10, 200*time.Millisecond)
+			must.NoError(t, err)
+			must.SliceLen(t, 1, straggler)
+
+			time.Sleep(400 * time.Millisecond)
+
+			holder, err := q.Claim(t.Context(), 10, 500*time.Millisecond)
+			must.NoError(t, err)
+			must.SliceLen(t, 1, holder)
+			must.True(t, holder[0].Reclaimed)
+
+			held, err := q.Extend(t.Context(), time.Hour, straggler...)
+			must.NoError(t, err)
+			test.EqOp(t, int64(0), held)
+
+			// The holder's own lease is untouched by that, so it lapses on its
+			// own schedule and the item comes back — rather than being parked
+			// for the hour the straggler asked for.
+			time.Sleep(700 * time.Millisecond)
+
+			back, err := q.Claim(t.Context(), 10, time.Minute)
+			must.NoError(t, err)
+			test.SliceLen(t, 1, back)
+		})
+
+		// GREATEST, on the server: an extension shorter than what is left on the
+		// lease changes nothing rather than pulling the horizon in.
+		T.Run("an extension never shortens a lease", func(t *testing.T) {
+			t.Parallel()
+
+			q := newQueue(t, client, nil)
+			must.NoError(t, q.EnqueueKeys(t.Context(), "long-lease"))
+
+			claimed, err := q.Claim(t.Context(), 10, time.Hour)
+			must.NoError(t, err)
+			must.SliceLen(t, 1, claimed)
+
+			held, err := q.Extend(t.Context(), 200*time.Millisecond, claimed...)
+			must.NoError(t, err)
+			test.EqOp(t, int64(1), held)
+
+			time.Sleep(400 * time.Millisecond)
+
+			competitor, err := q.Claim(t.Context(), 10, time.Minute)
+			must.NoError(t, err)
+			test.SliceEmpty(t, competitor)
+		})
+
+		// A completed item is excluded inside the CTE, so an extension that
+		// arrives after the work was retired matches nothing rather than
+		// resurrecting a horizon on a finished row.
+		T.Run("a completed item is not extended", func(t *testing.T) {
+			t.Parallel()
+
+			q := newQueue(t, client, nil)
+			must.NoError(t, q.EnqueueKeys(t.Context(), "done"))
+
+			claimed, err := q.Claim(t.Context(), 10, time.Minute)
+			must.NoError(t, err)
+			must.SliceLen(t, 1, claimed)
+			must.NoError(t, q.Complete(t.Context(), claimed...))
+
+			held, err := q.Extend(t.Context(), time.Hour, claimed...)
+			must.NoError(t, err)
+			test.EqOp(t, int64(0), held)
+		})
+	})
+}
+
+// The runner, end to end, against the property the whole extension exists for:
+// a handler that runs for longer than the lease it was claimed under still holds
+// its item when it finishes, and nobody else has run it in the meantime.
+//
+// It needs a real server because the lease is the server's clock: nothing a
+// stubbed querier can say distinguishes an item that is still leased from one
+// that has been handed to somebody else.
+func TestWorkQueue_RunnerKeepsAClaimUnderASlowHandler(T *testing.T) {
+	T.Parallel()
+
+	pgtest.Run(T, func(ctx context.Context, pg *pgtest.Instance) {
+		client, err := postgres.NewDatabaseClient(ctx, &testClientConfig{connectionString: pg.ConnectionString})
+		must.NoError(T, err)
+		T.Cleanup(func() { _ = client.Close() })
+
+		createTable(T, client, DefaultTablePrefix)
+
+		q := newQueue(T, client, nil)
+		must.NoError(T, q.EnqueueKeys(ctx, "slow-work"))
+
+		var handled atomic.Int64
+
+		// A lease of a second under a handler that takes two and a half, with the
+		// heartbeat at a third of the lease. Every one of those numbers is a real
+		// one: without the extension this handler is reclaimed twice over while
+		// it works.
+		cfg := &RunnerConfig{
+			Poll:           50 * time.Millisecond,
+			Lease:          time.Second,
+			ExtendInterval: 300 * time.Millisecond,
+			Batch:          10,
+			Concurrency:    1,
+		}
+
+		runner, err := NewRunner(ctx, cfg, q, func(context.Context, Item[string]) error {
+			handled.Add(1)
+
+			time.Sleep(2500 * time.Millisecond)
+
+			return nil
+		})
+		must.NoError(T, err)
+
+		runCtx, stop := context.WithCancel(ctx)
+
+		done := make(chan error, 1)
+		go func() { done <- runner.Run(runCtx) }()
+
+		// A competitor claiming throughout, which is what a second worker in the
+		// fleet is. None of its claims may find the item, because the runner is
+		// still working on it.
+		competitor := newQueue(T, client, func(c *Config) { c.Name = q.Name() })
+
+		for range 10 {
+			time.Sleep(200 * time.Millisecond)
+
+			stolen, claimErr := competitor.Claim(ctx, 10, time.Minute)
+			must.NoError(T, claimErr)
+			test.SliceEmpty(T, stolen, test.Sprintf("the item was reclaimed mid-handler: %v", claimedKeys(stolen)))
+		}
+
+		// The handler outlived its original lease and still retired its own item.
+		waitForCompletion(T, q)
+
+		stop()
+		must.ErrorIs(T, awaitRunner(T, done), context.Canceled)
+
+		test.EqOp(T, int64(1), handled.Load())
+	})
+}
+
+// waitForCompletion blocks until the queue reports the item retired, so the
+// assertion is on the row rather than on a sleep long enough to hope for it.
+func waitForCompletion(t *testing.T, q *Queue[string]) {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+
+	for time.Now().Before(deadline) {
+		stats, err := q.Stats(t.Context())
+		must.NoError(t, err)
+
+		if stats.Completed == 1 && stats.Pending == 0 {
+			return
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	t.Fatal("the runner never completed the item it claimed")
+}
+
+// awaitRunner collects Run's error, failing rather than hanging if the loop does
+// not notice its context.
+func awaitRunner(t *testing.T, done <-chan error) error {
+	t.Helper()
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(10 * time.Second):
+		t.Fatal("the runner did not stop on a cancelled context")
+
+		return nil
+	}
+}
+
 // The claim's LIMIT sits above the lock, so a row another transaction holds is
 // skipped and replaced rather than counted against the batch. That is what lets
 // a fleet of claimers each get full batches instead of dividing one, and it is a

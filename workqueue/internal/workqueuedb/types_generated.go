@@ -37,6 +37,14 @@ type EnqueueItemsParams struct {
 	DelayMicroseconds []int64
 }
 
+// ExtendItemsParams are the arguments to ExtendItems.
+type ExtendItemsParams struct {
+	LeaseMicroseconds int64
+	QueueName         string
+	ItemKeys          []string
+	LeasedBys         []string
+}
+
 // ReadQueueStatsParams are the arguments to ReadQueueStats.
 type ReadQueueStatsParams struct {
 	QueueName      string

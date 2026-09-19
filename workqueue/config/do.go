@@ -37,3 +37,34 @@ func RegisterQueue[K comparable](i do.Injector) {
 		)
 	})
 }
+
+// RegisterRunner registers a *workqueue.Runner[K] built over the registered
+// *workqueue.Queue[K], so the loop and whatever enqueues share one queue and one
+// set of metrics.
+//
+// Prerequisites: everything RegisterQueue needs, plus RegisterQueue itself, a
+// *workqueue.RunnerConfig and a workqueue.Handler[K]. The handler is registered
+// rather than passed because it is the one dependency that is genuinely the
+// application's — a container that resolves a runner has to be able to say what
+// the work is.
+//
+// A Runner starts nothing on its own: Run blocks, and the injector will not call
+// it. Run it from wherever you start the rest of your background work, and stop
+// it by cancelling that context — which drains the batch it is holding rather
+// than abandoning it.
+func RegisterRunner[K comparable](i do.Injector) {
+	do.Provide(i, func(i do.Injector) (*workqueue.Runner[K], error) {
+		pillars, err := observability.InvokePillars(i)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewRunner[K](
+			do.MustInvoke[context.Context](i),
+			do.MustInvoke[*workqueue.RunnerConfig](i),
+			do.MustInvoke[*workqueue.Queue[K]](i),
+			do.MustInvoke[workqueue.Handler[K]](i),
+			WithPillars(pillars),
+		)
+	})
+}

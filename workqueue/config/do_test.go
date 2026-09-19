@@ -3,6 +3,7 @@ package workqueuecfg
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/workqueue"
 
@@ -88,6 +89,57 @@ func TestRegisterQueue(T *testing.T) {
 		RegisterQueue[string](i)
 
 		_, err := do.Invoke[*workqueue.Queue[string]](i)
+		test.Error(t, err)
+	})
+}
+
+func TestRegisterRunner(T *testing.T) {
+	T.Parallel()
+
+	// The handler is registered rather than passed, because a container that
+	// resolves a runner has to be able to say what the work is.
+	T.Run("resolves a runner from its prerequisites", func(t *testing.T) {
+		t.Parallel()
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue(i, validConfig())
+		do.ProvideValue(i, &workqueue.RunnerConfig{})
+		do.ProvideValue(i, clientFor(dialect.Postgres))
+		do.ProvideValue[workqueue.Handler[string]](i, func(context.Context, workqueue.Item[string]) error {
+			return nil
+		})
+
+		RegisterQueue[string](i)
+		RegisterRunner[string](i)
+
+		r, err := do.Invoke[*workqueue.Runner[string]](i)
+		must.NoError(t, err)
+		must.NotNil(t, r)
+
+		// The queue the runner drains is the registered one, so whatever
+		// enqueues shares its batcher and its metrics.
+		q, err := do.Invoke[*workqueue.Queue[string]](i)
+		must.NoError(t, err)
+		t.Cleanup(func() { _ = q.Close(t.Context()) })
+	})
+
+	T.Run("surfaces a construction failure", func(t *testing.T) {
+		t.Parallel()
+
+		i := do.New()
+		do.ProvideValue[context.Context](i, t.Context())
+		do.ProvideValue(i, validConfig())
+		do.ProvideValue(i, &workqueue.RunnerConfig{Lease: time.Second, ExtendInterval: time.Second})
+		do.ProvideValue(i, clientFor(dialect.Postgres))
+		do.ProvideValue[workqueue.Handler[string]](i, func(context.Context, workqueue.Item[string]) error {
+			return nil
+		})
+
+		RegisterQueue[string](i)
+		RegisterRunner[string](i)
+
+		_, err := do.Invoke[*workqueue.Runner[string]](i)
 		test.Error(t, err)
 	})
 }

@@ -151,6 +151,7 @@ func TestRender_EmitsTheStatementsTheQueueExecutes(T *testing.T) {
 	expected := []string{
 		"EnqueueItems",
 		"ClaimDueItems",
+		"ExtendItems",
 		"CompleteItems",
 		"ReleaseItems",
 		"RemoveItems",
@@ -627,4 +628,53 @@ func TestFileName(t *testing.T) {
 	t.Parallel()
 
 	test.EqOp(t, "postgres_generated.sql", FileName(dialect.Postgres))
+}
+
+// TestRender_ExtendOnlyMovesTheHorizonForward. An extension that arrived while a
+// longer lease was still running would otherwise pull it in, which is a worker
+// asking for more time and being given less. GREATEST is the whole of that
+// assertion, and it is also what makes the statement safe to repeat on a timer.
+func TestRender_ExtendOnlyMovesTheHorizonForward(T *testing.T) {
+	T.Parallel()
+
+	extend := statement(T, "ExtendItems")
+
+	test.StrContains(T, extend, LeaseColumn+" = GREATEST("+
+		querygen.Qualify(ItemsTable, LeaseColumn)+", "+querygen.NowExpression+" + "+microseconds(LeaseArg)+")")
+}
+
+// TestRender_ExtendTouchesNothingButTheHorizon. The attempt count belongs to the
+// claim that incremented it and availability belongs to the hand-back; an
+// extension is a worker saying it is still working, which is one column's worth
+// of news.
+func TestRender_ExtendTouchesNothingButTheHorizon(T *testing.T) {
+	T.Parallel()
+
+	extend := statement(T, "ExtendItems")
+
+	assignments, _, found := strings.Cut(extend, "FROM target")
+	must.True(T, found)
+
+	_, assignments, found = strings.Cut(assignments, "SET")
+	must.True(T, found)
+
+	for _, column := range []string{AttemptsColumn, AvailableAtColumn, CompletedAtColumn, HolderColumn, LastErrorColumn} {
+		test.StrNotContains(T, assignments, column+" =", test.Sprintf("column %q", column))
+	}
+}
+
+// TestRender_ExtendIsFencedOnTheClaim, and skips completed items. Without the
+// name a straggler whose lease lapsed would push out a lease a second worker is
+// holding, pinning the item to a claim nobody is working under — which is the
+// completion's fence read a third way.
+func TestRender_ExtendIsFencedOnTheClaim(T *testing.T) {
+	T.Parallel()
+
+	extend := statement(T, "ExtendItems")
+
+	before, _, found := strings.Cut(extend, "FOR UPDATE")
+	must.True(T, found)
+
+	test.StrContains(T, before, leasedPairs())
+	test.StrContains(T, before, outstanding())
 }

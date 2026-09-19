@@ -67,6 +67,26 @@ RETURNING
 	work_queue_items.attempts,
 	(due.prior_lease > TIMESTAMPTZ 'epoch') AS reclaimed;
 
+-- name: ExtendItems :execrows
+WITH target AS (
+	SELECT work_queue_items.queue_name, work_queue_items.item_key
+	FROM work_queue_items
+	WHERE work_queue_items.queue_name = sqlc.arg(queue_name)
+		AND work_queue_items.completed_at IS NULL
+		AND (work_queue_items.item_key, work_queue_items.leased_by) IN (
+			SELECT keys.item_key, holders.leased_by
+			FROM unnest(sqlc.arg(item_keys)::text[]) WITH ORDINALITY AS keys(item_key, ordinal)
+				JOIN unnest(sqlc.arg(leased_bys)::text[]) WITH ORDINALITY AS holders(leased_by, ordinal) USING (ordinal)
+		)
+	ORDER BY work_queue_items.queue_name, work_queue_items.item_key
+	FOR UPDATE
+)
+UPDATE work_queue_items SET
+	lease_until = GREATEST(work_queue_items.lease_until, CURRENT_TIMESTAMP + (sqlc.arg(lease_microseconds)::bigint * INTERVAL '1 microsecond'))
+FROM target
+WHERE work_queue_items.queue_name = target.queue_name
+	AND work_queue_items.item_key = target.item_key;
+
 -- name: CompleteItems :execrows
 WITH target AS (
 	SELECT work_queue_items.queue_name, work_queue_items.item_key
