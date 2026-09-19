@@ -3,6 +3,7 @@ package signin_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -614,4 +615,98 @@ func TestService_Register_passesTheDirectorysErrorBack(T *testing.T) {
 
 	_, err = svc.Register(T.Context(), testScope, newRegistration("ada", signin.Password("hunter2 hunter2")))
 	test.True(T, errors.Is(err, sentinel))
+}
+
+// TestRegistrar_shape holds Registrar's documentation to the interface it
+// documents, the way TestDirectory_MethodCount holds Directory's.
+//
+// The sentence a consumer reads says they are implementing two methods, and a
+// third added here without revisiting it is a consumer told the wrong number.
+// The satisfaction below is the other half: this seam is identity's Service
+// rather than its Store, which is the one place in this package where the layer
+// above the rows is the thing depended on, and a change that broke it would
+// otherwise surface as a consumer's wiring failure rather than as a test.
+func TestRegistrar_shape(T *testing.T) {
+	T.Parallel()
+
+	test.EqOp(T, 2, reflect.TypeFor[signin.Registrar]().NumMethod())
+
+	var _ signin.Registrar = (*identity.Service)(nil)
+}
+
+// TestVerifications_shape is the same for the other new seam, whose sentence
+// says three.
+//
+// It is satisfied by the Store rather than the Service, and deliberately: the
+// two writes a verification makes have to land on one transaction, and every
+// method on identity's Service opens one of its own.
+func TestVerifications_shape(T *testing.T) {
+	T.Parallel()
+
+	test.EqOp(T, 3, reflect.TypeFor[signin.Verifications]().NumMethod())
+
+	var _ signin.Verifications = (*identity.SQLStore)(nil)
+}
+
+// TestRegistrationOptions_nilIsIgnored pins the convention every option in this
+// package follows: a nil is ignored rather than installed, so a caller who
+// resolved one conditionally does not end up with a service that panics on the
+// path they thought they had disabled.
+func TestRegistrationOptions_nilIsIgnored(T *testing.T) {
+	T.Parallel()
+
+	e := newEnv(T)
+
+	svc, err := signin.NewService(e.client, e.store, argon2.NewArgon2Authenticator(), e.issuer,
+		signin.WithRegistrar(nil),
+		signin.WithVerifications(nil),
+	)
+	must.NoError(T, err)
+
+	// Ignored, so the service is the one that registers nobody rather than one
+	// holding a nil seam.
+	_, err = svc.Register(T.Context(), testScope, newRegistration("ada", signin.NoPassword()))
+	test.ErrorIs(T, err, signin.ErrRegistrationNotConfigured)
+
+	test.ErrorIs(T, svc.VerifyEmailAddress(T.Context(), testScope, "a-token"), signin.ErrVerificationsNotConfigured)
+}
+
+// TestWithSecretGenerator_nilLeavesTheRealOne is the same property for the seam
+// where getting it wrong would be worst: a nil generator that replaced the real
+// one would mint the empty string as every registrant's verification token, and
+// every link would then prove every account.
+func TestWithSecretGenerator_nilLeavesTheRealOne(T *testing.T) {
+	T.Parallel()
+
+	e := newEnv(T, signin.WithSecretGenerator(nil))
+
+	first, err := e.svc.Register(T.Context(), testScope, newRegistration("ada", signin.NoPassword()))
+	must.NoError(T, err)
+
+	second, err := e.svc.Register(T.Context(), testScope, newRegistration("grace", signin.NoPassword()))
+	must.NoError(T, err)
+
+	test.NotEq(T, "", first.EmailAddressVerificationToken)
+	test.NotEqOp(T, first.EmailAddressVerificationToken, second.EmailAddressVerificationToken)
+
+	// And each proves its own account and not the other's.
+	test.ErrorIs(T,
+		e.svc.AttachPassword(T.Context(), testScope, &signin.PasswordAttachment{
+			Token:       first.EmailAddressVerificationToken + "x",
+			NewPassword: "hunter2 hunter2",
+		}),
+		signin.ErrInvalidVerificationToken)
+}
+
+// TestNoopHooks_finishesARegistration pins that the two hooks this change added
+// are on NoopHooks, which is what makes them additive: a consumer who embedded
+// it gains a no-op rather than a compile failure, and one who implements Hooks
+// outright is told by their compiler rather than at runtime.
+func TestNoopHooks_finishesARegistration(T *testing.T) {
+	T.Parallel()
+
+	var hooks signin.Hooks = signin.NoopHooks{}
+
+	test.NoError(T, hooks.AfterAttachPassword(T.Context(), nil, testScope, nil))
+	test.NoError(T, hooks.AfterVerify(T.Context(), nil, testScope, nil))
 }

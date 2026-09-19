@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/primandproper/platform-go/v14/authentication/signin"
+	signingrpc "github.com/primandproper/platform-go/v14/authentication/signin/grpc"
 	"github.com/primandproper/platform-go/v14/authentication/signin/signinpb"
 	"github.com/primandproper/platform-go/v14/identity"
 	"github.com/primandproper/platform-go/v14/identity/identitypb"
@@ -228,4 +229,70 @@ func TestRegisteredCarriesNoVerificationToken(T *testing.T) {
 	// whole rendered message is checked rather than the fields somebody thought
 	// to name.
 	test.StrNotContains(T, registered.String(), secrets.secret)
+}
+
+// TestRegisteredToProto is the converter on its own, which the flow tests above
+// only exercise through its happy path.
+//
+// The invitation arm is the case worth having: it produces a Registered with no
+// account, and a converter that reached for one would panic on the registration
+// most likely to be somebody's first.
+func TestRegisteredToProto(T *testing.T) {
+	T.Parallel()
+
+	T.Run("nil is nil", func(t *testing.T) {
+		t.Parallel()
+
+		test.Nil(t, signingrpc.RegisteredToProto(nil))
+	})
+
+	T.Run("an account registration", func(t *testing.T) {
+		t.Parallel()
+
+		rendered := signingrpc.RegisteredToProto(&signin.Registered{
+			User:                          &identity.User{ID: "user_1", Username: "ada"},
+			Account:                       &identity.Account{ID: "account_1", Name: "Ada's"},
+			Membership:                    &identity.Membership{ID: "membership_1"},
+			EmailAddressVerificationToken: "the-token-in-their-inbox",
+		})
+
+		must.NotNil(t, rendered)
+		test.EqOp(t, "user_1", rendered.GetUser().GetId())
+		test.EqOp(t, "account_1", rendered.GetAccount().GetId())
+		test.EqOp(t, "membership_1", rendered.GetMembership().GetId())
+		test.Nil(t, rendered.GetInvitation())
+
+		// The secret does not cross, which is the schema's promise and is made
+		// here rather than by a field that happens not to be set.
+		test.StrNotContains(t, rendered.String(), "the-token-in-their-inbox")
+	})
+
+	T.Run("an invited registration, which has no account", func(t *testing.T) {
+		t.Parallel()
+
+		rendered := signingrpc.RegisteredToProto(&signin.Registered{
+			User:       &identity.User{ID: "user_1"},
+			Membership: &identity.Membership{ID: "membership_1"},
+			Invitation: &identity.Invitation{ID: "invitation_1"},
+		})
+
+		must.NotNil(t, rendered)
+		test.Nil(t, rendered.GetAccount())
+		test.EqOp(t, "invitation_1", rendered.GetInvitation().GetId())
+	})
+}
+
+// TestRegisterWithAnEmptyRequest is the converter's other edge over the wire: a
+// client that sent the message and filled none of it in.
+//
+// It is refused for the registrant it names rather than for the credential it
+// does not, because there is no registration to have a credential — which is the
+// order identity's own registration checks them in.
+func TestRegisterWithAnEmptyRequest(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T, nil)
+
+	_, err := h.client.Register(asUser(h.rootCtx, h.user.ID), &signinpb.RegisterRequest{})
+	test.ErrorIs(T, err, identity.ErrNilUser)
 }
