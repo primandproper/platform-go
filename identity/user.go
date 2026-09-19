@@ -140,6 +140,11 @@ type User struct {
 	// differ by case alone. Compare handles with this field. Show people
 	// DisplayName where a name is what is wanted and this one where the handle
 	// is. See "Handles are folded" in the package documentation.
+	//
+	// It may not begin or end with whitespace. That is the one thing the fold
+	// does not settle and the one spelling the dialects still answered
+	// differently about — see ErrUsernameWhitespace — and a write carrying one
+	// is refused rather than trimmed.
 	Username string `json:"username"`
 
 	// DisplayName is what the person is shown as, and it is theirs: free-form,
@@ -306,14 +311,25 @@ func (u *User) ValidateWithContext(ctx context.Context) error {
 // AdminWriter owns it, ProfileWriter cannot write it, and a handler assembling
 // a User out of a profile form has no reason to name one.
 //
-// Both callers pass through here, so the address rule cannot drift between what
-// registration accepts and what a profile save accepts. See SQLStore.UpdateUser.
+// Both callers pass through here, so neither the address rule nor the handle's
+// whitespace rule can drift between what registration accepts and what a
+// profile save accepts. See SQLStore.UpdateUser.
 func (u *User) validateProfile(ctx context.Context) error {
 	if u == nil {
 		return ErrNilUser
 	}
 
 	if err := u.Scope.Validate(); err != nil {
+		return err
+	}
+
+	// Ahead of the struct validation rather than inside it, because a sentinel
+	// the mappers claim has to reach them: ozzo's validation.Errors is a map
+	// with no Unwrap, so a rule returning one hands it back as an entry keyed
+	// on the field name and errors.Is finds nothing. ErrInvalidEmailAddress is
+	// the one already in that position, and it is answered by the shape it
+	// wraps rather than by its own value. See checkUsernameWhitespace.
+	if err := checkUsernameWhitespace(u.Username); err != nil {
 		return err
 	}
 

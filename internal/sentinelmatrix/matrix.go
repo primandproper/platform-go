@@ -349,12 +349,14 @@ var Matrix = map[string]map[string]Decision{
 		"ErrLastAccountOwner":  {Err: identity.ErrLastAccountOwner, Is: Mapped},
 		"ErrNoDefaultAccount":  {Err: identity.ErrNoDefaultAccount, Is: Mapped},
 
-		// The two a client sent that the directory will not store as written. One
-		// names a different tenant than the call did and the other is longer than
-		// the column that holds it, and both are a bad request rather than a
-		// refusal on authority.
+		// The three a client sent that the directory will not store as written.
+		// One names a different tenant than the call did, one is longer than the
+		// column that holds it, and one is a handle whose padding makes it taken
+		// on MariaDB and free everywhere else. All three are a bad request rather
+		// than a refusal on authority.
 		"ErrScopeMismatch":      {Err: identity.ErrScopeMismatch, Is: Mapped},
 		"ErrDisplayNameTooLong": {Err: identity.ErrDisplayNameTooLong, Is: Mapped},
+		"ErrUsernameWhitespace": {Err: identity.ErrUsernameWhitespace, Is: Mapped},
 
 		// The one refusal on authority. GetPrincipal will not answer for a user
 		// whose account status does not admit sign-in, and a 403 rather than a 404

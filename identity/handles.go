@@ -40,6 +40,45 @@ import (
 // see that field.
 func FoldHandle(handle string) string { return strings.ToLower(handle) }
 
+// checkUsernameWhitespace refuses a username that begins or ends with
+// whitespace, which is the one spelling of a handle FoldHandle does not settle
+// and the columns' collation answers differently per dialect.
+//
+// MariaDB's utf8mb4_bin — the collation these columns carry to settle the
+// accent half — is still PAD SPACE, so "ada  " compares equal to "ada" there
+// and UNIQUE (scope, username) refuses it, where Postgres and SQLite compare
+// the trailing bytes and store a second user. The remaining divergence is
+// therefore a registration that succeeds on one engine and collides on
+// another, which is the failure the fold was written to remove.
+//
+// It refuses rather than trimming, and the asymmetry is the reason: a
+// rejection is visible at the call site and a silent correction is not, and
+// this package already refuses a write whose halves disagree twice over. It is
+// also not a charset allowlist. An allowlist would close accents, homoglyphs
+// and zero-width characters too, and would decide that "renée" is not a handle
+// — a larger ruling about what a handle is, with its own argument to make.
+//
+// Whitespace is unicode.IsSpace's reading of it, through strings.TrimSpace, so
+// a tab, a newline and a non-breaking space are each refused. Interior
+// whitespace is untouched: "ada lovelace" is a handle this directory stores,
+// and it is the same handle on all three dialects.
+//
+// Emptiness is validation.Required's to report, so that a missing username and
+// a padded one do not both come back as the same refusal.
+//
+// It is a function rather than one of the validation rules beside
+// emailAddressRule because ozzo's validation.Errors is a map with no Unwrap: a
+// sentinel returned from a validation.By reaches a caller as an entry in that
+// map rather than as something errors.Is can find, and a sentinel the mappers
+// claim has to survive the trip to a transport.
+func checkUsernameWhitespace(username string) error {
+	if username == "" || strings.TrimSpace(username) == username {
+		return nil
+	}
+
+	return platformerrors.Wrapf(ErrUsernameWhitespace, "username %q", username)
+}
+
 // foldUserHandles settles the three columns a user write does not store
 // verbatim: the folded username the directory is keyed on, the folded address,
 // and the display name, which is folded by nothing and may be adopted from the

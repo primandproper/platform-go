@@ -435,6 +435,19 @@ the other two engines already do, leaving Go's fold as the only thing that
 folds anything. The clause is in identity/migrations/mysql.sql, and the case
 that fails without it is in the handle folding suite.
 
+Padding is the third thing a collation decides, and it is settled by refusing
+it. utf8mb4_bin is still a PAD SPACE collation on MariaDB, so "ada  " compares
+equal to "ada" there and the unique index calls the handle taken, where
+Postgres and SQLite compare the trailing bytes and register a second user. A
+fold cannot close that one either — trimming would store a value nobody sent —
+so a username that begins or ends with whitespace is refused, with
+ErrUsernameWhitespace, by the rule registration and a profile save already
+share. Leading whitespace is refused for a reason that needs no dialect at all:
+" ada" and "ada" render identically in every list, every email and every audit
+entry. Interior whitespace is untouched, and so is everything else a handle may
+be spelled with — what a handle is made of is a question about charsets,
+homoglyphs and zero-width characters, and this rule is not an answer to it.
+
 FoldHandle is that fold, and it is exported because it is not this package's
 private business. Every write and every lookup here calls it, so does
 authentication/signin — for the read it makes and for the handle it records a
@@ -467,7 +480,10 @@ address, and a second column is a second thing to keep in step.
 What this costs a directory that already has rows: they were written in
 whatever case was submitted, so fold the username and email_address columns in
 the same migration that adds display_name, or a lookup will not find the rows
-that were not already lower case. Backfilling the display column itself is
+that were not already lower case. The same migration owes the padding rule its
+own pass — a username written before it was refused is one no write now
+accepts, so TRIM the column and reconcile whatever collides, which on MariaDB
+is nothing new, because its collation was already treating those rows as one. Backfilling the display column itself is
 optional — a row with none reads its folded handle back in DisplayName, so a
 page rendering that field never renders a blank. On MySQL the same migration
 carries the collation across, with an ALTER per column; it rebuilds the unique
