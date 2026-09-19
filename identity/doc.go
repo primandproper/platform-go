@@ -188,6 +188,40 @@ the row the second destroys. And neither of them can resolve an account the
 subject owned: EraseUser is not refusable, so an owned account survives naming an
 owner who no longer exists. Transfer or archive those before the request runs.
 
+# Account status is enforced on every read, not only at the door
+
+[AccountStatus] decides whether somebody may be here at all, and only StatusGood
+says yes — [AccountStatus.AdmitsSignIn] is that rule, spelled once.
+
+[Store.GetPrincipal] applies it. A user whose status admits no sign-in is refused
+with [ErrSignInNotAdmitted] rather than answered with a [Principal], and since
+that read is what every authenticated request resolves its caller through, a ban
+is effective on the next request against every surface at once. The alternative
+was to document an obligation — "check principal.User.AccountStatus in your
+interceptor" — and an obligation nobody is compiled against is one line away from
+being forgotten in each consumer, which is the state where an operator believes
+they suspended somebody and the suspension is waiting for a token to expire.
+
+Two things it does not do. It does not tell the three refusing statuses apart:
+one sentinel goes out, because a caller already holding a credential has had the
+remedy conversation and a client is owed one answer. The sign-in door is where
+they are told apart — [github.com/primandproper/platform-go/v14/authentication/signin]
+checks the status before it resolves a principal and answers with its own
+ErrUserUnverified, ErrUserBanned or ErrUserTerminated, the second of those
+carrying the explanation an operator wrote to be shown.
+
+And it does not revoke anything. A suspended user's sessions and refresh-token
+families are rows in other packages' tables, and reaching across for them is the
+dependency [Hooks] exists to avoid — so
+[Hooks.AfterUpdateUserAccountStatus] is where a consumer clears them, and its
+documentation names the two calls. The refusal makes the ban effective; the hook
+makes it tidy.
+
+One consequence to wire for: [User.EnsureDefaults] leaves a new user
+StatusUnverified, so a registration that never moves them to StatusGood is a
+registration that resolves no principal. An application with no verification step
+sets StatusGood on the [User] it passes to [Service.Register].
+
 # The operations, and what a consumer still writes
 
 A registration is three writes in one transaction:

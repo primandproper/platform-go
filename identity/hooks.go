@@ -119,6 +119,34 @@ type Hooks interface {
 
 	// AfterUpdateUserAccountStatus is called with the user under their new
 	// status and the status they held before it.
+	//
+	// This is where a consumer revokes what a suspended user is still holding,
+	// and it is the only place that can: identity holds no handle on a session or
+	// on a refresh token and should not — each lives in a package with a store of
+	// its own, and reaching across for one would be exactly the dependency a hook
+	// exists to avoid. The two calls are
+	// signin/refreshtokens.SQLStore.RevokeForSubject, which takes this tx and says
+	// on itself that "disable this account" and the sign-out that goes with it are
+	// one fact, and sessions.Store[T].RevokeAll over a sessions.Holder naming the
+	// user, which cannot — a sessions store may be backed by Redis rather than by
+	// this database, so that one runs outside the transaction and a delete it made
+	// is not rolled back by returning an error here.
+	//
+	// It is not what makes the ban effective. Store.GetPrincipal refuses a user
+	// whose status does not admit sign-in, so the next authenticated request on
+	// any surface is already refused whether or not a consumer implements this —
+	// what a revocation here buys is tidiness rather than safety. A live session
+	// row for somebody who can no longer use it is a row on their own security
+	// page, a row a "sign out everywhere" reports having ended, and a row the
+	// sweeper carries until its absolute deadline.
+	//
+	// Which way to be wrong is the consumer's to choose, and the hook lets them
+	// choose it. Returning an error refuses the status write, so a ban that could
+	// not be made tidy does not land at all; swallowing it and writing an outbox
+	// row on this tx keeps the ban and retries the revocation. What is not
+	// available is both, for the session half: a revocation that has happened has
+	// happened, and a commit that fails after it leaves somebody signed out of a
+	// suspension the directory never recorded.
 	AfterUpdateUserAccountStatus(
 		ctx context.Context,
 		tx database.Tx,
@@ -416,7 +444,10 @@ func (NoopHooks) AfterArchiveUser(
 	return nil
 }
 
-// AfterUpdateUserAccountStatus does nothing.
+// AfterUpdateUserAccountStatus does nothing, so a ban leaves whatever sessions
+// and refresh-token families the user held live until their own deadlines. The
+// ban itself is still effective on the next request — Store.GetPrincipal refuses
+// it — and the interface's doc names the two calls that clear the rows.
 func (NoopHooks) AfterUpdateUserAccountStatus(
 	context.Context, database.Tx, tenancy.Scope, *User, AccountStatus,
 ) error {

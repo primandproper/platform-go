@@ -206,6 +206,15 @@ func (s *Server) SetUserServiceRoles(
 // The subject is the caller. Reading somebody else's principal is not something
 // this service does — it would be an authorization oracle, answering "what may
 // this person do" to anybody who can name them.
+//
+// It is also where account status is enforced, and an interceptor does not repeat
+// the check. The store refuses a user whose AccountStatus does not admit sign-in
+// with identity.ErrSignInNotAdmitted, which GRPCMapper answers as
+// PermissionDenied, so a ban applied while somebody held a valid access token
+// takes effect on their next call here rather than at the token's expiry.
+// Nothing about the credential is re-examined: a consumer's authentication
+// interceptor still decides whether a request is authenticated at all, and this
+// method decides whether the directory will answer for whoever it said they were.
 func (s *Server) GetPrincipal(
 	ctx context.Context,
 	request *identitypb.GetPrincipalRequest,

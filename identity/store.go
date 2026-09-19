@@ -395,6 +395,17 @@ type SignInReader interface {
 	// the pieces: it is the one every hand-built session context eventually
 	// forgets, and forgetting it hands one account's data to another account's
 	// member.
+	//
+	// It is also where account status is enforced. A user whose AccountStatus
+	// does not admit sign-in — unverified, banned or terminated — is refused with
+	// an error wrapping ErrSignInNotAdmitted rather than answered with a
+	// Principal, and the refusal comes before the membership reads. This is the
+	// read every authenticated request makes, so a ban takes effect on the next
+	// request against every surface at once, and a consumer's interceptor owes no
+	// status check of its own: it resolves a Principal, and a refusal is the
+	// answer. Nothing here revokes the session or the refresh-token family the
+	// request arrived with — identity holds no handle on either — which is what
+	// Hooks.AfterUpdateUserAccountStatus is for.
 	GetPrincipal(
 		ctx context.Context,
 		q database.SQLQueryExecutor,

@@ -89,7 +89,7 @@ type env struct {
 func newEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 	t.Helper()
 
-	return buildEnv(t, false, opts...)
+	return buildEnv(t, false, nil, opts...)
 }
 
 // newRefreshEnv is newEnv with a live refresh token store wired in, which is
@@ -102,13 +102,59 @@ func newEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 func newRefreshEnv(t *testing.T, opts ...signin.ServiceOption) *env {
 	t.Helper()
 
-	return buildEnv(t, true, opts...)
+	return buildEnv(t, true, nil, opts...)
 }
 
-// buildEnv is both constructors. The refresh token store has to exist before the
-// service that is handed it and after the client it is built over, which is the
-// whole reason this is one function with a flag rather than two.
-func buildEnv(t *testing.T, withRefresh bool, opts ...signin.ServiceOption) *env {
+// newPermissiveRefreshEnv is newRefreshEnv over a Directory that answers with a
+// Principal for a user identity.Store.GetPrincipal would refuse.
+//
+// It is what a consumer who implemented the seven methods themselves has, and it
+// is the only way to reach the status check the exchange makes after its re-read:
+// on this module's directory that check is unreachable, because the refusal comes
+// back instead of the Principal.
+func newPermissiveRefreshEnv(t *testing.T, opts ...signin.ServiceOption) *env {
+	t.Helper()
+
+	return buildEnv(t, true, func(d signin.Directory) signin.Directory {
+		return permissiveDirectory{Directory: d}
+	}, opts...)
+}
+
+// permissiveDirectory is that Directory. Everything but the principal read is
+// the real store's; the principal read builds one out of the user row without
+// asking whether their status admits a sign-in, which is precisely the thing a
+// consumer's own directory might forget to do.
+//
+// The memberships are left empty on purpose. Nothing downstream of the status
+// check runs in the case this exists for, and a Principal assembled with roles
+// the test never asserts on would suggest they mattered.
+type permissiveDirectory struct {
+	signin.Directory
+}
+
+func (d permissiveDirectory) GetPrincipal(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	userID, activeAccountID string,
+) (*identity.Principal, error) {
+	user, err := d.Directory.GetUser(ctx, q, scope, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &identity.Principal{User: user.Redacted(), ActiveAccountID: activeAccountID}, nil
+}
+
+// buildEnv is all three constructors. The refresh token store has to exist before
+// the service that is handed it and after the client it is built over, which is
+// the whole reason this is one function with a flag rather than two.
+func buildEnv(
+	t *testing.T,
+	withRefresh bool,
+	wrapDirectory func(signin.Directory) signin.Directory,
+	opts ...signin.ServiceOption,
+) *env {
 	t.Helper()
 
 	client, err := sqlite.NewDatabaseClient(t.Context(),
@@ -159,7 +205,12 @@ func buildEnv(t *testing.T, withRefresh bool, opts ...signin.ServiceOption) *env
 		opts = append(opts, signin.WithRefreshTokenStore(e.refresh))
 	}
 
-	e.svc, err = signin.NewService(client, store, argon2.NewArgon2Authenticator(), e.issuer, opts...)
+	var directory signin.Directory = store
+	if wrapDirectory != nil {
+		directory = wrapDirectory(directory)
+	}
+
+	e.svc, err = signin.NewService(client, directory, argon2.NewArgon2Authenticator(), e.issuer, opts...)
 	must.NoError(t, err)
 
 	e.register(t)

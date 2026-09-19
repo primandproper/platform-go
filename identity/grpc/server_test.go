@@ -454,6 +454,41 @@ func TestGetPrincipalAnswersForTheCaller(T *testing.T) {
 	test.SliceLen(T, 1, principal.GetMemberships())
 }
 
+// TestGetPrincipalRefusesASuspendedCaller is the ban arriving on the wire. The
+// caller still holds whatever their consumer's interceptor authenticated them
+// with — nothing here expired — and the directory refuses to answer for them
+// anyway, which is what makes a suspension effective on the next request rather
+// than at the next token expiry.
+//
+// PermissionDenied and not Unauthenticated: they proved who they are, and a
+// client told to authenticate again would loop on a credential that keeps
+// working. The message is the sentinel's own words, which is what
+// identity.ClientSafeSentinels buys — the code alone is also what an
+// authorization refusal renders as.
+func TestGetPrincipalRefusesASuspendedCaller(T *testing.T) {
+	T.Parallel()
+
+	h := newHarness(T)
+
+	registration := h.seedAccount(T, testScope, "somebody")
+	ctx := h.as(&testPrincipal{userID: registration.User.ID, scope: testScope})
+
+	_, err := h.client.GetPrincipal(ctx, &identitypb.GetPrincipalRequest{})
+	must.NoError(T, err)
+
+	_, err = h.client.UpdateUserAccountStatus(h.ctx(), &identitypb.UpdateUserAccountStatusRequest{
+		UserId:      registration.User.ID,
+		Status:      identitypb.AccountStatus_ACCOUNT_STATUS_BANNED,
+		Explanation: "spam",
+	})
+	must.NoError(T, err)
+
+	_, err = h.client.GetPrincipal(ctx, &identitypb.GetPrincipalRequest{})
+	must.Error(T, err)
+	test.EqOp(T, codes.PermissionDenied, status.Code(err))
+	test.StrContains(T, status.Convert(err).Message(), identity.ErrSignInNotAdmitted.Error())
+}
+
 func TestArchiveUserRefusesTheLastOwnerOfAnAccount(T *testing.T) {
 	T.Parallel()
 

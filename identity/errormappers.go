@@ -44,7 +44,7 @@ var (
 // to a caller verbatim, handed to errors/grpc.RegisterClientSafeSentinels by
 // errormappers.Register alongside the five mappers.
 //
-// They are the eleven the mappers claim, and the list is the same eleven on
+// They are the twelve the mappers claim, and the list is the same twelve on
 // purpose:
 // each was given a status because a client acts on it, and a client acting on
 // it needs to know which one it got. gRPC derives its message from the code,
@@ -52,9 +52,16 @@ var (
 // expired invitation, a last owner and a missing default account are all
 // FailedPrecondition — so without this a client in a language with no access
 // to the encoded details is told the code's name three times for three
-// different remedies. None of the ten names a table, a key or a policy: what
+// different remedies. None of the twelve names a table, a key or a policy: what
 // each says is the whole of what the caller needs and the whole of what this
 // package knows.
+//
+// ErrSignInNotAdmitted is on it for the same reason and one of its own: its code
+// is PermissionDenied, which is also what a consumer's authorization layer
+// answers with, so a client reading the code alone cannot tell "your account is
+// suspended" from "you may not do that". Its own words say which, and they name
+// no status — the explanation an operator wrote for a banned user goes out at the
+// sign-in door, through authentication/signin, and not here.
 //
 // The nil-argument and malformed-input sentinels are not here. They wrap
 // platform sentinels that are already on errors/grpc's own list, so the
@@ -71,6 +78,7 @@ var ClientSafeSentinels = []error{
 	ErrInvitationExpired,
 	ErrScopeMismatch,
 	ErrUsernameDisplayMismatch,
+	ErrSignInNotAdmitted,
 }
 
 type (
@@ -123,6 +131,16 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	case errors.Is(err, ErrNoDefaultAccount):
 		return httperrors.ErrResourceConflict, "user must be given a default account first", true
 
+	// The one refusal on authority this package makes. A user whose status does
+	// not admit sign-in is somebody the directory knows and will not answer for,
+	// which is a 403 and not a 404: the caller is signed in as far as their token
+	// is concerned, and an absence code would send a client to a "no such page"
+	// screen for an account that was suspended. The message collapses the three
+	// statuses, as the sentinel does, because the door already told them which —
+	// see ErrSignInNotAdmitted.
+	case errors.Is(err, ErrSignInNotAdmitted):
+		return httperrors.ErrUserIsBanned, "account is not permitted to sign in", true
+
 	// A write whose entity names a different tenant than the call did. It is the
 	// caller's mistake and it is a request-shaped one, so it reads as a bad
 	// request rather than as a permission failure — nothing was refused on
@@ -168,6 +186,13 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	case errors.Is(err, ErrLastAccountOwner),
 		errors.Is(err, ErrNoDefaultAccount):
 		return codes.FailedPrecondition, true
+
+	// Known, and refused anyway, which is what PermissionDenied means. It is not
+	// Unauthenticated: the caller proved who they are and the directory will not
+	// answer for them, and a client told to authenticate again would loop on a
+	// credential that keeps working.
+	case errors.Is(err, ErrSignInNotAdmitted):
+		return codes.PermissionDenied, true
 
 	case errors.Is(err, ErrScopeMismatch),
 		errors.Is(err, ErrUsernameDisplayMismatch):

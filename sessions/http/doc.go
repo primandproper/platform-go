@@ -65,6 +65,26 @@ tier — errormappers.Register, which service.Register makes for a service built
 from a service.Config and a service assembling itself by hand makes once, at
 startup.
 
+# A session is not a licence
+
+The middleware answers "is there a session and whose is it". It does not answer
+"may that person still be here", and a handler should not add a
+principal.User.AccountStatus check of its own to make up the difference:
+identity.Store.GetPrincipal refuses a user whose status does not admit sign-in
+with identity.ErrSignInNotAdmitted, so a consumer that resolves the principal
+behind a session through that read is already refusing a banned user on the next
+request, on every surface at once. A check written here would be a second copy of
+that rule, free to drift from it and reviewed by nobody.
+
+What a session row does outlive is the ban, because nothing in identity holds a
+handle on this store. A suspended user's row sits here until its absolute
+deadline, listed on their own security page and counted by a "sign out
+everywhere". Clearing it is the consumer's, from
+identity.Hooks.AfterUpdateUserAccountStatus, with sessions.Store[T].RevokeAll over
+a Holder naming the user. That revocation cannot join the transaction the status
+write ran in — this store may be Redis — so the hook's documentation is where the
+two ways of being wrong about the ordering are set out.
+
 # Cookie lifetime
 
 A session cookie's MaxAge is derived from the store's absolute timeout, not from

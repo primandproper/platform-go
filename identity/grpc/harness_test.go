@@ -337,11 +337,21 @@ func (h *harness) seedUser(t *testing.T, scope tenancy.Scope, username string) *
 
 // seedAccount registers a user with an account they own, which is the only way
 // to get a well-formed one.
+//
+// The status is named rather than defaulted. Register leaves a user
+// StatusUnverified, and identity.Store.GetPrincipal refuses a status that admits
+// no sign-in — so a harness that said nothing would seed a caller this server
+// will not answer for, which is what a consumer with no verification step avoids
+// the same way.
 func (h *harness) seedAccount(t *testing.T, scope tenancy.Scope, username string) *identity.Registration {
 	t.Helper()
 
 	registration, err := h.svc.Register(t.Context(), scope,
-		&identity.User{Username: username, EmailAddress: username + "@example.com"},
+		&identity.User{
+			Username:      username,
+			EmailAddress:  username + "@example.com",
+			AccountStatus: identity.StatusGood,
+		},
 		&identity.Account{Name: username + "'s account"},
 		[]string{"owner"},
 	)

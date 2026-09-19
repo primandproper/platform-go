@@ -56,6 +56,29 @@ directory-wide.
 layers from environment configuration and registers them with an injector, which
 is the shorter of the two mounts below.
 
+# Account status is not a third half
+
+A banned user's requests are refused by the store, not by an interceptor.
+identity.Store.GetPrincipal returns identity.ErrSignInNotAdmitted for a user whose
+AccountStatus does not admit sign-in, [Server.GetPrincipal] hands it to the
+mapper, and PermissionDenied goes back — so a suspension takes effect on the next
+call rather than when an access token expires. An interceptor that checked
+principal.User.AccountStatus of its own would be a second copy of a rule whose
+first copy is one line, and the copy nobody reviews is the one that admits a
+banned user.
+
+Every other method here takes the caller as given, and that is where the
+obligation actually sits: these handlers read
+[github.com/primandproper/platform-go/v14/callers.Principal] off the context and
+whoever put it there is who they answer for. A consumer whose interceptor resolves
+that principal through GetPrincipal — directly, or through
+authentication/signin, which does — inherits the refusal on every method at once.
+A consumer who mints one from a token's claims alone and never re-reads the
+directory has chosen a ban that waits for the claims to expire. That is a
+defensible trade — a directory read per request is not free — and it is written
+down here because it is the kind of trade that otherwise gets made by nobody in
+particular.
+
 # The shape
 
 Twenty-eight RPCs. Fifteen writes, each exactly one call into identity.Service,
