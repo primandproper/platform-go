@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/primandproper/primitives-go/v2/filtering"
@@ -214,6 +215,38 @@ func runValueSuite(t *testing.T, env *storeEnv) {
 
 		_, err = env.set(t, store, unset, testSubject, "compact", "true")
 		test.ErrorIs(t, err, tenancy.ErrNoScope)
+	})
+
+	// The read half matters as much as the write: a subject that would not have
+	// fitted the column can only ever match a row this package refused to store,
+	// so answering it with an empty page would be answering a question nobody
+	// can have asked. Both directions are refused before any statement is
+	// issued, which is what makes the schema's promise true on a server that is
+	// not in strict mode.
+	t.Run("a subject has to fit the columns that store it", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		mustCreate(t, env, store, testScope, boolDefinition("density"))
+
+		overlong := Subject{Type: SubjectUser, ID: strings.Repeat("u", MaxSubjectIDLength+1)}
+
+		_, err := env.set(t, store, testScope, overlong, "density", "true")
+		test.ErrorIs(t, err, ErrSubjectValueTooLong)
+
+		_, err = store.GetValue(t.Context(), env.reader(), testScope, overlong, "density")
+		test.ErrorIs(t, err, ErrSubjectValueTooLong)
+
+		_, err = env.clear(t, store, testScope, overlong, "density")
+		test.ErrorIs(t, err, ErrSubjectValueTooLong)
+
+		_, err = store.Resolve(t.Context(), env.reader(), testScope, overlong, "density")
+		test.ErrorIs(t, err, ErrSubjectValueTooLong)
+
+		wideType := Subject{Type: SubjectType(strings.Repeat("t", MaxSubjectTypeLength+1)), ID: "user-1"}
+
+		_, err = env.set(t, store, testScope, wideType, "density", "true")
+		test.ErrorIs(t, err, ErrSubjectValueTooLong)
 	})
 
 	t.Run("one subject's answer is not another's", func(t *testing.T) {

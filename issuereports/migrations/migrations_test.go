@@ -85,6 +85,30 @@ func TestStatements(T *testing.T) {
 		}
 	})
 
+	T.Run("leaves the prose columns unbounded", func(t *testing.T) {
+		t.Parallel()
+
+		// details is what a person typed and resolution is what a triager wrote
+		// back, and nothing in this package bounds either — so a width on either
+		// is a number nobody measured deciding how long a note may be, and it is
+		// MySQL that takes it out on whoever wrote one: refused on a strict
+		// server, truncated on one that is not, while the same note stores whole
+		// on Postgres and SQLite.
+		//
+		// TEXT is what that costs on MySQL, because a TEXT column there carries
+		// no literal DEFAULT. Nothing needs one: CreateReport names both columns
+		// in every insert it issues, so the empty string a new report's
+		// resolution holds comes from the statement.
+		for _, d := range allDialects {
+			for _, column := range []string{"details", "resolution"} {
+				line := columnLine(t, createStatement(t, d), column)
+
+				test.StrContains(t, line, "TEXT", test.Sprintf("dialect %s: %s", d, column))
+				test.StrNotContains(t, line, "VARCHAR", test.Sprintf("dialect %s: %s", d, column))
+			}
+		}
+	})
+
 	T.Run("leaves closed_at nullable", func(t *testing.T) {
 		t.Parallel()
 

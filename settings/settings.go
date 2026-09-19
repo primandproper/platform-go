@@ -109,19 +109,54 @@ const (
 // String renders the subject type as it is stored.
 func (t SubjectType) String() string { return string(t) }
 
+// The bounds on a subject's two stored strings, each the width of the column
+// that holds it in the narrowest dialect this module ships a schema for.
+//
+// They are narrower than the 255 the rest of the MySQL schema reaches for
+// because both columns are part of one key, and InnoDB bounds a key at 3072
+// bytes — see settings/migrations for the arithmetic. What they are not is a
+// truncation: a subject over either is refused by [Subject.Validate] before any
+// statement is issued, which is what keeps the schema's promise that nothing
+// here loses a tail silently.
+//
+// Checking them in Go is the sharper half of the same argument the definition's
+// four bounds make. A server not in strict mode truncates a too-long value and
+// reports success, and both of these columns are in the uniqueness the value
+// write converges on — so a truncated subject does not store a shortened name,
+// it lands on another principal's row and overwrites their answer. Postgres and
+// SQLite spell the columns TEXT and would have stored the whole thing, so
+// without the bound one subject means different things on three dialects.
+const (
+	// MaxSubjectTypeLength bounds a subject's type. It is the narrower of the
+	// two because a type is a vocabulary word — see [SubjectType] — where an id
+	// is whatever an application identifies its principals by.
+	MaxSubjectTypeLength = 128
+
+	// MaxSubjectIDLength bounds a subject's id.
+	MaxSubjectIDLength = 255
+)
+
 // Subject is whose setting a value is.
 //
 // It is two fields rather than one composite string for the reason the tenancy
 // doctrine gives for the scope: a key spelling "user:abc123" carries two facts
 // in a column that can only be indexed, filtered and enumerated as one.
 type Subject struct {
-	// Type says what kind of principal this is. Required.
+	// Type says what kind of principal this is. Required, and bounded by
+	// MaxSubjectTypeLength.
 	Type SubjectType `json:"type"`
-	// ID identifies the principal within that type. Required.
+	// ID identifies the principal within that type. Required, and bounded by
+	// MaxSubjectIDLength.
 	ID string `json:"id"`
 }
 
-// Validate reports whether the subject names anything.
+// Validate reports whether the subject names anything, and whether what it names
+// fits the columns that store it.
+//
+// The bounds are checked on every value-side call rather than on the writes
+// alone, because a read whose subject would not have fitted is a read that can
+// only ever match a row this package refused to write. Answering it with an
+// empty page would be answering a question nobody can have asked.
 func (s Subject) Validate() error {
 	if s.Type == "" {
 		return ErrEmptySubjectType
@@ -129,6 +164,16 @@ func (s Subject) Validate() error {
 
 	if s.ID == "" {
 		return ErrEmptySubjectID
+	}
+
+	if len(s.Type) > MaxSubjectTypeLength {
+		return platformerrors.Wrapf(ErrSubjectValueTooLong,
+			"subject type is %d bytes, over the %d-byte limit", len(s.Type), MaxSubjectTypeLength)
+	}
+
+	if len(s.ID) > MaxSubjectIDLength {
+		return platformerrors.Wrapf(ErrSubjectValueTooLong,
+			"subject id is %d bytes, over the %d-byte limit", len(s.ID), MaxSubjectIDLength)
 	}
 
 	return nil

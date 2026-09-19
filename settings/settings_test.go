@@ -1,9 +1,14 @@
 package settings
 
 import (
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/primandproper/platform-go/v14/settings/migrations"
+
+	"github.com/primandproper/primitives-go/v2/database/dialect"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/pointer"
 
@@ -70,6 +75,67 @@ func TestSubject_Validate(T *testing.T) {
 	test.ErrorIs(T, Subject{Type: SubjectUser}.Validate(), ErrEmptySubjectID)
 	test.EqOp(T, "user", SubjectUser.String())
 	test.EqOp(T, "account", SubjectAccount.String())
+
+	// The bound is what keeps a server not in strict mode from truncating a
+	// subject onto another principal's row — see MaxSubjectTypeLength. Each case
+	// is one byte over its column, because one byte over is the case a limit
+	// written down as the wrong number still passes, and each is paired with the
+	// limit itself, which must be accepted.
+	T.Run("each stored string is bounded by its column", func(t *testing.T) {
+		t.Parallel()
+
+		for _, tc := range []struct {
+			subject Subject
+			name    string
+		}{
+			{
+				name: "subject type",
+				subject: Subject{
+					Type: SubjectType(strings.Repeat("t", MaxSubjectTypeLength+1)),
+					ID:   "u",
+				},
+			},
+			{
+				name: "subject id",
+				subject: Subject{
+					Type: SubjectUser,
+					ID:   strings.Repeat("i", MaxSubjectIDLength+1),
+				},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				err := tc.subject.Validate()
+
+				test.ErrorIs(t, err, ErrSubjectValueTooLong)
+
+				// Answered as a bad request by the platform mapper rather than
+				// by a case of this package's own, which is the whole reason it
+				// wraps this sentinel — see internal/sentinelmatrix.
+				test.ErrorIs(t, err, platformerrors.ErrUnrecognizedInputValue)
+
+				// The message says which of the two it was, because "too long"
+				// with two candidates is a refusal the caller has to guess at.
+				test.StrContains(t, err.Error(), tc.name)
+			})
+		}
+
+		test.NoError(t, Subject{
+			Type: SubjectType(strings.Repeat("t", MaxSubjectTypeLength)),
+			ID:   strings.Repeat("i", MaxSubjectIDLength),
+		}.Validate())
+	})
+
+	// An empty subject is reported as empty rather than as a length: the two
+	// refusals are different remedies, and a caller that sent nothing is not a
+	// caller that sent too much.
+	T.Run("emptiness is reported before length", func(t *testing.T) {
+		t.Parallel()
+
+		test.ErrorIs(t, Subject{Type: "", ID: strings.Repeat("i", MaxSubjectIDLength+1)}.Validate(),
+			ErrEmptySubjectType)
+	})
 }
 
 func TestDefinition_admits(T *testing.T) {
@@ -294,4 +360,109 @@ func TestDefinition_withinBounds(T *testing.T) {
 
 		must.NoError(t, (&Definition{Name: "theme", Kind: KindString}).validate())
 	})
+}
+
+// innoDBKeyLimit is the widest key InnoDB will build, in bytes, and
+// utf8mb4Bytes is what MySQL charges per character of a utf8mb4 VARCHAR. The
+// product of a key's declared widths against them is what decides how wide
+// subject_type and subject_id can be — see settings/migrations.
+const (
+	innoDBKeyLimit = 3072
+	utf8mb4Bytes   = 4
+)
+
+// varcharColumn matches a MySQL column declaration wide enough to bound, which
+// is every column of the uniqueness this test measures.
+var varcharColumn = regexp.MustCompile(`(?m)^\s+(\w+)\s+VARCHAR\((\d+)\)`)
+
+// uniqueKeyColumns matches the settings_values uniqueness and captures the
+// column list it is built from, so the test measures the key the schema
+// declares rather than a list copied out of it.
+var uniqueKeyColumns = regexp.MustCompile(`UNIQUE KEY settings_values_subject_uniq \(([^)]+)\)`)
+
+// TestSubjectBoundsMatchTheirColumns is the half of the bound that
+// TestSubject_Validate cannot see.
+//
+// MaxSubjectTypeLength and MaxSubjectIDLength are only a promise about
+// truncation if they are the widths the MySQL schema actually declares, and the
+// two live in different files in different languages — the drift this pins is
+// the one that reports nothing until a subject that Go accepted is truncated
+// onto another principal's row.
+func TestSubjectBoundsMatchTheirColumns(T *testing.T) {
+	T.Parallel()
+
+	values := mustValuesTable(T)
+
+	T.Run("the Go bounds are the declared widths", func(t *testing.T) {
+		t.Parallel()
+
+		widths := varcharWidths(t, values)
+
+		test.EqOp(t, MaxSubjectTypeLength, widths["subject_type"])
+		test.EqOp(t, MaxSubjectIDLength, widths["subject_id"])
+	})
+
+	// Widening either column to the 255 the rest of this schema reaches for puts
+	// the key over the budget, and the two servers that answer to this dialect
+	// disagree about what that means: MySQL refuses the CREATE TABLE outright,
+	// and MariaDB silently rewrites the unique key USING HASH. This is the only
+	// place the budget is checked, because the container suite runs MariaDB,
+	// where the over-wide key creates and the rewrite goes unreported.
+	T.Run("the uniqueness fits InnoDB's key budget", func(t *testing.T) {
+		t.Parallel()
+
+		widths := varcharWidths(t, values)
+
+		key := uniqueKeyColumns.FindStringSubmatch(values)
+		must.SliceLen(t, 2, key)
+
+		total := 0
+		for column := range strings.SplitSeq(key[1], ",") {
+			column = strings.TrimSpace(column)
+			width, ok := widths[column]
+			must.True(t, ok, must.Sprintf("%s is in the key and is not a VARCHAR", column))
+
+			total += width * utf8mb4Bytes
+		}
+
+		test.LessEq(t, innoDBKeyLimit, total,
+			test.Sprintf("the subject uniqueness is %d bytes wide", total))
+	})
+}
+
+// mustValuesTable is the settings_values CREATE TABLE as MySQL renders it,
+// read out of the DDL the package ships rather than restated here.
+func mustValuesTable(t *testing.T) string {
+	t.Helper()
+
+	stmts, err := migrations.Statements(dialect.MySQL, "")
+	must.NoError(t, err)
+
+	for _, stmt := range stmts {
+		if strings.Contains(stmt, "CREATE TABLE IF NOT EXISTS settings_values ") {
+			return stmt
+		}
+	}
+
+	t.Fatal("the MySQL schema creates no settings_values table")
+
+	return ""
+}
+
+// varcharWidths is every bounded column of a CREATE TABLE, by name.
+func varcharWidths(t *testing.T, stmt string) map[string]int {
+	t.Helper()
+
+	widths := map[string]int{}
+
+	for _, match := range varcharColumn.FindAllStringSubmatch(stmt, -1) {
+		width, err := strconv.Atoi(match[2])
+		must.NoError(t, err)
+
+		widths[match[1]] = width
+	}
+
+	must.MapNotEmpty(t, widths)
+
+	return widths
 }
