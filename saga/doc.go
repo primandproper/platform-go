@@ -246,7 +246,11 @@ An EventPublisher receives started, step-completed, compensating,
 step-compensated, completed, compensated, and stuck events, in the same
 transaction as the row each describes. NewOutboxPublisher wires that to this
 module's outbox, keyed by instance ID so a subscriber never sees "completed"
-before the step completion that preceded it.
+before the step completion that preceded it — until one of that instance's
+events quarantines in the outbox. A quarantined message stops blocking its key,
+so the rest of the instance's lifecycle publishes without it and a subscriber
+sees the remainder with a hole in it. outbox_messages_quarantined is the signal
+that it happened; outbox's documentation carries the trade.
 
 Events carry no saga state. T is the application's own domain object and a
 lifecycle event fans out to every subscriber of a topic; a subscriber that needs

@@ -405,6 +405,42 @@ func TestRelay_ordering(T *testing.T) {
 
 		test.Eq(t, []string{`{"id":"first"}`, `{"id":"second"}`}, rec.payloads())
 	})
+
+	T.Run("releases a key once its blocking predecessor quarantines", func(t *testing.T) {
+		t.Parallel()
+
+		c := newStubClock()
+		client := newTestClient(t)
+		relay, rec := newTestRelay(t, client, c)
+		w := newTestWriter(t, c)
+
+		enqueue(t, client, w,
+			Message{Topic: "orders", Key: "cart-1", Payload: map[string]any{"id": "first"}},
+			Message{Topic: "orders", Key: "cart-1", Payload: map[string]any{"id": "second"}},
+		)
+
+		// The head of the key is poison, so it exhausts its attempts and is
+		// given up on. Its successor is held behind it the whole way there.
+		rec.fail(platformerrors.New("poison"))
+
+		for range relay.cfg.Backoff.MaxAttempts {
+			relay.cycle(t.Context())
+			c.advance(time.Hour)
+		}
+
+		must.EqOp(t, 1, countRows(t, client, "quarantined_at IS NOT NULL"))
+		must.SliceEmpty(t, rec.payloads())
+
+		// This is where per-key ordering ends, and it ends deliberately: a
+		// quarantined row is not pending, so it stops blocking its key and the
+		// successor publishes without it. The stream continues one message
+		// short rather than stopping forever behind a message no future claim
+		// will take, which is what Message.Key and the Failure section say.
+		rec.fail(nil)
+		relay.cycle(t.Context())
+
+		test.Eq(t, []string{`{"id":"second"}`}, rec.payloads())
+	})
 }
 
 // TestRelay_claim_guardsTheLease is the double-claim, driven at the two
