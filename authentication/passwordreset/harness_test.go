@@ -3,16 +3,21 @@ package passwordreset
 import (
 	"context"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
+	"github.com/primandproper/platform-go/v14/identity"
 
+	"github.com/primandproper/primitives-go/v2/authentication"
 	"github.com/primandproper/primitives-go/v2/clock"
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability/logging"
 	loggingnoop "github.com/primandproper/primitives-go/v2/observability/logging/noop"
 	tracingnoop "github.com/primandproper/primitives-go/v2/observability/tracing/noop"
@@ -120,12 +125,21 @@ func (t *fakeTicker) Stop()                  {}
 func newTestClient(tb testing.TB) database.Client {
 	tb.Helper()
 
-	client, err := sqlite.NewDatabaseClient(tb.Context(),
-		&testClientConfig{connectionString: filepath.Join(tb.TempDir(), "passwordreset.db")})
-	must.NoError(tb, err)
-	tb.Cleanup(func() { _ = client.Close() })
+	client := openTestClient(tb, filepath.Join(tb.TempDir(), "passwordreset.db"))
 
 	createTable(tb, client, dialect.SQLite, DefaultTablePrefix)
+
+	return client
+}
+
+// openTestClient connects to a SQLite file without creating anything in it, for
+// the callers that want a different set of tables than newTestClient makes.
+func openTestClient(tb testing.TB, path string) database.Client {
+	tb.Helper()
+
+	client, err := sqlite.NewDatabaseClient(tb.Context(), &testClientConfig{connectionString: path})
+	must.NoError(tb, err)
+	tb.Cleanup(func() { _ = client.Close() })
 
 	return client
 }
@@ -329,4 +343,350 @@ func rowsIn(t *testing.T, client database.Client, table string) int {
 		QueryRowContext(t.Context(), "SELECT COUNT(*) FROM "+table).Scan(&count))
 
 	return count
+}
+
+// The flow's fixtures: everything Service needs that is not the store.
+
+// testEmailAddress is the address most of the flow tests ask for a reset at.
+const testEmailAddress = "reset.me@example.com"
+
+// testUsersTable is the directory double's storage. It lives in the same
+// database the tokens do, which is the whole point: the property the flow
+// exists for is that the password write and the redemption commit together, and
+// a directory that kept its passwords in a map would report success for a
+// transaction that rolled back.
+const testUsersTable = `CREATE TABLE test_users (
+	id               TEXT NOT NULL PRIMARY KEY,
+	email_address    TEXT NOT NULL,
+	hashed_password  TEXT NOT NULL
+)`
+
+// testDirectory is a Directory over that table.
+//
+// Reads come out of a map because nothing in this flow writes a user row, and
+// the write goes through the Tx it is handed because everything in this flow
+// depends on it doing so.
+type testDirectory struct {
+	byAddress map[string]*identity.User
+
+	// readErr, when set, is what GetUserByEmailAddress answers instead of
+	// looking — the directory being unwell rather than the address being
+	// nobody's, which are the two answers the flow must not confuse.
+	readErr error
+
+	// updateErr, when set, is what UpdateUserPassword answers instead of
+	// writing — the directory being unwell partway through a redemption.
+	updateErr error
+
+	// scopes records the scope of every call, so a test can assert the flow
+	// passes the one it was given rather than one it derived.
+	scopes []tenancy.Scope
+
+	mu sync.Mutex
+}
+
+var _ Directory = (*testDirectory)(nil)
+
+func (d *testDirectory) GetUserByEmailAddress(
+	_ context.Context,
+	_ database.SQLQueryExecutor,
+	scope tenancy.Scope,
+	emailAddress string,
+) (*identity.User, error) {
+	d.mu.Lock()
+	d.scopes = append(d.scopes, scope)
+	d.mu.Unlock()
+
+	if d.readErr != nil {
+		return nil, d.readErr
+	}
+
+	user, ok := d.byAddress[strings.ToLower(emailAddress)]
+	if !ok {
+		return nil, platformerrors.Wrap(identity.ErrUserNotFound, "reading a test user by address")
+	}
+
+	return user, nil
+}
+
+func (d *testDirectory) UpdateUserPassword(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID, hashedPassword string,
+) error {
+	d.mu.Lock()
+	d.scopes = append(d.scopes, scope)
+	d.mu.Unlock()
+
+	if d.updateErr != nil {
+		return d.updateErr
+	}
+
+	_, err := tx.ExecContext(ctx,
+		`UPDATE test_users SET hashed_password = ? WHERE id = ?`, hashedPassword, userID)
+
+	return err
+}
+
+// recordingMailer keeps what it was handed and answers with whatever the test
+// told it to.
+type recordingMailer struct {
+	err error
+
+	// inspect runs at send time, which is how a test asserts what was true of
+	// the database at the moment the mail went out.
+	inspect func(mail *Mail)
+
+	sent []*Mail
+
+	mu sync.Mutex
+}
+
+var _ Mailer = (*recordingMailer)(nil)
+
+func (m *recordingMailer) SendPasswordReset(_ context.Context, mail *Mail) error {
+	m.mu.Lock()
+	m.sent = append(m.sent, mail)
+	inspect := m.inspect
+	m.mu.Unlock()
+
+	if inspect != nil {
+		inspect(mail)
+	}
+
+	return m.err
+}
+
+func (m *recordingMailer) count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return len(m.sent)
+}
+
+func (m *recordingMailer) last() *Mail {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if len(m.sent) == 0 {
+		return nil
+	}
+
+	return m.sent[len(m.sent)-1]
+}
+
+// fakeAuthenticator hashes by prefixing, so a test can read a stored hash and
+// say which password produced it.
+type fakeAuthenticator struct {
+	err error
+}
+
+var _ authentication.Authenticator = (*fakeAuthenticator)(nil)
+
+func (a *fakeAuthenticator) HashPassword(_ context.Context, password string) (string, error) {
+	if a.err != nil {
+		return "", a.err
+	}
+
+	return "hashed:" + password, nil
+}
+
+func (a *fakeAuthenticator) PasswordMatches(_ context.Context, hash, password string) (bool, error) {
+	return hash == "hashed:"+password, nil
+}
+
+// interceptingStore wraps a Store so one of its methods can fail without the
+// others changing. The failures it stands in for are a driver's, which is the
+// only way a redemption's three writes come apart in production.
+type interceptingStore struct {
+	Store
+
+	issueErr  error
+	revokeErr error
+}
+
+var _ Store = (*interceptingStore)(nil)
+
+func (s *interceptingStore) Issue(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID string,
+	ttl time.Duration,
+) (*Issuance, error) {
+	if s.issueErr != nil {
+		return nil, s.issueErr
+	}
+
+	return s.Store.Issue(ctx, tx, scope, userID, ttl)
+}
+
+func (s *interceptingStore) RevokeForUser(
+	ctx context.Context,
+	tx database.Tx,
+	scope tenancy.Scope,
+	userID string,
+) (int64, error) {
+	if s.revokeErr != nil {
+		return 0, s.revokeErr
+	}
+
+	return s.Store.RevokeForUser(ctx, tx, scope, userID)
+}
+
+// sleepRecordingClock is a fakeClock that records every duration it was asked
+// to sleep for and advances itself by it, so a test can assert the deadline two
+// code paths were held to without waiting for either.
+type sleepRecordingClock struct {
+	*fakeClock
+
+	slept []time.Duration
+
+	mu sync.Mutex
+}
+
+var _ clock.Clock = (*sleepRecordingClock)(nil)
+
+func newSleepRecordingClock() *sleepRecordingClock {
+	return &sleepRecordingClock{fakeClock: newFakeClock()}
+}
+
+func (c *sleepRecordingClock) Sleep(ctx context.Context, d time.Duration) error {
+	c.mu.Lock()
+	c.slept = append(c.slept, d)
+	c.mu.Unlock()
+
+	// A caller who has gone gets the wait cut short, which is what a real clock
+	// does and what the flow records on its span.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	c.advance(d)
+
+	return nil
+}
+
+func (c *sleepRecordingClock) sleeps() []time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return slices.Clone(c.slept)
+}
+
+// serviceEnv is one wired-up flow and the pieces a test reaches back into.
+type serviceEnv struct {
+	service   *Service
+	store     *SQLStore
+	tokens    *interceptingStore
+	directory *testDirectory
+	mailer    *recordingMailer
+	auth      *fakeAuthenticator
+	client    database.Client
+	clock     *sleepRecordingClock
+
+	// storeClock is what the tokens expire against, which is a different clock
+	// from the flow's: one test advances a link past its deadline without
+	// moving the one the request floor is measured on.
+	storeClock *fakeClock
+}
+
+// newTestService builds the flow over a fresh SQLite database holding both the
+// token table and the directory double's.
+func newTestService(tb testing.TB, opts ...ServiceOption) *serviceEnv {
+	tb.Helper()
+
+	path := filepath.Join(tb.TempDir(), "passwordreset.db")
+	client := openTestClient(tb, path)
+
+	createTable(tb, client, dialect.SQLite, DefaultTablePrefix)
+
+	_, err := client.Writer().ExecContext(tb.Context(), testUsersTable)
+	must.NoError(tb, err)
+
+	_, err = client.Writer().ExecContext(tb.Context(),
+		`INSERT INTO test_users (id, email_address, hashed_password) VALUES (?, ?, ?)`,
+		testUserID, testEmailAddress, "hashed:original")
+	must.NoError(tb, err)
+
+	storeClock := newFakeClock()
+
+	store, err := NewSQLStore(&Config{}, client,
+		WithClock(storeClock),
+		WithLogger(loggingnoop.NewLogger()),
+		WithTracerProvider(tracingnoop.NewTracerProvider()),
+	)
+	must.NoError(tb, err)
+
+	env := &serviceEnv{
+		storeClock: storeClock,
+		store:      store,
+		tokens:     &interceptingStore{Store: store},
+		directory: &testDirectory{byAddress: map[string]*identity.User{
+			testEmailAddress: {ID: testUserID, EmailAddress: testEmailAddress, Scope: testScope()},
+		}},
+		mailer: &recordingMailer{},
+		auth:   &fakeAuthenticator{},
+		client: client,
+		clock:  newSleepRecordingClock(),
+	}
+
+	env.service, err = NewService(client, env.tokens, env.directory, env.auth, env.mailer,
+		append([]ServiceOption{
+			WithServiceClock(env.clock),
+			WithServiceLogger(loggingnoop.NewLogger()),
+			WithServiceTracerProvider(tracingnoop.NewTracerProvider()),
+		}, opts...)...)
+	must.NoError(tb, err)
+
+	return env
+}
+
+// storedPassword reads the directory double's column back, on a connection that
+// is not in anybody's transaction — so what it answers is what committed.
+func (e *serviceEnv) storedPassword(tb testing.TB) string {
+	tb.Helper()
+
+	var hashed string
+
+	must.NoError(tb, e.client.Writer().
+		QueryRowContext(tb.Context(), `SELECT hashed_password FROM test_users WHERE id = ?`, testUserID).
+		Scan(&hashed))
+
+	return hashed
+}
+
+// liveTokens counts the principal's unspent, unexpired tokens.
+func (e *serviceEnv) liveTokens(tb testing.TB) int {
+	tb.Helper()
+
+	tokens, err := e.store.ListForUser(tb.Context(), e.client.Writer(), testScope(), testUserID)
+	must.NoError(tb, err)
+
+	live := 0
+
+	for _, token := range tokens {
+		if token.Live(e.store.clock.Now()) {
+			live++
+		}
+	}
+
+	return live
+}
+
+// request runs one reset request and hands back the secret that was mailed.
+func (e *serviceEnv) request(tb testing.TB) string {
+	tb.Helper()
+
+	before := e.mailer.count()
+
+	must.NoError(tb, e.service.Request(tb.Context(), testScope(), testEmailAddress))
+	must.EqOp(tb, before+1, e.mailer.count())
+
+	mail := e.mailer.last()
+	must.NotNil(tb, mail)
+	must.NotNil(tb, mail.Issuance)
+
+	return mail.Issuance.Secret
 }

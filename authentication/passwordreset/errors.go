@@ -47,3 +47,47 @@ var (
 	// errors.ErrNilInputParameter, so a caller may check either.
 	ErrNilConfig = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil password reset store config")
 )
+
+// The sentinels the flow over the store adds. All six are arguments Service
+// refuses rather than outcomes a person meets — the three outcomes a person
+// meets are the three above, and the flow returns them unchanged.
+var (
+	// ErrNilStore indicates NewService was called without a Store. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilStore = platformerrors.Wrap(platformerrors.ErrNilInputParameter,
+		"nil token store for the password reset service")
+
+	// ErrNilDirectory indicates NewService was called without a Directory. It
+	// wraps errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilDirectory = platformerrors.Wrap(platformerrors.ErrNilInputParameter,
+		"nil directory for the password reset service")
+
+	// ErrNilAuthenticator indicates NewService was called without an
+	// authentication.Authenticator. There is no default and there will not be
+	// one: which engine hashes a deployment's passwords is not a choice a
+	// library makes on its behalf. It wraps errors.ErrNilInputParameter, so a
+	// caller may check either.
+	ErrNilAuthenticator = platformerrors.Wrap(platformerrors.ErrNilInputParameter,
+		"nil authenticator for the password reset service")
+
+	// ErrNilMailer indicates NewService was called without a Mailer. A reset
+	// flow that cannot deliver the secret is a flow nobody can complete, so it
+	// is refused at construction rather than at the first request. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilMailer = platformerrors.Wrap(platformerrors.ErrNilInputParameter,
+		"nil mailer for the password reset service")
+
+	// ErrEmptyEmailAddress indicates a reset request that named nobody. It is
+	// the caller's own bug rather than an unknown address — which is answered
+	// with success, and see Service.Request for why — and it wraps
+	// errors.ErrEmptyInputParameter, so a caller may check either.
+	ErrEmptyEmailAddress = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter,
+		"no email address provided")
+
+	// ErrEmptyNewPassword indicates a redemption that carried no replacement
+	// password. It is refused before the token is spent, so a client that
+	// submitted an empty form still holds its link. It wraps
+	// errors.ErrEmptyInputParameter, so a caller may check either.
+	ErrEmptyNewPassword = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter,
+		"no replacement password provided")
+)

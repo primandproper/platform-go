@@ -10,6 +10,7 @@ import (
 
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset"
 	"github.com/primandproper/platform-go/v14/authentication/passwordreset/migrations"
+	"github.com/primandproper/platform-go/v14/identity"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/database/dialect"
@@ -156,3 +157,147 @@ func (c *exampleConfig) GetPingWaitPeriod() time.Duration  { return time.Second 
 func (c *exampleConfig) GetMaxIdleConns() int              { return 1 }
 func (c *exampleConfig) GetMaxOpenConns() int              { return 1 }
 func (c *exampleConfig) GetConnMaxLifetime() time.Duration { return time.Minute }
+
+// The same flow through [passwordreset.Service], which owns the order and the
+// transaction so a consumer does not.
+//
+// What changes is not the number of lines. It is that the three writes the
+// submit performs cannot come apart: Consume, the password write and
+// RevokeForUser commit together, so there is no ordering left for a caller to
+// get wrong. The mail is sequenced after the commit for the same reason, and an
+// address nobody holds is answered exactly as one somebody does.
+func ExampleService() {
+	ctx := context.Background()
+
+	client, cleanup := exampleClient(ctx)
+	defer cleanup()
+
+	store, err := passwordreset.NewSQLStore(&passwordreset.Config{}, client)
+	if err != nil {
+		panic(err)
+	}
+
+	// secret is what the example's mailer keeps, so the second half of the flow
+	// can spend the link the first half sent. A real one puts it in a URL and
+	// forgets it.
+	var secret string
+
+	// The mailer is the seam for the one message this flow sends. It is handed
+	// the secret, which exists here and nowhere else, and renders whatever link
+	// the application's front end serves.
+	mailer := passwordreset.MailerFunc(func(_ context.Context, mail *passwordreset.Mail) error {
+		secret = mail.Issuance.Secret
+
+		fmt.Printf("mailing %s a link carrying %d characters\n",
+			mail.User.EmailAddress, len(mail.Issuance.Secret))
+
+		return nil
+	})
+
+	service, err := passwordreset.NewService(
+		client,
+		store,
+		&exampleDirectory{users: map[string]*identity.User{
+			"someone@example.com": {ID: "user_01", EmailAddress: "someone@example.com"},
+		}},
+		// In a deployment this is argon2.NewArgon2Authenticator(); the example
+		// uses something instant so the output is not a second of hashing.
+		exampleAuthenticator{},
+		mailer,
+		// Left at DefaultRequestFloor in production. Zero here because an
+		// example that padded half a second would be an example nobody runs.
+		passwordreset.WithRequestFloor(0),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	scope := tenancy.Global()
+
+	// Somebody asked for a reset. This mints the token, commits it, and mails
+	// the secret afterwards.
+	if err = service.Request(ctx, scope, "someone@example.com"); err != nil {
+		panic(err)
+	}
+
+	// And somebody typed an address nobody holds. Same answer, same delay, and
+	// no mail — which is the whole of the account enumeration position.
+	if err = service.Request(ctx, scope, "nobody@example.com"); err != nil {
+		panic(err)
+	}
+
+	// They followed the link. Verify spends nothing, so reloading the page
+	// leaves the token usable.
+	if _, err = service.Verify(ctx, scope, secret); err != nil {
+		panic(err)
+	}
+
+	// They submitted the form. One transaction: the redemption, the password
+	// write, and the revocation of every other link they were holding.
+	token, err := service.Complete(ctx, scope, secret, "correct horse battery staple")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("reset the password for", token.UserID)
+
+	// The link cannot be used twice, and the flow says so rather than the
+	// caller having to remember.
+	_, err = service.Complete(ctx, scope, secret, "second attempt")
+	fmt.Println("second attempt:", errors.Is(err, passwordreset.ErrTokenRedeemed))
+
+	// Output:
+	// mailing someone@example.com a link carrying 43 characters
+	// reset the password for user_01
+	// second attempt: true
+}
+
+// exampleDirectory stands in for identity.Store, which satisfies
+// passwordreset.Directory as it is.
+//
+// A real one writes the password on the database.Tx it is handed, which is what
+// puts it in the same transaction as the redemption. This one writes to a map,
+// because an example is not the place to stand up a user table.
+type exampleDirectory struct {
+	users map[string]*identity.User
+}
+
+func (d *exampleDirectory) GetUserByEmailAddress(
+	_ context.Context,
+	_ database.SQLQueryExecutor,
+	_ tenancy.Scope,
+	emailAddress string,
+) (*identity.User, error) {
+	user, ok := d.users[emailAddress]
+	if !ok {
+		return nil, identity.ErrUserNotFound
+	}
+
+	return user, nil
+}
+
+func (d *exampleDirectory) UpdateUserPassword(
+	_ context.Context,
+	_ database.Tx,
+	_ tenancy.Scope,
+	userID, hashedPassword string,
+) error {
+	for _, user := range d.users {
+		if user.ID == userID {
+			user.HashedPassword = hashedPassword
+		}
+	}
+
+	return nil
+}
+
+// exampleAuthenticator hashes by prefixing. Use argon2 for real.
+type exampleAuthenticator struct{}
+
+func (exampleAuthenticator) HashPassword(_ context.Context, password string) (string, error) {
+	return "hashed:" + password, nil
+}
+
+func (exampleAuthenticator) PasswordMatches(_ context.Context, hash, password string) (bool, error) {
+	return hash == "hashed:"+password, nil
+}
