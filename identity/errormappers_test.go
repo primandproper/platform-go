@@ -14,8 +14,8 @@ import (
 
 // mappedSentinels is every sentinel both mappers are expected to have an answer
 // for: the four absences, the two collisions, the two states an act is refused
-// from, the expired invitation, the two self-contradicting writes and the one
-// refusal on authority.
+// from, the expired invitation, the three writes the directory will not store
+// as written and the one refusal on authority.
 //
 // One list rather than one per transport, deliberately. A service exposing both
 // would otherwise answer a taken username with a considered 409 on one and
@@ -33,6 +33,7 @@ var mappedSentinels = []error{
 	ErrInvitationExpired,
 	ErrScopeMismatch,
 	ErrDisplayNameTooLong,
+	ErrUsernameWhitespace,
 	ErrSignInNotAdmitted,
 }
 
@@ -179,6 +180,36 @@ func TestMappers_aScopeMismatchIsABadRequest(T *testing.T) {
 	grpcCode, grpcOK := GRPCMapper.Map(ErrScopeMismatch)
 	must.True(T, grpcOK)
 	test.EqOp(T, codes.InvalidArgument, grpcCode)
+}
+
+// TestMappers_aPaddedHandleIsABadRequest. Nothing collided and nothing was
+// refused on authority: the value is one no two engines agree about, because
+// MariaDB's PAD SPACE collation calls "ada  " a collision with "ada" and the
+// other two do not. The message is the remedy rather than the reason, which is
+// the part a form can act on.
+func TestMappers_aPaddedHandleIsABadRequest(T *testing.T) {
+	T.Parallel()
+
+	code, msg, ok := HTTPMapper.Map(ErrUsernameWhitespace)
+	must.True(T, ok)
+	test.EqOp(T, httperrors.ErrValidatingRequestInput, code)
+	test.EqOp(T, http.StatusBadRequest, httperrors.HTTPStatusForCode(code))
+	test.EqOp(T, "username may not begin or end with whitespace", msg)
+
+	grpcCode, grpcOK := GRPCMapper.Map(ErrUsernameWhitespace)
+	must.True(T, grpcOK)
+	test.EqOp(T, codes.InvalidArgument, grpcCode)
+
+	// The wrap the rule puts the handle in still matches: what a consumer's
+	// handler sees is the value it refused, wrapped by every layer between.
+	wrapped := platformerrors.Wrapf(ErrUsernameWhitespace, "username %q", "ada ")
+
+	_, _, wrappedOK := HTTPMapper.Map(wrapped)
+	test.True(T, wrappedOK)
+
+	wrappedCode, wrappedGRPCOK := GRPCMapper.Map(wrapped)
+	test.True(T, wrappedGRPCOK)
+	test.EqOp(T, codes.InvalidArgument, wrappedCode)
 }
 
 // TestMappers_aStatusThatAdmitsNoSignInIsForbidden: the caller is somebody the

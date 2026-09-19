@@ -44,17 +44,18 @@ var (
 // to a caller verbatim, handed to errors/grpc.RegisterClientSafeSentinels by
 // errormappers.Register alongside the five mappers.
 //
-// They are the twelve the mappers claim, and the list is the same twelve on
+// They are the thirteen the mappers claim, and the list is the same thirteen on
 // purpose:
 // each was given a status because a client acts on it, and a client acting on
 // it needs to know which one it got. gRPC derives its message from the code,
-// and the codes collide — the two collisions are both AlreadyExists, and an
+// and the codes collide — the two collisions are both AlreadyExists, an
 // expired invitation, a last owner and a missing default account are all
-// FailedPrecondition — so without this a client in a language with no access
+// FailedPrecondition, and the three a write is refused for are all
+// InvalidArgument — so without this a client in a language with no access
 // to the encoded details is told the code's name three times for three
-// different remedies. None of the twelve names a table, a key or a policy: what
-// each says is the whole of what the caller needs and the whole of what this
-// package knows.
+// different remedies. None of the thirteen names a table, a key or a policy:
+// what each says is the whole of what the caller needs and the whole of what
+// this package knows.
 //
 // ErrSignInNotAdmitted is on it for the same reason and one of its own: its code
 // is PermissionDenied, which is also what a consumer's authorization layer
@@ -78,6 +79,7 @@ var ClientSafeSentinels = []error{
 	ErrInvitationExpired,
 	ErrScopeMismatch,
 	ErrDisplayNameTooLong,
+	ErrUsernameWhitespace,
 	ErrSignInNotAdmitted,
 }
 
@@ -155,6 +157,14 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// needs here is which field to shorten.
 	case errors.Is(err, ErrDisplayNameTooLong):
 		return httperrors.ErrValidatingRequestInput, "display name is too long", true
+
+	// A handle the directory will not store as written. It is bad input for the
+	// same reason: nothing collided — the value is one no engine agrees with
+	// itself about, since MariaDB's PAD SPACE collation would call "ada  " a
+	// collision with "ada" and the other two would not. The message says what
+	// to send instead rather than why, which is the part a form can act on.
+	case errors.Is(err, ErrUsernameWhitespace):
+		return httperrors.ErrValidatingRequestInput, "username may not begin or end with whitespace", true
 	default:
 		return httperrors.ErrNothingSpecific, "", false
 	}
@@ -196,7 +206,8 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 		return codes.PermissionDenied, true
 
 	case errors.Is(err, ErrScopeMismatch),
-		errors.Is(err, ErrDisplayNameTooLong):
+		errors.Is(err, ErrDisplayNameTooLong),
+		errors.Is(err, ErrUsernameWhitespace):
 		return codes.InvalidArgument, true
 	default:
 		return codes.Unknown, false

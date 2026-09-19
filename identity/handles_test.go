@@ -299,6 +299,72 @@ func runHandleFoldingSuite(t *testing.T, env *storeEnv) {
 		test.NotEqOp(t, plain.ID, withAccent.ID)
 	})
 
+	t.Run("a padded handle is refused rather than stored or collided with", func(t *testing.T) {
+		t.Parallel()
+
+		// The third thing a collation decides, and the one the fold cannot
+		// reach. MariaDB's utf8mb4_bin is still PAD SPACE, so the second
+		// registration below is a collision there — ErrUsernameTaken — and a
+		// second user on Postgres and SQLite, which is exactly the "one
+		// directory, three answers" this suite exists to rule out. Remove
+		// checkUsernameWhitespace and this case fails two different ways
+		// depending on which server is underneath, which is the point.
+		store := env.newStore(t)
+		seedUser(t, env, store, newUser("ada"))
+
+		for _, username := range []string{"ada ", "ada  ", " ada", "\tada", "ada\u00a0"} {
+			padded := newUser("padded")
+			padded.Username = username
+
+			must.ErrorIs(t, env.createUserErr(t, store, testScope, padded), ErrUsernameWhitespace,
+				must.Sprintf("registering %q", username))
+		}
+
+		// And the refusal is the write's, not the collision's: a padded handle
+		// nobody else holds is refused for being padded rather than accepted
+		// because it is free.
+		unclaimed := newUser("grace")
+		unclaimed.Username = "grace "
+		must.ErrorIs(t, env.createUserErr(t, store, testScope, unclaimed), ErrUsernameWhitespace)
+
+		// A profile save is held to the same rule, which is the whole of what
+		// sharing validateProfile buys: a handle the directory would not
+		// register is not one it will rename somebody to.
+		grace := seedUser(t, env, store, newUser("grace"))
+
+		renamed := *grace
+		renamed.Username = " ada"
+		must.ErrorIs(t, env.updateUserErr(t, store, testScope, &renamed), ErrUsernameWhitespace)
+
+		// The row is untouched, so the refusal cost the user nothing.
+		read, err := store.GetUser(t.Context(), env.reader(), testScope, grace.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "grace", read.Username)
+	})
+
+	t.Run("a padded handle is refused through the service too", func(t *testing.T) {
+		t.Parallel()
+
+		// Both doors, through the one rule. A registration and a profile save
+		// are the two paths a handle arrives by, and each reaches
+		// validateProfile — so the sentinel a form gets is the sentinel a store
+		// caller gets.
+		service, _ := env.newService(t, &recordingHooks{})
+
+		padded := newUser("ada")
+		padded.Username = "ada "
+
+		_, err := service.Register(t.Context(), testScope, padded, newAccount("Ada's account", ""),
+			[]string{"account_admin"})
+		must.ErrorIs(t, err, ErrUsernameWhitespace)
+
+		registration := registerAda(t, service, "ada")
+
+		_, err = service.UpdateProfile(t.Context(), testScope, registration.User.ID,
+			&ProfileUpdate{Username: pointer.To("ada ")})
+		must.ErrorIs(t, err, ErrUsernameWhitespace)
+	})
+
 	t.Run("the sign-in reads find a user by any casing", func(t *testing.T) {
 		t.Parallel()
 
@@ -444,6 +510,12 @@ func TestFoldHandle(T *testing.T) {
 		"a mixed address":  {handle: "Ada@Example.com", folded: "ada@example.com"},
 		"empty":            {handle: "", folded: ""},
 		"non-ASCII":        {handle: "ÅDA@example.com", folded: "åda@example.com"},
+
+		// The fold lowers case and does nothing else — it does not trim, which
+		// is why a padded handle is refused by a rule rather than corrected
+		// here. A fold that trimmed would store a value nobody sent, and every
+		// caller who folds for a lookup of their own would have to trim too.
+		"padded": {handle: " ADA ", folded: " ada "},
 	}
 
 	for name, tc := range cases {

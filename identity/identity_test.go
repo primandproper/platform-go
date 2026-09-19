@@ -231,6 +231,37 @@ func TestUser_Validate(T *testing.T) {
 		must.ErrorIs(t, fieldErrs["emailAddress"], ErrInvalidEmailAddress)
 	})
 
+	T.Run("refuses a handle that begins or ends with whitespace", func(t *testing.T) {
+		t.Parallel()
+
+		// The refusal is a sentinel a mapper can find, rather than an entry in
+		// ozzo's error map: validation.Errors has no Unwrap, so a rule
+		// returning this would hand it back as something errors.Is cannot
+		// reach. See checkUsernameWhitespace.
+		for _, username := range []string{"ada ", " ada", "ada  ", "\tada", "ada\n", "ada\u00a0", "   "} {
+			user := valid()
+			user.Username = username
+
+			must.ErrorIs(t, user.ValidateWithContext(t.Context()), ErrUsernameWhitespace,
+				must.Sprintf("%q", username))
+			must.ErrorIs(t, user.validateProfile(t.Context()), ErrUsernameWhitespace,
+				must.Sprintf("%q", username))
+		}
+	})
+
+	T.Run("accepts a handle with whitespace inside it", func(t *testing.T) {
+		t.Parallel()
+
+		// The rule is the edges and nothing else. What a handle may be made of
+		// is a question about charsets, homoglyphs and zero-width characters,
+		// and refusing an interior space here would be answering it by
+		// accident.
+		user := valid()
+		user.Username = "ada lovelace"
+
+		must.NoError(t, user.ValidateWithContext(t.Context()))
+	})
+
 	T.Run("refuses a malformed address", func(t *testing.T) {
 		t.Parallel()
 

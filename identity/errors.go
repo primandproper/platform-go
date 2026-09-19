@@ -61,6 +61,29 @@ var (
 	// do not enforce at all.
 	ErrDisplayNameTooLong = platformerrors.New("identity user display name is too long")
 
+	// ErrUsernameWhitespace indicates a write whose User.Username begins or
+	// ends with whitespace.
+	//
+	// It is the last spelling of a handle the three dialects disagreed about.
+	// FoldHandle settles case in Go and the columns are collated utf8mb4_bin on
+	// MySQL, so case and accents answer alike everywhere; padding did not,
+	// because utf8mb4_bin is still PAD SPACE on MariaDB — "ada  " collides with
+	// "ada" there and is a second user on Postgres and SQLite. A handle that is
+	// taken on one server and free on another is the one thing the fold exists
+	// to prevent.
+	//
+	// Leading whitespace needs no dialect to be a problem: " ada" and "ada"
+	// render identically in every list, every email and every audit entry, so a
+	// directory holding both holds two users nobody can tell apart.
+	//
+	// It is refused rather than trimmed. A silent correction stores a value the
+	// caller did not send and says nothing where they could see it, which is the
+	// reading this package already takes of a write whose halves disagree — see
+	// ErrScopeMismatch. Interior whitespace is not this rule's business: what a
+	// handle may be made of is a separate question about charsets, homoglyphs
+	// and zero-width characters, and this is not an answer to it.
+	ErrUsernameWhitespace = platformerrors.New("username may not begin or end with whitespace")
+
 	// ErrUsernameTaken indicates a username already registered in this scope.
 	//
 	// It is a distinct error rather than a raw constraint violation because
