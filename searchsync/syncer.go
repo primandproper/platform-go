@@ -140,6 +140,11 @@ func (s *Syncer[T]) Name() string {
 // returned wrapped with retry.Unretryable so the Pool dead-letters it at once
 // instead of failing the same way three more times while healthy events wait
 // behind it.
+//
+// A service running more than one index does not write that stanza per index.
+// RegisterIndex records this Syncer in a Registry and Registry.PoolSpecs hands
+// jobs.NewPoolGroup one spec per index, so the topic and the handler are the
+// registration rather than a block copied from the index beside it.
 func (s *Syncer[T]) Handle(ctx context.Context, payload []byte) error {
 	var event Event
 	if err := s.unmarshaler.Unmarshal(ctx, payload, &event); err != nil {

@@ -73,29 +73,39 @@ because the event that went missing is one no consumer was waiting for.
 
 Register it on the Writer instead and the call site is never asked:
 
+	var indexRules = []searchsync.Rule{
+	    {EventType: "order_written", Topic: "orders-index", IDKey: "orderID", Op: searchsync.OpUpsert},
+	    {EventType: "order_archived", Topic: "orders-index", IDKey: "orderID", Op: searchsync.OpDelete},
+	    {EventType: "order_written", Topic: "customers-index", IDKey: "customerID", Op: searchsync.OpUpsert},
+	}
+
+	effect, err := searchsync.NewSideEffect(indexRules)
+	if err != nil {
+	    return err
+	}
+
 	writer, err := outbox.NewWriter(client.Dialect(),
-	    outbox.WithWriterSideEffect("orders-index",
-	        func(_ context.Context, _ database.SQLQueryExecutor, msgs []outbox.Message) ([]outbox.Message, error) {
-	            events := make([]outbox.Message, 0, len(msgs))
+	    outbox.WithWriterSideEffect("search-index", effect))
 
-	            for _, msg := range msgs {
-	                changed, ok := msg.Payload.(OrderChanged)
-	                if !ok {
-	                    continue
-	                }
+Every transaction that enqueues an order data-change now writes the index events
+that change implies, by the same statement, whether or not whoever wrote it was
+thinking about search. The derivation is the application's because the payload
+is: outbox never looks inside a Message.Payload, which is also why the dependency
+runs only one way — searchsync imports outbox, and outbox knows nothing of
+searchsync.
 
-	                events = append(events,
-	                    searchsync.NewEvent(searchsync.OpUpsert, changed.OrderID).Message("orders-index"))
-	            }
+What the payload owes is two methods, Change.IndexEventType and
+Change.IndexDocumentID, and nothing else. The rest is the table: an event type
+matched, an ID read out of the payload under the key the rule names, an op, a
+topic. Three rules and two entities fit in one screen; nine entities still do.
+Written as a switch instead, adding the tenth entity is a case nobody reviewing
+the diff can see is missing, because a missing case adds no line.
 
-	            return events, nil
-	        }))
-
-Every transaction that enqueues an order data-change now writes the index event
-too, by the same statement, whether or not whoever wrote it was thinking about
-the index. The derivation is the application's because the payload is: outbox
-never looks inside a Message.Payload, which is also why the dependency runs only
-one way — searchsync imports outbox, and outbox knows nothing of searchsync.
+A change that matches a rule and carries no ID under that rule's key fails the
+enqueue, and with it the caller's transaction. That is the severe answer on
+purpose: the alternative is to pass the change over, and a passed-over change is
+a row the index never hears about again until the next rebuild — which is the
+silent divergence the whole package exists to close.
 
 Writing the event at the call site stays right where the call site is genuinely
 choosing: a targeted re-index after a manual repair, or an OpDelete one branch of
@@ -177,6 +187,63 @@ reimplements them.
 A payload that will not decode, or an event with no document ID, comes back
 wrapped in retry.Unretryable so the Pool dead-letters it immediately rather than
 failing the same way three more times while healthy events wait behind it.
+
+# One list, not three
+
+A service indexing one entity wires it by hand and nothing is lost. A service
+indexing nine wires three lists of the same nine things: a pool stanza per index
+that differs from its neighbor in two strings, a stamp-buffer-syncer-reindexer
+triple per index, and a rebuild-everything that names all nine again. Adding the
+tenth entity means adding it to all three, and the failure when it reaches only
+two of them is silent — either the index has no consumer, or the rebuild quietly
+covers nine tenths of the data.
+
+So there is one list, and it is the Registry:
+
+	registry := searchsync.NewRegistry(searchsync.WithRegistryPillars(pillars))
+	defer func() { _ = registry.Close(shutdownCtx) }()
+
+	for _, spec := range indexSpecs {
+	    if _, err = searchsync.RegisterIndex(registry, spec); err != nil {
+	        return err
+	    }
+	}
+
+	group, err := jobs.NewPoolGroup(ctx, registry.PoolSpecs(), consumerProvider,
+	    jobs.WithPoolGroupDeadLetter(deadLetter))
+	if err != nil {
+	    return err
+	}
+
+	if err = group.Start(ctx); err != nil {
+	    return err
+	}
+
+	defer func() { _ = group.Close(shutdownCtx) }()
+
+RegisterIndex is the triple, built together because the three are one index: a
+Syncer without the Reindexer behind it cannot repair an index that was wrong
+before its first event, a Reindexer without the Syncer in front of it is a
+nightly batch job wearing a search index's name, and a Syncer built without the
+stamp buffer leaves last_indexed_at unwritten — which is the column the rebuild's
+own scan reads.
+
+PoolSpecs is the per-index pool wiring, and ReindexAll is the rebuild-everything.
+Neither names an index, so neither changes when one is added. The pillars are the
+Registry's rather than each spec's for the same reason: they are the same three
+values for every index in a process, and the one stanza that was written without
+a metrics provider is an index with no lag histogram and no other symptom.
+
+The stamp buffers are the one thing the Registry owns outright, because they own
+goroutines and nothing else here does — hence Close, and hence its ordering: it
+goes after the pools have drained, since a buffer closed while workers are still
+indexing drops the stamps they produce afterwards and the column then says those
+documents were never indexed.
+
+A Registry is a process's list, not a deployment's. The side effect above runs in
+whatever writes the rows and the pools run in whatever consumes them, which are
+routinely two binaries; what they share is the topic, which is why both a Rule
+and an IndexSpec name it rather than deriving it from the index name.
 
 # Recording what the index holds
 

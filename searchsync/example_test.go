@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/primandproper/platform-go/v14/outbox"
 	"github.com/primandproper/platform-go/v14/searchsync"
 )
 
@@ -202,4 +203,137 @@ func ExampleReindexer_Reindex() {
 	// Output:
 	// scanned 2, upserted 2, pruned 1
 	// indexed: [order-1 order-2]
+}
+
+// orderChanged is the data-change payload the application already enqueues.
+// The two Index-prefixed methods are all a payload owes the mapping: it keeps
+// its own EventType field, which is exactly why they are spelled the way they
+// are.
+type orderChanged struct {
+	IDs       map[string]string
+	EventType string
+}
+
+func (c orderChanged) IndexEventType() string { return c.EventType }
+
+func (c orderChanged) IndexDocumentID(key string) (string, bool) {
+	id, ok := c.IDs[key]
+
+	return id, ok
+}
+
+// ExampleNewSideEffect derives index events from the data-change messages a
+// transaction already writes, so no repository method is asked to remember.
+//
+// The side effect is registered on an outbox.Writer with
+// outbox.WithWriterSideEffect, which runs it inside every Enqueue on the
+// caller's transaction. It is called directly here to show what it derives.
+func ExampleNewSideEffect() {
+	effect, err := searchsync.NewSideEffect([]searchsync.Rule{
+		{EventType: "order_written", Topic: "orders-index", IDKey: "orderID", Op: searchsync.OpUpsert},
+		{EventType: "order_written", Topic: "customers-index", IDKey: "customerID", Op: searchsync.OpUpsert},
+		{EventType: "order_archived", Topic: "orders-index", IDKey: "orderID", Op: searchsync.OpDelete},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	derived, err := effect(context.Background(), nil, []outbox.Message{
+		{Topic: "data-changes", Payload: orderChanged{
+			EventType: "order_written",
+			IDs:       map[string]string{"orderID": "order-1", "customerID": "customer-9"},
+		}},
+		// A payload that is not a Change is passed over — an outbox carries
+		// every message a service enqueues, and only some are about indexed
+		// entities.
+		{Topic: "emails", Payload: "welcome"},
+		{Topic: "data-changes", Payload: orderChanged{
+			EventType: "order_archived",
+			IDs:       map[string]string{"orderID": "order-2"},
+		}},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	for i := range derived {
+		event, ok := derived[i].Payload.(searchsync.Event)
+		if !ok {
+			continue
+		}
+
+		fmt.Printf("%s -> %s %s\n", derived[i].Topic, event.Op, event.DocumentID)
+	}
+
+	// Output:
+	// orders-index -> upsert order-1
+	// customers-index -> upsert customer-9
+	// orders-index -> delete order-2
+}
+
+// ExampleRegisterIndex wires the consuming side of two indexes through one
+// list: each registration builds that index's stamp buffer, Syncer and
+// Reindexer, and the pool specs and the rebuild-everything are read back off
+// the registry rather than written out per index.
+func ExampleRegisterIndex() {
+	ctx := context.Background()
+
+	store := &orderStore{orders: map[string]order{
+		"order-1": {ID: "order-1", Customer: "ada", Status: "placed"},
+		"order-2": {ID: "order-2", Customer: "grace", Status: "placed"},
+	}}
+
+	registry := searchsync.NewRegistry()
+
+	defer func() {
+		// The stamp buffers are the registry's, and this is the pipeline's one
+		// shutdown obligation of its own. It goes after the pools have drained.
+		if err := registry.Close(ctx); err != nil {
+			panic(err)
+		}
+	}()
+
+	for _, name := range []string{"orders", "customers"} {
+		index := &memoryIndex{docs: map[string]*orderDoc{}}
+
+		if _, err := searchsync.RegisterIndex(registry, searchsync.IndexSpec[orderDoc]{
+			Name:   name,
+			Topic:  name + "-index",
+			Source: store,
+			Target: index,
+			Pruner: index,
+			// Stamping is the change feed's: a rebuild writes every
+			// document there is, so nothing below prints from here.
+			Stamp: func(_ context.Context, ids []string) error {
+				fmt.Println("stamped:", ids)
+
+				return nil
+			},
+		}); err != nil {
+			panic(err)
+		}
+	}
+
+	// One jobs.PoolSpec per index, for jobs.NewPoolGroup — no stanza per index,
+	// and nothing to forget when a tenth is added.
+	specs := registry.PoolSpecs()
+	for i := range specs {
+		fmt.Println("pool for:", specs[i].Topic)
+	}
+
+	// And a rebuild that walks the list rather than naming it.
+	results, err := registry.ReindexAll(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, name := range registry.Names() {
+		fmt.Printf("%s: upserted %d\n", name, results[name].Upserted)
+	}
+
+	// Output:
+	// pool for: orders-index
+	// pool for: customers-index
+	// orders: upserted 2
+	// customers: upserted 2
 }

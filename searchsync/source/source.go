@@ -50,6 +50,11 @@ type Source[E, T any] struct {
 var (
 	_ searchsync.Fetcher[struct{}] = (*Source[struct{}, struct{}])(nil)
 	_ searchsync.Scanner[struct{}] = (*Source[struct{}, struct{}])(nil)
+
+	// Both halves at once, which is what a searchsync.IndexSpec asks for: a
+	// Source built here drops into one without an adapter, and the pair it
+	// satisfies is the pair a Syncer and a Reindexer are built from.
+	_ searchsync.Source[struct{}] = (*Source[struct{}, struct{}])(nil)
 )
 
 // New builds a Source over one entity.

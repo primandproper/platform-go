@@ -37,6 +37,53 @@ var (
 	// to or fail inside the backend, and neither says what actually went wrong.
 	ErrEmptyDocumentID = platformerrors.New("search sync document has no ID")
 
+	// ErrNoRules indicates a side effect built from an empty table.
+	//
+	// Refused rather than treated as "derive nothing", because a side effect
+	// that derives nothing is indistinguishable at runtime from one whose rules
+	// never match — and the registration that installed it is a statement that
+	// this writer owes index events.
+	ErrNoRules = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "no search sync rules")
+
+	// ErrInvalidRule indicates a Rule missing its event type, its topic or its
+	// ID key, or naming an op this package does not know. It is reported from
+	// NewSideEffect rather than from the enqueue that would have used it: the
+	// wiring is where a mistyped rule can still be found by whoever wrote it.
+	ErrInvalidRule = platformerrors.New("invalid search sync rule")
+
+	// ErrDuplicateRule indicates two rules that agree on event type, topic and
+	// ID key, which would derive the same index event twice from one change.
+	ErrDuplicateRule = platformerrors.New("duplicate search sync rule")
+
+	// ErrMissingDocumentID indicates a change matched a rule and carried no
+	// identifier under that rule's ID key.
+	//
+	// It fails the enqueue, and through it the caller's transaction, which is
+	// the severe answer chosen deliberately. The alternative is to pass the
+	// change over, and a passed-over change is a row the index never hears
+	// about again until the next rebuild — the silent divergence this whole
+	// package exists to close. A rule whose key the payload does not carry is
+	// a wiring mistake, and the first write of that entity is when it should be
+	// discovered rather than the first search that misses.
+	ErrMissingDocumentID = platformerrors.New("search sync change carries no document ID")
+
+	// ErrNilRegistry indicates RegisterIndex was handed no Registry. It wraps
+	// errors.ErrNilInputParameter, so a caller may check either.
+	ErrNilRegistry = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil search sync registry")
+
+	// ErrEmptyTopic indicates an IndexSpec with no topic.
+	//
+	// Refused rather than defaulted to the index name. The two are routinely
+	// the same string and are not the same thing — one is a queue the writing
+	// process publishes to, the other a label this package's instruments carry
+	// — and a default would let a rename of one silently stop matching the
+	// other, in a different process, with no error anywhere.
+	ErrEmptyTopic = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty search sync topic")
+
+	// ErrDuplicateIndex indicates two indexes registered under one name or one
+	// topic. See Registry.add for what each of those costs.
+	ErrDuplicateIndex = platformerrors.New("duplicate search sync index")
+
 	// ErrUnsortedScan indicates a Scanner or Enumerator returned IDs that do
 	// not ascend in byte order.
 	//
