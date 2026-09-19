@@ -117,8 +117,14 @@ type RunnerConfig struct {
 	// becomes claimable again.
 	RetryDelay time.Duration `env:"RETRY_DELAY" json:"retryDelay,omitempty" yaml:"retryDelay,omitempty"`
 
-	// Batch is how many items one pass claims. It is clamped by
-	// Config.MaxClaimBatch like any other claim.
+	// Batch is how many items one pass claims.
+	//
+	// It is lowered to the queue's Config.MaxClaimBatch when that is smaller,
+	// once at construction rather than by each Claim, and the runner paces
+	// itself on the lowered number. Claim would clamp it either way — that is
+	// its documented contract — but a loop that kept asking for more than it can
+	// receive would judge every pass short and sleep between all of them. See
+	// Run.
 	Batch int `env:"BATCH" json:"batch,omitempty" yaml:"batch,omitempty"`
 
 	// Concurrency is how many of a batch are handled at once. One means strictly
@@ -207,6 +213,16 @@ type Runner[K comparable] struct {
 
 	durationHist metrics.Float64Histogram
 
+	// batch is how many items a pass actually claims, which is cfg.Batch
+	// resolved against the queue's own ceiling rather than cfg.Batch itself.
+	//
+	// Claim clamps a limit above Config.MaxClaimBatch rather than rejecting it,
+	// by that field's documented contract, so a runner asking for more than the
+	// queue allows is a supported configuration that quietly never gets what it
+	// asked for. Keeping the declared number would make one comparison wrong in
+	// a way nothing reports: see Run, where a pass is judged full against this.
+	batch int
+
 	cfg RunnerConfig
 }
 
@@ -246,10 +262,26 @@ func NewRunner[K comparable](
 
 	r := &Runner[K]{
 		cfg:     *cfg,
+		batch:   cfg.Batch,
 		queue:   queue,
 		handler: handler,
 		o11y:    observability.NewObserver(runnerName, o.logger, o.tracerProvider),
 	}
+
+	// The queue's ceiling, applied here rather than discovered a batch at a
+	// time. It is not a refusal because Claim's own contract is to clamp rather
+	// than reject, and a runner is not the place to overturn that; what it is is
+	// the one number this loop reasons about, resolved once so that the loop
+	// reasons about what it will actually be handed.
+	if queue.cfg.MaxClaimBatch > 0 && r.batch > queue.cfg.MaxClaimBatch {
+		r.o11y.Logger().WithValues(map[string]any{
+			"workqueue.runner_batch":    r.batch,
+			"workqueue.max_claim_batch": queue.cfg.MaxClaimBatch,
+		}).Info("work queue runner batch exceeds the queue's claim ceiling and was lowered to it")
+
+		r.batch = queue.cfg.MaxClaimBatch
+	}
+
 	if err := r.buildInstruments(metrics.EnsureMetricsProvider(o.metricsProvider)); err != nil {
 		return nil, err
 	}
@@ -301,6 +333,14 @@ func (r *Runner[K]) buildInstruments(mp metrics.Provider) error {
 // waiting, and sleeping between full batches would pace a backlog at one batch
 // per poll. Anything less waits, which is where a wakeup earns its keep.
 //
+// "Full" is against the batch this runner actually claims, which is
+// RunnerConfig.Batch lowered to Config.MaxClaimBatch where the queue's ceiling
+// is the smaller of the two. Against the declared number instead, a runner
+// configured above that ceiling would never see a full pass, and the fast path
+// would be dead code: every batch would be followed by a Poll, pacing a backlog
+// at one ceiling per poll with nothing anywhere saying why. The lowering is
+// logged once at construction for the same reason.
+//
 // Nothing short of a cancelled context stops it. A failed claim is logged and
 // slept off: the database being unreachable for a minute is an outage to ride
 // out, not a reason for a fleet to stop draining a queue when it comes back.
@@ -317,7 +357,7 @@ func (r *Runner[K]) Run(ctx context.Context) error {
 			r.o11y.Logger().Error("handling claimed work queue items", err)
 		}
 
-		if err == nil && claimed >= r.cfg.Batch {
+		if err == nil && claimed >= r.batch {
 			continue
 		}
 
@@ -329,7 +369,7 @@ func (r *Runner[K]) Run(ctx context.Context) error {
 
 // pass claims one batch and works it, reporting how many items it claimed.
 func (r *Runner[K]) pass(ctx context.Context) (int, error) {
-	items, err := r.queue.Claim(ctx, r.cfg.Batch, r.cfg.Lease)
+	items, err := r.queue.Claim(ctx, r.batch, r.cfg.Lease)
 	if err != nil {
 		return 0, err
 	}

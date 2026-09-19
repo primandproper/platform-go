@@ -86,6 +86,92 @@ func TestNewRunner(T *testing.T) {
 		test.ErrorIs(t, err, ErrNilHandler)
 	})
 
+	// A runner asking for more than the queue will ever hand it is a supported
+	// configuration — Claim clamps rather than rejects — and it is the one where
+	// the loop's own arithmetic goes wrong quietly. Against the declared number
+	// no pass is ever full, so the fast path never fires and a backlog is paced
+	// at one ceiling per Poll with nothing reporting it.
+	T.Run("lowers a batch above the queue's claim ceiling", func(t *testing.T) {
+		t.Parallel()
+
+		queue, _ := stubbedQueue(t)
+		queue.cfg.MaxClaimBatch = 3
+
+		cfg := runnerConfig()
+		cfg.Batch = 10
+
+		r, err := NewRunner(t.Context(), cfg, queue,
+			func(context.Context, Item[string]) error { return nil })
+		must.NoError(t, err)
+
+		// The declared number is kept as declared — it is the operator's
+		// statement of intent, and a config a constructor rewrote is a config
+		// nobody can read back.
+		test.EqOp(t, 10, r.cfg.Batch)
+
+		// What the loop reasons about is what it will be handed.
+		test.EqOp(t, 3, r.batch)
+	})
+
+	T.Run("leaves a batch inside the ceiling alone", func(t *testing.T) {
+		t.Parallel()
+
+		queue, _ := stubbedQueue(t)
+		queue.cfg.MaxClaimBatch = 50
+
+		cfg := runnerConfig()
+		cfg.Batch = 10
+
+		r, err := NewRunner(t.Context(), cfg, queue,
+			func(context.Context, Item[string]) error { return nil })
+		must.NoError(t, err)
+
+		test.EqOp(t, 10, r.batch)
+	})
+
+	// A full pass is what sends the loop straight round again, so the comparison
+	// that decides it has to be against the number the queue will actually
+	// produce. This is that property end to end: a ceiling below the declared
+	// batch, a Poll long enough that taking it would be indistinguishable from
+	// hanging, and a second claim arriving anyway.
+	T.Run("a pass full at the ceiling goes straight round again", func(t *testing.T) {
+		t.Parallel()
+
+		queue, stub := stubbedQueue(t)
+		queue.cfg.MaxClaimBatch = 2
+
+		cfg := runnerConfig()
+		cfg.Batch = 10
+		// An hour, so that a Poll between passes cannot be mistaken for the fast
+		// path. Against the declared batch of ten, a pass of two reads as short,
+		// this Poll is taken, and the second claim never arrives inside the
+		// deadline below.
+		cfg.Poll = time.Hour
+
+		var claims atomic.Int64
+
+		stub.claim = func(workqueuedb.ClaimDueItemsParams) ([]workqueuedb.ClaimDueItemsRow, error) {
+			if claims.Add(1) == 1 {
+				return claimRows("first", "second"), nil
+			}
+
+			return nil, nil
+		}
+
+		r, err := NewRunner(t.Context(), cfg, queue,
+			func(context.Context, Item[string]) error { return nil })
+		must.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+
+		test.ErrorIs(t, r.Run(ctx), context.DeadlineExceeded)
+
+		// Two: the full one, and the empty one the fast path went straight round
+		// to. The third never comes, because that one did take the Poll.
+		test.EqOp(t, int64(2), claims.Load())
+	})
+
 	// The extension is the only thing keeping a long handler's claim alive, so an
 	// interval that does not fit inside the lease twice means every slow item is
 	// reclaimed between ticks — the precise failure the extension removes.
