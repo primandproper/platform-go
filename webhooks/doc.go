@@ -308,11 +308,6 @@ DDL it needs (webhooks/migrations), so adopting webhooks does not mean writing
 one — but an application with its own schema conventions can implement the
 interface instead of forking the package.
 
-A deployment whose tables predate subscriptions being rows migrates with
-migrations.UpgradeSQL, which adds the columns and backfills the existing flat
-subscription set. Read that package's Upgrading section first: unlike the
-create-only DDL, it is one-shot.
-
 The five tables are rendered from one prefix rather than five names. They
 reference each other by foreign key and the queries join across them, so a
 consumer who could name them independently could also name them inconsistently,

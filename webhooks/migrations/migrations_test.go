@@ -62,6 +62,39 @@ func TestStatements(T *testing.T) {
 		}
 	})
 
+	// This package once shipped a second, ALTER-only schema beside this one, to
+	// carry a deployment whose subscriptions were a bare (endpoint_id,
+	// event_type) mapping up to the shape here. Deleting it was safe only
+	// because every column and index it added is created outright below, so
+	// there was no end state it reached that this DDL does not — and that is the
+	// claim worth keeping checkable rather than remembering. A column dropped
+	// from here would not just lose a column; it would retroactively make the
+	// deletion wrong.
+	T.Run("creates everything the retired upgrade DDL added", func(t *testing.T) {
+		t.Parallel()
+
+		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
+			stmts, err := Statements(d, "acme")
+			must.NoError(t, err)
+
+			joined := strings.Join(stmts, "\n")
+
+			for _, name := range []string{
+				// The endpoint's metadata.
+				"created_by", "name",
+				// A subscription became an identified, archivable row.
+				"id", "created_at", "last_updated_at", "archived_at",
+				// The dispatch's lease holder.
+				"claimed_by",
+				// Both indexes the upgrade created, at the prefix.
+				"acme_webhooks_subscriptions_id_idx",
+				"acme_webhooks_subscriptions_endpoint_idx",
+			} {
+				test.StrContains(t, joined, name, test.Sprintf("dialect %q", d))
+			}
+		}
+	})
+
 	T.Run("unsupported dialect", func(t *testing.T) {
 		t.Parallel()
 
@@ -102,109 +135,6 @@ func TestSQL(T *testing.T) {
 		t.Parallel()
 
 		_, err := SQL(dialect.Dialect("cockroach"), "webhook")
-		test.ErrorIs(t, err, dialect.ErrUnsupported)
-	})
-}
-
-func TestUpgradeStatements(T *testing.T) {
-	T.Parallel()
-
-	T.Run("renders every dialect", func(t *testing.T) {
-		t.Parallel()
-
-		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
-			stmts, err := UpgradeStatements(d, "")
-			must.NoError(t, err)
-			test.True(t, len(stmts) > 0)
-
-			for _, stmt := range stmts {
-				test.False(t, strings.Contains(stmt, "--"))
-				test.False(t, strings.Contains(stmt, ddl.Placeholder))
-			}
-		}
-	})
-
-	// The columns the upgrade exists to add. A dialect that quietly lost one of
-	// them would leave the store selecting a column that is not there, which
-	// surfaces at the first read rather than at the migration.
-	T.Run("adds every column the current schema gained", func(t *testing.T) {
-		t.Parallel()
-
-		for _, d := range []dialect.Dialect{dialect.Postgres, dialect.MySQL, dialect.SQLite} {
-			stmts, err := UpgradeStatements(d, "")
-			must.NoError(t, err)
-
-			// Postgres spells it ADD COLUMN IF NOT EXISTS and the other two cannot,
-			// so the guard is dropped before matching rather than written out per
-			// dialect — what is being checked is the column, not the spelling.
-			joined := strings.ReplaceAll(strings.Join(stmts, "\n"), "ADD COLUMN IF NOT EXISTS ", "ADD COLUMN ")
-
-			for _, column := range []string{
-				"created_by", "name", "id", "created_at", "last_updated_at", "archived_at",
-				// The dispatch's lease holder. Without it every claim writes a
-				// column an upgraded deployment does not have.
-				"claimed_by",
-			} {
-				test.True(t, strings.Contains(joined, "ADD COLUMN "+column),
-					test.Sprintf("dialect %q column %q", d, column))
-			}
-		}
-	})
-
-	// Every identifier the upgrade names has to exist in the schema it upgrades
-	// to, or the two have drifted: the upgrade would be creating an index the
-	// create path does not, or under a name the store's prefix validation has
-	// never seen.
-	T.Run("names nothing the created schema does not", func(t *testing.T) {
-		t.Parallel()
-
-		created := map[string]struct{}{}
-		for _, name := range schema.Identifiers("acme") {
-			created[name] = struct{}{}
-		}
-
-		for _, name := range upgrade.Identifiers("acme") {
-			_, ok := created[name]
-			test.True(t, ok, test.Sprintf("upgrade names %q, which the schema does not create", name))
-		}
-	})
-
-	T.Run("unsupported dialect", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := UpgradeStatements(dialect.Dialect("cockroach"), "webhook")
-		test.ErrorIs(t, err, dialect.ErrUnsupported)
-	})
-
-	T.Run("rejects a prefix that is not an identifier", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := UpgradeStatements(dialect.Postgres, "web hook")
-		test.ErrorIs(t, err, dialect.ErrInvalidIdentifier)
-	})
-}
-
-func TestUpgradeSQL(T *testing.T) {
-	T.Parallel()
-
-	T.Run("standard", func(t *testing.T) {
-		t.Parallel()
-
-		body, err := UpgradeSQL(dialect.Postgres, "webhook")
-		must.NoError(t, err)
-
-		test.True(t, strings.HasSuffix(body, ";\n"))
-		test.StrContains(t, body, "webhook_webhooks_subscriptions")
-
-		stmts, err := UpgradeStatements(dialect.Postgres, "webhook")
-		must.NoError(t, err)
-		test.EqOp(t, len(stmts), strings.Count(body, ";"))
-	})
-
-	T.Run("unsupported dialect", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := UpgradeSQL(dialect.Dialect("cockroach"), "webhook")
 		test.ErrorIs(t, err, dialect.ErrUnsupported)
 	})
 }
