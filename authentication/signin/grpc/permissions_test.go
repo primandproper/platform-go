@@ -33,24 +33,31 @@ func serviceMethods() []string {
 	return out
 }
 
-// TestMethodsAreDecidedAbout is the property the two lists exist for: an RPC
-// added to the service later and named in neither is a method the enforcer
+// TestMethodsAreDecidedAbout is the property the three lists exist for: an RPC
+// added to the service later and named in none of them is a method the enforcer
 // denies, in somebody's production, for a reason nothing connects to a missing
 // entry here.
 func TestMethodsAreDecidedAbout(T *testing.T) {
 	T.Parallel()
 
-	anonymous := signingrpc.AnonymousMethods()
-	selfService := signingrpc.SelfServiceMethods()
+	lists := map[string][]string{
+		"AnonymousMethods":   signingrpc.AnonymousMethods(),
+		"RegistrarMethods":   signingrpc.RegistrarMethods(),
+		"SelfServiceMethods": signingrpc.SelfServiceMethods(),
+	}
 
 	for _, method := range serviceMethods() {
-		inAnonymous := slices.Contains(anonymous, method)
-		inSelfService := slices.Contains(selfService, method)
+		naming := make([]string, 0, len(lists))
 
-		test.True(T, inAnonymous || inSelfService, test.Sprintf(
-			"%s is in neither AnonymousMethods nor SelfServiceMethods, so nothing says who may call it", method))
-		test.False(T, inAnonymous && inSelfService, test.Sprintf(
-			"%s is in both lists, and authorization/grpc refuses a method declared twice", method))
+		for name, list := range lists {
+			if slices.Contains(list, method) {
+				naming = append(naming, name)
+			}
+		}
+
+		test.SliceLen(T, 1, naming, test.Sprintf(
+			"%s is named by %v, and every RPC belongs to exactly one list: none means nothing says who may call it, "+
+				"and two means authorization/grpc refuses a method declared twice", method, naming))
 	}
 }
 
@@ -62,7 +69,11 @@ func TestListsNameOnlyRealMethods(T *testing.T) {
 
 	methods := serviceMethods()
 
-	for _, method := range slices.Concat(signingrpc.AnonymousMethods(), signingrpc.SelfServiceMethods()) {
+	for _, method := range slices.Concat(
+		signingrpc.AnonymousMethods(),
+		signingrpc.RegistrarMethods(),
+		signingrpc.SelfServiceMethods(),
+	) {
 		test.SliceContains(T, methods, method, test.Sprintf(
 			"%s is named in a list but is not an RPC on this service", method))
 	}

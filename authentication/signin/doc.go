@@ -110,17 +110,65 @@ different job — which is why the vocabulary here is "family" throughout, and w
 the one place the two spellings meet is [ClaimFamilyID], where a wire convention
 is translated once.
 
-No passkeys, no password reset, no email verification and no session management.
-Each is a flow of its own over an engine this module already ships —
+No passkeys and no password reset. Each is a flow of its own over an engine
+this module already ships —
 [github.com/primandproper/primitives-go/v2/authentication/webauthn],
 [github.com/primandproper/platform-go/v14/authentication/passwordreset],
 [github.com/primandproper/platform-go/v14/links] — and each is its own addition
 rather than a branch inside the password flow.
 
-No registration. Making a user exist is
-[github.com/primandproper/platform-go/v14/identity.Service.Register], which
-mints the passwordless user identity already treats as first-class; attaching a
-credential to one is [Service.UpdatePassword] and [Service.RefreshTOTPSecret]
-afterwards.
+# Registration, and the credential it carries
+
+[Service.Register] is here, and the password is the reason. identity never
+hashes — it stores what an engine produced — so its registration takes a user
+whose hash is already set and its wire schema carries no password at all. That
+is right, and on its own it left a gap: a registration over a transport produced
+somebody with no credential, and the two methods for attaching one afterwards
+both required the sign-in that person could not do. This package holds the
+authenticator, so a registration that carries a credential belongs here. The
+directory work is still identity's, through [Registrar] on one transaction.
+
+A registration names how the registrant will prove who they are — [Password] or
+[NoPassword] — and naming neither is refused. Passwordless is a supported
+arrival rather than an unfinished one, but it is a decision somebody makes
+rather than something inferred from a blank field: an empty password and a
+deliberate absence of one are indistinguishable to a service reading a string,
+and the second mints an account nobody can sign into. What a registrant who
+named no password can still do is enroll a passkey or take
+[Service.AttachPassword] later; what this package does not yet ship is a door
+that mints a token from a mailed link, which is the way in most such people
+expect.
+
+No second-factor secret at registration, which some applications do mint there.
+Enrolment stays behind authentication — [Service.RefreshTOTPSecret] then
+[Service.VerifyTOTPSecret], both of which require a signed-in caller — because
+the flow that mints a secret at registration has to let somebody verify it
+unauthenticated, by user ID, and an endpoint that confirms whether a code
+matches for a user ID is an enumeration oracle with a brute-force surface
+attached. The order this package ships is register, verify, sign in, enroll.
+
+# Getting in for the first time, and the two doors that have no caller
+
+A registrant lands in identity.StatusUnverified, which admits no sign-in, and
+the only thing that moved a user out of it was an operator's write behind an
+operator's permission — which no registration flow holds. So two doors here
+take a mailed verification token as their whole authority, because the person
+they are about cannot be signed in and has no current password to re-type:
+[Service.VerifyEmailAddress], which proves the address and promotes them, and
+[Service.AttachPassword], which gives a password to somebody who holds none and
+is refused for anybody who does.
+
+That refusal is what keeps the second one narrow. An outstanding link furnishes
+an account that has no password, once; against an account that has one it can do
+nothing, and somebody who has forgotten theirs goes through
+[github.com/primandproper/platform-go/v14/authentication/passwordreset] instead.
+Attaching does not spend the link, so the same click can go on to verify — which
+is the order a consumer doing both from one page wants.
+
+[Service.CompleteVerification] is the third, and it has no transport door. Not
+every registration asks for an email address to be proven, and a consumer who
+proved a phone number, a payment or an operator's approval says so with it. What
+may be proven that way is theirs to decide, which is exactly why there is no RPC:
+the check is one only they can make.
 */
 package signin

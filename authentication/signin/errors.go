@@ -145,6 +145,71 @@ var (
 	// is mapped for it, so it is a 500, which is what it is.
 	ErrRefreshTokensNotConfigured = platformerrors.New("no refresh token store is configured")
 
+	// ErrPasswordAlreadySet indicates Service.AttachPassword against somebody who
+	// already holds a password.
+	//
+	// It is the refusal that keeps a verification link from being a password
+	// reset. An outstanding link can furnish an account that holds no password,
+	// once; against an account that holds one it can do nothing, and somebody who
+	// has forgotten theirs goes through
+	// github.com/primandproper/platform-go/v14/authentication/passwordreset,
+	// which is the flow with an expiry, a redemption stamp and a revocation.
+	//
+	// It is the specific answer rather than the collapsed one because the caller
+	// is holding a secret mailed to this account's own address: they are the
+	// subject, so it tells them nothing about anybody else — the reading
+	// ErrNoPasswordCredential already takes from the other direction.
+	ErrPasswordAlreadySet = platformerrors.New("user already holds a password credential")
+
+	// ErrInvalidVerificationToken indicates a verification link that named
+	// nobody: expired, already answered, never issued, or simply wrong.
+	//
+	// The four are one answer on purpose. The caller's remedy is the same in
+	// every case — ask for another link — and telling them apart tells whoever is
+	// guessing which guesses are getting warm, which is the objection
+	// ErrInvalidCredentials exists for. The second click on one link lands here
+	// too, because answering it clears the column the first click matched.
+	//
+	// It wraps ErrInvalidCredentials, so it reads on both transports exactly as a
+	// wrong password does, and a consumer branching on that sentinel branches on
+	// this too. See ErrRefreshTokenReused, which is the same construction for the
+	// same reason, and which explains why wrapping rather than aliasing is what
+	// makes the collapse real on gRPC.
+	ErrInvalidVerificationToken = platformerrors.Wrap(ErrInvalidCredentials, "invalid email verification token")
+
+	// ErrNoCredentialNamed indicates a registration that did not say how the
+	// registrant will prove who they are.
+	//
+	// It is refused rather than read as signin.NoPassword, which is the whole
+	// reason Credential is a type: choosing email-only authentication and
+	// forgetting to wire up a form field look identical to a service reading a
+	// blank password, and the first is a product decision while the second mints
+	// an account nobody can ever reach.
+	ErrNoCredentialNamed = platformerrors.New("registration names no credential")
+
+	// ErrRegistrationNotConfigured indicates Service.Register on a service built
+	// without WithRegistrar.
+	//
+	// Such a service registers nobody, which is the right shape for a consumer
+	// using this one as a credential check over a directory somebody else fills.
+	// It is a wiring failure and reads as one: no status is mapped for it, so it
+	// is a 500, which is what it is.
+	ErrRegistrationNotConfigured = platformerrors.New("no registrar is configured")
+
+	// ErrRegistrationIncomplete indicates a Registrar that answered with neither
+	// a registration nor an error.
+	//
+	// It is unreachable through identity's own Service and exists because the
+	// seam is one a consumer may implement: the alternative to naming this is a
+	// nil dereference in this package for a mistake made in theirs. It is a
+	// wiring failure and no status is mapped for it.
+	ErrRegistrationIncomplete = platformerrors.New("registrar answered with no registration")
+
+	// ErrVerificationsNotConfigured indicates one of the three doors that finish
+	// a registration on a service built without WithVerifications. It is a wiring
+	// failure, and is a 500 for the reason above.
+	ErrVerificationsNotConfigured = platformerrors.New("no verifications directory is configured")
+
 	// ErrRefreshTokenTTLTooShort indicates a service whose refresh tokens would
 	// die before the access tokens they mint.
 	//
@@ -214,6 +279,20 @@ var (
 	// missed, and answering it with a refusal would put a database round trip
 	// behind every empty request a bot sends.
 	ErrEmptyRefreshToken = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token")
+
+	// ErrNilRegistration indicates a nil *Registration.
+	ErrNilRegistration = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil registration")
+
+	// ErrNilPasswordAttachment indicates a nil *PasswordAttachment.
+	ErrNilPasswordAttachment = platformerrors.Wrap(platformerrors.ErrNilInputParameter, "nil password attachment")
+
+	// ErrEmptyVerificationToken indicates a door answered with no token at all.
+	//
+	// It is not ErrInvalidVerificationToken, for the reason ErrEmptyHandle is not
+	// a refusal: an empty request is a client that did not submit rather than a
+	// guess that missed, and answering it with a refusal would put a database
+	// round trip behind every empty request a bot sends.
+	ErrEmptyVerificationToken = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty email verification token")
 
 	// ErrEmptyFamilyID indicates a revocation that named no login.
 	ErrEmptyFamilyID = platformerrors.Wrap(platformerrors.ErrEmptyInputParameter, "empty refresh token family ID")

@@ -193,6 +193,38 @@ type Hooks interface {
 	// about.
 	AfterRefreshTOTPSecret(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error
 
+	// AfterAttachPassword is called with the user who was given their first
+	// password, as they stood before the write and redacted, in the transaction
+	// that wrote the hash.
+	//
+	// Before rather than after, for the reason AfterUpdatePassword's is: the only
+	// column the write moves is one a redacted user does not carry. What is worth
+	// recording here beyond that is which event this was — somebody claimed an
+	// account that had no password, answered with a mailed link — and that is
+	// what a separate hook from AfterUpdatePassword buys. The two are different
+	// events with different proofs behind them, and a consumer alerting on "a
+	// password changed" usually wants only one of them.
+	//
+	// The token that authorized it is deliberately not here. It is still live
+	// after this call — attaching a password does not spend the link — so a hook
+	// that recorded it would put a working credential in whatever the hook writes
+	// to.
+	AfterAttachPassword(ctx context.Context, tx database.Tx, scope tenancy.Scope, user *identity.User) error
+
+	// AfterVerify is called with somebody who has done what their registration
+	// asked, in the transaction that recorded it.
+	//
+	// It runs for both doors — Service.VerifyEmailAddress and
+	// Service.CompleteVerification — and Verification says which, so a consumer
+	// records one event with a reason on it rather than keeping two shapes in
+	// step. It also says whether the user's standing actually moved: a second
+	// click on one link, or a consumer completing a verification for somebody
+	// already past it, runs the hook and writes nothing.
+	//
+	// The user on it is read on this operation's own transaction, so it carries
+	// the stamps these writes just made rather than the copy read before them.
+	AfterVerify(ctx context.Context, tx database.Tx, scope tenancy.Scope, verification *Verification) error
+
 	// AfterVerifyTOTPSecret is called with the user who proved possession of the
 	// secret they hold, redacted, in the transaction that marked it verified.
 	//
@@ -233,6 +265,16 @@ func (NoopHooks) AfterUpdatePassword(context.Context, database.Tx, tenancy.Scope
 
 // AfterRefreshTOTPSecret does nothing.
 func (NoopHooks) AfterRefreshTOTPSecret(context.Context, database.Tx, tenancy.Scope, *identity.User) error {
+	return nil
+}
+
+// AfterAttachPassword does nothing.
+func (NoopHooks) AfterAttachPassword(context.Context, database.Tx, tenancy.Scope, *identity.User) error {
+	return nil
+}
+
+// AfterVerify does nothing.
+func (NoopHooks) AfterVerify(context.Context, database.Tx, tenancy.Scope, *Verification) error {
 	return nil
 }
 

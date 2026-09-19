@@ -815,9 +815,10 @@ func (m *mount) settings() {
 // signIn mounts the sign-in surface.
 //
 // Its scope resolver is left at signin/grpc's own default rather than derived:
-// three of its RPCs are the ones a caller reaches before there is anybody to
+// six of its RPCs are the ones a caller reaches before there is anybody to
 // extract, so a resolver that refuses a request with no principal would refuse
-// the act of signing in.
+// the act of signing in — and, since registration landed here, the act of
+// finishing one.
 func (m *mount) signIn() {
 	svc, ok := need[*signin.Service](m)
 	if !ok {

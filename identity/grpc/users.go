@@ -36,14 +36,14 @@ func (s *Server) Register(
 
 	defer func() { done(err) }()
 
-	user := userFromRegistrationInput(request.GetUser())
+	user := UserFromRegistrationInput(request.GetUser())
 	if user == nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(identity.ErrNilUser, op.Logger(), op.Span(), codes.InvalidArgument, "registering a user")
 
 		return nil, err
 	}
 
-	account := accountFromCreationInput(request.GetAccount())
+	account := AccountFromCreationInput(request.GetAccount())
 	if account == nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(identity.ErrNilAccount, op.Logger(), op.Span(), codes.InvalidArgument, "registering a user")
 

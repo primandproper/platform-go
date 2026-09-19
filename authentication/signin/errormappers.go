@@ -44,23 +44,25 @@ var (
 // to a caller verbatim, handed to errors/grpc.RegisterClientSafeSentinels by
 // errormappers.Register alongside the mappers.
 //
-// They are the nine the mappers claim, and the list is the same nine on purpose:
-// the codes collide badly here. Four of them are PermissionDenied, three are
-// FailedPrecondition and two are Unauthenticated, and each of the nine has a
-// different remedy — send a code, enroll a factor, verify an address, ask an
-// operator, use a different door, use a different credential. Without this a
-// client in a language with no access to the encoded details is told the code's
-// name four times for four different remedies.
+// They are eleven of the thirteen the mappers claim, and the overlap is nearly
+// total on purpose: the codes collide badly here. Four of them are
+// PermissionDenied, four are FailedPrecondition and two are Unauthenticated,
+// and each has a different remedy — send a code, enroll a factor, verify an
+// address, ask an operator, use a different door, use a different credential,
+// reset rather than attach. Without this a client in a language with no access
+// to the encoded details is told the code's name four times for four different
+// remedies.
 //
-// None of the nine names a user, a handle, a table or a policy. What each says
+// None of the eleven names a user, a handle, a table or a policy. What each says
 // is the whole of what the caller needs and the whole of what this package is
 // willing to tell them — ErrInvalidCredentials in particular says "invalid
 // credentials" and will never say which half was wrong.
 //
-// ErrRefreshTokenReused is mapped by both switches above and is deliberately not
-// here. The rest of this list is sentinels whose own words are the remedy; that
-// one's words are "we noticed", which is a sentence to write in an operator's
-// log and not one to hand whoever is holding the stolen credential.
+// ErrRefreshTokenReused and ErrInvalidVerificationToken are the two the mappers
+// claim and this list does not. The rest are sentinels whose own words are the
+// remedy; the first of those two says "we noticed", which is a sentence for an
+// operator's log rather than one to hand whoever is holding the stolen
+// credential, and the second would say which of four ways a link failed.
 //
 // Leaving it out is only half of what makes it read as ErrInvalidCredentials
 // does, and the half that does nothing on its own. This list is what
@@ -89,6 +91,8 @@ var ClientSafeSentinels = []error{
 	ErrNotAnAdministrator,
 	ErrAdminLoginDisabled,
 	ErrNoPasswordCredential,
+	ErrPasswordAlreadySet,
+	ErrNoCredentialNamed,
 }
 
 type (
@@ -114,7 +118,14 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 	// request, and it is mapped to this because the alternative is telling
 	// whoever presented it that their theft was noticed. The family has already
 	// been revoked by the time this is reached; the caller is simply signed out.
-	case errors.Is(err, ErrRefreshTokenReused), errors.Is(err, ErrInvalidCredentials):
+	//
+	// A verification link that named nobody joins them, for the same reason:
+	// expired, already answered, never issued and simply wrong are one remedy,
+	// and telling them apart tells whoever is guessing which guesses are getting
+	// warm.
+	case errors.Is(err, ErrRefreshTokenReused),
+		errors.Is(err, ErrInvalidVerificationToken),
+		errors.Is(err, ErrInvalidCredentials):
 		return httperrors.ErrAuthenticationFailed, "invalid credentials", true
 
 	// The two refusals on authority. Suspension and termination are told apart
@@ -139,6 +150,14 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 		return httperrors.ErrResourceConflict, "account has not completed verification", true
 	case errors.Is(err, ErrNoPasswordCredential):
 		return httperrors.ErrResourceConflict, "account holds no password to change", true
+	case errors.Is(err, ErrPasswordAlreadySet):
+		return httperrors.ErrResourceConflict, "account already holds a password", true
+
+	// The one request here that is neither a refusal nor a state: a
+	// registration that did not say how the registrant will prove who they are.
+	// It names the remedy, because the remedy is a field the caller controls.
+	case errors.Is(err, ErrNoCredentialNamed):
+		return httperrors.ErrValidatingRequestInput, "registration names no credential", true
 	default:
 		return httperrors.ErrNothingSpecific, "", false
 	}
@@ -157,6 +176,7 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	// would send a retry-with-credentials path down the give-up branch.
 	case errors.Is(err, ErrSecondFactorRequired),
 		errors.Is(err, ErrInvalidCredentials),
+		errors.Is(err, ErrInvalidVerificationToken),
 		errors.Is(err, ErrRefreshTokenReused):
 		return codes.Unauthenticated, true
 
@@ -173,8 +193,15 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	// HTTP side collapses these into a conflict and varies the message.
 	case errors.Is(err, ErrSecondFactorNotEnrolled),
 		errors.Is(err, ErrUserUnverified),
-		errors.Is(err, ErrNoPasswordCredential):
+		errors.Is(err, ErrNoPasswordCredential),
+		errors.Is(err, ErrPasswordAlreadySet):
 		return codes.FailedPrecondition, true
+
+	// A registration that named no credential is a request to correct rather
+	// than a state to fix, which is the one place these two switches disagree
+	// about which kind of thing went wrong.
+	case errors.Is(err, ErrNoCredentialNamed):
+		return codes.InvalidArgument, true
 	default:
 		return codes.Unknown, false
 	}

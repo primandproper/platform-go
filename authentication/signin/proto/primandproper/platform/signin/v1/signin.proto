@@ -1,7 +1,7 @@
 // Package primandproper.platform.signin.v1 is the wire schema for proving
-// somebody is who they say they are: the password door, the administrative
-// door, the two credential writes a signed-in person makes about themselves,
-// and the two reads a client makes on load.
+// somebody is who they say they are: registering them, the password door, the
+// administrative door, the credential writes they make about themselves, and
+// the two reads a client makes on load.
 //
 // This file is shipped inside the published Go module, and it is the file
 // itself that is shipped -- not a copy for you to keep in sync. A consumer puts
@@ -56,9 +56,10 @@
 // Reserving the name rather than only saying so is audit.proto's pattern:
 // `reserved "scope";` is a schema protoc refuses to accept a scope field into,
 // in this repository and in a consumer's fork of the file alike, whereas a
-// comment is a request to the next author. It is reserved on all seven request
-// messages, on [Credentials], which two of them are built from, and on
-// [IssuedToken] and [AuthStatus], which the responses are built from.
+// comment is a request to the next author. It is reserved on every request
+// message, on the inputs they are built from -- [Credentials],
+// [RegistrationInvitation] -- and on [IssuedToken], [AuthStatus] and
+// [Registered], which the responses are built from.
 //
 // No hashed password and no stored second-factor secret, in either direction.
 // The two secrets that do cross are the ones that have to: a plaintext password
@@ -82,9 +83,34 @@
 // names a sign-in rather than a stored row, and it is the same value the access
 // token carries as its conventional "sid" claim.
 //
-// No passkeys, no password reset, no email verification and no session
-// management. Each is a flow of its own over an engine this module already
-// ships, and each is its own file rather than a branch in this one.
+// Registration is here, and the password is why. identity's schema carries no
+// password in either direction and should not: that package never hashes, it
+// stores what an engine produced, so a plaintext password on its wire would put
+// the choice of hashing engine into the transport. This service holds the
+// authenticator, so a registration that carries a credential is its RPC --
+// Register below hashes what arrives and hands identity the hash. The directory
+// work is still identity's, done through its own service on one transaction.
+//
+// A registration names the credential the registrant chose, as a oneof, and a
+// request that names neither arm is refused rather than read as passwordless.
+// Choosing email-only authentication and forgetting to populate a password
+// field look identical to a server reading an empty string, and the first is a
+// product decision while the second mints an account nobody can reach. A oneof
+// is what makes that distinction the schema's rather than one server's.
+//
+// No verification token in any response. The secret a registration mints
+// travels to the person it is about, in mail the consumer sends from inside the
+// transaction that wrote the row -- it is never handed back to whoever called
+// Register, who is a client rather than the subject. It arrives back here only
+// as a request field on the two RPCs that answer a link, which is identity's
+// rule for an invitation's token and is the same rule for the same reason.
+//
+// No passkeys, no password reset and no session management. Each is a flow of
+// its own over an engine this module already ships, and each is its own file
+// rather than a branch in this one. Email-link sign-in -- a door that mints a
+// token from a clicked link rather than from a password -- is not here either:
+// it is a sibling of LoginForToken rather than a branch inside it, and it is
+// the one thing a registrant who named no password still needs.
 
 syntax = "proto3";
 
@@ -360,15 +386,167 @@ message VerifyTOTPSecretRequest {
 // VerifyTOTPSecretResponse is empty -- see UpdatePasswordResponse.
 message VerifyTOTPSecretResponse {}
 
+// NoPassword is the registrant who will hold no password: an arrival who will
+// sign in some other way, or not yet.
+//
+// It is an empty message rather than a bool because presence is the whole
+// meaning. A bool arm has a false value that means nothing, and a schema with a
+// value that means nothing is a schema a client can populate meaninglessly.
+message NoPassword {
+  reserved "scope";
+}
+
+// RegistrationInvitation names the invitation a registration answers.
+//
+// Naming one changes what the registration writes: the registrant is created
+// and the invitation answered in their name on one transaction, and no account
+// is minted, because somebody arriving on an invitation is joining one that
+// already exists. An invitation that has expired, been withdrawn, already been
+// answered or was presented with the wrong token takes the registration down
+// with it.
+message RegistrationInvitation {
+  reserved "scope";
+
+  string invitation_id = 1 [json_name = "invitationID"];
+
+  // token is the secret the invitation link carried. It arrives here because
+  // this is where it arrives from -- on a link -- which is the one direction a
+  // token travels on any schema in this module.
+  string token = 2;
+
+  // status_note is what the answer records about itself.
+  string status_note = 3;
+}
+
+// RegisterRequest is somebody arriving: who they are, what they will own, and
+// how they will prove who they are.
+message RegisterRequest {
+  reserved "scope";
+
+  // user is the directory half, and is identity's own input message: there is
+  // one directory and one shape for a registrant, and a second message for the
+  // same four fields would be a second thing to keep in step.
+  primandproper.platform.identity.v1.UserRegistrationInput user = 1;
+
+  // account is the first account the registrant owns. It is ignored by a
+  // registration that answers an invitation.
+  primandproper.platform.identity.v1.AccountCreationInput account = 2;
+
+  // owner_roles are the roles the registrant holds in the account they own,
+  // and are the consumer's own role names. A membership with none is a member
+  // who may do nothing, so a registration that mints an account names at least
+  // one. They are ignored by a registration that answers an invitation, which
+  // takes its roles off the invitation.
+  repeated string owner_roles = 3;
+
+  // credential is how this person will prove who they are afterwards, and it is
+  // required: a request naming neither arm is refused rather than read as
+  // no_password. See the file documentation.
+  oneof credential {
+    // password is the plaintext the registrant chose. It is hashed by the
+    // service with the consumer's own authenticator and never stored, logged or
+    // traced as it arrived, and it is the second reason this service requires
+    // transport security.
+    string password = 4;
+
+    // no_password says they will hold none. The ways in for such a person are a
+    // passkey ceremony or attaching a password later through AttachPassword,
+    // which is what the verification mail's link is good for.
+    NoPassword no_password = 5;
+  }
+
+  // invitation names an invitation this registration answers, and is absent for
+  // an ordinary one.
+  RegistrationInvitation invitation = 6;
+}
+
+// Registered is what a registration produced.
+//
+// account is set by a registration that minted one and invitation by one that
+// answered one, never both. There is no verification token here and there will
+// not be -- see the file documentation.
+message Registered {
+  reserved "scope";
+
+  primandproper.platform.identity.v1.User user = 1;
+
+  primandproper.platform.identity.v1.Account account = 2;
+
+  primandproper.platform.identity.v1.Membership membership = 3;
+
+  primandproper.platform.identity.v1.Invitation invitation = 4;
+}
+
+message RegisterResponse {
+  Registered registration = 1;
+}
+
+// AttachPasswordRequest gives a password to somebody who holds none, answered
+// with the verification link that was mailed to them.
+//
+// There is no field naming a user. Who this is about is read off the row the
+// token named, which is the same rule ExchangeRefreshTokenRequest follows and is
+// what keeps an anonymous RPC from being a way to name somebody else.
+message AttachPasswordRequest {
+  reserved "scope";
+
+  // token is the secret the verification link carried, and is the whole of this
+  // request's authority: the subject cannot be signed in -- they hold no
+  // password, and their standing admits no sign-in until they are verified --
+  // so the mail sent to the address the account was registered with is the only
+  // thing that reaches them.
+  //
+  // It is refused for an account that already holds a password, which is what
+  // keeps the capability narrow. Somebody who has forgotten a password they
+  // have goes through the password reset flow instead.
+  string token = 1;
+
+  // new_password is the password they chose. Whether it is acceptable is the
+  // consumer's rule, applied in front of this call.
+  string new_password = 2;
+}
+
+// AttachPasswordResponse is empty -- see UpdatePasswordResponse.
+message AttachPasswordResponse {}
+
+// VerifyEmailAddressRequest answers a verification link.
+//
+// It proves the address, spends the link, and promotes the registrant out of
+// the unverified standing that admits no sign-in -- which is the half that
+// makes a registration usable. A suspended or terminated user who answers an
+// outstanding link has their address stamped and their standing left alone: an
+// operator's decision is not something an email overturns.
+message VerifyEmailAddressRequest {
+  reserved "scope";
+
+  // token is the secret the link carried. Expired, already answered, never
+  // issued and simply wrong are one answer, for the reason a wrong password and
+  // an unknown handle are one answer.
+  string token = 1;
+}
+
+// VerifyEmailAddressResponse is empty -- see UpdatePasswordResponse.
+message VerifyEmailAddressResponse {}
+
 // SignInService is sign-in.
 //
-// Four of its RPCs are anonymous by definition and four require a caller. What
+// Six of its RPCs are anonymous by definition and five require a caller. What
 // none of them requires is a permission: there is no grant that would make
 // "sign in" safer, and the four authenticated ones take their subject from the
 // caller and have no field that could name anybody else. See
 // authentication/signin/grpc's Require for how that is declared to an
 // authorization policy, which is not the same thing as being left out of one.
 service SignInService {
+  // Arriving, and the two ways a registration is finished. Register requires a
+  // caller -- the consumer's own registrar, for the reason identity's Register
+  // requires one: an open sign-up is a flow with policy in it, a captcha, a rate
+  // limit, an email domain rule, and this service holds none of that. The other
+  // two are anonymous and carry their own authority, which is the token that was
+  // mailed to the person they are about.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc AttachPassword(AttachPasswordRequest) returns (AttachPasswordResponse);
+  rpc VerifyEmailAddress(VerifyEmailAddressRequest) returns (VerifyEmailAddressResponse);
+
   // The two doors, and the one that keeps a sign-in alive without reopening
   // either of them.
   rpc LoginForToken(LoginForTokenRequest) returns (LoginForTokenResponse);
