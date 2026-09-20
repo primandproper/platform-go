@@ -12,7 +12,6 @@ import (
 	"github.com/primandproper/primitives-go/v2/filtering/filteringpb"
 	filteringgrpc "github.com/primandproper/primitives-go/v2/filtering/grpc"
 	"github.com/primandproper/primitives-go/v2/observability"
-	"github.com/primandproper/primitives-go/v2/pointer"
 
 	"google.golang.org/grpc/codes"
 )
@@ -90,9 +89,18 @@ func (s *Server) ListEntries(
 	}
 
 	query := queryFromProto(request.GetQuery())
-	query.Scope = pointer.To(req.scope)
 
-	page, err := s.reader.List(ctx, s.client.Reader(), query, filter)
+	// Which chains this read spans. One is the ordinary answer and the only one
+	// a deployment with a chain per tenant ever gets; a deployment that files
+	// some entries per actor has more, and chains.go says why and how the pages
+	// are merged.
+	scopes, err := s.chainsFor(ctx, req.scope)
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(),
+			codes.Internal, "resolving the chains to read")
+	}
+
+	page, err := s.listAcrossChains(ctx, s.client.Reader(), scopes, query, filter)
 	if err != nil {
 		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "listing audit entries")
 	}

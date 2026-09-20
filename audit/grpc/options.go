@@ -76,6 +76,20 @@ func WithScopeResolver(resolve ScopeResolver) Option {
 	return func(s *Server) { s.scopes = resolve }
 }
 
+// WithChainsResolver answers which chains a read may span, for a deployment
+// that files entries under more than one scope.
+//
+// Absent, a read spans the single chain [WithScopeResolver] named, which is
+// what every consumer had before this existed. Supplying one is a deployment
+// saying it has more than one chain per caller — see [ChainsResolver] for why
+// a deployment has more, and for the one thing a resolver must not do.
+//
+// It does not change what a write or a verification does. Both want exactly one
+// chain: an entry is appended to one, and a verification walks one.
+func WithChainsResolver(resolve ChainsResolver) Option {
+	return func(s *Server) { s.chains = resolve }
+}
+
 // WithLogger sets the logger. Absent means no logging.
 func WithLogger(logger logging.Logger) Option {
 	return func(s *Server) { s.logger = logger }
