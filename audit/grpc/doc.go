@@ -141,6 +141,16 @@ Without it, an entry that is not there arrives as codes.Unknown.
 		[]grpcserver.RegistrationFunc{srv.RegisterOn},
 	)
 
+The last of those interceptors is the one to read about before mounting this
+somewhere a browser or a mobile app can reach. grpcerrors.UnaryErrorEncodingInterceptor
+puts the whole wrapped error into the status details so a peer can reconstruct
+it, which is what makes a sentinel survive the wire — and what the status
+*message* deliberately withholds, since an error's text can name tables,
+connection strings and the permission that was missing. The two channels are not
+protecting the same thing. A deployment serving untrusted clients strips the
+detail at the edge; see that function's own documentation for the wording of
+that obligation.
+
 There is no config subpackage entry for this: audit/config builds the recorder,
 the reader and the retention policy, and a server is three lines over what it
 already returns.

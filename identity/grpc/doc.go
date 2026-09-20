@@ -130,6 +130,16 @@ apart.
 		[]grpcserver.RegistrationFunc{srv.RegisterOn},
 	)
 
+The last of those interceptors is the one to read about before mounting this
+somewhere a browser or a mobile app can reach. grpcerrors.UnaryErrorEncodingInterceptor
+puts the whole wrapped error into the status details so a peer can reconstruct
+it, which is what makes a sentinel survive the wire — and what the status
+*message* deliberately withholds, since an error's text can name tables,
+connection strings and the permission that was missing. The two channels are not
+protecting the same thing. A deployment serving untrusted clients strips the
+detail at the edge; see that function's own documentation for the wording of
+that obligation.
+
 The errormappers.Register call is not optional and is not made here. Without it
 every sentinel this service returns arrives as codes.Unknown — a taken username
 included — because the mapping lives beside the sentinels in identity and
