@@ -92,7 +92,7 @@ Without it, an entry that is not there arrives as codes.Unknown.
 
 # Mounting it
 
-	reader, err := audit.NewReader(client, audit.WithReaderLogger(logger))
+	reader, err := audit.NewReader(client.Dialect(), audit.WithReaderLogger(logger))
 
 	srv, err := auditgrpc.NewServer(reader, client,        // the client is read for Reader()
 		auditgrpc.WithScopeResolver(scopeFromConnection),   // required: no default

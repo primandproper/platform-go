@@ -166,6 +166,14 @@ func NewReader(
 		return nil, err
 	}
 
+	// The refusal audit.NewReader used to make. It takes a dialect now, so the
+	// nil handle has to be caught before Dialect() is called on nothing — and
+	// under audit's own sentinel, because a caller matching on it should not
+	// have to care which of the two constructors noticed.
+	if client == nil {
+		return nil, audit.ErrNilDatabaseClient
+	}
+
 	o := newOptions(opts)
 
 	base := []audit.ReaderOption{audit.WithReaderTablePrefix(cfg.TablePrefix)}
@@ -179,7 +187,7 @@ func NewReader(
 		base = append(base, audit.WithReaderMetricsProvider(o.metricsProvider))
 	}
 
-	reader, err := audit.NewReader(client, append(base, o.reader...)...)
+	reader, err := audit.NewReader(client.Dialect(), append(base, o.reader...)...)
 	if err != nil {
 		return nil, err
 	}

@@ -123,7 +123,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 		// The chain is what a bare DELETE would have broken. The oldest
 		// survivor is anchored against the watermark the prune left behind, so
 		// retention's gap still reads as retention rather than as tampering.
-		reader, err := audit.NewReader(client)
+		reader, err := audit.NewReader(client.Dialect())
 		must.NoError(t, err)
 
 		verification, err := reader.Verify(t.Context(), client.Reader(), tenancy.Of("acct_1"), time.Time{}, time.Time{}, audit.ChainStart)
@@ -143,7 +143,7 @@ func TestSweeper_auditLogTarget(T *testing.T) {
 		_, err := sweeper.Sweep(t.Context())
 		must.NoError(t, err)
 
-		reader, err := audit.NewReader(client)
+		reader, err := audit.NewReader(client.Dialect())
 		must.NoError(t, err)
 
 		entries, err := reader.List(t.Context(), client.Reader(),

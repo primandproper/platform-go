@@ -67,7 +67,7 @@ func (e *dialectEnv) recorder(t *testing.T, c *stubClock, prefix string, opts ..
 func (e *dialectEnv) reader(t *testing.T, prefix string, opts ...ReaderOption) Reader {
 	t.Helper()
 
-	r, err := NewReader(e.client, append([]ReaderOption{WithReaderTablePrefix(prefix)}, opts...)...)
+	r, err := NewReader(e.client.Dialect(), append([]ReaderOption{WithReaderTablePrefix(prefix)}, opts...)...)
 	must.NoError(t, err)
 
 	return r
@@ -641,7 +641,7 @@ func TestAudit_MigratorIntegration_Containers(T *testing.T) {
 		recorder, err := NewRecorder(d, WithRecorderClock(newStubClock()), WithRecorderTablePrefix(prefix))
 		must.NoError(t, err)
 
-		reader, err := NewReader(client, WithReaderTablePrefix(prefix))
+		reader, err := NewReader(client.Dialect(), WithReaderTablePrefix(prefix))
 		must.NoError(t, err)
 
 		must.NoError(t, client.WithTransaction(t.Context(), func(q database.Tx) error {

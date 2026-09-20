@@ -62,7 +62,7 @@ func newAuditEnv(t *testing.T) *auditEnv {
 	recorder, err := audit.NewRecorder(dialect.SQLite)
 	must.NoError(t, err)
 
-	reader, err := audit.NewReader(client)
+	reader, err := audit.NewReader(client.Dialect())
 	must.NoError(t, err)
 
 	return &auditEnv{client: client, recorder: recorder, reader: reader}

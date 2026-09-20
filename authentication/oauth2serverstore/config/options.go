@@ -91,16 +91,24 @@ func WithDatabaseStoreOptions(opts ...oauth2serverstore.Option) Option {
 	return func(o *options) { o.databaseStore = append(o.databaseStore, opts...) }
 }
 
-// WithServerOptions passes opts to oauth2servercfg, which builds the server and
-// the memory store. It is how oauth2servercfg.WithServerOptions and
+// WithServerConfigOptions passes opts to oauth2servercfg, which builds the
+// server and the memory store. It is how oauth2servercfg.WithServerOptions and
 // oauth2servercfg.WithMemoryStoreOptions reach the half that owns them — and so
 // how the login renderer, the registration policy and the subject resolver
 // reach the server.
+//
+// It is named for the package it forwards to rather than for the server at the
+// end of the chain, because the server has an option function of that name
+// already: spelling both WithServerOptions made a wiring site read
+// WithServerOptions(WithServerOptions(x)), where the two are different types
+// from different modules and only the argument says which is which. The sibling
+// above is WithDatabaseStoreOptions on the same principle — name the thing the
+// options are handed to.
 //
 // Go allows one variadic per function and that slot belongs to this package's
 // own Option, so the primitive half's options arrive nested rather than
 // mirrored under names of their own: a mirror would be a second place for each
 // of them to be spelled, and would have to grow every time the other half does.
-func WithServerOptions(opts ...oauth2servercfg.Option) Option {
+func WithServerConfigOptions(opts ...oauth2servercfg.Option) Option {
 	return func(o *options) { o.server = append(o.server, opts...) }
 }
