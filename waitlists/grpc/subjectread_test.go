@@ -74,27 +74,16 @@ func TestListSignupsForSubject_Authorized(T *testing.T) {
 		test.EqOp(t, codes.NotFound, status.Code(err))
 	})
 
-	// The fail-closed reading of a deployment that named a withdrawal rule and
-	// no read rule: they have not decided, and an undecided question is not a
+	// The fail-closed reading of a deployment that answered one question and not
+	// the other: they have not decided, and an undecided question is not a
 	// permitted one.
-	T.Run("a one-closure authorizer refuses every subject read", func(t *testing.T) {
-		t.Parallel()
-
-		withdrawalOnly := waitlistsgrpc.SignupAuthorizerFunc(
-			func(context.Context, callers.Principal, tenancy.Scope, string, string) error {
-				return nil
-			})
-
-		h := newHarnessWithAuthorizer(t, withdrawalOnly)
-
-		_, err := h.server.ListSignupsForSubject(h.ctx(t), &waitlistspb.ListSignupsForSubjectRequest{
-			Subject: &waitlistspb.SignupSubject{Type: string(waitlists.SubjectUser), Id: testUser},
-		})
-		must.Error(t, err)
-		test.EqOp(t, codes.NotFound, status.Code(err))
-	})
-
-	T.Run("a nil field on the pair refuses too", func(t *testing.T) {
+	//
+	// A nil field is where that omission is visible. There is no one-closure
+	// adapter any more — there was, and it satisfied the interface while
+	// silently refusing the half it could not carry, which is a second way for
+	// a consumer not to notice a question exists. This finding came from the
+	// first way.
+	T.Run("an unanswered read rule refuses", func(t *testing.T) {
 		t.Parallel()
 
 		h := newHarnessWithAuthorizer(t, waitlistsgrpc.SignupAuthorizerFuncs{

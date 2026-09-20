@@ -97,32 +97,32 @@ func Example_mount() {
 	// Output: mounted
 }
 
-// ExampleSignupAuthorizerFunc is the seam a consumer answers most often, written
+// ExampleSignupAuthorizerFuncs is the seam a consumer answers most often, written
 // the way it is usually answered: an unsubscribe URL carries a single-use token,
 // the consumer's own interceptor redeems it and puts what it named on the
 // context, and this compares that against the signup the request names.
 //
 // platform-go/links is what mints and redeems such a token. Nothing here imports
 // it, because how a person proves they are themselves is the consumer's.
-func ExampleSignupAuthorizerFunc() {
+func ExampleSignupAuthorizerFuncs() {
 	// yours: what the interceptor that redeemed the link put on the context.
 	var redeemedSignupID func(context.Context) (string, bool)
 
-	withdrawal := waitlistsgrpc.SignupAuthorizerFunc(
-		func(ctx context.Context, caller callers.Principal, _ tenancy.Scope, _, signupID string) error {
-			// A signed-in caller is one answer, where the deployment's
-			// unsubscribe page sits behind a sign-in.
-			if caller != nil && caller.UserID() != "" {
-				return nil
-			}
-
-			redeemed, ok := redeemedSignupID(ctx)
-			if !ok || redeemed != signupID {
-				return callers.ErrTargetNotPermitted
-			}
-
+	withdrawal := waitlistsgrpc.SignupAuthorizerFuncs{Withdrawal: func(ctx context.Context, caller callers.Principal, _ tenancy.Scope, _, signupID string) error {
+		// A signed-in caller is one answer, where the deployment's
+		// unsubscribe page sits behind a sign-in.
+		if caller != nil && caller.UserID() != "" {
 			return nil
-		})
+		}
+
+		redeemed, ok := redeemedSignupID(ctx)
+		if !ok || redeemed != signupID {
+			return callers.ErrTargetNotPermitted
+		}
+
+		return nil
+	},
+	}
 
 	var _ waitlistsgrpc.SignupAuthorizer = withdrawal
 

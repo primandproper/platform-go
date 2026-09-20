@@ -121,50 +121,22 @@ type SignupAuthorizer interface {
 	) error
 }
 
-// SignupAuthorizerFunc adapts one closure to [SignupAuthorizer]'s withdrawal
-// half, for a consumer whose rule is one closure over something they already
-// hold.
-//
-// It answers the read half by refusing. A value of this type is a deployment
-// that named a withdrawal rule and no read rule, and the safe reading of that
-// is that they have not decided — so ListSignupsForSubject refuses rather than
-// serving one subject's signups to a caller nobody vetted. A deployment wanting
-// both writes [SignupAuthorizerFuncs].
-type SignupAuthorizerFunc func(
-	ctx context.Context,
-	caller callers.Principal,
-	scope tenancy.Scope,
-	listID, signupID string,
-) error
-
-var _ SignupAuthorizer = SignupAuthorizerFunc(nil)
-
-// AuthorizeWithdrawal calls f.
-func (f SignupAuthorizerFunc) AuthorizeWithdrawal(
-	ctx context.Context,
-	caller callers.Principal,
-	scope tenancy.Scope,
-	listID, signupID string,
-) error {
-	return f(ctx, caller, scope, listID, signupID)
-}
-
-// AuthorizeSubjectRead refuses. See [SignupAuthorizerFunc].
-func (f SignupAuthorizerFunc) AuthorizeSubjectRead(
-	_ context.Context,
-	_ callers.Principal,
-	_ tenancy.Scope,
-	_ waitlists.Subject,
-) error {
-	return callers.ErrTargetNotPermitted
-}
-
 // SignupAuthorizerFuncs adapts a closure per question to [SignupAuthorizer],
-// for a deployment answering both.
+// for a consumer whose rules are closures over something they already hold.
 //
-// A nil field refuses, which is the same fail-closed reading
-// [SignupAuthorizerFunc] takes of the half it does not carry: an unanswered
-// question is not a permitted one.
+// A nil field refuses. An unanswered question is not a permitted one, and a
+// struct literal is where that omission is visible: a deployment that answers
+// only Withdrawal has written down that it did not decide the read, in its own
+// code, where a reviewer sees it.
+//
+// There is deliberately no one-closure adapter beside this. There was, and it
+// satisfied the interface by refusing the half it could not carry — which made
+// a consumer who used it and then called ListSignupsForSubject discover the
+// refusal at runtime, from a type that looked complete. The finding that
+// produced AuthorizeSubjectRead was itself somebody not noticing that one grant
+// covered four reads, so a second way not to notice was the wrong thing to
+// ship. Answering one question now means writing one field and leaving the
+// other, which is the same amount of typing and says what it is.
 type SignupAuthorizerFuncs struct {
 	// Withdrawal answers AuthorizeWithdrawal.
 	Withdrawal func(ctx context.Context, caller callers.Principal, scope tenancy.Scope, listID, signupID string) error
