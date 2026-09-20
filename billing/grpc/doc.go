@@ -144,6 +144,19 @@ and the log and the span record it; only the status differs, and
 [github.com/primandproper/platform-go/v14/callers.ErrTargetNotPermitted] is not
 a client-safe sentinel, so its wording does not travel.
 
+# Subscription means something else in webhooks
+
+This service and webhooks' both declare GetSubscription, ListSubscriptions and
+ArchiveSubscription, over two unrelated nouns: a paid plan here, an event
+interest there. The wire tells them apart, since the two live in different proto
+packages and their generated Go types in different packages again.
+
+Embedding both generated server interfaces in one type does not compile: Go
+refuses overlapping method sets whose signatures differ, and these differ in
+every request and response type. A consumer serving both domains holds them as
+fields rather than embedding them. webhooks/grpc's documentation carries the
+full ruling and why neither side is renamed.
+
 # Errors
 
 This package registers nothing. billing.HTTPMapper and billing.GRPCMapper live

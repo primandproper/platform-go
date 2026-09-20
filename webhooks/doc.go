@@ -477,6 +477,38 @@ entirely, and [github.com/primandproper/primitives-go/v2/webhooks/inbound] does
 ship an http.Handler for it — the shape of a Stripe or GitHub payload is
 Stripe's or GitHub's, and no application has a say in it. The module README's "Stores and Transports" section is where that
 distinction is drawn for the module as a whole.
+
+# There is deliberately no privacy adapter
+
+Most packages in this module ship a privacy subpackage — a dataprivacy.Collector,
+and where deletion is right a dataprivacy.Eraser, registered at the composition
+root so a subject access request fans out over them. This package ships neither,
+and the omission is the ruling rather than an unfinished job.
+
+Nothing here names a person. An Endpoint is a URL, a name, a set of event types
+and a signing key, held in a tenancy.Scope and belonging to no user within it;
+a Subscription is an event type an endpoint wants; an Attempt is what happened
+when this deployment called somebody's server. All three are a tenant's delivery
+configuration and the record of a machine talking to a machine, in the same
+sense metering's doc gives for Usage.Subject: a deployment that runs webhooks
+per individual has an account per individual rather than a second vocabulary
+this package knows about.
+
+The one value here that could hold personal data is Delivery.Payload, and it is
+exactly the one this package cannot answer for. It is json.RawMessage — the
+consumer's own event body, delivered byte for byte and never interpreted here,
+because what an event means is an application opinion and this library has none.
+A Collector over it could only hand back bytes it cannot describe, and an Eraser
+could only refuse or destroy the delivery record wholesale. Both are worse than
+the absence: a registered adapter invites a deployment to believe the subject's
+payload data was covered when the only party that can read it is the one that
+wrote it.
+
+So a consumer whose payloads carry personal data owes that to their own
+collector, over their own event types, and this package's absence from the
+registry is what keeps that obligation visible instead of appearing discharged.
+The retention of the record itself is a separate question with its own answer —
+see Reap and the retention package.
 */
 package webhooks
 

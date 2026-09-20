@@ -3,6 +3,7 @@ package grpc_test
 import (
 	"testing"
 
+	billingpb "github.com/primandproper/platform-go/v14/billing/billingpb"
 	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
 
 	"github.com/shoenig/test"
@@ -146,6 +147,30 @@ func TestTheServiceIsElevenMethods(T *testing.T) {
 		Services().ByName("WebhooksService").Methods()
 
 	test.EqOp(T, 11, methods.Len())
+}
+
+// TestSubscriptionMethodsCollideWithBilling pins the overlap this package's
+// documentation rules about, so that the ruling and the schema cannot drift
+// apart.
+//
+// The three names are shared with billing's service over an unrelated noun, and
+// the consequence is that a consumer embedding both generated server interfaces
+// does not compile. That is written down rather than renamed — see the doc —
+// and if somebody renames either side anyway, this test is what sends them to
+// the paragraph that has then become wrong.
+func TestSubscriptionMethodsCollideWithBilling(T *testing.T) {
+	T.Parallel()
+
+	ours := webhookspb.File_primandproper_platform_webhooks_v1_webhooks_proto.
+		Services().ByName("WebhooksService").Methods()
+
+	theirs := billingpb.File_primandproper_platform_billing_v1_billing_proto.
+		Services().ByName("BillingService").Methods()
+
+	for _, name := range []protoreflect.Name{"GetSubscription", "ListSubscriptions", "ArchiveSubscription"} {
+		test.NotNil(T, ours.ByName(name), test.Sprintf("WebhooksService no longer declares %s", name))
+		test.NotNil(T, theirs.ByName(name), test.Sprintf("BillingService no longer declares %s", name))
+	}
 }
 
 func messageNamed(tb testing.TB, name protoreflect.FullName) protoreflect.MessageDescriptor {
