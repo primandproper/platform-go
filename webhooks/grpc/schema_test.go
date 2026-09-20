@@ -130,16 +130,22 @@ func TestTheRotationAnswersWithNothing(T *testing.T) {
 		response.Fields().Len()))
 }
 
-// TestTheServiceIsTenMethods pins the count the .proto's service comment
-// argues for, so that an eleventh arrives with a failing test naming the
+// TestTheServiceIsElevenMethods pins the count the .proto's service comment
+// argues for, so that a twelfth arrives with a failing test naming the
 // argument rather than as a diff nobody weighed against it.
-func TestTheServiceIsTenMethods(T *testing.T) {
+//
+// It was ten until ListEventTypes, which is the pin working: the eleventh
+// arrived through this test rather than around it. What earned it is in
+// eventtypes.go — every other RPC here already judges a write against the
+// catalog, and a surface that refuses against a list it will not disclose
+// leaves a client guessing at the legal values of the field it just rejected.
+func TestTheServiceIsElevenMethods(T *testing.T) {
 	T.Parallel()
 
 	methods := webhookspb.File_primandproper_platform_webhooks_v1_webhooks_proto.
 		Services().ByName("WebhooksService").Methods()
 
-	test.EqOp(T, 10, methods.Len())
+	test.EqOp(T, 11, methods.Len())
 }
 
 func messageNamed(tb testing.TB, name protoreflect.FullName) protoreflect.MessageDescriptor {

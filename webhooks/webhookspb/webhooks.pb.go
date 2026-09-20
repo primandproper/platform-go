@@ -1446,6 +1446,152 @@ func (x *ListSubscriptionsResponse) GetResults() []*WebhookSubscription {
 	return nil
 }
 
+// EventTypeDefinition is one entry in the catalog an application publishes:
+// the event type a subscription may name, and prose saying when it fires.
+type EventTypeDefinition struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	EventType     string                 `protobuf:"bytes,1,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EventTypeDefinition) Reset() {
+	*x = EventTypeDefinition{}
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EventTypeDefinition) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EventTypeDefinition) ProtoMessage() {}
+
+func (x *EventTypeDefinition) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EventTypeDefinition.ProtoReflect.Descriptor instead.
+func (*EventTypeDefinition) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *EventTypeDefinition) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *EventTypeDefinition) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+// ListEventTypesRequest asks what a subscription may name.
+//
+// It reserves "scope" as every message here does, and carries nothing else. The
+// catalog is a value the application supplies at construction rather than a
+// table, so it is identical for every tenant and there is nothing to page,
+// filter or narrow -- see ListEventTypes.
+type ListEventTypesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListEventTypesRequest) Reset() {
+	*x = ListEventTypesRequest{}
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListEventTypesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListEventTypesRequest) ProtoMessage() {}
+
+func (x *ListEventTypesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListEventTypesRequest.ProtoReflect.Descriptor instead.
+func (*ListEventTypesRequest) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP(), []int{22}
+}
+
+// ListEventTypesResponse is the whole catalog, sorted by event type.
+//
+// There is no pagination field, deliberately. A catalog is a source-code
+// constant of the application serving it, sized by how many kinds of thing that
+// application publishes, and a page token over it would be a cursor into a
+// value that cannot change between two requests to the same binary.
+type ListEventTypesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Results       []*EventTypeDefinition `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListEventTypesResponse) Reset() {
+	*x = ListEventTypesResponse{}
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListEventTypesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListEventTypesResponse) ProtoMessage() {}
+
+func (x *ListEventTypesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListEventTypesResponse.ProtoReflect.Descriptor instead.
+func (*ListEventTypesResponse) Descriptor() ([]byte, []int) {
+	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ListEventTypesResponse) GetResults() []*EventTypeDefinition {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
 type ArchiveSubscriptionRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	SubscriptionId string                 `protobuf:"bytes,1,opt,name=subscription_id,json=subscriptionID,proto3" json:"subscription_id,omitempty"`
@@ -1455,7 +1601,7 @@ type ArchiveSubscriptionRequest struct {
 
 func (x *ArchiveSubscriptionRequest) Reset() {
 	*x = ArchiveSubscriptionRequest{}
-	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[21]
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1467,7 +1613,7 @@ func (x *ArchiveSubscriptionRequest) String() string {
 func (*ArchiveSubscriptionRequest) ProtoMessage() {}
 
 func (x *ArchiveSubscriptionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[21]
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1480,7 +1626,7 @@ func (x *ArchiveSubscriptionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveSubscriptionRequest.ProtoReflect.Descriptor instead.
 func (*ArchiveSubscriptionRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP(), []int{21}
+	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ArchiveSubscriptionRequest) GetSubscriptionId() string {
@@ -1498,7 +1644,7 @@ type ArchiveSubscriptionResponse struct {
 
 func (x *ArchiveSubscriptionResponse) Reset() {
 	*x = ArchiveSubscriptionResponse{}
-	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[22]
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1510,7 +1656,7 @@ func (x *ArchiveSubscriptionResponse) String() string {
 func (*ArchiveSubscriptionResponse) ProtoMessage() {}
 
 func (x *ArchiveSubscriptionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[22]
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1523,7 +1669,7 @@ func (x *ArchiveSubscriptionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ArchiveSubscriptionResponse.ProtoReflect.Descriptor instead.
 func (*ArchiveSubscriptionResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP(), []int{22}
+	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP(), []int{25}
 }
 
 type ListAttemptsRequest struct {
@@ -1536,7 +1682,7 @@ type ListAttemptsRequest struct {
 
 func (x *ListAttemptsRequest) Reset() {
 	*x = ListAttemptsRequest{}
-	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[23]
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1548,7 +1694,7 @@ func (x *ListAttemptsRequest) String() string {
 func (*ListAttemptsRequest) ProtoMessage() {}
 
 func (x *ListAttemptsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[23]
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1561,7 +1707,7 @@ func (x *ListAttemptsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAttemptsRequest.ProtoReflect.Descriptor instead.
 func (*ListAttemptsRequest) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP(), []int{23}
+	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListAttemptsRequest) GetDeliveryId() string {
@@ -1588,7 +1734,7 @@ type ListAttemptsResponse struct {
 
 func (x *ListAttemptsResponse) Reset() {
 	*x = ListAttemptsResponse{}
-	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[24]
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1600,7 +1746,7 @@ func (x *ListAttemptsResponse) String() string {
 func (*ListAttemptsResponse) ProtoMessage() {}
 
 func (x *ListAttemptsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[24]
+	mi := &file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1613,7 +1759,7 @@ func (x *ListAttemptsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAttemptsResponse.ProtoReflect.Descriptor instead.
 func (*ListAttemptsResponse) Descriptor() ([]byte, []int) {
-	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP(), []int{24}
+	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *ListAttemptsResponse) GetPagination() *filteringpb.Pagination {
@@ -1739,7 +1885,14 @@ const file_primandproper_platform_webhooks_v1_webhooks_proto_rawDesc = "" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12Q\n" +
-	"\aresults\x18\x02 \x03(\v27.primandproper.platform.webhooks.v1.WebhookSubscriptionR\aresults\"L\n" +
+	"\aresults\x18\x02 \x03(\v27.primandproper.platform.webhooks.v1.WebhookSubscriptionR\aresults\"]\n" +
+	"\x13EventTypeDefinition\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\x01 \x01(\tR\teventType\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescriptionR\x05scope\"\x1e\n" +
+	"\x15ListEventTypesRequestR\x05scope\"k\n" +
+	"\x16ListEventTypesResponse\x12Q\n" +
+	"\aresults\x18\x01 \x03(\v27.primandproper.platform.webhooks.v1.EventTypeDefinitionR\aresults\"L\n" +
 	"\x1aArchiveSubscriptionRequest\x12'\n" +
 	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionIDR\x05scope\"\x1d\n" +
 	"\x1bArchiveSubscriptionResponse\"\x87\x01\n" +
@@ -1751,8 +1904,7 @@ const file_primandproper_platform_webhooks_v1_webhooks_proto_rawDesc = "" +
 	"\n" +
 	"pagination\x18\x01 \x01(\v2/.primandproper.platform.filtering.v1.PaginationR\n" +
 	"pagination\x12L\n" +
-	"\aresults\x18\x02 \x03(\v22.primandproper.platform.webhooks.v1.WebhookAttemptR\aresults2\xf7\n" +
-	"\n" +
+	"\aresults\x18\x02 \x03(\v22.primandproper.platform.webhooks.v1.WebhookAttemptR\aresults2\x81\f\n" +
 	"\x0fWebhooksService\x12\x81\x01\n" +
 	"\fSaveEndpoint\x127.primandproper.platform.webhooks.v1.SaveEndpointRequest\x1a8.primandproper.platform.webhooks.v1.SaveEndpointResponse\x12~\n" +
 	"\vGetEndpoint\x126.primandproper.platform.webhooks.v1.GetEndpointRequest\x1a7.primandproper.platform.webhooks.v1.GetEndpointResponse\x12\x84\x01\n" +
@@ -1763,7 +1915,8 @@ const file_primandproper_platform_webhooks_v1_webhooks_proto_rawDesc = "" +
 	"\x0fGetSubscription\x12:.primandproper.platform.webhooks.v1.GetSubscriptionRequest\x1a;.primandproper.platform.webhooks.v1.GetSubscriptionResponse\x12\x90\x01\n" +
 	"\x11ListSubscriptions\x12<.primandproper.platform.webhooks.v1.ListSubscriptionsRequest\x1a=.primandproper.platform.webhooks.v1.ListSubscriptionsResponse\x12\x96\x01\n" +
 	"\x13ArchiveSubscription\x12>.primandproper.platform.webhooks.v1.ArchiveSubscriptionRequest\x1a?.primandproper.platform.webhooks.v1.ArchiveSubscriptionResponse\x12\x81\x01\n" +
-	"\fListAttempts\x127.primandproper.platform.webhooks.v1.ListAttemptsRequest\x1a8.primandproper.platform.webhooks.v1.ListAttemptsResponseBIZGgithub.com/primandproper/platform-go/v14/webhooks/webhookspb;webhookspbb\x06proto3"
+	"\fListAttempts\x127.primandproper.platform.webhooks.v1.ListAttemptsRequest\x1a8.primandproper.platform.webhooks.v1.ListAttemptsResponse\x12\x87\x01\n" +
+	"\x0eListEventTypes\x129.primandproper.platform.webhooks.v1.ListEventTypesRequest\x1a:.primandproper.platform.webhooks.v1.ListEventTypesResponseBIZGgithub.com/primandproper/platform-go/v14/webhooks/webhookspb;webhookspbb\x06proto3"
 
 var (
 	file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescOnce sync.Once
@@ -1777,7 +1930,7 @@ func file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescGZIP() []byte
 	return file_primandproper_platform_webhooks_v1_webhooks_proto_rawDescData
 }
 
-var file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_primandproper_platform_webhooks_v1_webhooks_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_primandproper_platform_webhooks_v1_webhooks_proto_goTypes = []any{
 	(*WebhookEndpoint)(nil),             // 0: primandproper.platform.webhooks.v1.WebhookEndpoint
 	(*WebhookSubscription)(nil),         // 1: primandproper.platform.webhooks.v1.WebhookSubscription
@@ -1800,69 +1953,75 @@ var file_primandproper_platform_webhooks_v1_webhooks_proto_goTypes = []any{
 	(*GetSubscriptionResponse)(nil),     // 18: primandproper.platform.webhooks.v1.GetSubscriptionResponse
 	(*ListSubscriptionsRequest)(nil),    // 19: primandproper.platform.webhooks.v1.ListSubscriptionsRequest
 	(*ListSubscriptionsResponse)(nil),   // 20: primandproper.platform.webhooks.v1.ListSubscriptionsResponse
-	(*ArchiveSubscriptionRequest)(nil),  // 21: primandproper.platform.webhooks.v1.ArchiveSubscriptionRequest
-	(*ArchiveSubscriptionResponse)(nil), // 22: primandproper.platform.webhooks.v1.ArchiveSubscriptionResponse
-	(*ListAttemptsRequest)(nil),         // 23: primandproper.platform.webhooks.v1.ListAttemptsRequest
-	(*ListAttemptsResponse)(nil),        // 24: primandproper.platform.webhooks.v1.ListAttemptsResponse
-	nil,                                 // 25: primandproper.platform.webhooks.v1.WebhookEndpoint.HeadersEntry
-	nil,                                 // 26: primandproper.platform.webhooks.v1.WebhookEndpointInput.HeadersEntry
-	(*timestamppb.Timestamp)(nil),       // 27: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),         // 28: google.protobuf.Duration
-	(*filteringpb.QueryFilter)(nil),     // 29: primandproper.platform.filtering.v1.QueryFilter
-	(*filteringpb.Pagination)(nil),      // 30: primandproper.platform.filtering.v1.Pagination
+	(*EventTypeDefinition)(nil),         // 21: primandproper.platform.webhooks.v1.EventTypeDefinition
+	(*ListEventTypesRequest)(nil),       // 22: primandproper.platform.webhooks.v1.ListEventTypesRequest
+	(*ListEventTypesResponse)(nil),      // 23: primandproper.platform.webhooks.v1.ListEventTypesResponse
+	(*ArchiveSubscriptionRequest)(nil),  // 24: primandproper.platform.webhooks.v1.ArchiveSubscriptionRequest
+	(*ArchiveSubscriptionResponse)(nil), // 25: primandproper.platform.webhooks.v1.ArchiveSubscriptionResponse
+	(*ListAttemptsRequest)(nil),         // 26: primandproper.platform.webhooks.v1.ListAttemptsRequest
+	(*ListAttemptsResponse)(nil),        // 27: primandproper.platform.webhooks.v1.ListAttemptsResponse
+	nil,                                 // 28: primandproper.platform.webhooks.v1.WebhookEndpoint.HeadersEntry
+	nil,                                 // 29: primandproper.platform.webhooks.v1.WebhookEndpointInput.HeadersEntry
+	(*timestamppb.Timestamp)(nil),       // 30: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),         // 31: google.protobuf.Duration
+	(*filteringpb.QueryFilter)(nil),     // 32: primandproper.platform.filtering.v1.QueryFilter
+	(*filteringpb.Pagination)(nil),      // 33: primandproper.platform.filtering.v1.Pagination
 }
 var file_primandproper_platform_webhooks_v1_webhooks_proto_depIdxs = []int32{
-	27, // 0: primandproper.platform.webhooks.v1.WebhookEndpoint.created_at:type_name -> google.protobuf.Timestamp
-	27, // 1: primandproper.platform.webhooks.v1.WebhookEndpoint.last_updated_at:type_name -> google.protobuf.Timestamp
-	27, // 2: primandproper.platform.webhooks.v1.WebhookEndpoint.archived_at:type_name -> google.protobuf.Timestamp
-	25, // 3: primandproper.platform.webhooks.v1.WebhookEndpoint.headers:type_name -> primandproper.platform.webhooks.v1.WebhookEndpoint.HeadersEntry
+	30, // 0: primandproper.platform.webhooks.v1.WebhookEndpoint.created_at:type_name -> google.protobuf.Timestamp
+	30, // 1: primandproper.platform.webhooks.v1.WebhookEndpoint.last_updated_at:type_name -> google.protobuf.Timestamp
+	30, // 2: primandproper.platform.webhooks.v1.WebhookEndpoint.archived_at:type_name -> google.protobuf.Timestamp
+	28, // 3: primandproper.platform.webhooks.v1.WebhookEndpoint.headers:type_name -> primandproper.platform.webhooks.v1.WebhookEndpoint.HeadersEntry
 	1,  // 4: primandproper.platform.webhooks.v1.WebhookEndpoint.subscriptions:type_name -> primandproper.platform.webhooks.v1.WebhookSubscription
-	27, // 5: primandproper.platform.webhooks.v1.WebhookSubscription.created_at:type_name -> google.protobuf.Timestamp
-	27, // 6: primandproper.platform.webhooks.v1.WebhookSubscription.last_updated_at:type_name -> google.protobuf.Timestamp
-	27, // 7: primandproper.platform.webhooks.v1.WebhookSubscription.archived_at:type_name -> google.protobuf.Timestamp
-	27, // 8: primandproper.platform.webhooks.v1.WebhookAttempt.created_at:type_name -> google.protobuf.Timestamp
-	28, // 9: primandproper.platform.webhooks.v1.WebhookAttempt.duration:type_name -> google.protobuf.Duration
-	26, // 10: primandproper.platform.webhooks.v1.WebhookEndpointInput.headers:type_name -> primandproper.platform.webhooks.v1.WebhookEndpointInput.HeadersEntry
+	30, // 5: primandproper.platform.webhooks.v1.WebhookSubscription.created_at:type_name -> google.protobuf.Timestamp
+	30, // 6: primandproper.platform.webhooks.v1.WebhookSubscription.last_updated_at:type_name -> google.protobuf.Timestamp
+	30, // 7: primandproper.platform.webhooks.v1.WebhookSubscription.archived_at:type_name -> google.protobuf.Timestamp
+	30, // 8: primandproper.platform.webhooks.v1.WebhookAttempt.created_at:type_name -> google.protobuf.Timestamp
+	31, // 9: primandproper.platform.webhooks.v1.WebhookAttempt.duration:type_name -> google.protobuf.Duration
+	29, // 10: primandproper.platform.webhooks.v1.WebhookEndpointInput.headers:type_name -> primandproper.platform.webhooks.v1.WebhookEndpointInput.HeadersEntry
 	4,  // 11: primandproper.platform.webhooks.v1.SaveEndpointRequest.endpoint:type_name -> primandproper.platform.webhooks.v1.WebhookEndpointInput
 	3,  // 12: primandproper.platform.webhooks.v1.SaveEndpointRequest.signing_keys:type_name -> primandproper.platform.webhooks.v1.WebhookSigningKeys
 	0,  // 13: primandproper.platform.webhooks.v1.SaveEndpointResponse.result:type_name -> primandproper.platform.webhooks.v1.WebhookEndpoint
 	0,  // 14: primandproper.platform.webhooks.v1.GetEndpointResponse.result:type_name -> primandproper.platform.webhooks.v1.WebhookEndpoint
-	29, // 15: primandproper.platform.webhooks.v1.ListEndpointsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	30, // 16: primandproper.platform.webhooks.v1.ListEndpointsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	32, // 15: primandproper.platform.webhooks.v1.ListEndpointsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	33, // 16: primandproper.platform.webhooks.v1.ListEndpointsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	0,  // 17: primandproper.platform.webhooks.v1.ListEndpointsResponse.results:type_name -> primandproper.platform.webhooks.v1.WebhookEndpoint
 	1,  // 18: primandproper.platform.webhooks.v1.AddSubscriptionResponse.result:type_name -> primandproper.platform.webhooks.v1.WebhookSubscription
 	1,  // 19: primandproper.platform.webhooks.v1.GetSubscriptionResponse.result:type_name -> primandproper.platform.webhooks.v1.WebhookSubscription
-	29, // 20: primandproper.platform.webhooks.v1.ListSubscriptionsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	30, // 21: primandproper.platform.webhooks.v1.ListSubscriptionsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	32, // 20: primandproper.platform.webhooks.v1.ListSubscriptionsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	33, // 21: primandproper.platform.webhooks.v1.ListSubscriptionsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
 	1,  // 22: primandproper.platform.webhooks.v1.ListSubscriptionsResponse.results:type_name -> primandproper.platform.webhooks.v1.WebhookSubscription
-	29, // 23: primandproper.platform.webhooks.v1.ListAttemptsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
-	30, // 24: primandproper.platform.webhooks.v1.ListAttemptsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
-	2,  // 25: primandproper.platform.webhooks.v1.ListAttemptsResponse.results:type_name -> primandproper.platform.webhooks.v1.WebhookAttempt
-	5,  // 26: primandproper.platform.webhooks.v1.WebhooksService.SaveEndpoint:input_type -> primandproper.platform.webhooks.v1.SaveEndpointRequest
-	7,  // 27: primandproper.platform.webhooks.v1.WebhooksService.GetEndpoint:input_type -> primandproper.platform.webhooks.v1.GetEndpointRequest
-	9,  // 28: primandproper.platform.webhooks.v1.WebhooksService.ListEndpoints:input_type -> primandproper.platform.webhooks.v1.ListEndpointsRequest
-	11, // 29: primandproper.platform.webhooks.v1.WebhooksService.ArchiveEndpoint:input_type -> primandproper.platform.webhooks.v1.ArchiveEndpointRequest
-	13, // 30: primandproper.platform.webhooks.v1.WebhooksService.RotateSecret:input_type -> primandproper.platform.webhooks.v1.RotateSecretRequest
-	15, // 31: primandproper.platform.webhooks.v1.WebhooksService.AddSubscription:input_type -> primandproper.platform.webhooks.v1.AddSubscriptionRequest
-	17, // 32: primandproper.platform.webhooks.v1.WebhooksService.GetSubscription:input_type -> primandproper.platform.webhooks.v1.GetSubscriptionRequest
-	19, // 33: primandproper.platform.webhooks.v1.WebhooksService.ListSubscriptions:input_type -> primandproper.platform.webhooks.v1.ListSubscriptionsRequest
-	21, // 34: primandproper.platform.webhooks.v1.WebhooksService.ArchiveSubscription:input_type -> primandproper.platform.webhooks.v1.ArchiveSubscriptionRequest
-	23, // 35: primandproper.platform.webhooks.v1.WebhooksService.ListAttempts:input_type -> primandproper.platform.webhooks.v1.ListAttemptsRequest
-	6,  // 36: primandproper.platform.webhooks.v1.WebhooksService.SaveEndpoint:output_type -> primandproper.platform.webhooks.v1.SaveEndpointResponse
-	8,  // 37: primandproper.platform.webhooks.v1.WebhooksService.GetEndpoint:output_type -> primandproper.platform.webhooks.v1.GetEndpointResponse
-	10, // 38: primandproper.platform.webhooks.v1.WebhooksService.ListEndpoints:output_type -> primandproper.platform.webhooks.v1.ListEndpointsResponse
-	12, // 39: primandproper.platform.webhooks.v1.WebhooksService.ArchiveEndpoint:output_type -> primandproper.platform.webhooks.v1.ArchiveEndpointResponse
-	14, // 40: primandproper.platform.webhooks.v1.WebhooksService.RotateSecret:output_type -> primandproper.platform.webhooks.v1.RotateSecretResponse
-	16, // 41: primandproper.platform.webhooks.v1.WebhooksService.AddSubscription:output_type -> primandproper.platform.webhooks.v1.AddSubscriptionResponse
-	18, // 42: primandproper.platform.webhooks.v1.WebhooksService.GetSubscription:output_type -> primandproper.platform.webhooks.v1.GetSubscriptionResponse
-	20, // 43: primandproper.platform.webhooks.v1.WebhooksService.ListSubscriptions:output_type -> primandproper.platform.webhooks.v1.ListSubscriptionsResponse
-	22, // 44: primandproper.platform.webhooks.v1.WebhooksService.ArchiveSubscription:output_type -> primandproper.platform.webhooks.v1.ArchiveSubscriptionResponse
-	24, // 45: primandproper.platform.webhooks.v1.WebhooksService.ListAttempts:output_type -> primandproper.platform.webhooks.v1.ListAttemptsResponse
-	36, // [36:46] is the sub-list for method output_type
-	26, // [26:36] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	21, // 23: primandproper.platform.webhooks.v1.ListEventTypesResponse.results:type_name -> primandproper.platform.webhooks.v1.EventTypeDefinition
+	32, // 24: primandproper.platform.webhooks.v1.ListAttemptsRequest.filter:type_name -> primandproper.platform.filtering.v1.QueryFilter
+	33, // 25: primandproper.platform.webhooks.v1.ListAttemptsResponse.pagination:type_name -> primandproper.platform.filtering.v1.Pagination
+	2,  // 26: primandproper.platform.webhooks.v1.ListAttemptsResponse.results:type_name -> primandproper.platform.webhooks.v1.WebhookAttempt
+	5,  // 27: primandproper.platform.webhooks.v1.WebhooksService.SaveEndpoint:input_type -> primandproper.platform.webhooks.v1.SaveEndpointRequest
+	7,  // 28: primandproper.platform.webhooks.v1.WebhooksService.GetEndpoint:input_type -> primandproper.platform.webhooks.v1.GetEndpointRequest
+	9,  // 29: primandproper.platform.webhooks.v1.WebhooksService.ListEndpoints:input_type -> primandproper.platform.webhooks.v1.ListEndpointsRequest
+	11, // 30: primandproper.platform.webhooks.v1.WebhooksService.ArchiveEndpoint:input_type -> primandproper.platform.webhooks.v1.ArchiveEndpointRequest
+	13, // 31: primandproper.platform.webhooks.v1.WebhooksService.RotateSecret:input_type -> primandproper.platform.webhooks.v1.RotateSecretRequest
+	15, // 32: primandproper.platform.webhooks.v1.WebhooksService.AddSubscription:input_type -> primandproper.platform.webhooks.v1.AddSubscriptionRequest
+	17, // 33: primandproper.platform.webhooks.v1.WebhooksService.GetSubscription:input_type -> primandproper.platform.webhooks.v1.GetSubscriptionRequest
+	19, // 34: primandproper.platform.webhooks.v1.WebhooksService.ListSubscriptions:input_type -> primandproper.platform.webhooks.v1.ListSubscriptionsRequest
+	24, // 35: primandproper.platform.webhooks.v1.WebhooksService.ArchiveSubscription:input_type -> primandproper.platform.webhooks.v1.ArchiveSubscriptionRequest
+	26, // 36: primandproper.platform.webhooks.v1.WebhooksService.ListAttempts:input_type -> primandproper.platform.webhooks.v1.ListAttemptsRequest
+	22, // 37: primandproper.platform.webhooks.v1.WebhooksService.ListEventTypes:input_type -> primandproper.platform.webhooks.v1.ListEventTypesRequest
+	6,  // 38: primandproper.platform.webhooks.v1.WebhooksService.SaveEndpoint:output_type -> primandproper.platform.webhooks.v1.SaveEndpointResponse
+	8,  // 39: primandproper.platform.webhooks.v1.WebhooksService.GetEndpoint:output_type -> primandproper.platform.webhooks.v1.GetEndpointResponse
+	10, // 40: primandproper.platform.webhooks.v1.WebhooksService.ListEndpoints:output_type -> primandproper.platform.webhooks.v1.ListEndpointsResponse
+	12, // 41: primandproper.platform.webhooks.v1.WebhooksService.ArchiveEndpoint:output_type -> primandproper.platform.webhooks.v1.ArchiveEndpointResponse
+	14, // 42: primandproper.platform.webhooks.v1.WebhooksService.RotateSecret:output_type -> primandproper.platform.webhooks.v1.RotateSecretResponse
+	16, // 43: primandproper.platform.webhooks.v1.WebhooksService.AddSubscription:output_type -> primandproper.platform.webhooks.v1.AddSubscriptionResponse
+	18, // 44: primandproper.platform.webhooks.v1.WebhooksService.GetSubscription:output_type -> primandproper.platform.webhooks.v1.GetSubscriptionResponse
+	20, // 45: primandproper.platform.webhooks.v1.WebhooksService.ListSubscriptions:output_type -> primandproper.platform.webhooks.v1.ListSubscriptionsResponse
+	25, // 46: primandproper.platform.webhooks.v1.WebhooksService.ArchiveSubscription:output_type -> primandproper.platform.webhooks.v1.ArchiveSubscriptionResponse
+	27, // 47: primandproper.platform.webhooks.v1.WebhooksService.ListAttempts:output_type -> primandproper.platform.webhooks.v1.ListAttemptsResponse
+	23, // 48: primandproper.platform.webhooks.v1.WebhooksService.ListEventTypes:output_type -> primandproper.platform.webhooks.v1.ListEventTypesResponse
+	38, // [38:49] is the sub-list for method output_type
+	27, // [27:38] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_primandproper_platform_webhooks_v1_webhooks_proto_init() }
@@ -1876,7 +2035,7 @@ func file_primandproper_platform_webhooks_v1_webhooks_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_primandproper_platform_webhooks_v1_webhooks_proto_rawDesc), len(file_primandproper_platform_webhooks_v1_webhooks_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   27,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

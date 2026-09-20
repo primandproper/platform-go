@@ -126,6 +126,7 @@ const (
 	WebhooksService_ListSubscriptions_FullMethodName   = "/primandproper.platform.webhooks.v1.WebhooksService/ListSubscriptions"
 	WebhooksService_ArchiveSubscription_FullMethodName = "/primandproper.platform.webhooks.v1.WebhooksService/ArchiveSubscription"
 	WebhooksService_ListAttempts_FullMethodName        = "/primandproper.platform.webhooks.v1.WebhooksService/ListAttempts"
+	WebhooksService_ListEventTypes_FullMethodName      = "/primandproper.platform.webhooks.v1.WebhooksService/ListEventTypes"
 )
 
 // WebhooksServiceClient is the client API for WebhooksService service.
@@ -180,6 +181,7 @@ type WebhooksServiceClient interface {
 	ListSubscriptions(ctx context.Context, in *ListSubscriptionsRequest, opts ...grpc.CallOption) (*ListSubscriptionsResponse, error)
 	ArchiveSubscription(ctx context.Context, in *ArchiveSubscriptionRequest, opts ...grpc.CallOption) (*ArchiveSubscriptionResponse, error)
 	ListAttempts(ctx context.Context, in *ListAttemptsRequest, opts ...grpc.CallOption) (*ListAttemptsResponse, error)
+	ListEventTypes(ctx context.Context, in *ListEventTypesRequest, opts ...grpc.CallOption) (*ListEventTypesResponse, error)
 }
 
 type webhooksServiceClient struct {
@@ -290,6 +292,16 @@ func (c *webhooksServiceClient) ListAttempts(ctx context.Context, in *ListAttemp
 	return out, nil
 }
 
+func (c *webhooksServiceClient) ListEventTypes(ctx context.Context, in *ListEventTypesRequest, opts ...grpc.CallOption) (*ListEventTypesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListEventTypesResponse)
+	err := c.cc.Invoke(ctx, WebhooksService_ListEventTypes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WebhooksServiceServer is the server API for WebhooksService service.
 // All implementations must embed UnimplementedWebhooksServiceServer
 // for forward compatibility.
@@ -342,6 +354,7 @@ type WebhooksServiceServer interface {
 	ListSubscriptions(context.Context, *ListSubscriptionsRequest) (*ListSubscriptionsResponse, error)
 	ArchiveSubscription(context.Context, *ArchiveSubscriptionRequest) (*ArchiveSubscriptionResponse, error)
 	ListAttempts(context.Context, *ListAttemptsRequest) (*ListAttemptsResponse, error)
+	ListEventTypes(context.Context, *ListEventTypesRequest) (*ListEventTypesResponse, error)
 	mustEmbedUnimplementedWebhooksServiceServer()
 }
 
@@ -381,6 +394,9 @@ func (UnimplementedWebhooksServiceServer) ArchiveSubscription(context.Context, *
 }
 func (UnimplementedWebhooksServiceServer) ListAttempts(context.Context, *ListAttemptsRequest) (*ListAttemptsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListAttempts not implemented")
+}
+func (UnimplementedWebhooksServiceServer) ListEventTypes(context.Context, *ListEventTypesRequest) (*ListEventTypesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListEventTypes not implemented")
 }
 func (UnimplementedWebhooksServiceServer) mustEmbedUnimplementedWebhooksServiceServer() {}
 func (UnimplementedWebhooksServiceServer) testEmbeddedByValue()                         {}
@@ -583,6 +599,24 @@ func _WebhooksService_ListAttempts_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WebhooksService_ListEventTypes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListEventTypesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WebhooksServiceServer).ListEventTypes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WebhooksService_ListEventTypes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WebhooksServiceServer).ListEventTypes(ctx, req.(*ListEventTypesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WebhooksService_ServiceDesc is the grpc.ServiceDesc for WebhooksService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -629,6 +663,10 @@ var WebhooksService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListAttempts",
 			Handler:    _WebhooksService_ListAttempts_Handler,
+		},
+		{
+			MethodName: "ListEventTypes",
+			Handler:    _WebhooksService_ListEventTypes_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

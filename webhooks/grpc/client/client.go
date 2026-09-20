@@ -37,7 +37,7 @@ to. A store whose purpose is to hand the same bytes back a second time is not
 where a signing key's fingerprint should end up, and it is the same reading
 authentication/oauth2clients' client takes of a minted secret.
 
-The cost is smaller here than there, because eight of the ten RPCs are naturally
+The cost is smaller here than there, because nine of the eleven RPCs are naturally
 idempotent and the other two are convergent: a retried save writes the endpoint
 the first one already wrote, and a retried rotation installs a key that is
 already current, which its own statement declines to demote anything for. What a

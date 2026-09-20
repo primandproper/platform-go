@@ -31,7 +31,10 @@ const (
 	scopeKey = "webhooks.scope"
 	// archivedClearedKey records that a read asked for archived rows and was
 	// confined to the live ones. See archived.go.
-	archivedClearedKey   = "webhooks.include_archived_cleared"
+	archivedClearedKey = "webhooks.include_archived_cleared"
+	// eventTypeCountKey records how many event types a catalog read answered
+	// with, which is the only thing about that read worth recording.
+	eventTypeCountKey    = "webhooks.event_type_count"
 	userIDKey            = "webhooks.user_id"
 	endpointKey          = "webhooks.endpoint_id"
 	subscriptionKey      = "webhooks.subscription_id"
