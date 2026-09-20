@@ -63,6 +63,16 @@ const (
 	// list in the tenant, which is what the list holds and what a person joining
 	// one has not agreed to publish. That read is the reason the public half of
 	// this service stops at the open catalog.
+	//
+	// Covering four reads at once used to make that an all-or-nothing choice: a
+	// deployment granting it narrowly enough to contain the oracle also took
+	// away the one safe read, a member asking where they are in a queue. It no
+	// longer does. ListSignupsForSubject asks
+	// [SignupAuthorizer.AuthorizeSubjectRead] after the subject is read, so
+	// whose signups these are is answered per request rather than by the grant,
+	// and the self-service rule is two lines. The oracle stays where it is: an
+	// address is not a subject, so GetSignupByContact has nothing to authorize
+	// against and the grant is the whole of its defense.
 	PermissionReadSignups authorization.Permission = "waitlists.signups.read"
 
 	// PermissionUpdateSignups covers rewriting the operator's note against a

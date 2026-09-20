@@ -63,6 +63,35 @@ complete. A client that wants the rest sends the same window again with
 after_seq set to that last_seq, and the server checks the link across the seam
 like any other — see audit.SQLReader.Verify.
 
+# What a deployment with per-actor chains cannot read here
+
+The scope is the hash chain's partition as well as the row's label, and this
+surface binds it to the connection. So the entries this service returns are the
+entries of the chain the caller's principal names, and no request can ask for
+another.
+
+That is the whole of the tenancy guarantee and it is also a real limit, worth
+knowing before it is discovered through empty pages. A deployment that files
+some events under a per-actor scope — logins, sign-ups and password resets are
+the usual reason, since a chain is a serialization point and putting every
+login on one makes it the busiest row in the database — has put those entries
+in chains no connection resolves to. They are not missing and not unreadable:
+they are simply not this surface's to return, because the caller whose scope
+would reach them is the actor, and the caller asking is an operator.
+
+The answer for those is the reading that does not go through a connection's
+scope: audit/privacy's collector, which is handed the subject a request names
+and reads the repository directly, and is what a subject access request already
+fans out over. A deployment wanting an operator-facing read of another actor's
+chain builds it over audit.Reader in their own process, where the scope is an
+argument rather than a property of who is calling.
+
+What this service will not grow is a scope field on the request. The chain
+partition being unnameable from the wire is what makes "no caller can read
+another tenant's log" a property of the schema rather than of a check somebody
+has to keep passing — see the reserved names in audit.proto, and the same
+ruling in every other surface here.
+
 # Errors
 
 A method here hands the reader's error back with a default code and does not

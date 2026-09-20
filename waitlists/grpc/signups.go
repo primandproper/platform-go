@@ -333,6 +333,12 @@ func (s *Server) ListSignupsForSubject(
 	subject := subjectFromProto(request.GetSubject())
 	req.op.Set(subjectKey, subject.Type.String()).Set(subjectIDKey, subject.ID)
 
+	// Whose signups these are is the authorizer's, not the grant's. See
+	// SignupAuthorizer.AuthorizeSubjectRead for why the grant cannot answer it.
+	if err = s.authorizeSubjectRead(ctx, req, subject); err != nil {
+		return nil, err
+	}
+
 	filter, err := s.readFilter(ctx, req, request.GetFilter(),
 		PermissionArchiveSignups, "reading the filter of a subject's waitlist signups")
 	if err != nil {

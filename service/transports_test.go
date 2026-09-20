@@ -90,6 +90,15 @@ func (permissive) AuthorizeSubject(context.Context, callers.Principal, settings.
 	return nil
 }
 
+func (permissive) AuthorizeSubjectRead(
+	context.Context,
+	callers.Principal,
+	tenancy.Scope,
+	waitlists.Subject,
+) error {
+	return nil
+}
+
 func (permissive) AuthorizeWithdrawal(
 	context.Context,
 	callers.Principal,
