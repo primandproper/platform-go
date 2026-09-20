@@ -92,6 +92,25 @@ const (
 	// It is also the one value-side RPC no [SubjectAuthorizer] gates, because it
 	// names no subject to gate — which is exactly why it is its own grant.
 	PermissionReadAllValues authorization.Permission = "settings.values.read.all"
+
+	// PermissionWriteAdminValues covers writing a setting the catalog marked
+	// AdminOnly, for the subject a request names.
+	//
+	// It is the one grant in this file no method requires, and that is the
+	// point rather than an omission. [Permissions] assigns a grant per method,
+	// and SetValue and ClearValue are each one method serving two kinds of
+	// setting: whether this one is reserved is a fact about the definition the
+	// request names, which is in the request body and not in its name. Assigning
+	// this grant to those methods would take self-service away from everybody;
+	// leaving them under PermissionWriteValues alone is what let every member
+	// who may set their own preferences set a reserved one. So it is asked
+	// inside the handler, against the definition that was read, exactly as
+	// PermissionArchiveDefinitions is asked there about a filter.
+	//
+	// A holder is trusted with every reserved setting in the scope, not with
+	// every subject's: [SubjectAuthorizer] still says whose settings these are,
+	// and this says whether this setting is one an ordinary member may answer.
+	PermissionWriteAdminValues authorization.Permission = "settings.values.write.admin"
 )
 
 // Permissions is the default map from method name to what it requires: every

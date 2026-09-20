@@ -63,8 +63,12 @@ import (
 // flag in order to export a value a subject once chose and later cleared. This
 // is a ruling about the wire.
 
-// archiveGrants reads the caller's authority, reporting whether it could be
+// callerGrants reads the caller's authority, reporting whether it could be
 // determined at all.
+//
+// It is named for what it reads rather than for what any one caller asks of it,
+// because two rulings now ask: this file's, about the archived rows on a paged
+// read, and adminonly.go's, about a write to a setting the catalog reserved.
 //
 // A server built with no [WithGrantsExtractor] answers false, which is the
 // fail-closed half of the default: a surface that cannot see what the caller may
@@ -72,7 +76,7 @@ import (
 // wrong about that is to guess "administrator". A consumer who wants the
 // archived rows on the wire supplies the same authorization.GrantsExtractor they
 // already hand primitives-go's authorization/grpc enforcer.
-func (s *Server) archiveGrants(ctx context.Context) (authorization.Grants, bool) {
+func (s *Server) callerGrants(ctx context.Context) (authorization.Grants, bool) {
 	if s.grants == nil {
 		return authorization.DenyAll(), false
 	}
@@ -97,7 +101,7 @@ func (s *Server) confineToLive(
 		return
 	}
 
-	if grants, ok := s.archiveGrants(ctx); ok && grants.Has(archiveGrant) {
+	if grants, ok := s.callerGrants(ctx); ok && grants.Has(archiveGrant) {
 		return
 	}
 

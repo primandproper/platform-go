@@ -49,8 +49,9 @@ type Declaration struct {
 	// that admits any value of its kind.
 	Enumeration []string `json:"enumeration"`
 
-	// AdminOnly marks a setting only an administrator may write. See
-	// [Definition.AdminOnly]: it is recorded here and enforced by the caller.
+	// AdminOnly marks a setting only an administrator may write — its value,
+	// not this declaration. See [Definition.AdminOnly]: it is recorded here and
+	// enforced by whoever holds the store, which on the wire is settings/grpc.
 	AdminOnly bool `json:"adminOnly"`
 }
 
