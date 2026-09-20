@@ -312,17 +312,19 @@ var _ Reader = (*SQLReader)(nil)
 // SQLReader is the SQL Reader. It is exported, and returned by NewReader, so a
 // caller can depend on the reader it built rather than on the Reader seam.
 //
-// It holds no database.Client. The one NewReader takes is read for its dialect,
-// which is what instantiates the querier below, and then dropped — every read
-// runs on the executor its caller supplies, so there is no statement this
-// reader issues on a connection of its own. See the Reader interface for why
-// that is the whole point rather than a detail.
+// It holds no database.Client, and NewReader is never handed one: the dialect
+// it takes is what instantiates the querier below, and that is the whole of
+// what a handle was ever read for here — every read runs on the executor its
+// caller supplies, so there is no statement this reader issues on a connection
+// of its own. See the Reader interface for why that is the whole point rather
+// than a detail.
 type SQLReader struct {
 	o11y observability.Observer
 
-	// q is the generated querier, instantiated for the client's dialect at the
-	// configured prefix. It takes the executor per call, so a read against the
-	// replica is a different argument rather than a different querier.
+	// q is the generated querier, instantiated for the dialect NewReader was
+	// given at the configured prefix. It takes the executor per call, so a
+	// read against the replica is a different argument rather than a
+	// different querier.
 	q auditdb.Querier
 
 	verificationsCounter metrics.Int64Counter
