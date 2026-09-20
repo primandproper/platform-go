@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/billing/billingpb"
 	"github.com/primandproper/platform-go/v14/callers"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -27,13 +28,16 @@ const serverName = "billing_grpc"
 
 // The observability keys this surface attaches to its operations.
 const (
-	scopeKey        = "billing.scope"
-	userIDKey       = "billing.user_id"
-	accountKey      = "billing.account_id"
-	productKey      = "billing.product_id"
-	subscriptionKey = "billing.subscription_id"
-	purchaseKey     = "billing.purchase_id"
-	transactionKey  = "billing.transaction_id"
+	scopeKey = "billing.scope"
+	// archivedClearedKey records that a read asked for archived rows and was
+	// confined to the live ones. See archived.go.
+	archivedClearedKey = "billing.include_archived_cleared"
+	userIDKey          = "billing.user_id"
+	accountKey         = "billing.account_id"
+	productKey         = "billing.product_id"
+	subscriptionKey    = "billing.subscription_id"
+	purchaseKey        = "billing.purchase_id"
+	transactionKey     = "billing.transaction_id"
 )
 
 // The wiring failures this surface refuses to be built with.
@@ -100,6 +104,7 @@ type Server struct {
 	store      billing.Store
 	client     database.Client
 	principals callers.PrincipalExtractor
+	grants     authorization.GrantsExtractor
 	targets    AccountAuthorizer
 	o11y       observability.Observer
 

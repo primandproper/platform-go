@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/webhooks"
 	"github.com/primandproper/platform-go/v14/webhooks/webhookspb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -27,7 +28,10 @@ const serverName = "webhooks_grpc"
 
 // The observability keys this surface attaches to its operations.
 const (
-	scopeKey             = "webhooks.scope"
+	scopeKey = "webhooks.scope"
+	// archivedClearedKey records that a read asked for archived rows and was
+	// confined to the live ones. See archived.go.
+	archivedClearedKey   = "webhooks.include_archived_cleared"
 	userIDKey            = "webhooks.user_id"
 	endpointKey          = "webhooks.endpoint_id"
 	subscriptionKey      = "webhooks.subscription_id"
@@ -101,6 +105,7 @@ type Server struct {
 	store      webhooks.Store
 	client     database.Client
 	principals callers.PrincipalExtractor
+	grants     authorization.GrantsExtractor
 	o11y       observability.Observer
 
 	instruments *metrics.OperationSet

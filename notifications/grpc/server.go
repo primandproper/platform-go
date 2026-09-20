@@ -7,6 +7,7 @@ import (
 	"github.com/primandproper/platform-go/v14/notifications"
 	"github.com/primandproper/platform-go/v14/notifications/notificationspb"
 
+	"github.com/primandproper/primitives-go/v2/authorization"
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	grpcerrors "github.com/primandproper/primitives-go/v2/errors/grpc"
@@ -27,12 +28,15 @@ const serverName = "notifications_grpc"
 
 // The observability keys this surface attaches to its operations.
 const (
-	scopeKey          = "notifications.scope"
-	principalKey      = "notifications.principal"
-	notificationIDKey = "notifications.notification_id"
-	deviceIDKey       = "notifications.device_id"
-	platformKey       = "notifications.platform"
-	countKey          = "notifications.count"
+	scopeKey = "notifications.scope"
+	// archivedClearedKey records that a read asked for archived rows and was
+	// confined to the live ones. See archived.go.
+	archivedClearedKey = "notifications.include_archived_cleared"
+	principalKey       = "notifications.principal"
+	notificationIDKey  = "notifications.notification_id"
+	deviceIDKey        = "notifications.device_id"
+	platformKey        = "notifications.platform"
+	countKey           = "notifications.count"
 )
 
 // The wiring failures this surface refuses to be built with, and the two
@@ -109,6 +113,7 @@ type Server struct {
 	registry   notifications.Registry
 	client     database.Client
 	principals callers.PrincipalExtractor
+	grants     authorization.GrantsExtractor
 	o11y       observability.Observer
 
 	instruments *metrics.OperationSet

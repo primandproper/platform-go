@@ -91,6 +91,8 @@ func (s *Server) ListSubscriptions(
 		return nil, err
 	}
 
+	s.confineToLive(ctx, req, filter, PermissionArchiveSubscriptions)
+
 	page, err := s.store.ListSubscriptions(ctx, s.client.Reader(), req.scope, filter)
 	if err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
@@ -132,6 +134,8 @@ func (s *Server) ListSubscriptionsForAccount(
 
 		return nil, err
 	}
+
+	s.confineToLive(ctx, req, filter, PermissionArchiveSubscriptions)
 
 	if err = s.requireAccount(req, accountID, "listing an account's subscriptions"); err != nil {
 		return nil, err
@@ -188,6 +192,8 @@ func (s *Server) ListCurrentSubscriptions(
 
 		return nil, err
 	}
+
+	s.confineToLive(ctx, req, filter, PermissionArchiveSubscriptions)
 
 	if err = s.requireAccount(req, accountID, "listing an account's current subscriptions"); err != nil {
 		return nil, err

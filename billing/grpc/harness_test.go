@@ -158,16 +158,16 @@ type harness struct {
 
 // newHarness migrates a uniquely prefixed set of tables and builds the surface
 // over them, with the suite's own account rule.
-func newHarness(tb testing.TB) *harness {
+func newHarness(tb testing.TB, opts ...billinggrpc.Option) *harness {
 	tb.Helper()
 
-	return newHarnessWithAuthorizer(tb, ownAccountAuthorizer())
+	return newHarnessWithAuthorizer(tb, ownAccountAuthorizer(), opts...)
 }
 
 // newHarnessWithAuthorizer is newHarness with the seam supplied, for the tests
 // that are about what this surface does with each of the three answers an
 // AccountAuthorizer may give.
-func newHarnessWithAuthorizer(tb testing.TB, targets billinggrpc.AccountAuthorizer) *harness {
+func newHarnessWithAuthorizer(tb testing.TB, targets billinggrpc.AccountAuthorizer, opts ...billinggrpc.Option) *harness {
 	tb.Helper()
 
 	db, err := sqlite.NewDatabaseClient(tb.Context(),
@@ -189,7 +189,8 @@ func newHarnessWithAuthorizer(tb testing.TB, targets billinggrpc.AccountAuthoriz
 	store, err := billing.NewSQLStore(db, billing.WithTablePrefix(prefix))
 	must.NoError(tb, err)
 
-	server, err := billinggrpc.NewServer(store, db, extractPrincipal, targets)
+	server, err := billinggrpc.NewServer(store, db, extractPrincipal, targets,
+		append([]billinggrpc.Option{billinggrpc.WithGrantsExtractor(extractGrants)}, opts...)...)
 	must.NoError(tb, err)
 
 	return &harness{db: db, store: store, server: server}

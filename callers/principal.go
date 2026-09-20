@@ -69,6 +69,22 @@ type Principal interface {
 	// filters on the scope it is handed, so handing it one the caller chose
 	// makes the filter answer to the caller. An application with one directory
 	// returns tenancy.Global here and behaves exactly as an unscoped one would.
+	//
+	// The scope is the surface's and not the consumer's. Every surface in this
+	// module takes its own callers.PrincipalExtractor, positionally, and a
+	// consumer whose domains do not share one tenancy model is expected to hand
+	// each of them an extractor that answers for that domain — returning
+	// tenancy.Global for the domains whose rows belong to the deployment, and
+	// tenancy.Of(accountID) for the ones whose rows belong to an account. One
+	// extractor wired into every surface is a decision, not a default, and it
+	// is the wrong one wherever two domains disagree.
+	//
+	// Getting it wrong is quiet. A domain whose rows should be filed per
+	// account, handed a global principal, files every account's rows in the
+	// global scope and serves all of them to everybody — with no compile error,
+	// and no failing test unless one spans two accounts. Nothing here can
+	// detect it, because tenancy.Global is a legal answer this interface cannot
+	// distinguish from a considered one.
 	Scope() tenancy.Scope
 
 	// ActiveAccountID is the account this request is against, or empty for a

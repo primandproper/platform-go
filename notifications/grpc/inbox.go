@@ -61,6 +61,8 @@ func (s *Server) ListNotifications(
 		return nil, err
 	}
 
+	s.confineToLive(ctx, req, filter)
+
 	page, err := s.inbox.ListNotifications(ctx, s.client.Reader(), req.scope, req.principal, filter)
 	if err != nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(err,
@@ -101,6 +103,8 @@ func (s *Server) ListUnreadNotifications(
 
 		return nil, err
 	}
+
+	s.confineToLive(ctx, req, filter)
 
 	page, err := s.inbox.ListUnreadNotifications(ctx, s.client.Reader(), req.scope, req.principal, filter)
 	if err != nil {

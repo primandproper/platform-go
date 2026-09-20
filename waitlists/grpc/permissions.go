@@ -128,6 +128,20 @@ const (
 // standing to move that row is [SignupAuthorizer]'s — a seam with no default,
 // asked inside the handler, because it is the question a grant on the method
 // could not have answered.
+// What a consumer accepts along with them: an anonymous Join writes a signup
+// with no subject, and waitlists/privacy reads and erases by subject
+// — ListSignupsForSubject and WithdrawSignupsForSubject. A signup nobody is
+// named on is reachable by neither. The person's own remedy is Withdraw, which
+// is why it is public beside Join and not an administrative RPC.
+//
+// That is a fork rather than a defect, and it is stated here because it is
+// decided by mounting these and not by anything else. A deployment whose
+// waitlist is for people who already have accounts does not mount them: Join is
+// absent from [Permissions] too, so a fail-closed interceptor refuses it until
+// the consumer puts it in a map of their own under a grant of their own, and
+// every signup then carries the caller as its subject. A deployment that wants
+// the pre-launch waitlist this package is named for mounts them and accepts
+// that those rows answer to Withdraw alone.
 func PublicMethods() []string {
 	return []string{
 		waitlistspb.WaitlistsService_ListOpenLists_FullMethodName,

@@ -208,7 +208,8 @@ func newHarness(tb testing.TB, opts ...webhooks.DispatcherOption) *harness {
 		}, opts...)...)
 	must.NoError(tb, err)
 
-	server, err := webhooksgrpc.NewServer(dispatcher, store, db, extractPrincipal)
+	server, err := webhooksgrpc.NewServer(dispatcher, store, db, extractPrincipal,
+		webhooksgrpc.WithGrantsExtractor(extractGrants))
 	must.NoError(tb, err)
 
 	return &harness{db: db, store: store, dispatcher: dispatcher, server: server}
