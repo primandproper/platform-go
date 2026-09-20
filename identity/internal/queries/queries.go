@@ -274,6 +274,20 @@ var Users = Table{
 		querygen.CreatedAtColumn,
 		querygen.LastUpdatedAtColumn,
 		querygen.ArchivedAtColumn,
+
+		// last_indexed_at is what makes this the one table here a search index
+		// mirrors, and naming it is the whole of the wiring: StandardCRUD
+		// emits ScanUserIDsForReindex and MarkUsersAsIndexed from its presence,
+		// so neither statement is written here and writing either renders it
+		// twice under one method name.
+		//
+		// searchsync.NewStampBuffer calls that stamp "the natural
+		// implementation" a Syncer writes through, and until this column no
+		// table in this module carried one — so the two halves fit together
+		// over something nothing had. SearchUsersByUsername is why it is this
+		// table: a prefix match that points an application wanting more at the
+		// search package is an advertisement of being indexed.
+		querygen.LastIndexedAtColumn,
 	},
 	Nullable: []string{
 		passwordLastChangedAtColumn,
@@ -281,6 +295,7 @@ var Users = Table{
 		EmailAddressVerifiedAtColumn,
 		termsOfServiceColumn,
 		privacyPolicyColumn,
+		querygen.LastIndexedAtColumn,
 	},
 	Updatable: []string{
 		UserUsernameColumn,

@@ -470,6 +470,20 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 
 				return err
 			}},
+
+			// The search index pair takes no scope — it is the sync servicing
+			// itself, not a read on somebody's behalf — but it owes the same
+			// refusal for a nil executor as everything else here.
+			{name: "ScanUsersForReindex", run: func() error {
+				_, err := store.ScanUsersForReindex(t.Context(), nil, "", 0)
+
+				return err
+			}},
+			{name: "MarkUsersAsIndexed", run: func() error {
+				_, err := store.MarkUsersAsIndexed(t.Context(), nil, []string{"u"})
+
+				return err
+			}},
 		}
 
 		// Every method on Store, and the count says so: a method added without a

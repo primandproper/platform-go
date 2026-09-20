@@ -109,6 +109,9 @@ func TestRender_EmitsTheStatementsTheStoreExecutes(T *testing.T) {
 	// does not move as a caller pages.
 	want := []string{
 		"CreateUser", "GetUser", "ListUsers", "ListUsersDescending", "UpdateUser", "ArchiveUser",
+		// The search-index pair, emitted from last_indexed_at being in the
+		// users column list rather than from a statement written anywhere.
+		"ScanUserIDsForReindex", "MarkUsersAsIndexed",
 		"CreateAccount", "GetAccount", "ListAccounts", "ListAccountsDescending", "UpdateAccount", "ArchiveAccount",
 		"CreateInvitation", "GetInvitation", "ListInvitations", "ListInvitationsDescending",
 		"ListInvitationsByFromUser", "ListInvitationsByFromUserDescending",
@@ -283,8 +286,8 @@ func TestRender_TheArchivalReadBacksSeeOnlyArchivedRows(T *testing.T) {
 func TestTables_ScopeIsInEveryStatement(T *testing.T) {
 	T.Parallel()
 
-	// The exceptions are the role tables' nine statements, and they are not
-	// reads a caller reaches. There used to be a tenth — the read-back of the
+	// The exceptions are the role tables' nine statements and the search
+	// index's two, and none of them is a read a caller reaches. There used to be a tenth — the read-back of the
 	// creation time a create's own INSERT had just caused, keyed on the id that
 	// create minted — and it is gone with the last create that wanted one column
 	// of a row it was about to be handed in full. All three creates read the
@@ -304,12 +307,36 @@ func TestTables_ScopeIsInEveryStatement(T *testing.T) {
 	// too. See identity/migrations for why the tables are shaped this way, and
 	// [RoleTable].
 	//
+	// The search-index pair is the second exception and a different kind. The
+	// users table has a scope column and these two decline to name it, which
+	// the role tables cannot be accused of.
+	//
+	// They are the search sync servicing itself rather than a caller reading
+	// rows on somebody's behalf. A reindex walks the directory to find
+	// documents an index is missing, and there is no scope to narrow it to: the
+	// index mirrors the deployment, not one tenant of it, and a scan that took
+	// a scope would have to be driven once per tenant by something that already
+	// knew them all. The stamp names its rows by id, which the caller is
+	// holding because the index just accepted them — a scope predicate there
+	// would re-ask a question the ids have already answered.
+	//
+	// It is the same carve-out webhooks' delivery queue and metering's flush
+	// take, and querygen emits both statements without an owner predicate for
+	// this reason rather than by omission — see Generator.IndexStampQuery.
+	//
+	// What makes it safe is that neither is reachable from a transport.
+	// identity.SearchIndexWriter says so on itself: a wire caller who could ask
+	// which users need indexing could enumerate the directory across every
+	// tenant.
+	//
 	// Everything else, without exception, names the scope.
 	unscoped := []string{
 		"DeleteUserRoles", "InsertUserRole",
 		"DeleteMembershipRoles", "InsertMembershipRole",
 		"DeleteInvitationRoles", "InsertInvitationRole",
 		"ListUserRolesByUserIDs", "ListMembershipRolesByMembershipIDs", "ListInvitationRolesByInvitationIDs",
+
+		"ScanUserIDsForReindex", "MarkUsersAsIndexed",
 	}
 
 	for _, d := range everyDialect {

@@ -228,6 +228,11 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	MarkUserTwoFactorSecretVerified(ctx context.Context, db DBTX, arg MarkUserTwoFactorSecretVerifiedParams) (int64, error)
+	// MarkUsersAsIndexed runs the :execrows query.
+	//
+	// The count means different things on different engines; see the note
+	// on Querier.
+	MarkUsersAsIndexed(ctx context.Context, db DBTX, arg MarkUsersAsIndexedParams) (int64, error)
 	// RecordAccountSubscription runs the :execrows query.
 	//
 	// The count means different things on different engines; see the note
@@ -243,6 +248,8 @@ type Querier interface {
 	// The count means different things on different engines; see the note
 	// on Querier.
 	RecordUserTermsOfServiceAgreement(ctx context.Context, db DBTX, arg RecordUserTermsOfServiceAgreementParams) (int64, error)
+	// ScanUserIDsForReindex runs the :many query.
+	ScanUserIDsForReindex(ctx context.Context, db DBTX, arg ScanUserIDsForReindexParams) ([]ScanUserIDsForReindexRow, error)
 	// SearchUsersByUsername runs the :many query.
 	SearchUsersByUsername(ctx context.Context, db DBTX, arg SearchUsersByUsernameParams) ([]SearchUsersByUsernameRow, error)
 	// SearchUsersByUsernameDescending runs the :many query.

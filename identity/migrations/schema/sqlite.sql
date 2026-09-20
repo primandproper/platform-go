@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS identity_users (
     last_accepted_privacy_policy            DATETIME,
     created_at                              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_updated_at                         DATETIME,
-    archived_at                             DATETIME
+    archived_at                             DATETIME,
+    last_indexed_at                         DATETIME
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS identity_users_username_uniq

@@ -427,7 +427,7 @@ func newID(existing string) string {
 	return identifiers.New()
 }
 
-// What follows is the machinery the nine implementation files share — the
+// What follows is the machinery the implementation files share — the
 // column names spelled in more than one of them, the reads two seams both need,
 // and the two guards every paged read and every guarded write goes through.
 // Anything reached from one file only lives in that file.

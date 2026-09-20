@@ -281,7 +281,8 @@ const getArchivedUserPostgreSQL = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.id = $1
 	AND {{prefix}}identity_users.scope = $2
@@ -380,7 +381,8 @@ const getUserPostgreSQL = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.id = $1
@@ -407,7 +409,8 @@ const getUserByEmailAddressPostgreSQL = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.email_address = $1
@@ -434,7 +437,8 @@ const getUserByEmailVerificationTokenDigestPostgreSQL = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.email_address_verification_token_digest = $1
@@ -461,7 +465,8 @@ const getUserByUsernamePostgreSQL = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.username = $1
@@ -502,7 +507,8 @@ const getUserIncludingArchivedPostgreSQL = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.id = $1
 	AND {{prefix}}identity_users.scope = $2`
@@ -561,6 +567,7 @@ const listAccountMembersPostgreSQL = `SELECT
 	{{prefix}}identity_users.created_at AS user_created_at,
 	{{prefix}}identity_users.last_updated_at AS user_last_updated_at,
 	{{prefix}}identity_users.archived_at AS user_archived_at,
+	{{prefix}}identity_users.last_indexed_at AS user_last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_memberships.id)
 		FROM {{prefix}}identity_memberships
@@ -639,6 +646,7 @@ const listAccountMembersDescendingPostgreSQL = `SELECT
 	{{prefix}}identity_users.created_at AS user_created_at,
 	{{prefix}}identity_users.last_updated_at AS user_last_updated_at,
 	{{prefix}}identity_users.archived_at AS user_archived_at,
+	{{prefix}}identity_users.last_indexed_at AS user_last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_memberships.id)
 		FROM {{prefix}}identity_memberships
@@ -1369,6 +1377,7 @@ const listUsersPostgreSQL = `SELECT
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
 	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_users.id)
 		FROM {{prefix}}identity_users
@@ -1429,7 +1438,8 @@ const listUsersByIDsPostgreSQL = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.scope = $1
 	AND {{prefix}}identity_users.id = ANY($2::text[])
@@ -1457,6 +1467,7 @@ const listUsersDescendingPostgreSQL = `SELECT
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
 	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_users.id)
 		FROM {{prefix}}identity_users
@@ -1536,6 +1547,10 @@ WHERE archived_at IS NULL
 	AND two_factor_secret <> ''
 	AND two_factor_secret_verified_at IS NULL`
 
+const markUsersAsIndexedPostgreSQL = `UPDATE {{prefix}}identity_users SET
+	last_indexed_at = CURRENT_TIMESTAMP
+WHERE id = ANY($1::text[])`
+
 const recordAccountSubscriptionPostgreSQL = `UPDATE {{prefix}}identity_accounts SET
 	billing_status = $1,
 	subscription_plan_id = $2,
@@ -1559,6 +1574,13 @@ WHERE archived_at IS NULL
 	AND id = $2
 	AND scope = $3`
 
+const scanUserIDsForReindexPostgreSQL = `SELECT {{prefix}}identity_users.id
+FROM {{prefix}}identity_users
+WHERE {{prefix}}identity_users.archived_at IS NULL
+	AND {{prefix}}identity_users.id COLLATE "C" > $1
+ORDER BY {{prefix}}identity_users.id COLLATE "C"
+LIMIT COALESCE($2, 50)`
+
 const searchUsersByUsernamePostgreSQL = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
@@ -1580,7 +1602,8 @@ const searchUsersByUsernamePostgreSQL = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.scope = $1
@@ -1610,7 +1633,8 @@ const searchUsersByUsernameDescendingPostgreSQL = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.scope = $1
@@ -1800,9 +1824,11 @@ type postgresqlQueries struct {
 	markUserEmailAddressUnverified           string
 	markUserEmailAddressVerified             string
 	markUserTwoFactorSecretVerified          string
+	markUsersAsIndexed                       string
 	recordAccountSubscription                string
 	recordUserPrivacyPolicyAgreement         string
 	recordUserTermsOfServiceAgreement        string
+	scanUserIDsForReindex                    string
 	searchUsersByUsername                    string
 	searchUsersByUsernameDescending          string
 	setAccountBillingStatus                  string
@@ -1886,9 +1912,11 @@ func newPostgreSQL(prefix string) *postgresqlQueries {
 		markUserEmailAddressUnverified:           strings.ReplaceAll(markUserEmailAddressUnverifiedPostgreSQL, prefixMarker, prefix),
 		markUserEmailAddressVerified:             strings.ReplaceAll(markUserEmailAddressVerifiedPostgreSQL, prefixMarker, prefix),
 		markUserTwoFactorSecretVerified:          strings.ReplaceAll(markUserTwoFactorSecretVerifiedPostgreSQL, prefixMarker, prefix),
+		markUsersAsIndexed:                       strings.ReplaceAll(markUsersAsIndexedPostgreSQL, prefixMarker, prefix),
 		recordAccountSubscription:                strings.ReplaceAll(recordAccountSubscriptionPostgreSQL, prefixMarker, prefix),
 		recordUserPrivacyPolicyAgreement:         strings.ReplaceAll(recordUserPrivacyPolicyAgreementPostgreSQL, prefixMarker, prefix),
 		recordUserTermsOfServiceAgreement:        strings.ReplaceAll(recordUserTermsOfServiceAgreementPostgreSQL, prefixMarker, prefix),
+		scanUserIDsForReindex:                    strings.ReplaceAll(scanUserIDsForReindexPostgreSQL, prefixMarker, prefix),
 		searchUsersByUsername:                    strings.ReplaceAll(searchUsersByUsernamePostgreSQL, prefixMarker, prefix),
 		searchUsersByUsernameDescending:          strings.ReplaceAll(searchUsersByUsernameDescendingPostgreSQL, prefixMarker, prefix),
 		setAccountBillingStatus:                  strings.ReplaceAll(setAccountBillingStatusPostgreSQL, prefixMarker, prefix),
@@ -2293,6 +2321,7 @@ func (q *postgresqlQueries) GetArchivedUser(ctx context.Context, db DBTX, arg Ge
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2449,6 +2478,7 @@ func (q *postgresqlQueries) GetUser(ctx context.Context, db DBTX, arg GetUserPar
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2485,6 +2515,7 @@ func (q *postgresqlQueries) GetUserByEmailAddress(ctx context.Context, db DBTX, 
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2521,6 +2552,7 @@ func (q *postgresqlQueries) GetUserByEmailVerificationTokenDigest(ctx context.Co
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2557,6 +2589,7 @@ func (q *postgresqlQueries) GetUserByUsername(ctx context.Context, db DBTX, arg 
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2627,6 +2660,7 @@ func (q *postgresqlQueries) GetUserIncludingArchived(ctx context.Context, db DBT
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2716,6 +2750,7 @@ func (q *postgresqlQueries) ListAccountMembers(ctx context.Context, db DBTX, arg
 			&i.UserCreatedAt,
 			&i.UserLastUpdatedAt,
 			&i.UserArchivedAt,
+			&i.UserLastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -2786,6 +2821,7 @@ func (q *postgresqlQueries) ListAccountMembersDescending(ctx context.Context, db
 			&i.UserCreatedAt,
 			&i.UserLastUpdatedAt,
 			&i.UserArchivedAt,
+			&i.UserLastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -3603,6 +3639,7 @@ func (q *postgresqlQueries) ListUsers(ctx context.Context, db DBTX, arg ListUser
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -3658,6 +3695,7 @@ func (q *postgresqlQueries) ListUsersByIDs(ctx context.Context, db DBTX, arg Lis
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -3717,6 +3755,7 @@ func (q *postgresqlQueries) ListUsersDescending(ctx context.Context, db DBTX, ar
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -3806,6 +3845,18 @@ func (q *postgresqlQueries) MarkUserTwoFactorSecretVerified(ctx context.Context,
 	return result.RowsAffected()
 }
 
+// MarkUsersAsIndexed runs the :execrows query against postgresql.
+func (q *postgresqlQueries) MarkUsersAsIndexed(ctx context.Context, db DBTX, arg MarkUsersAsIndexedParams) (int64, error) {
+	result, err := db.ExecContext(ctx, q.markUsersAsIndexed,
+		arg.IDs,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // RecordAccountSubscription runs the :execrows query against postgresql.
 func (q *postgresqlQueries) RecordAccountSubscription(ctx context.Context, db DBTX, arg RecordAccountSubscriptionParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordAccountSubscription,
@@ -3850,6 +3901,39 @@ func (q *postgresqlQueries) RecordUserTermsOfServiceAgreement(ctx context.Contex
 	return result.RowsAffected()
 }
 
+// ScanUserIDsForReindex runs the :many query against postgresql.
+func (q *postgresqlQueries) ScanUserIDsForReindex(ctx context.Context, db DBTX, arg ScanUserIDsForReindexParams) ([]ScanUserIDsForReindexRow, error) {
+	rows, err := db.QueryContext(ctx, q.scanUserIDsForReindex,
+		arg.ReindexCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ScanUserIDsForReindexRow
+
+	for rows.Next() {
+		var i ScanUserIDsForReindexRow
+
+		if err := rows.Scan(
+			&i.ID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 // SearchUsersByUsername runs the :many query against postgresql.
 func (q *postgresqlQueries) SearchUsersByUsername(ctx context.Context, db DBTX, arg SearchUsersByUsernameParams) ([]SearchUsersByUsernameRow, error) {
 	rows, err := db.QueryContext(ctx, q.searchUsersByUsername,
@@ -3891,6 +3975,7 @@ func (q *postgresqlQueries) SearchUsersByUsername(ctx context.Context, db DBTX, 
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -3946,6 +4031,7 @@ func (q *postgresqlQueries) SearchUsersByUsernameDescending(ctx context.Context,
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -4357,6 +4443,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetArchivedUserRow{})
 	_ = struct {
 		ID    string
@@ -4450,6 +4537,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetUserRow{})
 	_ = struct {
 		EmailAddress string
@@ -4477,6 +4565,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetUserByEmailAddressRow{})
 	_ = struct {
 		EmailAddressVerificationTokenDigest string
@@ -4504,6 +4593,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetUserByEmailVerificationTokenDigestRow{})
 	_ = struct {
 		Username string
@@ -4531,6 +4621,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetUserByUsernameRow{})
 	_ = struct {
 		EmailAddress string
@@ -4574,6 +4665,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetUserIncludingArchivedRow{})
 	_ = struct {
 		InvitationID string
@@ -4628,6 +4720,7 @@ var (
 		UserCreatedAt                           time.Time
 		UserLastUpdatedAt                       *time.Time
 		UserArchivedAt                          *time.Time
+		UserLastIndexedAt                       *time.Time
 		FilteredCount                           int64
 		TotalCount                              int64
 	}(ListAccountMembersRow{})
@@ -4672,6 +4765,7 @@ var (
 		UserCreatedAt                           time.Time
 		UserLastUpdatedAt                       *time.Time
 		UserArchivedAt                          *time.Time
+		UserLastIndexedAt                       *time.Time
 		FilteredCount                           int64
 		TotalCount                              int64
 	}(ListAccountMembersDescendingRow{})
@@ -5073,6 +5167,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 		FilteredCount                       int64
 		TotalCount                          int64
 	}(ListUsersRow{})
@@ -5102,6 +5197,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(ListUsersByIDsRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
@@ -5135,6 +5231,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 		FilteredCount                       int64
 		TotalCount                          int64
 	}(ListUsersDescendingRow{})
@@ -5167,6 +5264,9 @@ var (
 		Scope                     tenancy.Scope
 	}(MarkUserTwoFactorSecretVerifiedParams{})
 	_ = struct {
+		IDs []string
+	}(MarkUsersAsIndexedParams{})
+	_ = struct {
 		BillingStatus               string
 		SubscriptionPlanID          *string
 		LastPaymentProviderSyncedAt *time.Time
@@ -5183,6 +5283,13 @@ var (
 		ID                         string
 		Scope                      tenancy.Scope
 	}(RecordUserTermsOfServiceAgreementParams{})
+	_ = struct {
+		ReindexCursor string
+		ResultLimit   int64
+	}(ScanUserIDsForReindexParams{})
+	_ = struct {
+		ID string
+	}(ScanUserIDsForReindexRow{})
 	_ = struct {
 		Scope          tenancy.Scope
 		UsernamePrefix string
@@ -5211,6 +5318,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(SearchUsersByUsernameRow{})
 	_ = struct {
 		Scope          tenancy.Scope
@@ -5240,6 +5348,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(SearchUsersByUsernameDescendingRow{})
 	_ = struct {
 		BillingStatus string

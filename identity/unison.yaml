@@ -31,6 +31,16 @@ options:
     # Both engines resolve no type for these: SQLite for most arguments,
     # Postgres for a COALESCE'd LIMIT.
     - {column: "*.result_limit", go_type: int64}
+    # The reindex scan compares the id through a collation expression — COLLATE
+    # "C", COLLATE BINARY, CAST(... AS BINARY) — and no engine resolves a type
+    # through it, so the argument defaults to a timestamp and the generated
+    # package does not compile. It is the id, so it is text.
+    #
+    # It has an argument name of its own for this: the filtered lists bind
+    # page_cursor as a nullable string, an override matches by column name
+    # rather than by statement, and one entry cannot say "text here, nullable
+    # text there". See querygen.ReindexCursorArg.
+    - {column: "*.reindex_cursor", go_type: string}
     - {column: "*.include_archived", go_type: bool}
     # Scope binds as the type, not a string derived from it, so an unset scope
     # is a driver error instead of a wider result set. The roster join projects

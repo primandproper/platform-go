@@ -22,6 +22,11 @@ const (
 	invitationIDKey = serviceName + ".invitation_id"
 	countKey        = serviceName + ".count"
 
+	// indexStampedKey is how many rows a search index stamp actually moved,
+	// which is not always how many ids it was handed: a set naming users erased
+	// since the index accepted them stamps fewer, and that is not an error.
+	indexStampedKey = serviceName + ".index_stamped"
+
 	// The two halves of an invitation erasure's answer. They are two keys rather
 	// than one labeled count because a row destroyed and a row stripped of its
 	// sender are two outcomes, and a span that added them together would report a
@@ -41,6 +46,17 @@ const (
 // instruments with when the thing being measured is about one user. It is
 // exported so a consumer's attributes agree with this package's rather than
 // merely resembling them.
+// defaultReindexPageSize is the page a reindex scan walks when its caller names
+// no size.
+//
+// A backstop rebuilding an index is the read least served by a small page — it
+// is walking the whole directory and every page is a round trip — and the most
+// able to hurt a database by asking for one page of everything. Fifty is the
+// same default filtering applies to a consumer-facing list, chosen here for the
+// opposite reason: not because it is what a screen shows, but because a number
+// a caller did not think about should be one nothing notices.
+const defaultReindexPageSize uint8 = 50
+
 const UserAttributeKey = userIDKey
 
 // AccountAttributeKey is UserAttributeKey for accounts.

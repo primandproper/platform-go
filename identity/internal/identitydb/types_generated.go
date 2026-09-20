@@ -264,6 +264,7 @@ type GetArchivedUserRow struct {
 	CreatedAt                           time.Time
 	LastUpdatedAt                       *time.Time
 	ArchivedAt                          *time.Time
+	LastIndexedAt                       *time.Time
 }
 
 // GetInvitationParams are the arguments to GetInvitation.
@@ -385,6 +386,7 @@ type GetUserRow struct {
 	CreatedAt                           time.Time
 	LastUpdatedAt                       *time.Time
 	ArchivedAt                          *time.Time
+	LastIndexedAt                       *time.Time
 }
 
 // GetUserByEmailAddressParams are the arguments to GetUserByEmailAddress.
@@ -416,6 +418,7 @@ type GetUserByEmailAddressRow struct {
 	CreatedAt                           time.Time
 	LastUpdatedAt                       *time.Time
 	ArchivedAt                          *time.Time
+	LastIndexedAt                       *time.Time
 }
 
 // GetUserByEmailVerificationTokenDigestParams are the arguments to GetUserByEmailVerificationTokenDigest.
@@ -447,6 +450,7 @@ type GetUserByEmailVerificationTokenDigestRow struct {
 	CreatedAt                           time.Time
 	LastUpdatedAt                       *time.Time
 	ArchivedAt                          *time.Time
+	LastIndexedAt                       *time.Time
 }
 
 // GetUserByUsernameParams are the arguments to GetUserByUsername.
@@ -478,6 +482,7 @@ type GetUserByUsernameRow struct {
 	CreatedAt                           time.Time
 	LastUpdatedAt                       *time.Time
 	ArchivedAt                          *time.Time
+	LastIndexedAt                       *time.Time
 }
 
 // GetUserIDByEmailAddressParams are the arguments to GetUserIDByEmailAddress.
@@ -533,6 +538,7 @@ type GetUserIncludingArchivedRow struct {
 	CreatedAt                           time.Time
 	LastUpdatedAt                       *time.Time
 	ArchivedAt                          *time.Time
+	LastIndexedAt                       *time.Time
 }
 
 // InsertInvitationRoleParams are the arguments to InsertInvitationRole.
@@ -597,6 +603,7 @@ type ListAccountMembersRow struct {
 	UserCreatedAt                           time.Time
 	UserLastUpdatedAt                       *time.Time
 	UserArchivedAt                          *time.Time
+	UserLastIndexedAt                       *time.Time
 	FilteredCount                           int64
 	TotalCount                              int64
 }
@@ -645,6 +652,7 @@ type ListAccountMembersDescendingRow struct {
 	UserCreatedAt                           time.Time
 	UserLastUpdatedAt                       *time.Time
 	UserArchivedAt                          *time.Time
+	UserLastIndexedAt                       *time.Time
 	FilteredCount                           int64
 	TotalCount                              int64
 }
@@ -1110,6 +1118,7 @@ type ListUsersRow struct {
 	CreatedAt                           time.Time
 	LastUpdatedAt                       *time.Time
 	ArchivedAt                          *time.Time
+	LastIndexedAt                       *time.Time
 	FilteredCount                       int64
 	TotalCount                          int64
 }
@@ -1143,6 +1152,7 @@ type ListUsersByIDsRow struct {
 	CreatedAt                           time.Time
 	LastUpdatedAt                       *time.Time
 	ArchivedAt                          *time.Time
+	LastIndexedAt                       *time.Time
 }
 
 // ListUsersDescendingParams are the arguments to ListUsersDescending.
@@ -1180,6 +1190,7 @@ type ListUsersDescendingRow struct {
 	CreatedAt                           time.Time
 	LastUpdatedAt                       *time.Time
 	ArchivedAt                          *time.Time
+	LastIndexedAt                       *time.Time
 	FilteredCount                       int64
 	TotalCount                          int64
 }
@@ -1222,6 +1233,11 @@ type MarkUserTwoFactorSecretVerifiedParams struct {
 	Scope                     tenancy.Scope
 }
 
+// MarkUsersAsIndexedParams are the arguments to MarkUsersAsIndexed.
+type MarkUsersAsIndexedParams struct {
+	IDs []string
+}
+
 // RecordAccountSubscriptionParams are the arguments to RecordAccountSubscription.
 type RecordAccountSubscriptionParams struct {
 	BillingStatus               string
@@ -1243,6 +1259,17 @@ type RecordUserTermsOfServiceAgreementParams struct {
 	LastAcceptedTermsOfService *time.Time
 	ID                         string
 	Scope                      tenancy.Scope
+}
+
+// ScanUserIDsForReindexParams are the arguments to ScanUserIDsForReindex.
+type ScanUserIDsForReindexParams struct {
+	ReindexCursor string
+	ResultLimit   int64
+}
+
+// ScanUserIDsForReindexRow is one row of ScanUserIDsForReindex's result.
+type ScanUserIDsForReindexRow struct {
+	ID string
 }
 
 // SearchUsersByUsernameParams are the arguments to SearchUsersByUsername.
@@ -1276,6 +1303,7 @@ type SearchUsersByUsernameRow struct {
 	CreatedAt                           time.Time
 	LastUpdatedAt                       *time.Time
 	ArchivedAt                          *time.Time
+	LastIndexedAt                       *time.Time
 }
 
 // SearchUsersByUsernameDescendingParams are the arguments to SearchUsersByUsernameDescending.
@@ -1309,6 +1337,7 @@ type SearchUsersByUsernameDescendingRow struct {
 	CreatedAt                           time.Time
 	LastUpdatedAt                       *time.Time
 	ArchivedAt                          *time.Time
+	LastIndexedAt                       *time.Time
 }
 
 // SetAccountBillingStatusParams are the arguments to SetAccountBillingStatus.

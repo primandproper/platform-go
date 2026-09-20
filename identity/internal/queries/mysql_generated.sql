@@ -63,7 +63,8 @@ SELECT
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.id = sqlc.arg(id)
@@ -92,6 +93,7 @@ SELECT
 	identity_users.created_at,
 	identity_users.last_updated_at,
 	identity_users.archived_at,
+	identity_users.last_indexed_at,
 	(
 		SELECT COUNT(identity_users.id)
 		FROM identity_users
@@ -154,6 +156,7 @@ SELECT
 	identity_users.created_at,
 	identity_users.last_updated_at,
 	identity_users.archived_at,
+	identity_users.last_indexed_at,
 	(
 		SELECT COUNT(identity_users.id)
 		FROM identity_users
@@ -213,6 +216,19 @@ UPDATE identity_users SET
 WHERE archived_at IS NULL
 	AND id = sqlc.arg(id)
 	AND scope = sqlc.arg(scope);
+
+-- name: ScanUserIDsForReindex :many
+SELECT identity_users.id
+FROM identity_users
+WHERE identity_users.archived_at IS NULL
+	AND CAST(identity_users.id AS BINARY) > sqlc.arg(reindex_cursor)
+ORDER BY CAST(identity_users.id AS BINARY)
+LIMIT ?;
+
+-- name: MarkUsersAsIndexed :execrows
+UPDATE identity_users SET
+	last_indexed_at = CURRENT_TIMESTAMP(6)
+WHERE id IN (sqlc.slice(ids));
 
 -- name: CreateAccount :exec
 INSERT INTO identity_accounts (
@@ -853,7 +869,8 @@ SELECT
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.id = sqlc.arg(id)
 	AND identity_users.scope = sqlc.arg(scope)
@@ -907,7 +924,8 @@ SELECT
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.id = sqlc.arg(id)
 	AND identity_users.scope = sqlc.arg(scope);
@@ -934,7 +952,8 @@ SELECT
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.username = sqlc.arg(username)
@@ -962,7 +981,8 @@ SELECT
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.email_address = sqlc.arg(email_address)
@@ -990,7 +1010,8 @@ SELECT
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest)
@@ -1090,7 +1111,8 @@ SELECT
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.scope = sqlc.arg(scope)
 	AND identity_users.id IN (sqlc.slice(ids))
@@ -1151,6 +1173,7 @@ SELECT
 	identity_users.created_at AS user_created_at,
 	identity_users.last_updated_at AS user_last_updated_at,
 	identity_users.archived_at AS user_archived_at,
+	identity_users.last_indexed_at AS user_last_indexed_at,
 	(
 		SELECT COUNT(identity_memberships.id)
 		FROM identity_memberships
@@ -1230,6 +1253,7 @@ SELECT
 	identity_users.created_at AS user_created_at,
 	identity_users.last_updated_at AS user_last_updated_at,
 	identity_users.archived_at AS user_archived_at,
+	identity_users.last_indexed_at AS user_last_indexed_at,
 	(
 		SELECT COUNT(identity_memberships.id)
 		FROM identity_memberships
@@ -1471,7 +1495,8 @@ SELECT
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.scope = sqlc.arg(scope)
@@ -1502,7 +1527,8 @@ SELECT
 	identity_users.last_accepted_privacy_policy,
 	identity_users.created_at,
 	identity_users.last_updated_at,
-	identity_users.archived_at
+	identity_users.archived_at,
+	identity_users.last_indexed_at
 FROM identity_users
 WHERE identity_users.archived_at IS NULL
 	AND identity_users.scope = sqlc.arg(scope)

@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS identity_users (
     created_at                              DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     last_updated_at                         DATETIME(6),
     archived_at                             DATETIME(6),
+    last_indexed_at                         DATETIME(6),
     UNIQUE KEY identity_users_username_uniq (scope, username),
     UNIQUE KEY identity_users_email_uniq (scope, email_address),
     KEY identity_users_scope_idx (scope, archived_at, username, id),

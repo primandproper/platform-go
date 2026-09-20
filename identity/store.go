@@ -1159,15 +1159,15 @@ type InvitationStore interface {
 //
 // # Depend on a narrower one
 //
-// Store is fifty methods, which is the right size for the thing that
+// Store is fifty-odd methods, which is the right size for the thing that
 // implements it and the wrong size for almost everything that calls it. It is a
-// union of nine interfaces, each named for a job rather than for a table, and a
+// union of ten interfaces, each named for a job rather than for a table, and a
 // caller should name the smallest one that covers what it does: a sign-in
 // middleware takes a SignInReader, a processor webhook takes a BillingWriter, a
 // support console takes a DirectoryReader.
 //
 // This is not only about the size of a test double, though a three-method fake
-// beats a fifty-method mock. It is that the narrow interface is a
+// beats a whole-Store mock. It is that the narrow interface is a
 // statement about reach, checked by the compiler: a handler that holds a
 // DirectoryReader cannot ban a user, and one that holds a ProfileWriter cannot
 // write a credential or move an account's ownership. Depending on Store gives
@@ -1289,4 +1289,81 @@ type Store interface {
 	AdminWriter
 	BillingWriter
 	InvitationStore
+	SearchIndexWriter
+}
+
+// SearchIndexWriter is the bookkeeping a search index's sync needs against the
+// directory: which users it has not accepted yet, and a record that it has.
+//
+// # Why identity has this and no other domain here does
+//
+// SearchUsersByUsername is a prefix match and says why — a prefix uses the index
+// on (scope, username) and a substring cannot — and points an application
+// wanting more than that at this module's search package. That makes identity
+// the one domain here advertising that it is worth indexing, and until this
+// interface it was the one with nowhere to record that it had been.
+//
+// # Neither method takes a scope, and that is the search sync servicing itself
+//
+// Every consumer-facing read here binds a tenancy.Scope, because a caller
+// reading rows on somebody's behalf owes one. These two are not that. A reindex
+// walks the directory to find documents an index is missing, and a stamp marks
+// the rows that index just accepted — named explicitly, by id, because the
+// caller already has them. It is the same carve-out webhooks' delivery queue and
+// metering's flush protocol take, and it is the reason querygen's own stamp
+// emits no owner predicate.
+//
+// The consequence is worth stating rather than discovering: these are not
+// methods to expose on a transport. A wire caller who could ask "which users
+// need indexing" could enumerate the directory across every tenant.
+type SearchIndexWriter interface {
+	// ScanUsersForReindex pages the ids of live users from a cursor, in byte
+	// order, for a backstop that rebuilds an index event-driven sync has drifted
+	// from.
+	//
+	// It walks every live user and does not consult last_indexed_at, which the
+	// name could be read as promising. A backstop exists because the sync may
+	// have missed something, and a scan that trusted the stamp to say what was
+	// missed would trust the bookkeeping written by the thing it is checking:
+	// an event dropped before it was applied leaves a row whose stamp is
+	// current and whose document was never sent. So the walk is complete and
+	// the stamp is what the rebuild writes, not what it reads.
+	//
+	// A caller wanting the cheaper question — which rows changed since they
+	// were last indexed — asks it of the event stream, which is the sync's
+	// ordinary path and the reason this one is a backstop.
+	//
+	// It returns ids rather than users because an index rebuild reads each
+	// document from wherever it is assembled, and a page of whole rows would be
+	// a read of every column to use one. Archived users are absent: a soft
+	// delete is a document the sync removes rather than one it refreshes.
+	//
+	// The cursor is the last id of the previous page, empty to start. Byte order
+	// rather than the collation a dialect defaults to, so the walk is the same
+	// on all three and a cursor from one is meaningful on another.
+	ScanUsersForReindex(
+		ctx context.Context,
+		q database.SQLQueryExecutor,
+		cursor string,
+		limit uint8,
+	) ([]string, error)
+
+	// MarkUsersAsIndexed stamps last_indexed_at on the users an index has
+	// accepted.
+	//
+	// It takes the whole set in one statement rather than one call per id,
+	// because its caller is a searchsync.NewStampBuffer flushing a coalesced
+	// batch — and one statement per flush is the entire reason that write is
+	// buffered. See that function on what a per-document stamp does to a
+	// connection pool.
+	//
+	// Nothing reads the column back in the same breath, and the count it returns
+	// is for an operator rather than a caller's control flow: a set naming ids
+	// that have since been erased stamps fewer rows than it named, which is not
+	// an error.
+	MarkUsersAsIndexed(
+		ctx context.Context,
+		tx database.Tx,
+		ids []string,
+	) (int64, error)
 }

@@ -281,7 +281,8 @@ const getArchivedUserSQLite = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.id = ?1
 	AND {{prefix}}identity_users.scope = ?2
@@ -380,7 +381,8 @@ const getUserSQLite = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.id = ?1
@@ -407,7 +409,8 @@ const getUserByEmailAddressSQLite = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.email_address = ?1
@@ -434,7 +437,8 @@ const getUserByEmailVerificationTokenDigestSQLite = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.email_address_verification_token_digest = ?1
@@ -461,7 +465,8 @@ const getUserByUsernameSQLite = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.username = ?1
@@ -502,7 +507,8 @@ const getUserIncludingArchivedSQLite = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.id = ?1
 	AND {{prefix}}identity_users.scope = ?2`
@@ -561,6 +567,7 @@ const listAccountMembersSQLite = `SELECT
 	{{prefix}}identity_users.created_at AS user_created_at,
 	{{prefix}}identity_users.last_updated_at AS user_last_updated_at,
 	{{prefix}}identity_users.archived_at AS user_archived_at,
+	{{prefix}}identity_users.last_indexed_at AS user_last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_memberships.id)
 		FROM {{prefix}}identity_memberships
@@ -639,6 +646,7 @@ const listAccountMembersDescendingSQLite = `SELECT
 	{{prefix}}identity_users.created_at AS user_created_at,
 	{{prefix}}identity_users.last_updated_at AS user_last_updated_at,
 	{{prefix}}identity_users.archived_at AS user_archived_at,
+	{{prefix}}identity_users.last_indexed_at AS user_last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_memberships.id)
 		FROM {{prefix}}identity_memberships
@@ -1369,6 +1377,7 @@ const listUsersSQLite = `SELECT
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
 	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_users.id)
 		FROM {{prefix}}identity_users
@@ -1429,7 +1438,8 @@ const listUsersByIDsSQLite = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.scope = ?1
 	AND {{prefix}}identity_users.id IN (/*SLICE:ids*/?)
@@ -1457,6 +1467,7 @@ const listUsersDescendingSQLite = `SELECT
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
 	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at,
 	(
 		SELECT COUNT({{prefix}}identity_users.id)
 		FROM {{prefix}}identity_users
@@ -1536,6 +1547,10 @@ WHERE archived_at IS NULL
 	AND two_factor_secret <> ''
 	AND two_factor_secret_verified_at IS NULL`
 
+const markUsersAsIndexedSQLite = `UPDATE {{prefix}}identity_users SET
+	last_indexed_at = CURRENT_TIMESTAMP
+WHERE id IN (/*SLICE:ids*/?)`
+
 const recordAccountSubscriptionSQLite = `UPDATE {{prefix}}identity_accounts SET
 	billing_status = ?1,
 	subscription_plan_id = ?2,
@@ -1559,6 +1574,13 @@ WHERE archived_at IS NULL
 	AND id = ?2
 	AND scope = ?3`
 
+const scanUserIDsForReindexSQLite = `SELECT {{prefix}}identity_users.id
+FROM {{prefix}}identity_users
+WHERE {{prefix}}identity_users.archived_at IS NULL
+	AND {{prefix}}identity_users.id COLLATE BINARY > ?1
+ORDER BY {{prefix}}identity_users.id COLLATE BINARY
+LIMIT COALESCE(?2, 50)`
+
 const searchUsersByUsernameSQLite = `SELECT
 	{{prefix}}identity_users.id,
 	{{prefix}}identity_users.scope,
@@ -1580,7 +1602,8 @@ const searchUsersByUsernameSQLite = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.scope = ?1
@@ -1610,7 +1633,8 @@ const searchUsersByUsernameDescendingSQLite = `SELECT
 	{{prefix}}identity_users.last_accepted_privacy_policy,
 	{{prefix}}identity_users.created_at,
 	{{prefix}}identity_users.last_updated_at,
-	{{prefix}}identity_users.archived_at
+	{{prefix}}identity_users.archived_at,
+	{{prefix}}identity_users.last_indexed_at
 FROM {{prefix}}identity_users
 WHERE {{prefix}}identity_users.archived_at IS NULL
 	AND {{prefix}}identity_users.scope = ?1
@@ -1800,9 +1824,11 @@ type sqliteQueries struct {
 	markUserEmailAddressUnverified           string
 	markUserEmailAddressVerified             string
 	markUserTwoFactorSecretVerified          string
+	markUsersAsIndexed                       string
 	recordAccountSubscription                string
 	recordUserPrivacyPolicyAgreement         string
 	recordUserTermsOfServiceAgreement        string
+	scanUserIDsForReindex                    string
 	searchUsersByUsername                    string
 	searchUsersByUsernameDescending          string
 	setAccountBillingStatus                  string
@@ -1886,9 +1912,11 @@ func newSQLite(prefix string) *sqliteQueries {
 		markUserEmailAddressUnverified:           strings.ReplaceAll(markUserEmailAddressUnverifiedSQLite, prefixMarker, prefix),
 		markUserEmailAddressVerified:             strings.ReplaceAll(markUserEmailAddressVerifiedSQLite, prefixMarker, prefix),
 		markUserTwoFactorSecretVerified:          strings.ReplaceAll(markUserTwoFactorSecretVerifiedSQLite, prefixMarker, prefix),
+		markUsersAsIndexed:                       strings.ReplaceAll(markUsersAsIndexedSQLite, prefixMarker, prefix),
 		recordAccountSubscription:                strings.ReplaceAll(recordAccountSubscriptionSQLite, prefixMarker, prefix),
 		recordUserPrivacyPolicyAgreement:         strings.ReplaceAll(recordUserPrivacyPolicyAgreementSQLite, prefixMarker, prefix),
 		recordUserTermsOfServiceAgreement:        strings.ReplaceAll(recordUserTermsOfServiceAgreementSQLite, prefixMarker, prefix),
+		scanUserIDsForReindex:                    strings.ReplaceAll(scanUserIDsForReindexSQLite, prefixMarker, prefix),
 		searchUsersByUsername:                    strings.ReplaceAll(searchUsersByUsernameSQLite, prefixMarker, prefix),
 		searchUsersByUsernameDescending:          strings.ReplaceAll(searchUsersByUsernameDescendingSQLite, prefixMarker, prefix),
 		setAccountBillingStatus:                  strings.ReplaceAll(setAccountBillingStatusSQLite, prefixMarker, prefix),
@@ -2323,6 +2351,7 @@ func (q *sqliteQueries) GetArchivedUser(ctx context.Context, db DBTX, arg GetArc
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2479,6 +2508,7 @@ func (q *sqliteQueries) GetUser(ctx context.Context, db DBTX, arg GetUserParams)
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2515,6 +2545,7 @@ func (q *sqliteQueries) GetUserByEmailAddress(ctx context.Context, db DBTX, arg 
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2551,6 +2582,7 @@ func (q *sqliteQueries) GetUserByEmailVerificationTokenDigest(ctx context.Contex
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2587,6 +2619,7 @@ func (q *sqliteQueries) GetUserByUsername(ctx context.Context, db DBTX, arg GetU
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2657,6 +2690,7 @@ func (q *sqliteQueries) GetUserIncludingArchived(ctx context.Context, db DBTX, a
 		&i.CreatedAt,
 		&i.LastUpdatedAt,
 		&i.ArchivedAt,
+		&i.LastIndexedAt,
 	)
 
 	return i, err
@@ -2746,6 +2780,7 @@ func (q *sqliteQueries) ListAccountMembers(ctx context.Context, db DBTX, arg Lis
 			&i.UserCreatedAt,
 			&i.UserLastUpdatedAt,
 			&i.UserArchivedAt,
+			&i.UserLastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -2816,6 +2851,7 @@ func (q *sqliteQueries) ListAccountMembersDescending(ctx context.Context, db DBT
 			&i.UserCreatedAt,
 			&i.UserLastUpdatedAt,
 			&i.UserArchivedAt,
+			&i.UserLastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -3657,6 +3693,7 @@ func (q *sqliteQueries) ListUsers(ctx context.Context, db DBTX, arg ListUsersPar
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -3721,6 +3758,7 @@ func (q *sqliteQueries) ListUsersByIDs(ctx context.Context, db DBTX, arg ListUse
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -3780,6 +3818,7 @@ func (q *sqliteQueries) ListUsersDescending(ctx context.Context, db DBTX, arg Li
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 			&i.FilteredCount,
 			&i.TotalCount,
 		); err != nil {
@@ -3869,6 +3908,26 @@ func (q *sqliteQueries) MarkUserTwoFactorSecretVerified(ctx context.Context, db 
 	return result.RowsAffected()
 }
 
+// MarkUsersAsIndexed runs the :execrows query against sqlite.
+func (q *sqliteQueries) MarkUsersAsIndexed(ctx context.Context, db DBTX, arg MarkUsersAsIndexedParams) (int64, error) {
+	query := q.markUsersAsIndexed
+
+	args := make([]any, 0, len(arg.IDs))
+
+	query = strings.Replace(query, "/*SLICE:ids*/?", slicePlaceholders("?", len(arg.IDs)), 1)
+
+	for _, v := range arg.IDs {
+		args = append(args, v)
+	}
+
+	result, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // RecordAccountSubscription runs the :execrows query against sqlite.
 func (q *sqliteQueries) RecordAccountSubscription(ctx context.Context, db DBTX, arg RecordAccountSubscriptionParams) (int64, error) {
 	result, err := db.ExecContext(ctx, q.recordAccountSubscription,
@@ -3913,6 +3972,39 @@ func (q *sqliteQueries) RecordUserTermsOfServiceAgreement(ctx context.Context, d
 	return result.RowsAffected()
 }
 
+// ScanUserIDsForReindex runs the :many query against sqlite.
+func (q *sqliteQueries) ScanUserIDsForReindex(ctx context.Context, db DBTX, arg ScanUserIDsForReindexParams) ([]ScanUserIDsForReindexRow, error) {
+	rows, err := db.QueryContext(ctx, q.scanUserIDsForReindex,
+		arg.ReindexCursor,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { _ = rows.Close() }()
+
+	var items []ScanUserIDsForReindexRow
+
+	for rows.Next() {
+		var i ScanUserIDsForReindexRow
+
+		if err := rows.Scan(
+			&i.ID,
+		); err != nil {
+			return nil, err
+		}
+
+		items = append(items, i)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
 // SearchUsersByUsername runs the :many query against sqlite.
 func (q *sqliteQueries) SearchUsersByUsername(ctx context.Context, db DBTX, arg SearchUsersByUsernameParams) ([]SearchUsersByUsernameRow, error) {
 	rows, err := db.QueryContext(ctx, q.searchUsersByUsername,
@@ -3954,6 +4046,7 @@ func (q *sqliteQueries) SearchUsersByUsername(ctx context.Context, db DBTX, arg 
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -4009,6 +4102,7 @@ func (q *sqliteQueries) SearchUsersByUsernameDescending(ctx context.Context, db 
 			&i.CreatedAt,
 			&i.LastUpdatedAt,
 			&i.ArchivedAt,
+			&i.LastIndexedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -4420,6 +4514,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetArchivedUserRow{})
 	_ = struct {
 		ID    string
@@ -4513,6 +4608,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetUserRow{})
 	_ = struct {
 		EmailAddress string
@@ -4540,6 +4636,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetUserByEmailAddressRow{})
 	_ = struct {
 		EmailAddressVerificationTokenDigest string
@@ -4567,6 +4664,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetUserByEmailVerificationTokenDigestRow{})
 	_ = struct {
 		Username string
@@ -4594,6 +4692,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetUserByUsernameRow{})
 	_ = struct {
 		EmailAddress string
@@ -4637,6 +4736,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(GetUserIncludingArchivedRow{})
 	_ = struct {
 		InvitationID string
@@ -4691,6 +4791,7 @@ var (
 		UserCreatedAt                           time.Time
 		UserLastUpdatedAt                       *time.Time
 		UserArchivedAt                          *time.Time
+		UserLastIndexedAt                       *time.Time
 		FilteredCount                           int64
 		TotalCount                              int64
 	}(ListAccountMembersRow{})
@@ -4735,6 +4836,7 @@ var (
 		UserCreatedAt                           time.Time
 		UserLastUpdatedAt                       *time.Time
 		UserArchivedAt                          *time.Time
+		UserLastIndexedAt                       *time.Time
 		FilteredCount                           int64
 		TotalCount                              int64
 	}(ListAccountMembersDescendingRow{})
@@ -5136,6 +5238,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 		FilteredCount                       int64
 		TotalCount                          int64
 	}(ListUsersRow{})
@@ -5165,6 +5268,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(ListUsersByIDsRow{})
 	_ = struct {
 		CreatedAfter    *time.Time
@@ -5198,6 +5302,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 		FilteredCount                       int64
 		TotalCount                          int64
 	}(ListUsersDescendingRow{})
@@ -5230,6 +5335,9 @@ var (
 		Scope                     tenancy.Scope
 	}(MarkUserTwoFactorSecretVerifiedParams{})
 	_ = struct {
+		IDs []string
+	}(MarkUsersAsIndexedParams{})
+	_ = struct {
 		BillingStatus               string
 		SubscriptionPlanID          *string
 		LastPaymentProviderSyncedAt *time.Time
@@ -5246,6 +5354,13 @@ var (
 		ID                         string
 		Scope                      tenancy.Scope
 	}(RecordUserTermsOfServiceAgreementParams{})
+	_ = struct {
+		ReindexCursor string
+		ResultLimit   int64
+	}(ScanUserIDsForReindexParams{})
+	_ = struct {
+		ID string
+	}(ScanUserIDsForReindexRow{})
 	_ = struct {
 		Scope          tenancy.Scope
 		UsernamePrefix string
@@ -5274,6 +5389,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(SearchUsersByUsernameRow{})
 	_ = struct {
 		Scope          tenancy.Scope
@@ -5303,6 +5419,7 @@ var (
 		CreatedAt                           time.Time
 		LastUpdatedAt                       *time.Time
 		ArchivedAt                          *time.Time
+		LastIndexedAt                       *time.Time
 	}(SearchUsersByUsernameDescendingRow{})
 	_ = struct {
 		BillingStatus string

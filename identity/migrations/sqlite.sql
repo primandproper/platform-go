@@ -40,7 +40,25 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_users (
     last_accepted_privacy_policy            DATETIME,
     created_at                              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_updated_at                         DATETIME,
-    archived_at                             DATETIME
+    archived_at                             DATETIME,
+    -- last_indexed_at is when a search index last accepted this row, written by
+    -- MarkUsersAsIndexed and read by nothing in this package.
+    --
+    -- It is search bookkeeping in a domain schema, which is a thing to justify
+    -- rather than assume. SearchUsersByUsername is deliberately a prefix match
+    -- and says so, and points an application wanting more at this module's
+    -- search package — so identity is the one domain here that advertises being
+    -- indexed, and was the one with nowhere to record that it had been.
+    -- searchsync.NewStampBuffer calls the bulk stamp over a column like this
+    -- "the natural implementation", and every consumer without it re-derives
+    -- the same staleness predicate: a document is current when this is later
+    -- than last_updated_at.
+    --
+    -- Nullable, and NULL means never indexed rather than indexed at the zero
+    -- time. A reindex backstop looks for rows where this is NULL or older than
+    -- last_updated_at, and those are the same question asked of a new row and a
+    -- changed one.
+    last_indexed_at                         DATETIME
 );
 
 -- Usernames and email addresses are unique per directory, and the uniqueness

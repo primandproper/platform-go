@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_users (
     last_updated_at                         DATETIME(6),
     archived_at                             DATETIME(6),
 
+    -- last_indexed_at is when a search index last accepted this row, written by
+    -- MarkUsersAsIndexed and read by nothing in this package. See the Postgres
+    -- schema for why search bookkeeping sits in a domain table here, and why
+    -- NULL means never indexed rather than indexed at the zero time.
+    last_indexed_at                         DATETIME(6),
+
     -- The uniqueness covers archived rows as well as live ones in every
     -- dialect, which is a decision rather than a MySQL concession — see the
     -- Postgres schema for why a soft delete does not free a username.
