@@ -54,6 +54,51 @@ func (s *Server) UpdateAccount(
 	return &identitypb.UpdateAccountResponse{Account: AccountToProto(account)}, nil
 }
 
+// CreateAccount opens a second account for the caller, with them as its owner.
+//
+// # It asks no authorizer, and that is the whole of its safety
+//
+// Every other write on this surface names a row somebody else might own, so
+// [TargetAuthorizer] decides whether this caller may act on it. This one names
+// no row: the owner is the principal the connection resolved, the request
+// reserves owner_user_id so no client can name another, and an account that does
+// not exist yet has nobody to be authorized against. The grant on the method is
+// therefore the whole question — may this caller open accounts at all — and a
+// deployment that does not want members doing so does not grant it.
+//
+// The moment that stops being true is an RPC that creates an account for
+// somebody else. That is a different method with a different grant and an
+// authorizer, and it is not this one.
+//
+// # The new account is not made default
+//
+// A second account is somewhere a user may go rather than somewhere they are
+// moved to, and making it default would move them out of the account they were
+// working in as a side effect of starting another. A client that wants it to be
+// the landing place calls SetDefaultAccount after, and has said so.
+func (s *Server) CreateAccount(
+	ctx context.Context,
+	request *identitypb.CreateAccountRequest,
+) (*identitypb.CreateAccountResponse, error) {
+	ctx, op, principal, done, err := s.caller(ctx, identitypb.IdentityService_CreateAccount_FullMethodName)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() { done(err) }()
+
+	op.Set(userIDKey, principal.UserID())
+
+	account, err := s.svc.CreateAccount(ctx, scopeOf(principal), principal.UserID(),
+		&identity.Account{Name: request.GetName()}, request.GetOwnerRoles())
+	if err != nil {
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, op.Logger(), op.Span(),
+			codes.Internal, "creating an account for user %q", principal.UserID())
+	}
+
+	return &identitypb.CreateAccountResponse{Account: AccountToProto(account)}, nil
+}
+
 // TransferAccountOwnership moves an account to a new owner.
 //
 // Transferring to the owner an account already has is a no-op that still runs

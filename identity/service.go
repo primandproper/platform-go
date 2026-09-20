@@ -27,6 +27,7 @@ const (
 	opAcceptInvitation         = "accept_invitation"
 	opRejectInvitation         = "reject_invitation"
 	opCancelInvitation         = "cancel_invitation"
+	opCreateAccount            = "create_account"
 	opTransferAccountOwnership = "transfer_account_ownership"
 	opSetDefaultAccount        = "set_default_account"
 	opArchiveUser              = "archive_user"
@@ -764,6 +765,107 @@ func (s *Service) TransferAccountOwnership(
 	}
 
 	return transferred, nil
+}
+
+// CreateAccount opens a second account for a user who already has one, with
+// them as its owner.
+//
+// # Why this exists beside Register
+//
+// Register makes a user and their first account together, and until this method
+// it was the only door an account came through. The read side has always
+// modelled more than one — ListAccountsForUser pages them, SetDefaultAccount
+// picks which one somebody lands in, TransferAccountOwnership moves one on — so
+// a user could belong to any number and could only ever create the one they
+// registered with. Every other account had to arrive by invitation, which makes
+// starting something of your own a thing only somebody else can do for you.
+//
+// What a consumer did instead was call Store.CreateAccount and
+// Store.CreateMembership in a transaction of their own, which is the shape this
+// Service exists to rule out — see the package documentation on the user
+// without an account and the account without an owner — and which fires no
+// hook, making it the one identity write that lands with no audit entry and no
+// event.
+//
+// # The new account is not made default
+//
+// Register states DefaultAccount because a first account is where somebody
+// lands by definition. A second one is not: making it default would move a user
+// out of the account they were working in as a side effect of starting another,
+// which is a surprise the caller did not ask for. A consumer who wants the new
+// one to be the landing place calls SetDefaultAccount after, and has said so.
+//
+// # The owner is the argument, not the account's field
+//
+// account.OwnerUserID may name ownerUserID or nothing, and anything else is
+// refused rather than overwritten — the same reading Register takes, and for
+// the same reason: an owner silently corrected makes "who owns this" answerable
+// only by reading what came back.
+func (s *Service) CreateAccount(
+	ctx context.Context,
+	scope tenancy.Scope,
+	ownerUserID string,
+	account *Account,
+	ownerRoles []string,
+) (*Account, error) {
+	ctx, op := s.o11y.Begin(ctx,
+		observability.WithValue(scopeKey, scope.String()),
+		observability.WithValue(userIDKey, ownerUserID),
+	)
+	defer op.End()
+
+	if account == nil {
+		return nil, op.Error(ErrNilAccount, "creating identity account")
+	}
+
+	if ownerUserID == "" {
+		return nil, op.Error(ErrNilUser, "creating identity account")
+	}
+
+	var created *Account
+
+	err := s.run(ctx, op, opCreateAccount, func(tx database.Tx) error {
+		// The owner is set on a copy, since the store no longer writes to what
+		// it is handed and neither does this.
+		owned := *account
+
+		switch owned.OwnerUserID {
+		case "", ownerUserID:
+			owned.OwnerUserID = ownerUserID
+		default:
+			return platformerrors.Wrapf(platformerrors.ErrUnrecognizedInputValue,
+				"account names owner %q rather than %q", owned.OwnerUserID, ownerUserID)
+		}
+
+		written, err := s.store.CreateAccount(ctx, tx, scope, &owned)
+		if err != nil {
+			return err
+		}
+
+		created = written
+
+		op.Set(accountIDKey, written.ID)
+
+		// Not default: see the method documentation. A second account is
+		// somewhere a user may go, not somewhere they are moved to.
+		membership, err := s.store.CreateMembership(ctx, tx, scope, &Membership{
+			Scope:            scope,
+			BelongsToUser:    ownerUserID,
+			BelongsToAccount: written.ID,
+			Roles:            ownerRoles,
+			DefaultAccount:   false,
+		})
+		if err != nil {
+			return err
+		}
+
+		return s.hooks.AfterCreateAccount(ctx, tx, scope, written, membership)
+	})
+	if err != nil {
+		return nil, op.Error(err, "creating identity account for user %q", ownerUserID)
+	}
+
+	return created, nil
 }
 
 // SetDefaultAccount marks one of a user's accounts as the one they land in.

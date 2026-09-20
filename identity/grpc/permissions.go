@@ -67,6 +67,23 @@ const (
 	// billing address and time zone.
 	PermissionUpdateAccounts authorization.Permission = "identity.accounts.update"
 
+	// PermissionCreateAccounts covers opening a second account, owned by the
+	// caller.
+	//
+	// It is its own grant and the whole of the check on that RPC, which asks no
+	// authorizer — there is no row yet to authorize against, and the owner is
+	// the principal rather than anything a client may name. So whether members
+	// may start accounts of their own is this grant and nothing else, which is
+	// a deployment's decision and reads like one: a product where a person runs
+	// several households grants it widely, and one where an account is
+	// provisioned for them does not grant it at all.
+	//
+	// It is separate from PermissionUpdateAccounts because the questions are
+	// different sizes. Editing an account somebody already has is bounded by
+	// the accounts they hold; opening one is not bounded by anything, which is
+	// why a deployment may reasonably allow the first and refuse the second.
+	PermissionCreateAccounts authorization.Permission = "identity.accounts.create"
+
 	// PermissionTransferAccountOwnership covers moving an account to a new
 	// owner.
 	PermissionTransferAccountOwnership authorization.Permission = "identity.accounts.transfer_ownership"
@@ -152,6 +169,7 @@ func Permissions() map[string][]authorization.Permission {
 		identitypb.IdentityService_ListMembershipsForUser_FullMethodName:   {PermissionReadAccounts},
 		identitypb.IdentityService_ListAccounts_FullMethodName:             {PermissionListAllAccounts},
 		identitypb.IdentityService_UpdateAccount_FullMethodName:            {PermissionUpdateAccounts},
+		identitypb.IdentityService_CreateAccount_FullMethodName:            {PermissionCreateAccounts},
 		identitypb.IdentityService_TransferAccountOwnership_FullMethodName: {PermissionTransferAccountOwnership},
 		identitypb.IdentityService_ArchiveAccount_FullMethodName:           {PermissionArchiveAccounts},
 		identitypb.IdentityService_SetMembershipRoles_FullMethodName:       {PermissionManageMembers},

@@ -102,6 +102,7 @@ const (
 	IdentityService_AcceptInvitation_FullMethodName               = "/primandproper.platform.identity.v1.IdentityService/AcceptInvitation"
 	IdentityService_RejectInvitation_FullMethodName               = "/primandproper.platform.identity.v1.IdentityService/RejectInvitation"
 	IdentityService_CancelInvitation_FullMethodName               = "/primandproper.platform.identity.v1.IdentityService/CancelInvitation"
+	IdentityService_CreateAccount_FullMethodName                  = "/primandproper.platform.identity.v1.IdentityService/CreateAccount"
 	IdentityService_TransferAccountOwnership_FullMethodName       = "/primandproper.platform.identity.v1.IdentityService/TransferAccountOwnership"
 	IdentityService_SetDefaultAccount_FullMethodName              = "/primandproper.platform.identity.v1.IdentityService/SetDefaultAccount"
 	IdentityService_SetMembershipRoles_FullMethodName             = "/primandproper.platform.identity.v1.IdentityService/SetMembershipRoles"
@@ -151,6 +152,7 @@ type IdentityServiceClient interface {
 	AcceptInvitation(ctx context.Context, in *AcceptInvitationRequest, opts ...grpc.CallOption) (*AcceptInvitationResponse, error)
 	RejectInvitation(ctx context.Context, in *RejectInvitationRequest, opts ...grpc.CallOption) (*RejectInvitationResponse, error)
 	CancelInvitation(ctx context.Context, in *CancelInvitationRequest, opts ...grpc.CallOption) (*CancelInvitationResponse, error)
+	CreateAccount(ctx context.Context, in *CreateAccountRequest, opts ...grpc.CallOption) (*CreateAccountResponse, error)
 	TransferAccountOwnership(ctx context.Context, in *TransferAccountOwnershipRequest, opts ...grpc.CallOption) (*TransferAccountOwnershipResponse, error)
 	SetDefaultAccount(ctx context.Context, in *SetDefaultAccountRequest, opts ...grpc.CallOption) (*SetDefaultAccountResponse, error)
 	SetMembershipRoles(ctx context.Context, in *SetMembershipRolesRequest, opts ...grpc.CallOption) (*SetMembershipRolesResponse, error)
@@ -257,6 +259,16 @@ func (c *identityServiceClient) CancelInvitation(ctx context.Context, in *Cancel
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CancelInvitationResponse)
 	err := c.cc.Invoke(ctx, IdentityService_CancelInvitation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *identityServiceClient) CreateAccount(ctx context.Context, in *CreateAccountRequest, opts ...grpc.CallOption) (*CreateAccountResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateAccountResponse)
+	err := c.cc.Invoke(ctx, IdentityService_CreateAccount_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -499,6 +511,7 @@ type IdentityServiceServer interface {
 	AcceptInvitation(context.Context, *AcceptInvitationRequest) (*AcceptInvitationResponse, error)
 	RejectInvitation(context.Context, *RejectInvitationRequest) (*RejectInvitationResponse, error)
 	CancelInvitation(context.Context, *CancelInvitationRequest) (*CancelInvitationResponse, error)
+	CreateAccount(context.Context, *CreateAccountRequest) (*CreateAccountResponse, error)
 	TransferAccountOwnership(context.Context, *TransferAccountOwnershipRequest) (*TransferAccountOwnershipResponse, error)
 	SetDefaultAccount(context.Context, *SetDefaultAccountRequest) (*SetDefaultAccountResponse, error)
 	SetMembershipRoles(context.Context, *SetMembershipRolesRequest) (*SetMembershipRolesResponse, error)
@@ -554,6 +567,9 @@ func (UnimplementedIdentityServiceServer) RejectInvitation(context.Context, *Rej
 }
 func (UnimplementedIdentityServiceServer) CancelInvitation(context.Context, *CancelInvitationRequest) (*CancelInvitationResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CancelInvitation not implemented")
+}
+func (UnimplementedIdentityServiceServer) CreateAccount(context.Context, *CreateAccountRequest) (*CreateAccountResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateAccount not implemented")
 }
 func (UnimplementedIdentityServiceServer) TransferAccountOwnership(context.Context, *TransferAccountOwnershipRequest) (*TransferAccountOwnershipResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TransferAccountOwnership not implemented")
@@ -779,6 +795,24 @@ func _IdentityService_CancelInvitation_Handler(srv interface{}, ctx context.Cont
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(IdentityServiceServer).CancelInvitation(ctx, req.(*CancelInvitationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IdentityService_CreateAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IdentityServiceServer).CreateAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IdentityService_CreateAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IdentityServiceServer).CreateAccount(ctx, req.(*CreateAccountRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1199,6 +1233,10 @@ var IdentityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CancelInvitation",
 			Handler:    _IdentityService_CancelInvitation_Handler,
+		},
+		{
+			MethodName: "CreateAccount",
+			Handler:    _IdentityService_CreateAccount_Handler,
 		},
 		{
 			MethodName: "TransferAccountOwnership",

@@ -592,6 +592,30 @@ message CancelInvitationResponse {
   Invitation invitation = 1;
 }
 
+// CreateAccountRequest opens a second account for the caller, with them as its
+// owner.
+//
+// It reserves "owner_user_id" as well as "scope". The owner is the caller,
+// read from the principal the connection resolved, and a field naming one would
+// be a request to create an account somebody else owns — which is not this RPC
+// and would need an authorizer this one deliberately does not have.
+//
+// The new account is not made default. A second account is somewhere a user may
+// go rather than somewhere they are moved to, so a client that wants it to be
+// the landing place calls SetDefaultAccount after.
+message CreateAccountRequest {
+  reserved "scope";
+  reserved "owner_user_id";
+
+  string name = 1;
+
+  repeated string owner_roles = 2 [json_name = "ownerRoles"];
+}
+
+message CreateAccountResponse {
+  Account account = 1;
+}
+
 message TransferAccountOwnershipRequest {
   reserved "scope";
 
@@ -884,6 +908,7 @@ service IdentityService {
   rpc AcceptInvitation(AcceptInvitationRequest) returns (AcceptInvitationResponse);
   rpc RejectInvitation(RejectInvitationRequest) returns (RejectInvitationResponse);
   rpc CancelInvitation(CancelInvitationRequest) returns (CancelInvitationResponse);
+  rpc CreateAccount(CreateAccountRequest) returns (CreateAccountResponse);
   rpc TransferAccountOwnership(TransferAccountOwnershipRequest) returns (TransferAccountOwnershipResponse);
   rpc SetDefaultAccount(SetDefaultAccountRequest) returns (SetDefaultAccountResponse);
   rpc SetMembershipRoles(SetMembershipRolesRequest) returns (SetMembershipRolesResponse);

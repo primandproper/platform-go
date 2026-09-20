@@ -96,6 +96,27 @@ type Hooks interface {
 	// read back after the status write.
 	AfterCancelInvitation(ctx context.Context, tx database.Tx, scope tenancy.Scope, invitation *Invitation) error
 
+	// AfterCreateAccount is called with a second account a user opened for
+	// themselves and the owner membership that came with it.
+	//
+	// It is separate from AfterRegister rather than folded into it, because the
+	// two are different events to whoever is reading the log. A registration is
+	// a person arriving; this is a person who was already here starting
+	// something else, and an audit trail that rendered the second as the first
+	// would say a user registered twice.
+	//
+	// The membership is an argument for the same reason the account is: both
+	// were written by the call this hook closes, and a hook that had to read
+	// them back would be reading rows inside the transaction that made them in
+	// order to describe what it was already handed.
+	AfterCreateAccount(
+		ctx context.Context,
+		tx database.Tx,
+		scope tenancy.Scope,
+		account *Account,
+		membership *Membership,
+	) error
+
 	// AfterTransferAccountOwnership is called with the account under its new
 	// owner and the ID of the one it had before.
 	//
@@ -483,6 +504,13 @@ func (NoopHooks) AfterCancelInvitation(context.Context, database.Tx, tenancy.Sco
 }
 
 // AfterTransferAccountOwnership does nothing.
+// AfterCreateAccount does nothing.
+func (NoopHooks) AfterCreateAccount(
+	context.Context, database.Tx, tenancy.Scope, *Account, *Membership,
+) error {
+	return nil
+}
+
 func (NoopHooks) AfterTransferAccountOwnership(
 	context.Context, database.Tx, tenancy.Scope, *Account, string,
 ) error {
