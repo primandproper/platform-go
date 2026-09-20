@@ -504,11 +504,32 @@ the absence: a registered adapter invites a deployment to believe the subject's
 payload data was covered when the only party that can read it is the one that
 wrote it.
 
-So a consumer whose payloads carry personal data owes that to their own
-collector, over their own event types, and this package's absence from the
-registry is what keeps that obligation visible instead of appearing discharged.
-The retention of the record itself is a separate question with its own answer —
-see Reap and the retention package.
+What a consumer whose payloads carry personal data owes is therefore
+retention-shaped rather than collector-shaped, and that is a ruling rather than
+a consequence of the API being thin. There is deliberately no scope-wide
+delivery read here: Claim is the worker's lease path and takes no scope,
+Backlog answers with counts, and ListAttempts needs a delivery identifier that
+nothing enumerates. Nothing can page the deliveries in a scope, so nothing can
+be written over this Store that collects them.
+
+The reason that absence is right is what a payload is. It is a copy of
+something a domain already owns — an event about a row, dispatched after the
+transaction that wrote it — so the collector that answers a subject access
+request about that data is the domain's, reading the row itself, and it answers
+whether or not a webhook ever carried it. A delivery record is a transmission
+log. What discharges the copy is that it stops existing: Reap, on the horizon
+the RelayConfig names, with the retention package as the general answer.
+
+The case that ruling does not cover is a payload holding something that exists
+nowhere else, and that is a fact about the event rather than a gap here. An
+event whose body is the only copy of a subject's data has made a delivery queue
+into a system of record, and the fix is in what the event carries — not in a
+read over this table, which would page every subscriber's payloads in a scope
+under one grant and make this the easiest place in the module to read data
+nobody meant to store here.
+
+So this package's absence from the registry is not an obligation deferred to
+the consumer. It is the statement that there is nothing here to collect.
 */
 package webhooks
 
