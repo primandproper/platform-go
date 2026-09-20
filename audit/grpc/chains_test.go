@@ -154,6 +154,95 @@ func ourEntries() *auditpb.EntryQuery {
 	return &auditpb.EntryQuery{ResourceType: "thing"}
 }
 
+// TestListEntries_AcrossChains_Counts is the half the first version of the
+// merge got wrong: Pagination is embedded, the loop assigned it per chain, and
+// the last chain's counts were reported as the union's.
+func TestListEntries_AcrossChains_Counts(T *testing.T) {
+	T.Parallel()
+
+	T.Run("the counts are the sum of every chain", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, auditgrpc.WithChainsResolver(bothChains()))
+		seedInterleaved(t, h, 6)
+
+		res, err := h.client.ListEntries(h.asOurs(), &auditpb.ListEntriesRequest{Query: ourEntries()})
+		must.NoError(t, err)
+
+		page := res.GetPagination()
+		must.True(t, page.GetCountsKnown(), must.Sprint("the counts were withheld with every chain answering"))
+
+		// Three per chain. Reporting one chain's is the bug this asserts
+		// against, and it reads as a plausible 3.
+		test.EqOp(t, uint64(6), page.GetFilteredCount())
+	})
+
+	// An unanswered count reads as zero, and so does an empty collection.
+	// CountsKnown is the only thing that tells them apart, so a chain that
+	// cannot answer has to withhold the union rather than add nothing to it —
+	// otherwise the total is short by a whole chain and looks right.
+	T.Run("one chain that cannot answer withholds the union", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, auditgrpc.WithChainsResolver(bothChains()))
+		seedInterleaved(t, h, 6)
+
+		// Past the end of both chains, so every page comes back empty and the
+		// store has no row to read its counts off.
+		beyond := "zzzz"
+
+		res, err := h.client.ListEntries(h.asOurs(), &auditpb.ListEntriesRequest{
+			Query:  ourEntries(),
+			Filter: &filteringpb.QueryFilter{Cursor: &beyond},
+		})
+		must.NoError(t, err)
+
+		page := res.GetPagination()
+		test.False(t, page.GetCountsKnown(),
+			test.Sprint("a chain with nothing to read its counts off was summed in as zero"))
+		test.EqOp(t, uint64(0), page.GetFilteredCount())
+	})
+}
+
+// TestGetEntry_AcrossChains is the disagreement a caller meets after the list
+// learned to span: they find one of their own entries on a page and ask for it
+// by id.
+func TestGetEntry_AcrossChains(T *testing.T) {
+	T.Parallel()
+
+	T.Run("an entry in the actor's chain is readable by id", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, auditgrpc.WithChainsResolver(bothChains()))
+		seedInterleaved(t, h, 4)
+
+		// entry_001 is in the actor's chain, not the connection's.
+		res, err := h.client.GetEntry(h.asOurs(), &auditpb.GetEntryRequest{EntryId: "entry_001"})
+		must.NoError(t, err)
+		test.EqOp(t, "entry_001", res.GetEntry().GetId())
+	})
+
+	T.Run("without a resolver it is not, which is what it was", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t)
+		seedInterleaved(t, h, 4)
+
+		_, err := h.client.GetEntry(h.asOurs(), &auditpb.GetEntryRequest{EntryId: "entry_001"})
+		test.Error(t, err)
+	})
+
+	T.Run("an identifier in no chain of the caller's is not found", func(t *testing.T) {
+		t.Parallel()
+
+		h := newHarness(t, auditgrpc.WithChainsResolver(bothChains()))
+		seedInterleaved(t, h, 4)
+
+		_, err := h.client.GetEntry(h.asOurs(), &auditpb.GetEntryRequest{EntryId: "entry_999"})
+		test.Error(t, err)
+	})
+}
+
 func entryIDs(in []*auditpb.Entry) []string {
 	ids := make([]string, 0, len(in))
 	for _, e := range in {

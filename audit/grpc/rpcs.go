@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 
 	"github.com/primandproper/platform-go/v14/audit"
 	"github.com/primandproper/platform-go/v14/audit/auditpb"
@@ -40,9 +41,24 @@ func (s *Server) GetEntry(
 
 	req.op.Set(entryIDKey, request.GetEntryId())
 
-	entry, err := s.reader.Get(ctx, s.client.Reader(), &req.scope, request.GetEntryId())
+	scopes, err := s.chainsFor(ctx, req.scope)
 	if err != nil {
-		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), codes.Internal, "reading audit entry %q", request.GetEntryId())
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(),
+			codes.Internal, "resolving the chains to read")
+	}
+
+	// Across the same chains ListEntries spans, so a caller who finds one of
+	// their own entries on a page can ask for it by id. See chains.go.
+	entry, err := s.getAcrossChains(ctx, s.client.Reader(), scopes, request.GetEntryId())
+	if err != nil {
+		// Not found is the caller's answer rather than a failure, and it is the
+		// one this can raise itself: every other error is the reader's.
+		code := codes.Internal
+		if errors.Is(err, audit.ErrEntryNotFound) {
+			code = codes.NotFound
+		}
+
+		return nil, grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(), code, "reading audit entry %q", request.GetEntryId())
 	}
 
 	// A nil entry with a nil error is a reader that answered neither way. The

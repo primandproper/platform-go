@@ -2,11 +2,13 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"slices"
 
 	"github.com/primandproper/platform-go/v14/audit"
 
 	"github.com/primandproper/primitives-go/v2/database"
+	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/filtering"
 	"github.com/primandproper/primitives-go/v2/pointer"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -45,6 +47,21 @@ import (
 // request field has handed the caller a cross-tenant read. Answer from the
 // principal, the connection, or a membership the server already trusts — never
 // from the request.
+//
+// # What it cannot express, and why that is deliberate
+//
+// "Every chain in this deployment" is not a slice. An audit.Query with a nil
+// Scope reads across all of them, and a resolver answers with scopes rather
+// than with the absence of one, so there is no value here that means "do not
+// narrow". That is the shape rather than an oversight: this seam exists to say
+// which chains a caller's own entries are in, and an unnarrowed read is a
+// different question with a different answer — whether this person may audit
+// the whole deployment, which is a policy decision no resolver signature should
+// be able to make by accident.
+//
+// A deployment with an operator role builds that read over audit.Reader in
+// their own process, where the scope is an argument and leaving it nil is a
+// sentence somebody wrote on purpose.
 type ChainsResolver func(ctx context.Context) ([]tenancy.Scope, error)
 
 // chainsFor answers the scopes a read should span, which is the resolver's
@@ -64,6 +81,48 @@ func (s *Server) chainsFor(ctx context.Context, scope tenancy.Scope) ([]tenancy.
 	}
 
 	return resolved, nil
+}
+
+// getAcrossChains reads one entry from whichever of the caller's chains holds
+// it.
+//
+// A get that read one chain while the list spanned several would make the two
+// disagree about which chains somebody belongs to, and the disagreement lands
+// on the caller who did everything right: they find one of their own entries on
+// a page and are told it does not exist when they ask for it by id.
+//
+// It stops at the first chain that answers. An identifier is unique across the
+// table rather than within a chain, so there is no second holder to find, and
+// the chains after a hit are reads with no answer in them.
+//
+// Not found in any is audit.ErrEntryNotFound, which is what a single-chain read
+// gives and says no more: a caller learns that this identifier is not theirs,
+// not which of their chains was consulted. A reader that answers neither way —
+// no entry and no error, which the SQL one cannot do but a consumer's
+// implementation might — is read as this chain not holding it, so one such
+// reader cannot stop the search before the chain that does.
+func (s *Server) getAcrossChains(
+	ctx context.Context,
+	q database.SQLQueryExecutor,
+	scopes []tenancy.Scope,
+	entryID string,
+) (*audit.Entry, error) {
+	for i := range scopes {
+		entry, err := s.reader.Get(ctx, q, &scopes[i], entryID)
+		if err != nil {
+			if errors.Is(err, audit.ErrEntryNotFound) {
+				continue
+			}
+
+			return nil, err
+		}
+
+		if entry != nil {
+			return entry, nil
+		}
+	}
+
+	return nil, platformerrors.Wrapf(audit.ErrEntryNotFound, "audit entry %q", entryID)
 }
 
 // listAcrossChains pages every chain with one cursor and merges what they
@@ -114,6 +173,12 @@ func (s *Server) listAcrossChains(
 
 	merged := &filtering.QueryFilteredResult[audit.Entry]{}
 
+	var (
+		filtered, total uint64
+		countsKnown     = true
+		first           = true
+	)
+
 	for _, scope := range scopes {
 		// A copy per chain: Scope is the only field that differs, and the
 		// reader is entitled to the same query otherwise.
@@ -126,7 +191,24 @@ func (s *Server) listAcrossChains(
 		}
 
 		merged.Data = append(merged.Data, page.Data...)
-		merged.Pagination = page.Pagination
+
+		// The filter, the page size and the cursor that reached here are the
+		// same in every chain, so the first chain's are the union's. The counts
+		// are not, and are accumulated below.
+		if first {
+			merged.Pagination = page.Pagination
+			first = false
+		}
+
+		chainFiltered, chainTotal, known := page.Counts()
+		if !known {
+			countsKnown = false
+
+			continue
+		}
+
+		filtered += chainFiltered
+		total += chainTotal
 	}
 
 	descending := filter != nil && filter.SortBy != nil && *filter.SortBy == *filtering.SortDescending
@@ -154,6 +236,23 @@ func (s *Server) listAcrossChains(
 	merged.Cursor = ""
 	if len(merged.Data) > 0 {
 		merged.Cursor = merged.Data[len(merged.Data)-1].ID
+	}
+
+	// The counts describe the collection a page was cut from rather than the
+	// page, and an entry lives in exactly one chain, so disjoint chains add to
+	// exactly what one read over all of them would have reported.
+	//
+	// They are withheld unless every chain answered. An unanswered pair reads
+	// as 0 and 0 — a store whose counts ride along on the rows has none to read
+	// off a page that came back empty — so summing an unknown in as zero
+	// reports a total short by a whole chain, and looks right in every test
+	// that does not page to the end of one. CountsKnown is the only thing that
+	// tells those apart, which is why it gates rather than decorates.
+	merged.CountsKnown = countsKnown
+	merged.FilteredCount, merged.TotalCount = 0, 0
+
+	if countsKnown {
+		merged.FilteredCount, merged.TotalCount = filtered, total
 	}
 
 	return merged, nil
