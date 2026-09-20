@@ -774,7 +774,7 @@ func (s *Service) TransferAccountOwnership(
 //
 // Register makes a user and their first account together, and until this method
 // it was the only door an account came through. The read side has always
-// modelled more than one — ListAccountsForUser pages them, SetDefaultAccount
+// modeled more than one — ListAccountsForUser pages them, SetDefaultAccount
 // picks which one somebody lands in, TransferAccountOwnership moves one on — so
 // a user could belong to any number and could only ever create the one they
 // registered with. Every other account had to arrive by invitation, which makes
