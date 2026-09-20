@@ -344,19 +344,20 @@ type SQLReader struct {
 	verificationCeiling  int64
 }
 
-// NewReader builds a Reader over the audit tables. The dialect comes from the
-// client, so the two cannot disagree.
+// NewReader builds a Reader over the audit tables, for the dialect its
+// statements will be rendered in.
 //
-// The client is taken for its dialect and for nothing else, and the reader
-// keeps no reference to it: every read is handed an executor, so there is no
-// Reader() call left in this file and no read that runs outside the caller's
-// own transaction when they are in one.
-func NewReader(client database.Client, opts ...ReaderOption) (*SQLReader, error) {
-	if client == nil {
-		return nil, ErrNilDatabaseClient
-	}
-
-	d := client.Dialect()
+// It takes the dialect rather than a database.Client because the dialect is the
+// only thing it ever read off one: every read is handed an executor, so there
+// is no Reader() call left in this file and no read that runs outside the
+// caller's own transaction when they are in one. Taking the whole handle to
+// reach one method made this constructor's dependency look wider than it is,
+// and made it disagree with NewRecorder, which takes the same argument for the
+// same reason and has always spelled it this way.
+//
+// A caller holding a database.Client passes client.Dialect(), which is what
+// audit/config does.
+func NewReader(d dialect.Dialect, opts ...ReaderOption) (*SQLReader, error) {
 	if !d.Valid() {
 		return nil, platformerrors.Wrapf(dialect.ErrUnsupported, "audit dialect %q", d)
 	}

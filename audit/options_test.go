@@ -168,7 +168,7 @@ func TestRecorderOptions(T *testing.T) {
 	T.Run("build a reader at the documented defaults", func(t *testing.T) {
 		t.Parallel()
 
-		r, err := NewReader(newTestClient(t))
+		r, err := NewReader(newTestClient(t).Dialect())
 		must.NoError(t, err)
 
 		test.EqOp(t, int64(DefaultVerificationPageSize), r.verificationPageSize)
@@ -222,7 +222,7 @@ func TestReaderOptions(T *testing.T) {
 		t.Parallel()
 
 		for failAt := 1; failAt <= 2; failAt++ {
-			_, err := NewReader(newTestClient(t),
+			_, err := NewReader(newTestClient(t).Dialect(),
 				WithReaderMetricsProvider(failingMetricsProvider(failAt)))
 			test.ErrorIs(t, err, errInstrument, test.Sprintf("instrument %d", failAt))
 		}
@@ -231,7 +231,7 @@ func TestReaderOptions(T *testing.T) {
 	T.Run("ignores nil options", func(t *testing.T) {
 		t.Parallel()
 
-		r, err := NewReader(newTestClient(t), nil)
+		r, err := NewReader(newTestClient(t).Dialect(), nil)
 		must.NoError(t, err)
 		test.NotNil(t, r)
 	})

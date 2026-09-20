@@ -183,7 +183,7 @@ func TestReader_PropagatesFailures(T *testing.T) {
 
 		client := newFailingClient(t)
 
-		r, err := NewReader(client)
+		r, err := NewReader(client.Dialect())
 		must.NoError(t, err)
 
 		return r, client.Reader()
@@ -255,7 +255,7 @@ func TestReader_PropagatesFailures(T *testing.T) {
 		// does not.
 		remaining := 1
 
-		reader, err := NewReader(client)
+		reader, err := NewReader(client.Dialect())
 		must.NoError(t, err)
 
 		_, err = reader.Verify(t.Context(),

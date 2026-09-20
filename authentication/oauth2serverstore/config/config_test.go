@@ -463,7 +463,7 @@ func TestNewServer(T *testing.T) {
 		cfg := &Config{Provider: ProviderMemory, Issuer: "https://auth.example", Scopes: []string{"read"}}
 
 		srv, err := NewServer(t.Context(), cfg, nil, testAuthenticator,
-			WithServerOptions(oauth2servercfg.WithServerOptions(oauth2server.WithServiceDocumentation("https://docs.example"))))
+			WithServerConfigOptions(oauth2servercfg.WithServerOptions(oauth2server.WithServiceDocumentation("https://docs.example"))))
 		must.NoError(t, err)
 
 		test.EqOp(t, "https://docs.example", srv.Metadata().ServiceDocumentation)

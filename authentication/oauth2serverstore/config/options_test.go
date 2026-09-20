@@ -118,8 +118,8 @@ func TestOptions(T *testing.T) {
 			// The primitive half's options arrive nested rather than mirrored
 			// under names of their own, which is what keeps the two Option sets
 			// from having to grow in step.
-			WithServerOptions(oauth2servercfg.WithServerOptions(oauth2server.WithScopes("read"))),
-			WithServerOptions(oauth2servercfg.WithMemoryStoreOptions(oauth2memory.WithLogger(loggingnoop.NewLogger()))),
+			WithServerConfigOptions(oauth2servercfg.WithServerOptions(oauth2server.WithScopes("read"))),
+			WithServerConfigOptions(oauth2servercfg.WithMemoryStoreOptions(oauth2memory.WithLogger(loggingnoop.NewLogger()))),
 			WithDatabaseStoreOptions(oauth2serverstore.WithClock(&frozenClock{at: time.Now().UTC()})),
 		})
 
@@ -135,7 +135,7 @@ func TestOptions(T *testing.T) {
 
 		o := newOptions([]Option{
 			WithLogger(loggingnoop.NewLogger()),
-			WithServerOptions(oauth2servercfg.WithServerOptions()),
+			WithServerConfigOptions(oauth2servercfg.WithServerOptions()),
 		})
 
 		test.SliceLen(t, 4, o.serverOptions())
@@ -153,7 +153,7 @@ func TestOptions_ReachTheStore(T *testing.T) {
 		frozen := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
 
 		store, err := NewStore(t.Context(), &Config{Provider: ProviderMemory}, nil,
-			WithServerOptions(oauth2servercfg.WithMemoryStoreOptions(oauth2memory.WithClock(&frozenClock{at: frozen}))))
+			WithServerConfigOptions(oauth2servercfg.WithMemoryStoreOptions(oauth2memory.WithClock(&frozenClock{at: frozen}))))
 		must.NoError(t, err)
 
 		// A code written a minute before the frozen instant is expired against

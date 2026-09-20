@@ -37,7 +37,7 @@ func Example() {
 		panic(err)
 	}
 
-	reader, err := audit.NewReader(client)
+	reader, err := audit.NewReader(client.Dialect())
 	if err != nil {
 		panic(err)
 	}

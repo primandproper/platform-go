@@ -138,7 +138,7 @@ func newTestRecorder(t *testing.T, c *stubClock, opts ...RecorderOption) Recorde
 func newTestReader(t *testing.T, client database.Client, opts ...ReaderOption) Reader {
 	t.Helper()
 
-	r, err := NewReader(client, opts...)
+	r, err := NewReader(client.Dialect(), opts...)
 	must.NoError(t, err)
 
 	return r

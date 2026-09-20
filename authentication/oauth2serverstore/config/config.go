@@ -154,7 +154,7 @@ func NewStore(ctx context.Context, cfg *Config, db database.Client, opts ...Opti
 // thing no configuration can supply: it is how this deployment identifies a
 // human, and a default would be a server that issues authorization codes to
 // whoever asks. The login form does have a default, so it is an option —
-// oauth2server.WithLoginRenderer, through WithServerOptions.
+// oauth2server.WithLoginRenderer, through WithServerConfigOptions.
 func NewServer(
 	ctx context.Context,
 	cfg *Config,

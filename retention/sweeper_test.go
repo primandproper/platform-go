@@ -517,7 +517,7 @@ func TestSweeper_audit(T *testing.T) {
 	readEntries := func(t *testing.T, client database.Client) []*audit.Entry {
 		t.Helper()
 
-		reader, err := audit.NewReader(client)
+		reader, err := audit.NewReader(client.Dialect())
 		must.NoError(t, err)
 
 		result, err := reader.List(t.Context(), client.Reader(),
@@ -787,7 +787,7 @@ func TestSweeper_Report(T *testing.T) {
 		// And nothing was recorded about considering them: a preview is not an
 		// event, and the log the real entries have to be findable in is where
 		// that distinction is paid for.
-		reader, err := audit.NewReader(client)
+		reader, err := audit.NewReader(client.Dialect())
 		must.NoError(t, err)
 
 		entries, err := reader.List(t.Context(), client.Reader(),

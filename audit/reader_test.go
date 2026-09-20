@@ -16,47 +16,32 @@ import (
 	"github.com/shoenig/test/must"
 )
 
-// bogusDialectClient reports a dialect this package cannot emit SQL for.
-//
-// The unsupported-dialect branch is otherwise unreachable: the dialect comes
-// from the client rather than the caller, and every client primitives-go ships
-// reports one of the three supported dialects. Only Dialect is consulted before
-// the constructor gives up, so the embedded Client is never called.
-type bogusDialectClient struct {
-	database.Client
-}
-
-func (bogusDialectClient) Dialect() dialect.Dialect { return "oracle" }
-
 func TestNewReader(T *testing.T) {
 	T.Parallel()
 
 	T.Run("standard", func(t *testing.T) {
 		t.Parallel()
 
-		r, err := NewReader(newTestClient(t))
+		r, err := NewReader(newTestClient(t).Dialect())
 		must.NoError(t, err)
 		test.NotNil(t, r)
 	})
 
-	T.Run("rejects a nil client", func(t *testing.T) {
-		t.Parallel()
-
-		_, err := NewReader(nil)
-		test.ErrorIs(t, err, ErrNilDatabaseClient)
-	})
+	// There is no nil-client case here any more. The refusal moved to
+	// audit/config.NewReader, which is the constructor that still takes a
+	// handle, and its own test asserts the same sentinel.
 
 	T.Run("rejects an unsupported dialect", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewReader(bogusDialectClient{newTestClient(t)})
+		_, err := NewReader(dialect.Dialect("oracle"))
 		test.ErrorIs(t, err, dialect.ErrUnsupported)
 	})
 
 	T.Run("rejects an unsafe table prefix", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewReader(newTestClient(t), WithReaderTablePrefix("a-b"))
+		_, err := NewReader(newTestClient(t).Dialect(), WithReaderTablePrefix("a-b"))
 		test.ErrorIs(t, err, ErrInvalidTablePrefix)
 	})
 }

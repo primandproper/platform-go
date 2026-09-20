@@ -167,7 +167,7 @@ func newHarness(t *testing.T, opts ...auditgrpc.Option) *harness {
 	recorder, err := audit.NewRecorder(dialect.SQLite)
 	must.NoError(t, err)
 
-	reader, err := audit.NewReader(db)
+	reader, err := audit.NewReader(db.Dialect())
 	must.NoError(t, err)
 
 	// The harness's resolver goes first so a caller's opts can replace it.
