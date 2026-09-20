@@ -451,6 +451,27 @@ func (x *IssueReportCreationInput) GetSubjectId() string {
 // is TransitionReport, which names the status it believed the row was in. A
 // whole-row write that also assigned the status would be a revision that
 // silently reopened a report somebody had just resolved.
+// IssueReportUpdateInput is the whole of what a revision may change, and a
+// revision replaces rather than merges.
+//
+// Every field here is written, whether the client set it or not. These are
+// plain proto3 strings with no presence, so an omitted one arrives as "" and is
+// indistinguishable on the wire from a client clearing it deliberately — a
+// request naming only details therefore blanks kind, subject_type and
+// subject_id. Read the report, change what you mean to change, and send all
+// four back; UpdateReportResponse answers with the stored row so a console can
+// render what it actually wrote.
+//
+// That is deliberate and matches issuereports.Store.UpdateReport, which
+// documents itself as a whole-row write. The cost to know about is a field
+// added here later: an older client that does not send it blanks it on every
+// revision, which is the standing hazard of replace semantics and the reason a
+// new field on this message is a bigger decision than a new field elsewhere.
+//
+// The status and the resolution are not here and cannot be. The lifecycle has
+// one door and it is TransitionReport, which names the status it believed the
+// row was in — a whole-row write that also assigned the status would be a
+// revision that silently reopened a report somebody had just resolved.
 type IssueReportUpdateInput struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
