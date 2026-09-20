@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/primandproper/platform-go/v14/callers"
 	"github.com/primandproper/platform-go/v14/waitlists"
 	"github.com/primandproper/platform-go/v14/waitlists/waitlistspb"
 
@@ -82,10 +83,34 @@ func (s *Server) Join(
 	listID := request.GetListId()
 	req.op.Set(listKey, listID)
 
+	// Where the address comes from is the deployment's, not the request's. A
+	// server with no resolver takes what the wire stated, which is what a public
+	// signup form needs; one mounted behind a grant supplies a resolver and the
+	// stated address stops mattering. See contact.go.
+	contact, err := s.resolveContact(ctx, req.principal, request.GetContact())
+	if err != nil {
+		// The same two answers AuthorizeWithdrawal gives, for the same reason:
+		// a refusal is a sentence about the caller and a resolver that could not
+		// decide is an outage, and reporting the second as the first tells a
+		// consumer to widen a rule while their session store is down.
+		code := codes.Internal
+		if errors.Is(err, callers.ErrTargetNotPermitted) {
+			code = codes.PermissionDenied
+		}
+
+		err = grpcerrors.PrepareAndLogGRPCStatus(err, req.op.Logger(), req.op.Span(),
+			code, "resolving the contact joining waitlist %q", listID)
+
+		return nil, err
+	}
+
 	// A nil request cannot reach a generated handler, so the nil signup below is
 	// unreachable from the wire; the converter still refuses it, because the
 	// alternative is a nil dereference if it ever becomes reachable.
 	signup := signupFromJoin(request, req.principal)
+	if signup != nil {
+		signup.Contact = contact
+	}
 	if signup == nil {
 		err = grpcerrors.PrepareAndLogGRPCStatus(waitlists.ErrNilSignup,
 			req.op.Logger(), req.op.Span(), codes.InvalidArgument, "joining waitlist %q", listID)

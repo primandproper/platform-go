@@ -125,6 +125,7 @@ type Server struct {
 	principals callers.PrincipalExtractor
 	signups    SignupAuthorizer
 	scopes     ScopeResolver
+	contacts   ContactResolver
 	grants     authorization.GrantsExtractor
 	o11y       observability.Observer
 

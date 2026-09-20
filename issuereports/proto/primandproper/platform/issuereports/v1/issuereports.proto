@@ -258,6 +258,17 @@ message IssueReportCreationInput {
 // revision, which is the standing hazard of replace semantics and the reason a
 // new field on this message is a bigger decision than a new field elsewhere.
 //
+// A second hazard rides with read-modify-write and is a different one, because
+// somebody guarded against the first may believe they are guarded against this.
+// There is no version on a revision, so two operators who read the same report
+// and each change one field lose whichever writes first — the second sends the
+// values it read, which are stale for the field the first changed. That is a
+// lost update rather than a blanked field, and merge semantics would not fix
+// it: a merge of stale values is still stale. TransitionReport takes an
+// expected status for exactly this reason and UpdateReport takes nothing; a
+// deployment where concurrent revision is real wants a guard of that shape,
+// which is additive whenever somebody needs it.
+//
 // The status and the resolution are not here and cannot be. The lifecycle has
 // one door and it is TransitionReport, which names the status it believed the
 // row was in — a whole-row write that also assigned the status would be a
