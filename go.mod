@@ -9,7 +9,7 @@ require (
 	github.com/go-webauthn/webauthn v0.17.4
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pquerna/otp v1.5.0
-	github.com/primandproper/primitives-go/v2 v2.2.0
+	github.com/primandproper/primitives-go/v2 v2.3.0
 	github.com/samber/do/v2 v2.0.0
 	github.com/shoenig/test v1.12.2
 	github.com/swaggest/openapi-go v0.2.61
