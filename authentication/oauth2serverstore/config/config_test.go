@@ -208,6 +208,32 @@ func TestNewStore(T *testing.T) {
 		test.Nil(t, store)
 	})
 
+	// The pin that keeps the primitive half's provider refusal away from a SQL
+	// deployment. The embed carries no env tag, so one OAUTH2_SERVER_PROVIDER
+	// populates this Provider and the embedded one alike — and the embedded
+	// half builds the memory store only, so it refuses "database" in its own
+	// constructor. That refusal must never be reached from here: validation
+	// permits the name, and dispatch takes the database branch before the
+	// constructor that would refuse it is called. Moving the primitive's
+	// refusal into its ValidateWithContext breaks this, because this Config's
+	// own validator runs that one first.
+	T.Run("the embedded provider does not refuse the database branch", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := &Config{Provider: ProviderDatabase}
+		cfg.Config.Provider = ProviderDatabase
+		cfg.EnsureDefaults()
+
+		must.NoError(t, cfg.ValidateWithContext(t.Context()))
+
+		// Reaches the database branch and fails there, on the absent client,
+		// rather than on the primitive half's provider refusal.
+		store, err := NewStore(t.Context(), cfg, nil)
+		test.Error(t, err)
+		test.False(t, errors.Is(err, errors.ErrUnknownProvider))
+		test.Nil(t, store)
+	})
+
 	T.Run("the database provider needs a client", func(t *testing.T) {
 		t.Parallel()
 
