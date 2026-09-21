@@ -158,10 +158,11 @@ ride along on its rows, handed an empty final page, has no row to read them off 
 walking a keyset to its end sees a `0` that is *not* a result. `counts_known` is the field
 that tells an honest zero from an absent one, and it defaults to false.
 
-## Open questions
+## Decisions still landing
 
-These are unresolved. Both clients must answer them the same way, so they are decisions rather
-than implementation details.
+Three of these were open when this document was written. Two are now decided and waiting on
+an implementation; each says what a client should do in the meantime, so neither blocks
+writing one. The last is parked deliberately.
 
 **Q1 — An ambiguous `ExchangeRefreshToken` failure. Decided; pending #869.** A timeout or
 dropped connection leaves a client unable to know whether its token was spent. R4 forbids
