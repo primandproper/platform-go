@@ -163,7 +163,7 @@ that tells an honest zero from an absent one, and it defaults to false.
 These are unresolved. Both clients must answer them the same way, so they are decisions rather
 than implementation details.
 
-**Q1 — What does a client do when `ExchangeRefreshToken` fails ambiguously?** A timeout or
+**Q1 — What does a client do when `ExchangeRefreshToken` fails ambiguously?** (tracked in #869) A timeout or
 dropped connection leaves the client unable to know whether the token was spent. R4 forbids
 re-sending it; but there is no successor to retry with, because none arrived. The options are
 to sign out immediately (losing sessions to a flaky network) or to re-send and risk revoking a
