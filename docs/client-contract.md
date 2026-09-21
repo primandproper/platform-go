@@ -181,12 +181,32 @@ revokes the real client's token — making theft visible — instead of silently
 Until #869 lands there is no safe retry, and a client must treat an ambiguous exchange
 failure as a lost session.
 
-**Q2 — Is the second-factor signal a contract?** `ErrSecondFactorRequired` and
-`ErrInvalidCredentials` deliberately share one code and differ only in message — *"one says
-try again, the other says ask for a code. Splitting them into two codes would hand a client a
-branch that is also an oracle."* A client that must show a TOTP prompt therefore has to branch
-on message text, which is not a stable interface. Either the message becomes part of the
-contract, or something non-oracular needs to carry it.
+**Q2 — The second-factor signal. Decided: keep the shared code, fix the encoding.**
+`ErrSecondFactorRequired` and `ErrInvalidCredentials` continue to share
+`codes.Unauthenticated`, because any machine-readable distinction between them *is* the
+oracle: it confirms that a supplied password was correct. The attacker who learns that cannot
+reach the account — the second factor holds — but they leave with a verified credential pair,
+and people reuse passwords, so the harm lands mostly on the user's other accounts rather than
+on this service.
+
+That disclosure is accepted, bounded by rate limiting on the sign-in path. What is not
+accepted is carrying the distinction in an English message a client has to match on. The
+signal moves to structured status details, so a client can branch on a code without the
+response becoming an oracle to anyone who did not already have one.
+
+**R10 — a client shows a second-factor prompt on the structured detail, never on message
+text.** Until that detail exists, a client that must distinguish the two has no stable
+interface and should prompt for a code on any `UNAUTHENTICATED` from sign-in rather than
+parse prose.
+
+Worth recording against a future revisit: this module closes its other existence oracles
+deliberately. `RequestMagicLinkResponse` is an empty message, and its documentation requires
+the same silence of consumers — *"answering a known address with a 200 and an unknown one
+with a 404 puts the oracle back in their transport."* So sign-in's password oracle is not one
+open door among many; it is close to the last one. If the data here ever becomes worth more
+to an attacker, the alternative is to issue a second-factor challenge on **every** sign-in
+attempt, valid password or not, with identical timing — machine-readable and non-oracular, at
+the cost of prompting for a code before telling somebody they mistyped.
 
 **Q3 — Idempotency keys. Resolved: the convention exists.** I looked in the wrong place — it
 is not a proto field, it is gRPC metadata, which is the right home for it. `primitives-go`'s
