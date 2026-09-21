@@ -15,6 +15,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
 	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/pointer"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
@@ -53,6 +54,13 @@ func Example_registration() {
 		EmailAddressVerificationToken: verificationToken,
 		AccountStatus:                 identity.StatusUnverified,
 		ServiceRoles:                  []string{"service_user"},
+
+		// The link's deadline travels with the link, and is required: a
+		// verification token with no expiry is a bearer credential for this
+		// account that never stops working, so the row is refused rather than
+		// stored. How long the window is belongs to whoever mails the link —
+		// authentication/signin has a default for the flow it owns.
+		EmailAddressVerificationTokenExpiresAt: pointer.To(now.Add(72 * time.Hour)),
 
 		// Acceptance is set on the value rather than through RecordAgreement,
 		// so it commits with the row it belongs to.

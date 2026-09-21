@@ -1,8 +1,11 @@
 package identity
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
+	"github.com/primandproper/primitives-go/v2/database/ddl"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/identifiers"
 	"github.com/primandproper/primitives-go/v2/tenancy"
@@ -22,7 +25,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(user, "verify-me")
 		seedUser(t, env, store, user)
 
 		found, err := store.GetUserByEmailVerificationToken(t.Context(), env.reader(), testScope, "verify-me")
@@ -42,6 +45,108 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 
 		_, err = store.GetUserByEmailVerificationToken(t.Context(), env.reader(), testScope, "verify-me")
 		must.ErrorIs(t, err, ErrUserNotFound)
+	})
+
+	t.Run("refuses a verification link whose deadline has passed", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		user := newUser("ada")
+		mintVerificationLink(user, "verify-me")
+		seedUser(t, env, store, user)
+
+		// Still live, so the digest resolves.
+		found, err := store.GetUserByEmailVerificationToken(t.Context(), env.reader(), testScope, "verify-me")
+		must.NoError(t, err)
+		test.EqOp(t, user.ID, found.ID)
+
+		// Re-issued with a deadline already behind the store's clock. The row
+		// is untouched otherwise: the digest is the same digest, so what stops
+		// resolving is the deadline and nothing else.
+		must.NoError(t, env.setUserEmailAddressVerificationTokenUntil(
+			t, store, testScope, user.ID, "verify-me", store.now().Add(-time.Second)))
+
+		stored, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
+		must.NoError(t, err)
+		test.EqOp(t, tokenDigest("verify-me"), stored.EmailAddressVerificationTokenDigest,
+			test.Sprint("the digest came off, so this proves nothing about the deadline"))
+
+		_, err = store.GetUserByEmailVerificationToken(t.Context(), env.reader(), testScope, "verify-me")
+		must.ErrorIs(t, err, ErrEmailVerificationLinkExpired)
+	})
+
+	t.Run("refuses a digest that lost its deadline", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		user := newUser("ada")
+		mintVerificationLink(user, "verify-me")
+		seedUser(t, env, store, user)
+
+		// Written behind the store's back, because no write it exposes produces
+		// this pair — the digest and the deadline are assigned together by every
+		// statement that touches either. That is the reason to pin the reading
+		// rather than a reason to skip it: an unreachable state reached anyway,
+		// by a migration, a restore or a hand-edited row, must not be the state
+		// in which a link works forever.
+		//
+		// The id is a generated identifier rather than anything a caller chose,
+		// so it is inlined instead of bound and the statement stays one string
+		// on all three dialects. The prefix goes through ddl.Qualify for the
+		// reason that function is exported: a name built in Go has to agree with
+		// the DDL exactly, separator included.
+		_, err := env.client.Writer().ExecContext(t.Context(), fmt.Sprintf(
+			"UPDATE %sidentity_users SET email_address_verification_token_expires_at = NULL WHERE id = '%s'",
+			ddl.Qualify(store.tablePrefix), user.ID))
+		must.NoError(t, err)
+
+		stored, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
+		must.NoError(t, err)
+		must.StrNotEqFold(t, "", stored.EmailAddressVerificationTokenDigest)
+		must.Nil(t, stored.EmailAddressVerificationTokenExpiresAt)
+
+		_, err = store.GetUserByEmailVerificationToken(t.Context(), env.reader(), testScope, "verify-me")
+		must.ErrorIs(t, err, ErrEmailVerificationLinkExpired)
+	})
+
+	t.Run("refuses to mint a verification link with no deadline", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+		user := seedUser(t, env, store, newUser("ada"))
+
+		// A link with no deadline is a bearer credential for this account that
+		// never stops working, and the next write to touch either column clears
+		// both — so there is no later moment at which one could be supplied.
+		err := env.setUserEmailAddressVerificationTokenUntil(
+			t, store, testScope, user.ID, "verify-me", time.Time{})
+		must.ErrorIs(t, err, platformerrors.ErrEmptyInputParameter)
+
+		stored, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "", stored.EmailAddressVerificationTokenDigest)
+	})
+
+	t.Run("burning a link clears its deadline with it", func(t *testing.T) {
+		t.Parallel()
+
+		store := env.newStore(t)
+
+		user := newUser("ada")
+		mintVerificationLink(user, "verify-me")
+		seedUser(t, env, store, user)
+
+		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
+
+		// A deadline left behind over a cleared digest is a row saying a link is
+		// outstanding when none is — which is the half of the pair a reader
+		// consulting the other column would believe.
+		verified, err := store.GetUser(t.Context(), env.reader(), testScope, user.ID)
+		must.NoError(t, err)
+		test.EqOp(t, "", verified.EmailAddressVerificationTokenDigest)
+		test.Nil(t, verified.EmailAddressVerificationTokenExpiresAt)
 	})
 
 	t.Run("refuses an empty verification token", func(t *testing.T) {
@@ -119,7 +224,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(user, "verify-me")
 		seedUser(t, env, store, user)
 
 		must.NoError(t, env.updateUserTwoFactorSecret(t, store, testScope, user.ID, "SECRET"))
@@ -222,7 +327,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(user, "verify-me")
 		seedUser(t, env, store, user)
 
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
@@ -251,7 +356,7 @@ func runCredentialStoreSuite(t *testing.T, env *storeEnv) {
 		store := env.newStore(t)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(user, "verify-me")
 		seedUser(t, env, store, user)
 
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))

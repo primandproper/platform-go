@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"time"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	"github.com/primandproper/primitives-go/v2/filtering"
@@ -240,6 +241,12 @@ type CredentialStore interface {
 	// by the digest of the token it was given rather than by the token. A token
 	// that has already been used matches nobody, because verifying clears the
 	// column.
+	//
+	// A link whose deadline has passed is ErrEmailVerificationLinkExpired rather
+	// than the user it names. The comparison is made here rather than in the
+	// statement, against the store's own clock — see the implementation — and it
+	// is a refusal rather than a flag on the answer, so that no caller has to
+	// remember to check.
 	GetUserByEmailVerificationToken(ctx context.Context, q database.SQLQueryExecutor, scope tenancy.Scope, token string) (*User, error)
 
 	// UpdateUserPassword replaces the stored hash, stamps PasswordLastChangedAt,
@@ -294,13 +301,26 @@ type CredentialStore interface {
 	) (*User, error)
 
 	// SetUserEmailAddressVerificationToken stores the digest of the token a
-	// verification link will carry, replacing any outstanding one — so
-	// re-sending a verification email invalidates the previous link rather than
-	// leaving two live — and dropping any proof the address already had, so the
-	// row never says both "proven" and "a link is outstanding".
+	// verification link will carry and the deadline it stops being answerable
+	// at, replacing any outstanding one — so re-sending a verification email
+	// invalidates the previous link rather than leaving two live — and dropping
+	// any proof the address already had, so the row never says both "proven" and
+	// "a link is outstanding".
 	//
 	// The token itself is never stored. A caller mails the value it passed in,
 	// and no read of this Store can hand it back.
+	//
+	// expiresAt is required and a zero one is refused. The reason is
+	// Invitation.ExpiresAt's: a verification link is a bearer credential, and
+	// this one's authority is the larger of the two — it proves an address, it
+	// promotes a registrant out of StatusUnverified, and through
+	// authentication/signin's AttachPassword it sets the first password on an
+	// account that holds none. One that never expires is one that still works in
+	// a mailbox somebody lost control of two years ago.
+	//
+	// It is a deadline rather than a lifetime because the caller minted the
+	// token and holds the clock that did it. A store computing its own would put
+	// two clocks on one link.
 	//
 	// A flow that changes an address and then verifies it mints the link in that
 	// order. UpdateUser burns the outstanding token along with the stamp,
@@ -312,10 +332,11 @@ type CredentialStore interface {
 		tx database.Tx,
 		scope tenancy.Scope,
 		userID, token string,
+		expiresAt time.Time,
 	) error
 
 	// MarkUserEmailAddressVerified stamps the address as proven and clears the
-	// stored digest, so the link cannot be replayed.
+	// stored digest and its deadline, so the link cannot be replayed.
 	//
 	// The token is a parameter and its digest is compared in the statement's
 	// predicate: the caller has already read the user by token, and re-checking

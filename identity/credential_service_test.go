@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/primandproper/primitives-go/v2/database"
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
@@ -273,7 +274,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		service, store := env.newService(t, hooks)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "first-link"
+		mintVerificationLink(user, "first-link")
 		seedUser(t, env, store, user)
 
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "first-link"))
@@ -282,7 +283,8 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 		must.NotNil(t, proven.EmailAddressVerifiedAt)
 
-		updated, err := service.SetUserEmailAddressVerificationToken(t.Context(), testScope, user.ID, "second-link")
+		updated, err := service.SetUserEmailAddressVerificationToken(
+			t.Context(), testScope, user.ID, "second-link", store.now().Add(time.Hour))
 		must.NoError(t, err)
 
 		// The row may not say both "proven" and "a link is outstanding", and
@@ -310,7 +312,8 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 
 		user := seedUser(t, env, store, newUser("ada"))
 
-		_, err := service.SetUserEmailAddressVerificationToken(t.Context(), testScope, user.ID, "first-link")
+		_, err := service.SetUserEmailAddressVerificationToken(
+			t.Context(), testScope, user.ID, "first-link", store.now().Add(time.Hour))
 		must.NoError(t, err)
 
 		test.EqOp(t, 1, hooks.ran("email_token"))
@@ -327,7 +330,8 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 
 		// The empty string is how "no outstanding link" is stored, so writing
 		// it would be a clear dressed as an issue.
-		_, err := service.SetUserEmailAddressVerificationToken(t.Context(), testScope, user.ID, "")
+		_, err := service.SetUserEmailAddressVerificationToken(
+			t.Context(), testScope, user.ID, "", store.now().Add(time.Hour))
 		must.ErrorIs(t, err, platformerrors.ErrEmptyInputParameter)
 
 		test.EqOp(t, 0, hooks.ran("email_token"))
@@ -340,7 +344,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		service, store := env.newService(t, hooks)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(user, "verify-me")
 		seedUser(t, env, store, user)
 
 		verified, err := service.MarkUserEmailAddressVerified(t.Context(), testScope, user.ID, "verify-me")
@@ -372,7 +376,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		service, store := env.newService(t, hooks)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(user, "verify-me")
 		seedUser(t, env, store, user)
 
 		_, err := service.MarkUserEmailAddressVerified(t.Context(), testScope, user.ID, "verify-me")
@@ -393,7 +397,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		service, store := env.newService(t, hooks)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(user, "verify-me")
 		seedUser(t, env, store, user)
 
 		must.NoError(t, env.markUserEmailAddressVerified(t, store, testScope, user.ID, "verify-me"))
@@ -428,7 +432,7 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 		service, store := env.newService(t, hooks)
 
 		user := newUser("ada")
-		user.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(user, "verify-me")
 		seedUser(t, env, store, user)
 		must.NoError(t, env.updateUserTwoFactorSecret(t, store, testScope, user.ID, "seedsecret"))
 
@@ -459,7 +463,8 @@ func runCredentialServiceSuite(t *testing.T, env *storeEnv) {
 				return err
 			}},
 			{name: "email_token", run: func() error {
-				_, err := service.SetUserEmailAddressVerificationToken(t.Context(), otherScope, user.ID, "link")
+				_, err := service.SetUserEmailAddressVerificationToken(
+					t.Context(), otherScope, user.ID, "link", store.now().Add(time.Hour))
 
 				return err
 			}},

@@ -505,6 +505,24 @@ func WithSecretGenerator(generator random.Generator) ServiceOption {
 // somebody who wanted to be signed in when they asked.
 const DefaultMagicLinkTTL = 15 * time.Minute
 
+// DefaultVerificationLinkTTL is how long the verification link minted at
+// registration stays answerable.
+//
+// Seventy-two hours. It is the longest deadline this package hands out, and
+// deliberately: the link goes to somebody who has not yet used the product,
+// whose mail may sit unread over a weekend, and whose only remedy for a dead one
+// is a flow the consumer has to have built. It is also the strongest link — it
+// proves the address, it promotes the registrant out of StatusUnverified, and
+// Service.AttachPassword answers it with the first password on an account that
+// holds none — so it is bounded rather than left open for the reason
+// identity.Invitation.ExpiresAt is required at all.
+//
+// A deployment that mails a "confirm your address" link and expects it answered
+// the same hour shortens it with WithVerificationLinkTTL. One that cannot say
+// what its own window should be has the wrong question: the answer is how long
+// an unanswered registration should stay claimable out of a mailbox.
+const DefaultVerificationLinkTTL = 72 * time.Hour
+
 // DefaultMagicLinkRequestFloor is how long Service.RequestMagicLink takes at the
 // least, whatever it found.
 //
@@ -574,6 +592,22 @@ func WithMagicLinkTTL(ttl time.Duration) ServiceOption {
 	return func(s *Service) {
 		if ttl > 0 {
 			s.magicLinkTTL = ttl
+		}
+	}
+}
+
+// WithVerificationLinkTTL sets how long the verification link minted at
+// registration stays answerable. A non-positive duration is ignored, leaving
+// DefaultVerificationLinkTTL.
+//
+// It is the service's rather than the store's, for the reason WithMagicLinkTTL
+// is: how long a credential works is policy. identity's store takes the deadline
+// this computes rather than a lifetime of its own, so there is one clock on the
+// link and it is this one.
+func WithVerificationLinkTTL(ttl time.Duration) ServiceOption {
+	return func(s *Service) {
+		if ttl > 0 {
+			s.verificationLinkTTL = ttl
 		}
 	}
 }

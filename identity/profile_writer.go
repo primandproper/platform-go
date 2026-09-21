@@ -146,12 +146,19 @@ func (s *SQLStore) profileUpdateParams(
 		return identitydb.UpdateUserParams{}, err
 	}
 
-	verifiedAt, digest := stored.EmailAddressVerifiedAt, stored.EmailAddressVerificationTokenDigest
+	verifiedAt := stored.EmailAddressVerifiedAt
+	digest := stored.EmailAddressVerificationTokenDigest
+	expiresAt := stored.EmailAddressVerificationTokenExpiresAt
+
 	if stored.EmailAddress != user.EmailAddress {
-		verifiedAt, digest = nil, ""
+		// The deadline goes with the digest it bounds. Carrying it forward over
+		// a cleared digest would leave the row saying a link is outstanding
+		// until whichever column a reader consulted, which is the state every
+		// statement touching this pair assigns them together to avoid.
+		verifiedAt, digest, expiresAt = nil, "", nil
 	}
 
-	return updateUserParams(user, verifiedAt, digest), nil
+	return updateUserParams(user, verifiedAt, digest, expiresAt), nil
 }
 
 // UpdateAccount writes the account's name and billing address, and answers with

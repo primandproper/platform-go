@@ -16,6 +16,7 @@ import (
 	"github.com/primandproper/primitives-go/v2/database/dialect"
 	"github.com/primandproper/primitives-go/v2/database/sqlite"
 	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/pointer"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	"github.com/shoenig/test/must"
@@ -357,6 +358,30 @@ func (e *storeEnv) markUserTwoFactorSecretVerifiedErr(
 	return err
 }
 
+// testVerificationLinkTTL is the window the helper below mints links for.
+//
+// It is long enough that no test asserting something other than expiry has to
+// think about the deadline, and finite because the store refuses a zero one. A
+// test about the deadline itself names its own through
+// setUserEmailAddressVerificationTokenUntil.
+const testVerificationLinkTTL = 72 * time.Hour
+
+// farFutureVerificationDeadline is the deadline a test that is not about testing
+// the deadline mints its links with. It is past every clock any test here sets,
+// fixed or real.
+var farFutureVerificationDeadline = time.Date(2999, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// mintVerificationLink puts an outstanding link on a user, deadline and all.
+//
+// The pair is set together because User.ValidateWithContext refuses a token with
+// no deadline beside it — the same invariant every statement that assigns the
+// digest upholds by assigning both. A test setting the token alone is a test
+// writing a row the store will not produce.
+func mintVerificationLink(user *User, token string) {
+	user.EmailAddressVerificationToken = token
+	user.EmailAddressVerificationTokenExpiresAt = pointer.To(farFutureVerificationDeadline)
+}
+
 func (e *storeEnv) setUserEmailAddressVerificationToken(
 	t *testing.T,
 	store *SQLStore,
@@ -365,8 +390,21 @@ func (e *storeEnv) setUserEmailAddressVerificationToken(
 ) error {
 	t.Helper()
 
+	return e.setUserEmailAddressVerificationTokenUntil(
+		t, store, scope, userID, token, store.now().Add(testVerificationLinkTTL))
+}
+
+func (e *storeEnv) setUserEmailAddressVerificationTokenUntil(
+	t *testing.T,
+	store *SQLStore,
+	scope tenancy.Scope,
+	userID, token string,
+	expiresAt time.Time,
+) error {
+	t.Helper()
+
 	return e.inTx(t, func(tx database.Tx) error {
-		return store.SetUserEmailAddressVerificationToken(t.Context(), tx, scope, userID, token)
+		return store.SetUserEmailAddressVerificationToken(t.Context(), tx, scope, userID, token, expiresAt)
 	})
 }
 

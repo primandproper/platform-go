@@ -6,6 +6,7 @@ package identitymock
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/primandproper/platform-go/v14/identity"
 
@@ -156,7 +157,7 @@ var _ identity.Store = &StoreMock{}
 //			SetMembershipRolesFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, accountID string, roles []string) error {
 //				panic("mock out the SetMembershipRoles method")
 //			},
-//			SetUserEmailAddressVerificationTokenFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string) error {
+//			SetUserEmailAddressVerificationTokenFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string, expiresAt time.Time) error {
 //				panic("mock out the SetUserEmailAddressVerificationToken method")
 //			},
 //			SetUserRequiresPasswordChangeFunc: func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, requires bool) error {
@@ -323,7 +324,7 @@ type StoreMock struct {
 	SetMembershipRolesFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, accountID string, roles []string) error
 
 	// SetUserEmailAddressVerificationTokenFunc mocks the SetUserEmailAddressVerificationToken method.
-	SetUserEmailAddressVerificationTokenFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string) error
+	SetUserEmailAddressVerificationTokenFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string, expiresAt time.Time) error
 
 	// SetUserRequiresPasswordChangeFunc mocks the SetUserRequiresPasswordChange method.
 	SetUserRequiresPasswordChangeFunc func(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, requires bool) error
@@ -897,6 +898,8 @@ type StoreMock struct {
 			UserID string
 			// Token is the token argument value.
 			Token string
+			// ExpiresAt is the expiresAt argument value.
+			ExpiresAt time.Time
 		}
 		// SetUserRequiresPasswordChange holds details about calls to the SetUserRequiresPasswordChange method.
 		SetUserRequiresPasswordChange []struct {
@@ -3093,27 +3096,29 @@ func (mock *StoreMock) SetMembershipRolesCalls() []struct {
 }
 
 // SetUserEmailAddressVerificationToken calls SetUserEmailAddressVerificationTokenFunc.
-func (mock *StoreMock) SetUserEmailAddressVerificationToken(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string) error {
+func (mock *StoreMock) SetUserEmailAddressVerificationToken(ctx context.Context, tx database.Tx, scope tenancy.Scope, userID string, token string, expiresAt time.Time) error {
 	if mock.SetUserEmailAddressVerificationTokenFunc == nil {
 		panic("StoreMock.SetUserEmailAddressVerificationTokenFunc: method is nil but Store.SetUserEmailAddressVerificationToken was just called")
 	}
 	callInfo := struct {
-		Ctx    context.Context
-		Tx     database.Tx
-		Scope  tenancy.Scope
-		UserID string
-		Token  string
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		UserID    string
+		Token     string
+		ExpiresAt time.Time
 	}{
-		Ctx:    ctx,
-		Tx:     tx,
-		Scope:  scope,
-		UserID: userID,
-		Token:  token,
+		Ctx:       ctx,
+		Tx:        tx,
+		Scope:     scope,
+		UserID:    userID,
+		Token:     token,
+		ExpiresAt: expiresAt,
 	}
 	mock.lockSetUserEmailAddressVerificationToken.Lock()
 	mock.calls.SetUserEmailAddressVerificationToken = append(mock.calls.SetUserEmailAddressVerificationToken, callInfo)
 	mock.lockSetUserEmailAddressVerificationToken.Unlock()
-	return mock.SetUserEmailAddressVerificationTokenFunc(ctx, tx, scope, userID, token)
+	return mock.SetUserEmailAddressVerificationTokenFunc(ctx, tx, scope, userID, token, expiresAt)
 }
 
 // SetUserEmailAddressVerificationTokenCalls gets all the calls that were made to SetUserEmailAddressVerificationToken.
@@ -3121,18 +3126,20 @@ func (mock *StoreMock) SetUserEmailAddressVerificationToken(ctx context.Context,
 //
 //	len(mockedStore.SetUserEmailAddressVerificationTokenCalls())
 func (mock *StoreMock) SetUserEmailAddressVerificationTokenCalls() []struct {
-	Ctx    context.Context
-	Tx     database.Tx
-	Scope  tenancy.Scope
-	UserID string
-	Token  string
+	Ctx       context.Context
+	Tx        database.Tx
+	Scope     tenancy.Scope
+	UserID    string
+	Token     string
+	ExpiresAt time.Time
 } {
 	var calls []struct {
-		Ctx    context.Context
-		Tx     database.Tx
-		Scope  tenancy.Scope
-		UserID string
-		Token  string
+		Ctx       context.Context
+		Tx        database.Tx
+		Scope     tenancy.Scope
+		UserID    string
+		Token     string
+		ExpiresAt time.Time
 	}
 	mock.lockSetUserEmailAddressVerificationToken.RLock()
 	calls = mock.calls.SetUserEmailAddressVerificationToken

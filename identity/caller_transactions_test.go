@@ -285,7 +285,8 @@ func runCallerTransactionSuite(t *testing.T, env *storeEnv) {
 				return err
 			}},
 			{name: "SetUserEmailAddressVerificationToken", run: func() error {
-				return store.SetUserEmailAddressVerificationToken(t.Context(), nil, testScope, "u", "tok")
+				return store.SetUserEmailAddressVerificationToken(
+					t.Context(), nil, testScope, "u", "tok", store.now().Add(time.Hour))
 			}},
 			{name: "MarkUserEmailAddressVerified", run: func() error {
 				return store.MarkUserEmailAddressVerified(t.Context(), nil, testScope, "u", "tok")

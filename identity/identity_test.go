@@ -17,6 +17,7 @@ import (
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/identifiers"
+	"github.com/primandproper/primitives-go/v2/pointer"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -202,6 +203,34 @@ func TestUser_Validate(T *testing.T) {
 		// no hash to store for, and the requirement this replaced never caught
 		// what it was written for: a plaintext password is a non-empty string
 		// and passed.
+		must.NoError(t, user.ValidateWithContext(t.Context()))
+	})
+
+	T.Run("refuses a verification token with no deadline", func(t *testing.T) {
+		t.Parallel()
+
+		user := valid()
+		user.EmailAddressVerificationToken = "verify-me"
+
+		// A link with no deadline is a bearer credential for this account that
+		// never stops working, and this write is the last moment anybody holds
+		// the clock that would have bounded it: the next statement to touch
+		// either column clears both.
+		must.ErrorIs(t, user.ValidateWithContext(t.Context()), platformerrors.ErrEmptyInputParameter)
+
+		user.EmailAddressVerificationTokenExpiresAt = pointer.To(time.Now().UTC().Add(time.Hour))
+		must.NoError(t, user.ValidateWithContext(t.Context()))
+	})
+
+	T.Run("accepts a deadline with no token", func(t *testing.T) {
+		t.Parallel()
+
+		user := valid()
+		user.EmailAddressVerificationTokenExpiresAt = pointer.To(time.Now().UTC().Add(time.Hour))
+
+		// Only one direction is checked. A deadline with no token is what a
+		// clear leaves behind for an instant and what no read produces, and
+		// refusing it would refuse a user nobody minted a link for.
 		must.NoError(t, user.ValidateWithContext(t.Context()))
 	})
 

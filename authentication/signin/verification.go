@@ -32,7 +32,13 @@ type Verifications interface {
 	// GetUserByEmailVerificationToken reads the live user a verification link
 	// names, by the digest of the token rather than by the token. A link that
 	// has already been answered matches nobody, because verifying clears the
-	// column.
+	// column, and one whose deadline has passed is refused rather than resolved.
+	//
+	// The deadline is the store's to enforce and not this package's, which is
+	// why nothing here reads a clock: the column is stamped by whatever minted
+	// the link, and the implementation compares it against the clock that
+	// stamped it. A check repeated here would be a second boundary free to
+	// disagree with that one about the second a link dies in.
 	GetUserByEmailVerificationToken(
 		ctx context.Context,
 		q database.SQLQueryExecutor,
@@ -148,10 +154,12 @@ type Verification struct {
 // It is refused for a user who already holds a password with
 // [ErrPasswordAlreadySet], and that refusal is what keeps the capability
 // narrow: an outstanding link can furnish an account that has no password, once,
-// and can do nothing to an account that has one. Somebody who has a password and
-// has forgotten it goes through
+// and can do nothing to an account that has one. It is narrow in time as well:
+// the link carries a deadline, stamped beside its digest when it was minted, and
+// this door is closed once that has passed. Somebody who has a password and has
+// forgotten it goes through
 // [github.com/primandproper/platform-go/v14/authentication/passwordreset],
-// which is the flow with an expiry, a redemption stamp and a revocation.
+// which is still the flow with a redemption stamp and a revocation of its own.
 //
 // # What it does not do
 //
@@ -261,6 +269,13 @@ func (s *Service) AttachPassword(
 // them apart tells whoever is guessing which guesses are getting warm. The
 // second click on one link lands there too, because verifying clears the
 // column the first click matched.
+//
+// All four are reachable. Expired is the store's refusal —
+// identity.ErrEmailVerificationLinkExpired, raised against the deadline stamped
+// beside the digest — collapsed here with the rest, and the specific reason is
+// recorded on the operation's span so that an operator can tell a dead link
+// from a wrong one without the caller being told. How long that window is is
+// the registration's to choose: see [DefaultVerificationLinkTTL].
 //
 // It requires [WithVerifications] and refuses with
 // [ErrVerificationsNotConfigured] until it has one.

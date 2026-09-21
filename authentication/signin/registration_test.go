@@ -797,3 +797,66 @@ func TestService_VerifyEmailAddress_readsTheStandingInTheTransaction(T *testing.
 	must.SliceLen(T, 1, e.hooks.verifieds)
 	test.False(T, e.hooks.verifieds[0].Promoted)
 }
+
+// TestService_VerifyEmailAddress_expired is the deadline doing its job.
+//
+// The service is built with a clock in the past, so the link it mints carries a
+// deadline the store's own clock is already past. Nothing else about the row
+// differs: the digest is the one the registration wrote and the user is live,
+// so what refuses the link is the deadline and nothing else.
+//
+// The refusal is ErrInvalidVerificationToken and not something that says
+// "expired". Telling an expired link apart from one that was never issued tells
+// whoever is submitting guesses that a guess was once real, which is the reason
+// this door collapses all four of its refusals into one.
+func TestService_VerifyEmailAddress_expired(T *testing.T) {
+	T.Parallel()
+
+	e := newEnv(T, signin.WithClock(fixedClockAt(longPast)))
+
+	registered, err := e.svc.Register(T.Context(), testScope,
+		newRegistration("ada", signin.Password("hunter2 hunter2")))
+	must.NoError(T, err)
+
+	// The link was minted, so this is about the window and not about a missing
+	// token.
+	must.StrNotEqFold(T, "", registered.EmailAddressVerificationToken)
+
+	err = e.svc.VerifyEmailAddress(T.Context(), testScope, registered.EmailAddressVerificationToken)
+	test.ErrorIs(T, err, signin.ErrInvalidVerificationToken)
+	test.ErrorIs(T, err, signin.ErrInvalidCredentials)
+
+	// Nothing moved: no hook ran, and the registrant is where registration left
+	// them.
+	test.SliceEmpty(T, e.hooks.verifieds)
+
+	stored, err := e.store.GetUser(T.Context(), e.client.Reader(), testScope, registered.User.ID)
+	must.NoError(T, err)
+	test.EqOp(T, identity.StatusUnverified, stored.AccountStatus)
+	test.False(T, stored.EmailAddressVerified())
+}
+
+// TestService_AttachPassword_expired is the same deadline closing the other
+// door the link opens — the one that sets a first password on an account that
+// holds none, which is why this link is bounded at all.
+func TestService_AttachPassword_expired(T *testing.T) {
+	T.Parallel()
+
+	e := newEnv(T, signin.WithClock(fixedClockAt(longPast)))
+
+	registered, err := e.svc.Register(T.Context(), testScope,
+		newRegistration("ada", signin.NoPassword()))
+	must.NoError(T, err)
+
+	err = e.svc.AttachPassword(T.Context(), testScope, &signin.PasswordAttachment{
+		Token:       registered.EmailAddressVerificationToken,
+		NewPassword: "hunter2 hunter2",
+	})
+	test.ErrorIs(T, err, signin.ErrInvalidVerificationToken)
+
+	// The account still holds no password, so the expired link furnished
+	// nothing.
+	stored, err := e.store.GetUser(T.Context(), e.client.Reader(), testScope, registered.User.ID)
+	must.NoError(T, err)
+	test.False(T, stored.HasPassword())
+}

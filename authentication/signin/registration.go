@@ -7,6 +7,7 @@ import (
 
 	platformerrors "github.com/primandproper/primitives-go/v2/errors"
 	"github.com/primandproper/primitives-go/v2/observability"
+	"github.com/primandproper/primitives-go/v2/pointer"
 	"github.com/primandproper/primitives-go/v2/tenancy"
 )
 
@@ -288,6 +289,16 @@ func (s *Service) Register(
 	user := *registration.User
 	user.HashedPassword = hashed
 	user.EmailAddressVerificationToken = token
+
+	// The deadline is set here, beside the mint, because this is where the clock
+	// and the token meet. identity's store requires one and refuses a zero one:
+	// a verification link proves an address, promotes the registrant, and is
+	// what Service.AttachPassword answers with a first password, so one that
+	// never expires is one that still claims this account out of a mailbox years
+	// from now. See DefaultVerificationLinkTTL for the window and why it is the
+	// longest this package hands out.
+	user.EmailAddressVerificationTokenExpiresAt = pointer.To(
+		s.clk.Now().UTC().Add(s.verificationLinkTTL))
 
 	if registration.InvitationID != "" || registration.InvitationToken != "" {
 		registered, err = s.registerWithInvitation(ctx, scope, registration, &user)

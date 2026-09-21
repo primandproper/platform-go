@@ -219,6 +219,18 @@ message User {
   // separately from the username field beside it for the reason above: the two
   // are unrelated, so sending one is not sending the other.
   string display_name = 19;
+
+  // email_address_verification_token_expires_at is when the outstanding
+  // verification link stops being answerable, and is absent when no link is
+  // outstanding.
+  //
+  // It is here where the digest beside it is not, and the file comment's rule
+  // is why: the credential columns are absent and the timestamps about them are
+  // present. A deadline is not a verifier for guesses at the secret -- it
+  // answers "how long do I have", which is the sentence a client renders beside
+  // "we sent you a link", and "the link is dead, ask for another" without a
+  // round trip that would be told the same thing in the shape of an absence.
+  google.protobuf.Timestamp email_address_verification_token_expires_at = 20;
 }
 
 // BillingAddress is where an account's invoices go.

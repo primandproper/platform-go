@@ -31,27 +31,45 @@
 -- run against it. The store hashes on the way in and on every lookup, so no
 -- caller of this package ever supplies a digest.
 CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_users (
-    id                                      TEXT PRIMARY KEY,
-    scope                                   TEXT NOT NULL,
-    username                                TEXT NOT NULL,
-    display_name                            TEXT NOT NULL DEFAULT '',
-    email_address                           TEXT NOT NULL,
-    first_name                              TEXT NOT NULL DEFAULT '',
-    last_name                               TEXT NOT NULL DEFAULT '',
-    hashed_password                         TEXT NOT NULL,
-    requires_password_change                BOOLEAN NOT NULL DEFAULT FALSE,
-    password_last_changed_at                TIMESTAMPTZ,
-    two_factor_secret                       TEXT NOT NULL DEFAULT '',
-    two_factor_secret_verified_at           TIMESTAMPTZ,
-    email_address_verified_at               TIMESTAMPTZ,
-    email_address_verification_token_digest TEXT NOT NULL DEFAULT '',
-    account_status                          TEXT NOT NULL,
-    account_status_explanation              TEXT NOT NULL DEFAULT '',
-    last_accepted_terms_of_service          TIMESTAMPTZ,
-    last_accepted_privacy_policy            TIMESTAMPTZ,
-    created_at                              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_updated_at                         TIMESTAMPTZ,
-    archived_at                             TIMESTAMPTZ,
+    id                                          TEXT PRIMARY KEY,
+    scope                                       TEXT NOT NULL,
+    username                                    TEXT NOT NULL,
+    display_name                                TEXT NOT NULL DEFAULT '',
+    email_address                               TEXT NOT NULL,
+    first_name                                  TEXT NOT NULL DEFAULT '',
+    last_name                                   TEXT NOT NULL DEFAULT '',
+    hashed_password                             TEXT NOT NULL,
+    requires_password_change                    BOOLEAN NOT NULL DEFAULT FALSE,
+    password_last_changed_at                    TIMESTAMPTZ,
+    two_factor_secret                           TEXT NOT NULL DEFAULT '',
+    two_factor_secret_verified_at               TIMESTAMPTZ,
+    email_address_verified_at                   TIMESTAMPTZ,
+    email_address_verification_token_digest     TEXT NOT NULL DEFAULT '',
+
+    -- email_address_verification_token_expires_at is when the outstanding
+    -- verification link above stops being answerable.
+    --
+    -- A verification link is a bearer credential and a strong one: answering it
+    -- proves the address, promotes the registrant out of unverified, and --
+    -- through the sign-in service's AttachPassword -- sets the first password on
+    -- an account that holds none. identity_invitations.expires_at carries the
+    -- same obligation for a weaker link, and its column comment gives the same
+    -- reason: one that never expires is still valid in a mailbox somebody lost
+    -- control of two years ago.
+    --
+    -- Nullable, and NULL means no link is outstanding rather than a link with no
+    -- deadline. It is written and cleared in the same statement as the digest
+    -- beside it -- every statement that assigns one assigns both -- so a row
+    -- carrying a digest and no deadline is a state no write here produces, and
+    -- the store refuses to resolve one rather than treating it as unexpiring.
+    email_address_verification_token_expires_at TIMESTAMPTZ,
+    account_status                              TEXT NOT NULL,
+    account_status_explanation                  TEXT NOT NULL DEFAULT '',
+    last_accepted_terms_of_service              TIMESTAMPTZ,
+    last_accepted_privacy_policy                TIMESTAMPTZ,
+    created_at                                  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_updated_at                             TIMESTAMPTZ,
+    archived_at                                 TIMESTAMPTZ,
     -- last_indexed_at is when a search index last accepted this row, written by
     -- MarkUsersAsIndexed and read by nothing in this package.
     --
@@ -69,7 +87,7 @@ CREATE TABLE IF NOT EXISTS {{PREFIX}}identity_users (
     -- time. A reindex backstop looks for rows where this is NULL or older than
     -- last_updated_at, and those are the same question asked of a new row and a
     -- changed one.
-    last_indexed_at                         TIMESTAMPTZ
+    last_indexed_at                             TIMESTAMPTZ
 );
 
 -- Usernames and email addresses are unique per directory, and the uniqueness

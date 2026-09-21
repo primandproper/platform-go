@@ -67,6 +67,12 @@ var (
 // The nil-argument and malformed-input sentinels are not here. They wrap
 // platform sentinels that are already on errors/grpc's own list, so the
 // platform's words reach the client for those without a second registration.
+//
+// ErrEmailVerificationLinkExpired is deliberately not here either, and it is the
+// one absence that is a security decision rather than a redundancy. Its code is
+// NotFound, chosen to be indistinguishable from an unknown link; sending its
+// wording as well would undo that in the same message, by telling whoever
+// submitted the token that it was once real.
 var ClientSafeSentinels = []error{
 	ErrUserNotFound,
 	ErrAccountNotFound,
@@ -115,6 +121,15 @@ func (httpMapper) Map(err error) (code httperrors.ErrorCode, msg string, ok bool
 		return httperrors.ErrDataNotFound, "membership not found", true
 	case errors.Is(err, ErrInvitationNotFound):
 		return httperrors.ErrDataNotFound, "invitation not found", true
+
+	// The expired verification link joins them rather than getting the
+	// expired-invitation treatment above, and the message deliberately says
+	// nothing about a deadline. See ErrEmailVerificationLinkExpired: that link
+	// is looked up by the digest of its token alone, so an answer that told an
+	// expired one apart from an unknown one would be an oracle for whoever is
+	// guessing tokens.
+	case errors.Is(err, ErrEmailVerificationLinkExpired):
+		return httperrors.ErrDataNotFound, "verification link not found", true
 
 	// The two collisions. They are the reason registration needs a considered
 	// status at all: "your input collides" and "the database is unwell" decide
@@ -184,10 +199,15 @@ func (grpcMapper) Map(err error) (code codes.Code, ok bool) {
 	case errors.Is(err, ErrInvitationExpired):
 		return codes.FailedPrecondition, true
 
+	// The expired verification link is in this group and not beside the expired
+	// invitation above, for the reason the HTTP mapper gives: it is resolved by
+	// the digest of its token alone, and FailedPrecondition would confirm to a
+	// guesser that the token they submitted was once real.
 	case errors.Is(err, ErrUserNotFound),
 		errors.Is(err, ErrAccountNotFound),
 		errors.Is(err, ErrMembershipNotFound),
-		errors.Is(err, ErrInvitationNotFound):
+		errors.Is(err, ErrInvitationNotFound),
+		errors.Is(err, ErrEmailVerificationLinkExpired):
 		return codes.NotFound, true
 
 	case errors.Is(err, ErrUsernameTaken),

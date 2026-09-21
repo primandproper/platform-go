@@ -138,7 +138,7 @@ func TestUserRowRoundTrip(t *testing.T) {
 	// named type spelled out the way the column stores it — and the verification
 	// token digested, since the secret is what the field holds and the digest is
 	// what the column takes.
-	user.EmailAddressVerificationToken = "token"
+	mintVerificationLink(user, "token")
 
 	params := createUserParams(user)
 	test.EqOp(t, string(StatusGood), params.AccountStatus)

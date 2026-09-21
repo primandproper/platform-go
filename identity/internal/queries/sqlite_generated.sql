@@ -16,6 +16,7 @@ INSERT INTO identity_users (
 	two_factor_secret_verified_at,
 	email_address_verified_at,
 	email_address_verification_token_digest,
+	email_address_verification_token_expires_at,
 	account_status,
 	account_status_explanation,
 	last_accepted_terms_of_service,
@@ -35,6 +36,7 @@ INSERT INTO identity_users (
 	sqlc.narg(two_factor_secret_verified_at),
 	sqlc.narg(email_address_verified_at),
 	sqlc.arg(email_address_verification_token_digest),
+	sqlc.narg(email_address_verification_token_expires_at),
 	sqlc.arg(account_status),
 	sqlc.arg(account_status_explanation),
 	sqlc.narg(last_accepted_terms_of_service),
@@ -57,6 +59,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -86,6 +89,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -149,6 +153,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -205,6 +210,7 @@ UPDATE identity_users SET
 	last_name = sqlc.arg(last_name),
 	email_address_verified_at = sqlc.narg(email_address_verified_at),
 	email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest),
+	email_address_verification_token_expires_at = sqlc.narg(email_address_verification_token_expires_at),
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE archived_at IS NULL
 	AND id = sqlc.arg(id)
@@ -863,6 +869,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -918,6 +925,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -946,6 +954,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -975,6 +984,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -1004,6 +1014,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -1105,6 +1116,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -1166,6 +1178,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at AS user_two_factor_secret_verified_at,
 	identity_users.email_address_verified_at AS user_email_address_verified_at,
 	identity_users.email_address_verification_token_digest AS user_email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at AS user_email_address_verification_token_expires_at,
 	identity_users.account_status AS user_account_status,
 	identity_users.account_status_explanation AS user_account_status_explanation,
 	identity_users.last_accepted_terms_of_service AS user_last_accepted_terms_of_service,
@@ -1246,6 +1259,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at AS user_two_factor_secret_verified_at,
 	identity_users.email_address_verified_at AS user_email_address_verified_at,
 	identity_users.email_address_verification_token_digest AS user_email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at AS user_email_address_verification_token_expires_at,
 	identity_users.account_status AS user_account_status,
 	identity_users.account_status_explanation AS user_account_status_explanation,
 	identity_users.last_accepted_terms_of_service AS user_last_accepted_terms_of_service,
@@ -1489,6 +1503,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -1521,6 +1536,7 @@ SELECT
 	identity_users.two_factor_secret_verified_at,
 	identity_users.email_address_verified_at,
 	identity_users.email_address_verification_token_digest,
+	identity_users.email_address_verification_token_expires_at,
 	identity_users.account_status,
 	identity_users.account_status_explanation,
 	identity_users.last_accepted_terms_of_service,
@@ -1584,6 +1600,7 @@ WHERE archived_at IS NULL
 -- name: SetUserEmailAddressVerificationToken :execrows
 UPDATE identity_users SET
 	email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest),
+	email_address_verification_token_expires_at = sqlc.narg(email_address_verification_token_expires_at),
 	email_address_verified_at = sqlc.narg(email_address_verified_at),
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE archived_at IS NULL
@@ -1594,6 +1611,7 @@ WHERE archived_at IS NULL
 UPDATE identity_users SET
 	email_address_verified_at = sqlc.narg(email_address_verified_at),
 	email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest),
+	email_address_verification_token_expires_at = sqlc.narg(email_address_verification_token_expires_at),
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE archived_at IS NULL
 	AND id = sqlc.arg(id)
@@ -1604,6 +1622,7 @@ WHERE archived_at IS NULL
 UPDATE identity_users SET
 	email_address_verified_at = sqlc.narg(email_address_verified_at),
 	email_address_verification_token_digest = sqlc.arg(email_address_verification_token_digest),
+	email_address_verification_token_expires_at = sqlc.narg(email_address_verification_token_expires_at),
 	last_updated_at = CURRENT_TIMESTAMP
 WHERE archived_at IS NULL
 	AND id = sqlc.arg(id)

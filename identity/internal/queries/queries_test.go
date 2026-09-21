@@ -559,14 +559,17 @@ func TestTable_UpdateColumns(t *testing.T) {
 
 	// Named rather than derived, because the set is the whole reason UpdateUser
 	// cannot blank a password hash off a Redacted struct — and because the last
-	// two are the reason it is not simply the profile: the proof and the
+	// three are the reason it is not simply the profile: the proof and the
 	// outstanding link both come off when the address moves, and a set that lost
-	// either one lets a link minted for the address being left behind prove the
-	// address being moved to.
+	// any one of them lets a link minted for the address being left behind prove
+	// the address being moved to. The deadline is in the set for the same reason
+	// it is in every statement that assigns the digest — one left behind over a
+	// cleared digest is a row claiming a link is outstanding.
 	test.SliceEqFunc(t,
 		[]string{
 			"username", "display_name", "email_address", "first_name", "last_name",
 			"email_address_verified_at", "email_address_verification_token_digest",
+			"email_address_verification_token_expires_at",
 		},
 		Users.UpdateColumns(),
 		func(a, b string) bool { return a == b },

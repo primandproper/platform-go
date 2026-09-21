@@ -429,7 +429,12 @@ func (h *harness) verifyEmail(t *testing.T, scope tenancy.Scope, userID string) 
 	const token = "verification-token-" + "for-the-harness"
 
 	must.NoError(t, h.db.WithTransaction(t.Context(), func(tx database.Tx) error {
-		if err := h.store.SetUserEmailAddressVerificationToken(t.Context(), tx, scope, userID, token); err != nil {
+		// The deadline is required and this one is far off: what this helper is
+		// for is getting a user past verification, not exercising the window.
+		expiresAt := time.Now().UTC().Add(24 * time.Hour)
+
+		if err := h.store.SetUserEmailAddressVerificationToken(
+			t.Context(), tx, scope, userID, token, expiresAt); err != nil {
 			return err
 		}
 

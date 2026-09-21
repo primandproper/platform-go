@@ -567,7 +567,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 
 		joiner := newUser("grace")
 		joiner.EmailAddress = "grace@example.com"
-		joiner.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(joiner, "verify-me")
 
 		registration, err := service.RegisterWithInvitation(t.Context(), testScope,
 			joiner, issued.ID, "the-token", "glad to")
@@ -634,7 +634,7 @@ func runServiceSuite(t *testing.T, env *storeEnv) {
 		must.NoError(t, err)
 
 		joiner := newUser("grace")
-		joiner.EmailAddressVerificationToken = "verify-me"
+		mintVerificationLink(joiner, "verify-me")
 
 		registration, err := service.RegisterWithInvitation(t.Context(), testScope,
 			joiner, issued.ID, "the-token", "")
