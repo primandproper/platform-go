@@ -92,6 +92,14 @@ is not a revocation.
 **R3 — one retry, never a loop.** An RPC returning `UNAUTHENTICATED` may trigger at most one
 refresh-and-retry.
 
+
+**R11 — a refused duplicate is a wait, not a failure.** If the service answers that an
+exchange with this idempotency key is already running elsewhere, another caller got there
+first. Back off and retry with **the same key**: once the in-flight exchange finishes, a
+retry inside the grace period is recognised and answered. Do not mint a new key, do not clear
+credentials, and do not treat it as a sign-in failure — the only thing that has happened is
+that two callers raced, which R1 exists to prevent and this catches when R1 is got wrong.
+
 ## Refresh token rotation
 
 The rule that will bite anything written without reading it, quoted from the proto:
